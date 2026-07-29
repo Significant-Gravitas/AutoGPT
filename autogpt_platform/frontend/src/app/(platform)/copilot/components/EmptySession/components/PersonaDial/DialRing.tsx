@@ -137,9 +137,7 @@ export function DialRing({
           persona={personas[wrapIndex(virtual, count)]}
           index={virtual}
           isSelected={wrapIndex(virtual, count) === selectedIndex}
-          entranceDelay={
-            0.05 + Math.abs(virtual - dial.virtualCentre) * 0.06
-          }
+          entranceDelay={0.05 + Math.abs(virtual - dial.virtualCentre) * 0.06}
           rotation={dial.rotation}
           onPick={handleItemPick}
         />

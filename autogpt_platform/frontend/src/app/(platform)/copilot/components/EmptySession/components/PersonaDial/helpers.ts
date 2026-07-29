@@ -59,11 +59,7 @@ export function rotationForVirtual(virtual: number) {
 }
 
 /** The virtual slot for a roster index that is nearest the current rotation. */
-export function nearestVirtual(
-  index: number,
-  count: number,
-  rotation: number,
-) {
+export function nearestVirtual(index: number, count: number, rotation: number) {
   const current = -rotation / DIAL_STEP;
   const turns = Math.round((current - index) / count);
   return index + turns * count;

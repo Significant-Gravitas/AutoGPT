@@ -31,7 +31,12 @@ interface Args {
 // Rotation lives in a MotionValue: drags and springs update the DOM directly
 // without re-rendering React per frame. React only re-renders when the wheel
 // crosses a slot boundary (to shift the virtual window and live-select).
-export function usePersonaDial({ count, selectedIndex, onSelect, onTap }: Args) {
+export function usePersonaDial({
+  count,
+  selectedIndex,
+  onSelect,
+  onTap,
+}: Args) {
   const wrap = shouldWrap(count);
   const ringRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
@@ -135,17 +140,11 @@ export function usePersonaDial({ count, selectedIndex, onSelect, onTap }: Args) 
       return;
     }
     const snapped = snapRotation(rotation.get());
-    animate(
-      rotation,
-      wrap ? snapped : clampRotation(snapped, count),
-      SPRING,
-    );
+    animate(rotation, wrap ? snapped : clampRotation(snapped, count), SPRING);
   }
 
   function selectVirtual(virtual: number) {
-    const target = wrap
-      ? virtual
-      : Math.min(count - 1, Math.max(0, virtual));
+    const target = wrap ? virtual : Math.min(count - 1, Math.max(0, virtual));
     lastIndexRef.current = wrapIndex(target, count);
     onSelect(lastIndexRef.current);
     animate(rotation, rotationForVirtual(target), SPRING);
