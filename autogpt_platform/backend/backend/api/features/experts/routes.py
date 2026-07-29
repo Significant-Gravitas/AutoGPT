@@ -1,7 +1,7 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Security
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef, HireResult
@@ -15,7 +15,7 @@ router = APIRouter(
 
 class HireRequest(BaseModel):
     template_id: str
-    name: str | None = None
+    name: str | None = Field(default=None, max_length=100)
 
 
 class InstallWorkflowRequest(BaseModel):

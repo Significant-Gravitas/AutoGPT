@@ -1,5 +1,6 @@
 import logging
 
+import prisma.errors
 import prisma.models
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef, HireResult
@@ -106,7 +107,17 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     }
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
-    expert = await prisma.models.Expert.prisma().create(data=create_data)
+    try:
+        expert = await prisma.models.Expert.prisma().create(data=create_data)
+    except prisma.errors.UniqueViolationError:
+        # Lost a concurrent hire race; the winner's row satisfies idempotency.
+        raced = await prisma.models.Expert.prisma().find_first(
+            where={"ownerUserId": user_id, "sourceTemplateId": template_id},
+            include=_WORKFLOW_INCLUDE,
+        )
+        if raced is None:
+            raise
+        return HireResult(expert=_to_model(raced), failed_preloads=[])
 
     failed: list[str] = []
     for preload in template.Workflows or []:
@@ -165,14 +176,27 @@ async def install_workflow(
     library_agent = await library_db.add_store_agent_to_library(
         store_listing_version_id, user_id
     )
-    row = await prisma.models.ExpertWorkflow.prisma().create(
-        data={
-            "expertId": expert_id,
-            "storeListingVersionId": store_listing_version_id,
-            "libraryAgentId": library_agent.id,
-        },
-        include={"LibraryAgent": True, "StoreListingVersion": True},
-    )
+    try:
+        row = await prisma.models.ExpertWorkflow.prisma().create(
+            data={
+                "expertId": expert_id,
+                "storeListingVersionId": store_listing_version_id,
+                "libraryAgentId": library_agent.id,
+            },
+            include={"LibraryAgent": True, "StoreListingVersion": True},
+        )
+    except prisma.errors.UniqueViolationError:
+        # Lost a concurrent duplicate-install race; return the winner's row.
+        raced = await prisma.models.ExpertWorkflow.prisma().find_first(
+            where={
+                "expertId": expert_id,
+                "storeListingVersionId": store_listing_version_id,
+            },
+            include={"LibraryAgent": True, "StoreListingVersion": True},
+        )
+        if raced is None:
+            raise
+        return _to_workflow_ref(raced)
     return _to_workflow_ref(row)
 
 
