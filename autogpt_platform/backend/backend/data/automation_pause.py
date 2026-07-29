@@ -60,10 +60,7 @@ async def pause_automations_for_payment_lapse(user_id: str) -> AutomationPauseSu
         "isActive": True,
         "isDeleted": False,
         "deactivationReason": None,
-        "OR": [
-            {"organizationId": None},
-            {"organizationId": personal_org_id},
-        ],
+        "OR": _personal_org_or(user_id, personal_org_id),
     }
     triggers = await AgentPreset.prisma().update_many(
         where=where,
@@ -99,20 +96,18 @@ async def resume_automations_after_payment_restored(
     except Exception as e:
         scheduler_error = e
         logger.error(f"Failed to resume schedules for user {user_id}: {e}")
+    # Same personal-org predicate as pause: a preset that became team-owned
+    # after being payment-lapsed stays off — it's funded by the org, not the
+    # member's restored personal subscription.
+    resume_where: AgentPresetWhereInput = {
+        "userId": user_id,
+        "isActive": False,
+        "isDeleted": False,
+        "deactivationReason": PresetDeactivationReason.PAYMENT_LAPSED,
+        "OR": _personal_org_or(user_id, personal_org_id),
+    }
     triggers = await AgentPreset.prisma().update_many(
-        where={
-            "userId": user_id,
-            "isActive": False,
-            "isDeleted": False,
-            "deactivationReason": PresetDeactivationReason.PAYMENT_LAPSED,
-            # Same personal-org predicate as pause: a preset that became
-            # team-owned after being payment-lapsed stays off — it's funded by
-            # the org, not the member's restored personal subscription.
-            "OR": [
-                {"organizationId": None},
-                {"organizationId": personal_org_id},
-            ],
-        },
+        where=resume_where,
         data={"isActive": True, "deactivationReason": None},
     )
     summary = AutomationPauseSummary(schedules=schedules, triggers=triggers)
@@ -125,6 +120,23 @@ async def resume_automations_after_payment_restored(
     if scheduler_error is not None:
         raise scheduler_error
     return summary
+
+
+def _personal_org_or(
+    user_id: str, personal_org_id: str | None
+) -> list[AgentPresetWhereInput]:
+    """`OR` predicate restricting to personally-funded presets (untagged or the
+    user's personal org). If the personal org couldn't be resolved, fall back to
+    any org (userId-only scope) with a warning: every preset is org-tagged after
+    the org dual-write, so a `personal org` predicate would otherwise exclude all
+    of them and silently pause/resume nothing."""
+    if personal_org_id is None:
+        logger.warning(
+            f"No personal org resolved for user {user_id}; applying "
+            f"payment-lapse pause/resume without the org filter"
+        )
+        return [{"organizationId": None}, {"organizationId": {"not": None}}]
+    return [{"organizationId": None}, {"organizationId": personal_org_id}]
 
 
 async def has_payment_lapsed_automations(user_id: str) -> bool:

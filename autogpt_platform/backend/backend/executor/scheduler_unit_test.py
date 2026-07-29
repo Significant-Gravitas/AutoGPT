@@ -695,9 +695,24 @@ class TestPauseResumeUserGraphSchedules:
         ]
         sched, aps = self._scheduler(jobs)
         with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
-            count = sched.pause_user_graph_schedules("u1", "payment_lapsed")
+            # A resolved personal org excludes the org-1-tagged job (s3).
+            count = sched.pause_user_graph_schedules(
+                "u1", "payment_lapsed", personal_org_id="u1-org"
+            )
         assert count == 0
         aps.pause_job.assert_not_called()
+
+    def test_pause_without_personal_org_includes_org_tagged_jobs(self):
+        """When the personal org can't be resolved, fall back to userId-only
+        rather than excluding every org-tagged (dual-write) job."""
+        job = _mock_job(_graph_job_kwargs(organization_id="org-1", schedule_id="s1"))
+        sched, aps = self._scheduler([job])
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.pause_user_graph_schedules(
+                "u1", "payment_lapsed", personal_org_id=None
+            )
+        assert count == 1
+        aps.pause_job.assert_called_once()
 
     def test_pause_heals_stamped_but_still_running_job(self):
         """A crash between the reason stamp and pause_job leaves a running job
