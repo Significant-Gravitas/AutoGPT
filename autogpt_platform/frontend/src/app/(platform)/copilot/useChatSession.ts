@@ -73,33 +73,56 @@ export function useChatSession({
     }
   }, [sessionId, queryClient]);
 
+  // Deep link /copilot?expertId=<id>: adopt the expert's latest thread. Only
+  // the mount-time expertId adopts — a recipient picked in the UI after mount
+  // must keep the fresh new-task state, not jump to the expert's old thread.
+  // "New Chat" clears the expertId param, so it lands on a genuinely new
+  // session rather than bouncing back here.
+  const mountExpertIdRef = useRef(expertId);
+  const redirectedExpertRef = useRef<string | null>(null);
+  // Once the user commits to a new thread by hitting send, adoption must stop:
+  // `useSendMessage` flushes its pending first message on *any* sessionId
+  // change, so a late adoption would post that message into the old thread.
+  const sendStartedRef = useRef(false);
+  const canAdoptExpertSession =
+    !!expertId && !sessionId && expertId === mountExpertIdRef.current;
+
   const latestExpertSessionQuery = useGetV2ListSessions(
     { expert_id: expertId ?? undefined, limit: 1 },
     {
       query: {
-        enabled: !!expertId && !sessionId,
+        enabled: canAdoptExpertSession,
         refetchOnWindowFocus: false,
       },
     },
   );
 
-  // Deep link /copilot?expertId=<id>: adopt the expert's latest thread once
-  // per expert. The latch lets "New Chat" stay on a fresh expert session
-  // instead of bouncing back to the latest thread. Only the mount-time
-  // expertId adopts — a recipient picked in the UI after mount must keep
-  // the fresh new-task state, not jump to the expert's old thread.
-  const mountExpertIdRef = useRef(expertId);
-  const redirectedExpertRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!expertId || sessionId) return;
-    if (expertId !== mountExpertIdRef.current) return;
+    if (!canAdoptExpertSession || !expertId) return;
+    if (sendStartedRef.current) return;
     if (redirectedExpertRef.current === expertId) return;
     if (latestExpertSessionQuery.data?.status !== 200) return;
     const latest = latestExpertSessionQuery.data.data.sessions[0];
     if (!latest) return;
     redirectedExpertRef.current = expertId;
     setSessionId(latest.id);
-  }, [expertId, sessionId, latestExpertSessionQuery.data, setSessionId]);
+  }, [
+    canAdoptExpertSession,
+    expertId,
+    latestExpertSessionQuery.data,
+    setSessionId,
+  ]);
+
+  // True while the deep-link adoption could still navigate away from the
+  // new-task screen. Callers disable the composer for that window so a draft
+  // (or a send) can't be swallowed by the navigation. Keyed on `isLoading`
+  // rather than `isPending` so a failing request releases the composer instead
+  // of locking it for the length of the retry schedule; `sendStartedRef` is
+  // what actually guarantees a send is never misrouted.
+  const isAdoptingExpertSession =
+    canAdoptExpertSession &&
+    !sendStartedRef.current &&
+    latestExpertSessionQuery.isLoading;
 
   const freshSessionData =
     !!sessionId && sessionQuery.data?.status === 200 && !sessionQuery.isFetching
@@ -167,6 +190,10 @@ export function useChatSession({
 
   async function createSession() {
     if (sessionId) return sessionId;
+    // Latched for the life of this mount, including on failure: once the user
+    // has asked for a new thread, auto-navigating them into an old one is
+    // never the right recovery.
+    sendStartedRef.current = true;
     try {
       const sessionData: Record<string, unknown> = {};
       if (dryRun) sessionData.dry_run = true;
@@ -230,9 +257,21 @@ export function useChatSession({
     freshSessionData as { chat_status?: string } | undefined
   )?.chat_status;
 
+  // The expert this session actually belongs to, straight off the session
+  // response rather than the URL — the ?expertId= param only describes what
+  // the NEXT session will be and is absent on most ways of reaching a thread.
+  // Read from the query rather than `freshSessionData` (which nulls out during
+  // background refetches) so the expert header doesn't blink.
+  const sessionExpertId =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.expert_id ?? null)
+      : null;
+
   return {
     sessionId,
     setSessionId,
+    sessionExpertId,
+    isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,

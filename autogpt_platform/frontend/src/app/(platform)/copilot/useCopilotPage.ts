@@ -44,13 +44,14 @@ export function useCopilotPage() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;
-  const expertMap = useExpertMap();
-  const expertIdentity = expertId ? (expertMap.get(expertId) ?? null) : null;
+  const { expertsById } = useExpertMap();
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
 
   const {
     sessionId,
+    sessionExpertId,
+    isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
@@ -66,6 +67,15 @@ export function useCopilotPage() {
     sessionDryRun,
     sessionChatStatus,
   } = useChatSession({ dryRun: isDryRun, expertId });
+
+  // An open session owns its identity: the URL param only describes who the
+  // NEXT session will address, and it is absent whenever a thread is reached
+  // from global search, a bookmark or a shared link.
+  const activeExpertId = sessionId ? sessionExpertId : expertId;
+  const expertIdentity =
+    isExpertsEnabled && activeExpertId
+      ? (expertsById.get(activeExpertId) ?? null)
+      : null;
 
   const {
     messages: currentMessages,
@@ -269,5 +279,6 @@ export function useCopilotPage() {
     sessionDryRun,
     sessionChatStatus,
     expertIdentity,
+    isAdoptingExpertSession,
   };
 }

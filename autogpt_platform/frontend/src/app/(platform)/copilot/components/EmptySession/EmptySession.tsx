@@ -20,18 +20,8 @@ import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EditNameDialog } from "./components/EditNameDialog/EditNameDialog";
-import { parseAsString, useQueryState } from "nuqs";
-import { useExpertMap } from "../../useExpertMap";
-import {
-  RecipientChip,
-  type RecipientOption,
-} from "../ChatInput/components/RecipientChip";
-
-const AUTOPILOT_RECIPIENT: RecipientOption = {
-  id: null,
-  name: "Autopilot",
-  avatarUrl: null,
-};
+import { RecipientChip } from "../ChatInput/components/RecipientChip";
+import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
   inputLayoutId: string;
@@ -45,6 +35,7 @@ interface Props {
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
+  isAdoptingExpertSession?: boolean;
 }
 
 export function EmptySession({
@@ -54,28 +45,16 @@ export function EmptySession({
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
+  isAdoptingExpertSession,
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
   const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const pulseChips = usePulseChips();
-  const expertMap = useExpertMap();
-  const [expertIdParam, setExpertIdParam] = useQueryState(
-    "expertId",
-    parseAsString,
-  );
-  const recipientOptions: RecipientOption[] = [
-    AUTOPILOT_RECIPIENT,
-    ...[...expertMap.entries()].map(([id, expert]) => ({
-      id,
-      name: expert.name,
-      avatarUrl: expert.avatarUrl,
-    })),
-  ];
-  const recipient =
-    recipientOptions.find((option) => option.id === expertIdParam) ??
-    AUTOPILOT_RECIPIENT;
+  const { options, recipient, isLoadingRecipient, selectRecipient } =
+    useRecipientPicker();
+  const isComposerDisabled = isCreatingSession || !!isAdoptingExpertSession;
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -146,7 +125,7 @@ export function EmptySession({
               <ChatInput
                 inputId="chat-input-empty"
                 onSend={onSend}
-                disabled={isCreatingSession}
+                disabled={isComposerDisabled}
                 isUploadingFiles={isUploadingFiles}
                 placeholder={inputPlaceholder}
                 className="w-full"
@@ -156,8 +135,9 @@ export function EmptySession({
                   isExpertsEnabled ? (
                     <RecipientChip
                       recipient={recipient}
-                      options={recipientOptions}
-                      onSelect={(id) => setExpertIdParam(id)}
+                      options={options}
+                      isLoading={isLoadingRecipient}
+                      onSelect={selectRecipient}
                     />
                   ) : undefined
                 }
@@ -176,7 +156,7 @@ export function EmptySession({
           <SuggestionThemes
             themes={themes}
             onSend={onSend}
-            disabled={isCreatingSession}
+            disabled={isComposerDisabled}
           />
         )}
       </motion.div>

@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import { CaretDownIcon } from "@phosphor-icons/react";
 
@@ -24,16 +25,44 @@ interface Props {
   recipient: RecipientOption;
   options: RecipientOption[];
   onSelect: (id: string | null) => void;
+  /** True while the expert list is still loading behind a `?expertId=` deep
+   * link — showing the Autopilot fallback there would name the wrong
+   * recipient. */
+  isLoading?: boolean;
 }
 
-export function RecipientChip({ recipient, options, onSelect }: Props) {
+const CHIP_CLASSNAME =
+  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-zinc-700 shadow-sm";
+
+export function RecipientChip({
+  recipient,
+  options,
+  onSelect,
+  isLoading,
+}: Props) {
+  if (isLoading) {
+    return (
+      <div
+        role="status"
+        aria-label="Loading recipient"
+        className={CHIP_CLASSNAME}
+      >
+        <Skeleton className="h-5 w-5 rounded-full" />
+        <Skeleton className="h-3 w-16" />
+      </div>
+    );
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label={`Sending to ${recipient.name} — change recipient`}
-          className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-neutral-50"
+          className={cn(
+            CHIP_CLASSNAME,
+            "transition-colors hover:bg-neutral-50",
+          )}
         >
           <RecipientAvatar option={recipient} />
           {recipient.name}

@@ -21,7 +21,7 @@ import { useRecentChats } from "./useRecentChats";
 export function RecentChats() {
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const expertMap = useExpertMap();
+  const { expertsById } = useExpertMap();
   const {
     sessions,
     isLoading,
@@ -86,13 +86,13 @@ export function RecentChats() {
     ? groupSessionsByExpert(sessions).map((group) => ({
         key: group.expertId ?? "autopilot",
         label: group.expertId
-          ? (expertMap.get(group.expertId)?.name ?? "Expert")
+          ? (expertsById.get(group.expertId)?.name ?? "Expert")
           : "Autopilot",
         avatarUrl: group.expertId
-          ? (expertMap.get(group.expertId)?.avatarUrl ?? null)
+          ? (expertsById.get(group.expertId)?.avatarUrl ?? null)
           : null,
         role: group.expertId
-          ? (expertMap.get(group.expertId)?.role ?? null)
+          ? (expertsById.get(group.expertId)?.role ?? null)
           : null,
         showAvatar: true,
         sessions: group.sessions,
@@ -125,7 +125,7 @@ export function RecentChats() {
                     <AvatarImage src={group.avatarUrl} alt={group.label} />
                   ) : null}
                   <AvatarFallback className="text-[9px]">
-                    {group.label.slice(0, 2)}
+                    {group.label}
                   </AvatarFallback>
                 </Avatar>
               )}
