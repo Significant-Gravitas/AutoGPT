@@ -11,10 +11,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -62,7 +62,7 @@ function renderMarketplace() {
 
 describe("Marketplace ExpertsSection", () => {
   beforeEach(() => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
     });
@@ -88,7 +88,7 @@ describe("Marketplace ExpertsSection", () => {
   });
 
   test("stays hidden and fetches nothing for signed-out visitors", async () => {
-    mockUseSupabase.mockReturnValue({ user: null, isLoggedIn: false });
+    mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
     let templatesRequested = false;
     server.use(
       getListExpertTemplatesMockHandler(() => {
