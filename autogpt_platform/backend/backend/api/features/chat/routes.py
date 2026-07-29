@@ -329,6 +329,7 @@ class SessionDetailResponse(BaseModel):
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
     metadata: ChatSessionMetadata = ChatSessionMetadata()
+    expert_id: str | None = None
 
 
 class SessionSummaryResponse(BaseModel):
@@ -739,6 +740,7 @@ async def get_session(
             oldest_sequence=page.oldest_sequence,
             total_prompt_tokens=0,
             total_completion_tokens=0,
+            expert_id=page.session.expert_id,
         )
 
     total_prompt = sum(u.prompt_tokens for u in page.session.usage)
@@ -757,6 +759,7 @@ async def get_session(
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
         metadata=page.session.metadata,
+        expert_id=page.session.expert_id,
     )
 
 
