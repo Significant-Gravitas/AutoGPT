@@ -135,7 +135,7 @@ describe("AccountMenu", () => {
   });
 
   test("renders profile trigger with avatar fallback", () => {
-    render(
+    const { container } = render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
@@ -144,7 +144,8 @@ describe("AccountMenu", () => {
     );
 
     expect(screen.getByTestId("profile-popout-menu-trigger")).toBeDefined();
-    expect(screen.getAllByText("A").length).toBeGreaterThan(0);
+    // InitialAvatar uses a marble SVG fallback (not a letter initial).
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 
   test("new layout renders the organization switcher header trigger", () => {
