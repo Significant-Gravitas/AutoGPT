@@ -12,15 +12,10 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.model import APIKeyCredentials, SchemaField
+from backend.data.model import CredentialsMetaInput, SchemaField
 
-from ._api import SlackMessageResult, post_message
-from ._auth import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    SlackCredentialsField,
-    SlackCredentialsInput,
-)
+from ._api import SlackCredentials, SlackMessageResult, post_message
+from ._config import TEST_CREDENTIALS_API_KEY, TEST_CREDENTIALS_INPUT_API_KEY, slack
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +24,11 @@ class SendSlackMessageBlock(Block):
     """Send a text message to a Slack channel or DM."""
 
     class Input(BlockSchemaInput):
-        credentials: SlackCredentialsInput = SlackCredentialsField()
+        credentials: CredentialsMetaInput = slack.credentials_field(
+            description="Slack bot token or OAuth connection. "
+            "Requires the chat:write scope; chat:write.customize is needed "
+            "for the username/icon_emoji overrides below."
+        )
         channel: str = SchemaField(
             description="Channel ID (e.g. C1234567890) or name (e.g. #general). "
             "For DMs use the user's member ID (e.g. U1234567890)."
@@ -87,9 +86,9 @@ class SendSlackMessageBlock(Block):
             test_input={
                 "channel": "C1234567890",
                 "text": "Hello from AutoGPT!",
-                "credentials": TEST_CREDENTIALS_INPUT,
+                "credentials": TEST_CREDENTIALS_INPUT_API_KEY,
             },
-            test_credentials=TEST_CREDENTIALS,
+            test_credentials=TEST_CREDENTIALS_API_KEY,
             test_output=[
                 ("ts", "1234567890.123456"),
                 ("channel", "C1234567890"),
@@ -103,7 +102,7 @@ class SendSlackMessageBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: SlackCredentials, **kwargs
     ) -> BlockOutput:
         result = await self._post_message(
             credentials=credentials,
@@ -120,7 +119,7 @@ class SendSlackMessageBlock(Block):
 
     async def _post_message(
         self,
-        credentials: APIKeyCredentials,
+        credentials: SlackCredentials,
         channel: str,
         text: str,
         thread_ts: Optional[str],

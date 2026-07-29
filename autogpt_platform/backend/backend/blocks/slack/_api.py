@@ -7,12 +7,14 @@ with a Bearer token in the Authorization header.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel
 
-from backend.data.model import APIKeyCredentials
+from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.util.request import Requests
+
+SlackCredentials = Union[APIKeyCredentials, OAuth2Credentials]
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ class SlackAPIException(ValueError):
 
 
 async def call_slack_api(
-    credentials: APIKeyCredentials,
+    credentials: SlackCredentials,
     method: str,
     data: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
@@ -42,7 +44,7 @@ async def call_slack_api(
     Make an authenticated POST request to the Slack Web API.
 
     Args:
-        credentials: Slack bot token credentials
+        credentials: Slack bot token or OAuth credentials
         method: API method name (e.g., "chat.postMessage")
         data: JSON body parameters
 
@@ -52,9 +54,8 @@ async def call_slack_api(
     Raises:
         SlackAPIException: If Slack returns ok=false
     """
-    token = credentials.api_key.get_secret_value()
     url = f"{SLACK_API_BASE}/{method}"
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": credentials.auth_header()}
 
     response = await Requests().post(url, json=data or {}, headers=headers)
     result: dict[str, Any] = response.json()
@@ -66,7 +67,7 @@ async def call_slack_api(
 
 
 async def post_message(
-    credentials: APIKeyCredentials,
+    credentials: SlackCredentials,
     channel: str,
     text: str,
     thread_ts: Optional[str] = None,

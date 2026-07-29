@@ -13,7 +13,10 @@ from backend.blocks.slack._api import (
     call_slack_api,
     post_message,
 )
-from backend.blocks.slack._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.slack._config import TEST_CREDENTIALS_API_KEY as TEST_CREDENTIALS
+from backend.blocks.slack._config import (
+    TEST_CREDENTIALS_INPUT_API_KEY as TEST_CREDENTIALS_INPUT,
+)
 from backend.blocks.slack.blocks import SendSlackMessageBlock
 
 # ---------------------------------------------------------------------------
