@@ -1,6 +1,7 @@
 import { getCookieCache, getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 import { isAdminPage, isProtectedPage } from "./helpers";
+import { canConsumeLegacyCookies } from "./legacy-cookies";
 
 const SUPABASE_AUTH_COOKIE = /^sb-.+-auth-token(\.\d+)?$/;
 
@@ -68,7 +69,16 @@ export async function authMiddleware(request: NextRequest) {
   // A logged-in Supabase user from before the auth migration: upgrade their
   // legacy session into a Better Auth session. The bridge endpoint clears the
   // Supabase cookies either way, so this runs at most once per browser.
-  if (!sessionCookie && hasLegacySupabaseSession(request)) {
+  // Gated on the bridge actually being able to consume the cookies — without
+  // SUPABASE_JWT_SECRET it bounces to /login with the cookies intact, and
+  // this redirect would send them right back: an infinite loop. With the
+  // secret unset the cookies are simply ignored (kept for a later bridge)
+  // and the user takes the normal login path.
+  if (
+    !sessionCookie &&
+    hasLegacySupabaseSession(request) &&
+    canConsumeLegacyCookies()
+  ) {
     const next = encodeURIComponent(url.pathname + url.search);
     url.pathname = "/api/auth/supabase-bridge";
     url.search = `?next=${next}`;

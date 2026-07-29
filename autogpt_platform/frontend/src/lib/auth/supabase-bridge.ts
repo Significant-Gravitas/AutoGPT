@@ -1,4 +1,5 @@
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { canConsumeLegacyCookies } from "@/lib/auth/legacy-cookies";
 import type { BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
@@ -124,21 +125,6 @@ export async function verifyLegacyToken(token: string): Promise<string | null> {
  * request carries Supabase auth cookies but no Better Auth session cookie.
  * Either way the legacy cookies are cleared so the bridge runs at most once.
  */
-/**
- * Whether the bridge may consume (clear) the caller's legacy Supabase cookies.
- *
- * Clearing them is what stops the middleware redirecting back here forever, so
- * it happens on every path that reaches a verdict — but not before the bridge
- * is capable of reaching one. Without `SUPABASE_JWT_SECRET` verification can
- * only fail, and clearing first would turn a missing env var into permanent,
- * unrecoverable session loss for every migrating user: the cookie would be gone
- * before anyone noticed the misconfiguration.
- */
-export function canConsumeLegacyCookies(
-  secret: string | undefined = process.env.SUPABASE_JWT_SECRET,
-): boolean {
-  return Boolean(secret);
-}
 
 export function supabaseBridge() {
   return {

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSessionCookie = vi.fn();
 const getCookieCache = vi.fn();
@@ -23,6 +23,10 @@ beforeEach(() => {
   getSessionCookie.mockReset();
   getCookieCache.mockReset();
   getCookieCache.mockResolvedValue(null);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("authMiddleware", () => {
@@ -54,6 +58,7 @@ describe("authMiddleware", () => {
   });
 
   it("redirects legacy Supabase sessions to the bridge endpoint", async () => {
+    vi.stubEnv("SUPABASE_JWT_SECRET", "legacy-secret");
     getSessionCookie.mockReturnValue(null);
 
     const response = await authMiddleware(
@@ -63,6 +68,33 @@ describe("authMiddleware", () => {
     const location = response.headers.get("location");
     expect(location).toContain("/api/auth/supabase-bridge");
     expect(location).toContain(encodeURIComponent("/copilot"));
+  });
+
+  it("sends legacy-cookie users to login, not the bridge, when the legacy secret is unset", async () => {
+    // The bridge can't consume cookies without SUPABASE_JWT_SECRET and
+    // deliberately leaves them intact — so bouncing there would loop
+    // middleware -> bridge -> /login -> middleware forever.
+    vi.stubEnv("SUPABASE_JWT_SECRET", "");
+    getSessionCookie.mockReturnValue(null);
+
+    const response = await authMiddleware(
+      makeRequest("/copilot", { "sb-proj-auth-token": "legacy" }),
+    );
+
+    const location = response.headers.get("location");
+    expect(location).toContain("/login");
+    expect(location).not.toContain("supabase-bridge");
+  });
+
+  it("lets legacy-cookie users browse public pages when the legacy secret is unset", async () => {
+    vi.stubEnv("SUPABASE_JWT_SECRET", "");
+    getSessionCookie.mockReturnValue(null);
+
+    const response = await authMiddleware(
+      makeRequest("/marketplace", { "sb-proj-auth-token": "legacy" }),
+    );
+
+    expect(response.headers.get("location")).toBeNull();
   });
 
   it("does not bridge when a Better Auth session already exists", async () => {

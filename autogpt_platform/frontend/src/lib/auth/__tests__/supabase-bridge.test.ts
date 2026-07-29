@@ -1,7 +1,7 @@
 import { SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { canConsumeLegacyCookies } from "../legacy-cookies";
 import {
-  canConsumeLegacyCookies,
   parseSupabaseSessionCookie,
   verifyLegacyToken,
 } from "../supabase-bridge";
