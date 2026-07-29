@@ -316,7 +316,7 @@ The backend verifies login tokens using signing keys it fetches from the fronten
 - **Plain `http` is fine** for `localhost` and for container-to-container traffic on a single host (the default `http://frontend:3000` over the Docker network) — there is no network segment for an attacker to sit on.
 - **Use `https` on an untrusted network.** If you split the backend and frontend across separate machines on a LAN, or expose them publicly, a cleartext JWKS fetch can be intercepted: an attacker who swaps the published keys can forge tokens for any user. Put the frontend behind TLS (a reverse proxy), or issue **locally-trusted certificates** (e.g. [mkcert](https://github.com/FiloSottile/mkcert)), and point `JWT_JWKS_URL` at the `https://` URL.
 
-The backend logs a warning at startup if `JWT_JWKS_URL` is a cleartext `http://` URL pointing at a non-local host. It is advisory only — it never blocks startup, and it can't tell a trusted private network from a hostile one. If your path is trusted and you want it quiet, set `JWKS_ALLOW_INSECURE_TRANSPORT=true`.
+The backend refuses to start if `JWT_JWKS_URL` is a cleartext `http://` URL pointing at a non-local host. If your network path is trusted (e.g. an isolated private LAN), set `JWKS_ALLOW_INSECURE_TRANSPORT=true` to boot anyway — a startup warning stays on record so the tradeoff is visible in logs.
 
 This is a property of stateless JWT/JWKS verification in general, not something specific to AutoGPT. On a standard single-host Docker install you don't need to change anything.
 

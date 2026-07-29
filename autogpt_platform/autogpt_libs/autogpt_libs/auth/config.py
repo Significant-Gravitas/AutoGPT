@@ -62,11 +62,11 @@ class Settings:
         if self.JWT_JWKS_URL.startswith("http://"):
             try:
                 hostname = urlparse(self.JWT_JWKS_URL).hostname or ""
-            except ValueError:
-                # Malformed netloc (e.g. an unbalanced IPv6 bracket). This check
-                # is advisory, so stay quiet and let the URL fail loudly at fetch
-                # time rather than taking the process down at boot.
-                hostname = ""
+            except ValueError as e:
+                # Malformed netloc, e.g. an unbalanced IPv6 bracket.
+                raise AuthConfigError(
+                    f"Invalid JWT_JWKS_URL: '{self.JWT_JWKS_URL}': {e}"
+                ) from e
             # A single-label host is a container/service name on a private
             # network (e.g. http://frontend:3000), as trusted as loopback.
             host_is_local = hostname in ("localhost", "127.0.0.1", "::1") or (
@@ -76,16 +76,21 @@ class Settings:
                 "JWKS_ALLOW_INSECURE_TRANSPORT", ""
             ).strip().lower() in ("1", "true", "yes")
             if not host_is_local and not allow_insecure:
-                # Best-effort operator guidance, never fatal: we can't tell a
-                # trusted private network from a hostile one from here.
-                logger.warning(
-                    "⚠️ JWT_JWKS_URL fetches keys over cleartext http:// from "
+                raise AuthConfigError(
+                    "JWT_JWKS_URL fetches keys over cleartext http:// from "
                     f"a non-local host ('{hostname}'). The backend trusts "
-                    "whatever keys that URL returns, so on an untrusted network "
-                    "an attacker in the path can substitute them and forge "
-                    "tokens for any user. Use https://, or set "
-                    "JWKS_ALLOW_INSECURE_TRANSPORT=true to silence this if the "
-                    "path is trusted."
+                    "whatever keys that URL returns, so an attacker in the "
+                    "path could substitute them and forge tokens for any "
+                    "user. Use https://, or set "
+                    "JWKS_ALLOW_INSECURE_TRANSPORT=true if the network path "
+                    "is trusted."
+                )
+            if not host_is_local:
+                logger.warning(
+                    "⚠️ JWKS_ALLOW_INSECURE_TRANSPORT is enabled: JWKS keys "
+                    f"are fetched over cleartext http:// from '{hostname}'. "
+                    "Anyone in the network path can substitute them and forge "
+                    "tokens. Use https:// unless the path is fully trusted."
                 )
 
         if self.JWT_VERIFY_KEY and len(self.JWT_VERIFY_KEY) < 32:
@@ -96,14 +101,10 @@ class Settings:
 
         supported_algorithms = get_default_algorithms().keys()
 
-        # JWT_JWKS_URL is required (checked above) and asymmetric (ES256)
-        # verification needs the cryptography package, so a missing crypto lib
-        # is always a hard error now — not the soft warning it was when a
-        # JWKS-less HS256-only config was still allowed.
         if not has_crypto:
             raise AuthConfigError(
-                "JWT_JWKS_URL is set but the 'cryptography' package is not "
-                "installed, so asymmetric JWT verification is unavailable."
+                "'cryptography' package is required for JWT verification "
+                "but not installed"
             )
 
         if (
