@@ -12,6 +12,8 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.experts import experts_db
@@ -27,9 +29,6 @@ client = fastapi.testclient.TestClient(app)
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
-    from autogpt_libs.auth.dependencies import get_request_context
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
@@ -163,6 +162,7 @@ def test_hire_expert_unknown_template_returns_404(
 
 def test_get_expert_of_other_user_returns_404(
     mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
 ) -> None:
     mock_get = mocker.patch(
         "backend.api.features.experts.routes.experts_db.get_expert",
@@ -173,14 +173,14 @@ def test_get_expert_of_other_user_returns_404(
     response = client.get("/experts/expert-1")
 
     assert response.status_code == 404
-    mock_get.assert_awaited_once()
+    mock_get.assert_awaited_once_with(test_user_id, "expert-1")
 
 
 def test_get_expert_returns_expert(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    mocker.patch(
+    mock_get = mocker.patch(
         "backend.api.features.experts.routes.experts_db.get_expert",
         new_callable=AsyncMock,
         return_value=_make_expert(),
@@ -190,6 +190,7 @@ def test_get_expert_returns_expert(
 
     assert response.status_code == 200
     assert response.json()["id"] == "expert-1"
+    mock_get.assert_awaited_once_with(test_user_id, "expert-1")
 
 
 # ─── Install workflow ──────────────────────────────────────────────────
@@ -197,9 +198,10 @@ def test_get_expert_returns_expert(
 
 def test_install_workflow_duplicate_returns_same_row_id(
     mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
 ) -> None:
     ref = _make_workflow_ref()
-    mocker.patch(
+    mock_install = mocker.patch(
         "backend.api.features.experts.routes.experts_db.install_workflow",
         new_callable=AsyncMock,
         return_value=ref,
@@ -212,6 +214,10 @@ def test_install_workflow_duplicate_returns_same_row_id(
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["id"] == second.json()["id"] == "workflow-ref-1"
+    assert mock_install.await_args_list == [
+        mocker.call(test_user_id, "expert-1", "listing-version-1"),
+        mocker.call(test_user_id, "expert-1", "listing-version-1"),
+    ]
 
 
 def test_install_workflow_unknown_expert_returns_404(
@@ -235,13 +241,16 @@ def test_install_workflow_unknown_expert_returns_404(
 
 def test_delete_then_list_excludes_archived(
     mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
 ) -> None:
     experts = [_make_expert(id="expert-1"), _make_expert(id="expert-2", name="Max")]
 
     async def _list_experts(user_id: str) -> list[Expert]:
+        assert user_id == test_user_id
         return [e for e in experts if not e.is_archived]
 
     async def _archive_expert(user_id: str, expert_id: str) -> None:
+        assert user_id == test_user_id
         for i, expert in enumerate(experts):
             if expert.id == expert_id:
                 experts[i] = expert.model_copy(update={"is_archived": True})
@@ -253,7 +262,7 @@ def test_delete_then_list_excludes_archived(
         new_callable=AsyncMock,
         side_effect=_list_experts,
     )
-    mocker.patch(
+    mock_archive = mocker.patch(
         "backend.api.features.experts.routes.experts_db.archive_expert",
         new_callable=AsyncMock,
         side_effect=_archive_expert,
@@ -265,6 +274,7 @@ def test_delete_then_list_excludes_archived(
 
     delete_response = client.delete("/experts/expert-1")
     assert delete_response.status_code == 204
+    mock_archive.assert_awaited_once_with(test_user_id, "expert-1")
 
     after = client.get("/experts")
     assert after.status_code == 200
