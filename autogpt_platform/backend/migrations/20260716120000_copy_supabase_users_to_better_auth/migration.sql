@@ -1,9 +1,9 @@
 -- One-time copy of Supabase GoTrue users into the Better Auth tables:
---   auth.users                    -> "user"
---   email/password credentials    -> account (providerId = 'credential';
+--   auth.users                    -> "UserAuthIdentity"
+--   email/password credentials    -> "UserAuthAccount" (providerId = 'credential';
 --                                   bcrypt hashes carry over because Better
 --                                   Auth is configured to verify with bcrypt)
---   auth.identities               -> account (google / github / discord)
+--   auth.identities               -> "UserAuthAccount" (google / github / discord)
 --
 -- Runs in the normal `prisma migrate deploy` pipeline step, which the deploy
 -- workflows order before any pod rollout. All data movement is server-side
@@ -29,7 +29,7 @@ BEGIN
     RETURN;
   END IF;
 
-  -- 1) auth.users -> "user". Skip deleted users and rows without an email.
+  -- 1) auth.users -> "UserAuthIdentity". Skip deleted users and rows without an email.
   --    The NOT EXISTS email guard skips users whose email is already taken
   --    by a different Better Auth user instead of failing the whole
   --    migration on the unique(email) index.
@@ -37,12 +37,12 @@ BEGIN
   --    DISTINCT ON (u.email) de-dups WITHIN this batch: two GoTrue rows can
   --    share an email (e.g. an SSO identity + a password identity — GoTrue's
   --    partial unique index permits it). Without it, both rows pass the
-  --    NOT EXISTS guard (neither is in "user" yet) and the second insert trips
-  --    user_email_key, aborting the ENTIRE INSERT and failing the deploy. The
+  --    NOT EXISTS guard (neither is in "UserAuthIdentity" yet) and the second insert trips
+  --    UserAuthIdentity_email_key, aborting the ENTIRE INSERT and failing the deploy. The
   --    ORDER BY makes the surviving row deterministic: prefer a confirmed
   --    account, then the oldest. The dropped duplicate's credential/oauth rows
-  --    are naturally skipped below by the "id must exist in user" guards.
-  INSERT INTO "user"
+  --    are naturally skipped below by the "id must exist in UserAuthIdentity" guards.
+  INSERT INTO "UserAuthIdentity"
     (id, name, email, "emailVerified", role, banned, "preferredName",
      "createdAt", "updatedAt")
   SELECT DISTINCT ON (u.email)
@@ -66,7 +66,7 @@ BEGIN
   WHERE u.email IS NOT NULL
     AND u.deleted_at IS NULL
     AND NOT EXISTS (
-      SELECT 1 FROM "user" pu
+      SELECT 1 FROM "UserAuthIdentity" pu
       WHERE pu.email = u.email AND pu.id <> u.id::text
     )
   ORDER BY
@@ -76,8 +76,8 @@ BEGIN
   ON CONFLICT (id) DO NOTHING;
   GET DIAGNOSTICS users_copied = ROW_COUNT;
 
-  -- 2) Email/password credentials -> account.
-  INSERT INTO account
+  -- 2) Email/password credentials -> "UserAuthAccount".
+  INSERT INTO "UserAuthAccount"
     (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
   SELECT
     gen_random_uuid()::text,
@@ -91,10 +91,10 @@ BEGIN
   WHERE u.encrypted_password IS NOT NULL
     AND length(u.encrypted_password) > 0
     AND EXISTS (
-      SELECT 1 FROM "user" pu WHERE pu.id = u.id::text
+      SELECT 1 FROM "UserAuthIdentity" pu WHERE pu.id = u.id::text
     )
     AND NOT EXISTS (
-      SELECT 1 FROM account a
+      SELECT 1 FROM "UserAuthAccount" a
       WHERE a."userId" = u.id::text AND a."providerId" = 'credential'
     );
   GET DIAGNOSTICS credential_accounts_copied = ROW_COUNT;
@@ -112,7 +112,7 @@ BEGIN
         AND table_name = 'identities'
         AND column_name = 'provider_id'
     ) THEN
-      INSERT INTO account
+      INSERT INTO "UserAuthAccount"
         (id, "accountId", "providerId", "userId", "createdAt", "updatedAt")
       SELECT
         gen_random_uuid()::text,
@@ -124,14 +124,14 @@ BEGIN
       FROM auth.identities i
       WHERE i.provider IN ('google', 'github', 'discord')
         AND EXISTS (
-          SELECT 1 FROM "user" pu WHERE pu.id = i.user_id::text
+          SELECT 1 FROM "UserAuthIdentity" pu WHERE pu.id = i.user_id::text
         )
         AND NOT EXISTS (
-          SELECT 1 FROM account a
+          SELECT 1 FROM "UserAuthAccount" a
           WHERE a."userId" = i.user_id::text AND a."providerId" = i.provider
         );
     ELSE
-      INSERT INTO account
+      INSERT INTO "UserAuthAccount"
         (id, "accountId", "providerId", "userId", "createdAt", "updatedAt")
       SELECT
         gen_random_uuid()::text,
@@ -143,10 +143,10 @@ BEGIN
       FROM auth.identities i
       WHERE i.provider IN ('google', 'github', 'discord')
         AND EXISTS (
-          SELECT 1 FROM "user" pu WHERE pu.id = i.user_id::text
+          SELECT 1 FROM "UserAuthIdentity" pu WHERE pu.id = i.user_id::text
         )
         AND NOT EXISTS (
-          SELECT 1 FROM account a
+          SELECT 1 FROM "UserAuthAccount" a
           WHERE a."userId" = i.user_id::text AND a."providerId" = i.provider
         );
     END IF;

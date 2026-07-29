@@ -2,7 +2,7 @@
 -- the Better Auth service embedded in the frontend via its pg adapter.
 
 -- CreateTable
-CREATE TABLE "user" (
+CREATE TABLE "UserAuthIdentity" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
@@ -15,11 +15,11 @@ CREATE TABLE "user" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "user_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserAuthIdentity_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "session" (
+CREATE TABLE "UserAuthSession" (
     "id" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
     "token" TEXT NOT NULL,
@@ -30,11 +30,11 @@ CREATE TABLE "session" (
     "impersonatedBy" TEXT,
     "userId" TEXT NOT NULL,
 
-    CONSTRAINT "session_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserAuthSession_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "account" (
+CREATE TABLE "UserAuthAccount" (
     "id" TEXT NOT NULL,
     "accountId" TEXT NOT NULL,
     "providerId" TEXT NOT NULL,
@@ -49,11 +49,11 @@ CREATE TABLE "account" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "account_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserAuthAccount_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "verification" (
+CREATE TABLE "UserAuthVerification" (
     "id" TEXT NOT NULL,
     "identifier" TEXT NOT NULL,
     "value" TEXT NOT NULL,
@@ -61,44 +61,44 @@ CREATE TABLE "verification" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "verification_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserAuthVerification_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "jwks" (
+CREATE TABLE "UserAuthJwks" (
     "id" TEXT NOT NULL,
     "publicKey" TEXT NOT NULL,
     "privateKey" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "expiresAt" TIMESTAMP(3),
 
-    CONSTRAINT "jwks_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserAuthJwks_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "user_email_key" ON "user"("email");
+CREATE UNIQUE INDEX "UserAuthIdentity_email_key" ON "UserAuthIdentity"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "session_token_key" ON "session"("token");
+CREATE UNIQUE INDEX "UserAuthSession_token_key" ON "UserAuthSession"("token");
 
 -- CreateIndex
-CREATE INDEX "session_userId_idx" ON "session"("userId");
+CREATE INDEX "UserAuthSession_userId_idx" ON "UserAuthSession"("userId");
 
 -- CreateIndex
-CREATE INDEX "account_userId_idx" ON "account"("userId");
+CREATE INDEX "UserAuthAccount_userId_idx" ON "UserAuthAccount"("userId");
 
 -- CreateIndex
-CREATE INDEX "verification_identifier_idx" ON "verification"("identifier");
+CREATE INDEX "UserAuthVerification_identifier_idx" ON "UserAuthVerification"("identifier");
 
 -- AddForeignKey
-ALTER TABLE "session" ADD CONSTRAINT "session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserAuthSession" ADD CONSTRAINT "UserAuthSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "UserAuthIdentity"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "account" ADD CONSTRAINT "account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserAuthAccount" ADD CONSTRAINT "UserAuthAccount_userId_fkey" FOREIGN KEY ("userId") REFERENCES "UserAuthIdentity"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Remove the legacy Supabase GoTrue -> platform sync trigger. Platform User
 -- rows are created by get_or_create_user on first authenticated request, and
--- new signups land in the Better Auth "user" table instead of auth.users.
+-- new signups land in the Better Auth "UserAuthIdentity" table instead of auth.users.
 DO $$
 BEGIN
   IF EXISTS (

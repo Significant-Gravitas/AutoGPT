@@ -281,3 +281,30 @@ describe("change email", () => {
     expect(changeEmail.updateEmailWithoutVerification).toBe(true);
   });
 });
+
+describe("auth table names", () => {
+  it("overrides every Better Auth default table name", async () => {
+    // The defaults (user, session, ...) case-collide with the platform's
+    // PascalCase tables (`user` vs `User`) and read ambiguously next to them.
+    // These must stay in lockstep with schema.prisma's @@map values and the
+    // backend migrations — a mismatch strands Better Auth on missing tables.
+    const options = (await loadAuthOptions()) as unknown as {
+      user: { modelName?: string };
+      session: { modelName?: string };
+      account: { modelName?: string };
+      verification: { modelName?: string };
+      plugins: Array<{
+        id: string;
+        opts?: { schema?: { jwks?: { modelName?: string } } };
+      }>;
+    };
+
+    expect(options.user.modelName).toBe("UserAuthIdentity");
+    expect(options.session.modelName).toBe("UserAuthSession");
+    expect(options.account.modelName).toBe("UserAuthAccount");
+    expect(options.verification.modelName).toBe("UserAuthVerification");
+
+    const jwtPlugin = options.plugins.find((plugin) => plugin.id === "jwt");
+    expect(jwtPlugin?.opts?.schema?.jwks?.modelName).toBe("UserAuthJwks");
+  });
+});

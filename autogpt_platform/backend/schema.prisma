@@ -35,7 +35,7 @@ model AuthUser {
   sessions AuthSession[]
   accounts AuthAccount[]
 
-  @@map("user")
+  @@map("UserAuthIdentity")
 }
 
 model AuthSession {
@@ -51,7 +51,7 @@ model AuthSession {
   user           AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@map("session")
+  @@map("UserAuthSession")
 }
 
 model AuthAccount {
@@ -71,7 +71,7 @@ model AuthAccount {
   user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@map("account")
+  @@map("UserAuthAccount")
 }
 
 model AuthVerification {
@@ -83,7 +83,7 @@ model AuthVerification {
   updatedAt  DateTime @default(now()) @updatedAt
 
   @@index([identifier])
-  @@map("verification")
+  @@map("UserAuthVerification")
 }
 
 model AuthJwks {
@@ -93,7 +93,7 @@ model AuthJwks {
   createdAt  DateTime  @default(now())
   expiresAt  DateTime?
 
-  @@map("jwks")
+  @@map("UserAuthJwks")
 }
 
 // ============ End auth service (Better Auth) tables ============ //

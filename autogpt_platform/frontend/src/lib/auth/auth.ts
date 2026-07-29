@@ -99,12 +99,22 @@ export const auth = betterAuth({
     },
   },
   session: {
+    modelName: "UserAuthSession",
     expiresIn: 60 * 60 * 24 * 30, // 30 days, matching GoTrue refresh longevity
     updateAge: 60 * 60 * 24,
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60,
     },
+  },
+  // Table names are overridden away from Better Auth's defaults (user,
+  // session, ...) so the auth tables read unambiguously next to the platform
+  // tables — most importantly no `user` table case-colliding with `User`.
+  account: {
+    modelName: "UserAuthAccount",
+  },
+  verification: {
+    modelName: "UserAuthVerification",
   },
   emailAndPassword: {
     enabled: true,
@@ -145,6 +155,7 @@ export const auth = betterAuth({
     },
   },
   user: {
+    modelName: "UserAuthIdentity",
     additionalFields: {
       // Onboarding's "What should I call you?" answer; surfaced to
       // consumers as user_metadata.preferred_name (see mapSessionUser).
@@ -155,8 +166,8 @@ export const auth = betterAuth({
     },
     changeEmail: {
       // Off by default in Better Auth; the settings page's email form
-      // depends on it. Verified users — every migrated Supabase user, since
-      // the migration sets emailVerified=true — approve the change via a
+      // depends on it. Verified users (the migration carries Supabase's
+      // email_confirmed_at across as emailVerified) approve the change via a
       // confirmation link sent to their CURRENT address. That's the
       // anti-takeover protection Supabase's secure-email-change gave us, so
       // the backend mailer (Postmark) must be configured for it to work in
@@ -187,6 +198,9 @@ export const auth = betterAuth({
   plugins: [
     admin(),
     jwt({
+      schema: {
+        jwks: { modelName: "UserAuthJwks" },
+      },
       jwks: {
         // Shared with mintServiceToken — whichever signs first creates the
         // JWKS keypair, so the two must never disagree.

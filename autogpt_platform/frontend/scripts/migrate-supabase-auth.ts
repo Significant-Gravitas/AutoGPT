@@ -10,11 +10,11 @@
  * "Supabase Auth Sweep" GitHub workflow, or by hand.
  *
  * Copies:
- *   - auth.users        -> platform."user"
- *   - email/password    -> platform.account (providerId = 'credential';
+ *   - auth.users        -> platform."UserAuthIdentity"
+ *   - email/password    -> platform."UserAuthAccount" (providerId = 'credential';
  *                          bcrypt hashes carry over because Better Auth is
  *                          configured to verify with bcrypt)
- *   - auth.identities   -> platform.account (google / github / discord)
+ *   - auth.identities   -> platform."UserAuthAccount" (google / github / discord)
  *
  * Keep SUPABASE_JWT_SECRET set in the frontend environment for the duration
  * of the bridge window so pre-migration sessions keep working.
@@ -103,12 +103,12 @@ async function main() {
       try {
         await client.query("BEGIN");
 
-        // 1) auth.users -> platform."user". Skip deleted users and rows
+        // 1) auth.users -> platform."UserAuthIdentity". Skip deleted users and rows
         //    without an email. The NOT EXISTS email guard skips users whose
         //    email is already taken by a different Better Auth user instead
         //    of failing the whole batch on the unique(email) index.
         const userRes = await client.query(
-          `INSERT INTO platform."user"
+          `INSERT INTO platform."UserAuthIdentity"
              (id, name, email, "emailVerified", role, banned, "preferredName",
               "createdAt", "updatedAt")
            SELECT
@@ -133,16 +133,16 @@ async function main() {
              AND u.email IS NOT NULL
              AND u.deleted_at IS NULL
              AND NOT EXISTS (
-               SELECT 1 FROM platform."user" pu
+               SELECT 1 FROM platform."UserAuthIdentity" pu
                WHERE pu.email = u.email AND pu.id <> u.id::text
              )
            ON CONFLICT (id) DO NOTHING`,
           [ids],
         );
 
-        // 2) Email/password credentials -> platform.account.
+        // 2) Email/password credentials -> platform."UserAuthAccount".
         const credRes = await client.query(
-          `INSERT INTO platform.account
+          `INSERT INTO platform."UserAuthAccount"
              (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
            SELECT
              gen_random_uuid()::text,
@@ -157,22 +157,22 @@ async function main() {
              AND u.encrypted_password IS NOT NULL
              AND length(u.encrypted_password) > 0
              AND EXISTS (
-               SELECT 1 FROM platform."user" pu WHERE pu.id = u.id::text
+               SELECT 1 FROM platform."UserAuthIdentity" pu WHERE pu.id = u.id::text
              )
              AND NOT EXISTS (
-               SELECT 1 FROM platform.account a
+               SELECT 1 FROM platform."UserAuthAccount" a
                WHERE a."userId" = u.id::text AND a."providerId" = 'credential'
              )`,
           [ids],
         );
 
-        // 3) OAuth identities -> platform.account. provider 'email' is the
+        // 3) OAuth identities -> platform."UserAuthAccount". provider 'email' is the
         //    GoTrue-internal credential identity and is skipped (handled
         //    above); only providers Better Auth is configured for migrate.
         let oauthRes = { rowCount: 0 as number | null };
         if (hasIdentities) {
           oauthRes = await client.query(
-            `INSERT INTO platform.account
+            `INSERT INTO platform."UserAuthAccount"
                (id, "accountId", "providerId", "userId", "createdAt", "updatedAt")
              SELECT
                gen_random_uuid()::text,
@@ -185,10 +185,10 @@ async function main() {
              WHERE i.user_id = ANY($1::uuid[])
                AND i.provider IN ('google', 'github', 'discord')
                AND EXISTS (
-                 SELECT 1 FROM platform."user" pu WHERE pu.id = i.user_id::text
+                 SELECT 1 FROM platform."UserAuthIdentity" pu WHERE pu.id = i.user_id::text
                )
                AND NOT EXISTS (
-                 SELECT 1 FROM platform.account a
+                 SELECT 1 FROM platform."UserAuthAccount" a
                  WHERE a."userId" = i.user_id::text AND a."providerId" = i.provider
                )`,
             [ids],
