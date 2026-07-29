@@ -130,6 +130,28 @@ class GraphitiConfig(BaseSettings):
         description="Max concurrent LLM calls during ingestion (prevents rate limits)",
     )
 
+    # FalkorDB back-pressure retry. "Max pending queries exceeded" is a
+    # transient, self-clearing rejection when the shared server's pending-query
+    # queue is full under concurrent memory traffic; a bounded jittered backoff
+    # rides out the spike instead of dropping the memory op (and spamming
+    # Sentry). Only an exhausted budget surfaces the error. (SENTRY-1384.)
+    falkordb_query_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Total attempts (including the first) for a FalkorDB query before "
+            "surfacing a 'Max pending queries exceeded' backpressure error."
+        ),
+    )
+    falkordb_query_backoff_base: float = Field(
+        default=0.1,
+        ge=0.0,
+        description=(
+            "Base delay in seconds for jittered exponential backoff between "
+            "FalkorDB pending-queue overflow retries."
+        ),
+    )
+
     # Warm context
     context_max_facts: int = Field(default=20)
     context_timeout: float = Field(

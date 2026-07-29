@@ -441,6 +441,12 @@ export type Graph = GraphMeta & {
       }
   );
 
+export type SkippedWebhookPreset = {
+  id: string;
+  name: string;
+  pinned_version: number;
+};
+
 export type GraphUpdateable = Omit<
   Graph,
   | "user_id"

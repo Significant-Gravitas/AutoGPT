@@ -51,6 +51,7 @@ import type {
   Schedule,
   ScheduleCreatable,
   ScheduleID,
+  SkippedWebhookPreset,
   TransactionHistory,
   User,
   UserPasswordCredentials,
@@ -253,7 +254,13 @@ export default class BackendAPI {
     return this._request("POST", "/graphs", requestBody);
   }
 
-  updateGraph(id: GraphID, graph: GraphUpdateable): Promise<Graph> {
+  updateGraph(
+    id: GraphID,
+    graph: GraphUpdateable,
+  ): Promise<{
+    graph: Graph;
+    skipped_webhook_presets?: SkippedWebhookPreset[];
+  }> {
     return this._request("PUT", `/graphs/${id}`, graph);
   }
 
@@ -261,7 +268,10 @@ export default class BackendAPI {
     return this._request("DELETE", `/graphs/${id}`);
   }
 
-  setGraphActiveVersion(id: GraphID, version: number): Promise<Graph> {
+  setGraphActiveVersion(
+    id: GraphID,
+    version: number,
+  ): Promise<{ skipped_webhook_presets?: SkippedWebhookPreset[] }> {
     return this._request("PUT", `/graphs/${id}/versions/active`, {
       active_graph_version: version,
     });
