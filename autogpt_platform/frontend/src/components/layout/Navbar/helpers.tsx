@@ -13,6 +13,7 @@ import {
 import {
   ChatsIcon,
   CreditCardIcon,
+  NewspaperIcon,
   QuestionIcon,
   StorefrontIcon,
 } from "@phosphor-icons/react";
@@ -93,7 +94,73 @@ export const accountMenuItems: MenuItemGroup[] = [
   },
 ];
 
-export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
+export function getAccountMenuItems(
+  userRole?: string,
+  newLayout = false,
+): MenuItemGroup[] {
+  return newLayout
+    ? getNewLayoutAccountMenuItems(userRole)
+    : getClassicAccountMenuItems(userRole);
+}
+
+// New sidebar layout grouping — gated behind the AUTOGPT_NEW_LAYOUT flag.
+function getNewLayoutAccountMenuItems(userRole?: string): MenuItemGroup[] {
+  const footerItems: MenuItemGroup["items"] = [
+    {
+      icon: IconType.WhatsNew,
+      text: "What's new",
+      href: "https://agpt.co/changelog",
+      external: true,
+    },
+    {
+      icon: IconType.Help,
+      text: "Help & Docs",
+      href: "https://agpt.co/docs",
+      external: true,
+    },
+  ];
+
+  if (userRole === "admin") {
+    footerItems.push({
+      icon: IconType.Sliders,
+      text: "Admin",
+      href: "/admin/marketplace",
+    });
+  }
+
+  footerItems.push({
+    icon: IconType.LogOut,
+    text: "Log out",
+  });
+
+  return [
+    {
+      items: [
+        {
+          icon: IconType.Edit,
+          text: "Profile",
+          href: "/settings/profile",
+        },
+        {
+          icon: IconType.Settings,
+          text: "Settings",
+          href: "/settings/account",
+        },
+        {
+          icon: IconType.Billing,
+          text: "Billing",
+          href: "/settings/billing",
+        },
+      ],
+    },
+    {
+      items: footerItems,
+    },
+  ];
+}
+
+// Classic Navbar grouping (unchanged, pre-new-layout).
+function getClassicAccountMenuItems(userRole?: string): MenuItemGroup[] {
   const baseMenuItems: MenuItemGroup[] = [
     {
       items: [
@@ -178,6 +245,8 @@ export function getAccountMenuOptionIcon(icon: IconType) {
       return <CreditCardIcon className={iconClass} />;
     case IconType.Help:
       return <QuestionIcon className={iconClass} />;
+    case IconType.WhatsNew:
+      return <NewspaperIcon className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }

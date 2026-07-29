@@ -1,0 +1,23 @@
+[
+  {
+    "avatar_url": null,
+    "id": "template-1",
+    "identity": "You are Maria, a pragmatic marketing specialist.",
+    "is_archived": false,
+    "is_template": true,
+    "name": "Maria",
+    "role": "Marketing Specialist",
+    "source_template_id": null,
+    "tagline": "Grows your audience",
+    "workflows": [
+      {
+        "description": "Writes SEO-optimized blog posts",
+        "graph_id": null,
+        "id": "workflow-ref-1",
+        "library_agent_id": null,
+        "name": "SEO Blog Writer",
+        "store_listing_version_id": "listing-version-1"
+      }
+    ]
+  }
+]
