@@ -10,6 +10,7 @@ import {
   fetchWorkspaceDownloadWithRetry,
   getWorkspaceDownloadErrorMessage,
   isWorkspaceDownloadRequest,
+  watchResponseStart,
 } from "./route.helpers";
 
 // 5 minutes for large uploads. Most calls finish in well under a second.
@@ -213,16 +214,30 @@ async function handler(
     const headers = buildForwardHeaders(req, token);
     const hasBody = !METHODS_WITHOUT_BODY.has(method);
 
-    const backendResponse = await fetch(backendUrl, {
-      method,
-      headers,
-      body: hasBody ? req.body : undefined,
-      // `duplex: "half"` is required by Node's fetch when sending a
-      // ReadableStream body. Cast because TS lib types haven't caught up.
-      ...(hasBody ? ({ duplex: "half" } as RequestInit) : {}),
-      redirect: "manual",
-      signal: AbortSignal.timeout(BACKEND_FETCH_TIMEOUT_MS),
-    });
+    // Two-phase timeout: the overall ceiling covers the whole hop, while the
+    // much tighter response-start watch arms only once the request body has
+    // been fully uploaded — a multi-minute upload is legitimate, a backend
+    // that stays silent after receiving everything is stalled.
+    const responseStart = watchResponseStart(hasBody ? req.body : null);
+
+    let backendResponse: Response;
+    try {
+      backendResponse = await fetch(backendUrl, {
+        method,
+        headers,
+        body: responseStart.body,
+        // `duplex: "half"` is required by Node's fetch when sending a
+        // ReadableStream body. Cast because TS lib types haven't caught up.
+        ...(responseStart.body ? ({ duplex: "half" } as RequestInit) : {}),
+        redirect: "manual",
+        signal: AbortSignal.any([
+          AbortSignal.timeout(BACKEND_FETCH_TIMEOUT_MS),
+          responseStart.signal,
+        ]),
+      });
+    } finally {
+      responseStart.clear();
+    }
 
     return new NextResponse(backendResponse.body, {
       status: backendResponse.status,
