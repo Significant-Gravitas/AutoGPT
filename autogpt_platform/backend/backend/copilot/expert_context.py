@@ -24,6 +24,15 @@ from backend.api.features.experts.models import Expert
 logger = logging.getLogger(__name__)
 
 
+def _escape(value: str) -> str:
+    """Escape angle brackets so user-supplied (expert name) or marketplace
+    (workflow name/description) text cannot terminate the surrounding trusted
+    block. Mirrors ``service._sanitize_user_context_field``; duplicated here
+    because ``service`` imports this module.
+    """
+    return value.replace("<", "&lt;").replace(">", "&gt;")
+
+
 async def build_expert_context(user_id: str | None, expert_id: str | None) -> str:
     """Build the expert/team context prefix for the first user message.
 
@@ -49,19 +58,20 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
 
     if expert.workflows:
         workflow_lines = "\n".join(
-            f"- {w.name or 'Unnamed workflow'} "
+            f"- {_escape(w.name or 'Unnamed workflow')} "
             f"(library_agent_id: {w.library_agent_id}, graph_id: {w.graph_id})"
-            f": {w.description or 'No description'}"
+            f": {_escape(w.description or 'No description')}"
             for w in expert.workflows
         )
     else:
         workflow_lines = "- No workflows installed yet."
 
+    name = _escape(expert.name)
     return (
         f"<expert_identity>\n"
-        f"You are {expert.name}, {expert.role}.\n"
+        f"You are {name}, {expert.role}.\n"
         f"{expert.identity}\n"
-        f"Stay in persona as {expert.name} for the whole conversation.\n"
+        f"Stay in persona as {name} for the whole conversation.\n"
         f"</expert_identity>\n\n"
         f"<expert_workflows>\n"
         f"Workflows installed on this expert. For requests that match a "
@@ -90,10 +100,12 @@ async def _team_context(user_id: str) -> str:
 
 
 def _team_line(expert: Expert) -> str:
-    workflow_names = ", ".join(w.name or "Unnamed workflow" for w in expert.workflows)
+    workflow_names = ", ".join(
+        _escape(w.name or "Unnamed workflow") for w in expert.workflows
+    )
     if not workflow_names:
         workflow_names = "none installed"
     return (
-        f"- {expert.name} — {expert.role} (expert id: {expert.id}); "
+        f"- {_escape(expert.name)} — {expert.role} (expert id: {expert.id}); "
         f"installed workflows: {workflow_names}"
     )

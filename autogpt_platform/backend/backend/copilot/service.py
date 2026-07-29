@@ -320,12 +320,24 @@ _SKILLS_CONTEXT_PREFIX_RE = re.compile(
 # Expert-session blocks injected by expert_context.py. <expert_workflows> /
 # <team_context> are prepended in front of every other block, so the display
 # strip loop must know them or it stops before reaching the standard tags.
+# The anywhere/lone-tag pairs get the same sanitizer treatment as the other
+# server-only tags so a user-typed block cannot spoof the expert persona.
+_EXPERT_IDENTITY_ANYWHERE_RE = re.compile(
+    r"<expert_identity>.*</expert_identity>\s*", re.DOTALL
+)
+_EXPERT_IDENTITY_LONE_TAG_RE = re.compile(r"</?expert_identity>", re.IGNORECASE)
 _EXPERT_IDENTITY_PREFIX_RE = re.compile(
     r"^<expert_identity>.*?</expert_identity>\n\n", re.DOTALL
 )
+_EXPERT_WORKFLOWS_ANYWHERE_RE = re.compile(
+    r"<expert_workflows>.*</expert_workflows>\s*", re.DOTALL
+)
+_EXPERT_WORKFLOWS_LONE_TAG_RE = re.compile(r"</?expert_workflows>", re.IGNORECASE)
 _EXPERT_WORKFLOWS_PREFIX_RE = re.compile(
     r"^<expert_workflows>.*?</expert_workflows>\n\n", re.DOTALL
 )
+_TEAM_CONTEXT_ANYWHERE_RE = re.compile(r"<team_context>.*</team_context>\s*", re.DOTALL)
+_TEAM_CONTEXT_LONE_TAG_RE = re.compile(r"</?team_context>", re.IGNORECASE)
 _TEAM_CONTEXT_PREFIX_RE = re.compile(
     r"^<team_context>.*?</team_context>\n\n", re.DOTALL
 )
@@ -371,7 +383,8 @@ def strip_server_injected_tags(text: str) -> str:
     """Strip all server-only XML context tags + blocks from ``text``.
 
     Removes ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, and ``<available_skills>``
+    ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
+    ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
     blocks (and their lone tags).  Used both by
     :func:`sanitize_user_supplied_context` on inbound user messages and by
     stores (e.g. :tool:`store_skill`) that persist LLM-authored text which
@@ -401,19 +414,28 @@ def strip_server_injected_tags(text: str) -> str:
     # Strip <available_skills> blocks and lone tags — prevents spoofing of
     # the server-injected per-user skill index.
     without_skills_ctx = _SKILLS_CONTEXT_ANYWHERE_RE.sub("", without_session_ctx)
-    return _SKILLS_CONTEXT_LONE_TAG_RE.sub("", without_skills_ctx)
+    without_skills_ctx = _SKILLS_CONTEXT_LONE_TAG_RE.sub("", without_skills_ctx)
+    # Strip the expert-session blocks and lone tags — prevents spoofing of
+    # the server-injected expert persona / workflows / team-awareness blocks.
+    without_expert = _EXPERT_IDENTITY_ANYWHERE_RE.sub("", without_skills_ctx)
+    without_expert = _EXPERT_IDENTITY_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
+    return _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
 
 
 def sanitize_user_supplied_context(message: str) -> str:
     """Strip server-only XML tags from user-supplied input.
 
     Removes any ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, and ``<available_skills>``
+    ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
+    ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
     blocks — all are server-injected tags that must not appear verbatim in
     user messages. A user who types these tags literally could spoof the
     trusted personalisation, memory prefix, working-directory context, USD
-    budget hint, per-session follow-up awareness, or per-user skill index
-    the LLM relies on.
+    budget hint, per-session follow-up awareness, per-user skill index, or
+    expert persona/workflow blocks the LLM relies on.
 
     The inject path must call this **unconditionally** — including when
     ``understanding`` is ``None`` — otherwise new users can smuggle a tag

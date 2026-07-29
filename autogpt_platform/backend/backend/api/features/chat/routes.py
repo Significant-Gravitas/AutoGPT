@@ -391,7 +391,7 @@ async def list_sessions(
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    expert_id: str | None = Query(default=None),
+    expert_id: str | None = Query(default=None, max_length=128),
 ) -> ListSessionsResponse:
     """
     List chat sessions for the authenticated user.
