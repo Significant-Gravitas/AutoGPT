@@ -738,6 +738,20 @@ class TestPauseResumeUserGraphSchedules:
         rollback_kwargs = aps.modify_job.call_args.kwargs["kwargs"]
         assert rollback_kwargs["paused_reason"] is None
 
+    def test_pause_stamp_write_failure_does_not_abort_batch(self):
+        # First job's reason-stamp write raises; the loop must still attempt the
+        # remaining eligible schedules instead of propagating out mid-batch.
+        jobs = [
+            _mock_job(_graph_job_kwargs(schedule_id="s1")),
+            _mock_job(_graph_job_kwargs(schedule_id="s2")),
+        ]
+        sched, aps = self._scheduler(jobs)
+        aps.modify_job.side_effect = [RuntimeError("jobstore down"), None]
+        with patch.object(Scheduler, "_invalidate_jobs_cache", MagicMock()):
+            count = sched.pause_user_graph_schedules("u1", "payment_lapsed")
+        assert count == 1
+        assert aps.pause_job.call_count == 1
+
     def test_resume_resumes_before_clearing_reason(self):
         job = _mock_job(
             _graph_job_kwargs(paused_reason="payment_lapsed", schedule_id="s1")

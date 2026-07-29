@@ -105,6 +105,13 @@ async def resume_automations_after_payment_restored(
             "isActive": False,
             "isDeleted": False,
             "deactivationReason": PresetDeactivationReason.PAYMENT_LAPSED,
+            # Same personal-org predicate as pause: a preset that became
+            # team-owned after being payment-lapsed stays off — it's funded by
+            # the org, not the member's restored personal subscription.
+            "OR": [
+                {"organizationId": None},
+                {"organizationId": personal_org_id},
+            ],
         },
         data={"isActive": True, "deactivationReason": None},
     )

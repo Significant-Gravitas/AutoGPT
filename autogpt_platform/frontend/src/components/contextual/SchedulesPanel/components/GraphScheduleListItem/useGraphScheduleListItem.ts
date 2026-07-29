@@ -33,7 +33,11 @@ export function useGraphScheduleListItem({ schedule }: Args) {
     : nextRunDate && !Number.isNaN(nextRunDate.valueOf())
       ? `Next ${formatDistanceToNow(nextRunDate, { addSuffix: true })}`
       : "Pending";
-  const nextRunTitle = nextRunDate ? nextRunDate.toString() : undefined;
+  const nextRunTitle = isPaused
+    ? pausedLabel
+    : nextRunDate && !Number.isNaN(nextRunDate.valueOf())
+      ? nextRunDate.toString()
+      : undefined;
 
   const recurrenceLabel = schedule.cron
     ? safeHumanizeCron(schedule.cron)

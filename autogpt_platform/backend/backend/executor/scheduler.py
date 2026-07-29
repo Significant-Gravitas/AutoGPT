@@ -1802,11 +1802,18 @@ class Scheduler(AppService):
         already_stamped = args.paused_reason == reason
         if not already_stamped:
             args.paused_reason = reason
-            self.scheduler.modify_job(
-                job.id,
-                jobstore=Jobstores.EXECUTION.value,
-                kwargs=args.model_dump(mode="json"),
-            )
+            try:
+                self.scheduler.modify_job(
+                    job.id,
+                    jobstore=Jobstores.EXECUTION.value,
+                    kwargs=args.model_dump(mode="json"),
+                )
+            except Exception:
+                # Guard like pause_job below: a transient jobstore error on the
+                # stamp write must not abort the whole batch — skip this job so
+                # the remaining eligible schedules are still attempted.
+                logger.exception(f"Failed to stamp pause reason on {job.id}")
+                return False
         try:
             self.scheduler.pause_job(job.id, jobstore=Jobstores.EXECUTION.value)
         except Exception:

@@ -126,6 +126,10 @@ async def test_resume_only_touches_payment_lapsed_automations():
         "isActive": False,
         "isDeleted": False,
         "deactivationReason": PresetDeactivationReason.PAYMENT_LAPSED,
+        "OR": [
+            {"organizationId": None},
+            {"organizationId": _PERSONAL_ORG},
+        ],
     }
     assert update_call.kwargs["data"] == {
         "isActive": True,
@@ -135,6 +139,25 @@ async def test_resume_only_touches_payment_lapsed_automations():
     assert event.type == NotificationType.AUTOMATIONS_RESUMED
     assert event.data.resumed_schedules == 1
     assert event.data.resumed_triggers == 2
+
+
+@pytest.mark.asyncio
+async def test_resume_excludes_team_owned_presets():
+    """A preset that became team-owned after being payment-lapsed must not be
+    reactivated by the member's restored personal subscription — resume applies
+    the same personal-org predicate as pause."""
+    client = _mock_scheduler_client(resumed=0)
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=0)
+    p1, p2, p3, p4 = _patches(client, preset_prisma, AsyncMock())
+    with p1, p2, p3, p4:
+        await resume_automations_after_payment_restored("user-1")
+
+    where = preset_prisma.return_value.update_many.call_args.kwargs["where"]
+    assert where["OR"] == [
+        {"organizationId": None},
+        {"organizationId": _PERSONAL_ORG},
+    ]
 
 
 @pytest.mark.asyncio
