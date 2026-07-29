@@ -6,9 +6,11 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError
+from backend.data.model import APIKeyCredentials
 from backend.util.test import execute_block_test
 
 # ── SSE parsing unit tests ───────────────────────────────────────────
@@ -654,3 +656,44 @@ class TestMCPToolBlock:
 
         assert captured_tokens == [None]
         assert outputs == [("result", "ok")]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_run_without_credentials_ignores_stored_token(self):
+        """Selecting "None (skip this credential)" must send no auth token.
+
+        A stored credential for the same server exists here — the block must
+        not silently fall back to it, which would override the explicit
+        user choice made in the node's credentials picker.
+        """
+        block = MCPToolBlock()
+        input_data = MCPToolBlock.Input(
+            server_url="https://mcp.example.com/mcp",
+            selected_tool="test_tool",
+        )
+
+        captured_tokens: list[str | None] = []
+
+        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+            captured_tokens.append(auth_token)
+            return "ok"
+
+        block._call_mcp_tool = mock_call  # type: ignore
+
+        stored = APIKeyCredentials(
+            provider="mcp",
+            api_key=SecretStr("stored-token"),
+            title="MCP: mcp.example.com",
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+        mgr = AsyncMock()
+        mgr.store.get_creds_by_provider = AsyncMock(return_value=[stored])
+
+        with patch(
+            "backend.blocks.mcp.helpers.IntegrationCredentialsManager",
+            return_value=mgr,
+        ):
+            async for _ in block.run(input_data, user_id=MOCK_USER_ID):
+                pass
+
+        assert captured_tokens == [None]
+        mgr.store.get_creds_by_provider.assert_not_awaited()

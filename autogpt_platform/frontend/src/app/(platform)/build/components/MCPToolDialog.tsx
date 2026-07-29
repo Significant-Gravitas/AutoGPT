@@ -30,6 +30,7 @@ import {
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { openOAuthPopup } from "@/lib/oauth-popup";
+import { normalizeMCPUrl } from "@/lib/utils/url";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -289,7 +290,10 @@ export function MCPToolDialog({
     }
 
     onConfirm({
-      serverUrl: serverUrl.trim(),
+      // Normalized so the node's `server_url` — the discriminator the
+      // credentials picker matches on — is identical to the URL the backend
+      // stored the credential under.
+      serverUrl: normalizeMCPUrl(serverUrl),
       serverName,
       selectedTool: selectedTool.name,
       toolInputSchema: selectedTool.input_schema,
@@ -506,9 +510,17 @@ function MCPToolCard({
   cleanDescription = cleanDescription.trim();
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
-      className={`group flex flex-col rounded-lg border text-left transition-colors ${
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`group flex cursor-pointer flex-col rounded-lg border text-left transition-colors ${
         selected
           ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950"
           : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800"
@@ -618,6 +630,6 @@ function MCPToolCard({
           />
         </button>
       )}
-    </button>
+    </div>
   );
 }

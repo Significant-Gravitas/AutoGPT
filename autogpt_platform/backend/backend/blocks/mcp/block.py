@@ -19,13 +19,7 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.mcp.client import MCPClient, MCPClientError
-from backend.blocks.mcp.helpers import (
-    MCPCredential,
-    auto_lookup_mcp_credential,
-    mcp_auth_token,
-    normalize_mcp_url,
-    parse_mcp_content,
-)
+from backend.blocks.mcp.helpers import MCPCredential, mcp_auth_token, parse_mcp_content
 from backend.data.block import BlockInput, BlockOutput
 from backend.data.model import (
     CredentialsField,
@@ -195,17 +189,6 @@ class MCPToolBlock(Block):
 
         return parse_mcp_content(result.content)
 
-    @staticmethod
-    async def _auto_lookup_credential(
-        user_id: str, server_url: str
-    ) -> "MCPCredential | None":
-        """Auto-lookup stored MCP credential for a server URL.
-
-        Delegates to :func:`~backend.blocks.mcp.helpers.auto_lookup_mcp_credential`.
-        The caller should pass a normalized URL.
-        """
-        return await auto_lookup_mcp_credential(user_id, server_url)
-
     async def run(
         self,
         input_data: Input,
@@ -236,14 +219,11 @@ class MCPToolBlock(Block):
                 )
                 return
 
-        # If no credentials were injected by the executor (e.g. legacy nodes
-        # that don't have the credentials field set), try to auto-lookup
-        # the stored MCP credential for this server URL.
-        if credentials is None:
-            credentials = await self._auto_lookup_credential(
-                user_id, normalize_mcp_url(input_data.server_url)
-            )
-
+        # No auto-lookup fallback here: the executor injects whatever the node
+        # has selected, so `credentials is None` means the user picked "None
+        # (skip this credential)" or the server needs no auth. Silently
+        # substituting a stored token would override that explicit choice —
+        # the two cases are indistinguishable by the time they reach `run`.
         auth_token = mcp_auth_token(credentials) if credentials else None
 
         try:
