@@ -1,13 +1,8 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { Brain, Lightning, Lock } from "@phosphor-icons/react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { BrainIcon, LightningIcon, LockIcon } from "@phosphor-icons/react";
 import type { CopilotMode } from "../../../store";
+import { ToggleChip } from "./ToggleChip";
 
 interface Props {
   mode: CopilotMode;
@@ -24,46 +19,27 @@ export function ModeToggleButton({ mode, onToggle, pinned = false }: Props) {
       ? "Extended Thinking — deeper reasoning (click to switch to Fast)"
       : "Fast mode — quicker responses (click to switch to Thinking)";
 
+  const ariaLabel = pinned
+    ? "Mode locked to Extended Thinking while building an agent"
+    : isExtended
+      ? "Switch to Fast mode"
+      : "Switch to Extended Thinking mode";
+
+  function getIcon() {
+    if (pinned) return <LockIcon size={14} />;
+    return isExtended ? <BrainIcon size={14} /> : <LightningIcon size={14} />;
+  }
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-pressed={isExtended}
-          aria-disabled={pinned}
-          onClick={onToggle}
-          className={cn(
-            "ml-2 inline-flex h-9 min-w-[6rem] items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
-            isExtended ? "text-purple-500" : "text-orange-600",
-            pinned && "cursor-not-allowed opacity-70 hover:bg-white",
-          )}
-          aria-label={
-            pinned
-              ? "Mode locked to Extended Thinking while building an agent"
-              : isExtended
-                ? "Switch to Fast mode"
-                : "Switch to Extended Thinking mode"
-          }
-        >
-          {pinned ? (
-            <>
-              <Lock size={14} />
-              Thinking
-            </>
-          ) : isExtended ? (
-            <>
-              <Brain size={14} />
-              Thinking
-            </>
-          ) : (
-            <>
-              <Lightning size={14} />
-              Fast
-            </>
-          )}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltipText}</TooltipContent>
-    </Tooltip>
+    <ToggleChip
+      icon={getIcon()}
+      label={pinned || isExtended ? "Thinking" : "Fast"}
+      tooltip={tooltipText}
+      ariaLabel={ariaLabel}
+      pressed={isExtended}
+      onToggle={onToggle}
+      locked={pinned}
+      className="sm:min-w-[5.5rem]"
+    />
   );
 }

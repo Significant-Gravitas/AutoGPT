@@ -4,22 +4,15 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import {
-  getGreetingName,
-  getInputPlaceholder,
-  getSuggestionThemes,
-} from "./helpers";
+import { getSuggestionThemes, INPUT_PLACEHOLDER } from "./helpers";
+import { PERSONAS } from "./personas";
+import { PersonaAvatar } from "./components/PersonaAvatar";
+import { PersonaDial } from "./components/PersonaDial/PersonaDial";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
-import { PulseChips } from "../PulseChips/PulseChips";
-import { usePulseChips } from "../PulseChips/usePulseChips";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
-import { EditNameDialog } from "./components/EditNameDialog/EditNameDialog";
 
 interface Props {
   inputLayoutId: string;
@@ -43,10 +36,24 @@ export function EmptySession({
   droppedFiles,
   onDroppedFilesConsumed,
 }: Props) {
-  const { user } = useSupabase();
-  const greetingName = getGreetingName(user);
-  const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
-  const pulseChips = usePulseChips();
+  const [personaIndex, setPersonaIndex] = useState(0);
+  const [isDialOpen, setIsDialOpen] = useState(false);
+  const persona = PERSONAS[personaIndex];
+
+  // Persona is mirrored in the URL (?persona=id) so it survives reloads and
+  // can be shared. Read after mount to avoid SSR/client hydration mismatch.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("persona");
+    const index = PERSONAS.findIndex((p) => p.id === id);
+    if (index >= 0) setPersonaIndex(index);
+  }, []);
+
+  function handleSelectPersona(index: number) {
+    setPersonaIndex(index);
+    const url = new URL(window.location.href);
+    url.searchParams.set("persona", PERSONAS[index].id);
+    window.history.replaceState(null, "", url);
+  }
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -58,35 +65,8 @@ export function EmptySession({
       : undefined,
   );
 
-  const [inputPlaceholder, setInputPlaceholder] = useState(
-    getInputPlaceholder(),
-  );
-
-  useEffect(() => {
-    function handleResize() {
-      setInputPlaceholder(getInputPlaceholder(window.innerWidth));
-    }
-    handleResize();
-    const mql = window.matchMedia("(max-width: 500px)");
-    mql.addEventListener("change", handleResize);
-    const mql2 = window.matchMedia("(max-width: 1080px)");
-    mql2.addEventListener("change", handleResize);
-    return () => {
-      mql.removeEventListener("change", handleResize);
-      mql2.removeEventListener("change", handleResize);
-    };
-  }, []);
-
   return (
-    <div className="relative flex h-full flex-1 items-center justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      <DotDistortionShader
-        dotGap={14}
-        dotSize={1}
-        opacity={0.2}
-        enableMouseInteraction={false}
-        breathingSpeed={0.4}
-        className="pointer-events-none absolute inset-0 !bg-transparent [&_canvas]:opacity-70"
-      />
+    <div className="relative flex h-full flex-1 items-center justify-center overflow-y-auto overflow-x-hidden px-0 pb-24 pt-5 md:px-6 md:pb-32 md:pt-10">
       <motion.div
         className="relative z-10 w-full max-w-[52rem] text-center"
         initial={{ opacity: 0 }}
@@ -94,33 +74,50 @@ export function EmptySession({
         transition={{ duration: 0.3 }}
       >
         <div className="mx-auto max-w-[52rem]">
+          <div className="relative" data-persona-picker>
+            {isDialOpen && (
+              <PersonaDial
+                personas={PERSONAS}
+                selectedIndex={personaIndex}
+                onSelect={handleSelectPersona}
+                onClose={() => setIsDialOpen(false)}
+              />
+            )}
+            <PersonaAvatar
+              persona={persona}
+              isOpen={isDialOpen}
+              onToggle={() => setIsDialOpen((open) => !open)}
+            />
+          </div>
           <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">
-            Hey, <span className="text-violet-600">{greetingName}</span>
-            <EditNameDialog currentName={greetingName} />
+            Hi, I am{" "}
+            <span style={{ color: persona.accent }}>{persona.name}</span>, your{" "}
+            {persona.role.toLowerCase()}
           </Text>
           <TextGenerateEffect
             className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-[1.375rem] [&_div]:!leading-normal [&_div]:!tracking-normal"
             duration={0.6}
-            words="Tell me about your work — I'll find what to automate."
+            words="What can I do for you today?"
           />
 
-          {isAgentBriefingEnabled && (
-            <PulseChips chips={pulseChips} onChipClick={onSend} />
-          )}
-
-          <div className="mb-6">
+          <div className="mb-6 mt-10">
             <motion.div
               layoutId={inputLayoutId}
               transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
-              className="w-full px-2"
+              className="mx-auto w-full max-w-[42rem] overflow-hidden rounded-xlarge border transition-colors duration-300 ease-out"
+              style={{
+                borderColor: `${persona.accent}55`,
+                boxShadow: `0 2px 8px rgba(0,0,0,0.04), 0 0 32px -4px ${persona.accent}59`,
+              }}
             >
               <ChatInput
                 inputId="chat-input-empty"
                 onSend={onSend}
                 disabled={isCreatingSession}
+                hideSubmitWhenEmpty
                 isUploadingFiles={isUploadingFiles}
-                placeholder={inputPlaceholder}
-                className="w-full"
+                placeholder={INPUT_PLACEHOLDER}
+                className="w-full [&_textarea]:min-h-[4.5rem]"
                 droppedFiles={droppedFiles}
                 onDroppedFilesConsumed={onDroppedFilesConsumed}
               />
