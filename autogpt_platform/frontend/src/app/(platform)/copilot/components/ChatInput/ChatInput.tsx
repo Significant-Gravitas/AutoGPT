@@ -345,7 +345,7 @@ export function ChatInput({
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
             />
-{recipientPicker}
+            {recipientPicker}
           </PromptInputTools>
 
           <div className="flex items-center gap-4">
