@@ -91,11 +91,11 @@ async def test_pause_covers_personal_org_tagged_presets():
 
 
 @pytest.mark.asyncio
-async def test_pause_falls_back_to_user_scope_without_personal_org():
-    """If the personal org can't be resolved, pause everything the user owns
-    (userId-only) rather than silently matching nothing — every preset is
-    org-tagged after dual-write, so the org predicate would exclude all."""
-    client = _mock_scheduler_client(paused=0)
+async def test_pause_defers_when_personal_org_unresolved():
+    """Without a resolvable personal org we can't tell personal from team
+    automations, so pause raises (the caller alerts) instead of skipping all or
+    touching team-funded automations."""
+    client = _mock_scheduler_client()
     preset_prisma = MagicMock()
     preset_prisma.return_value.update_many = AsyncMock(return_value=0)
     with (
@@ -103,21 +103,30 @@ async def test_pause_falls_back_to_user_scope_without_personal_org():
         patch("prisma.models.AgentPreset.prisma", preset_prisma),
         patch(f"{_MODULE}.queue_notification_async", new=AsyncMock()),
         patch(f"{_MODULE}._get_personal_org_id", new=AsyncMock(return_value=None)),
+        pytest.raises(RuntimeError, match="personal org"),
     ):
         await pause_automations_for_payment_lapse("user-1")
 
-    where = preset_prisma.return_value.update_many.call_args.kwargs["where"]
-    # Any org (untagged OR any organizationId) == userId-only scope.
-    assert where["OR"] == [
-        {"organizationId": None},
-        {"organizationId": {"not": None}},
-    ]
-    assert where["userId"] == "user-1"
-    client.pause_user_graph_schedules.assert_awaited_once_with(
-        user_id="user-1",
-        reason=SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
-        personal_org_id=None,
-    )
+    client.pause_user_graph_schedules.assert_not_awaited()
+    preset_prisma.return_value.update_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resume_defers_when_personal_org_unresolved():
+    client = _mock_scheduler_client()
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.update_many = AsyncMock(return_value=0)
+    with (
+        patch(f"{_MODULE}.get_scheduler_client", return_value=client),
+        patch("prisma.models.AgentPreset.prisma", preset_prisma),
+        patch(f"{_MODULE}.queue_notification_async", new=AsyncMock()),
+        patch(f"{_MODULE}._get_personal_org_id", new=AsyncMock(return_value=None)),
+        pytest.raises(RuntimeError, match="personal org"),
+    ):
+        await resume_automations_after_payment_restored("user-1")
+
+    client.resume_user_graph_schedules.assert_not_awaited()
+    preset_prisma.return_value.update_many.assert_not_awaited()
 
 
 @pytest.mark.asyncio

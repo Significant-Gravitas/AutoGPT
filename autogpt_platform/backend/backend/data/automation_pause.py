@@ -39,7 +39,7 @@ class AutomationPauseSummary(BaseModel):
 
 
 async def pause_automations_for_payment_lapse(user_id: str) -> AutomationPauseSummary:
-    personal_org_id = await _get_personal_org_id(user_id)
+    personal_org_id = await _require_personal_org(user_id)
     # A scheduler outage must not skip trigger deactivation; the error is
     # re-raised after the preset update so the caller still alerts/retries.
     schedules = 0
@@ -60,7 +60,10 @@ async def pause_automations_for_payment_lapse(user_id: str) -> AutomationPauseSu
         "isActive": True,
         "isDeleted": False,
         "deactivationReason": None,
-        "OR": _personal_org_or(user_id, personal_org_id),
+        "OR": [
+            {"organizationId": None},
+            {"organizationId": personal_org_id},
+        ],
     }
     triggers = await AgentPreset.prisma().update_many(
         where=where,
@@ -84,7 +87,7 @@ async def pause_automations_for_payment_lapse(user_id: str) -> AutomationPauseSu
 async def resume_automations_after_payment_restored(
     user_id: str,
 ) -> AutomationPauseSummary:
-    personal_org_id = await _get_personal_org_id(user_id)
+    personal_org_id = await _require_personal_org(user_id)
     schedules = 0
     scheduler_error: Exception | None = None
     try:
@@ -104,7 +107,10 @@ async def resume_automations_after_payment_restored(
         "isActive": False,
         "isDeleted": False,
         "deactivationReason": PresetDeactivationReason.PAYMENT_LAPSED,
-        "OR": _personal_org_or(user_id, personal_org_id),
+        "OR": [
+            {"organizationId": None},
+            {"organizationId": personal_org_id},
+        ],
     }
     triggers = await AgentPreset.prisma().update_many(
         where=resume_where,
@@ -122,21 +128,21 @@ async def resume_automations_after_payment_restored(
     return summary
 
 
-def _personal_org_or(
-    user_id: str, personal_org_id: str | None
-) -> list[AgentPresetWhereInput]:
-    """`OR` predicate restricting to personally-funded presets (untagged or the
-    user's personal org). If the personal org couldn't be resolved, fall back to
-    any org (userId-only scope) with a warning: every preset is org-tagged after
-    the org dual-write, so a `personal org` predicate would otherwise exclude all
-    of them and silently pause/resume nothing."""
+async def _require_personal_org(user_id: str) -> str:
+    """Resolve the user's personal org id or raise.
+
+    Every user has a personal org after the org dual-write, so a missing one is
+    an exceptional (usually transient) state. Without it we can't tell personal
+    from team automations, so we defer loudly — the caller alerts and a later
+    retry re-attempts — rather than skipping everything (silently under-pausing)
+    or matching every org (wrongly touching team-funded automations)."""
+    personal_org_id = await _get_personal_org_id(user_id)
     if personal_org_id is None:
-        logger.warning(
-            f"No personal org resolved for user {user_id}; applying "
-            f"payment-lapse pause/resume without the org filter"
+        raise RuntimeError(
+            f"Cannot resolve personal org for user {user_id}; "
+            f"deferring payment-lapse pause/resume"
         )
-        return [{"organizationId": None}, {"organizationId": {"not": None}}]
-    return [{"organizationId": None}, {"organizationId": personal_org_id}]
+    return personal_org_id
 
 
 async def has_payment_lapsed_automations(user_id: str) -> bool:

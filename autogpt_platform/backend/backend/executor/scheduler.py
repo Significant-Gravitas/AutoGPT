@@ -1767,13 +1767,7 @@ class Scheduler(AppService):
                 continue
             if args.user_id != user_id:
                 continue
-            # When the personal org couldn't be resolved, fall back to userId
-            # only rather than excluding every org-tagged (dual-write) job.
-            if (
-                personal_org_id is not None
-                and args.organization_id
-                and args.organization_id != personal_org_id
-            ):
+            if args.organization_id and args.organization_id != personal_org_id:
                 continue
             jobs.append((job, args))
         return jobs
