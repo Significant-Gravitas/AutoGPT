@@ -5,7 +5,9 @@ Run with: poetry run python -m backend.api.features.experts.seed
 Upserts the three roster templates (Maria, Max, Frankie) by template name,
 so repeated runs keep the same template ids. Preload workflows are resolved
 from store listing slugs; missing listings are logged and skipped, never
-fatal.
+fatal. Each upsert also refreshes the presentation fields (avatar, bio,
+skills) on experts already hired from that template, so roster changes reach
+existing users and not just new hires.
 """
 
 import asyncio
@@ -147,6 +149,25 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
     return updated
 
 
+async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
+    """Push the template's presentation fields onto experts hired from it.
+
+    A hire copies the template row, so roster updates would otherwise only
+    ever reach new hires and everyone who hired earlier would keep a blank
+    avatar/bio/skills forever. ``name`` is deliberately excluded — users may
+    have renamed their hire — as are ``role``/``identity``, which drive live
+    persona behaviour.
+    """
+    return await prisma.models.Expert.prisma().update_many(
+        where={"sourceTemplateId": template.id, "isTemplate": False},
+        data={
+            "avatarUrl": template.avatarUrl,
+            "bio": template.bio,
+            "skills": template.skills,
+        },
+    )
+
+
 async def _sync_preloads(template_id: str, entry: RosterEntry) -> None:
     existing = await prisma.models.ExpertWorkflow.prisma().find_many(
         where={"expertId": template_id}
@@ -174,8 +195,12 @@ async def seed_roster() -> list[str]:
     for entry in ROSTER:
         template = await _upsert_template(entry)
         await _sync_preloads(template.id, entry)
+        refreshed = await _backfill_hired_copies(template)
         template_ids.append(template.id)
-        logger.info(f"Seeded expert template '{entry['name']}' (#{template.id})")
+        logger.info(
+            f"Seeded expert template '{entry['name']}' (#{template.id}); "
+            f"refreshed {refreshed} hired copies"
+        )
     return template_ids
 
 

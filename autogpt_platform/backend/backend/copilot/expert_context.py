@@ -46,11 +46,16 @@ async def build_expert_identity_suffix(
 
     Returns ``""`` for plain sessions (keeps the system prompt byte-identical
     for cross-user caching) and on any lookup failure.
+
+    Runs on every turn, so it skips the workflow joins — only the expert's
+    own name/role/identity columns are read here.
     """
     if not user_id or not expert_id:
         return ""
     try:
-        expert = await experts_db().get_expert(user_id, expert_id)
+        expert = await experts_db().get_expert(
+            user_id, expert_id, include_workflows=False
+        )
     except Exception as e:
         logger.warning(f"Failed to build expert identity suffix: {e}")
         return ""

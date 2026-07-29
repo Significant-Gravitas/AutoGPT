@@ -16669,8 +16669,7 @@
           "skills": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Skills",
-            "default": []
+            "title": "Skills"
           },
           "identity": { "type": "string", "title": "Identity" },
           "is_template": { "type": "boolean", "title": "Is Template" },
@@ -16692,6 +16691,8 @@
           "avatar_url",
           "role",
           "tagline",
+          "bio",
+          "skills",
           "identity",
           "is_template",
           "source_template_id",

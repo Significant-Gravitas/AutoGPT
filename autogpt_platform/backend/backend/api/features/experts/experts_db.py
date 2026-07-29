@@ -75,10 +75,19 @@ async def list_experts(user_id: str) -> list[Expert]:
     return [_to_model(row) for row in rows]
 
 
-async def get_expert(user_id: str, expert_id: str) -> Expert | None:
+async def get_expert(
+    user_id: str, expert_id: str, *, include_workflows: bool = True
+) -> Expert | None:
+    """Fetch a hired expert owned by *user_id*.
+
+    Set ``include_workflows=False`` to skip the ExpertWorkflow → LibraryAgent
+    + StoreListingVersion joins when the caller only needs the expert's own
+    columns. The returned model then always carries an empty ``workflows``
+    list — never use that flag to decide whether workflows are installed.
+    """
     row = await prisma.models.Expert.prisma().find_first(
         where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
-        include=_WORKFLOW_INCLUDE,
+        include=_WORKFLOW_INCLUDE if include_workflows else None,
     )
     return _to_model(row) if row is not None else None
 

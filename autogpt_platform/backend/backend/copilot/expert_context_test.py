@@ -1,12 +1,14 @@
 """Unit tests for expert context injection (copilot/expert_context.py).
 
 Covers:
-- Expert sessions render <expert_identity> + <expert_workflows> blocks.
-- Plain sessions render a <team_context> block listing hired experts.
+- Expert sessions put <expert_identity> in the system-prompt suffix and
+  <expert_workflows> in the first user message — never the other way round.
+- Plain sessions render a <team_context> block listing hired experts, and
+  produce an empty suffix so the system prompt stays byte-identical.
 - Archived/missing expert, no hired experts, and lookup errors all degrade
   silently to "" — chat must never hard-fail on expert lookup.
-- inject_user_context() wires the block in without touching the cacheable
-  system prompt (byte-identical, verified via SHA-256 snapshot).
+- inject_user_context() wires the message blocks in without touching the
+  cacheable base prompt (byte-identical, verified via SHA-256 snapshot).
 """
 
 import hashlib
@@ -56,6 +58,8 @@ def _expert(
         avatar_url=None,
         role=role,
         tagline=None,
+        bio=None,
+        skills=[],
         identity=identity,
         is_template=False,
         source_template_id=None,
@@ -78,7 +82,10 @@ class TestBuildExpertIdentitySuffix:
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_identity_suffix("user-1", "exp-1")
 
-        mock_db.get_expert.assert_awaited_once_with("user-1", "exp-1")
+        # Runs every turn, so it must skip the workflow joins it never reads.
+        mock_db.get_expert.assert_awaited_once_with(
+            "user-1", "exp-1", include_workflows=False
+        )
         assert "<expert_identity>" in result
         assert "</expert_identity>" in result
         assert "Maria" in result

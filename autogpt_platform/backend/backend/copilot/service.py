@@ -618,10 +618,12 @@ async def inject_user_context(
             — prepended AFTER sanitisation, never user-supplied.  Empty
             string → block is omitted.
         expert_id: Hired expert this session is scoped to, or ``None`` for a
-            plain Autopilot session.  Used to build the ``<expert_identity>``
-            / ``<expert_workflows>`` (expert session) or ``<team_context>``
-            (plain session) prefix via ``build_expert_context``.  Lookup
-            failures degrade silently to no block.
+            plain Autopilot session.  Used to build the ``<expert_workflows>``
+            (expert session) or ``<team_context>`` (plain session) prefix via
+            ``build_expert_context``.  The expert's persona is NOT injected
+            here — ``build_expert_identity_suffix`` puts ``<expert_identity>``
+            in the system prompt instead, where it outranks message context.
+            Lookup failures degrade silently to no block.
 
     Returns:
         ``str`` -- the sanitised (and optionally prefixed) message when
