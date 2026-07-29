@@ -195,6 +195,7 @@ function ExpertSessionHarness() {
   return (
     <div>
       <div data-testid="session-id">{sessionId ?? "none"}</div>
+      <div data-testid="expert-id">{expertId ?? "none"}</div>
       <button onClick={() => void createSession().catch(() => {})}>
         create
       </button>
@@ -338,15 +339,19 @@ describe("useChatSession — expert sessions", () => {
       );
     });
 
-    fireEvent.click(screen.getAllByRole("button", { name: "New Chat" })[0]);
-
+    // Click inside waitFor, re-querying each attempt: the sidebar re-renders
+    // as the adoption lands and the session list arrives, which can replace
+    // the button node between a one-shot query and its click (a click on the
+    // detached node is a no-op). Re-clicking is idempotent (sets null).
     await waitFor(() => {
+      fireEvent.click(screen.getAllByRole("button", { name: "New Chat" })[0]);
       expect(screen.getByTestId("session-id").textContent).toBe("none");
     });
     // The remount re-runs the adoption effect against a warm cache, so give it
     // a chance to bounce back before declaring the fix good.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(screen.getByTestId("expert-id").textContent).toBe("none");
   });
 });
 
