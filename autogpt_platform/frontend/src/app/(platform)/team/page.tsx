@@ -30,7 +30,7 @@ export default function TeamPage() {
     profileExpert,
     openProfile,
     closeProfile,
-  } = useTeamPage();
+  } = useTeamPage({ enabled: Boolean(enabled) && ready });
 
   if (!ready) {
     return (

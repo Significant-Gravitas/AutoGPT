@@ -39,7 +39,7 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
             {expert.avatar_url ? (
               <AvatarImage src={expert.avatar_url} alt={expert.name} />
             ) : null}
-            <AvatarFallback>{expert.name.slice(0, 2)}</AvatarFallback>
+            <AvatarFallback>{expert.name}</AvatarFallback>
           </Avatar>
           <span
             className={cn(

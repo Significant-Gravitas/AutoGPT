@@ -54,6 +54,8 @@ const hiredMaria: Expert = {
   name: "Maria",
   avatar_url: null,
   role: "Marketing Strategist",
+  bio: null,
+  skills: [],
   tagline: "Grows your brand while you sleep",
   identity: "You are Maria, a senior marketing strategist.",
   is_template: false,

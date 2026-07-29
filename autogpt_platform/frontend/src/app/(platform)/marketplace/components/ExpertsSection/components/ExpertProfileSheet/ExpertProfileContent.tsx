@@ -43,7 +43,7 @@ export function ExpertProfileContent({
           {expert.avatar_url ? (
             <AvatarImage src={expert.avatar_url} alt={expert.name} />
           ) : null}
-          <AvatarFallback>{expert.name.slice(0, 2)}</AvatarFallback>
+          <AvatarFallback>{expert.name}</AvatarFallback>
         </Avatar>
         <div>
           <div className="flex items-center gap-3">
@@ -142,8 +142,12 @@ export function ExpertProfileContent({
   );
 }
 
+// Roughly the number of characters that fit in the four-line clamp below.
+const CLAMPED_BIO_LENGTH = 280;
+
 function PersonalitySection({ text }: { text: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const isClampable = text.length > CLAMPED_BIO_LENGTH;
 
   return (
     <div className="relative mt-8">
@@ -153,26 +157,28 @@ function PersonalitySection({ text }: { text: string }) {
       <p
         className={cn(
           "whitespace-pre-line text-base leading-relaxed text-zinc-600",
-          !isExpanded && "line-clamp-4",
+          isClampable && !isExpanded && "line-clamp-4",
         )}
       >
         {text}
       </p>
-      <button
-        type="button"
-        onClick={() => setIsExpanded((v) => !v)}
-        className="mt-2 flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
-      >
-        {isExpanded ? "Show less" : "Read more"}
-        <CaretDownIcon
-          size={14}
-          weight="bold"
-          className={cn(
-            "transition-transform duration-200",
-            isExpanded && "rotate-180",
-          )}
-        />
-      </button>
+      {isClampable ? (
+        <button
+          type="button"
+          onClick={() => setIsExpanded((v) => !v)}
+          className="mt-2 flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+        >
+          {isExpanded ? "Show less" : "Read more"}
+          <CaretDownIcon
+            size={14}
+            weight="bold"
+            className={cn(
+              "transition-transform duration-200",
+              isExpanded && "rotate-180",
+            )}
+          />
+        </button>
+      ) : null}
     </div>
   );
 }

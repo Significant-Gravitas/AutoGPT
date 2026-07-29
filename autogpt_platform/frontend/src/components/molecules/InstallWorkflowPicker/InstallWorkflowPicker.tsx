@@ -109,7 +109,7 @@ export function InstallWorkflowPicker({
             <div className="flex flex-col gap-2">
               {searchResults.map((agent) => (
                 <div
-                  key={agent.slug}
+                  key={agent.agent_graph_id}
                   className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3"
                 >
                   <div className="min-w-0 flex-1">
@@ -121,7 +121,7 @@ export function InstallWorkflowPicker({
                   <Button
                     variant="primary"
                     size="small"
-                    loading={pendingKey === agent.slug}
+                    loading={pendingKey === agent.agent_graph_id}
                     onClick={() => installFromListing(agent)}
                   >
                     Install

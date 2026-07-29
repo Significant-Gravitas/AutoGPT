@@ -5,17 +5,15 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { HireResult } from "@/app/api/__generated__/models/hireResult";
+import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { createElement } from "react";
 
 export function useExpertProfileSheet(
   expert: Expert | null,
   onClose: () => void,
 ) {
   const queryClient = useQueryClient();
-  const router = useRouter();
 
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[] },
@@ -44,28 +42,21 @@ export function useExpertProfileSheet(
           ? `Couldn't attach: ${result.failed_preloads.join(", ")}`
           : undefined,
         variant: "success",
-        action: createElement(
-          "div",
-          { className: "flex gap-2" },
-          createElement(
-            "button",
-            {
-              type: "button",
-              className: "font-medium underline",
-              onClick: () =>
-                router.push(`/copilot?expertId=${result.expert.id}`),
-            },
-            `Chat with ${result.expert.name}`,
-          ),
-          createElement(
-            "button",
-            {
-              type: "button",
-              className: "font-medium underline",
-              onClick: () => router.push("/team"),
-            },
-            "View team",
-          ),
+        action: (
+          <div className="flex gap-2">
+            <Button
+              as="NextLink"
+              href={`/copilot?expertId=${result.expert.id}`}
+              variant="secondary"
+              size="small"
+              unmask={false}
+            >
+              {`Chat with ${result.expert.name}`}
+            </Button>
+            <Button as="NextLink" href="/team" variant="ghost" size="small">
+              View team
+            </Button>
+          </div>
         ),
       });
       onClose();

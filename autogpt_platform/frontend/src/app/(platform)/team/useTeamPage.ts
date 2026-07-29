@@ -2,12 +2,16 @@ import { useListExperts } from "@/app/api/__generated__/endpoints/experts/expert
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { useState } from "react";
 
-export function useTeamPage() {
+interface Args {
+  enabled: boolean;
+}
+
+export function useTeamPage({ enabled }: Args) {
   const [pickerExpertId, setPickerExpertId] = useState<string | null>(null);
   const [profileExpertId, setProfileExpertId] = useState<string | null>(null);
 
   const expertsQuery = useListExperts({
-    query: { select: (x) => x.data as Expert[] },
+    query: { select: (x) => x.data as Expert[], enabled },
   });
 
   const hiredExperts = (expertsQuery.data ?? []).filter(
@@ -24,7 +28,7 @@ export function useTeamPage() {
 
   return {
     hiredExperts,
-    isLoading: expertsQuery.isLoading,
+    isLoading: enabled && expertsQuery.isLoading,
     isError: expertsQuery.isError,
     refetch: expertsQuery.refetch,
     installWorkflow,

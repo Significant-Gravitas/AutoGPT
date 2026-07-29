@@ -11,7 +11,7 @@ import {
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainAgentPage } from "../components/MainAgentPage/MainAgentPage";
@@ -39,6 +39,8 @@ const hiredMaria: Expert = {
   name: "Maria",
   avatar_url: null,
   role: "Marketing Strategist",
+  bio: null,
+  skills: [],
   tagline: "Grows your brand while you sleep",
   identity: "You are Maria, a senior marketing strategist.",
   is_template: false,
@@ -84,7 +86,10 @@ function renderAgentPage() {
 
 describe("Install on Expert from marketplace detail", () => {
   beforeEach(() => {
-    mockUseSupabase.mockReturnValue({ user: null });
+    mockUseSupabase.mockReturnValue({
+      user: { id: "user-1" },
+      isLoggedIn: true,
+    });
   });
 
   test("shows the action and installs on the selected expert", async () => {
@@ -169,15 +174,41 @@ describe("Install on Expert from marketplace detail", () => {
   });
 
   test("hides the action when the user has no hired experts", async () => {
+    let expertsRequested = false;
     useStoreHandlers();
-    server.use(getListExpertsMockHandler([]));
+    server.use(
+      getListExpertsMockHandler(() => {
+        expertsRequested = true;
+        return [];
+      }),
+    );
 
     renderAgentPage();
 
     await screen.findByTestId("agent-title");
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitFor(() => expect(expertsRequested).toBe(true));
     expect(
       screen.queryByRole("button", { name: "Install on Expert…" }),
     ).toBeNull();
+  });
+
+  test("hides the action for signed-out visitors without fetching experts", async () => {
+    let expertsRequested = false;
+    mockUseSupabase.mockReturnValue({ user: null, isLoggedIn: false });
+    useStoreHandlers();
+    server.use(
+      getListExpertsMockHandler(() => {
+        expertsRequested = true;
+        return [hiredMaria];
+      }),
+    );
+
+    renderAgentPage();
+
+    await screen.findByTestId("agent-title");
+    expect(
+      screen.queryByRole("button", { name: "Install on Expert…" }),
+    ).toBeNull();
+    expect(expertsRequested).toBe(false);
   });
 });

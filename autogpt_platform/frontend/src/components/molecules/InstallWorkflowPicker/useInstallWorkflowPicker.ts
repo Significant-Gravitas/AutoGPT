@@ -11,8 +11,11 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 interface Args {
   mode: "pick-expert" | "pick-workflow";
@@ -41,8 +44,13 @@ export function useInstallWorkflowPicker({
   );
   const targetExpert = hiredExperts.find((expert) => expert.id === expertId);
 
+  const debouncedSearchQuery = useDebouncedValue(
+    searchQuery,
+    SEARCH_DEBOUNCE_MS,
+  );
+
   const searchResultsQuery = useGetV2ListStoreAgents(
-    { search_query: searchQuery || undefined, page_size: 10 },
+    { search_query: debouncedSearchQuery || undefined, page_size: 10 },
     {
       query: {
         select: (x) => (x.data as StoreAgentsResponse).agents,
@@ -97,7 +105,7 @@ export function useInstallWorkflowPicker({
 
   async function installFromListing(agent: StoreAgent) {
     if (!targetExpert) return;
-    setPendingKey(agent.slug);
+    setPendingKey(agent.agent_graph_id);
     try {
       const details = await getV2GetSpecificAgent(
         agent.creator.toLowerCase(),

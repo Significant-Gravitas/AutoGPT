@@ -20,9 +20,11 @@ import {
   CaretDownIcon,
   FlowArrowIcon,
   FolderIcon,
+  type Icon,
   NotePencilIcon,
   SquaresFourIcon,
   StorefrontIcon,
+  UsersThreeIcon,
 } from "@phosphor-icons/react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
@@ -31,25 +33,18 @@ import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  ComponentProps,
-  ComponentType,
-  ReactNode,
-  Suspense,
-  useEffect,
-} from "react";
+import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
-import { TeamIcon } from "./components/TeamIcon";
 
 type NavLink = {
   name: string;
   href: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: Icon;
 };
 
 const MAIN_LINKS: NavLink[] = [
@@ -213,7 +208,10 @@ export function AppSidebar(props: Props) {
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
   const workspaceLinks = isHireExpertsEnabled
-    ? [{ name: "Team", href: "/team", icon: TeamIcon }, ...WORKSPACE_LINKS]
+    ? [
+        { name: "Team", href: "/team", icon: UsersThreeIcon },
+        ...WORKSPACE_LINKS,
+      ]
     : WORKSPACE_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.

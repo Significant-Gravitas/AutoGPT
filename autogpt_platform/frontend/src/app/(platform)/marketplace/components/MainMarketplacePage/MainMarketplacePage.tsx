@@ -49,7 +49,11 @@ export const MainMarkeplacePage = () => {
             <AgentsSection
               sectionTitle="All AI Workflows"
               titleIcon={<AICatalogIcon size={30} />}
-              subtitle="Install one on an Expert, or run it standalone."
+              subtitle={
+                isHireExpertsEnabled
+                  ? "Install one on an Expert, or run it standalone."
+                  : "Ready-made automations from the community."
+              }
               agents={topAgents.agents}
             >
               {featuredAgents && featuredAgents.agents.length > 0 && (

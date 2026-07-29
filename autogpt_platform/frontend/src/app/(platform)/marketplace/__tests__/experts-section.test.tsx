@@ -8,8 +8,14 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
+
+const mockUseSupabase = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: mockUseSupabase,
+}));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -28,6 +34,8 @@ const mariaTemplate: Expert = {
   name: "Maria",
   avatar_url: null,
   role: "Marketing Strategist",
+  bio: null,
+  skills: [],
   tagline: "Grows your brand while you sleep",
   identity: "You are Maria, a senior marketing strategist.",
   is_template: true,
@@ -53,6 +61,13 @@ function renderMarketplace() {
 }
 
 describe("Marketplace ExpertsSection", () => {
+  beforeEach(() => {
+    mockUseSupabase.mockReturnValue({
+      user: { id: "user-1" },
+      isLoggedIn: true,
+    });
+  });
+
   test("renders experts section and hires from the profile sheet", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
@@ -64,10 +79,30 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     await userEvent.click(await screen.findByText("Maria"));
-    await userEvent.click(await screen.findByRole("button", { name: "Hire" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire Maria" }),
+    );
 
     expect(await screen.findByText("Maria joined your team")).toBeDefined();
     expect(await screen.findByText("Chat with Maria")).toBeDefined();
+  });
+
+  test("stays hidden and fetches nothing for signed-out visitors", async () => {
+    mockUseSupabase.mockReturnValue({ user: null, isLoggedIn: false });
+    let templatesRequested = false;
+    server.use(
+      getListExpertTemplatesMockHandler(() => {
+        templatesRequested = true;
+        return [mariaTemplate];
+      }),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    expect(await screen.findByText("All AI Workflows")).toBeDefined();
+    expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+    expect(templatesRequested).toBe(false);
   });
 
   test("hired template shows hired state", async () => {
