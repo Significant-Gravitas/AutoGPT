@@ -54,6 +54,7 @@ model User {
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
+  OwnedExperts         Expert[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -325,6 +326,11 @@ model ChatSession {
 
   Messages ChatMessage[]
 
+  // Expert this session is scoped to; null = plain Autopilot session.
+  // Sessions keep expertId for history when the expert is archived (soft delete).
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id])
+
   // Tenancy
   organizationId String?
   teamId         String?
@@ -359,6 +365,7 @@ model ChatSession {
   @@index([teamId, updatedAt])
   @@index([organizationId])
   @@index([shareToken])
+  @@index([expertId])
 }
 
 // Tracks which workspace files are exposed via a shared chat session.
@@ -634,6 +641,8 @@ model LibraryAgent {
 
   settings Json @default("{}")
 
+  ExpertWorkflows ExpertWorkflow[]
+
   // Tenancy
   organizationId String?
   teamId         String?
@@ -676,6 +685,74 @@ model LibraryFolder {
 
   @@unique([userId, parentId, name]) // Name unique per parent per user
   @@index([organizationId])
+}
+
+// An Expert is a hireable persona. Roster rows are templates
+// (ownerUserId null, isTemplate true); hiring instantiates an owned copy.
+// Templates are never chat targets and never owned.
+model Expert {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // null for roster templates; set on hire
+  ownerUserId String?
+  OwnerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  name      String
+  avatarUrl String?
+  role      String
+  tagline   String?
+  identity  String
+
+  toolProfile Json?
+
+  isTemplate       Boolean  @default(false)
+  sourceTemplateId String?
+  SourceTemplate   Expert?  @relation("ExpertFromTemplate", fields: [sourceTemplateId], references: [id])
+  HiredCopies      Expert[] @relation("ExpertFromTemplate")
+
+  isArchived Boolean @default(false)
+
+  Workflows    ExpertWorkflow[]
+  ChatSessions ChatSession[]
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // Hire idempotency: one hired copy per (user, template). Postgres allows
+  // multiple NULL ownerUserId rows, so templates are unaffected.
+  @@unique([ownerUserId, sourceTemplateId])
+  @@index([ownerUserId, isArchived])
+  @@index([isTemplate, isArchived])
+  @@index([teamId])
+  @@index([organizationId])
+}
+
+// Join between an Expert and a workflow (marketplace agent) installed on it.
+// Template rows carry only storeListingVersionId; hire resolves each preload
+// into the hiring user's LibraryAgent.
+model ExpertWorkflow {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // marketplace source: set on template preloads and marketplace installs
+  storeListingVersionId String?
+  StoreListingVersion   StoreListingVersion? @relation(fields: [storeListingVersionId], references: [id])
+
+  // the hiring user's LibraryAgent; null on template rows
+  libraryAgentId String?
+  LibraryAgent   LibraryAgent? @relation(fields: [libraryAgentId], references: [id])
+
+  // Duplicate install on an expert returns the existing row.
+  @@unique([expertId, storeListingVersionId])
+  @@index([expertId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -1466,6 +1543,8 @@ model StoreListingVersion {
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
+  ExpertWorkflows ExpertWorkflow[]
+
   // Note: Embeddings now stored in UnifiedContentEmbedding table
   // Use contentType=STORE_AGENT and contentId=storeListingVersionId
 
@@ -1872,6 +1951,7 @@ model Team {
   Presets        AgentPreset[]
   LibraryAgents  LibraryAgent[]
   LibraryFolders LibraryFolder[]
+  Experts        Expert[]
   Webhooks       IntegrationWebhook[]
   APIKeys        APIKey[]
   Credentials    IntegrationCredential[] @relation("TeamCredentials")
