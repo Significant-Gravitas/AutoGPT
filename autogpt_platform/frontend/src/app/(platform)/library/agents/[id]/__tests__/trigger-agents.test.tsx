@@ -618,19 +618,36 @@ describe("Library agent view — trigger agents", () => {
     });
   });
 
-  test("unknown ID with an incomplete presets page falls back to the preset detail view", async () => {
+  test("a preset beyond the first page resolves from membership once all pages load", async () => {
     const beyondPagePreset = makeWebhookPreset({
       id: "beyond-page-1",
       name: "Beyond Page Trigger",
     });
+    const firstPage = Array.from({ length: PRESETS_PAGE_SIZE }, (_, i) =>
+      makeWebhookPreset({ id: `page1-preset-${i + 1}`, name: `Trigger ${i}` }),
+    );
 
     server.use(
       ...baseHandlers(),
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler([]),
-      // The first page doesn't contain the selected ID, but total_items says
-      // the page is incomplete — membership must NOT conclude "not-found".
-      singlePresetListHandler(makeWebhookPreset(), 150),
+      // 101 presets over two pages; the selected ID lives on page 2. The hook
+      // pages through everything, so membership resolves it as a webhook
+      // trigger rather than assuming "not-found".
+      getGetV2ListPresetsMockHandler((info) => {
+        const page = Number(
+          new URL(info.request.url).searchParams.get("page") ?? "1",
+        );
+        return {
+          presets: page <= 1 ? firstPage : [beyondPagePreset],
+          pagination: {
+            total_items: firstPage.length + 1,
+            total_pages: 2,
+            current_page: page,
+            page_size: PRESETS_PAGE_SIZE,
+          },
+        };
+      }),
       getGetV2GetASpecificPresetMockHandler(beyondPagePreset),
     );
 
@@ -639,9 +656,179 @@ describe("Library agent view — trigger agents", () => {
       "activeTab=triggers&activeItem=beyond-page-1",
     );
 
-    await screen.findByText("Trigger Details");
+    // The Triggers tab count reflects the full membership (101), not just the
+    // first page (100) — this is what fails without eager pagination.
+    // Paging through every preset then fetching the detail is a longer async
+    // chain than a single-page load, so allow extra time.
+    await screen.findByRole(
+      "tab",
+      { name: /triggers\s*101/i },
+      { timeout: 5000 },
+    );
+    await screen.findByText("Trigger Details", undefined, { timeout: 5000 });
     screen.getByDisplayValue("Beyond Page Trigger");
     expect(screen.queryByText("Trigger not found")).toBeNull();
+  });
+
+  test("unknown ID across a fully paginated presets list resolves to not-found without a by-ID fetch", async () => {
+    // 150 presets over two pages (page_size 100). The selected ID is on
+    // neither page, so once every page has loaded membership is authoritative
+    // and the router must land on not-found WITHOUT a throwaway by-ID fetch.
+    const firstPage = Array.from({ length: PRESETS_PAGE_SIZE }, (_, i) =>
+      makeWebhookPreset({ id: `page1-preset-${i + 1}`, name: `Trigger ${i}` }),
+    );
+    const secondPage = Array.from({ length: 50 }, (_, i) =>
+      makeWebhookPreset({
+        id: `page2-preset-${i + 1}`,
+        name: `Trigger ${i + 100}`,
+      }),
+    );
+    const totalItems = firstPage.length + secondPage.length;
+
+    let presetGetCalls = 0;
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2ListPresetsMockHandler((info) => {
+        const page = Number(
+          new URL(info.request.url).searchParams.get("page") ?? "1",
+        );
+        return {
+          presets: page <= 1 ? firstPage : secondPage,
+          pagination: {
+            total_items: totalItems,
+            total_pages: 2,
+            current_page: page,
+            page_size: PRESETS_PAGE_SIZE,
+          },
+        };
+      }),
+      // Fires only if the router wrongly assumes the unknown ID is a preset —
+      // the degraded behavior this fix removes.
+      getGetV2GetASpecificPresetMockHandler(() => {
+        presetGetCalls += 1;
+        return getGetV2GetASpecificPresetResponseMock();
+      }),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=triggers&activeItem=deleted-preset-id",
+    );
+
+    // Paging through every preset before concluding not-found is a longer
+    // async chain than a single-page load, so allow extra time.
+    await screen.findByText("Trigger not found", undefined, { timeout: 5000 });
+    await screen.findByText(/doesn't exist or is no longer available/i);
+    expect(presetGetCalls).toBe(0);
+  });
+
+  test("an unknown ID beyond the pagination cap falls back to the by-ID preset fetch", async () => {
+    // More presets than the eager pagination cap (MAX_PRESET_PAGES * 100 =
+    // 2000) can page through: the hook stops at the cap, so `presetsComplete`
+    // stays false and list membership is NOT authoritative. An unknown/stale
+    // selection must therefore fall back to the graceful by-ID webhook-trigger
+    // fetch — the beyond-cap path that the fully-paginated test above
+    // deliberately does not exercise (it asserts zero by-ID fetches).
+    const cappedPreset = makeWebhookPreset({
+      id: "beyond-cap-preset",
+      name: "Beyond Cap Trigger",
+    });
+
+    let presetGetCalls = 0;
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      // Report far more presets than the cap can reach, but return one row per
+      // page so the test stays light — it's the pagination metadata (not the
+      // row count) that keeps `hasNextPage` true past the cap and leaves
+      // membership incomplete.
+      getGetV2ListPresetsMockHandler((info) => {
+        const page = Number(
+          new URL(info.request.url).searchParams.get("page") ?? "1",
+        );
+        return {
+          presets: [
+            makeWebhookPreset({
+              id: `page${page}-preset`,
+              name: `Trigger ${page}`,
+            }),
+          ],
+          pagination: {
+            total_items: 5000,
+            total_pages: 50,
+            current_page: page,
+            page_size: PRESETS_PAGE_SIZE,
+          },
+        };
+      }),
+      // The selected ID lives beyond the paginated window, so with membership
+      // incomplete the router resolves it as a webhook trigger and this fires.
+      getGetV2GetASpecificPresetMockHandler(() => {
+        presetGetCalls += 1;
+        return cappedPreset;
+      }),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=${cappedPreset.id}`,
+    );
+
+    // Paging through the full cap before the by-ID fallback resolves the detail
+    // is a long async chain, so allow extra time.
+    await screen.findByText("Trigger Details", undefined, { timeout: 8000 });
+    screen.getByDisplayValue("Beyond Cap Trigger");
+    // The beyond-cap fallback fired the by-ID fetch it's meant to.
+    expect(presetGetCalls).toBeGreaterThan(0);
+  });
+
+  test("a later presets page failing degrades gracefully instead of blanking the sidebar", async () => {
+    // Page 1 loads 100 webhook presets; page 2 fails. The loaded page stays
+    // usable — the Triggers list must still render rather than being replaced
+    // by a full error card.
+    const firstPage = Array.from({ length: PRESETS_PAGE_SIZE }, (_, i) =>
+      makeWebhookPreset({ id: `page1-preset-${i + 1}`, name: `Trigger ${i}` }),
+    );
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      http.get(
+        "http://localhost:3000/api/proxy/api/library/presets",
+        ({ request }) => {
+          const page = Number(
+            new URL(request.url).searchParams.get("page") ?? "1",
+          );
+          if (page > 1) {
+            return new HttpResponse(JSON.stringify({ detail: "boom" }), {
+              status: 422,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          return HttpResponse.json({
+            presets: firstPage,
+            pagination: {
+              total_items: firstPage.length + 50,
+              total_pages: 2,
+              current_page: 1,
+              page_size: PRESETS_PAGE_SIZE,
+            },
+          });
+        },
+      ),
+      getGetV2GetASpecificPresetMockHandler(firstPage[0]),
+    );
+
+    renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");
+
+    // The sidebar keeps rendering the loaded page-1 triggers instead of being
+    // replaced by an error card.
+    await screen.findByText("Webhook Triggers", undefined, { timeout: 5000 });
+    expect(screen.queryByText(/when retrieving/i)).toBeNull();
   });
 
   test("webhook trigger deleted between list and detail fetch renders the not-found card", async () => {

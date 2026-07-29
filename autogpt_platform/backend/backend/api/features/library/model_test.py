@@ -11,6 +11,8 @@ def _make_library_agent(
     *,
     graph_id: str = "g1",
     executions: list | None = None,
+    name: str | None = None,
+    description: str | None = None,
 ) -> prisma.models.LibraryAgent:
     return prisma.models.LibraryAgent(
         id="la1",
@@ -22,6 +24,8 @@ def _make_library_agent(
         isDeleted=False,
         isArchived=False,
         isHidden=False,
+        name=name,
+        description=description,
         createdAt=datetime.datetime.now(),
         updatedAt=datetime.datetime.now(),
         isFavorite=False,
@@ -39,6 +43,42 @@ def _make_library_agent(
             Executions=executions,
         ),
     )
+
+
+def test_from_db_prefers_marketplace_name_and_description():
+    """Snapshotted marketplace title/description override the graph's own."""
+    agent = _make_library_agent(
+        name="Published Title",
+        description="Published description",
+    )
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert result.name == "Published Title"
+    assert result.description == "Published description"
+
+
+def test_from_db_falls_back_to_graph_name_and_description():
+    """User-created agents (no snapshot) fall back to the graph's values."""
+    agent = _make_library_agent(name=None, description=None)
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert result.name == "Agent"
+    assert result.description == "Desc"
+
+
+def test_from_db_preserves_empty_marketplace_description():
+    """An intentionally-empty published value is kept, not replaced by the graph.
+
+    Only a missing snapshot (None) falls back; an empty string is a real value.
+    """
+    agent = _make_library_agent(name="Published Title", description="")
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert result.name == "Published Title"
+    assert result.description == ""
 
 
 def test_from_db_execution_count_override_covers_success_rate():
