@@ -5580,7 +5580,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphModel" }
+                "schema": { "$ref": "#/components/schemas/UpdateGraphResponse" }
               }
             }
           },
@@ -6128,7 +6128,13 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetActiveGraphVersionResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -21419,6 +21425,18 @@
         "title": "SessionSummaryResponse",
         "description": "Response model for a session summary (without messages)."
       },
+      "SetActiveGraphVersionResponse": {
+        "properties": {
+          "skipped_webhook_presets": {
+            "items": { "$ref": "#/components/schemas/SkippedWebhookPreset" },
+            "type": "array",
+            "title": "Skipped Webhook Presets"
+          }
+        },
+        "type": "object",
+        "title": "SetActiveGraphVersionResponse",
+        "description": "Response for activating an existing graph version.\n\nCarries any webhook presets that were left pinned to their old version\nbecause the newly activated version's trigger block is incompatible and\nneeds to be reconfigured."
+      },
       "SetGraphActiveVersion": {
         "properties": {
           "active_graph_version": {
@@ -21653,6 +21671,17 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SkippedWebhookPreset": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "pinned_version": { "type": "integer", "title": "Pinned Version" }
+        },
+        "type": "object",
+        "required": ["id", "name", "pinned_version"],
+        "title": "SkippedWebhookPreset",
+        "description": "A webhook preset that was left pinned to its old version because the\nnewly activated version swaps or reconfigures the trigger block. The user\nneeds to reconfigure the trigger on the new version for it to fire."
       },
       "Stats": {
         "properties": {
@@ -23767,6 +23796,20 @@
         "type": "object",
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
+      },
+      "UpdateGraphResponse": {
+        "properties": {
+          "graph": { "$ref": "#/components/schemas/GraphModel" },
+          "skipped_webhook_presets": {
+            "items": { "$ref": "#/components/schemas/SkippedWebhookPreset" },
+            "type": "array",
+            "title": "Skipped Webhook Presets"
+          }
+        },
+        "type": "object",
+        "required": ["graph"],
+        "title": "UpdateGraphResponse",
+        "description": "Response for creating/activating a new graph version.\n\nCarries the new graph version plus any webhook presets that were left\npinned to their old version because the new version's trigger block is\nincompatible and needs to be reconfigured."
       },
       "UpdateMemberRequest": {
         "properties": {

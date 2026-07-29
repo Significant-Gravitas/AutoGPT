@@ -62,11 +62,8 @@ export function useNewAgentLibraryView() {
   const triggerAgents = triggerAgentsQuery.data;
 
   const presetsQuery = useAgentPresetsQuery(agent?.graph_id);
-  const presets = presetsQuery.data?.presets;
-  const presetsComplete =
-    !!presetsQuery.data &&
-    presetsQuery.data.pagination.total_items <=
-      presetsQuery.data.presets.length;
+  const presets = presetsQuery.presets;
+  const presetsComplete = presetsQuery.presetsComplete;
 
   const [{ activeItem, activeTab: activeTabRaw }, setQueryStates] =
     useQueryStates({
@@ -280,7 +277,8 @@ export function useNewAgentLibraryView() {
           triggerAgents,
           presets,
           presetsComplete,
-          listsResolved: presetsQuery.isSuccess && !triggerAgentsUnresolved,
+          listsResolved:
+            presetsQuery.presetsSettled && !triggerAgentsUnresolved,
           anyListFailed: presetsQuery.isError || triggerAgentsQuery.isError,
         })
       : null;
