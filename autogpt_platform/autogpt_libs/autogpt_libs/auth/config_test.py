@@ -94,30 +94,24 @@ def test_settings_load_with_strong_secret(mocker: MockerFixture):
     assert len(settings.JWT_VERIFY_KEY) >= 32
 
 
-def test_secret_empty_raises_error(mocker: MockerFixture):
-    """Test that auth enabled with empty secret raises AuthConfigError."""
-    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": ""}, clear=True)
+@pytest.mark.parametrize(
+    "verify_key_env",
+    [
+        pytest.param({}, id="no-verify-key"),
+        pytest.param({"JWT_VERIFY_KEY": ""}, id="empty-verify-key"),
+        pytest.param({"JWT_VERIFY_KEY": " \t\n "}, id="whitespace-verify-key"),
+        pytest.param({"JWT_VERIFY_KEY": "x" * 40}, id="strong-verify-key"),
+    ],
+)
+def test_missing_jwks_url_raises_regardless_of_verify_key(
+    mocker: MockerFixture, verify_key_env: dict[str, str]
+):
+    """JWT_JWKS_URL is the mandatory setting: without it Settings() must raise
+    about JWT_JWKS_URL specifically, and no state of the optional
+    JWT_VERIFY_KEY (absent, empty, whitespace, strong) substitutes for it."""
+    mocker.patch.dict(os.environ, verify_key_env, clear=True)
 
-    with pytest.raises(Exception) as exc_info:
-        Settings()
-    assert "JWT_VERIFY_KEY" in str(exc_info.value)
-
-
-def test_secret_missing_raises_error(mocker: MockerFixture):
-    """Test that auth enabled without secret env var raises AuthConfigError."""
-    mocker.patch.dict(os.environ, {}, clear=True)
-
-    with pytest.raises(Exception) as exc_info:
-        Settings()
-    assert "JWT_VERIFY_KEY" in str(exc_info.value)
-
-
-@pytest.mark.parametrize("secret", [" ", "  ", "\t", "\n", " \t\n "])
-def test_secret_only_whitespace_raises_error(mocker: MockerFixture, secret: str):
-    """Test that auth enabled with whitespace-only secret raises error."""
-    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": secret}, clear=True)
-
-    with pytest.raises(ValueError):
+    with pytest.raises(AuthConfigError, match="JWT_JWKS_URL must be set"):
         Settings()
 
 

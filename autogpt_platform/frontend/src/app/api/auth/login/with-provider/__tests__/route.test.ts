@@ -103,6 +103,26 @@ describe("POST /api/auth/login/with-provider", () => {
     );
   });
 
+  it("matches the waitlist gate on the body message, not the status-shaped error.message", async () => {
+    isWaitlistErrorMock.mockReturnValue(true);
+    const gateError = new APIError("FORBIDDEN", {
+      message: "Signups are not allowed.",
+    });
+    // At runtime auth.api surfaces the status as error.message while the
+    // gate's reason lives in body.message; model that split so this test
+    // fails if the route ever matches on error.message again.
+    Object.defineProperty(gateError, "message", { value: "FORBIDDEN" });
+    signInSocialMock.mockRejectedValue(gateError);
+
+    const response = await POST(makeProviderRequest({ provider: "google" }));
+
+    expect(response.status).toBe(403);
+    expect(isWaitlistErrorMock).toHaveBeenCalledWith(
+      undefined,
+      "Signups are not allowed.",
+    );
+  });
+
   it("returns 400 with the Better Auth message for other APIErrors", async () => {
     signInSocialMock.mockRejectedValue(
       new APIError("BAD_REQUEST", {

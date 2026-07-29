@@ -35,8 +35,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ url });
     } catch (error) {
       if (error instanceof APIError) {
-        // Check for waitlist/allowlist error
-        if (isWaitlistError(error.body?.code, error.message)) {
+        // Match on the body message ("Signups are not allowed."), not
+        // error.message — the latter is the status ("FORBIDDEN"), which never
+        // matches the waitlist patterns (same trap as the email signup path).
+        if (isWaitlistError(error.body?.code, error.body?.message)) {
           logWaitlistError("OAuth Provider", error.message);
           return NextResponse.json({ error: "not_allowed" }, { status: 403 });
         }
