@@ -31,6 +31,7 @@ import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
+import backend.api.features.experts.routes as experts_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
@@ -419,6 +420,7 @@ app.include_router(
 app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )

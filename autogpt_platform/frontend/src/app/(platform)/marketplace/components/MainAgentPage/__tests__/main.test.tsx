@@ -90,7 +90,7 @@ describe("MainAgentPage", () => {
     expect(screen.getByTestId("agent-creator").textContent).toContain(
       "AutoGPT",
     );
-    expect(screen.getByText("Other agents by AutoGPT")).toBeDefined();
-    expect(screen.getByText("Similar agents")).toBeDefined();
+    expect(screen.getByText("Other AI workflows by AutoGPT")).toBeDefined();
+    expect(screen.getByText("Similar AI workflows")).toBeDefined();
   });
 });

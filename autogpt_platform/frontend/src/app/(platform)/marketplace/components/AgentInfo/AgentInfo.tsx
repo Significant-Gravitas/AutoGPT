@@ -17,6 +17,7 @@ import { formatTimeAgo } from "@/lib/utils/time";
 import { PlusIcon } from "@phosphor-icons/react";
 import type { User } from "@/lib/auth/types";
 import Link from "next/link";
+import { InstallOnExpertButton } from "../InstallOnExpertButton/InstallOnExpertButton";
 import { useAgentInfo } from "./useAgentInfo";
 
 interface AgentInfoProps {
@@ -181,7 +182,7 @@ export const AgentInfo = ({
           </div>
 
           {/* Buttons */}
-          <div className="mt-6 flex w-full items-center lg:mt-8">
+          <div className="mt-6 flex w-full items-center gap-2 lg:mt-8">
             {user && (
               <Button
                 variant="primary"
@@ -211,6 +212,9 @@ export const AgentInfo = ({
                     : "Add to library"}
               </Button>
             )}
+            <InstallOnExpertButton
+              storeListingVersionId={storeListingVersionId}
+            />
           </div>
 
           {/* Download */}

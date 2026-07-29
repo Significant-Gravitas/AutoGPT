@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.experts import experts_db
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -475,6 +476,12 @@ class DatabaseManager(AppService):
     mark_guild_left = _(bot_analytics_db.mark_guild_left)
     sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
 
+    # ============ Experts ============ #
+    # Exposed so the Prisma-less copilot executor can resolve expert
+    # identity/team context via db_accessors.experts_db().
+    get_expert = _(experts_db.get_expert)
+    list_experts = _(experts_db.list_experts)
+
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
     # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
@@ -753,6 +760,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     record_guild_joined = d.record_guild_joined
     mark_guild_left = d.mark_guild_left
     sync_guild_presence = d.sync_guild_presence
+
+    # ============ Experts ============ #
+    get_expert = d.get_expert
+    list_experts = d.list_experts
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
