@@ -1,5 +1,6 @@
 import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { getSchedulePausedLabel } from "@/lib/automations/paused";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
@@ -21,10 +22,7 @@ export function useGraphScheduleListItem({ schedule }: Args) {
     useDeleteV1DeleteExecutionSchedule();
 
   const isPaused = Boolean(schedule.is_paused);
-  const pausedLabel =
-    schedule.paused_reason === "payment_lapsed"
-      ? "Paused — payment required"
-      : "Paused";
+  const pausedLabel = getSchedulePausedLabel(schedule.paused_reason);
   const nextRunDate = schedule.next_run_time
     ? new Date(schedule.next_run_time)
     : null;

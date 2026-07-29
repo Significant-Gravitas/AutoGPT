@@ -2,6 +2,7 @@
 
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { getSchedulePausedLabel } from "@/lib/automations/paused";
 import { ClockClockwiseIcon } from "@phosphor-icons/react";
 import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
@@ -26,10 +27,7 @@ export function ScheduleListItem({
   onRunCreated,
 }: Props) {
   const isPaused = Boolean(schedule.is_paused);
-  const pausedLabel =
-    schedule.paused_reason === "payment_lapsed"
-      ? "Paused — payment required"
-      : "Paused";
+  const pausedLabel = getSchedulePausedLabel(schedule.paused_reason);
   const description = isPaused
     ? pausedLabel
     : schedule.next_run_time

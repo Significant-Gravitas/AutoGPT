@@ -4,7 +4,9 @@ import { GraphTriggerInfo } from "@/app/api/__generated__/models/graphTriggerInf
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { getWebhookTriggerStatus } from "@/lib/automations/paused";
 import { CopyIcon } from "@phosphor-icons/react";
+import Link from "next/link";
 import { RunDetailCard } from "../../RunDetailCard/RunDetailCard";
 
 interface Props {
@@ -12,18 +14,8 @@ interface Props {
   triggerSetupInfo: GraphTriggerInfo;
 }
 
-function getTriggerStatus(
-  template: LibraryAgentPreset,
-): "active" | "inactive" | "paused" | "broken" {
-  if (!template.webhook_id || !template.webhook) return "broken";
-  if (template.is_active) return "active";
-  return template.deactivation_reason === "PAYMENT_LAPSED"
-    ? "paused"
-    : "inactive";
-}
-
 export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
-  const status = getTriggerStatus(template);
+  const status = getWebhookTriggerStatus(template);
   const webhook = template.webhook;
 
   function handleCopyWebhookUrl() {
@@ -88,14 +80,24 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
             </div>
           </div>
         ) : (
-          <Text variant="body" className="text-muted-foreground">
-            This agent trigger is{" "}
-            {template.is_active
-              ? "ready. When a trigger is received, it will run with the provided settings."
-              : status === "paused"
-                ? "paused because your payment lapsed. It will resume automatically once your subscription is active again."
-                : "disabled. It will not respond to triggers until you enable it."}
-          </Text>
+          <div className="flex flex-col gap-1.5">
+            <Text variant="body" className="text-muted-foreground">
+              This agent trigger is{" "}
+              {template.is_active
+                ? "ready. When a trigger is received, it will run with the provided settings."
+                : status === "paused"
+                  ? "paused because your payment lapsed. It will resume automatically once your subscription is active again."
+                  : "disabled. It will not respond to triggers until you enable it."}
+            </Text>
+            {status === "paused" && (
+              <Link
+                href="/settings/billing"
+                className="text-sm font-medium text-violet-600 hover:underline"
+              >
+                Manage billing
+              </Link>
+            )}
+          </div>
         )}
       </div>
     </RunDetailCard>

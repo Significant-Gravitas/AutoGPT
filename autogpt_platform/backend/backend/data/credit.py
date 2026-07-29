@@ -22,10 +22,6 @@ from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereI
 from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
-from backend.data.automation_pause import (
-    pause_automations_for_payment_lapse,
-    resume_automations_after_payment_restored,
-)
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
@@ -1539,7 +1535,18 @@ async def set_subscription_tier(
         user_id,
         tier.value,
     )
-    previous_tier = SubscriptionTier(rows[0]["previous_tier"]) if rows else None
+    # The RETURNING value is a raw enum string (raw SQL bypasses Prisma's typed
+    # decoding), so guard against a null/legacy value rather than raising
+    # ValueError inside the Stripe webhook path.
+    previous_tier: SubscriptionTier | None = None
+    if rows and rows[0].get("previous_tier"):
+        try:
+            previous_tier = SubscriptionTier(rows[0]["previous_tier"])
+        except ValueError:
+            logger.warning(
+                f"Unrecognized previous subscription tier "
+                f"{rows[0]['previous_tier']!r} for user {user_id}"
+            )
     get_user_by_id.cache_delete(user_id)
     await _handle_tier_transition_automations(user_id, previous_tier, tier)
     # Also invalidate the rate-limit tier cache so CoPilot picks up the new
@@ -1565,12 +1572,32 @@ async def _handle_tier_transition_automations(
     Never raises: a failure here must not fail the Stripe webhook whose tier
     update triggered it (a 500 would make Stripe retry the billing event).
     """
-    if previous_tier is None or previous_tier == new_tier:
+    if previous_tier is None:
         return
+    # Local import avoids a circular import at module load: automation_pause
+    # transitively pulls in notifications/scheduler/settings.
+    from backend.data.automation_pause import (
+        has_payment_lapsed_automations,
+        pause_automations_for_payment_lapse,
+        resume_automations_after_payment_restored,
+    )
+
     try:
         if new_tier == SubscriptionTier.NO_TIER:
-            await pause_automations_for_payment_lapse(user_id)
-        elif previous_tier == SubscriptionTier.NO_TIER:
+            # Pause only on a real lapse. A same-tier NO_TIER retry isn't
+            # reconciled here: without a persisted pending marker a never-paid
+            # free user is indistinguishable from a lapsed user whose pause
+            # partially failed (tracked as a follow-up).
+            if previous_tier != new_tier:
+                await pause_automations_for_payment_lapse(user_id)
+        elif (
+            previous_tier == SubscriptionTier.NO_TIER
+            or await has_payment_lapsed_automations(user_id)
+        ):
+            # Resume on restore, and self-heal a resume that partially failed on
+            # a prior restore: a same-tier paid webhook retry re-attempts while
+            # any payment-lapsed automations remain. Resume only touches
+            # PAYMENT_LAPSED-marked rows, so this is idempotent.
             await resume_automations_after_payment_restored(user_id)
     except Exception as e:
         # Edge-triggered: a missed pause/resume won't retry on its own, so page

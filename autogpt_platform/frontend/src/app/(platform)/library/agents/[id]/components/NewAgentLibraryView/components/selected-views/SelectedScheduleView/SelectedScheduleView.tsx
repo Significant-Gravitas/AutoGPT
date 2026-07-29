@@ -4,7 +4,12 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import {
+  getSchedulePausedLabel,
+  SCHEDULE_PAYMENT_LAPSED_REASON,
+} from "@/lib/automations/paused";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import Link from "next/link";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
@@ -127,13 +132,23 @@ export function SelectedScheduleView({
                     <div className="flex flex-col gap-1.5">
                       <Text variant="large-medium">Next run</Text>
                       {schedule.is_paused || !schedule.next_run_time ? (
-                        <Text variant="body" className="text-amber-700">
-                          {!schedule.is_paused
-                            ? "Pending"
-                            : schedule.paused_reason === "payment_lapsed"
-                              ? "Paused — payment required"
-                              : "Paused"}
-                        </Text>
+                        <div className="flex flex-col gap-1.5">
+                          <Text variant="body" className="text-amber-700">
+                            {schedule.is_paused
+                              ? getSchedulePausedLabel(schedule.paused_reason)
+                              : "Pending"}
+                          </Text>
+                          {schedule.is_paused &&
+                            schedule.paused_reason ===
+                              SCHEDULE_PAYMENT_LAPSED_REASON && (
+                              <Link
+                                href="/settings/billing"
+                                className="text-sm font-medium text-violet-600 hover:underline"
+                              >
+                                Manage billing
+                              </Link>
+                            )}
+                        </div>
                       ) : (
                         <Text
                           variant="body"

@@ -52,6 +52,10 @@ async def test_set_subscription_tier_updates_db():
             new=AsyncMock(return_value=[{"previous_tier": "PRO"}]),
         ) as mock_query,
         patch("backend.data.credit.get_user_by_id"),
+        patch(
+            "backend.data.automation_pause.has_payment_lapsed_automations",
+            new=AsyncMock(return_value=False),
+        ),
     ):
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
         query_args = mock_query.await_args.args
@@ -67,6 +71,10 @@ async def test_set_subscription_tier_downgrade():
             new=AsyncMock(return_value=[{"previous_tier": "PRO"}]),
         ),
         patch("backend.data.credit.get_user_by_id"),
+        patch(
+            "backend.data.automation_pause.has_payment_lapsed_automations",
+            new=AsyncMock(return_value=False),
+        ),
     ):
         # Downgrade to BASIC should not raise
         await set_subscription_tier("user-1", SubscriptionTier.BASIC)
@@ -81,7 +89,7 @@ async def test_set_subscription_tier_pauses_automations_on_lapse():
         ),
         patch("backend.data.credit.get_user_by_id"),
         patch(
-            "backend.data.credit.pause_automations_for_payment_lapse",
+            "backend.data.automation_pause.pause_automations_for_payment_lapse",
             new=AsyncMock(),
         ) as mock_pause,
     ):

@@ -127,6 +127,25 @@ async def resume_automations_after_payment_restored(
     return summary
 
 
+async def has_payment_lapsed_automations(user_id: str) -> bool:
+    """Cheap indexed check for presets still deactivated by a payment lapse.
+
+    Lets the tier-transition hook self-heal a partially-failed resume on a
+    same-tier paid retry without paying for the scheduler scan on every paid
+    webhook where nothing is marked. Schedule-only stranded pauses aren't
+    covered here — full recovery of those needs a persisted pending marker.
+    """
+    count = await AgentPreset.prisma().count(
+        where={
+            "userId": user_id,
+            "isActive": False,
+            "isDeleted": False,
+            "deactivationReason": PresetDeactivationReason.PAYMENT_LAPSED,
+        }
+    )
+    return count > 0
+
+
 async def _get_personal_org_id(user_id: str) -> str | None:
     # Mirrors orgs.db._find_personal_org_member without the bootstrap side
     # effect — a billing event must not create orgs.

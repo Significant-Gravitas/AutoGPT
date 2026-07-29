@@ -7,6 +7,7 @@ from prisma.enums import NotificationType, PresetDeactivationReason
 
 from backend.data.automation_pause import (
     SCHEDULE_PAUSE_REASON_PAYMENT_LAPSED,
+    has_payment_lapsed_automations,
     pause_automations_for_payment_lapse,
     resume_automations_after_payment_restored,
 )
@@ -139,6 +140,18 @@ async def test_resume_only_touches_payment_lapsed_automations():
     assert event.type == NotificationType.AUTOMATIONS_RESUMED
     assert event.data.resumed_schedules == 1
     assert event.data.resumed_triggers == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count,expected", [(2, True), (0, False)])
+async def test_has_payment_lapsed_automations(count, expected):
+    preset_prisma = MagicMock()
+    preset_prisma.return_value.count = AsyncMock(return_value=count)
+    with patch("prisma.models.AgentPreset.prisma", preset_prisma):
+        assert await has_payment_lapsed_automations("user-1") is expected
+    where = preset_prisma.return_value.count.call_args.kwargs["where"]
+    assert where["deactivationReason"] == PresetDeactivationReason.PAYMENT_LAPSED
+    assert where["userId"] == "user-1"
 
 
 @pytest.mark.asyncio
