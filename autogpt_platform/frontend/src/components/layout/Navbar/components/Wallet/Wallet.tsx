@@ -9,7 +9,6 @@ import { Text } from "@/components/atoms/Text/Text";
 import { TopUpDialog } from "@/components/layout/TopUpPrompt/TopUpDialog/TopUpDialog";
 import { cn } from "@/lib/utils";
 import { WalletIcon } from "@phosphor-icons/react";
-import { useState } from "react";
 
 import { WalletCompactPanel } from "./components/WalletCompactPanel";
 import { WalletFullPanel } from "./components/WalletFullPanel";
@@ -32,13 +31,10 @@ export function Wallet({ compact = false }: Props) {
     walletRef,
     completedCount,
     totalCount,
+    topUpOpen,
+    onAddCredits,
+    onTopUpClose,
   } = useWallet();
-  const [topUpOpen, setTopUpOpen] = useState(false);
-
-  function handleAddCredits() {
-    setWalletOpen(false);
-    setTopUpOpen(true);
-  }
 
   // Do not render until we have both credits and onboarding data
   if (credits === null || !state) return null;
@@ -114,7 +110,7 @@ export function Wallet({ compact = false }: Props) {
               groups={groups}
               completedSteps={state.completedSteps}
               formattedCredits={formatCredits(credits)}
-              onAddCredits={handleAddCredits}
+              onAddCredits={onAddCredits}
             />
           ) : (
             <WalletFullPanel
@@ -127,7 +123,7 @@ export function Wallet({ compact = false }: Props) {
       {compact && (
         <TopUpDialog
           isOpen={topUpOpen}
-          onClose={() => setTopUpOpen(false)}
+          onClose={onTopUpClose}
           variant="add-credits"
         />
       )}
