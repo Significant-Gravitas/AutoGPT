@@ -5398,6 +5398,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Expert template not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5454,6 +5455,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Expert not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5489,6 +5491,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Expert not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5536,6 +5539,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Expert not found" },
           "422": {
             "description": "Validation Error",
             "content": {

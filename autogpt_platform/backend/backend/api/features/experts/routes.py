@@ -27,7 +27,11 @@ async def list_expert_templates() -> list[Expert]:
     return await experts_db.list_templates()
 
 
-@router.post("", operation_id="hire_expert")
+@router.post(
+    "",
+    operation_id="hire_expert",
+    responses={404: {"description": "Expert template not found"}},
+)
 async def hire_expert(
     request: HireRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
@@ -45,7 +49,11 @@ async def list_experts(
     return await experts_db.list_experts(user_id)
 
 
-@router.get("/{expert_id}", operation_id="get_expert")
+@router.get(
+    "/{expert_id}",
+    operation_id="get_expert",
+    responses={404: {"description": "Expert not found"}},
+)
 async def get_expert(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
@@ -56,7 +64,11 @@ async def get_expert(
     return expert
 
 
-@router.post("/{expert_id}/workflows", operation_id="install_expert_workflow")
+@router.post(
+    "/{expert_id}/workflows",
+    operation_id="install_expert_workflow",
+    responses={404: {"description": "Expert not found"}},
+)
 async def install_expert_workflow(
     expert_id: str,
     request: InstallWorkflowRequest,
@@ -70,7 +82,12 @@ async def install_expert_workflow(
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
-@router.delete("/{expert_id}", operation_id="archive_expert", status_code=204)
+@router.delete(
+    "/{expert_id}",
+    operation_id="archive_expert",
+    status_code=204,
+    responses={404: {"description": "Expert not found"}},
+)
 async def archive_expert(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
