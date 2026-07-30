@@ -2033,3 +2033,36 @@ async def test_union_object_string_dict_skips_inner_expansion():
             input_schema=schema,
         )
     assert result["agent_json"] is agent
+
+
+@pytest.mark.asyncio
+async def test_union_object_string_dict_with_properties_skips_inner_expansion():
+    """Same contract when the slot schema declares decoder-guiding
+    ``properties`` (the structured AGENT_JSON_SCHEMA shape): an inline graph
+    dict passes through untouched, so @@agptfile tokens inside metadata
+    strings like name/description are never expanded or raised on."""
+    from backend.copilot.tools.agent_json_input import AGENT_JSON_SCHEMA
+
+    schema = {
+        "type": "object",
+        "properties": {"agent_json": AGENT_JSON_SCHEMA},
+        "required": [],
+    }
+    agent = {
+        "name": "Uses @@agptfile:/x.json in its name",
+        "description": "@@agptfile:workspace:///notes.md",
+        "nodes": [{"id": "n1", "input_default": {"prompt": "@@agptfile:/x.json"}}],
+        "links": [],
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not be called")),
+    ):
+        result = await expand_file_refs_in_args(
+            {"agent_json": agent},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert result["agent_json"] is agent

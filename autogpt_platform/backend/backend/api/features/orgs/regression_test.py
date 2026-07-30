@@ -151,6 +151,7 @@ def _make_chat_session_row(
     m.Messages = []
     m.organizationId = None
     m.teamId = None
+    m.expertId = None
     return m
 
 
