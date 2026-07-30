@@ -35,10 +35,9 @@ class TestStartChatTurn:
         # Bot-originated chats resolve the owner's default org/team so the
         # ChatSession is created with tenancy context. Tests don't seed
         # OrgMember rows, so stub the lookup to return None tuples.
-        with patch(
-            "backend.platform_linking.chat.get_user_default_team",
-            new=AsyncMock(return_value=(None, None)),
-        ):
+        orgs = MagicMock()
+        orgs.get_user_default_team = AsyncMock(return_value=(None, None))
+        with patch("backend.platform_linking.chat.orgs_db", return_value=orgs):
             yield
 
     @pytest.fixture(autouse=True)
@@ -444,8 +443,10 @@ class TestEnsureChatSession:
         with (
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
             patch(
-                "backend.platform_linking.chat.get_user_default_team",
-                new=AsyncMock(return_value=("org-1", "team-1")),
+                "backend.platform_linking.chat.orgs_db",
+                return_value=MagicMock(
+                    get_user_default_team=AsyncMock(return_value=("org-1", "team-1"))
+                ),
             ),
             patch(
                 "backend.platform_linking.chat.create_chat_session",

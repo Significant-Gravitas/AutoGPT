@@ -1623,6 +1623,7 @@ class TestMigrationSlugEdgeCases:
             return_value=MagicMock(id="org-new")
         )
         self.prisma.orgmember.create = AsyncMock()
+        self.prisma.orgmember.find_first = AsyncMock(return_value=None)
         self.prisma.team.create = AsyncMock(return_value=MagicMock(id="ws-new"))
         self.prisma.teammember.create = AsyncMock()
         self.prisma.organizationprofile.create = AsyncMock()
@@ -1630,6 +1631,17 @@ class TestMigrationSlugEdgeCases:
         self.prisma.query_raw = AsyncMock(return_value=[])
         self.prisma.execute_raw = AsyncMock(return_value=0)
         mocker.patch("backend.data.org_migration.prisma", self.prisma)
+
+        prisma_mock = self.prisma
+
+        class _TxCM:
+            async def __aenter__(self):
+                return prisma_mock
+
+            async def __aexit__(self, *exc):
+                return False
+
+        mocker.patch("backend.data.org_migration.transaction", lambda *a, **k: _TxCM())
 
     @pytest.mark.asyncio
     async def test_user_with_name_but_no_profile_uses_name_slug(self):
@@ -2910,3 +2922,22 @@ class TestPersonalOrgBootstrapOnDemand:
 
         assert org_id == "org-from-winner"
         self.create_org.assert_not_called()
+
+
+class TestCanonicalPersonalOrgOrdering:
+    """The personal-org lookup must agree with auth's oldest-first rule so
+    every path resolves the same canonical org when a user briefly has more
+    than one."""
+
+    @pytest.mark.asyncio
+    async def test_find_personal_org_member_is_ordered_oldest_first(self, mocker):
+        from backend.api.features.orgs.db import _find_personal_org_member
+
+        prisma = MagicMock()
+        prisma.orgmember.find_first = AsyncMock(return_value=None)
+        mocker.patch("backend.api.features.orgs.db.prisma", prisma)
+
+        await _find_personal_org_member("user-1")
+
+        order = prisma.orgmember.find_first.call_args.kwargs["order"]
+        assert order == {"createdAt": "asc"}

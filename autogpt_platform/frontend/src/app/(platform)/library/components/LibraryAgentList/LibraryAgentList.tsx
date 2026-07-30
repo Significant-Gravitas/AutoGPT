@@ -226,7 +226,7 @@ export function LibraryAgentList({
               <AnimatePresence mode="popLayout">
                 <motion.div
                   key={`${activeTab}-${selectedFolderId || "all"}`}
-                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                  className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(21rem,1fr))]"
                   variants={activeContainerVariants}
                   initial="hidden"
                   animate="show"

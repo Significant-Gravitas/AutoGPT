@@ -6,6 +6,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import {
@@ -16,7 +17,14 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ArrowUpIcon } from "@phosphor-icons/react";
-import { ChangeEvent, KeyboardEvent, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  ClipboardEvent,
+  KeyboardEvent,
+  ReactNode,
+  useEffect,
+  useState,
+} from "react";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import {
   type Attachment,
@@ -24,8 +32,7 @@ import {
   partitionAttachments,
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
-import { AttachmentMenu } from "./components/AttachmentMenu";
-import { BlockCaret } from "./components/BlockCaret";
+import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
@@ -35,6 +42,7 @@ import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
+import { getFilesFromClipboard } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
 import { useVoiceRecording } from "./useVoiceRecording";
@@ -60,6 +68,8 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  /** Recipient picker chip rendered before the mode chips (new-task state). */
+  recipientPicker?: ReactNode;
 }
 
 export function ChatInput({
@@ -75,9 +85,11 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  recipientPicker,
 }: Props) {
   const {
     copilotChatMode,
+    copilotModePinned,
     setCopilotChatMode,
     copilotLlmModel,
     setCopilotLlmModel,
@@ -91,6 +103,14 @@ export function ChatInput({
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   function handleToggleMode() {
+    if (copilotModePinned) {
+      toast({
+        title: "Mode is locked while building an agent",
+        description:
+          "This session switched to Extended Thinking for agent building — building sessions stay on that engine.",
+      });
+      return;
+    }
     const next =
       copilotChatMode === "extended_thinking" ? "fast" : "extended_thinking";
     setCopilotChatMode(next);
@@ -209,6 +229,14 @@ export function ChatInput({
     voiceHandleKeyDown(e);
   }
 
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    if (isBusy) return;
+    const files = getFilesFromClipboard(e.clipboardData);
+    if (files.length === 0) return;
+    e.preventDefault();
+    handleFilesSelected(files);
+  }
+
   const resolvedPlaceholder = isRecording
     ? ""
     : isTranscribing
@@ -220,6 +248,12 @@ export function ChatInput({
     (!!value.trim() || hasAttachments) &&
     !isRecording &&
     !isTranscribing;
+
+  function handleClearGuidedPrompt() {
+    // Only discard untouched guided prompts — never a draft the user typed
+    // or edited themselves.
+    if (isGuidedPrompt(value)) setValue("");
+  }
 
   function handleFilesSelected(newFiles: File[]) {
     setAttachments((prev) => [
@@ -261,8 +295,9 @@ export function ChatInput({
       <InputGroup
         className={cn(
           "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_36px_-4px_rgba(99,102,241,0.45)]",
           isRecording &&
-            "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
+            "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
         <FileChips
@@ -277,12 +312,11 @@ export function ChatInput({
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onBlur={mentions.close}
             disabled={isInputDisabled}
             placeholder={resolvedPlaceholder}
-            className="caret-transparent placeholder:indent-3"
           />
-          <BlockCaret textareaId={inputId} />
           {isRecording && !value && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <RecordingIndicator
@@ -299,12 +333,13 @@ export function ChatInput({
 
         <PromptInputFooter>
           <PromptInputTools>
-            <AttachmentMenu
+            <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
-              showWorkspaceOption={showWorkspaceFiles}
+              onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
             />
+            {recipientPicker}
             {/* Mode and model are per-message settings sent with each stream request,
                 so they can be freely changed between turns in an existing session.
                 Hide only while actively streaming (too late to change for that turn). */}
@@ -312,6 +347,7 @@ export function ChatInput({
               <ModeToggleButton
                 mode={copilotChatMode}
                 onToggle={handleToggleMode}
+                pinned={copilotModePinned}
               />
             )}
             {showModeToggle && !isStreaming && (

@@ -10,8 +10,8 @@ vi.mock("next/navigation", () => ({
 
 // Mock the auth hook — toggle logged-in vs logged-out per test.
 let mockIsLoggedIn = true;
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isLoggedIn: mockIsLoggedIn }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isLoggedIn: mockIsLoggedIn }),
 }));
 
 // Mock the LD flag hook — toggle paid-cohort vs beta-cohort per test.
