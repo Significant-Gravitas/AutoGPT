@@ -1,4 +1,4 @@
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { NextRequest, NextResponse } from "next/server";
 
 const DEFAULT_TRANSCRIPTION_API_BASE_URL = "https://api.openai.com/v1";

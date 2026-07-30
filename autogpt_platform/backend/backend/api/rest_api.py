@@ -25,6 +25,7 @@ import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -345,6 +346,11 @@ app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    auth_email_routes.auth_email_router,
+    prefix="/api/auth/email",
+    tags=["auth-email"],
+)
 app.include_router(
     integrations_router,
     prefix="/api/integrations",

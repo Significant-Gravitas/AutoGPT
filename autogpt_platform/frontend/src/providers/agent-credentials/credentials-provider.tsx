@@ -11,7 +11,7 @@ import {
 import { getGetV1ListCredentialsQueryKey } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { postV2ExchangeOauthCodeForMcpTokens } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useEffect, useState } from "react";
@@ -121,7 +121,7 @@ export default function CredentialsProvider({
   const [systemProviders, setSystemProviders] = useState<Set<string>>(
     new Set(),
   );
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
   const queryClient = useQueryClient();

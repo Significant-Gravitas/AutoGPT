@@ -3,7 +3,7 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -28,7 +28,7 @@ import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
 export function MobileDrawer() {
-  const { isUserLoading, isLoggedIn } = useSupabase();
+  const { isUserLoading, isLoggedIn } = useAuth();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [currentSessionId, setSessionId] = useQueryState(
     "sessionId",

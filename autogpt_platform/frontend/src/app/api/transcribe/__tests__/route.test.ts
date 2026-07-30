@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
-vi.mock("@/lib/autogpt-server-api/helpers", () => ({
+vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
   getServerAuthToken: vi.fn(),
 }));
 
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { POST } from "../route";
 
 function makeAudioRequest(type = "audio/webm"): NextRequest {
