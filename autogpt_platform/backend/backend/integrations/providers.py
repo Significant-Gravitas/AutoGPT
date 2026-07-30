@@ -15,6 +15,7 @@ class ProviderName(str, Enum):
     ANTHROPIC = "anthropic"
     APOLLO = "apollo"
     COMPASS = "compass"
+    DAKERA = "dakera"
     DATABASE = "database"
     DISCORD = "discord"
     D_ID = "d_id"
