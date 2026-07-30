@@ -34,3 +34,18 @@
 
 * [API Introduction](integrating/api-guide.md)
 * [OAuth & SSO](integrating/oauth-guide.md)
+
+## Organizations & Teams
+
+* [Organizations & Teams](organizations/organizations-and-teams.md)
+* [Sharing agents with your team](organizations/sharing-agents.md)
+* [Team credentials](organizations/team-credentials.md)
+* [Shared memory](organizations/shared-memory.md)
+* [Who can see what](organizations/who-can-see-what.md)
+
+## Org Access Model (Reference)
+
+* [Overview & roles](org-access-model.md)
+* [Resources, tenancy & grants](org-access-model-resources.md)
+* [Credentials & memory](org-access-model-credentials-and-memory.md)
+* [Chats & billing](org-access-model-chats-and-billing.md)
