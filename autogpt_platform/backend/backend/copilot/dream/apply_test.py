@@ -77,6 +77,17 @@ def _stub_boundaries(mocker):
         AsyncMock(return_value=mocker.MagicMock(session_id="s1")),
     )
     mocker.patch("backend.copilot.db.add_chat_message", AsyncMock(return_value=None))
+    # _create_dream_session's tenant lookup. Unmocked it runs REAL Prisma
+    # queries on this test's function-scoped event loop whenever an earlier
+    # test already connected Prisma (its except swallows the failure when
+    # not connected, so the leak is invisible locally). Those connections
+    # stay in the shared Prisma httpx pool bound to a dead loop and the
+    # next session-loop test touching Prisma dies with "Event loop is
+    # closed" (test_chatsession_redis_storage in CI).
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=(None, None)),
+    )
     # Entity invalidation is gated on DREAM_PASS_INVALIDATE_ENTITY. Default
     # the flag ON so the existing entity tests exercise the apply path; the
     # flag-off behavior has its own dedicated test below.

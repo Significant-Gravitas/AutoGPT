@@ -9,6 +9,20 @@ import pytest
 
 from . import ingest
 
+
+@pytest.fixture(autouse=True)
+def _stub_dream_registration(mocker):
+    """_ensure_worker fires ensure_dream_system_scheduled fire-and-forget for
+    every first-seen user. Unmocked it runs a REAL Prisma timezone lookup on
+    this test's function-scoped event loop whenever an earlier test already
+    connected Prisma, leaving a pool connection bound to a dead loop that
+    later kills a session-loop test with "Event loop is closed"."""
+    mocker.patch(
+        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
+        AsyncMock(return_value=None),
+    )
+
+
 # Per-loop state in ingest.py auto-isolates between tests: pytest-asyncio
 # creates a fresh event loop per test function, and the WeakKeyDictionary
 # forgets the previous loop's state when it is GC'd. No manual reset needed.
