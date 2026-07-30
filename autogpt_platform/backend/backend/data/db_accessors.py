@@ -14,6 +14,19 @@ def chat_db():
     return chat_db
 
 
+def experts_db():
+    if db.is_connected():
+        from backend.api.features.experts import experts_db as _experts_db
+
+        experts_db = _experts_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        experts_db = get_database_manager_async_client()
+
+    return experts_db
+
+
 def graph_db():
     if db.is_connected():
         from backend.data import graph as _graph_db

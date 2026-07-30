@@ -499,3 +499,34 @@ class TestGetOrCreateUserPersonalOrg:
                 )
 
         assert "org bootstrap exploded" in str(exc.value)
+
+
+class TestGetAuthUserFlagFields:
+    @pytest.mark.asyncio
+    async def test_returns_flag_fields_for_existing_auth_user(self):
+        created = datetime(2026, 5, 7, 12, 0, 0, tzinfo=timezone.utc)
+        auth_user = MagicMock(role="admin", email="a@b.com", createdAt=created)
+
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            mock_auth_user.prisma.return_value.find_unique = AsyncMock(
+                return_value=auth_user
+            )
+            fields = await user_module.get_auth_user_flag_fields("user-1")
+
+        assert fields is not None
+        assert fields.role == "admin"
+        assert fields.email == "a@b.com"
+        assert fields.created_at == created
+        mock_auth_user.prisma.return_value.find_unique.assert_called_once_with(
+            where={"id": "user-1"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_auth_user_missing(self):
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            mock_auth_user.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            fields = await user_module.get_auth_user_flag_fields("ghost")
+
+        assert fields is None
