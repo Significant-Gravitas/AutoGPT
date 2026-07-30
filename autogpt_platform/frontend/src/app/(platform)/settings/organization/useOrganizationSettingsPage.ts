@@ -4,11 +4,11 @@ import { useGetV2GetOrganizationDetails } from "@/app/api/__generated__/endpoint
 import { useGetV2ListOrganizationMembers } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import type { OrgMemberResponse } from "@/app/api/__generated__/models/orgMemberResponse";
 import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOrgTeamStore } from "@/services/org-team/store";
 
 export function useOrganizationSettingsPage() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const { activeOrgID, isLoaded: isOrgContextLoaded } = useOrgTeamStore();
 
   const orgQuery = useGetV2GetOrganizationDetails(activeOrgID ?? "", {
