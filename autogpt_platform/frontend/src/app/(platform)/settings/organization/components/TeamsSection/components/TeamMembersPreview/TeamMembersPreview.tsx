@@ -4,6 +4,7 @@ import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 import Avatar, { AvatarFallback } from "@/components/atoms/Avatar/Avatar";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -13,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { DotsThree } from "@phosphor-icons/react";
+import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 
 import { useTeamMembersPreview } from "./useTeamMembersPreview";
 
@@ -128,7 +129,7 @@ export function TeamMembersPreview({
                         aria-label={`Member actions for ${member.name || member.email}`}
                         data-testid="team-member-actions-button"
                       >
-                        <DotsThree className="h-5 w-5" />
+                        <Icon icon={MoreHorizontalIcon} className="h-5 w-5" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">

@@ -3,6 +3,7 @@
 import type { OrgMemberResponse } from "@/app/api/__generated__/models/orgMemberResponse";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
@@ -11,7 +12,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { CaretDownIcon, DotsThree, PlusIcon } from "@phosphor-icons/react";
+import {
+  ArrowDown01Icon,
+  MoreHorizontalIcon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
 
 import { cn } from "@/lib/utils";
 
@@ -67,7 +72,7 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
             onClick={() => setIsCreateOpen(true)}
             data-testid="create-team-button"
           >
-            <PlusIcon size={14} />
+            <Icon icon={PlusSignIcon} size={14} />
             New team
           </Button>
         ) : null}
@@ -101,7 +106,8 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                     className="flex min-w-0 flex-1 items-center gap-2 rounded text-left transition-colors hover:opacity-80"
                     data-testid="team-expand-button"
                   >
-                    <CaretDownIcon
+                    <Icon
+                      icon={ArrowDown01Icon}
                       className={cn(
                         "h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200",
                         isMembersOpen && "rotate-180",
@@ -129,7 +135,7 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                         aria-label={`Team actions for ${team.name}`}
                         data-testid="team-actions-button"
                       >
-                        <DotsThree className="h-5 w-5" />
+                        <Icon icon={MoreHorizontalIcon} className="h-5 w-5" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
