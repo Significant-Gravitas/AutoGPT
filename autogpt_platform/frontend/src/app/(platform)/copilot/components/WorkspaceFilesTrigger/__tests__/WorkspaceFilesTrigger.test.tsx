@@ -1,10 +1,19 @@
 import { render, screen, fireEvent } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { useGetFlagMock, toggleContextPanelMock } = vi.hoisted(() => ({
-  useGetFlagMock: vi.fn(() => true),
-  toggleContextPanelMock: vi.fn(),
-}));
+// Only the artifacts flag resolves — querying any other flag returns undefined,
+// so the trigger disappears and the assertions below fail loudly.
+const { artifactsEnabledMock, useGetFlagMock, toggleContextPanelMock } =
+  vi.hoisted(() => {
+    const artifactsEnabledMock = { current: true };
+    return {
+      artifactsEnabledMock,
+      useGetFlagMock: vi.fn((flag: string) =>
+        flag === "artifacts" ? artifactsEnabledMock.current : undefined,
+      ),
+      toggleContextPanelMock: vi.fn(),
+    };
+  });
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -19,12 +28,20 @@ vi.mock("../../../store", () => ({
     selector({ toggleContextPanel: toggleContextPanelMock }),
 }));
 
+import { Flag } from "@/services/feature-flags/use-get-flag";
 import { WorkspaceFilesTrigger } from "../WorkspaceFilesTrigger";
 
 describe("WorkspaceFilesTrigger", () => {
   beforeEach(() => {
     toggleContextPanelMock.mockClear();
-    useGetFlagMock.mockReturnValue(true);
+    useGetFlagMock.mockClear();
+    artifactsEnabledMock.current = true;
+  });
+
+  it("gates on the artifacts flag specifically", () => {
+    render(<WorkspaceFilesTrigger />);
+
+    expect(useGetFlagMock).toHaveBeenCalledWith(Flag.ARTIFACTS);
   });
 
   it("toggles the context panel when clicked", () => {
@@ -38,7 +55,7 @@ describe("WorkspaceFilesTrigger", () => {
   });
 
   it("renders nothing when the artifacts flag is off", () => {
-    useGetFlagMock.mockReturnValue(false);
+    artifactsEnabledMock.current = false;
 
     render(<WorkspaceFilesTrigger />);
 
