@@ -851,3 +851,276 @@ class TestWebhookPingOwnership:
         assert resp.status_code == 200
         assert resp.json() is True
         webhook_manager.trigger_ping.assert_awaited_once()
+
+
+ROUTER = "backend.api.features.integrations.router"
+
+
+def _team_member(
+    *,
+    is_admin: bool = True,
+    member_status: str = "ACTIVE",
+    org_id: str = "org-1",
+    archived=None,
+):
+    """Mock a Prisma TeamMember row (with its Team relation) for authz checks."""
+    member = MagicMock()
+    member.status = member_status
+    member.isAdmin = is_admin
+    member.Team = MagicMock()
+    member.Team.orgId = org_id
+    member.Team.archivedAt = archived
+    return member
+
+
+class TestCreateTeamCredential:
+    """POST /{provider}/credentials?team_id=... creates a TEAM-owned credential.
+
+    Authorization: team admins only (TeamAction.MANAGE_CREDENTIALS). The row
+    written must match exactly what the scoped read path resolves on.
+    """
+
+    def test_team_admin_creates_team_credential_with_expected_row_shape(
+        self, test_user_id
+    ):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(org_id="org-1")
+            )
+            mock_scoped.create_credential = AsyncMock(return_value={"id": "row-uuid-1"})
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 201
+        data = resp.json()
+        # The DB row id (not the client-supplied id) is reflected back.
+        assert data["id"] == "row-uuid-1"
+        assert data["provider"] == "openai"
+        assert data["type"] == "api_key"
+        assert "sk-secret-key-value" not in str(data)
+
+        # Row shape must match the TEAM branch of the read path exactly:
+        # ownerType=TEAM, ownerId=teamId, teamId set, org = the team's org.
+        kwargs = mock_scoped.create_credential.await_args.kwargs
+        assert kwargs["owner_type"] == "TEAM"
+        assert kwargs["owner_id"] == "team-a"
+        assert kwargs["team_id"] == "team-a"
+        assert kwargs["organization_id"] == "org-1"
+        assert kwargs["provider"] == "openai"
+        assert kwargs["credential_type"] == "api_key"
+        assert kwargs["user_id"] == test_user_id
+        # Secret round-trips into the encrypted payload as plaintext (the
+        # store encrypts it; CREDENTIALS_ADAPTER reconstructs on read).
+        assert kwargs["payload"]["api_key"] == "sk-secret-key-value"
+
+    def test_team_credential_store_failure_maps_to_500(self):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(org_id="org-1")
+            )
+            mock_scoped.create_credential = AsyncMock(
+                side_effect=RuntimeError("db down")
+            )
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 500
+        assert "sk-secret-key-value" not in str(resp.json())
+
+    def test_non_admin_member_cannot_create_team_credential(self):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(is_admin=False)
+            )
+            mock_scoped.create_credential = AsyncMock()
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 403
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_inactive_admin_cannot_create_team_credential(self):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(member_status="INACTIVE")
+            )
+            mock_scoped.create_credential = AsyncMock()
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 403
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_team_outside_callers_org_is_not_found(self):
+        """A team the caller isn't a member of — including any team in another
+        org — has no membership row, so it 404s (cross-org ids can't be probed)."""
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(return_value=None)
+            mock_scoped.create_credential = AsyncMock()
+            resp = client.post(
+                "/openai/credentials?team_id=team-other-org", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 404
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_archived_team_is_not_found(self):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(archived="2020-01-01T00:00:00Z")
+            )
+            mock_scoped.create_credential = AsyncMock()
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 404
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_personal_credential_path_unchanged_when_no_team_id(self):
+        """Regression: without team_id, creation still uses the legacy per-user
+        store and never touches the team authz path or scoped store."""
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.creds_manager") as mock_mgr,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+        ):
+            mock_mgr.create = AsyncMock()
+            resp = client.post("/openai/credentials", json=cred.model_dump())
+
+        assert resp.status_code == 201
+        mock_mgr.create.assert_awaited_once()
+        mock_scoped.create_credential.assert_not_called()
+        mock_prisma.teammember.find_unique.assert_not_called()
+
+
+class TestListTeamCredentials:
+    """GET /teams/{team_id}/credentials lists TEAM creds (metadata only)."""
+
+    def test_active_member_lists_team_credentials(self):
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(is_admin=False, org_id="org-1")
+            )
+            mock_scoped.list_team_credentials = AsyncMock(
+                return_value=[
+                    {
+                        "id": "row-1",
+                        "provider": "openai",
+                        "credentialType": "api_key",
+                        "displayName": "Team Key",
+                        "scope": "TEAM",
+                        "createdByUserId": "u",
+                        "lastUsedAt": None,
+                        "expiresAt": None,
+                        "createdAt": None,
+                    }
+                ]
+            )
+            resp = client.get("/teams/team-a/credentials")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data[0]["id"] == "row-1"
+        assert data[0]["type"] == "api_key"
+        assert data[0]["title"] == "Team Key"
+        assert data[0]["provider"] == "openai"
+        mock_scoped.list_team_credentials.assert_awaited_once_with("org-1", "team-a")
+
+    def test_non_member_cannot_list_team_credentials(self):
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(return_value=None)
+            mock_scoped.list_team_credentials = AsyncMock()
+            resp = client.get("/teams/team-a/credentials")
+
+        assert resp.status_code == 404
+        mock_scoped.list_team_credentials.assert_not_called()
+
+
+class TestDeleteTeamCredential:
+    """DELETE /teams/{team_id}/credentials/{cred_id} — team admins only."""
+
+    def test_team_admin_deletes_team_credential(self):
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(org_id="org-1")
+            )
+            mock_scoped.delete_team_credential = AsyncMock()
+            resp = client.delete("/teams/team-a/credentials/row-uuid-1")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["deleted"] is True
+        assert body["revoked"] is None
+        mock_scoped.delete_team_credential.assert_awaited_once_with(
+            "row-uuid-1", "team-a", "org-1"
+        )
+
+    def test_non_admin_cannot_delete_team_credential(self):
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(is_admin=False)
+            )
+            mock_scoped.delete_team_credential = AsyncMock()
+            resp = client.delete("/teams/team-a/credentials/row-uuid-1")
+
+        assert resp.status_code == 403
+        mock_scoped.delete_team_credential.assert_not_called()
+
+    def test_deleting_unknown_team_credential_returns_404(self):
+        """The store raises ValueError for a cred that isn't TEAM-owned by this
+        team/org (incl. another team's cred) — surfaced as a 404."""
+        with (
+            patch(f"{ROUTER}.prisma") as mock_prisma,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_prisma.teammember.find_unique = AsyncMock(
+                return_value=_team_member(org_id="org-1")
+            )
+            mock_scoped.delete_team_credential = AsyncMock(
+                side_effect=ValueError("not found")
+            )
+            resp = client.delete("/teams/team-a/credentials/other-teams-cred")
+
+        assert resp.status_code == 404

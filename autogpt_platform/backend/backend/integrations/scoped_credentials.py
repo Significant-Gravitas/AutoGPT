@@ -11,13 +11,25 @@ reads from the User.integrations encrypted blob.
 
 import logging
 from typing import Optional
+from uuid import uuid4
 
 from backend.data.db import prisma
 from backend.util.encryption import JSONCryptor
 
 logger = logging.getLogger(__name__)
 
-_cryptor = JSONCryptor()
+_cryptor: JSONCryptor | None = None
+
+
+def _get_cryptor() -> JSONCryptor:
+    """Lazy singleton — instantiating JSONCryptor at import time makes every
+    importer of this module (the integrations router, and transitively the
+    whole app) require ENCRYPTION_KEY, which breaks key-less contexts like the
+    CI OpenAPI export."""
+    global _cryptor
+    if _cryptor is None:
+        _cryptor = JSONCryptor()
+    return _cryptor
 
 
 async def get_scoped_credentials(
@@ -119,31 +131,53 @@ async def get_credential_by_id(
 
     result = _cred_to_metadata(cred, scope=cred.ownerType)
     if decrypt:
-        result["payload"] = _cryptor.decrypt(cred.encryptedPayload)
+        result["payload"] = _get_cryptor().decrypt(cred.encryptedPayload)
 
     return result
 
 
 async def create_credential(
     organization_id: str,
-    owner_type: str,  # USER, WORKSPACE, ORG
-    owner_id: str,  # userId, workspaceId, or orgId
+    owner_type: str,  # USER, TEAM, ORG
+    owner_id: str,  # userId, teamId, or orgId
     provider: str,
     credential_type: str,
     display_name: str,
     payload: dict,
     user_id: str,
+    team_id: str | None = None,
     expires_at=None,
     metadata: dict | None = None,
 ) -> dict:
-    """Create a new scoped credential."""
-    encrypted = _cryptor.encrypt(payload)
+    """Create a new scoped credential.
+
+    For TEAM-owned credentials, pass ``owner_type="TEAM"``, ``owner_id=<teamId>``
+    and ``team_id=<teamId>`` so the dedicated ``teamId`` FK is populated (this
+    gives ``onDelete: Cascade`` cleanup when the team is deleted). The read
+    path (:func:`get_scoped_credentials` / :func:`get_credential_by_id`)
+    resolves TEAM rows by ``ownerType="TEAM"`` + ``ownerId=<teamId>`` +
+    ``organizationId``, so those three fields are the load-bearing shape.
+    """
+    if owner_type == "TEAM" and team_id != owner_id:
+        # Enforce the invariant the docstring promises: without the matching
+        # teamId FK, the row loses cascade cleanup and diverges from what the
+        # read path resolves on.
+        raise ValueError("team_id must equal owner_id for TEAM-owned credentials")
+
+    # Generate the id up front so the encrypted payload's id matches the row's
+    # primary key. Otherwise a decrypted read (via CREDENTIALS_ADAPTER) would
+    # surface the client-supplied id from the blob instead of the authoritative
+    # row id, breaking id-based resolution.
+    credential_id = str(uuid4())
+    encrypted = _get_cryptor().encrypt({**payload, "id": credential_id})
 
     cred = await prisma.integrationcredential.create(
         data={
+            "id": credential_id,
             "organizationId": organization_id,
             "ownerType": owner_type,
             "ownerId": owner_id,
+            "teamId": team_id,
             "provider": provider,
             "credentialType": credential_type,
             "displayName": display_name,
@@ -155,6 +189,60 @@ async def create_credential(
     )
 
     return _cred_to_metadata(cred, scope=owner_type)
+
+
+async def list_team_credentials(
+    organization_id: str,
+    team_id: str,
+    provider: str | None = None,
+) -> list[dict]:
+    """List active TEAM-owned credentials for a team (metadata only, no secrets).
+
+    Matches the TEAM branch of :func:`get_scoped_credentials`. Callers MUST
+    have verified the requester's team membership before exposing the result.
+    """
+    where: dict = {
+        "organizationId": organization_id,
+        "ownerType": "TEAM",
+        "ownerId": team_id,
+        "status": "active",
+    }
+    if provider:
+        where["provider"] = provider
+
+    creds = await prisma.integrationcredential.find_many(where=where)
+    return [_cred_to_metadata(c, scope="TEAM") for c in creds]
+
+
+async def delete_team_credential(
+    credential_id: str,
+    team_id: str,
+    organization_id: str,
+) -> None:
+    """Soft-delete a TEAM-owned credential (``status`` -> ``'revoked'``).
+
+    Scoped to a single team: the credential must be TEAM-owned by exactly
+    ``team_id`` within ``organization_id``. This prevents a team admin from
+    revoking a *different* team's credential by ID (cross-team escalation
+    inside a shared org). The caller MUST have verified team-admin
+    authorization for ``team_id`` first.
+
+    Raises:
+        ValueError: If no matching TEAM credential exists for this team/org.
+    """
+    cred = await prisma.integrationcredential.find_unique(where={"id": credential_id})
+    if (
+        cred is None
+        or cred.organizationId != organization_id
+        or cred.ownerType != "TEAM"
+        or cred.ownerId != team_id
+    ):
+        raise ValueError(f"Credential {credential_id} not found")
+
+    await prisma.integrationcredential.update(
+        where={"id": credential_id},
+        data={"status": "revoked"},
+    )
 
 
 async def delete_credential(
