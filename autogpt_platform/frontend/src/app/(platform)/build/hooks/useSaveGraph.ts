@@ -10,6 +10,8 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { Graph } from "@/app/api/__generated__/models/graph";
+import { UpdateGraphResponse } from "@/app/api/__generated__/models/updateGraphResponse";
+import { notifySkippedWebhookPresets } from "../helpers/skippedWebhookPresets";
 import { useNodeStore } from "../stores/nodeStore";
 import { useEdgeStore } from "../stores/edgeStore";
 import { graphsEquivalent } from "../components/NewControlPanel/NewSaveControl/helpers";
@@ -101,7 +103,7 @@ export const useSaveGraph = ({
     usePutV1UpdateGraphVersion({
       mutation: {
         onSuccess: async (response) => {
-          const data = response.data as GraphModel;
+          const data = (response.data as UpdateGraphResponse).graph;
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
@@ -162,12 +164,14 @@ export const useSaveGraph = ({
         }
 
         const response = await updateGraph({ graphId: graph.id, data: data });
-        const graphData = response.data as GraphModel;
+        const result = response.data as UpdateGraphResponse;
+        const graphData = result.graph;
         setGraphSchemas(
           graphData.input_schema,
           graphData.credentials_input_schema,
           graphData.output_schema,
         );
+        notifySkippedWebhookPresets(toast, result.skipped_webhook_presets);
         return graphData;
       } else {
         const data: Graph = {
