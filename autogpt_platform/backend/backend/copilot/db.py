@@ -267,6 +267,7 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     metadata: ChatSessionMetadata | None = None,
+    expert_id: str | None = None,
 ) -> ChatSessionInfo:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(
@@ -278,6 +279,7 @@ async def create_chat_session(
         # Tenancy dual-write fields
         **({"organizationId": organization_id} if organization_id else {}),
         **({"teamId": team_id} if team_id else {}),
+        **({"expertId": expert_id} if expert_id else {}),
         metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)
@@ -575,18 +577,23 @@ async def get_user_chat_sessions(
     offset: int = 0,
     organization_id: str | None = None,
     title_contains: str | None = None,
+    expert_id: str | None = None,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
     ``title_contains`` is a case-insensitive substring filter used by
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
+
+    ``expert_id`` restricts the listing to sessions scoped to that expert.
     """
     where: ChatSessionWhereInput = {"userId": user_id}
     if org_scope := _own_org_scope(organization_id):
         where["AND"] = org_scope
     if title_contains:
         where["title"] = {"contains": title_contains, "mode": "insensitive"}
+    if expert_id:
+        where["expertId"] = expert_id
     prisma_sessions = await PrismaChatSession.prisma().find_many(
         where=where,
         order=[{"isPinned": "desc"}, {"updatedAt": "desc"}],
@@ -599,11 +606,14 @@ async def get_user_chat_sessions(
 async def get_user_session_count(
     user_id: str,
     organization_id: str | None = None,
+    expert_id: str | None = None,
 ) -> int:
     """Get the total number of chat sessions for a user."""
     where: ChatSessionWhereInput = {"userId": user_id}
     if org_scope := _own_org_scope(organization_id):
         where["AND"] = org_scope
+    if expert_id:
+        where["expertId"] = expert_id
     return await PrismaChatSession.prisma().count(where=where)
 
 

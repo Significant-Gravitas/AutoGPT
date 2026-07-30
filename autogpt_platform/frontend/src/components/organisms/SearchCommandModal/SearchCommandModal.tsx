@@ -122,6 +122,9 @@ export function SearchCommandModal({
           onKeyDown={handleKeyDown}
         >
           <RXDialog.Title className="sr-only">Search</RXDialog.Title>
+          <RXDialog.Description className="sr-only">
+            Search commands and results.
+          </RXDialog.Description>
           <div className="flex items-center gap-3 bg-zinc-50 p-3">
             <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-zinc-800" />
             <Input
