@@ -25,6 +25,7 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    LibraryAgent,
     SharedExecutionFile,
     UserWorkspace,
     UserWorkspaceFile,
@@ -919,6 +920,26 @@ async def create_graph_execution(
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
+
+    # Advance lastRunAt only forward (using this execution's creation time), so a
+    # delayed older execution can't overwrite a newer run's timestamp.
+    run_time = result.createdAt
+    try:
+        await LibraryAgent.prisma().update_many(
+            where={
+                "agentGraphId": graph_id,
+                "userId": user_id,
+                "OR": [
+                    {"lastRunAt": None},
+                    {"lastRunAt": {"lt": run_time}},
+                ],
+            },
+            data={"lastRunAt": run_time},
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to update LibraryAgent lastRunAt for graph {graph_id}: {e}"
+        )
 
     return GraphExecutionWithNodes.from_db(result)
 

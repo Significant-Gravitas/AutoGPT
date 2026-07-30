@@ -133,6 +133,46 @@ async def test_list_library_agents_is_hidden_filter(
         assert where["isHidden"] is expected_in_where
 
 
+@pytest.mark.asyncio
+async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
+    """Search must match the snapshotted LibraryAgent name/description (shown on
+    the card for downloaded agents) as well as the underlying graph's values."""
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", search_term="Published Title")
+
+    where = mock_find_many.call_args.kwargs["where"]
+    assert {"name": {"contains": "Published Title", "mode": "insensitive"}} in where[
+        "OR"
+    ]
+    assert {
+        "description": {"contains": "Published Title", "mode": "insensitive"}
+    } in where["OR"]
+    assert {
+        "AgentGraph": {
+            "is": {"name": {"contains": "Published Title", "mode": "insensitive"}}
+        }
+    } in where["OR"]
+    assert {
+        "AgentGraph": {
+            "is": {
+                "description": {"contains": "Published Title", "mode": "insensitive"}
+            }
+        }
+    } in where["OR"]
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
     mocker.patch(
