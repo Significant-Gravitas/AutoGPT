@@ -18,14 +18,14 @@ import {
 
 import SettingsPreferencesPage from "../page";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 const testUser = {
@@ -84,11 +84,10 @@ function setupBaseHandlers(
 
 describe("SettingsPreferencesPage", () => {
   beforeEach(() => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: testUser,
       isLoggedIn: true,
       isUserLoading: false,
-      supabase: {},
     });
   });
 

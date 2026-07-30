@@ -21,7 +21,7 @@ import {
   setLastUsedTeam,
 } from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { analytics } from "@/services/analytics";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { PlusIcon } from "@phosphor-icons/react";
@@ -90,7 +90,7 @@ export function AddToLibraryButton({
   className,
   isInLibrary,
 }: Props) {
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const teams = useOrgTeamStore((s) => s.teams);

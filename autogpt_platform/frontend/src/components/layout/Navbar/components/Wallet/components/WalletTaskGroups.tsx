@@ -4,7 +4,7 @@ import { BadgeQuestionMark, Check, ChevronDown } from "lucide-react";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
 import { AGPT_CONFETTI_COLORS } from "@/components/molecules/Confetti/Confetti";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Task, TaskGroup } from "../Wallet";
+import { Task, TaskGroup } from "../helpers";
 
 interface Props {
   groups: TaskGroup[];
