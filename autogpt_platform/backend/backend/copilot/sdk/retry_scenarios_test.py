@@ -981,6 +981,18 @@ def _make_sdk_patches(
             f"{_SVC}.upsert_chat_session",
             dict(new_callable=AsyncMock, return_value=session),
         ),
+        # Unmocked, build_skills_context runs get_or_create_workspace — a
+        # REAL Prisma write — on this test's function-scoped event loop
+        # whenever an earlier test already connected Prisma. That leaves
+        # connections in the shared Prisma httpx pool bound to a dead loop,
+        # and the next session-loop test to touch Prisma dies with
+        # "RuntimeError: Event loop is closed" (seen as
+        # test_chatsession_redis_storage / test_sdk_resume_multi_turn
+        # failing depending on suite timing).
+        (
+            f"{_SVC}.build_skills_context",
+            dict(new_callable=AsyncMock, return_value=""),
+        ),
         (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
         (
             f"{_SVC}.AsyncClusterLock",
