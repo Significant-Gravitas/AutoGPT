@@ -47,6 +47,7 @@ from .response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamModeChanged,
     StreamPendingDrained,
     StreamReasoningDelta,
     StreamReasoningEnd,
@@ -1169,6 +1170,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.STATUS.value: StreamStatus,
         ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
         ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
+        ResponseType.MODE_CHANGED.value: StreamModeChanged,
     }
 
     chunk_type = chunk_data.get("type")

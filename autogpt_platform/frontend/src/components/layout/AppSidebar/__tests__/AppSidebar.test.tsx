@@ -26,6 +26,8 @@ vi.mock("next/link", () => ({
   useLinkStatus: () => ({ pending: false }),
 }));
 
+const useGetFlagMock = vi.hoisted(() => vi.fn(() => false));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -33,7 +35,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: () => false,
+    useGetFlag: () => useGetFlagMock(),
   };
 });
 
@@ -46,6 +48,7 @@ function renderSidebar() {
 }
 
 beforeEach(() => {
+  useGetFlagMock.mockReturnValue(false);
   server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
 });
 
@@ -60,6 +63,14 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
     expect(screen.getByText("Files")).toBeDefined();
+  });
+
+  it("shows Team instead of Agents when the hire-experts flag is on", () => {
+    useGetFlagMock.mockReturnValue(true);
+    renderSidebar();
+    const teamLink = screen.getByRole("link", { name: /team/i });
+    expect(teamLink.getAttribute("href")).toBe("/team");
+    expect(screen.queryByText("Agents")).toBeNull();
   });
 
   it("renders the New Task call-to-action pointing at /copilot", () => {

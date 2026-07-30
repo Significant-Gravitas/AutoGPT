@@ -19,7 +19,13 @@ from backend.data.execution import (
 )
 
 from .base import BaseTool
-from .execution_utils import TERMINAL_STATUSES, wait_for_execution
+from .execution_utils import (
+    TERMINAL_STATUSES,
+    NodeFailureSummary,
+    build_run_health_warning,
+    summarize_node_failures,
+    wait_for_execution,
+)
 from .models import (
     AgentOutputResponse,
     ErrorResponse,
@@ -334,7 +340,9 @@ class AgentOutputTool(BaseTool):
             )
 
         node_executions_data = None
+        node_failures: list[NodeFailureSummary] = []
         if isinstance(execution, GraphExecutionWithNodes):
+            node_failures = summarize_node_failures(execution.node_executions)
             node_executions_data = [
                 {
                     "node_id": ne.node_id,
@@ -356,6 +364,7 @@ class AgentOutputTool(BaseTool):
             outputs=dict(execution.outputs),
             inputs_summary=execution.inputs if execution.inputs else None,
             node_executions=node_executions_data,
+            nodes_failed=node_failures or None,
         )
 
         available_list = None
@@ -372,6 +381,14 @@ class AgentOutputTool(BaseTool):
         # Build appropriate message based on execution status
         if execution.status == ExecutionStatus.COMPLETED:
             message = f"Found execution outputs for agent '{agent.name}'"
+            health_warning = build_run_health_warning(execution.outputs, node_failures)
+            if health_warning:
+                if not isinstance(execution, GraphExecutionWithNodes):
+                    health_warning += (
+                        " Re-call with show_execution_details=true to see the "
+                        "per-node trace."
+                    )
+                message += f". {health_warning}"
         elif execution.status == ExecutionStatus.FAILED:
             message = f"Execution for agent '{agent.name}' failed"
         elif execution.status == ExecutionStatus.TERMINATED:
