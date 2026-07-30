@@ -1,5 +1,5 @@
 import { getSystemHeaders } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import type { UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";

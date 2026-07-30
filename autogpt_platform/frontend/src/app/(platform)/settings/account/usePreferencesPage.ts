@@ -14,7 +14,7 @@ import {
 import type { UpdateTimezoneRequestTimezone } from "@/app/api/__generated__/models/updateTimezoneRequestTimezone";
 import { okData } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 import {
   detectBrowserTimezone,
@@ -41,7 +41,7 @@ const EMPTY_FLAGS: NotificationFlags = {
 };
 
 export function usePreferencesPage() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const preferencesQuery = useGetV1GetNotificationPreferences({
