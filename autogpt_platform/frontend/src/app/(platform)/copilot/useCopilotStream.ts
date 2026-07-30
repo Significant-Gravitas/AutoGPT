@@ -114,6 +114,11 @@ export function useCopilotStream({
   // flipped ``status`` back to ``ready`` yet (which can lag by many seconds
   // when aborting a GET-based resume fetch).
   const [isUserStopping, setIsUserStopping] = useState(false);
+  // True while `handleFinish`'s post-turn active-stream probe is still
+  // deciding whether a continuation turn is starting. Gates the force-hydrate
+  // in `useHydrateOnStreamEnd` so it can't swap message ids (and flash the
+  // whole list) in the window before the reconnect is scheduled.
+  const [isFinishProbing, setIsFinishProbing] = useState(false);
   // Flipped to `false` during mount cleanup so async callbacks that were
   // already in flight (e.g. the post-stream settle in `onFinish`) bail out
   // instead of arming new timers / HTTP requests against a torn-down mount.
@@ -168,15 +173,20 @@ export function useCopilotStream({
         ? FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH
         : FINISH_REFETCH_ATTEMPTS_DEFAULT;
       pendingEngineSwitchRef.current = false;
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
-        if (!isMountedRef.current) return;
-        const result = await refetchSession();
-        if (!isMountedRef.current) return;
-        if (hasActiveBackendStream(result)) {
-          handleReconnectRef.current();
-          return;
+      setIsFinishProbing(true);
+      try {
+        for (let attempt = 0; attempt < attempts; attempt++) {
+          await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
+          if (!isMountedRef.current) return;
+          const result = await refetchSession();
+          if (!isMountedRef.current) return;
+          if (hasActiveBackendStream(result)) {
+            handleReconnectRef.current();
+            return;
+          }
         }
+      } finally {
+        if (isMountedRef.current) setIsFinishProbing(false);
       }
     }
 
@@ -446,6 +456,7 @@ export function useCopilotStream({
     hydratedMessages,
     isReconnectScheduled,
     hasActiveStream,
+    isFinishProbing,
     setMessages,
   });
 

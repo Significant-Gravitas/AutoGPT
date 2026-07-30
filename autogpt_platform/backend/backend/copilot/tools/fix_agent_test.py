@@ -241,7 +241,7 @@ async def test_write_to_returns_file_ref_and_diff(tool, session):
         p2,
         p3,
         patch(
-            "backend.copilot.tools.fix_agent.get_workspace_manager",
+            "backend.copilot.tools.agent_json_input.get_workspace_manager",
             new=AsyncMock(return_value=mock_manager),
         ),
     ):
@@ -296,7 +296,7 @@ async def test_write_to_failure_falls_back_inline(tool, session):
         p2,
         p3,
         patch(
-            "backend.copilot.tools.fix_agent.get_workspace_manager",
+            "backend.copilot.tools.agent_json_input.get_workspace_manager",
             new=AsyncMock(side_effect=RuntimeError("workspace down")),
         ),
     ):
