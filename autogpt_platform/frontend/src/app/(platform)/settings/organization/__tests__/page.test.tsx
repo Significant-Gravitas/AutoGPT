@@ -60,8 +60,12 @@ const OWNER_USER_ID = "user-owner";
 
 const toastSpy = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ user: { id: OWNER_USER_ID } }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: OWNER_USER_ID },
+    isLoggedIn: true,
+    isUserLoading: false,
+  }),
 }));
 
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
