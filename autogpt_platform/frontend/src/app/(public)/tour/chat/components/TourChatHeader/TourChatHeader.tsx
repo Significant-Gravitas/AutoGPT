@@ -21,8 +21,7 @@ export function TourChatHeader({
   return (
     <header className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200/70 bg-white/70 px-3 py-2 backdrop-blur-sm md:px-4">
       <div className="flex min-w-0 items-center gap-1.5">
-        {/* SidebarTrigger drops className, so the responsive hiding lives on
-            a wrapper — on mobile this is the only way to reach the sidebar. */}
+        {/* On mobile this is the only way to reach the sidebar. */}
         <div className="md:hidden">
           <SidebarTrigger />
         </div>

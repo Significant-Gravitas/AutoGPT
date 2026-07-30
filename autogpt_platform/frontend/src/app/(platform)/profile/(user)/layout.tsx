@@ -12,9 +12,11 @@ import {
   UserCircleIcon,
 } from "@phosphor-icons/react";
 import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
+import { useNewSettingsRedirect } from "./useNewSettingsRedirect";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isRedirecting } = useNewSettingsRedirect();
 
   const sidebarLinkGroups = [
     {
@@ -61,6 +63,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       ],
     },
   ];
+
+  // Under the new layout these legacy pages redirect to /settings — render
+  // nothing while the replace() is in flight so the old shell never flashes.
+  if (isRedirecting) return null;
 
   return (
     <div className="flex min-h-screen w-full max-w-[1360px] flex-col lg:flex-row">

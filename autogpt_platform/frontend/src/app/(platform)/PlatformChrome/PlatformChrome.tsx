@@ -3,6 +3,7 @@
 import { CSSProperties, ReactNode } from "react";
 
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
+import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigger/WorkspaceFilesTrigger";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
@@ -16,12 +17,18 @@ import {
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
+import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
 interface Props {
   children: ReactNode;
 }
+
+// Mobile header buttons float over the content, so they get a pill surface to
+// stay readable against whatever scrolls underneath.
+const mobileTriggerClassName =
+  "rounded-full border border-[#DADADC] bg-white hover:bg-[#F5F5F6]";
 
 export function PlatformChrome({ children }: Props) {
   const {
@@ -31,6 +38,8 @@ export function PlatformChrome({ children }: Props) {
     overlayInsetHeader,
     hasInsetHeaderTitle,
     isSettingsRoute,
+    isAdminRoute,
+    isBuilderRoute,
   } = usePlatformChrome();
 
   const content = (
@@ -58,8 +67,10 @@ export function PlatformChrome({ children }: Props) {
   if (showNewLayout) {
     return (
       <SidebarProvider
+        defaultOpen={!isBuilderRoute}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
+        <BuilderSidebarAutoClose />
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
           <header
@@ -76,8 +87,15 @@ export function PlatformChrome({ children }: Props) {
           >
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
               <div className="pointer-events-auto md:hidden">
-                <SidebarTrigger />
+                <SidebarTrigger className={mobileTriggerClassName} />
               </div>
+              {/* Copilot treats up-to-lg as mobile (overlay context panel),
+                  so its workspace-files toggle stays visible past md. */}
+              {overlayInsetHeader && (
+                <div className="pointer-events-auto lg:hidden">
+                  <WorkspaceFilesTrigger className={mobileTriggerClassName} />
+                </div>
+              )}
               <InsetHeaderTitle />
             </div>
           </header>
@@ -89,10 +107,11 @@ export function PlatformChrome({ children }: Props) {
     );
   }
 
-  // Settings renders its own sidebar shell (with a Back link) — no top Navbar.
-  // Only the new layout drops the Navbar here; classic users keep it below so
-  // they don't lose global nav (wallet, account menu) or a way back on mobile.
-  if (isSettingsRoute && isNewLayoutActive) {
+  // Settings and admin render their own sidebar shells (with a Back link) —
+  // no top Navbar. Only the new layout drops the Navbar here; classic users
+  // keep it below so they don't lose global nav (wallet, account menu) or a
+  // way back on mobile.
+  if ((isSettingsRoute || isAdminRoute) && isNewLayoutActive) {
     return (
       <main className="flex h-screen w-full flex-col">
         <AdminImpersonationBanner />

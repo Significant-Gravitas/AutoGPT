@@ -13,6 +13,7 @@ import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { PushPinIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
 import { groupSessionsByDate } from "./helpers";
@@ -20,6 +21,7 @@ import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
+  const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const { expertsById } = useExpertMap();
   const {
@@ -29,6 +31,7 @@ export function RecentChats() {
     isLoadingMore,
     loadMore,
     activeSessionId,
+    togglePin,
     editingSessionId,
     editingTitle,
     setEditingTitle,
@@ -74,6 +77,8 @@ export function RecentChats() {
         isExporting={exportingIds.has(session.id)}
         isDeleting={isDeleting}
         chatSharingEnabled={chatSharingEnabled}
+        chatPinningEnabled={chatPinningEnabled}
+        onPin={togglePin}
         onRename={startRename}
         onExport={exportChat}
         onShare={setSharingSessionId}
@@ -82,8 +87,16 @@ export function RecentChats() {
     );
   }
 
+  const pinnedSessions = chatPinningEnabled
+    ? sessions.filter((session) => !!session.is_pinned)
+    : [];
+  const unpinnedSessions =
+    pinnedSessions.length > 0
+      ? sessions.filter((session) => !session.is_pinned)
+      : sessions;
+
   const groups = isExpertsEnabled
-    ? groupSessionsByExpert(sessions).map((group) => ({
+    ? groupSessionsByExpert(unpinnedSessions).map((group) => ({
         key: group.expertId ?? "autopilot",
         label: group.expertId
           ? (expertsById.get(group.expertId)?.name ?? "Expert")
@@ -97,7 +110,7 @@ export function RecentChats() {
         showAvatar: true,
         sessions: group.sessions,
       }))
-    : groupSessionsByDate(sessions).map((group) => ({
+    : groupSessionsByDate(unpinnedSessions).map((group) => ({
         key: group.label,
         label: group.label,
         avatarUrl: null,
@@ -109,6 +122,15 @@ export function RecentChats() {
   return (
     <>
       <div className="mt-2 flex flex-col gap-4">
+        {pinnedSessions.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
+              <PushPinIcon weight="fill" className="size-3.5" />
+              <span className="truncate">Pinned</span>
+            </div>
+            <SidebarMenu>{pinnedSessions.map(renderItem)}</SidebarMenu>
+          </div>
+        )}
         {groups.map((group) => (
           <div key={group.key}>
             <div

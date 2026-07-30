@@ -115,40 +115,51 @@ export interface EarnRow {
   amount: number;
 }
 
+export interface EarnGroup {
+  key: string;
+  label: string;
+  done: boolean;
+  /** Sum of the rewards still claimable in this group (0 when done). */
+  amount: number;
+  /** Done groups start collapsed; in-progress groups start expanded. */
+  defaultOpen: boolean;
+  rows: EarnRow[];
+}
+
 /**
- * Flattens the task groups into a single list for the compact panel: a fully
- * completed group collapses to one "Done" row, while any group still in
- * progress contributes one row per task.
+ * Shapes the task groups for the compact panel accordion: every group gets a
+ * "Name · N of M" header row, keeps its tasks as sub-rows, and starts
+ * collapsed only once fully completed.
  */
-export function getEarnRows(
+export function getEarnGroups(
   groups: TaskGroup[],
   // The onboarding payload is typed as always carrying `completedSteps`, but
   // the rest of the wallet already guards against it being absent — do the same
   // here so a thin backend response degrades to "nothing claimed" and not a
   // TypeError.
   completedSteps: OnboardingStep[] | undefined,
-): EarnRow[] {
+): EarnGroup[] {
   const claimed = completedSteps ?? [];
 
-  return groups.flatMap((group): EarnRow[] => {
-    const completed = group.tasks.filter((task) => claimed.includes(task.id));
-
-    if (completed.length === group.tasks.length) {
-      return [
-        {
-          key: group.name,
-          label: `${group.name} · ${completed.length} of ${group.tasks.length}`,
-          done: true,
-          amount: 0,
-        },
-      ];
-    }
-
-    return group.tasks.map((task) => ({
+  return groups.map((group): EarnGroup => {
+    const rows = group.tasks.map((task) => ({
       key: task.id,
       label: task.name,
       done: claimed.includes(task.id),
       amount: task.amount,
     }));
+    const completedCount = rows.filter((row) => row.done).length;
+    const done = completedCount === rows.length;
+
+    return {
+      key: group.name,
+      label: `${group.name} · ${completedCount} of ${rows.length}`,
+      done,
+      amount: rows
+        .filter((row) => !row.done)
+        .reduce((total, row) => total + row.amount, 0),
+      defaultOpen: !done,
+      rows,
+    };
   });
 }

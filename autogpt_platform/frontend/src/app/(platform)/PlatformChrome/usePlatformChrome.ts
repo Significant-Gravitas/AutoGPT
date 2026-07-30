@@ -47,10 +47,18 @@ export function usePlatformChrome() {
   const isCopilotRoute =
     pathname === "/copilot" || Boolean(pathname?.startsWith("/copilot/"));
 
+  const isBuilderRoute =
+    pathname === "/build" || Boolean(pathname?.startsWith("/build/"));
+
   // Settings brings its own sidebar (with a Back link), so it renders without
   // the top Navbar even though it opts out of the new app-sidebar layout.
   const isSettingsRoute =
     pathname === "/settings" || Boolean(pathname?.startsWith("/settings/"));
+
+  // Admin mirrors settings under the new layout: its own settings-style
+  // sidebar shell (see admin/layout.tsx), no top Navbar.
+  const isAdminRoute =
+    pathname === "/admin" || Boolean(pathname?.startsWith("/admin/"));
 
   // Logged-out marketplace visitors get the tour demo sidebar as an upsell.
   // Waits for the session check so it never flashes at logged-in users.
@@ -73,5 +81,10 @@ export function usePlatformChrome() {
     hasInsetHeaderTitle: Boolean(getRouteTitle(pathname)),
     showTourSidebar,
     isSettingsRoute,
+    isAdminRoute,
+    // The builder wants the full canvas — the sidebar starts collapsed there
+    // (defaultOpen seed for hard loads; BuilderSidebarAutoClose handles
+    // client-side navigation).
+    isBuilderRoute,
   };
 }

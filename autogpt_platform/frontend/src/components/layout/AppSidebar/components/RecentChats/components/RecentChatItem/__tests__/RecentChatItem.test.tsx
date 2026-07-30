@@ -32,6 +32,8 @@ function makeProps(
     isExporting: false,
     isDeleting: false,
     chatSharingEnabled: false,
+    chatPinningEnabled: false,
+    onPin: vi.fn(),
     onRename: vi.fn(),
     onExport: vi.fn(),
     onShare: vi.fn(),

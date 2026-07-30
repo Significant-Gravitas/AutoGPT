@@ -5,6 +5,7 @@ import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
 import dynamic from "next/dynamic";
@@ -89,6 +90,7 @@ export function CopilotPage() {
       <MainArea
         isMobile={isMobile}
         isArtifactsEnabled={isArtifactsEnabled}
+        showNewLayout={showNewLayout}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
@@ -107,6 +109,7 @@ export function CopilotPage() {
 interface MainAreaProps {
   isMobile: boolean;
   isArtifactsEnabled: boolean;
+  showNewLayout: boolean;
   sessionId: string | null;
   droppedFiles: File[];
   setDroppedFiles: (files: File[]) => void;
@@ -115,6 +118,7 @@ interface MainAreaProps {
 function MainArea({
   isMobile,
   isArtifactsEnabled,
+  showNewLayout,
   sessionId,
   droppedFiles,
   setDroppedFiles,
@@ -136,8 +140,17 @@ function MainArea({
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden px-0"
           onFilesDropped={setDroppedFiles}
         >
-          {isMobile && <MobileHeader />}
-          <div className="flex flex-col gap-3 px-4 pt-4 empty:hidden">
+          {/* New layout replaces these floating buttons: sessions live in the
+              app sidebar, workspace files toggle sits in the inset header. */}
+          {isMobile && !showNewLayout && <MobileHeader />}
+          <div
+            className={cn(
+              "flex flex-col gap-3 px-4 pt-4 empty:hidden",
+              // Clear the floating inset-header controls (sidebar toggle +
+              // workspace-files trigger) that overlay the top-left corner.
+              showNewLayout && "max-lg:pt-16",
+            )}
+          >
             <LowCreditBanner />
             <NotificationBanner />
           </div>

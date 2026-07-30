@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { WalletCompactPanel } from "../components/WalletCompactPanel";
-import { getEarnRows, getTaskGroups, TaskGroup } from "../helpers";
+import { getEarnGroups, getTaskGroups, TaskGroup } from "../helpers";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -58,68 +58,64 @@ const completedSteps: OnboardingStep[] = [
   "MARKETPLACE_ADD_AGENT",
 ];
 
-describe("getEarnRows", () => {
-  it("collapses a fully completed group into a single Done row", () => {
-    const rows = getEarnRows(groups, completedSteps);
+describe("getEarnGroups", () => {
+  it("marks a fully completed group done and collapsed by default", () => {
+    const earnGroups = getEarnGroups(groups, completedSteps);
 
-    expect(rows).toEqual([
-      {
-        key: "First Wins",
-        label: "First Wins · 2 of 2",
-        done: true,
-        amount: 0,
-      },
-      {
-        key: "SCHEDULE_AGENT",
-        label: "Schedule your first agent",
-        done: false,
-        amount: 1,
-      },
-      {
-        key: "RUN_3_DAYS",
-        label: "Run agents 3 days in a row",
-        done: false,
-        amount: 2,
-      },
-    ]);
+    expect(earnGroups[0]).toEqual({
+      key: "First Wins",
+      label: "First Wins · 2 of 2",
+      done: true,
+      amount: 0,
+      defaultOpen: false,
+      rows: [
+        {
+          key: "VISIT_COPILOT",
+          label: "Complete onboarding",
+          done: true,
+          amount: 3,
+        },
+        {
+          key: "MARKETPLACE_ADD_AGENT",
+          label: "Get an agent from the marketplace",
+          done: true,
+          amount: 1,
+        },
+      ],
+    });
   });
 
-  it("lists every task of a group that is still in progress", () => {
-    const rows = getEarnRows(groups, ["SCHEDULE_AGENT"]);
+  it("keeps an in-progress group expanded and sums the remaining rewards", () => {
+    const earnGroups = getEarnGroups(groups, ["SCHEDULE_AGENT"]);
 
-    expect(rows.map((row) => row.key)).toEqual([
-      "VISIT_COPILOT",
-      "MARKETPLACE_ADD_AGENT",
-      "SCHEDULE_AGENT",
-      "RUN_3_DAYS",
-    ]);
-    expect(rows.find((row) => row.key === "SCHEDULE_AGENT")?.done).toBe(true);
+    expect(earnGroups[1].label).toBe("Consistency Challenge · 1 of 2");
+    expect(earnGroups[1].done).toBe(false);
+    expect(earnGroups[1].defaultOpen).toBe(true);
+    expect(earnGroups[1].amount).toBe(2);
+    expect(earnGroups[1].rows.map((row) => row.done)).toEqual([true, false]);
   });
 
   it("treats a missing completedSteps list as nothing claimed", () => {
-    const rows = getEarnRows(groups, undefined);
+    const earnGroups = getEarnGroups(groups, undefined);
 
-    expect(rows.map((row) => row.key)).toEqual([
-      "VISIT_COPILOT",
-      "MARKETPLACE_ADD_AGENT",
-      "SCHEDULE_AGENT",
-      "RUN_3_DAYS",
-    ]);
-    expect(rows.every((row) => !row.done)).toBe(true);
+    expect(earnGroups.every((group) => !group.done)).toBe(true);
+    expect(
+      earnGroups.flatMap((group) => group.rows).every((row) => !row.done),
+    ).toBe(true);
   });
 
   it("keeps every real onboarding task reachable", () => {
     const realGroups = getTaskGroups(null);
-    const rows = getEarnRows(realGroups, []);
+    const earnGroups = getEarnGroups(realGroups, []);
 
-    expect(rows).toHaveLength(
+    expect(earnGroups.flatMap((group) => group.rows)).toHaveLength(
       realGroups.reduce((total, group) => total + group.tasks.length, 0),
     );
   });
 });
 
 describe("WalletCompactPanel", () => {
-  it("shows the balance, the earn list and the completed group as Done", () => {
+  it("shows the balance and one header row per group", () => {
     render(
       <WalletCompactPanel
         groups={groups}
@@ -134,11 +130,10 @@ describe("WalletCompactPanel", () => {
     expect(screen.getByText("Earn credits")).toBeDefined();
     expect(screen.getByText("First Wins · 2 of 2")).toBeDefined();
     expect(screen.getByText("Done")).toBeDefined();
-    expect(screen.getByText("Schedule your first agent")).toBeDefined();
-    expect(screen.getByText("$2.00")).toBeDefined();
+    expect(screen.getByText("Consistency Challenge · 0 of 2")).toBeDefined();
   });
 
-  it("collapses the earn credits list when the accordion is toggled", async () => {
+  it("hides a completed group's tasks until its header is expanded", async () => {
     render(
       <WalletCompactPanel
         groups={groups}
@@ -148,7 +143,34 @@ describe("WalletCompactPanel", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /Earn credits/ }));
+    expect(screen.queryByText("Complete onboarding")).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /First Wins · 2 of 2/ }),
+    );
+
+    expect(screen.getByText("Complete onboarding")).toBeDefined();
+    expect(
+      screen.getByText("Get an agent from the marketplace"),
+    ).toBeDefined();
+  });
+
+  it("shows an in-progress group's tasks by default and collapses on toggle", async () => {
+    render(
+      <WalletCompactPanel
+        groups={groups}
+        completedSteps={completedSteps}
+        formattedCredits="$9.79"
+        onAddCredits={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Schedule your first agent")).toBeDefined();
+    expect(screen.getByText("$2.00")).toBeDefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Consistency Challenge/ }),
+    );
 
     expect(screen.queryByText("Schedule your first agent")).toBeNull();
   });
