@@ -2287,6 +2287,19 @@ class TestStripEphemeralMemoryFromCliJsonl:
         line = self._user_line("hello there   ")
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
 
+    def test_preserves_user_whitespace_around_removed_block(self):
+        # When a block IS removed, the user's own leading/trailing whitespace
+        # and intentional blank-line runs must survive untouched — only the
+        # block plus the "\n\n" separator the injector added is removed.
+        user_text = "  indented\n\n\n\nkeep blanks  "
+        block = _mark_injected_memory_block("<temporal_context>x</temporal_context>")
+        # Exactly how _append_follow_up_warm_context builds it: text + "\n\n" + block.
+        line = self._user_line(f"{user_text}\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        restored = json.loads(result.strip())["message"]["content"][0]["text"]
+        assert restored == user_text
+
     def test_drops_now_empty_text_block_keeps_siblings(self):
         block = _mark_injected_memory_block(
             "<temporal_context>only memory</temporal_context>"

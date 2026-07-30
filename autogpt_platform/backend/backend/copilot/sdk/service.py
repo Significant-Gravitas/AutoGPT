@@ -970,8 +970,12 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
 # model still reads a ``<temporal_context ...>`` tag; the attribute is inert.
 _INJECTED_MEMORY_MARKER = 'data-agpt-injected="1"'
 # Matches ONLY a sentinel-stamped block, so user-authored tags are never hit.
+# The optional leading ``\n\n`` is the exact separator that
+# ``_append_follow_up_warm_context`` inserts before the block — removing it
+# together with the block leaves the user's own text (its leading/trailing
+# whitespace and any intentional blank-line runs) byte-for-byte intact.
 _INJECTED_MEMORY_BLOCK_RE = re.compile(
-    r"<temporal_context\b[^>]*"
+    r"(?:\n\n)?<temporal_context\b[^>]*"
     + re.escape(_INJECTED_MEMORY_MARKER)
     + r"[^>]*>.*?</temporal_context>",
     re.DOTALL,
@@ -988,17 +992,14 @@ def _mark_injected_memory_block(block: str) -> str:
 
 
 def _strip_injected_memory_text(text: str) -> str:
-    """Remove sentinel-marked ``<temporal_context>`` blocks from *text*.
+    """Remove sentinel-marked ``<temporal_context>`` blocks (plus the injected
+    ``\\n\\n`` separator) from *text*, leaving all other content untouched.
 
-    Returns *text* unchanged (byte-identical) when no marked block is present,
-    so a user message that never carried injected memory is never rewritten.
+    Removes ONLY what the injector added — no global ``.strip()`` or blank-line
+    collapse — so a user's own leading/trailing whitespace and intentional blank
+    lines survive. Returns *text* verbatim when no marked block is present.
     """
-    if not _INJECTED_MEMORY_BLOCK_RE.search(text):
-        return text
-    without = _INJECTED_MEMORY_BLOCK_RE.sub("", text)
-    # Collapse the blank lines the removed block(s) left behind.
-    without = re.sub(r"\n{3,}", "\n\n", without)
-    return without.strip()
+    return _INJECTED_MEMORY_BLOCK_RE.sub("", text)
 
 
 def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
