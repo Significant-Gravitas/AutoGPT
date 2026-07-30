@@ -455,12 +455,25 @@ async def create_or_add_to_user_notification_batch(
     user_id: str,
     notification_type: NotificationType,
     notification_data: NotificationEventModel,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> UserNotificationBatchDTO:
     try:
         if not notification_data.data:
             raise ValueError("Notification data must be provided")
 
         json_data: Json = SafeJson(notification_data.data.model_dump())
+
+        # Born-tenanted: stamp the batch with the user's default org/team so it
+        # doesn't land in the untenanted pool the startup migration sweep
+        # backfills on every boot. Callers may pass an explicit tenancy;
+        # otherwise resolve the user's default. get_user_default_team returns
+        # (None, None) on bootstrap failure — leave the batch untenanted rather
+        # than crash a notification.
+        if organization_id is None:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            organization_id, team_id = await get_user_default_team(user_id)
 
         # Prisma's upsert is find→INSERT/UPDATE under the hood, not a true
         # SQL ON CONFLICT, so two concurrent calls on a missing row can both
@@ -483,6 +496,12 @@ async def create_or_add_to_user_notification_batch(
                         "create": UserNotificationBatchCreateInput(
                             userId=user_id,
                             type=notification_type,
+                            **(
+                                {"organizationId": organization_id}
+                                if organization_id
+                                else {}
+                            ),
+                            **({"teamId": team_id} if team_id else {}),
                             Notifications={
                                 "create": [
                                     NotificationEventCreateInput(

@@ -1282,6 +1282,35 @@ async def add_graph_execution(
             dry_run=dry_run,
         )
 
+        # Born-tenanted fallback: a NEW execution must carry org/team so it
+        # doesn't leak into the untenanted pool that the startup org-migration
+        # sweep has to backfill on every boot. Legacy schedules (empty
+        # organizationId → falsy), sub-graphs inheriting an untenanted parent
+        # (organization_id here comes from the parent's ExecutionContext, see
+        # AgentExecutorBlock), and any caller that omits tenancy all arrive
+        # with a falsy organization_id. Resolve the user's default org/team up
+        # front so the value handed to create_graph_execution is already
+        # non-null and the ExecutionContext built below inherits it.
+        #
+        # CREATE path only — resume/requeue never reaches here; it backfills
+        # org/team from the persisted row (the graph_exec_id branch above and
+        # the execution_context backfill below), so we must not re-resolve and
+        # risk re-tenanting an existing row under a different org.
+        #
+        # If bootstrap hasn't provisioned the user's personal org yet,
+        # get_user_default_team returns (None, None); leave the row untenanted
+        # and let the boot sweep catch it — never crash a run over tenancy.
+        if not organization_id:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            default_org_id, default_team_id = await get_user_default_team(user_id)
+            if default_org_id:
+                organization_id, team_id = default_org_id, default_team_id
+                logger.info(
+                    "born-tenanted fallback: resolved default org/team "
+                    f"for user {user_id}"
+                )
+
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
             graph_id=graph_id,

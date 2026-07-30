@@ -96,6 +96,15 @@ async def add_graph_to_library(
     )
     marketplace = _marketplace_metadata(store_listing_version)
 
+    # Born-tenanted: mirror create_library_agent — a library entry is the
+    # adding user's bookmark, so tag it with their default org/team instead of
+    # leaving it untenanted for the startup migration sweep to backfill.
+    # get_user_default_team returns (None, None) if bootstrap failed; in that
+    # case leave the row untagged (never block a library add on tenancy).
+    from backend.api.features.orgs.db import get_user_default_team
+
+    organization_id, team_id = await get_user_default_team(user_id)
+
     try:
         added_agent = await prisma.models.LibraryAgent.prisma().create(
             data={
@@ -114,6 +123,8 @@ async def add_graph_to_library(
                 "name": marketplace["name"],
                 "description": marketplace["description"],
                 "imageUrl": marketplace["imageUrl"],
+                **({"organizationId": organization_id} if organization_id else {}),
+                **({"Team": {"connect": {"id": team_id}}} if team_id else {}),
             },
             include=_include,
         )
@@ -135,6 +146,22 @@ async def add_graph_to_library(
                 "name": marketplace["name"],
                 "description": marketplace["description"],
                 "imageUrl": marketplace["imageUrl"],
+                # Re-adding under a different active org re-tags the row — and
+                # resets the team alongside it, since a stale team from the
+                # previous org would point across tenants. Untagged callers
+                # (bootstrap failure → organization_id None) leave both as-is.
+                **(
+                    {
+                        "organizationId": organization_id,
+                        "Team": (
+                            {"connect": {"id": team_id}}
+                            if team_id
+                            else {"disconnect": True}
+                        ),
+                    }
+                    if organization_id
+                    else {}
+                ),
             },
             include=_include,
         )
