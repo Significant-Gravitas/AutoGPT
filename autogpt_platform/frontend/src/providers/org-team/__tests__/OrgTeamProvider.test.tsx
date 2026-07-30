@@ -54,11 +54,19 @@ function mockSessionHydrating() {
   });
 }
 
+function isWorkspacesUrl(url: unknown) {
+  return typeof url === "string" && url.includes("/workspaces");
+}
+
+// The provider fetches orgs first, then the active org's teams. Route by
+// URL so a single stub serves both without teams polluting the org list.
 function mockOrgsResponse(orgs: unknown, ok = true) {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok,
-    json: async () => ({ data: orgs }),
-  });
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve({
+      ok,
+      json: async () => ({ data: isWorkspacesUrl(url) ? [] : orgs }),
+    }),
+  );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -104,6 +112,107 @@ describe("OrgTeamProvider", () => {
     const state = useOrgTeamStore.getState();
     expect(state.orgs).toEqual([COMPANY_ORG, PERSONAL_ORG]);
     expect(state.activeOrgID).toBe(PERSONAL_ORG.id);
+  });
+
+  it("fetches the active org's teams and maps them into the store (camelCase, no active team)", async () => {
+    mockLoggedIn();
+    const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+      Promise.resolve({
+        ok: true,
+        json: async () => ({
+          data: isWorkspacesUrl(url)
+            ? [
+                {
+                  id: "team-default",
+                  name: "General",
+                  slug: "general",
+                  description: null,
+                  is_default: true,
+                  join_policy: "OPEN",
+                  org_id: PERSONAL_ORG.id,
+                  member_count: 3,
+                  created_at: "2026-01-01T00:00:00Z",
+                },
+              ]
+            : [PERSONAL_ORG],
+        }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <OrgTeamProvider>
+        <span>app content</span>
+      </OrgTeamProvider>,
+    );
+
+    await waitFor(() => {
+      expect(useOrgTeamStore.getState().teams).toHaveLength(1);
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/proxy/api/orgs/${PERSONAL_ORG.id}/workspaces`,
+      expect.objectContaining({
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const [team] = useOrgTeamStore.getState().teams;
+    expect(team).toEqual({
+      id: "team-default",
+      name: "General",
+      slug: "general",
+      isDefault: true,
+      joinPolicy: "OPEN",
+      orgId: PERSONAL_ORG.id,
+    });
+    // Teams are badges/filters now — the provider never auto-selects one.
+    expect(useOrgTeamStore.getState().activeTeamID).toBeNull();
+  });
+
+  it("leaves teams empty when the teams fetch fails or errors", async () => {
+    mockLoggedIn();
+    const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+      if (isWorkspacesUrl(url)) {
+        return Promise.reject(new Error("offline"));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [PERSONAL_ORG] }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <OrgTeamProvider>
+        <span>app content</span>
+      </OrgTeamProvider>,
+    );
+
+    await waitFor(() => {
+      expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
+    });
+    expect(useOrgTeamStore.getState().teams).toEqual([]);
+  });
+
+  it("leaves teams empty when the teams endpoint responds not-ok", async () => {
+    mockLoggedIn();
+    const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+      Promise.resolve({
+        ok: !isWorkspacesUrl(url),
+        json: async () => ({ data: [PERSONAL_ORG] }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <OrgTeamProvider>
+        <span>app content</span>
+      </OrgTeamProvider>,
+    );
+
+    await waitFor(() => {
+      expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
+    });
+    expect(useOrgTeamStore.getState().teams).toEqual([]);
   });
 
   it("falls back to the first org when the user has no personal org", async () => {

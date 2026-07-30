@@ -1,4 +1,5 @@
 import {
+  BuildingsIcon,
   ChartLineUpIcon,
   ChatsCircleIcon,
   CreditCardIcon,
@@ -23,6 +24,11 @@ export const settingsNavItems: SettingsNavItem[] = [
     Icon: SlidersHorizontalIcon,
   },
   { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },
+  {
+    label: "Organization",
+    href: "/settings/organization",
+    Icon: BuildingsIcon,
+  },
   {
     label: "Integrations",
     href: "/settings/integrations",

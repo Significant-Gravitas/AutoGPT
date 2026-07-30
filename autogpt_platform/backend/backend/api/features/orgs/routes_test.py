@@ -1503,6 +1503,10 @@ class TestInvitationListPending:
         inv.isAdmin = False
         inv.isBillingManager = False
         inv.token = "tok-1"
+        inv.orgId = "org-1"
+        inv.Org = MagicMock()
+        inv.Org.name = "Acme Org"
+        inv.Org.slug = "acme-org"
         inv.expiresAt = datetime.now(timezone.utc) + timedelta(days=5)
         inv.createdAt = FIXED_NOW
         inv.teamIds = []
@@ -1513,7 +1517,10 @@ class TestInvitationListPending:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
-        assert data[0]["email"] == "test@example.com"
+        assert data[0]["token"] == "tok-1"
+        assert data[0]["org_id"] == "org-1"
+        assert data[0]["org_name"] == "Acme Org"
+        assert data[0]["org_slug"] == "acme-org"
 
     def test_list_pending_no_user_returns_empty(self, _app_and_client):
         _, client = _app_and_client

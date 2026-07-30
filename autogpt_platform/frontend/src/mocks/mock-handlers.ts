@@ -14,6 +14,7 @@ import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.m
 import { getHealthMock } from "@/app/api/__generated__/endpoints/health/health.msw";
 import { getIntegrationsMock } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import { getLibraryMock } from "@/app/api/__generated__/endpoints/library/library.msw";
+import { getMemoryMock } from "@/app/api/__generated__/endpoints/memory/memory.msw";
 import { getMetricsMock } from "@/app/api/__generated__/endpoints/metrics/metrics.msw";
 import { getOauthMock } from "@/app/api/__generated__/endpoints/oauth/oauth.msw";
 import { getOnboardingMock } from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
@@ -42,6 +43,7 @@ export const mockHandlers = [
   ...getHealthMock(),
   ...getIntegrationsMock(),
   ...getLibraryMock(),
+  ...getMemoryMock(),
   ...getMetricsMock(),
   ...getOauthMock(),
   ...getOnboardingMock(),

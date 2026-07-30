@@ -23,6 +23,9 @@ const COMPANY_ORG = {
   memberCount: 12,
 };
 
+// Teams still exist as a product concept (org-settings teams tab, badges,
+// filters) but are no longer context switches, so the switcher list must
+// ignore them entirely. We seed teams here to prove they never surface.
 const DEFAULT_TEAM = {
   id: "team-default",
   name: "General",
@@ -57,6 +60,15 @@ describe("AccountMenuOrgList", () => {
     window.localStorage.clear();
   });
 
+  it("renders nothing until the org store has loaded", () => {
+    seedStore({ isLoaded: false });
+
+    render(<AccountMenuOrgList />);
+
+    expect(screen.queryByTestId("create-organization-button")).toBeNull();
+    expect(screen.queryByText("No organizations yet")).toBeNull();
+  });
+
   it("shows an empty state with a create button when there are no orgs", () => {
     seedStore({ orgs: [], teams: [] });
 
@@ -76,24 +88,15 @@ describe("AccountMenuOrgList", () => {
     expect(screen.getByText("Personal")).toBeDefined();
   });
 
-  it("lists teams with a Private badge and a manage-teams link", () => {
+  it("never renders a teams section — teams are managed in org settings, not context switches", () => {
     seedStore();
-
-    render(<AccountMenuOrgList />);
-
-    expect(screen.getByText(DEFAULT_TEAM.name)).toBeDefined();
-    expect(screen.getByText(PRIVATE_TEAM.name)).toBeDefined();
-    expect(screen.getByText("Private")).toBeDefined();
-    expect(screen.getByText("Manage teams")).toBeDefined();
-  });
-
-  it("hides the team section when the org has no teams", () => {
-    seedStore({ teams: [] });
 
     render(<AccountMenuOrgList />);
 
     expect(screen.queryByText("Teams")).toBeNull();
     expect(screen.queryByText("Manage teams")).toBeNull();
+    expect(screen.queryByText(DEFAULT_TEAM.name)).toBeNull();
+    expect(screen.queryByText(PRIVATE_TEAM.name)).toBeNull();
   });
 
   it("switching org updates the active org in the store", async () => {
@@ -105,12 +108,14 @@ describe("AccountMenuOrgList", () => {
     expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
   });
 
-  it("switching team updates the active team in the store", async () => {
+  it("opens the create-organization dialog when the create button is clicked", async () => {
     seedStore();
     render(<AccountMenuOrgList />);
 
-    await userEvent.click(screen.getByText(PRIVATE_TEAM.name));
+    expect(screen.queryByText("URL slug")).toBeNull();
 
-    expect(useOrgTeamStore.getState().activeTeamID).toBe(PRIVATE_TEAM.id);
+    await userEvent.click(screen.getByTestId("create-organization-button"));
+
+    expect(await screen.findByText("URL slug")).toBeDefined();
   });
 });
