@@ -8,12 +8,12 @@ vi.mock("next/navigation", () => ({
   usePathname: () => pathnameMock(),
 }));
 
-const supabaseMock = vi.fn(() => ({
+const authMock = vi.fn(() => ({
   isLoggedIn: true,
   isUserLoading: false,
 }));
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => supabaseMock(),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => authMock(),
 }));
 
 const flagMock = vi.fn<(flag: string) => boolean>(() => true);
@@ -32,7 +32,7 @@ describe("usePlatformChrome", () => {
   beforeEach(() => {
     pathnameMock.mockReturnValue("/marketplace");
     flagMock.mockReturnValue(true);
-    supabaseMock.mockReturnValue({ isLoggedIn: true, isUserLoading: false });
+    authMock.mockReturnValue({ isLoggedIn: true, isUserLoading: false });
   });
 
   it("enables the new layout after mount when the flag is on and route is allowed", async () => {
@@ -108,7 +108,7 @@ describe("usePlatformChrome", () => {
   });
 
   it("shows the tour sidebar for logged-out marketplace visitors", async () => {
-    supabaseMock.mockReturnValue({ isLoggedIn: false, isUserLoading: false });
+    authMock.mockReturnValue({ isLoggedIn: false, isUserLoading: false });
     const { result } = renderHook(() => usePlatformChrome());
 
     await waitFor(() => {
@@ -118,7 +118,7 @@ describe("usePlatformChrome", () => {
   });
 
   it("keeps the tour sidebar hidden while the session check is in flight", async () => {
-    supabaseMock.mockReturnValue({ isLoggedIn: false, isUserLoading: true });
+    authMock.mockReturnValue({ isLoggedIn: false, isUserLoading: true });
     const { result } = renderHook(() => usePlatformChrome());
 
     await waitFor(() => {
@@ -136,7 +136,7 @@ describe("usePlatformChrome", () => {
   });
 
   it("keeps the tour sidebar off non-marketplace routes when logged out", async () => {
-    supabaseMock.mockReturnValue({ isLoggedIn: false, isUserLoading: false });
+    authMock.mockReturnValue({ isLoggedIn: false, isUserLoading: false });
     pathnameMock.mockReturnValue("/library");
     const { result } = renderHook(() => usePlatformChrome());
 
