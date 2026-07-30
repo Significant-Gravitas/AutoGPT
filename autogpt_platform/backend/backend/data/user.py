@@ -13,6 +13,7 @@ from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import NotificationType
 from prisma.errors import UniqueViolationError
+from prisma.models import AuthUser
 from prisma.models import User as PrismaUser
 from prisma.types import (
     JsonFilter,
@@ -214,6 +215,37 @@ async def get_user_email_by_id(user_id: str) -> Optional[str]:
         return user.email if user else None
     except Exception as e:
         raise DatabaseError(f"Failed to get user email for user {user_id}: {e}") from e
+
+
+class AuthUserFlagFields(BaseModel):
+    """Minimal AuthUser attributes used to build a LaunchDarkly context.
+
+    A plain serializable shape (not an ``ldclient.Context``) so it can cross
+    the DatabaseManager RPC boundary — feature-flag evaluation runs in
+    Prisma-less workers (scheduler, copilot-executor) that reach the auth
+    table via the RPC client rather than a locally-connected Prisma engine.
+    """
+
+    role: Optional[str] = None
+    email: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields]:
+    """Fetch the AuthUser fields used for LaunchDarkly targeting.
+
+    Returns ``None`` when no auth row exists (e.g. mid auth-migration bridge
+    window) so the caller can avoid caching a not-found as an anonymous
+    context.
+    """
+    user = await AuthUser.prisma().find_unique(where={"id": user_id})
+    if user is None:
+        return None
+    return AuthUserFlagFields(
+        role=user.role,
+        email=user.email,
+        created_at=user.createdAt,
+    )
 
 
 @cache_user_lookup
