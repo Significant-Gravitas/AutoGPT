@@ -90,10 +90,17 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 47000 -> 47800 on the post-#13601 dev merge: the registry now carries
 # the full merged tool set (webhook-trigger + preset lifecycle + docs/building
 # tools) at 47461 chars; ~340 headroom so routine wording tweaks don't trip it.
-# Bumped 47800 -> 48900 for tiered memory (SECRT-2460/2461): memory_store gains
-# tier + team_id, memory_search gains tier, and both memory_forget tools gain a
-# tier param — ~1.06k chars across four tools at 48520 total; ~380 headroom.
-_CHAR_BUDGET = 48_900
+# Bumped 47800 -> 51500 for OPEN-3188: the five agent-graph tools (create/edit/
+# customize/validate/fix) replaced their bare ``{"type": "object"}`` agent_json
+# with a structured schema (nodes/links/...) and gained an agent_json_ref string
+# param. The structure is what stops constrained decoders collapsing the graph to
+# ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
+# dev merge measured 50915 chars (incl. find_library_agent's write_graph_to).
+# Bumped 51500 -> 52500 for tiered memory (SECRT-2460/2461) merged on top of
+# OPEN-3188: memory_store gains tier + team_id, memory_search gains tier, and both
+# memory_forget tools gain a tier param — ~1.06k chars across four tools stack on
+# the OPEN-3188 registry. Merged registry measures 51980 chars; ~520 headroom.
+_CHAR_BUDGET = 52_500
 
 
 @pytest.fixture(scope="module")

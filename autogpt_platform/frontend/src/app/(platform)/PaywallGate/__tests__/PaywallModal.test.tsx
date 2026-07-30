@@ -48,8 +48,8 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
 }));
 
 const mockValidateSession = vi.fn().mockResolvedValue(true);
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
     validateSession: mockValidateSession,
     isLoggedIn: true,
   }),
