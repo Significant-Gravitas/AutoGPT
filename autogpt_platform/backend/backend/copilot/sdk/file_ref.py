@@ -375,11 +375,22 @@ async def expand_file_refs_in_args(
             # define inner properties, skip expansion — the caller (e.g.
             # RunBlockTool) will expand with the actual nested schema.
             # ``type`` may be a union list, e.g. ["object", "string"] on
-            # ``agent_json`` parameters.
-            if prop_schema is not None and "properties" not in prop_schema:
+            # ``agent_json`` parameters. Union object/string slots are the
+            # "inline graph or file-ref" contract: an inline dict must pass
+            # through untouched even when the schema carries decoder-guiding
+            # ``properties`` — recursing would expand @@agptfile tokens found
+            # inside graph metadata strings (name/description) and corrupt
+            # them, or raise on ones that don't resolve.
+            if prop_schema is not None:
                 prop_type = prop_schema.get("type")
-                if prop_type == "object" or (
+                is_object_typed = prop_type == "object" or (
                     isinstance(prop_type, list) and "object" in prop_type
+                )
+                accepts_ref_string = (
+                    isinstance(prop_type, list) and "string" in prop_type
+                )
+                if is_object_typed and (
+                    "properties" not in prop_schema or accepts_ref_string
                 ):
                     return value
             nested_props = (prop_schema or {}).get("properties", {})
