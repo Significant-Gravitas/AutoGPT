@@ -89,8 +89,7 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
         </span>
       </button>
 
-      {open &&
-        group.rows.map((row) => <EarnTaskRow key={row.key} row={row} />)}
+      {open && group.rows.map((row) => <EarnTaskRow key={row.key} row={row} />)}
     </div>
   );
 }

@@ -150,9 +150,7 @@ describe("WalletCompactPanel", () => {
     );
 
     expect(screen.getByText("Complete onboarding")).toBeDefined();
-    expect(
-      screen.getByText("Get an agent from the marketplace"),
-    ).toBeDefined();
+    expect(screen.getByText("Get an agent from the marketplace")).toBeDefined();
   });
 
   it("shows an in-progress group's tasks by default and collapses on toggle", async () => {

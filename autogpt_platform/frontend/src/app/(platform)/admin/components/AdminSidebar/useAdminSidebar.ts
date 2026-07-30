@@ -6,8 +6,7 @@ export function useAdminSidebar() {
 
   const items = adminNavItems.map((item) => ({
     ...item,
-    isActive:
-      pathname === item.href || pathname.startsWith(`${item.href}/`),
+    isActive: pathname === item.href || pathname.startsWith(`${item.href}/`),
   }));
 
   return { items };
