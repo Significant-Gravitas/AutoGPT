@@ -1,6 +1,6 @@
 "use client";
 
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useEffect, useRef } from "react";
@@ -40,7 +40,7 @@ function mapTeam(team: TeamApiShape) {
  * On org switch: refetches the org's teams and resets the query cache.
  */
 export default function OrgTeamProvider({ children }: Props) {
-  const { isLoggedIn, user, isUserLoading } = useSupabase();
+  const { isLoggedIn, user, isUserLoading } = useAuth();
   const {
     activeOrgID,
     setActiveOrg,
