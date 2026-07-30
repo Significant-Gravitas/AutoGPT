@@ -38,8 +38,12 @@ import OrganizationSettingsPage from "../page";
 
 const OWNER_USER_ID = "user-owner";
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ user: { id: OWNER_USER_ID } }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: OWNER_USER_ID },
+    isLoggedIn: true,
+    isUserLoading: false,
+  }),
 }));
 
 const TEAM_ORG = {
