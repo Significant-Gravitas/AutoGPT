@@ -5,7 +5,6 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
   TooltipContent,
@@ -13,6 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
@@ -22,11 +22,21 @@ interface Props {
   backgroundColor: string;
 }
 
-function getAccentTextClass(bg: string) {
-  if (bg.includes("violet")) return "text-violet-500 hover:text-violet-800";
-  if (bg.includes("blue")) return "text-blue-500 hover:text-blue-800";
-  if (bg.includes("green")) return "text-green-500 hover:text-green-800";
-  return "text-zinc-500 hover:text-zinc-800";
+// Soft top wash per featured slot — same treatment as the expert cards so
+// the two families read as one system. Body stays white.
+const WASHES: Record<string, string> = {
+  violet:
+    "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
+  blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(59,130,246,0.10),transparent_70%)]",
+  green:
+    "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(34,197,94,0.10),transparent_70%)]",
+};
+
+function getWash(bg: string) {
+  if (bg.includes("violet")) return WASHES.violet;
+  if (bg.includes("blue")) return WASHES.blue;
+  if (bg.includes("green")) return WASHES.green;
+  return WASHES.violet;
 }
 
 export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
@@ -42,11 +52,16 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
 
   return (
     <div
-      className={`relative flex h-[28rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl p-4 shadow-md transition-all duration-300 hover:shadow-lg ${backgroundColor} border`}
+      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       data-testid="featured-store-card"
     >
-      {/* Image */}
-      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl md:aspect-[2.17/1]">
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-x-0 top-0 h-32 opacity-60 transition-opacity duration-200 group-hover:opacity-100",
+          getWash(backgroundColor),
+        )}
+      />
+      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-black/5 md:aspect-[2.17/1]">
         {agent.agent_image && !imageError ? (
           <>
             {!imageLoaded && (
@@ -62,75 +77,66 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             />
           </>
         ) : (
-          <div className="absolute inset-0 rounded-xl bg-violet-50" />
+          <div className="absolute inset-0 rounded-xl bg-violet-100" />
         )}
       </div>
 
-      <div className="mt-3 flex w-full flex-1 flex-col">
-        {/* Agent Name and Creator */}
-        <div className="flex w-full flex-col">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  ref={titleRef}
-                  onPointerEnter={checkTitleOverflow}
-                  className="line-clamp-2 block min-h-[2lh] min-w-0 leading-tight"
-                >
-                  <Text variant="h4" as="span" className="leading-tight">
-                    {agent.agent_name}
-                  </Text>
-                </span>
-              </TooltipTrigger>
-              {isTitleTruncated && (
-                <TooltipContent>
-                  <p>{agent.agent_name}</p>
-                </TooltipContent>
+      <div className="relative mt-4 flex w-full flex-1 flex-col">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                ref={titleRef}
+                onPointerEnter={checkTitleOverflow}
+                className="line-clamp-1 block min-w-0 font-sans text-lg font-semibold tracking-[-0.01em] text-zinc-900"
+              >
+                {agent.agent_name}
+              </span>
+            </TooltipTrigger>
+            {isTitleTruncated && (
+              <TooltipContent>
+                <p>{agent.agent_name}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
+        {agent.creator && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <Avatar className="h-5 w-5 shrink-0">
+              {agent.creator_avatar && (
+                <AvatarImage
+                  src={agent.creator_avatar}
+                  alt={`${agent.creator} creator avatar`}
+                />
               )}
-            </Tooltip>
-          </TooltipProvider>
-          {agent.creator && (
-            <div className="mt-3 flex items-center gap-2">
-              <Avatar className="h-6 w-6 shrink-0">
-                {agent.creator_avatar && (
-                  <AvatarImage
-                    src={agent.creator_avatar}
-                    alt={`${agent.creator} creator avatar`}
-                  />
-                )}
-                <AvatarFallback size={32}>
-                  {agent.creator.charAt(0)}
-                </AvatarFallback>
-              </Avatar>
-              <Text variant="body-medium" className="truncate">
-                by {agent.creator}
-              </Text>
-            </div>
-          )}
-        </div>
-
-        {/* Description */}
-        <div className="mt-2.5 flex w-full flex-col">
-          <Text variant="body" className="line-clamp-3 leading-normal">
-            {agent.description}
-          </Text>
-        </div>
+              <AvatarFallback size={20}>
+                {agent.creator.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="truncate text-[13px] text-zinc-500">
+              by {agent.creator}
+            </span>
+          </div>
+        )}
+        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+          {agent.description}
+        </p>
       </div>
 
-      {/* Stats */}
-      <Text variant="body" className="absolute bottom-4 left-4 text-zinc-500">
-        {agent.runs === 0
-          ? "No runs"
-          : `${(agent.runs ?? 0).toLocaleString()} runs`}
-      </Text>
+      <div className="relative mt-auto flex w-full items-center pt-3">
+        <span className="text-xs text-zinc-500">
+          {agent.runs === 0
+            ? "No runs"
+            : `${(agent.runs ?? 0).toLocaleString()} runs`}
+        </span>
+      </div>
       {agent.creator && agent.slug && agent.agent_graph_id && (
-        <div className="absolute bottom-2 right-0">
+        <div className="absolute bottom-4 right-4">
           <AddToLibraryButton
             creatorSlug={agent.creator}
             agentSlug={agent.slug}
             agentName={agent.agent_name}
             agentGraphID={agent.agent_graph_id}
-            className={getAccentTextClass(backgroundColor)}
           />
         </div>
       )}

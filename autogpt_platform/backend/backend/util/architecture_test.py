@@ -18,7 +18,7 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 #
 # Motivation: `backend.util.cache.cached` stores its result in a process-wide
 # dict for ttl_seconds. Async clients (AsyncOpenAI, httpx.AsyncClient,
-# AsyncRabbitMQ, supabase AClient, ...) wrap connection pools whose internal
+# AsyncRabbitMQ, ...) wrap connection pools whose internal
 # asyncio primitives lazily bind to the first event loop that uses them. The
 # executor runs two long-lived loops on separate threads; once the cache is
 # populated from loop A, any subsequent call from loop B raises
@@ -34,7 +34,6 @@ LOOP_BOUND_TYPES = frozenset(
         "LangfuseAsyncOpenAI",
         "AsyncClient",  # httpx, openai internal
         "AsyncRabbitMQ",
-        "AClient",  # supabase async
         "AsyncRedisExecutionEventBus",
     }
 )
@@ -43,7 +42,6 @@ LOOP_BOUND_TYPES = frozenset(
 # so the rule can still catch NEW violations without blocking unrelated PRs.
 _KNOWN_OFFENDERS = frozenset(
     {
-        "util/clients.py get_async_supabase",
         "util/clients.py get_openai_client",
         # Inner helper extracted from ``get_openai_client`` so the local-
         # transport branch shares one cached client across both

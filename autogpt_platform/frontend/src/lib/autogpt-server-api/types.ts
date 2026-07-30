@@ -441,6 +441,12 @@ export type Graph = GraphMeta & {
       }
   );
 
+export type SkippedWebhookPreset = {
+  id: string;
+  name: string;
+  pinned_version: number;
+};
+
 export type GraphUpdateable = Omit<
   Graph,
   | "user_id"
@@ -600,6 +606,7 @@ export type LibraryAgentPresetUpdatable = Partial<
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
+  LAST_RUN = "lastRunAt",
 }
 
 /* *** CREDENTIALS *** */
