@@ -104,6 +104,7 @@ async def update_org(
             slug=request.slug,
             description=request.description,
             avatar_url=request.avatar_url,
+            memory_hold_buffer=request.memory_hold_buffer,
         ),
     )
 
