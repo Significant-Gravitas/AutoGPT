@@ -1,0 +1,53 @@
+name: AutoGPT Platform - Supabase Auth Sweep
+
+# Re-runs the GoTrue -> Better Auth user copy as an idempotent sweep. The
+# bulk copy happens in Prisma migration
+# 20260716120000_copy_supabase_users_to_better_auth during the normal deploy;
+# run this once AFTER the frontend has switched to Better Auth to catch users
+# who signed up via GoTrue in between.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to sweep"
+        type: choice
+        required: true
+        options:
+          - develop
+          - production
+
+permissions:
+  contents: "read"
+
+jobs:
+  sweep:
+    environment: ${{ github.event.inputs.environment }}
+    name: Sweep GoTrue users into Better Auth
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: ./autogpt_platform/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run sweep
+        working-directory: ./autogpt_platform/frontend
+        run: npx tsx scripts/migrate-supabase-auth.ts
+        env:
+          DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
