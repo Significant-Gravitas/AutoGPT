@@ -12,7 +12,7 @@ import type { TeamMemberResponse } from "@/app/api/__generated__/models/teamMemb
 import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { TEAM_HEADER_NAME } from "@/services/org-team/headers";
 
 interface Args {
@@ -29,7 +29,7 @@ export function useTeamMembersPreview({
   onChanged,
 }: Args) {
   const wsId = team.id;
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const currentUserId = user?.id;
 
   const [memberToRemove, setMemberToRemove] =
