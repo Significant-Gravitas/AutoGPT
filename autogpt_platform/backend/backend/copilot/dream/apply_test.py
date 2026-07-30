@@ -45,6 +45,12 @@ def _bundle_with_known_facts(*uuids: str) -> DreamInput:
 def _stub_boundaries(mocker):
     """Wire up the apply.py side-effects with AsyncMocks once per test."""
     mocker.patch.object(apply_mod, "enqueue_episode", AsyncMock(return_value=True))
+    # enqueue_episode is stubbed True above, so every write/proposal registers
+    # on the pass's IngestionCompletion — but no worker runs in tests, so an
+    # unstubbed drain would block the full INGESTION_DRAIN_TIMEOUT_SECONDS
+    # (300s) per test and time out the CI job. Default the drain to an
+    # instant success; drain-behavior tests re-patch this explicitly.
+    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
     # The driver constructor + close — apply.py opens a FalkorDB driver for
     # demotions and entity invalidations. Patch where it's used.
     driver = mocker.MagicMock()
