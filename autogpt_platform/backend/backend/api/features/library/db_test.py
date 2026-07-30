@@ -1481,3 +1481,80 @@ async def test_cleanup_trigger_agents_processes_each_independently(mocker):
     recursive_delete.assert_awaited_once_with(
         library_agent_id="sole", user_id="test-user", soft_delete=True
     )
+
+
+# ── create_folder tenancy (SECRT-2488) ──────────────────────────────────────
+
+
+def _folder_row() -> prisma.models.LibraryFolder:
+    now = datetime.now()
+    return prisma.models.LibraryFolder(
+        id="folder-1",
+        userId="u1",
+        name="F",
+        createdAt=now,
+        updatedAt=now,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_folder_stamps_ctx_tenancy(mocker):
+    """An explicit org/team lands the new folder in that team."""
+    prisma_folder = mocker.patch("prisma.models.LibraryFolder.prisma")
+    create_mock = AsyncMock(return_value=_folder_row())
+    prisma_folder.return_value.create = create_mock
+
+    await db.create_folder(
+        user_id="u1", name="F", organization_id="org-1", team_id="team-1"
+    )
+
+    data = create_mock.call_args.kwargs["data"]
+    assert data["organizationId"] == "org-1"
+    assert data["Team"] == {"connect": {"id": "team-1"}}
+
+
+@pytest.mark.asyncio
+async def test_create_folder_without_context_leaves_tenancy_unset(mocker):
+    """No org context -> folder stays untagged (prior behavior unchanged)."""
+    prisma_folder = mocker.patch("prisma.models.LibraryFolder.prisma")
+    create_mock = AsyncMock(return_value=_folder_row())
+    prisma_folder.return_value.create = create_mock
+
+    await db.create_folder(user_id="u1", name="F")
+
+    data = create_mock.call_args.kwargs["data"]
+    assert "organizationId" not in data
+    assert "Team" not in data
+
+
+@pytest.mark.asyncio
+async def test_fork_library_agent_forwards_tenancy(mocker):
+    """fork_library_agent threads the caller's org/team through to
+    create_library_agent so the fork lands in the active team."""
+    original = MagicMock(
+        graph_id="g1",
+        graph_version=1,
+    )
+    original.settings.human_in_the_loop_safe_mode = True
+    original.settings.sensitive_action_safe_mode = False
+    mocker.patch.object(db, "get_library_agent", new=AsyncMock(return_value=original))
+    new_graph = MagicMock()
+    fork_mock = mocker.patch.object(
+        db.graph_db, "fork_graph", new=AsyncMock(return_value=new_graph)
+    )
+    mocker.patch.object(
+        db, "before_graph_activate", new=AsyncMock(return_value=new_graph)
+    )
+    create_mock = mocker.patch.object(
+        db, "create_library_agent", new=AsyncMock(return_value=[MagicMock()])
+    )
+
+    await db.fork_library_agent("la-1", "u1", organization_id="org-1", team_id="team-1")
+
+    # The forked graph rows must be tenanted too, not just the library entry.
+    assert fork_mock.await_args.kwargs["organization_id"] == "org-1"
+    assert fork_mock.await_args.kwargs["team_id"] == "team-1"
+    assert create_mock.await_args.kwargs["organization_id"] == "org-1"
+    assert create_mock.await_args.kwargs["team_id"] == "team-1"

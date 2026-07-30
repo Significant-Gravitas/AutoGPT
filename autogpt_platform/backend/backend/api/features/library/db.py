@@ -1376,6 +1376,8 @@ async def create_folder(
     parent_id: Optional[str] = None,
     icon: Optional[str] = None,
     color: Optional[str] = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryFolder:
     """
     Creates a new folder for the user.
@@ -1386,6 +1388,8 @@ async def create_folder(
         parent_id: Optional parent folder ID.
         icon: Optional icon identifier.
         color: Optional hex color code.
+        organization_id: Active org to tag the folder with (None = untagged).
+        team_id: Active team to tag the folder with (None = org-home / untagged).
 
     Returns:
         The created LibraryFolder.
@@ -1412,6 +1416,10 @@ async def create_folder(
         create_data["color"] = color
     if parent_id:
         create_data["Parent"] = {"connect": {"id": parent_id}}
+    if organization_id:
+        create_data["organizationId"] = organization_id
+    if team_id:
+        create_data["Team"] = {"connect": {"id": team_id}}
 
     try:
         folder = await prisma.models.LibraryFolder.prisma().create(data=create_data)
@@ -2310,7 +2318,10 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
 
 
 async def fork_library_agent(
-    library_agent_id: str, user_id: str
+    library_agent_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """
     Clones a library agent and its underyling graph and nodes (with new ids) for the given user.
@@ -2318,6 +2329,9 @@ async def fork_library_agent(
     Args:
         library_agent_id: The ID of the library agent to fork.
         user_id: The ID of the user who owns the library agent.
+        organization_id: Active org to tag the forked library entry with.
+            When None, create_library_agent falls back to the user's default team.
+        team_id: Active team to tag the forked library entry with (None = org-home).
 
     Returns:
         The forked parent (if it has sub-graphs) LibraryAgent.
@@ -2344,7 +2358,11 @@ async def fork_library_agent(
     # GraphActivationError, but the forked graph row exists; callers should
     # surface that as a 400 to the user.
     new_graph = await graph_db.fork_graph(
-        original_agent.graph_id, original_agent.graph_version, user_id
+        original_agent.graph_id,
+        original_agent.graph_version,
+        user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     new_graph = await before_graph_activate(new_graph, user_id=user_id)
 
@@ -2355,6 +2373,8 @@ async def fork_library_agent(
             user_id,
             hitl_safe_mode=original_agent.settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
+            organization_id=organization_id,
+            team_id=team_id,
         )
     )[0]
 
