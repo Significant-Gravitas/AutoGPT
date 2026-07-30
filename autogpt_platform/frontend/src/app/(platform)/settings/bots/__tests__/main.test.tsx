@@ -31,6 +31,20 @@ function discordPlatform(
   };
 }
 
+function slackPlatform(
+  overrides: Partial<BotPlatformInfo> = {},
+): BotPlatformInfo {
+  return {
+    platform: "SLACK",
+    display_name: "Slack",
+    icon: "slack.png",
+    add_bot_url: null, // Slack has no one-click invite for a self-hosted app
+    dm_link: undefined,
+    server_links: [],
+    ...overrides,
+  };
+}
+
 describe("SettingsBotsPage", () => {
   test("renders the header and the Discord card with an Add bot button", async () => {
     server.use(getListBotPlatformsMockHandler([discordPlatform()]));
@@ -46,6 +60,39 @@ describe("SettingsBotsPage", () => {
     expect(
       screen.getByRole("link", { name: /add bot to discord/i }),
     ).toBeDefined();
+  });
+
+  test("renders the Slack card without an Add bot button (no invite URL)", async () => {
+    server.use(getListBotPlatformsMockHandler([slackPlatform()]));
+
+    render(<SettingsBotsPage />);
+
+    expect(
+      await screen.findByRole("heading", { name: /slack/i }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("link", { name: /add bot to slack/i }),
+    ).toBeNull();
+  });
+
+  test("renders an Add to Slack button when an install URL is provided", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({
+          add_bot_url:
+            "https://backend.example/api/copilot-webhooks/slack/install",
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    const button = await screen.findByRole("link", {
+      name: /add bot to slack/i,
+    });
+    expect(button.getAttribute("href")).toBe(
+      "https://backend.example/api/copilot-webhooks/slack/install",
+    );
   });
 
   test("shows the 'no bots enabled' empty state when no platforms are configured", async () => {

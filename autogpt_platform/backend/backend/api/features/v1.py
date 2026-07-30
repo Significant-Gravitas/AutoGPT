@@ -129,6 +129,7 @@ from backend.data.understanding import (
 )
 from backend.data.user import (
     get_or_create_user,
+    get_or_create_user_with_status,
     get_user_by_id,
     get_user_notification_preference,
     update_user_email,
@@ -165,6 +166,7 @@ from backend.util.timezone_utils import (
 from backend.util.virus_scanner import scan_content_safe
 
 from .library import db as library_db
+from .library import model as library_model
 from .store.model import StoreAgentDetails
 
 
@@ -190,21 +192,34 @@ v1_router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
+USER_CREATED_HEADER = "X-AutoGPT-User-Created"
 
 
 @v1_router.post(
     "/auth/user",
     summary="Get or create user",
     tags=["auth"],
+    responses={
+        200: {
+            "description": "Successful Response",
+            "headers": {
+                USER_CREATED_HEADER: {
+                    "description": "Whether this request created a new user",
+                    "schema": {"type": "string", "enum": ["true", "false"]},
+                }
+            },
+        }
+    },
     dependencies=[Security(requires_user)],
 )
-async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
-    user = await get_or_create_user(user_data)
+async def get_or_create_user_route(
+    response: Response, user_data: dict = Security(get_jwt_payload)
+):
+    result = await get_or_create_user_with_status(user_data)
+    response.headers[USER_CREATED_HEADER] = str(result.was_created).lower()
+    user = result.user
 
     # Fire-and-forget: populate business understanding from Tally form.
-    # We use created_at proximity instead of an is_new flag because
-    # get_or_create_user is cached — a separate is_new return value would be
-    # unreliable on repeated calls within the cache TTL.
     age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
     if age_seconds < 30:
         try:
@@ -1645,6 +1660,33 @@ class DeleteGraphResponse(TypedDict):
     version_counts: int
 
 
+class UpdateGraphResponse(BaseModel):
+    """Response for creating/activating a new graph version.
+
+    Carries the new graph version plus any webhook presets that were left
+    pinned to their old version because the new version's trigger block is
+    incompatible and needs to be reconfigured.
+    """
+
+    graph: graph_db.GraphModel
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = Field(
+        default_factory=list
+    )
+
+
+class SetActiveGraphVersionResponse(BaseModel):
+    """Response for activating an existing graph version.
+
+    Carries any webhook presets that were left pinned to their old version
+    because the newly activated version's trigger block is incompatible and
+    needs to be reconfigured.
+    """
+
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = Field(
+        default_factory=list
+    )
+
+
 @v1_router.get(
     path="/graphs",
     summary="List user graphs",
@@ -1784,7 +1826,7 @@ async def update_graph(
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> graph_db.GraphModel:
+) -> UpdateGraphResponse:
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
@@ -1813,6 +1855,7 @@ async def update_graph(
         team_id=ctx.team_id,
     )
 
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
             user_id, new_graph_version
@@ -1826,11 +1869,11 @@ async def update_graph(
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
         if new_graph_version.webhook_input_node:
-            await library_db.migrate_webhook_presets_to_new_version(
+            migration = await library_db.migrate_webhook_presets_to_new_version(
                 user_id=user_id,
-                graph_id=graph_id,
-                new_version=new_graph_version.version,
+                new_graph=new_graph_version,
             )
+            skipped_webhook_presets = migration.skipped_presets
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -1839,7 +1882,10 @@ async def update_graph(
         include_subgraphs=True,
     )
     assert new_graph_version_with_subgraphs
-    return new_graph_version_with_subgraphs
+    return UpdateGraphResponse(
+        graph=new_graph_version_with_subgraphs,
+        skipped_webhook_presets=skipped_webhook_presets,
+    )
 
 
 @v1_router.put(
@@ -1853,7 +1899,7 @@ async def set_graph_active_version(
     request_body: SetGraphActiveVersion,
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-):
+) -> SetActiveGraphVersionResponse:
     new_active_version = request_body.active_graph_version
     new_active_graph = await graph_db.get_graph(
         graph_id, new_active_version, user_id=user_id
@@ -1890,12 +1936,17 @@ async def set_graph_active_version(
 
     # Migrate webhook-attached presets to the new active version so that
     # existing webhook URLs continue to trigger the latest agent version.
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_active_graph.webhook_input_node:
-        await library_db.migrate_webhook_presets_to_new_version(
+        migration = await library_db.migrate_webhook_presets_to_new_version(
             user_id=user_id,
-            graph_id=graph_id,
-            new_version=new_active_version,
+            new_graph=new_active_graph,
         )
+        skipped_webhook_presets = migration.skipped_presets
+
+    return SetActiveGraphVersionResponse(
+        skipped_webhook_presets=skipped_webhook_presets
+    )
 
 
 @v1_router.patch(

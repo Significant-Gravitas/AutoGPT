@@ -411,3 +411,90 @@ class TestListBotPlatforms:
             result = await list_bot_platforms(user_id="u1")
 
         assert result == []
+
+
+class TestTelegramLoginVerification:
+    @pytest.mark.asyncio
+    async def test_invalid_telegram_auth_is_403_before_any_db_call(self):
+        from backend.api.features.platform_linking.routes import (
+            ConfirmLinkRequest,
+            confirm_user_link_token,
+        )
+
+        confirm = AsyncMock()
+        db = _db_mock(confirm_user_link=confirm)
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            patch(
+                "backend.api.features.platform_linking.routes.verify_login",
+                return_value=None,
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await confirm_user_link_token(
+                    "tok",
+                    "user-1",
+                    body=ConfirmLinkRequest(telegram_auth={"id": "1", "hash": "x"}),
+                )
+        assert exc.value.status_code == 403
+        confirm.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_verified_identity_is_forwarded_to_confirm(self):
+        from backend.api.features.platform_linking.routes import (
+            ConfirmLinkRequest,
+            confirm_user_link_token,
+        )
+
+        confirm = AsyncMock(return_value=MagicMock())
+        db = _db_mock(confirm_user_link=confirm)
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            patch(
+                "backend.api.features.platform_linking.routes.verify_login",
+                return_value="424242",
+            ),
+        ):
+            await confirm_user_link_token(
+                "tok",
+                "user-1",
+                body=ConfirmLinkRequest(telegram_auth={"id": "424242", "hash": "x"}),
+            )
+        confirm.assert_awaited_once_with(
+            "tok", "user-1", verified_platform_user_id="424242"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_body_confirms_without_verification(self):
+        from backend.api.features.platform_linking.routes import confirm_user_link_token
+
+        confirm = AsyncMock(return_value=MagicMock())
+        db = _db_mock(confirm_user_link=confirm)
+        with patch(
+            "backend.api.features.platform_linking.routes.platform_linking_db",
+            return_value=db,
+        ):
+            await confirm_user_link_token("tok", "user-1", body=None)
+        confirm.assert_awaited_once_with(
+            "tok", "user-1", verified_platform_user_id=None
+        )
+
+    @pytest.mark.asyncio
+    async def test_identity_mismatch_from_db_maps_to_403(self):
+        from backend.api.features.platform_linking.routes import confirm_user_link_token
+
+        confirm = AsyncMock(side_effect=NotAuthorizedError("different user"))
+        db = _db_mock(confirm_user_link=confirm)
+        with patch(
+            "backend.api.features.platform_linking.routes.platform_linking_db",
+            return_value=db,
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await confirm_user_link_token("tok", "user-1", body=None)
+        assert exc.value.status_code == 403

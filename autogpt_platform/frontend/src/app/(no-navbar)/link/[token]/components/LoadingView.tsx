@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function LoadingView({
-  title = "Setting up AutoPilot",
+  title = "Setting up AutoGPT",
   message = "Loading...",
 }: Props) {
   return (

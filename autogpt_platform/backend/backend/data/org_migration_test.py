@@ -31,6 +31,11 @@ def mock_prisma(mocker):
     mock.organization.find_unique = AsyncMock(return_value=None)
     mock.organizationalias.find_unique = AsyncMock(return_value=None)
     mock.organization.create = AsyncMock(return_value=MagicMock(id="org-1"))
+    # Default: the orphan-org lookup in the violation handler finds nothing.
+    mock.organization.find_first = AsyncMock(return_value=None)
+    mock.organization.update = AsyncMock()
+    # Default: the per-user re-check in the backfill finds no existing org.
+    mock.orgmember.find_first = AsyncMock(return_value=None)
     mock.orgmember.create = AsyncMock()
     mock.team.create = AsyncMock(return_value=MagicMock(id="ws-1"))
     mock.teammember.create = AsyncMock()
@@ -39,6 +44,17 @@ def mock_prisma(mocker):
     mock.query_raw = AsyncMock(return_value=[])
     mock.execute_raw = AsyncMock(return_value=0)
     mocker.patch("backend.data.org_migration.prisma", mock)
+
+    # _create_backfill_org now writes inside `async with transaction() as tx`;
+    # yield the same mock so per-model create assertions keep working.
+    class _TxCM:
+        async def __aenter__(self):
+            return mock
+
+        async def __aexit__(self, *exc):
+            return False
+
+    mocker.patch("backend.data.org_migration.transaction", lambda *a, **k: _TxCM())
     return mock
 
 
@@ -425,6 +441,205 @@ class TestCreateOrgsForExistingUsers:
         seat_data = mock_prisma.organizationseatassignment.create.call_args[1]["data"]
         assert seat_data["seatType"] == "FREE"
         assert seat_data["status"] == "ACTIVE"
+
+
+# ---------------------------------------------------------------------------
+# create_orgs_for_existing_users — lock renewal + get-or-create hardening
+# ---------------------------------------------------------------------------
+
+
+def _backfill_row(user_id: str) -> dict:
+    """A minimal ``query_raw`` backfill row for a user with no profile."""
+    return {
+        "id": user_id,
+        "email": f"{user_id}@example.com",
+        "name": None,
+        "stripeCustomerId": None,
+        "topUpConfig": None,
+        "profile_username": None,
+        "profile_name": None,
+        "profile_description": None,
+        "profile_avatar_url": None,
+        "profile_links": None,
+    }
+
+
+class TestBackfillHardening:
+    @pytest.mark.asyncio
+    async def test_renews_lock_every_50_users(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in range(120)]
+        )
+        renew_lock = AsyncMock()
+
+        created = await create_orgs_for_existing_users(renew_lock=renew_lock)
+
+        assert created == 120
+        # Fires after the 50th and 100th user, not the trailing 120.
+        assert renew_lock.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_lost_lock_mid_loop_aborts_creating(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in range(120)]
+        )
+        # First renewal (after user 50) reports the lock was lost.
+        renew_lock = AsyncMock(
+            side_effect=RuntimeError(
+                "Org migration lost the distributed bootstrap lock"
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="lost the distributed bootstrap lock"):
+            await create_orgs_for_existing_users(renew_lock=renew_lock)
+
+        # Renewal now fires BEFORE processing user 50, so exactly 49 were
+        # created before the abort — the loop did NOT keep writing after
+        # losing the lock (which is what let a second pod duplicate orgs).
+        assert mock_prisma.organization.create.await_count == 49
+
+    @pytest.mark.asyncio
+    async def test_skip_heavy_rerun_still_renews_lock(self, mock_prisma):
+        """A re-run where every user is already bootstrapped must still renew:
+        a long skip streak that never renews is the same TTL-expiry hole the
+        incident exploited, just on the second pass."""
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in range(120)]
+        )
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=MagicMock())
+        renew_lock = AsyncMock()
+
+        created = await create_orgs_for_existing_users(renew_lock=renew_lock)
+
+        assert created == 0
+        assert mock_prisma.organization.create.await_count == 0
+        assert renew_lock.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_signup_path_heals_blocking_orphan(self, mock_prisma, mocker):
+        """ensure_personal_org (signup) must clear a blocking orphan and
+        succeed on retry, same as the backfill path — otherwise signup fails
+        its retries on a state only the backfill could heal."""
+        from prisma.errors import UniqueViolationError
+
+        from backend.data.org_migration import ensure_personal_org
+
+        mocker.patch(
+            "backend.data.org_migration._derive_personal_org_identity",
+            AsyncMock(return_value=("jane", "Jane")),
+        )
+        create = mocker.patch(
+            "backend.data.org_migration.create_personal_org",
+            AsyncMock(side_effect=[UniqueViolationError(MagicMock()), None]),
+        )
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        orphan = MagicMock(id="orphan-org")
+        mock_prisma.organization.find_first = AsyncMock(return_value=orphan)
+
+        await ensure_personal_org("user-x")
+
+        assert create.await_count == 2
+        update_kwargs = mock_prisma.organization.update.call_args.kwargs
+        assert update_kwargs["where"] == {"id": "orphan-org"}
+
+    @pytest.mark.asyncio
+    async def test_orphan_org_blocking_index_is_soft_deleted_and_retried(
+        self, mock_prisma
+    ):
+        """A legacy orphan (bootstrapUserId set, no owner membership) blocks
+        the unique index but is invisible to the membership re-check — the
+        handler must soft-delete it and let the retry recreate cleanly."""
+        from prisma.errors import UniqueViolationError
+
+        mock_prisma.query_raw = AsyncMock(return_value=[_backfill_row("user-x")])
+        mock_prisma.organization.create = AsyncMock(
+            side_effect=[UniqueViolationError(MagicMock()), MagicMock(id="org-2")]
+        )
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        orphan = MagicMock(id="orphan-org")
+        mock_prisma.organization.find_first = AsyncMock(return_value=orphan)
+
+        created = await create_orgs_for_existing_users()
+
+        assert created == 1
+        update_kwargs = mock_prisma.organization.update.call_args.kwargs
+        assert update_kwargs["where"] == {"id": "orphan-org"}
+        assert update_kwargs["data"]["deletedAt"] is not None
+        assert mock_prisma.organization.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_user_already_bootstrapped_is_skipped(self, mock_prisma):
+        """Second-run semantics: the snapshot listed this user as org-less, but
+        the live re-check finds one (another pod won) — skip, don't create."""
+        mock_prisma.query_raw = AsyncMock(return_value=[_backfill_row("user-x")])
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=MagicMock())
+
+        created = await create_orgs_for_existing_users()
+
+        assert created == 0
+        mock_prisma.organization.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unique_violation_race_is_swallowed_as_skip(self, mock_prisma):
+        """A concurrent writer creates the org between our re-check and our
+        insert: the insert raises UniqueViolationError (slug or the
+        one-personal-per-user index), we re-check, find the winner's org, and
+        skip instead of crashing startup."""
+        from prisma.errors import UniqueViolationError
+
+        mock_prisma.query_raw = AsyncMock(return_value=[_backfill_row("user-race")])
+        # Top-of-loop re-check: None. Post-violation re-check: winner's org.
+        mock_prisma.orgmember.find_first = AsyncMock(side_effect=[None, MagicMock()])
+        mock_prisma.organization.create = AsyncMock(
+            side_effect=UniqueViolationError({})
+        )
+
+        created = await create_orgs_for_existing_users()
+
+        assert created == 0
+        # Only one insert attempt — the loser did not retry into a 2nd org.
+        assert mock_prisma.organization.create.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_slug_collision_with_different_user_retries(self, mock_prisma):
+        """A slug clash with a *different* user (re-check still finds no org for
+        us) retries with a fresh slug rather than skipping or crashing."""
+        from prisma.errors import UniqueViolationError
+
+        mock_prisma.query_raw = AsyncMock(return_value=[_backfill_row("user-dup")])
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        mock_prisma.organization.create = AsyncMock(
+            side_effect=[UniqueViolationError({}), MagicMock(id="org-2")]
+        )
+
+        created = await create_orgs_for_existing_users()
+
+        assert created == 1
+        assert mock_prisma.organization.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_persistent_failure_raises_loud(self, mock_prisma):
+        """If creation keeps violating and the user still owns no org, fail loud
+        rather than silently leaving the account without an organization."""
+        from prisma.errors import UniqueViolationError
+
+        mock_prisma.query_raw = AsyncMock(return_value=[_backfill_row("user-stuck")])
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        mock_prisma.organization.create = AsyncMock(
+            side_effect=UniqueViolationError({})
+        )
+
+        with pytest.raises(RuntimeError, match="after retries"):
+            await create_orgs_for_existing_users()
+
+    @pytest.mark.asyncio
+    async def test_find_owned_personal_org_is_ordered_oldest_first(self, mock_prisma):
+        from backend.data.org_migration import _find_owned_personal_org
+
+        await _find_owned_personal_org("user-1")
+
+        order = mock_prisma.orgmember.find_first.call_args.kwargs["order"]
+        assert order == {"createdAt": "asc"}
 
 
 # ---------------------------------------------------------------------------
@@ -888,7 +1103,7 @@ class TestRunMigration:
 
         mocker.patch(
             "backend.data.org_migration.create_orgs_for_existing_users",
-            new_callable=lambda: lambda: _track(calls, "create_orgs", 1),
+            new_callable=lambda: lambda **_kw: _track(calls, "create_orgs", 1),
         )
         mocker.patch(
             "backend.data.org_migration.migrate_org_balances",
@@ -918,7 +1133,7 @@ class TestRunMigration:
         )
         mocker.patch(
             "backend.data.org_migration.migrate_credentials_to_table",
-            new_callable=lambda: lambda: _track(calls, "credentials", 0),
+            new_callable=lambda: lambda **_kw: _track(calls, "credentials", 0),
         )
 
         await run_migration()

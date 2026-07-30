@@ -55,13 +55,6 @@ ollama_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
-revid_credentials = APIKeyCredentials(
-    id="fdb7f412-f519-48d1-9b5f-d2f73d0e01fe",
-    provider="revid",
-    api_key=SecretStr(settings.secrets.revid_api_key),
-    title="Use Credits for Revid",
-    expires_at=None,
-)
 ideogram_credentials = APIKeyCredentials(
     id="760f84fc-b270-42de-91f6-08efe1b512d0",
     provider="ideogram",
@@ -258,7 +251,6 @@ elevenlabs_credentials = APIKeyCredentials(
 
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
-    revid_credentials,
     ideogram_credentials,
     replicate_credentials,
     openai_credentials,
@@ -370,8 +362,6 @@ class IntegrationCredentialsStore:
         all_credentials.append(ollama_credentials)
 
         # These will only be added if the API key is set
-        if settings.secrets.revid_api_key:
-            all_credentials.append(revid_credentials)
         if settings.secrets.ideogram_api_key:
             all_credentials.append(ideogram_credentials)
         if settings.secrets.groq_api_key:

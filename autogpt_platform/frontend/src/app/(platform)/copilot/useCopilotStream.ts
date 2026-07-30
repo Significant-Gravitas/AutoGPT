@@ -24,6 +24,7 @@ import {
   hasActiveBackendStream,
   hasInProgressAssistantParts,
   hasVisibleAssistantContent,
+  resolveModeChangedMode,
 } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
@@ -41,6 +42,22 @@ import { useWakeResync } from "./useWakeResync";
  * `active_stream=true`, triggering unnecessary reconnect cycles.
  */
 const FINISH_REFETCH_SETTLE_MS = 500;
+// Server-initiated continuation turns (e.g. the engine switch after
+// enter_agent_building_mode) are dispatched via RabbitMQ right after the
+// previous turn completes — one 500ms check can outrun the dispatch, so the
+// post-finish active-stream probe retries before giving up. Ordinary turns
+// keep a single probe; the extended window only runs when this turn emitted
+// a data-mode-changed part (a continuation is actually pending), and it
+// brackets the backend's dispatch retry ceiling (3 attempts, ~3s backoff).
+const FINISH_REFETCH_ATTEMPTS_DEFAULT = 1;
+const FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH = 8;
+
+/**
+ * Batch AI SDK message updates into ~30 ms paints. The smoothing transform in
+ * the transport emits word-sized deltas ~10 ms apart; without throttling each
+ * word would re-render the whole chat tree.
+ */
+const STREAM_RENDER_THROTTLE_MS = 30;
 
 interface UseCopilotStreamArgs {
   sessionId: string | null;
@@ -90,12 +107,18 @@ export function useCopilotStream({
   // mount (= this session), so a boolean is enough; cross-session scoping
   // is no longer needed because the parent remounts on session switch.
   const isUserStoppingRef = useRef(false);
+  const pendingEngineSwitchRef = useRef(false);
   // State mirror of ``isUserStoppingRef`` — the ref is read synchronously
   // inside SDK callbacks, the state drives UI so a click on the stop button
   // immediately overrides ``isStreaming`` regardless of whether AI SDK has
   // flipped ``status`` back to ``ready`` yet (which can lag by many seconds
   // when aborting a GET-based resume fetch).
   const [isUserStopping, setIsUserStopping] = useState(false);
+  // True while `handleFinish`'s post-turn active-stream probe is still
+  // deciding whether a continuation turn is starting. Gates the force-hydrate
+  // in `useHydrateOnStreamEnd` so it can't swap message ids (and flash the
+  // whole list) in the window before the reconnect is scheduled.
+  const [isFinishProbing, setIsFinishProbing] = useState(false);
   // Flipped to `false` during mount cleanup so async callbacks that were
   // already in flight (e.g. the post-stream settle in `onFinish`) bail out
   // instead of arming new timers / HTTP requests against a torn-down mount.
@@ -119,7 +142,10 @@ export function useCopilotStream({
     resumeStream,
   } = useChat(
     chatRuntime
-      ? { chat: chatRuntime.chat }
+      ? {
+          chat: chatRuntime.chat,
+          experimental_throttle: STREAM_RENDER_THROTTLE_MS,
+        }
       : {
           id: "new",
         },
@@ -143,12 +169,24 @@ export function useCopilotStream({
         return;
       }
 
-      await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
-      if (!isMountedRef.current) return;
-      const result = await refetchSession();
-      if (!isMountedRef.current) return;
-      if (hasActiveBackendStream(result)) {
-        handleReconnectRef.current();
+      const attempts = pendingEngineSwitchRef.current
+        ? FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH
+        : FINISH_REFETCH_ATTEMPTS_DEFAULT;
+      pendingEngineSwitchRef.current = false;
+      setIsFinishProbing(true);
+      try {
+        for (let attempt = 0; attempt < attempts; attempt++) {
+          await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
+          if (!isMountedRef.current) return;
+          const result = await refetchSession();
+          if (!isMountedRef.current) return;
+          if (hasActiveBackendStream(result)) {
+            handleReconnectRef.current();
+            return;
+          }
+        }
+      } finally {
+        if (isMountedRef.current) setIsFinishProbing(false);
       }
     }
 
@@ -193,12 +231,29 @@ export function useCopilotStream({
       });
     }
 
+    function handleData(dataPart: { type: string; data?: unknown }) {
+      const mode = resolveModeChangedMode(dataPart);
+      if (mode) {
+        pendingEngineSwitchRef.current = true;
+        // Server-forced switch: session-scoped UI state only — must not
+        // persist to localStorage and rewrite the user's global default.
+        // The pin locks the toggle for the rest of this session (the
+        // backend overrides a manual flip anyway).
+        useCopilotUIStore.getState().applyServerModeChange(mode);
+      }
+    }
+
     chatRuntime.onFinish = handleFinish;
     chatRuntime.onError = handleError;
+    chatRuntime.onData = handleData;
 
     return () => {
       if (chatRuntime.onFinish === handleFinish) {
         chatRuntime.onFinish = undefined;
+      }
+      if (chatRuntime.onData === handleData) {
+        chatRuntime.onData = undefined;
+        useCopilotUIStore.getState().clearCopilotModePin();
       }
       if (chatRuntime.onError === handleError) {
         chatRuntime.onError = undefined;
@@ -401,6 +456,7 @@ export function useCopilotStream({
     hydratedMessages,
     isReconnectScheduled,
     hasActiveStream,
+    isFinishProbing,
     setMessages,
   });
 

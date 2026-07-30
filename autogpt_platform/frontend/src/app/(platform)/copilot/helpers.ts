@@ -1,5 +1,5 @@
 import { getSystemHeaders } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import type { UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -398,4 +398,13 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
 
     return true;
   });
+}
+
+export function resolveModeChangedMode(dataPart: {
+  type: string;
+  data?: unknown;
+}): "extended_thinking" | "fast" | null {
+  if (dataPart.type !== "data-mode-changed") return null;
+  const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
+  return mode === "extended_thinking" || mode === "fast" ? mode : null;
 }
