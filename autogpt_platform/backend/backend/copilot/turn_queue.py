@@ -49,6 +49,10 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.session_tenancy import (
+    SessionOrgMembershipRevoked,
+    verify_session_org_membership,
+)
 from backend.data.db_accessors import chat_db
 
 logger = logging.getLogger(__name__)
@@ -287,6 +291,39 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         )
         return False
 
+    # Re-verify org/team membership before promoting: a turn queued while the
+    # user was a member can sit here until a slot frees, and the user may have
+    # been removed/suspended from the session's org in that window.  Same gate
+    # the HTTP ``/stream`` choke point applies before dispatch — a promoted
+    # turn must never run under an org the user no longer belongs to.
+    promoted_team_id = head.team_id
+    if head.organization_id is not None:
+        try:
+            promoted_team_id = await verify_session_org_membership(
+                user_id=user_id,
+                organization_id=head.organization_id,
+                team_id=head.team_id,
+            )
+        except SessionOrgMembershipRevoked:
+            logger.warning(
+                "dispatch_next_for_user: user=%s no longer an active member of "
+                "session org=%s; dropping session=%s from the queue",
+                user_id,
+                head.organization_id,
+                head.session_id,
+            )
+            # Drop it out of the queue (queued → idle) so it neither runs under
+            # the revoked org nor blocks promotion of the user's other queued
+            # sessions.  The persisted user message is left intact; a re-send
+            # from a valid context re-dispatches it.
+            await chat_db().update_chat_session_status(
+                session_id=head.session_id,
+                expect_status=CHAT_STATUS_QUEUED,
+                status=CHAT_STATUS_IDLE,
+            )
+            await invalidate_session_cache(head.session_id)
+            return False
+
     # Claim by transitioning the session ``queued`` → ``running``.  A
     # parallel cancel between validation and claim rejects this
     # dispatch via the CAS returning False.
@@ -336,9 +373,11 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             # Session-anchored tenancy: promoted turns attribute to the
             # session's org/team, same as directly-dispatched turns —
             # without this, capped users' queued turns would lose their
-            # org context on promotion.
+            # org context on promotion.  ``promoted_team_id`` is the session
+            # team stripped to org-home if the user's team membership went
+            # stale while the turn waited (org membership re-verified above).
             organization_id=head.organization_id,
-            team_id=head.team_id,
+            team_id=promoted_team_id,
             mode=metadata.get("mode"),
             model=metadata.get("model"),
             permissions=metadata.get("permissions"),

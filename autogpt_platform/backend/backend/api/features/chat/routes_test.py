@@ -366,6 +366,212 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockerFixture):
     assert call_kwargs["where"]["isDeleted"] is False
 
 
+# ─── Per-turn org/team membership re-verification (SECRT-2489) ─────────
+#
+# A ChatSession row is the authoritative tenancy for every turn, but
+# membership is only validated at session *creation*.  These tests lock in
+# that the choke point re-verifies ACTIVE membership on every turn so a
+# removed/suspended member cannot keep acting under the stale org via an
+# existing session.  Prisma is mocked at the boundary the helper uses
+# (``backend.copilot.session_tenancy.prisma``) so the real
+# ``verify_session_org_membership`` runs end-to-end through the route.
+
+
+def _mock_membership_stream_internals(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    org_member: object,
+    team_member: object,
+):
+    """Stream-endpoint stubs for tenancy tests.
+
+    ``org_member`` / ``team_member`` are the rows the mocked Prisma
+    ``find_unique`` returns (use ``None`` for absent, or a ``MagicMock`` with
+    a ``status`` attribute).  Returns a namespace exposing ``enqueue`` (the
+    patched ``schedule_chat_turn``), ``org_find`` and ``team_find`` so tests
+    can assert on the resolved org/team and on whether the lookups ran.
+    """
+    import types
+
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        return_value=mocker.MagicMock(organization_id=organization_id, team_id=team_id),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mock_schedule = mocker.patch(
+        "backend.api.features.chat.routes.schedule_chat_turn",
+        new_callable=AsyncMock,
+        return_value="turn-id-mock",
+    )
+    # Keep the tenancy assertions independent of the cost rate-limiter (which
+    # reads real Redis): make the limit generous and the check a no-op so the
+    # turn always reaches ``schedule_chat_turn``.
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(10**12, 10**12, None),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        new_callable=AsyncMock,
+    )
+
+    org_find = mocker.AsyncMock(return_value=org_member)
+    team_find = mocker.AsyncMock(return_value=team_member)
+    mock_prisma = mocker.MagicMock()
+    mock_prisma.orgmember.find_unique = org_find
+    mock_prisma.teammember.find_unique = team_find
+    mocker.patch("backend.copilot.session_tenancy.prisma", mock_prisma)
+
+    return types.SimpleNamespace(
+        enqueue=mock_schedule, org_find=org_find, team_find=team_find
+    )
+
+
+def _member(status) -> MagicMock:
+    """A membership row stub carrying only the ``status`` the helper reads."""
+    return MagicMock(status=status)
+
+
+def test_revoked_org_member_turn_is_forbidden(mocker: pytest_mock.MockerFixture):
+    """A user with no OrgMember row for the session's org must be blocked (403),
+    not allowed to keep acting under the stale org."""
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id="session-org",
+        team_id=None,
+        org_member=None,  # membership removed entirely
+        team_member=None,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 403
+    assert "no longer a member" in response.json()["detail"].lower()
+    mocks.enqueue.assert_not_called()
+
+
+def test_suspended_org_member_turn_is_forbidden(mocker: pytest_mock.MockerFixture):
+    """A SUSPENDED (non-ACTIVE) OrgMember must be blocked (403) — suspension
+    revokes access just like removal."""
+    from prisma.enums import OrgMemberStatus
+
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id="session-org",
+        team_id=None,
+        org_member=_member(OrgMemberStatus.SUSPENDED),
+        team_member=None,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 403
+    mocks.enqueue.assert_not_called()
+
+
+def test_active_member_turn_proceeds_with_session_org(
+    mocker: pytest_mock.MockerFixture,
+):
+    """An ACTIVE member of the session's org (and team) dispatches the turn
+    attributed to the session org/team."""
+    from prisma.enums import OrgMemberStatus
+
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id="session-org",
+        team_id="session-team",
+        org_member=_member(OrgMemberStatus.ACTIVE),
+        team_member=_member(OrgMemberStatus.ACTIVE),
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    mocks.enqueue.assert_called_once()
+    kwargs = mocks.enqueue.call_args.kwargs
+    assert kwargs["organization_id"] == "session-org"
+    assert kwargs["team_id"] == "session-team"
+
+
+def test_stale_team_valid_org_strips_team_to_org_home(
+    mocker: pytest_mock.MockerFixture,
+):
+    """ACTIVE org membership but stale team membership: the turn proceeds under
+    the org with the team stripped to org-home (None), not a 403."""
+    from prisma.enums import OrgMemberStatus
+
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id="session-org",
+        team_id="session-team",
+        org_member=_member(OrgMemberStatus.ACTIVE),
+        team_member=None,  # removed from the team
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    mocks.enqueue.assert_called_once()
+    kwargs = mocks.enqueue.call_args.kwargs
+    assert kwargs["organization_id"] == "session-org"
+    assert kwargs["team_id"] is None
+
+
+def test_personal_org_session_proceeds_for_active_member(
+    mocker: pytest_mock.MockerFixture,
+):
+    """A session tagged with the user's personal org (the common case) still
+    runs the membership check and proceeds for an ACTIVE member."""
+    from prisma.enums import OrgMemberStatus
+
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id="personal-org",
+        team_id=None,
+        org_member=_member(OrgMemberStatus.ACTIVE),
+        team_member=None,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    kwargs = mocks.enqueue.call_args.kwargs
+    assert kwargs["organization_id"] == "personal-org"
+    assert kwargs["team_id"] is None
+
+
+def test_untagged_session_uses_ctx_org_without_membership_recheck(
+    mocker: pytest_mock.MockerFixture,
+):
+    """An untagged legacy session (organization_id None) falls back to the
+    membership-verified request context and does NOT hit the per-turn org
+    lookup — get_request_context already validated ctx.org_id."""
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id=None,
+        team_id=None,
+        org_member=None,
+        team_member=None,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    # ctx from mock_jwt_user fixture: org_id="test-org", team_id="test-team".
+    kwargs = mocks.enqueue.call_args.kwargs
+    assert kwargs["organization_id"] == "test-org"
+    assert kwargs["team_id"] == "test-team"
+    # The session carries no org, so the choke point must skip the lookup.
+    mocks.org_find.assert_not_called()
+
+
 # ─── Rate limit → 429 ─────────────────────────────────────────────────
 
 
@@ -887,7 +1093,11 @@ def _mock_stream_queue_internals(
 ):
     """Mock dependencies for the pending-message queue path."""
     if session_exists:
-        mock_session = mocker.MagicMock()
+        # organization_id must be a real value (None or a str), never an
+        # auto-MagicMock: the choke point re-verifies membership when it is
+        # set, and a MagicMock org id would be sent to Prisma. None models a
+        # legacy untagged session (the membership check is skipped).
+        mock_session = mocker.MagicMock(organization_id=None, team_id=None)
         mock_session.id = "sess-1"
         mocker.patch(
             "backend.api.features.chat.routes._validate_and_get_session",
