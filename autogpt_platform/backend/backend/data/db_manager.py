@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.experts import experts_db
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -132,6 +133,7 @@ from backend.data.understanding import (
 from backend.data.user import (
     get_accessible_credentials,
     get_active_user_ids_in_timerange,
+    get_auth_user_flag_fields,
     get_user_by_id,
     get_user_credentials,
     get_user_email_by_id,
@@ -306,6 +308,9 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
+    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
@@ -473,6 +478,12 @@ class DatabaseManager(AppService):
     mark_guild_left = _(bot_analytics_db.mark_guild_left)
     sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
 
+    # ============ Experts ============ #
+    # Exposed so the Prisma-less copilot executor can resolve expert
+    # identity/team context via db_accessors.experts_db().
+    get_expert = _(experts_db.get_expert)
+    list_experts = _(experts_db.list_experts)
+
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
     # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
@@ -599,6 +610,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_user_credentials = d.get_user_credentials
@@ -751,6 +763,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     record_guild_joined = d.record_guild_joined
     mark_guild_left = d.mark_guild_left
     sync_guild_presence = d.sync_guild_presence
+
+    # ============ Experts ============ #
+    get_expert = d.get_expert
+    list_experts = d.list_experts
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

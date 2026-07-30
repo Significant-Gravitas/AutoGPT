@@ -13,6 +13,91 @@ generator client {
   partial_type_generator = "backend/data/partial_types.py"
 }
 
+// ============ Auth service (Better Auth) tables ============ //
+// Owned by Prisma migrations, but read/written at runtime by the Better Auth
+// service embedded in the frontend (via its pg adapter). Table and column
+// names must match Better Auth's expected model/field names exactly.
+
+model AuthUser {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          String?
+  banned        Boolean?
+  banReason     String?
+  banExpires    DateTime?
+  preferredName String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  sessions AuthSession[]
+  accounts AuthAccount[]
+
+  @@map("UserAuthIdentity")
+}
+
+model AuthSession {
+  id             String   @id
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  userId         String
+  user           AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("UserAuthSession")
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now()) @updatedAt
+  user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("UserAuthAccount")
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([identifier])
+  @@map("UserAuthVerification")
+}
+
+model AuthJwks {
+  id         String    @id
+  publicKey  String
+  privateKey String
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+
+  @@map("UserAuthJwks")
+}
+
+// ============ End auth service (Better Auth) tables ============ //
+
 // User model to mirror Auth provider users
 model User {
   id               String   @id // This should match the Supabase user ID
@@ -54,6 +139,7 @@ model User {
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
+  OwnedExperts         Expert[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -325,6 +411,11 @@ model ChatSession {
 
   Messages ChatMessage[]
 
+  // Expert this session is scoped to; null = plain Autopilot session.
+  // Sessions keep expertId for history when the expert is archived (soft delete).
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id])
+
   // Tenancy
   organizationId String?
   teamId         String?
@@ -359,6 +450,7 @@ model ChatSession {
   @@index([teamId, updatedAt])
   @@index([organizationId])
   @@index([shareToken])
+  @@index([expertId])
 }
 
 // Tracks which workspace files are exposed via a shared chat session.
@@ -601,11 +693,18 @@ model LibraryAgent {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+  lastRunAt DateTime?
 
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   imageUrl String?
+
+  // Marketplace metadata snapshotted at download time, so a downloaded agent
+  // shows its published title/description instead of the creator's originals.
+  // Null for user-created agents, which fall back to the graph's own values.
+  name        String?
+  description String?
 
   agentGraphId      String
   agentGraphVersion Int
@@ -626,6 +725,8 @@ model LibraryAgent {
   isDeleted       Boolean @default(false)
 
   settings Json @default("{}")
+
+  ExpertWorkflows ExpertWorkflow[]
 
   // Tenancy
   organizationId String?
@@ -669,6 +770,76 @@ model LibraryFolder {
 
   @@unique([userId, parentId, name]) // Name unique per parent per user
   @@index([organizationId])
+}
+
+// An Expert is a hireable persona. Roster rows are templates
+// (ownerUserId null, isTemplate true); hiring instantiates an owned copy.
+// Templates are never chat targets and never owned.
+model Expert {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // null for roster templates; set on hire
+  ownerUserId String?
+  OwnerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  name      String
+  avatarUrl String?
+  role      String
+  tagline   String?
+  identity  String
+  bio       String?
+  skills    String[] @default([])
+
+  toolProfile Json?
+
+  isTemplate       Boolean  @default(false)
+  sourceTemplateId String?
+  SourceTemplate   Expert?  @relation("ExpertFromTemplate", fields: [sourceTemplateId], references: [id])
+  HiredCopies      Expert[] @relation("ExpertFromTemplate")
+
+  isArchived Boolean @default(false)
+
+  Workflows    ExpertWorkflow[]
+  ChatSessions ChatSession[]
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // Hire idempotency: one hired copy per (user, template). Postgres allows
+  // multiple NULL ownerUserId rows, so templates are unaffected.
+  @@unique([ownerUserId, sourceTemplateId])
+  @@index([ownerUserId, isArchived])
+  @@index([isTemplate, isArchived])
+  @@index([teamId])
+  @@index([organizationId])
+}
+
+// Join between an Expert and a workflow (marketplace agent) installed on it.
+// Template rows carry only storeListingVersionId; hire resolves each preload
+// into the hiring user's LibraryAgent.
+model ExpertWorkflow {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // marketplace source: set on template preloads and marketplace installs
+  storeListingVersionId String?
+  StoreListingVersion   StoreListingVersion? @relation(fields: [storeListingVersionId], references: [id])
+
+  // the hiring user's LibraryAgent; null on template rows
+  libraryAgentId String?
+  LibraryAgent   LibraryAgent? @relation(fields: [libraryAgentId], references: [id])
+
+  // Duplicate install on an expert returns the existing row.
+  @@unique([expertId, storeListingVersionId])
+  @@index([expertId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -1459,6 +1630,8 @@ model StoreListingVersion {
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
+  ExpertWorkflows ExpertWorkflow[]
+
   // Note: Embeddings now stored in UnifiedContentEmbedding table
   // Use contentType=STORE_AGENT and contentId=storeListingVersionId
 
@@ -1865,6 +2038,7 @@ model Team {
   Presets        AgentPreset[]
   LibraryAgents  LibraryAgent[]
   LibraryFolders LibraryFolder[]
+  Experts        Expert[]
   Webhooks       IntegrationWebhook[]
   APIKeys        APIKey[]
   Credentials    IntegrationCredential[] @relation("TeamCredentials")
