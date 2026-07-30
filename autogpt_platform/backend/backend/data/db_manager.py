@@ -132,6 +132,7 @@ from backend.data.understanding import (
     upsert_business_understanding,
 )
 from backend.data.user import (
+    get_accessible_credentials,
     get_active_user_ids_in_timerange,
     get_auth_user_flag_fields,
     get_user_by_id,
@@ -314,6 +315,7 @@ class DatabaseManager(AppService):
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
+    get_accessible_credentials = _(get_accessible_credentials)
     set_user_credentials = _(set_user_credentials)
 
     # ============ User Comms ============ #
@@ -615,6 +617,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_user_credentials = d.get_user_credentials
+    get_accessible_credentials = d.get_accessible_credentials
     set_user_credentials = d.set_user_credentials
 
     # ============ Human In The Loop ============ #
