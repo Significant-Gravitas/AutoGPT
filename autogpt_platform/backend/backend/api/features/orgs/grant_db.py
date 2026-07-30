@@ -68,6 +68,19 @@ async def upsert_grant(
     if graph.userId != created_by_user_id and not sharer_is_org_admin:
         raise NotAuthorizedError("Only the graph's owner or an org admin can share it")
 
+    # OWNER credential-mode exposes the graph owner's stored credentials to
+    # everyone on the team at execution time. Only the owner may consent to
+    # that — an org admin sharing someone else's graph must not be able to
+    # hand out a third party's secrets. (400 via ValueError.)
+    if (
+        credential_mode == GrantCredentialMode.OWNER
+        and graph.userId != created_by_user_id
+    ):
+        raise ValueError(
+            "OWNER credential-mode grants may only be created by the graph's "
+            "owner, not by an org admin sharing another user's graph"
+        )
+
     grant = await prisma.agentgraphgrant.upsert(
         where={
             "agentGraphId_principalType_principalId": {

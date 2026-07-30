@@ -90,6 +90,7 @@ from .utils import (
     LogMetadata,
     NodeExecutionProgress,
     create_execution_queue_config,
+    owner_referenced_credential_ids,
     validate_exec,
 )
 
@@ -262,6 +263,22 @@ async def execute_node(
     creds_locks: list[AsyncRedisLock] = []
     input_model = cast(type[BlockSchema], node_block.input_schema)
 
+    # OWNER-mode grant runs: the consumer reaches this graph only via a
+    # team grant whose credentialMode is OWNER, so the graph's OWN stored
+    # credential references resolve against the graph owner's credential
+    # store, not the executing consumer's. Set once at execution-start (see
+    # ``resolve_execution_credentials_owner``); ``None`` for every normal run.
+    # We deliberately re-read the reference from ``node.input_default`` (the
+    # owner's baked-in value) rather than trusting ``input_data`` — a consumer
+    # must never be able to redirect the lookup to an arbitrary id in the
+    # owner's store (see ``owner_credential_ids`` allowlist for auto-creds).
+    credentials_owner_id = execution_context.credentials_owner_id
+    owner_credential_ids: set[str] = (
+        owner_referenced_credential_ids(node.input_default, input_model)
+        if credentials_owner_id
+        else set()
+    )
+
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
         # Dry-run platform credentials bypass the credential store.
@@ -279,7 +296,17 @@ async def execute_node(
             extra_exec_kwargs[field_name] = _dry_run_creds
             continue
 
-        field_value = input_data.get(field_name)
+        # In OWNER mode use the owner's baked reference + owner store; the
+        # consumer's own supplied value (if any) is ignored for credential
+        # fields. Any other field resolves against the executing consumer.
+        resolve_user_id = user_id
+        owner_ref = node.input_default.get(field_name) if credentials_owner_id else None
+        if credentials_owner_id and isinstance(owner_ref, dict) and owner_ref.get("id"):
+            field_value = owner_ref
+            resolve_user_id = credentials_owner_id
+        else:
+            field_value = input_data.get(field_name)
+
         if not field_value or (
             isinstance(field_value, dict) and not field_value.get("id")
         ):
@@ -289,16 +316,42 @@ async def execute_node(
             continue  # Block runs without credentials
 
         credentials_meta = input_type(**field_value)
+        if resolve_user_id != user_id:
+            # Don't surface the owner's credential title to the consumer's
+            # execution record — only the (non-secret) id/provider/type the
+            # schema requires. The secret itself is never written to input_data.
+            credentials_meta = credentials_meta.model_copy(update={"title": None})
         # Write normalized values back so JSON schema validation also passes
         # (model_validator may have fixed legacy formats like "ProviderName.MCP")
         input_data[field_name] = credentials_meta.model_dump(mode="json")
         try:
             credentials, lock = await creds_manager.acquire(
-                user_id, credentials_meta.id
+                resolve_user_id, credentials_meta.id
             )
         except ValueError:
             # Credential was deleted or doesn't exist.
-            # If the field has a default, run without credentials.
+            if resolve_user_id != user_id:
+                # OWNER mode: the owner's referenced credential is gone. If the
+                # field is optional, run without (that is the block's own
+                # optional behavior, not a fallback to the consumer's store).
+                # If required, fail loudly naming graph + credential — NEVER
+                # silently fall back to the consumer's credentials, which would
+                # misattribute the owner's API usage.
+                if input_model.model_fields[field_name].default is not None:
+                    log_metadata.warning(
+                        f"Owner credential #{credentials_meta.id} for field "
+                        f"'{field_name}' not found, running without (optional)"
+                    )
+                    input_data[field_name] = None
+                    continue
+                raise ValueError(
+                    f"Graph #{graph_id} is shared to run on its owner's "
+                    f"credentials, but the owner's credential "
+                    f"#{credentials_meta.id} for field '{field_name}' is "
+                    "unavailable (missing, deleted, or revoked). The graph "
+                    "owner must reconnect it."
+                )
+            # Consumer mode: if the field has a default, run without credentials.
             if input_model.model_fields[field_name].default is not None:
                 log_metadata.warning(
                     f"Credentials #{credentials_meta.id} not found, "
@@ -316,6 +369,8 @@ async def execute_node(
         input_data=input_data,
         creds_manager=creds_manager,
         user_id=user_id,
+        credentials_owner_id=credentials_owner_id,
+        owner_credential_ids=owner_credential_ids,
     )
     extra_exec_kwargs.update(auto_extra_kwargs)
     creds_locks.extend(auto_locks)
