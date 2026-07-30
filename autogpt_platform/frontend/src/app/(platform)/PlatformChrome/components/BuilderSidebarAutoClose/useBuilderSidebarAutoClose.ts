@@ -1,13 +1,8 @@
-"use client";
-
 import { useSidebar } from "@/components/ui/sidebar";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
-// The builder needs the full canvas, so entering /build always starts with the
-// sidebar collapsed — the user can still re-open it manually. Leaving /build
-// restores whatever state the sidebar was in before.
-export function BuilderSidebarAutoClose() {
+export function useBuilderSidebarAutoClose() {
   const pathname = usePathname();
   const { open, setOpen } = useSidebar();
   const isBuildRoute =
@@ -40,6 +35,4 @@ export function BuilderSidebarAutoClose() {
       openBeforeBuildRef.current = null;
     }
   }, [isBuildRoute, setOpen]);
-
-  return null;
 }

@@ -9,6 +9,7 @@ interface Session {
   title?: string | null;
   source_platform?: string | null;
   is_processing?: boolean | null;
+  is_pinned?: boolean | null;
   updated_at: string;
 }
 
@@ -177,5 +178,45 @@ describe("RecentChatItem — actions menu", () => {
 
     openActions();
     expect(await screen.findByText(/exporting/i)).toBeDefined();
+  });
+});
+
+describe("RecentChatItem — pinning", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("hides the pin action when pinning is disabled", async () => {
+    renderItem(makeProps({ chatPinningEnabled: false }));
+
+    openActions();
+    await screen.findByRole("menuitem", { name: /rename/i });
+    expect(screen.queryByRole("menuitem", { name: /pin chat/i })).toBeNull();
+  });
+
+  it("offers Pin chat for an unpinned session and reports it as not yet pinned", async () => {
+    const onPin = vi.fn();
+    renderItem(makeProps({ chatPinningEnabled: true, onPin }));
+
+    openActions();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pin chat" }));
+    expect(onPin).toHaveBeenCalledWith("s1", false);
+  });
+
+  it("offers Unpin chat for a pinned session and reports it as currently pinned", async () => {
+    const onPin = vi.fn();
+    renderItem(
+      makeProps({
+        chatPinningEnabled: true,
+        onPin,
+        session: { ...baseSession, is_pinned: true },
+      }),
+    );
+
+    openActions();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Unpin chat" }),
+    );
+    expect(onPin).toHaveBeenCalledWith("s1", true);
   });
 });

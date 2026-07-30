@@ -17,7 +17,7 @@ import {
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
-import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose";
+import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
