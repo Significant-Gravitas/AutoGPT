@@ -1,4 +1,5 @@
-import { PlusIcon } from "@phosphor-icons/react/dist/ssr";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { SplitButton } from "./SplitButton";
 
@@ -64,7 +65,7 @@ export const Ghost: Story = {
     primaryLabel: "Add to Design team",
     variant: "ghost",
     size: "small",
-    leftIcon: <PlusIcon size={14} weight="bold" />,
+    leftIcon: <Icon icon={PlusSignIcon} size={14} />,
     items: sampleItems,
   },
   render: function GhostStory(args) {

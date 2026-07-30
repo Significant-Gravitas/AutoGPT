@@ -5,6 +5,7 @@ import {
   type ButtonProps,
   extendedButtonVariants,
 } from "@/components/atoms/Button/helpers";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import { CaretDownIcon } from "@phosphor-icons/react/dist/ssr";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import React from "react";
 
 export interface SplitButtonItem {
@@ -83,7 +84,7 @@ export function SplitButton({
               buttonClassName,
             )}
           >
-            <CaretDownIcon size={14} weight="bold" />
+            <Icon icon={ArrowDown01Icon} size={14} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align={align}>
