@@ -1789,7 +1789,12 @@ async def stream_chat_completion_baseline(
     if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
         from backend.copilot.graphiti.context import fetch_warm_context
 
-        warm_ctx = await fetch_warm_context(user_id, message or "")
+        warm_ctx = await fetch_warm_context(
+            user_id,
+            message or "",
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.

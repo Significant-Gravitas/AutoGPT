@@ -5582,5 +5582,13 @@ async def _fetch_graphiti_context(
 
     from ..graphiti.context import fetch_warm_context
 
-    ctx = await fetch_warm_context(user_id, message or "") or ""
+    ctx = (
+        await fetch_warm_context(
+            user_id,
+            message or "",
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
+        or ""
+    )
     return True, ctx

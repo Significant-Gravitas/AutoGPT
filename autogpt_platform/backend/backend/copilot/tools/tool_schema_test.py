@@ -95,9 +95,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # with a structured schema (nodes/links/...) and gained an agent_json_ref string
 # param. The structure is what stops constrained decoders collapsing the graph to
 # ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
-# Merged registry measures 50915 chars (incl. find_library_agent's
-# write_graph_to); ~580 headroom for wording tweaks.
-_CHAR_BUDGET = 51_500
+# dev merge measured 50915 chars (incl. find_library_agent's write_graph_to).
+# Bumped 51500 -> 52500 for tiered memory (SECRT-2460/2461) merged on top of
+# OPEN-3188: memory_store gains tier + team_id, memory_search gains tier, and both
+# memory_forget tools gain a tier param — ~1.06k chars across four tools stack on
+# the OPEN-3188 registry. Merged registry measures 51980 chars; ~520 headroom.
+_CHAR_BUDGET = 52_500
 
 
 @pytest.fixture(scope="module")
