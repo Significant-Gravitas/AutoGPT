@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import json
 import os
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
+    _INJECTED_MEMORY_MARKER,
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _append_follow_up_warm_context,
@@ -25,6 +27,7 @@ from .service import (
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
+    _mark_injected_memory_block,
     _normalize_model_name,
     _prepare_file_attachments,
     _resolve_dynamic_max_budget_usd,
@@ -2253,35 +2256,74 @@ class TestHiddenShortNamesForPermissions:
 
 # SECRT-2378: warm context must not accumulate in the CLI --resume transcript.
 class TestStripEphemeralMemoryFromCliJsonl:
-    def test_strips_appended_temporal_context_block(self):
-        line = (
+    def _user_line(self, text: str) -> bytes:
+        return (
             b'{"type":"user","message":{"role":"user","content":'
-            b'[{"type":"text","text":"deploy staging now'
-            b"\\n\\n<temporal_context>\\n<FACTS>\\n  - stale fact\\n</FACTS>"
-            b'\\n</temporal_context>"}]}}\n'
+            + json.dumps([{"type": "text", "text": text}]).encode()
+            + b"}}\n"
         )
+
+    def test_strips_marked_injected_block(self):
+        # The injector stamps the sentinel; the stripper must remove exactly it.
+        block = _mark_injected_memory_block(
+            "<temporal_context>\n<FACTS>\n  - stale fact\n</FACTS>\n</temporal_context>"
+        )
+        line = self._user_line(f"deploy staging now\n\n{block}")
         result = _strip_ephemeral_memory_from_cli_jsonl(line)
         assert b"temporal_context" not in result
         assert b"stale fact" not in result
         assert b"deploy staging now" in result
 
-    def test_strips_prepended_memory_context_block(self):
-        line = (
-            b'{"type":"user","message":{"role":"user","content":'
-            b'"<memory_context>\\n<temporal_context>x</temporal_context>'
-            b'\\n</memory_context>\\n\\nwhat did I schedule?"}}\n'
-        )
-        result = _strip_ephemeral_memory_from_cli_jsonl(line)
-        assert b"memory_context" not in result
-        assert b"temporal_context" not in result
-        assert b"what did I schedule?" in result
-
-    def test_preserves_ordinary_user_message(self):
-        line = (
-            b'{"type":"user","message":{"role":"user","content":'
-            b'[{"type":"text","text":"hello there"}]}}\n'
+    def test_preserves_user_typed_unmarked_tags(self):
+        # A <temporal_context> tag the USER typed carries no sentinel — leave it.
+        line = self._user_line(
+            "how do I use <temporal_context>? <memory_context>x</memory_context>"
         )
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_untouched_entry_is_byte_identical(self):
+        # No injected block: the line must come back byte-for-byte, even with
+        # trailing whitespace that a naive .strip() would have altered.
+        line = self._user_line("hello there   ")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_drops_now_empty_text_block_keeps_siblings(self):
+        block = _mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        content = [
+            {"type": "text", "text": "real question"},
+            {"type": "text", "text": block},
+        ]
+        line = (
+            b'{"type":"user","message":{"role":"user","content":'
+            + json.dumps(content).encode()
+            + b"}}\n"
+        )
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        blocks = json.loads(result.strip())["message"]["content"]
+        # The emptied injected block is dropped; the real question survives.
+        assert len(blocks) == 1
+        assert blocks[0]["text"] == "real question"
+
+    def test_message_that_is_only_injected_block_is_left_intact(self):
+        # Stripping would empty the content — Anthropic rejects that on resume,
+        # so the original line is kept verbatim rather than emitted empty.
+        block = _mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        line = self._user_line(block)
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_round_trips_with_the_injector(self):
+        # What _append_follow_up_warm_context stamps, the stripper removes.
+        query_with_block = "the user turn\n\n" + _mark_injected_memory_block(
+            "<temporal_context>fresh</temporal_context>"
+        )
+        line = self._user_line(query_with_block)
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"the user turn" in result
 
     def test_preserves_non_text_blocks_and_malformed_lines(self):
         image = (
@@ -2312,8 +2354,10 @@ class TestAppendFollowUpWarmContext:
                 current_message="what is Sarah working on this week",
                 was_compacted=False,
             )
-        assert out.endswith("<temporal_context>fresh</temporal_context>")
         assert out.startswith("the query")
+        # The appended block is stamped with the strip sentinel.
+        assert out.endswith("fresh</temporal_context>")
+        assert _INJECTED_MEMORY_MARKER in out
         assert mock_refresh.await_args.kwargs["force"] is False
 
     @pytest.mark.asyncio
@@ -2340,21 +2384,21 @@ class TestAppendFollowUpWarmContext:
             "backend.copilot.graphiti.context.refresh_warm_context",
             new_callable=AsyncMock,
         ) as mock_refresh:
-            for kwargs in (
-                dict(has_history=False),  # first turn
-                dict(is_user_message=False),  # tool-result submission
-                dict(graphiti_enabled=False),  # memory off
-                dict(user_id=None),  # anonymous
+            for override in (
+                {"has_history": False},  # first turn
+                {"is_user_message": False},  # tool-result submission
+                {"graphiti_enabled": False},  # memory off
+                {"user_id": None},  # anonymous
             ):
-                base = dict(
-                    graphiti_enabled=True,
-                    has_history=True,
-                    is_user_message=True,
-                    user_id="u1",
-                    current_message="a substantive follow-up request here",
-                    was_compacted=False,
-                )
-                base.update(kwargs)
+                base = {
+                    "graphiti_enabled": True,
+                    "has_history": True,
+                    "is_user_message": True,
+                    "user_id": "u1",
+                    "current_message": "a substantive follow-up request here",
+                    "was_compacted": False,
+                }
+                base.update(override)
                 out = await _append_follow_up_warm_context("q", **base)
                 assert out == "q"
             mock_refresh.assert_not_awaited()

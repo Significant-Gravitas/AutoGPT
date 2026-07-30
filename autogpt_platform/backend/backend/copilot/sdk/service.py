@@ -963,34 +963,54 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
     )
 
 
-# Server-injected memory blocks: ``<memory_context>`` (first-turn, via
-# inject_user_context) and ``<temporal_context>`` (per-turn refresh, SECRT-2378).
-# Both are ephemeral, keyed on a single turn's message — they must not persist
-# into --resume history.
-_MEMORY_BLOCK_RE = re.compile(
-    r"<(memory_context|temporal_context)\b[^>]*>.*?</\1>",
+# Sentinel attribute stamped onto the server-injected follow-up warm-context
+# block (see ``_append_follow_up_warm_context``). Only blocks carrying it are
+# scrubbed from the persisted transcript — a ``<temporal_context>`` tag a USER
+# happens to type has no sentinel and is left untouched. Internal format: the
+# model still reads a ``<temporal_context ...>`` tag; the attribute is inert.
+_INJECTED_MEMORY_MARKER = 'data-agpt-injected="1"'
+# Matches ONLY a sentinel-stamped block, so user-authored tags are never hit.
+_INJECTED_MEMORY_BLOCK_RE = re.compile(
+    r"<temporal_context\b[^>]*"
+    + re.escape(_INJECTED_MEMORY_MARKER)
+    + r"[^>]*>.*?</temporal_context>",
     re.DOTALL,
 )
 
 
-def _strip_ephemeral_memory_text(text: str) -> str:
-    """Remove ``<memory_context>``/``<temporal_context>`` blocks from *text*."""
-    without = _MEMORY_BLOCK_RE.sub("", text)
+def _mark_injected_memory_block(block: str) -> str:
+    """Stamp the sentinel onto a ``<temporal_context>`` block for later strip."""
+    return block.replace(
+        "<temporal_context>",
+        f"<temporal_context {_INJECTED_MEMORY_MARKER}>",
+        1,
+    )
+
+
+def _strip_injected_memory_text(text: str) -> str:
+    """Remove sentinel-marked ``<temporal_context>`` blocks from *text*.
+
+    Returns *text* unchanged (byte-identical) when no marked block is present,
+    so a user message that never carried injected memory is never rewritten.
+    """
+    if not _INJECTED_MEMORY_BLOCK_RE.search(text):
+        return text
+    without = _INJECTED_MEMORY_BLOCK_RE.sub("", text)
     # Collapse the blank lines the removed block(s) left behind.
     without = re.sub(r"\n{3,}", "\n\n", without)
     return without.strip()
 
 
 def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
-    """Scrub server-injected warm-context blocks from the CLI session JSONL.
+    """Scrub the server-injected follow-up warm-context block from the JSONL.
 
     The CLI persists every ``client.query(...)`` call — including the per-turn
-    ``<temporal_context>`` block appended for SECRT-2378 recall and the
-    first-turn ``<memory_context>`` block. Left in the uploaded JSONL these
-    accumulate across turns and replay stale facts on ``--resume`` (a fact the
-    user later retracted keeps re-appearing). Warm context is per-turn
-    ephemeral by design, so strip it from the persisted transcript; the next
-    turn re-injects a fresh block keyed on that turn's message.
+    ``<temporal_context>`` block appended for SECRT-2378 recall. Left in the
+    uploaded JSONL these accumulate across turns and replay stale facts on
+    ``--resume`` (a fact the user later retracted keeps re-appearing). The
+    block is keyed on a single turn's message, so strip it here; the next turn
+    re-injects a fresh one. Only sentinel-marked blocks are removed — a
+    ``<temporal_context>`` tag the user typed is left intact.
     """
     if not content:
         return content
@@ -1015,10 +1035,14 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
 
 
 def _rewrite_user_entry_memory(entry: object) -> dict | None:
-    """Return *entry* with memory blocks stripped from its user text, or None.
+    """Return *entry* with the injected memory block stripped, or None.
 
-    None means "no change" — the caller keeps the original line verbatim so
-    only user messages that actually carried a memory block are re-serialised.
+    None means "no change" — the caller keeps the original line byte-for-byte,
+    so only user messages that actually carried a marked block are re-serialised
+    (untouched entries are never reformatted). Now-empty text blocks are dropped
+    rather than emitted empty, since Anthropic rejects empty text blocks / empty
+    content on ``--resume``; if that would empty the message entirely, the
+    original is kept intact instead.
     """
     if not isinstance(entry, dict) or entry.get("type") != "user":
         return None
@@ -1027,24 +1051,40 @@ def _rewrite_user_entry_memory(entry: object) -> dict | None:
         return None
     content = msg.get("content")
     if isinstance(content, str):
-        cleaned = _strip_ephemeral_memory_text(content)
+        cleaned = _strip_injected_memory_text(content)
         if cleaned == content:
+            return None
+        if not cleaned:
+            # Whole message was the injected block — keep the original rather
+            # than emit an empty content string that --resume would reject.
             return None
         msg["content"] = cleaned
         return entry
     if isinstance(content, list):
+        new_blocks: list = []
         changed = False
         for block in content:
             if not isinstance(block, dict) or block.get("type") != "text":
+                new_blocks.append(block)
                 continue
             text = block.get("text")
             if not isinstance(text, str):
+                new_blocks.append(block)
                 continue
-            cleaned = _strip_ephemeral_memory_text(text)
-            if cleaned != text:
+            cleaned = _strip_injected_memory_text(text)
+            if cleaned == text:
+                new_blocks.append(block)
+                continue
+            changed = True
+            if cleaned:
                 block["text"] = cleaned
-                changed = True
-        return entry if changed else None
+                new_blocks.append(block)
+            # else: drop the now-empty text block entirely.
+        if not changed or not new_blocks:
+            # Nothing changed, or every block emptied out — keep the original.
+            return None
+        msg["content"] = new_blocks
+        return entry
     return None
 
 
@@ -4018,7 +4058,10 @@ async def _append_follow_up_warm_context(
         user_id, current_message, force=was_compacted
     )
     if refreshed:
-        return f"{query_message}\n\n{refreshed}"
+        # Stamp the sentinel so ``_strip_ephemeral_memory_from_cli_jsonl`` can
+        # scrub THIS block from the persisted transcript without touching a
+        # ``<temporal_context>`` tag the user may have typed.
+        return f"{query_message}\n\n{_mark_injected_memory_block(refreshed)}"
     return query_message
 
 
