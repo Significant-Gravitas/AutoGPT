@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 import stripe
 from prisma.enums import CreditTransactionType, OnboardingStep
+from prisma.types import OrgCreditTransactionWhereInput
 from pydantic import BaseModel
 
 from backend.data.credit import (
@@ -257,6 +258,69 @@ async def get_org_transaction_history(
         }
         for t in transactions
     ]
+
+
+async def get_org_spend_by_team(
+    org_id: str,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+) -> list[dict]:
+    """Aggregate an org's spend grouped by the team each debit was attributed to.
+
+    Spend is the ``USAGE`` ledger type: :func:`spend_org_credits` writes a debit
+    as a ``USAGE`` row with a NEGATIVE ``amount`` (credits leaving the pool),
+    while top-ups and grants are separate positive types. We therefore filter to
+    ``USAGE`` and report ``total_spent`` as the negated sum — a positive
+    magnitude of credits spent (a reconciliation refund, stored as a positive
+    ``USAGE`` amount, correctly nets it back down). Rows with a NULL ``teamId``
+    (org-home usage and legacy personal-org migrations) form their own
+    unattributed bucket rather than being dropped.
+
+    Buckets are returned highest-spend first. Each bucket is a dict with
+    ``team_id`` (nullable), ``team_name`` (nullable), ``total_spent`` and
+    ``transaction_count``.
+    """
+    where: OrgCreditTransactionWhereInput = {
+        "orgId": org_id,
+        "type": CreditTransactionType.USAGE,
+        "isActive": True,
+    }
+    if start_time and end_time:
+        where["createdAt"] = {"gte": start_time, "lte": end_time}
+    elif start_time:
+        where["createdAt"] = {"gte": start_time}
+    elif end_time:
+        where["createdAt"] = {"lte": end_time}
+
+    rows = await prisma.orgcredittransaction.group_by(
+        by=["teamId"],
+        where=where,
+        sum={"amount": True},
+        count=True,
+    )
+
+    team_names = await _resolve_team_names([row.get("teamId") for row in rows])
+
+    buckets = [
+        {
+            "team_id": row.get("teamId"),
+            "team_name": team_names.get(row.get("teamId") or ""),
+            "total_spent": -int((row.get("_sum") or {}).get("amount") or 0),
+            "transaction_count": int((row.get("_count") or {}).get("_all") or 0),
+        }
+        for row in rows
+    ]
+    buckets.sort(key=lambda bucket: bucket["total_spent"], reverse=True)
+    return buckets
+
+
+async def _resolve_team_names(team_ids: list[str | None]) -> dict[str, str]:
+    """Map team id -> name for the non-null ids via a single Team lookup."""
+    ids = [team_id for team_id in team_ids if team_id is not None]
+    if not ids:
+        return {}
+    teams = await prisma.team.find_many(where={"id": {"in": ids}})
+    return {team.id: team.name for team in teams}
 
 
 async def get_seat_info(org_id: str) -> dict:

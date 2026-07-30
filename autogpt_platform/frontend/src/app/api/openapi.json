@@ -5817,6 +5817,17 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Team to save the new version under. Must be a team in your org that you are an active member of. Omit to keep the agent's current team.",
+              "title": "Team Id"
+            },
+            "description": "Team to save the new version under. Must be a team in your org that you are an active member of. Omit to keep the agent's current team."
           }
         ],
         "requestBody": {
@@ -6609,6 +6620,103 @@
         }
       }
     },
+    "/api/integrations/teams/{team_id}/credentials": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List Team Credentials",
+        "operationId": "getV1List team credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The team whose credentials to list"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialsMetaResponse"
+                  },
+                  "title": "Response Getv1List Team Credentials"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/teams/{team_id}/credentials/{cred_id}": {
+      "delete": {
+        "tags": ["v1", "integrations"],
+        "summary": "Delete Team Credential",
+        "operationId": "deleteV1Delete team credential",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The team that owns the credential"
+            }
+          },
+          {
+            "name": "cred_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The ID of the team credential to delete"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/webhooks/{webhook_id}/ping": {
       "post": {
         "tags": ["v1", "integrations"],
@@ -6755,6 +6863,15 @@
               "type": "string",
               "title": "The provider to create credentials for",
               "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "If set, create a team-owned credential for this team (team admins only) instead of a personal one"
             }
           }
         ],
@@ -7090,7 +7207,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/InvitationResponse"
+                    "$ref": "#/components/schemas/UserInvitationResponse"
                   },
                   "type": "array",
                   "title": "Response Getv2List Pending Invitations For Current User"
@@ -9307,6 +9424,54 @@
         }
       }
     },
+    "/api/orgs/{org_id}/avatar": {
+      "post": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Upload organization avatar",
+        "description": "Upload an avatar image for the organization and persist its URL.\n\nThe storage path is derived server-side from the verified org id; the\nclient-supplied filename is only used for extension validation.",
+        "operationId": "postV2Upload organization avatar",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2Upload_organization_avatar"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/orgs/{org_id}/convert": {
       "post": {
         "tags": ["v2", "orgs", "orgs"],
@@ -9330,6 +9495,187 @@
               }
             }
           },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/grants/received": {
+      "get": {
+        "tags": ["v2", "orgs", "grants", "orgs", "grants"],
+        "summary": "List grants shared with my teams",
+        "operationId": "getV2List grants shared with my teams",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReceivedGrantResponse"
+                  },
+                  "title": "Response Getv2List Grants Shared With My Teams"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/graphs/{graph_id}/grants": {
+      "get": {
+        "tags": ["v2", "orgs", "grants", "orgs", "grants"],
+        "summary": "List grants on a graph",
+        "operationId": "getV2List grants on a graph",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/GrantResponse" },
+                  "title": "Response Getv2List Grants On A Graph"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "orgs", "grants", "orgs", "grants"],
+        "summary": "Share graph with a team",
+        "operationId": "postV2Share graph with a team",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateGrantRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GrantResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/graphs/{graph_id}/grants/{grant_id}": {
+      "delete": {
+        "tags": ["v2", "orgs", "grants", "orgs", "grants"],
+        "summary": "Revoke a grant",
+        "operationId": "deleteV2Revoke a grant",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "grant_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Grant Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -9456,6 +9802,52 @@
         ],
         "responses": {
           "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "tags": ["v2", "orgs", "invitations", "orgs", "invitations"],
+        "summary": "Resend invitation",
+        "description": "Refresh a pending (possibly expired) invitation: new token, new TTL.\n\nRotating the token invalidates any previously sent link, so a resend\nalso acts as a soft revoke of the old email.",
+        "operationId": "postV2Resend invitation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Invitation Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationCreateResponse"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -9622,6 +10014,205 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/OrgMemberResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/memory/held": {
+      "get": {
+        "tags": ["v2", "orgs", "memory", "orgs", "memory"],
+        "summary": "List held (tentative) shared memories",
+        "operationId": "getV2List held (tentative) shared memories",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeldMemoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/memory/held/{memory_id}/approve": {
+      "post": {
+        "tags": ["v2", "orgs", "memory", "orgs", "memory"],
+        "summary": "Approve a held memory (ratify tentative → active)",
+        "operationId": "postV2Approve a held memory (ratify tentative → active)",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Memory Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryActionResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/memory/held/{memory_id}/reject": {
+      "post": {
+        "tags": ["v2", "orgs", "memory", "orgs", "memory"],
+        "summary": "Reject a held memory (soft-retract)",
+        "operationId": "postV2Reject a held memory (soft-retract)",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Memory Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryActionResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/spend": {
+      "get": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Per-team spend breakdown",
+        "description": "Credits spent by the org, grouped by the team each debit was attributed to.\n\nRequires org-level MANAGE_BILLING (owner or billing_manager). Usage with no\nteam attribution — org-home spend and legacy personal-org migrations — is\nreported in a single bucket with ``team_id = null``.",
+        "operationId": "getV2Per-team spend breakdown",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgSpendResponse" }
               }
             }
           },
@@ -14622,6 +15213,14 @@
         "required": ["user_id"],
         "title": "Body_postV2Reset user rate limit usage"
       },
+      "Body_postV2Upload_organization_avatar": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postV2Upload organization avatar"
+      },
       "Body_postV2Upload_submission_media": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
@@ -15434,6 +16033,11 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id",
+            "description": "Restrict the key to a single team: it may only access that team's resources. Must be a team in the caller's org that the caller is an active member of. Omit for an org-wide key."
           }
         },
         "type": "object",
@@ -15463,6 +16067,42 @@
         "required": ["alias_slug"],
         "title": "CreateAliasRequest"
       },
+      "CreateGrantRequest": {
+        "properties": {
+          "principal_type": {
+            "type": "string",
+            "title": "Principal Type",
+            "default": "TEAM"
+          },
+          "principal_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Principal Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "capability": {
+            "type": "string",
+            "title": "Capability",
+            "default": "EXECUTE"
+          },
+          "credential_mode": {
+            "type": "string",
+            "title": "Credential Mode",
+            "default": "CONSUMER"
+          },
+          "follow_latest": {
+            "type": "boolean",
+            "title": "Follow Latest",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["principal_id"],
+        "title": "CreateGrantRequest"
+      },
       "CreateGraph": {
         "properties": {
           "graph": { "$ref": "#/components/schemas/Graph" },
@@ -15472,6 +16112,11 @@
               { "type": "null" }
             ],
             "title": "Source"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id",
+            "description": "Team to create the agent under. Must be a team in the caller's org that the caller is an active member of. Omit for org-home."
           }
         },
         "type": "object",
@@ -17023,6 +17668,46 @@
         "title": "GlobalSearchResponse",
         "description": "Top-N hits bucketed by item type.\n\nFor a non-empty query this contains hybrid-search results.\nFor an empty query this contains the most-recently-updated items\nper bucket (cached per-user with a short TTL)."
       },
+      "GrantResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "agent_graph_id": { "type": "string", "title": "Agent Graph Id" },
+          "agent_graph_version": {
+            "type": "integer",
+            "title": "Agent Graph Version"
+          },
+          "follow_latest": { "type": "boolean", "title": "Follow Latest" },
+          "principal_type": { "type": "string", "title": "Principal Type" },
+          "principal_id": { "type": "string", "title": "Principal Id" },
+          "capability": { "type": "string", "title": "Capability" },
+          "credential_mode": { "type": "string", "title": "Credential Mode" },
+          "org_id": { "type": "string", "title": "Org Id" },
+          "created_by_user_id": {
+            "type": "string",
+            "title": "Created By User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "agent_graph_id",
+          "agent_graph_version",
+          "follow_latest",
+          "principal_type",
+          "principal_id",
+          "capability",
+          "credential_mode",
+          "org_id",
+          "created_by_user_id",
+          "created_at"
+        ],
+        "title": "GrantResponse"
+      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -17867,6 +18552,57 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HeldMemory": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "tier": { "type": "string", "title": "Tier" },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Name"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          },
+          "source_kind": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Kind"
+          },
+          "provenance": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provenance"
+          }
+        },
+        "type": "object",
+        "required": ["id", "tier"],
+        "title": "HeldMemory",
+        "description": "A single tentative ('held') memory edge awaiting org-admin review."
+      },
+      "HeldMemoryListResponse": {
+        "properties": {
+          "org_id": { "type": "string", "title": "Org Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/HeldMemory" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["org_id", "items"],
+        "title": "HeldMemoryListResponse"
+      },
       "HireRequest": {
         "properties": {
           "template_id": { "type": "string", "title": "Template Id" },
@@ -18259,6 +18995,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Folder Name"
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "is_hidden": {
             "type": "boolean",
             "title": "Is Hidden",
@@ -18597,6 +19341,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -18640,6 +19392,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "children": {
             "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
@@ -18915,6 +19675,22 @@
         "required": ["name", "id", "slug"],
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
+      },
+      "MemoryActionResult": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "action": { "type": "string", "title": "Action" },
+          "applied": { "type": "boolean", "title": "Applied" },
+          "tier": { "type": "string", "title": "Tier" },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "action", "applied", "tier"],
+        "title": "MemoryActionResult",
+        "description": "Result of approving or rejecting a held memory."
       },
       "MemoryForgetCandidatesResponse": {
         "properties": {
@@ -19767,6 +20543,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "memory_hold_buffer": {
+            "type": "boolean",
+            "title": "Memory Hold Buffer",
+            "default": true
           }
         },
         "type": "object",
@@ -19781,6 +20562,18 @@
           "created_at"
         ],
         "title": "OrgResponse"
+      },
+      "OrgSpendResponse": {
+        "properties": {
+          "teams": {
+            "items": { "$ref": "#/components/schemas/TeamSpendBucket" },
+            "type": "array",
+            "title": "Teams"
+          }
+        },
+        "type": "object",
+        "required": ["teams"],
+        "title": "OrgSpendResponse"
       },
       "OrphanedScheduleDetail": {
         "properties": {
@@ -21055,6 +21848,47 @@
         "title": "RebuildResult",
         "description": "Typed envelope around ``rebuild_communities_for_user``'s return dict.\n\nLives here (admin routes) rather than in ``copilot/graphiti/communities.py``\nbecause the dict-returning rebuild function predates the admin-API\ntyping pass. Hoisting it to ``communities.py`` (and changing the\nfunction signature) is a follow-up cleanup."
       },
+      "ReceivedGrantResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "agent_graph_id": { "type": "string", "title": "Agent Graph Id" },
+          "agent_graph_version": {
+            "type": "integer",
+            "title": "Agent Graph Version"
+          },
+          "follow_latest": { "type": "boolean", "title": "Follow Latest" },
+          "principal_id": { "type": "string", "title": "Principal Id" },
+          "capability": { "type": "string", "title": "Capability" },
+          "credential_mode": { "type": "string", "title": "Credential Mode" },
+          "graph_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Name"
+          },
+          "graph_description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Description"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "agent_graph_id",
+          "agent_graph_version",
+          "follow_latest",
+          "principal_id",
+          "capability",
+          "credential_mode",
+          "graph_name",
+          "graph_description",
+          "created_at"
+        ],
+        "title": "ReceivedGrantResponse"
+      },
       "RecentExecution": {
         "properties": {
           "status": { "type": "string", "title": "Status" },
@@ -21424,6 +22258,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Timezone",
             "description": "User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC."
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id",
+            "description": "Team to create the schedule under. Must be a team in the caller's org that the caller is an active member of. Omit to inherit the scheduled agent's team."
           }
         },
         "type": "object",
@@ -21825,6 +22664,14 @@
             "type": "boolean",
             "title": "Is Pinned",
             "default": false
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -22517,6 +23364,10 @@
             "type": "number",
             "title": "Review Avg Rating",
             "default": 0.0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
           }
         },
         "type": "object",
@@ -22620,6 +23471,10 @@
             "type": "number",
             "title": "Review Avg Rating",
             "default": 0.0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
           },
           "internal_comments": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23168,6 +24023,7 @@
           "join_policy": { "type": "string", "title": "Join Policy" },
           "org_id": { "type": "string", "title": "Org Id" },
           "member_count": { "type": "integer", "title": "Member Count" },
+          "is_member": { "type": "boolean", "title": "Is Member" },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -23184,9 +24040,35 @@
           "join_policy",
           "org_id",
           "member_count",
+          "is_member",
           "created_at"
         ],
         "title": "TeamResponse"
+      },
+      "TeamSpendBucket": {
+        "properties": {
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Name"
+          },
+          "total_spent": { "type": "integer", "title": "Total Spent" },
+          "transaction_count": {
+            "type": "integer",
+            "title": "Transaction Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "team_id",
+          "team_name",
+          "total_spent",
+          "transaction_count"
+        ],
+        "title": "TeamSpendBucket"
       },
       "TimezoneResponse": {
         "properties": {
@@ -24256,6 +25138,10 @@
           "avatar_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
+          },
+          "memory_hold_buffer": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Memory Hold Buffer"
           }
         },
         "type": "object",
@@ -25080,6 +25966,44 @@
         "required": ["history", "pagination"],
         "title": "UserHistoryResponse",
         "description": "Response model for listings with version history"
+      },
+      "UserInvitationResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "token": { "type": "string", "title": "Token" },
+          "org_id": { "type": "string", "title": "Org Id" },
+          "org_name": { "type": "string", "title": "Org Name" },
+          "org_slug": { "type": "string", "title": "Org Slug" },
+          "is_admin": { "type": "boolean", "title": "Is Admin" },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "token",
+          "org_id",
+          "org_name",
+          "org_slug",
+          "is_admin",
+          "is_billing_manager",
+          "expires_at",
+          "created_at"
+        ],
+        "title": "UserInvitationResponse",
+        "description": "Invitation as seen by the INVITEE (GET /invitations/pending).\n\nIncludes the accept/decline token — safe here because the list is\nfiltered to the caller's own email — and the inviting org's display\ninfo, without which the invitee can't tell who is inviting them."
       },
       "UserOnboarding": {
         "properties": {
