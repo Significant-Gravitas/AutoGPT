@@ -30,7 +30,7 @@ export function AdminSidebar() {
     >
       <Link
         href="/copilot"
-        aria-label="Back to dashboard"
+        aria-label="Back to home"
         className="mb-[16px] flex w-fit items-center gap-2 rounded-[8px] px-4 py-1 text-[#505057] transition-colors hover:text-[#1F1F20]"
       >
         <ArrowLeftIcon size={16} weight="bold" />

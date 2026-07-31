@@ -21,7 +21,7 @@ export function AdminMobileNav() {
     <div className="flex items-center gap-2 bg-[#F9F9FA] px-4 py-3 md:hidden">
       <Link
         href="/copilot"
-        aria-label="Back to dashboard"
+        aria-label="Back to home"
         className="flex items-center gap-1 rounded-[8px] py-1 pr-2 text-[#505057] transition-colors hover:text-[#1F1F20]"
       >
         <ArrowLeftIcon size={16} weight="bold" />

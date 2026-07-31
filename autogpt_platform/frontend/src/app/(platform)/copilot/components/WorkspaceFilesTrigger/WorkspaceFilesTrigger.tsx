@@ -10,8 +10,7 @@ interface Props {
 }
 
 // Sits next to the sidebar toggle in the new-layout inset header and mirrors
-// SidebarTrigger's ghost styling (no border, no shadow). Replaces the old
-// floating "Open workspace files" button from MobileHeader.
+// SidebarTrigger's ghost styling (no border, no shadow).
 export function WorkspaceFilesTrigger({ className }: Props) {
   const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
