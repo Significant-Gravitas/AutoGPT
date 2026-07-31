@@ -11,7 +11,7 @@ import { okData } from "@/app/api/helpers";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useParams, useRouter } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deriveSelectedTriggerKind,
   getErrorStatus,
@@ -39,6 +39,7 @@ export function useNewAgentLibraryView() {
   const { id } = useParams();
   const router = useRouter();
   const agentId = id as string;
+  const redirectedAgentIDRef = useRef<string | null>(null);
 
   // TODO(#12740 / autogpt-pr-reviewer): when agent.is_hidden is true,
   // surface a banner that this is a trigger agent and link to its parent.
@@ -55,10 +56,15 @@ export function useNewAgentLibraryView() {
   const agentNotFound = getErrorStatus(agentError) === 404;
 
   useEffect(() => {
-    if (agentNotFound) {
-      router.replace("/library");
+    if (!agentNotFound) {
+      redirectedAgentIDRef.current = null;
+      return;
     }
-  }, [agentNotFound, router]);
+    if (redirectedAgentIDRef.current === agentId) return;
+
+    redirectedAgentIDRef.current = agentId;
+    router.replace("/library");
+  }, [agentId, agentNotFound, router]);
 
   const { enabled: triggerAgentsEnabled, ready: triggerAgentsFlagReady } =
     useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);

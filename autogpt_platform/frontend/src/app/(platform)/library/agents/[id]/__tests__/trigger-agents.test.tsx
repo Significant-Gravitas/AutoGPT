@@ -37,6 +37,7 @@ const mockRouter = vi.hoisted(() => ({
   replace: vi.fn(),
   refresh: vi.fn(),
 }));
+const mockUseRouter = vi.hoisted(() => vi.fn());
 const mockRouterReplace = mockRouter.replace;
 
 vi.mock("next/navigation", async (importOriginal) => {
@@ -44,7 +45,7 @@ vi.mock("next/navigation", async (importOriginal) => {
   return {
     ...actual,
     useParams: () => ({ id: PARENT_ID }),
-    useRouter: () => mockRouter,
+    useRouter: () => mockUseRouter(),
     usePathname: () => `/library/agents/${PARENT_ID}`,
     useSearchParams: () => new URLSearchParams(),
   };
@@ -171,6 +172,7 @@ function singlePresetListHandler(
 describe("Library agent view — trigger agents", () => {
   beforeEach(() => {
     server.resetHandlers();
+    mockUseRouter.mockReturnValue(mockRouter);
     mockRouterReplace.mockReset();
     mockToast.mockClear();
     mockUseGetFlag.mockReturnValue(true);
@@ -178,6 +180,7 @@ describe("Library agent view — trigger agents", () => {
 
   test("redirects to the library when the requested agent does not exist", async () => {
     mockUseGetFlag.mockReturnValue(false);
+    mockUseRouter.mockImplementation(() => ({ ...mockRouter }));
     server.use(
       http.get("/api/proxy/api/library/agents/:libraryAgentId", () =>
         HttpResponse.json(
@@ -195,6 +198,8 @@ describe("Library agent view — trigger agents", () => {
     expect(
       mockRouterReplace.mock.calls.filter(([href]) => href === "/library"),
     ).toHaveLength(1);
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+    expect(screen.queryByText("Agent not found in library")).toBeNull();
   });
 
   test("hides Triggers tab when there are no trigger agents and no webhook triggers", async () => {
