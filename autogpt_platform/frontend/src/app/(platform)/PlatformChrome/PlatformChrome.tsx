@@ -3,7 +3,6 @@
 import { CSSProperties, ReactNode } from "react";
 
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
-import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigger/WorkspaceFilesTrigger";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
@@ -16,6 +15,7 @@ import {
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
+import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigger/WorkspaceFilesTrigger";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
@@ -36,6 +36,7 @@ export function PlatformChrome({ children }: Props) {
     isNewLayoutActive,
     showTourSidebar,
     overlayInsetHeader,
+    isCopilotRoute,
     hasInsetHeaderTitle,
     isSettingsRoute,
     isAdminRoute,
@@ -91,7 +92,7 @@ export function PlatformChrome({ children }: Props) {
               </div>
               {/* Copilot treats up-to-lg as mobile (overlay context panel),
                   so its workspace-files toggle stays visible past md. */}
-              {overlayInsetHeader && (
+              {isCopilotRoute && (
                 <div className="pointer-events-auto lg:hidden">
                   <WorkspaceFilesTrigger className={mobileTriggerClassName} />
                 </div>

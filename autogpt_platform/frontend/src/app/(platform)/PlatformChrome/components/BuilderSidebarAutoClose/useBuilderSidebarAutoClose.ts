@@ -1,12 +1,12 @@
 import { useSidebar } from "@/components/ui/sidebar";
+import { matchesRoute } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 export function useBuilderSidebarAutoClose() {
   const pathname = usePathname();
   const { open, setOpen } = useSidebar();
-  const isBuildRoute =
-    pathname === "/build" || Boolean(pathname?.startsWith("/build/"));
+  const isBuildRoute = matchesRoute(pathname, "/build");
 
   const openBeforeBuildRef = useRef<boolean | null>(null);
   const openRef = useRef(open);
