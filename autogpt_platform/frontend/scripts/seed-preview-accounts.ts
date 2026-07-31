@@ -13,27 +13,32 @@
  *   DIRECT_URL=postgresql://... PREVIEW_ACCOUNTS_PASSWORD=... \
  *     npx --yes tsx scripts/seed-preview-accounts.ts
  * (tsx is not a package dependency; npx fetches it, matching the other
- * scripts in this folder.)
+ * scripts in this folder. Prefer DIRECT_URL: the explicit transaction wants
+ * a direct/session connection; a DATABASE_URL fallback must not be a
+ * transaction-pooled endpoint.)
  *
  * Behavior:
- *   - Idempotent: existing identities are kept (matched by email), and an
- *     existing credential account is never overwritten — rotating
- *     PREVIEW_ACCOUNTS_PASSWORD only affects freshly seeded databases.
- *   - Exit 0: seeded (or already seeded). Exit 3: the Better Auth tables do
- *     not exist — a pre-migration database; the caller decides what to do
- *     (the preview pipeline falls back to its legacy GoTrue seeding arm).
- *     Exit 1: real failure; the pipeline must fail rather than ship a
- *     preview nobody can log into.
+ *   - Idempotent: existing identities are kept (matched by email; role and
+ *     emailVerified are converged to the roster), and an existing credential
+ *     account is never overwritten — rotating PREVIEW_ACCOUNTS_PASSWORD only
+ *     affects freshly seeded databases.
+ *   - Exit codes are the cross-repo contract with the preview CD pipeline —
+ *     see the named constants below.
  */
 import { hash } from "bcryptjs";
 import { Pool } from "pg";
 import {
-  PREVIEW_ACCOUNTS,
   assertSafeSchemaName,
-  deterministicUserId,
+  seedRoster,
 } from "./seed-preview-accounts.helpers";
 
-const NO_BETTER_AUTH_EXIT_CODE = 3;
+// The exit-code contract with the preview CD pipeline. Keep all three in
+// lockstep with the seed step in AutoGPT_cloud_infrastructure's workflow.
+const SEEDED_EXIT_CODE = 0; // seeded (or already seeded)
+const FAILURE_EXIT_CODE = 1; // real failure — the pipeline must fail loudly
+const NO_BETTER_AUTH_EXIT_CODE = 3; // pre-migration DB — caller falls back
+
+const MIN_PASSWORD_LENGTH = 12; // the platform's own password floor
 
 async function main() {
   const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
@@ -43,6 +48,12 @@ async function main() {
   const password = process.env.PREVIEW_ACCOUNTS_PASSWORD;
   if (!password) {
     throw new Error("PREVIEW_ACCOUNTS_PASSWORD must be set");
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    // The same secret backs preview-admin (role=admin) on every preview.
+    throw new Error(
+      `PREVIEW_ACCOUNTS_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters`,
+    );
   }
   const schema = assertSafeSchemaName(process.env.AUTH_DB_SCHEMA || "platform");
   const identityTable = `"${schema}"."UserAuthIdentity"`;
@@ -60,17 +71,34 @@ async function main() {
   });
 
   try {
-    const { rows } = await pool.query<{ reg: string | null }>(
-      "SELECT to_regclass($1)::text AS reg",
-      [`${schema}."UserAuthIdentity"`],
-    );
-    if (!rows[0]?.reg) {
+    // Probe both tables the seeder writes, with the same quoting as the
+    // qualified names used in the SQL. All Better Auth tables ship in one
+    // migration, so both-absent means a pre-migration database (exit 3),
+    // while a mixed result means a half-applied migration — that is a broken
+    // database, not a legacy one, and must fail loudly rather than fall back
+    // to GoTrue seeding.
+    const tableExists = async (qualified: string) => {
+      const { rows } = await pool.query<{ reg: string | null }>(
+        "SELECT to_regclass($1)::text AS reg",
+        [qualified],
+      );
+      return Boolean(rows[0]?.reg);
+    };
+    const hasIdentity = await tableExists(identityTable);
+    const hasAccount = await tableExists(accountTable);
+    if (!hasIdentity && !hasAccount) {
       console.error(
         `Better Auth tables not present in schema "${schema}" — ` +
           "pre-migration database, nothing to seed here.",
       );
       process.exitCode = NO_BETTER_AUTH_EXIT_CODE;
       return;
+    }
+    if (!hasIdentity || !hasAccount) {
+      throw new Error(
+        `Schema "${schema}" has only one of UserAuthIdentity/UserAuthAccount ` +
+          "— half-applied migration; refusing to seed or fall back.",
+      );
     }
 
     // One hash for all five accounts, cost 10 to match auth.ts verification.
@@ -79,82 +107,17 @@ async function main() {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      let createdIdentities = 0;
-      let createdAccounts = 0;
-
-      for (const account of PREVIEW_ACCOUNTS) {
-        // Bare ON CONFLICT DO NOTHING arbitrates on ANY constraint, so both
-        // "id already taken" and "email already registered" (including a
-        // concurrent seeder racing this one) no-op instead of aborting the
-        // transaction.
-        const insertedIdentity = await client.query(
-          `INSERT INTO ${identityTable}
-             (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, true, $4, now(), now())
-           ON CONFLICT DO NOTHING`,
-          [
-            deterministicUserId(account.email),
-            account.name,
-            account.email,
-            account.role,
-          ],
-        );
-        createdIdentities += insertedIdentity.rowCount ?? 0;
-
-        // Resolve the id by email AFTER the insert: this is the identity the
-        // credential must attach to whether the row pre-existed, was just
-        // created, or was created by a concurrent run. If it's still absent,
-        // the deterministic id belongs to some other user and the insert
-        // no-opped — attaching a credential to that id would hand the preview
-        // password to an unrelated account, so fail loudly instead.
-        const identity = await client.query<{ id: string }>(
-          `SELECT id FROM ${identityTable} WHERE email = $1`,
-          [account.email],
-        );
-        const userId = identity.rows[0]?.id;
-        if (!userId) {
-          throw new Error(
-            `Identity for ${account.email} neither existed nor could be ` +
-              "created (its deterministic id is taken by a different user)",
-          );
-        }
-
-        // Converge the roster contract on pre-existing rows: an identity that
-        // predates this seeder (older seed generations, or a DB cloned from a
-        // template) may carry the wrong role or an unverified email, and
-        // preview-admin's role='admin' is the property the roster exists to
-        // guarantee. Passwords are deliberately NOT converged (see above).
-        await client.query(
-          `UPDATE ${identityTable}
-           SET role = $2, "emailVerified" = true, "updatedAt" = now()
-           WHERE id = $1
-             AND (role IS DISTINCT FROM $2 OR "emailVerified" IS DISTINCT FROM true)`,
-          [userId, account.role],
-        );
-
-        // Single-statement guarded insert: no SELECT-then-INSERT window, so a
-        // retried or concurrent seeding can't double-create the credential.
-        // An existing credential is never touched — rotating the password
-        // only affects databases seeded fresh.
-        const insertedCredential = await client.query(
-          `INSERT INTO ${accountTable}
-             (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
-           SELECT gen_random_uuid()::text, $1, 'credential', $1, $2, now(), now()
-           WHERE NOT EXISTS (
-             SELECT 1 FROM ${accountTable}
-             WHERE "userId" = $1 AND "providerId" = 'credential'
-           )`,
-          [userId, passwordHash],
-        );
-        createdAccounts += insertedCredential.rowCount ?? 0;
-      }
-
+      const { createdIdentities, createdAccounts } = await seedRoster(client, {
+        identityTable,
+        accountTable,
+        passwordHash,
+      });
       await client.query("COMMIT");
       console.log(
         `Seeded preview accounts: ${createdIdentities} identities and ` +
-          `${createdAccounts} credential accounts created ` +
-          `(${PREVIEW_ACCOUNTS.length - createdIdentities} identities already present).`,
+          `${createdAccounts} credential accounts created.`,
       );
+      process.exitCode = SEEDED_EXIT_CODE;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -166,7 +129,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("Preview account seeding failed:", error);
-  process.exitCode = 1;
+main().catch((error: unknown) => {
+  // Scoped message only — the full pg error object echoes SQL text and DB
+  // detail into shared CI logs.
+  const code =
+    error instanceof Error && "code" in error
+      ? ` (code ${(error as { code?: string }).code})`
+      : "";
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Preview account seeding failed: ${message}${code}`);
+  process.exitCode = FAILURE_EXIT_CODE;
 });

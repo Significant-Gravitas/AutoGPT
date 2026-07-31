@@ -38,6 +38,9 @@ export const PREVIEW_ACCOUNTS = [
  * derivation only has to be stable, not backward-identical.
  */
 export function deterministicUserId(email: string): string {
+  // SHA-256 is used purely for deterministic id derivation from public,
+  // well-known roster emails — not for secrecy (CodeQL's weak-crypto rule
+  // doesn't apply; nothing here is a security digest).
   const hex = createHash("sha256").update(email).digest("hex").slice(0, 32);
   return [
     hex.slice(0, 8),
@@ -58,4 +61,99 @@ export function assertSafeSchemaName(schema: string): string {
     throw new Error(`Unsafe schema name: ${JSON.stringify(schema)}`);
   }
   return schema;
+}
+
+interface QueryResultLike {
+  rows: { id?: string }[];
+  rowCount: number | null;
+}
+
+/** The subset of a pg client the seeder needs — injectable for tests. */
+export interface QueryExecutor {
+  query(text: string, params?: unknown[]): Promise<QueryResultLike>;
+}
+
+/**
+ * Seeds the roster into the given (already-open, ideally transactional)
+ * client. Extracted from the CLI entry so the orchestration — idempotency,
+ * email-match attachment, id-collision refusal, role convergence — is unit
+ * testable without a database.
+ */
+export async function seedRoster(
+  client: QueryExecutor,
+  opts: { identityTable: string; accountTable: string; passwordHash: string },
+) {
+  const { identityTable, accountTable, passwordHash } = opts;
+  let createdIdentities = 0;
+  let createdAccounts = 0;
+
+  for (const account of PREVIEW_ACCOUNTS) {
+    // Bare ON CONFLICT DO NOTHING arbitrates on ANY constraint, so both
+    // "id already taken" and "email already registered" (including a
+    // concurrent seeder racing this one) no-op instead of aborting the
+    // transaction.
+    const insertedIdentity = await client.query(
+      `INSERT INTO ${identityTable}
+         (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, true, $4, now(), now())
+       ON CONFLICT DO NOTHING`,
+      [
+        deterministicUserId(account.email),
+        account.name,
+        account.email,
+        account.role,
+      ],
+    );
+    createdIdentities += insertedIdentity.rowCount ?? 0;
+
+    // Resolve the id by email AFTER the insert: this is the identity the
+    // credential must attach to whether the row pre-existed, was just
+    // created, or was created by a concurrent run. If it's still absent,
+    // the deterministic id belongs to some other user and the insert
+    // no-opped — attaching a credential to that id would hand the preview
+    // password to an unrelated account, so fail loudly instead.
+    const identity = await client.query(
+      `SELECT id FROM ${identityTable} WHERE email = $1`,
+      [account.email],
+    );
+    const userId = identity.rows[0]?.id;
+    if (!userId) {
+      throw new Error(
+        `Identity for ${account.email} neither existed nor could be ` +
+          "created (its deterministic id is taken by a different user)",
+      );
+    }
+
+    // Converge the roster contract on pre-existing rows: an identity that
+    // predates this seeder (older seed generations, or a DB cloned from a
+    // template) may carry the wrong role or an unverified email, and
+    // preview-admin's role='admin' is the property the roster exists to
+    // guarantee. Passwords are deliberately NOT converged (see the entry
+    // script's docstring).
+    await client.query(
+      `UPDATE ${identityTable}
+       SET role = $2, "emailVerified" = true, "updatedAt" = now()
+       WHERE id = $1
+         AND (role IS DISTINCT FROM $2 OR "emailVerified" IS DISTINCT FROM true)`,
+      [userId, account.role],
+    );
+
+    // Single-statement guarded insert: no SELECT-then-INSERT window, so a
+    // retried or concurrent seeding can't double-create the credential.
+    // An existing credential is never touched — rotating the password only
+    // affects databases seeded fresh.
+    const insertedCredential = await client.query(
+      `INSERT INTO ${accountTable}
+         (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
+       SELECT gen_random_uuid()::text, $1, 'credential', $1, $2, now(), now()
+       WHERE NOT EXISTS (
+         SELECT 1 FROM ${accountTable}
+         WHERE "userId" = $1 AND "providerId" = 'credential'
+       )`,
+      [userId, passwordHash],
+    );
+    createdAccounts += insertedCredential.rowCount ?? 0;
+  }
+
+  return { createdIdentities, createdAccounts };
 }
