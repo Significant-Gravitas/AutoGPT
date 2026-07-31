@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -469,8 +470,6 @@ async def test_create_batch_born_tenanted_stamps_default_team(mocker):
     """The create branch of the upsert stamps the batch with the user's default
     org/team so a new batch isn't left in the untenanted pool that the startup
     migration sweep backfills on every boot. Mocked at the Prisma boundary."""
-    from unittest.mock import AsyncMock
-
     mock_upsert = AsyncMock(return_value=object())
     mocker.patch(
         "backend.data.notifications.UserNotificationBatch.prisma"
@@ -502,8 +501,6 @@ async def test_create_batch_born_tenanted_stamps_default_team(mocker):
 async def test_create_batch_explicit_tenancy_not_overridden(mocker):
     """An explicit org/team passed by a caller is used as-is; the default-team
     resolver is not consulted."""
-    from unittest.mock import AsyncMock
-
     mock_upsert = AsyncMock(return_value=object())
     mocker.patch(
         "backend.data.notifications.UserNotificationBatch.prisma"
@@ -536,8 +533,6 @@ async def test_create_batch_explicit_tenancy_not_overridden(mocker):
 async def test_create_batch_default_team_lookup_failure_stays_untenanted(mocker):
     """The default-team lookup is best-effort: if it RAISES, the batch is still
     created (untenanted) rather than crashing the notification."""
-    from unittest.mock import AsyncMock
-
     mock_upsert = AsyncMock(return_value=object())
     mocker.patch(
         "backend.data.notifications.UserNotificationBatch.prisma"
@@ -569,8 +564,6 @@ async def test_create_batch_explicit_team_id_preserved_when_org_absent(mocker):
     """An explicit team_id with no org must NOT be clobbered by the default-
     team lookup — the guard only fires when BOTH fields are unset (mirrors the
     executor-path guard)."""
-    from unittest.mock import AsyncMock
-
     mock_upsert = AsyncMock(return_value=object())
     mocker.patch(
         "backend.data.notifications.UserNotificationBatch.prisma"

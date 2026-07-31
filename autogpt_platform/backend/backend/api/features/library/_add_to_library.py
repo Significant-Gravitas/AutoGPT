@@ -147,22 +147,11 @@ async def add_graph_to_library(
                 "name": marketplace["name"],
                 "description": marketplace["description"],
                 "imageUrl": marketplace["imageUrl"],
-                # Re-adding under a different active org re-tags the row — and
-                # resets the team alongside it, since a stale team from the
-                # previous org would point across tenants. Untagged callers
-                # (bootstrap failure → organization_id None) leave both as-is.
-                **(
-                    {
-                        "organizationId": organization_id,
-                        "Team": (
-                            {"connect": {"id": team_id}}
-                            if team_id
-                            else {"disconnect": True}
-                        ),
-                    }
-                    if organization_id
-                    else {}
-                ),
+                # Deliberately leave organizationId/Team untouched on re-add:
+                # an existing bookmark already carries its tenancy (stamped at
+                # create, or backfilled by the boot sweep). Only the create
+                # branch born-tenants; re-tagging here risked disconnecting an
+                # existing team when a default team couldn't be resolved.
             },
             include=_include,
         )

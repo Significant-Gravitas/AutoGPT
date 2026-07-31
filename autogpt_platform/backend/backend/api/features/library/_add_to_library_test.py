@@ -195,9 +195,11 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     assert update_data["name"] == "Marketplace Title"
     assert update_data["description"] == "Marketplace description"
     assert update_data["imageUrl"] == "https://cdn.example.com/agent.png"
-    # Re-adding re-tags the restored row with the adder's default org/team
-    assert update_data["organizationId"] == "org-lib"
-    assert update_data["Team"] == {"connect": {"id": "team-lib"}}
+    # Re-add must NOT touch tenancy — the existing row keeps its org/team
+    # (only the create branch born-tenants). Prevents disconnecting an
+    # existing team when no default team resolves.
+    assert "organizationId" not in update_data
+    assert "Team" not in update_data
 
 
 def test_marketplace_metadata_returns_first_image() -> None:
