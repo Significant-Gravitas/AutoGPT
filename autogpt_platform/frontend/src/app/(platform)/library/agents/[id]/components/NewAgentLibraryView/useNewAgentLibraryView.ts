@@ -9,11 +9,12 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   deriveSelectedTriggerKind,
+  getErrorStatus,
   parseActiveItemParam,
   retryUnlessClientError,
   SelectedTriggerKind,
@@ -36,6 +37,7 @@ function parseTab(
 
 export function useNewAgentLibraryView() {
   const { id } = useParams();
+  const router = useRouter();
   const agentId = id as string;
 
   // TODO(#12740 / autogpt-pr-reviewer): when agent.is_hidden is true,
@@ -46,8 +48,17 @@ export function useNewAgentLibraryView() {
   const {
     data: agent,
     isSuccess,
-    error,
-  } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
+    error: agentError,
+  } = useGetV2GetLibraryAgent(agentId, {
+    query: { select: okData, retry: retryUnlessClientError },
+  });
+  const agentNotFound = getErrorStatus(agentError) === 404;
+
+  useEffect(() => {
+    if (agentNotFound) {
+      router.replace("/library");
+    }
+  }, [agentNotFound, router]);
 
   const { enabled: triggerAgentsEnabled, ready: triggerAgentsFlagReady } =
     useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
@@ -293,7 +304,7 @@ export function useNewAgentLibraryView() {
     ready: isSuccess,
     activeTemplate,
     isTemplateLoading,
-    error: error || templateError,
+    error: agentNotFound ? null : agentError || templateError,
     hasAnyItems,
     showSidebarLayout,
     activeItemId,
