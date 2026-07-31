@@ -562,3 +562,37 @@ async def test_create_batch_default_team_lookup_failure_stays_untenanted(mocker)
     create_input = mock_upsert.call_args.kwargs["data"]["create"]
     assert create_input.get("organizationId") is None
     assert create_input.get("teamId") is None
+
+
+@pytest.mark.asyncio
+async def test_create_batch_explicit_team_id_preserved_when_org_absent(mocker):
+    """An explicit team_id with no org must NOT be clobbered by the default-
+    team lookup — the guard only fires when BOTH fields are unset (mirrors the
+    executor-path guard)."""
+    from unittest.mock import AsyncMock
+
+    mock_upsert = AsyncMock(return_value=object())
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatch.prisma"
+    ).return_value.upsert = mock_upsert
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatchDTO.from_db",
+        return_value="dto-sentinel",
+    )
+    mock_get_default_team = mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=AsyncMock(return_value=("fallback-org", "fallback-team")),
+    )
+
+    user_id = "notif-team-only-user"
+    await create_or_add_to_user_notification_batch(
+        user_id=user_id,
+        notification_type=NotificationType.AGENT_RUN,
+        notification_data=_make_agent_run_event(user_id),
+        team_id="explicit-team",
+    )
+
+    mock_get_default_team.assert_not_called()
+    create_input = mock_upsert.call_args.kwargs["data"]["create"]
+    assert create_input["teamId"] == "explicit-team"
+    assert create_input.get("organizationId") is None
