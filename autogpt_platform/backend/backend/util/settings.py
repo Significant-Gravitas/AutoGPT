@@ -337,6 +337,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
 
+    trusted_frontend_origins: List[str] = Field(
+        default=[],
+        description="Extra frontend origins (in addition to frontend_base_url) "
+        "that transactional auth-email action links may point at. Entries are "
+        'full origins ("https://host[:port]") or "regex:"-prefixed patterns, '
+        "same format as backend_cors_allow_origins. Self-hosting needs nothing "
+        "here (frontend_base_url is trusted implicitly); cloud sets a tight "
+        "preview pattern instead of a blanket wildcard.",
+    )
+
     platform_link_base_url: str = Field(
         default="https://platform.agpt.co/link",
         description="Base URL the bot service prepends to one-time linking "
@@ -590,6 +600,28 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
     )
 
+    @field_validator("trusted_frontend_origins")
+    @classmethod
+    def validate_trusted_frontend_origins(cls, v: List[str]) -> List[str]:
+        """Reject unusable entries at startup rather than at send time.
+
+        These patterns are compiled per request in the auth-email route, so a
+        malformed one would otherwise boot fine and then 500 every password
+        reset and verification email.
+        """
+        for raw_origin in v:
+            origin = raw_origin.strip()
+            if not origin.startswith("regex:"):
+                continue
+            pattern = origin[len("regex:") :]
+            if not pattern:
+                raise ValueError("Invalid regex pattern: pattern cannot be empty")
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"Invalid regex pattern '{pattern}': {exc}") from exc
+        return v
+
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
@@ -661,11 +693,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
-
-    supabase_url: str = Field(default="", description="Supabase URL")
-    supabase_service_role_key: str = Field(
-        default="", description="Supabase service role key"
-    )
 
     encryption_key: str = Field(default="", description="Encryption key")
 
@@ -749,7 +776,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     medium_api_key: str = Field(default="", description="Medium API key")
     medium_author_id: str = Field(default="", description="Medium author ID")
     did_api_key: str = Field(default="", description="D-ID API Key")
-    revid_api_key: str = Field(default="", description="revid.ai API key")
     discord_bot_token: str = Field(default="", description="Discord bot token")
     autopilot_bot_discord_token: str = Field(
         default="",
@@ -778,6 +804,33 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="Slack app signing secret — verifies inbound Slack request "
         "signatures (HMAC-SHA256). Required alongside the token to enable the "
         "Slack adapter.",
+    )
+    autopilot_bot_slack_client_id: str = Field(
+        default="",
+        description="Slack app OAuth client ID. Set together with the client "
+        "secret to enable the multi-workspace 'Add to Slack' install flow; each "
+        "workspace's bot token is then obtained via OAuth and stored per team.",
+    )
+    autopilot_bot_slack_client_secret: str = Field(
+        default="",
+        description="Slack app OAuth client secret — exchanged with the auth "
+        "code on the install callback for a per-workspace bot token.",
+    )
+    autopilot_bot_telegram_token: str = Field(
+        default="",
+        description="Telegram bot token (from @BotFather). Set together with "
+        "the webhook secret to mount the Telegram adapter on the main API.",
+    )
+    autopilot_bot_telegram_webhook_secret: str = Field(
+        default="",
+        description="Secret registered with Telegram's setWebhook; Telegram "
+        "echoes it in the X-Telegram-Bot-Api-Secret-Token header and inbound "
+        "updates are rejected unless it matches.",
+    )
+    autopilot_bot_telegram_username: str = Field(
+        default="",
+        description="The bot's public @username (without the @) — used to "
+        "build the t.me add-to-group link on the Bots settings page.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")

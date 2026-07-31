@@ -23,7 +23,10 @@ from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
+    _MAX_JSON_RETRIES,
+    _call_llm_for_simulation,
     _extract_cost_usd,
+    _make_output_validator,
     _truncate_input_values,
     _truncate_value,
     build_simulation_prompt,
@@ -882,3 +885,114 @@ class TestSimulatorCostTracking:
                 outputs.append((name, data))
 
         assert ("result", "simulated") in outputs
+
+
+class TestSchemaConformantSimulation:
+    """Simulated outputs are validated against the block's output schema and
+    retried with corrective feedback; structure fabrications (e.g. a list
+    where the schema says object) no longer reach downstream nodes
+    unchallenged."""
+
+    _OUTPUT_SCHEMA: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "main_result": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+            },
+            "response": {"type": "string"},
+        },
+        "required": ["main_result", "response"],
+    }
+
+    def test_validator_accepts_conforming_output(self) -> None:
+        validate = _make_output_validator(self._OUTPUT_SCHEMA)
+        assert validate({"main_result": {"text": "hi"}, "response": "ok"}) == []
+
+    def test_validator_ignores_missing_required_pins(self) -> None:
+        """Omitted pins are legitimate (simulate_block back-fills them)."""
+        validate = _make_output_validator(self._OUTPUT_SCHEMA)
+        assert validate({"response": "ok"}) == []
+
+    def test_validator_flags_wrong_structure(self) -> None:
+        validate = _make_output_validator(self._OUTPUT_SCHEMA)
+        problems = validate({"main_result": [{"type": "string", "value": "x"}]})
+        assert problems
+        assert "main_result" in problems[0]
+
+    def test_prompt_includes_full_output_schema(self) -> None:
+        block = _make_block(output_schema=self._OUTPUT_SCHEMA)
+        system_prompt, _ = build_simulation_prompt(block, {"query": "q"})
+        assert "Full output JSON Schema" in system_prompt
+        assert '"main_result"' in system_prompt
+
+    def _client_with_responses(self, contents: list[str]) -> tuple[Any, AsyncMock]:
+        responses = [_sim_completion(content=c, usage=_sim_usage()) for c in contents]
+        create_mock = AsyncMock(side_effect=responses)
+        client = type(
+            "MC",
+            (),
+            {
+                "chat": type(
+                    "C",
+                    (),
+                    {"completions": type("CC", (), {"create": create_mock})()},
+                )()
+            },
+        )()
+        return client, create_mock
+
+    @pytest.mark.asyncio
+    async def test_nonconforming_output_retried_with_feedback(self) -> None:
+        client, create_mock = self._client_with_responses(
+            [
+                '{"main_result": ["wrong"], "response": "ok"}',
+                '{"main_result": {"text": "right"}, "response": "ok"}',
+            ]
+        )
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=0),
+            ),
+        ):
+            parsed = await _call_llm_for_simulation(
+                "sys",
+                "user",
+                output_validator=_make_output_validator(self._OUTPUT_SCHEMA),
+            )
+
+        assert parsed == {"main_result": {"text": "right"}, "response": "ok"}
+        assert create_mock.call_count == 2
+        retry_messages = create_mock.call_args_list[1].kwargs["messages"]
+        assert any(
+            "does not conform" in str(m.get("content", "")) for m in retry_messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_last_parsed_when_retries_exhausted(self) -> None:
+        """A structurally imperfect simulation beats failing the dry run."""
+        bad = '{"main_result": ["still wrong"], "response": "ok"}'
+        client, create_mock = self._client_with_responses([bad] * _MAX_JSON_RETRIES)
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=0),
+            ),
+        ):
+            parsed = await _call_llm_for_simulation(
+                "sys",
+                "user",
+                output_validator=_make_output_validator(self._OUTPUT_SCHEMA),
+            )
+
+        assert parsed == {"main_result": ["still wrong"], "response": "ok"}
+        assert create_mock.call_count == _MAX_JSON_RETRIES

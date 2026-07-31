@@ -31,9 +31,11 @@ import {
   splitReasoningAndResponse,
 } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
+import type { ExpertIdentity } from "../../useExpertMap";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
+import { ExpertAvatar } from "./components/ExpertAvatar/ExpertAvatar";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
@@ -85,6 +87,9 @@ interface Props {
    *  in markdown prose AND when building inline artifact source URLs.
    *  The public viewer passes a token-aware builder. */
   fileUrlBuilder?: (fileId: string) => string;
+  /** Expert identity for expert-scoped sessions: drives the thread header
+   *  and the assistant avatar/name. Null/undefined = default header. */
+  expertIdentity?: ExpertIdentity | null;
 }
 
 interface RenderSegmentOptions {
@@ -322,6 +327,7 @@ export function ChatMessagesContainer({
   readOnly = false,
   filePattern,
   fileUrlBuilder,
+  expertIdentity,
 }: Props) {
   // The in-chat "progress in the sidebar" notice only applies to the old
   // sidebar surface — hide it entirely when the task bar is on.
@@ -508,6 +514,20 @@ export function ChatMessagesContainer({
             : undefined
         }
       >
+        {expertIdentity && (
+          <div
+            data-testid="expert-thread-header"
+            className="flex items-center gap-2 border-b border-zinc-200/60 pb-3"
+          >
+            <ExpertAvatar
+              name={expertIdentity.name}
+              avatarUrl={expertIdentity.avatarUrl}
+            />
+            <span className="text-sm font-medium text-zinc-800">
+              {expertIdentity.name}
+            </span>
+          </div>
+        )}
         {!readOnly && hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
             hasMore={hasMoreMessages}
@@ -588,7 +608,23 @@ export function ChatMessagesContainer({
               from={message.role}
               key={message.id}
               data-message-id={message.id}
+              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
             >
+              {isAssistant && expertIdentity && (
+                <div
+                  data-testid="expert-assistant-identity"
+                  className="mb-1 flex items-center gap-1.5"
+                >
+                  <ExpertAvatar
+                    name={expertIdentity.name}
+                    avatarUrl={expertIdentity.avatarUrl}
+                    size="small"
+                  />
+                  <span className="text-xs font-medium text-zinc-500">
+                    {expertIdentity.name}
+                  </span>
+                </div>
+              )}
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +
@@ -703,7 +739,10 @@ export function ChatMessagesContainer({
           </div>
         )}
         {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
-          <Message from="assistant">
+          <Message
+            from="assistant"
+            className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+          >
             <MessageContent className="text-[1rem] leading-relaxed">
               {indicator}
             </MessageContent>

@@ -1,4 +1,9 @@
-"""Slack slash-command handlers — /setup, /help, /unlink."""
+"""Slack slash-command handlers — /setup, /help, /unlink.
+
+Policy (link-token minting, already-linked handling, unlink destination) is
+shared with every platform via ``command_core``; this module owns only Slack's
+transport: form parsing and block-kit rendering.
+"""
 
 import logging
 from typing import Any
@@ -7,8 +12,9 @@ from fastapi import Response
 from fastapi.responses import JSONResponse
 
 from backend.copilot.bot.bot_backend import BotBackend
-from backend.util.exceptions import LinkAlreadyExistsError
-from backend.util.settings import Settings
+from backend.copilot.bot.command_core import CommandReply, setup_reply, unlink_reply
+
+from .text import to_mrkdwn
 
 logger = logging.getLogger(__name__)
 
@@ -20,75 +26,47 @@ async def handle(api: BotBackend, form: dict[str, str]) -> Response:
     if command == "/help":
         return _help()
     if command == "/unlink":
-        return _unlink()
+        return _render(unlink_reply())
     return _ephemeral(f"Unknown command: {command}")
 
 
 async def _setup(api: BotBackend, form: dict[str, str]) -> Response:
     team_id = form.get("team_id", "")
     user_id = form.get("user_id", "")
-    user_name = form.get("user_name", "")
-    team_domain = form.get("team_domain", "")
-    channel_id = form.get("channel_id", "")
 
     if not team_id or not user_id:
         return _ephemeral(
             "Slack didn't send the workspace/user info. Try the command again."
         )
 
-    try:
-        result = await api.create_link_token(
-            platform="slack",
-            platform_server_id=team_id,
-            platform_user_id=user_id,
-            platform_username=user_name,
-            server_name=team_domain,
-            channel_id=channel_id,
-        )
-    except LinkAlreadyExistsError:
-        return _ephemeral(
-            "This workspace is already linked to an AutoGPT account — just "
-            "mention me or DM me to chat. Run /unlink to manage the link."
-        )
-    except Exception:
-        logger.exception("Slack /setup link token creation failed")
-        return _ephemeral(
-            "Something went wrong creating the setup link. Try again in a moment."
-        )
-
-    return _link_response(
-        text=(
-            "*Set up AutoPilot for this workspace*\n\n"
-            "Click the button below to link this workspace to your AutoGPT "
-            "account. The link expires in 30 minutes."
-        ),
-        label="Link Workspace",
-        url=result.link_url,
+    reply = await setup_reply(
+        api,
+        platform="slack",
+        server_noun="workspace",
+        platform_server_id=team_id,
+        platform_user_id=user_id,
+        platform_username=form.get("user_name", ""),
+        server_name=form.get("team_domain", ""),
+        channel_id=form.get("channel_id", ""),
     )
+    return _render(reply)
 
 
 def _help() -> Response:
     return _ephemeral(
-        "*AutoPilot for Slack*\n"
+        "*AutoGPT for Slack*\n"
         "• Run `/setup` in this workspace to link it to an AutoGPT account.\n"
-        "• Mention `@AutoPilot` in a channel to start a conversation in a thread.\n"
-        "• DM `@AutoPilot` to chat with your personal AutoPilot account.\n"
+        "• Mention `@AutoGPT` in a channel to start a conversation in a thread.\n"
+        "• DM `@AutoGPT` to chat with your personal AutoGPT account.\n"
         "• Run `/unlink` to manage your linked workspace and DM."
     )
 
 
-def _unlink() -> Response:
-    cfg = Settings().config
-    base_url = (cfg.frontend_base_url or cfg.platform_base_url).rstrip("/")
-    if not base_url:
-        return _ephemeral(
-            "Settings page isn't configured — ask an admin to set FRONTEND_BASE_URL."
-        )
-    return _link_response(
-        text="Manage your workspace and DM links from your AutoGPT settings.",
-        label="Open Settings",
-        url=f"{base_url}/profile/settings",
-    )
+def _render(reply: CommandReply) -> Response:
+    text = to_mrkdwn(reply.text)
+    if reply.button_label and reply.button_url:
+        return _link_response(text=text, label=reply.button_label, url=reply.button_url)
+    return _ephemeral(text)
 
 
 def _ephemeral(text: str) -> Response:

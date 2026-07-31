@@ -1,15 +1,23 @@
-"""Slack adapter — webhook-based (Events API).
+"""Slack adapter — webhook-based (Events API), multi-workspace.
 
-Mounts inbound Events API + slash-command routes on the main backend API. All
+Mounts inbound Events API + slash-command + OAuth-install routes on the main
+backend API. Each installed workspace has its own bot token (obtained via the
+"Add to Slack" OAuth flow, stored encrypted per team); every outbound call
+resolves the right token from the workspace (team) the message came from. All
 platform-agnostic logic (attachment policy, mention allowlist, chunk splitting,
 history budgeting) comes from the shared layer; only Slack API calls and Slack's
 event/ID grammar live here.
+
+The opaque ``channel_id`` the handler passes back into ``send_*`` therefore
+carries the team: it is ``team|channel|thread_ts`` so a send can pick the
+workspace's client without any extra lookup.
 """
 
 import asyncio
 import json
 import logging
 import re
+import time
 from typing import Any, Optional
 
 import httpx
@@ -25,19 +33,29 @@ from backend.copilot.bot.adapters.base import (
     MessageContext,
     PostedRef,
     WebhookAdapter,
+    read_verified_webhook_body,
+    unauthorized_webhook_response,
 )
 from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
-from . import commands, config, signing
+# Accessor, not direct Prisma: the outbound half also runs in the Prisma-less
+# copilot-bot bridge pod, which must go through the DatabaseManager.
+from backend.data.db_accessors import bot_installs_db
+from backend.platform_linking.models import Platform
+
+from . import commands, config, oauth, signing
 from .text import to_mrkdwn
 
 logger = logging.getLogger(__name__)
 
 EVENTS_PATH = "/api/copilot-webhooks/slack/events"
 COMMANDS_PATH = "/api/copilot-webhooks/slack/commands"
+
+# Slack lifecycle events that end a workspace's install — revoke its token.
+_UNINSTALL_EVENTS = {"app_uninstalled", "tokens_revoked"}
 
 # Matches both `<@U123>` and `<@U123|displayname>` mention forms.
 _USER_MENTION_RE = re.compile(r"<@(U[A-Z0-9]+)(?:\|[^>]+)?>")
@@ -47,15 +65,23 @@ _USER_MENTION_RE = re.compile(r"<@(U[A-Z0-9]+)(?:\|[^>]+)?>")
 # resolver to tell an ID from a name.
 _CHANNEL_ID_RE = re.compile(r"^[CGD][A-Z0-9]{7,}$")
 
+# Cached per-workspace clients expire so a token replaced by a re-install (scope
+# change / rotation) stops being used within this window on EVERY replica — the
+# OAuth callback only evicts the replica that handled it.
+_CLIENT_CACHE_TTL_SECONDS = 15 * 60
+
 
 class SlackAdapter(WebhookAdapter):
     def __init__(self, api: BotBackend):
         self._api = api
-        self._client = AsyncWebClient(token=config.get_bot_token())
         self._on_message_callback: Optional[MessageCallback] = None
-        self._bot_user_id: Optional[str] = None
-        self._team_id: Optional[str] = None
-        self._user_name_cache: dict[str, str] = {}
+        # Per-workspace caches, keyed by team_id. A workspace's client + bot user
+        # id are resolved once from its stored install token and reused.
+        self._clients: dict[str, AsyncWebClient] = {}
+        self._client_cached_at: dict[str, float] = {}
+        self._bot_user_ids: dict[str, str] = {}
+        # User display names are workspace-scoped: keyed by (team_id, user_id).
+        self._user_name_cache: dict[tuple[str, str], str] = {}
         # Strong-ref set so the GC doesn't drop fire-and-forget event tasks.
         self._event_tasks: set[asyncio.Task[None]] = set()
 
@@ -95,13 +121,68 @@ class SlackAdapter(WebhookAdapter):
     def register_routes(self, app: FastAPI) -> None:
         app.add_api_route(EVENTS_PATH, self._handle_event_request, methods=["POST"])
         app.add_api_route(COMMANDS_PATH, self._handle_command_request, methods=["POST"])
+        # Multi-workspace "Add to Slack" install + OAuth callback (no-op unless
+        # the app's client id/secret are configured). A (re)install replaces the
+        # workspace's token, so it must drop this replica's cached client.
+        oauth.register_routes(app, on_installed=self._evict)
+
+    # -- Per-workspace client resolution --
+
+    async def _client_for(self, team_id: str) -> Optional[AsyncWebClient]:
+        """Return a cached Slack client for ``team_id``, building it from the
+        workspace's stored install token (or the static back-compat token).
+
+        An empty ``team_id`` (e.g. a raw channel ref in a proactive post that
+        carries no workspace) can't be looked up, so it falls straight through to
+        the static single-workspace token. Returns ``None`` only when there is no
+        usable token at all — the caller then can't respond, which is the correct
+        outcome for an uninstalled workspace."""
+        client = self._clients.get(team_id)
+        if client is not None:
+            cached_at = self._client_cached_at.get(team_id)
+            if (
+                cached_at is None
+                or time.monotonic() - cached_at < _CLIENT_CACHE_TTL_SECONDS
+            ):
+                return client
+            self._evict(team_id)
+        install = (
+            await bot_installs_db().get_bot_install(Platform.SLACK, team_id)
+            if team_id
+            else None
+        )
+        if install is None:
+            # A workspace that explicitly uninstalled / revoked us gets NOTHING —
+            # the static token belongs to the app's own workspace and must never
+            # be used on a revoked one's behalf. Fallback is only for
+            # never-installed refs (single-workspace mode, raw proactive refs).
+            if team_id and await bot_installs_db().is_install_revoked(
+                Platform.SLACK, team_id
+            ):
+                return None
+            token = config.get_bot_token()
+        else:
+            token = install.bot_token
+        if not token:
+            return None
+        if install and install.bot_user_id:
+            self._bot_user_ids[team_id] = install.bot_user_id
+        client = AsyncWebClient(token=token)
+        self._clients[team_id] = client
+        self._client_cached_at[team_id] = time.monotonic()
+        return client
+
+    def _evict(self, team_id: str) -> None:
+        self._clients.pop(team_id, None)
+        self._client_cached_at.pop(team_id, None)
+        self._bot_user_ids.pop(team_id, None)
 
     # -- Inbound --
 
     async def _handle_event_request(self, request: Request) -> Response:
-        raw = await request.body()
-        if not _verify_signature(request, raw):
-            return PlainTextResponse("invalid signature", status_code=401)
+        raw = await read_verified_webhook_body(request, _verify_signature)
+        if raw is None:
+            return unauthorized_webhook_response()
         payload = json.loads(raw)
         if payload.get("type") == "url_verification":
             return JSONResponse({"challenge": payload.get("challenge", "")})
@@ -109,7 +190,7 @@ class SlackAdapter(WebhookAdapter):
             event = payload.get("event") or {}
             # The workspace (team) ID lives at the top level of the Events API
             # payload — it isn't reliably inside the event object — so thread it
-            # through for server_id resolution.
+            # through for token + server_id resolution.
             team_id = payload.get("team_id")
             # Fire-and-forget so we ACK within Slack's 3s window.
             task = asyncio.create_task(self._dispatch_event(event, team_id))
@@ -118,9 +199,8 @@ class SlackAdapter(WebhookAdapter):
         return PlainTextResponse("ok")
 
     async def _handle_command_request(self, request: Request) -> Response:
-        raw = await request.body()
-        if not _verify_signature(request, raw):
-            return PlainTextResponse("invalid signature", status_code=401)
+        if await read_verified_webhook_body(request, _verify_signature) is None:
+            return unauthorized_webhook_response()
         form_data = await request.form()
         # Slack slash-command form data is always string-valued; drop anything
         # else (UploadFile etc.) defensively before passing on.
@@ -132,6 +212,13 @@ class SlackAdapter(WebhookAdapter):
     async def _dispatch_event(
         self, event: dict[str, Any], team_id: Optional[str] = None
     ) -> None:
+        # Workspace removed the app / revoked its token → drop its stored install
+        # and cached client so we stop trying to use a dead token.
+        if event.get("type") in _UNINSTALL_EVENTS:
+            if team_id:
+                self._evict(team_id)
+                await bot_installs_db().revoke_bot_install(Platform.SLACK, team_id)
+            return
         if self._on_message_callback is None:
             return
         # Skip bot messages (including our own) to avoid reply loops.
@@ -173,47 +260,48 @@ class SlackAdapter(WebhookAdapter):
         ts = event.get("ts")
         user = event.get("user")
         text = event.get("text") or ""
-        if not channel or not ts or not user:
+        # team is required to resolve the workspace's token for the reply.
+        team = event.get("team") or team_id
+        if not channel or not ts or not user or not team:
             return None
 
         thread_ts = event.get("thread_ts")
         channel_type: ChannelType
-        target_channel_id: str
         if is_dm:
             channel_type = "dm"
-            target_channel_id = channel
         elif thread_ts:
             channel_type = "thread"
-            target_channel_id = _encode_target(channel, thread_ts)
         else:
             channel_type = "channel"
-            target_channel_id = channel
+        target_channel_id = _encode_target(team, channel, thread_ts)
 
-        attachments, skipped = await self._extract_attachments(event)
+        attachments, skipped = await self._extract_attachments(team, event)
         return MessageContext(
             platform="slack",
             channel_type=channel_type,
             # DMs bill to the user (no server); channel/thread need the workspace.
-            server_id=None if is_dm else (event.get("team") or team_id),
+            server_id=None if is_dm else team,
             channel_id=target_channel_id,
             message_id=ts,
             user_id=user,
-            username=await self._user_display_name(user),
-            text=await self._strip_mentions(text),
+            username=await self._user_display_name(team, user),
+            text=await self._strip_mentions(team, text),
             bot_mentioned=bot_mentioned,
-            mentionable_users=await self._collect_mentionable_users(text),
+            mentionable_users=await self._collect_mentionable_users(team, text),
             attachments=attachments,
             skipped_attachments=skipped,
         )
 
-    async def _extract_attachments(self, event: dict[str, Any]) -> tuple[tuple, tuple]:
+    async def _extract_attachments(
+        self, team_id: str, event: dict[str, Any]
+    ) -> tuple[tuple, tuple]:
         files = event.get("files") or []
         inbound = [
             InboundFile(
                 filename=f.get("name"),
                 size=int(f.get("size") or 0),
                 mime_type=f.get("mimetype"),
-                fetch=lambda f=f: self._download_slack_file(f),
+                fetch=lambda f=f: self._download_slack_file(team_id, f),
             )
             for f in files
         ]
@@ -223,16 +311,21 @@ class SlackAdapter(WebhookAdapter):
             max_bytes=self.max_attachment_bytes,
         )
 
-    async def _download_slack_file(self, file_obj: dict[str, Any]) -> bytes:
-        # Slack file URLs are private — download needs the bot token as a
-        # bearer credential (files:read scope), unlike Discord's public CDN.
+    async def _download_slack_file(
+        self, team_id: str, file_obj: dict[str, Any]
+    ) -> bytes:
+        # Slack file URLs are private — download needs the workspace's bot token
+        # as a bearer credential (files:read scope), unlike Discord's public CDN.
         url = file_obj.get("url_private_download") or file_obj.get("url_private") or ""
+        token = await self._token_for(team_id)
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                url, headers={"Authorization": f"Bearer {config.get_bot_token()}"}
-            )
+            resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
             resp.raise_for_status()
             return resp.content
+
+    async def _token_for(self, team_id: str) -> str:
+        client = await self._client_for(team_id)
+        return client.token or "" if client else ""
 
     # -- Outbound --
 
@@ -251,8 +344,11 @@ class SlackAdapter(WebhookAdapter):
         text: str,
         mentionable_users: tuple[tuple[str, str], ...] = (),
     ) -> None:
-        channel, thread_ts = _decode_target(channel_id)
-        await self._client.chat_postMessage(
+        team, channel, thread_ts = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return
+        await client.chat_postMessage(
             channel=channel,
             text=self._render(text, mentionable_users),
             thread_ts=thread_ts,
@@ -265,8 +361,11 @@ class SlackAdapter(WebhookAdapter):
         reply_to_message_id: str,
         mentionable_users: tuple[tuple[str, str], ...] = (),
     ) -> None:
-        channel, thread_ts = _decode_target(channel_id)
-        await self._client.chat_postMessage(
+        team, channel, thread_ts = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return
+        await client.chat_postMessage(
             channel=channel,
             text=self._render(text, mentionable_users),
             thread_ts=thread_ts or reply_to_message_id,
@@ -275,9 +374,12 @@ class SlackAdapter(WebhookAdapter):
     async def send_link(
         self, channel_id: str, text: str, link_label: str, link_url: str
     ) -> None:
-        channel, thread_ts = _decode_target(channel_id)
+        team, channel, thread_ts = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return
         rendered = self.localize_markup(text)
-        await self._client.chat_postMessage(
+        await client.chat_postMessage(
             channel=channel,
             text=rendered,
             thread_ts=thread_ts,
@@ -285,8 +387,11 @@ class SlackAdapter(WebhookAdapter):
         )
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
-        channel, thread_ts = _decode_target(channel_id)
-        await self._client.files_upload_v2(
+        team, channel, thread_ts = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return
+        await client.files_upload_v2(
             channel=channel,
             thread_ts=thread_ts,
             content=file.content,
@@ -295,140 +400,174 @@ class SlackAdapter(WebhookAdapter):
         )
 
     async def send_ephemeral(self, channel_id: str, user_id: str, text: str) -> None:
-        channel, _ = _decode_target(channel_id)
-        await self._client.chat_postEphemeral(channel=channel, user=user_id, text=text)
-
-    async def start_typing(self, channel_id: str) -> None:
-        pass  # Slack bot apps don't expose a typing indicator API.
-
-    async def stop_typing(self, channel_id: str) -> None:
-        pass
+        team, channel, _ = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return
+        await client.chat_postEphemeral(channel=channel, user=user_id, text=text)
 
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
     ) -> Optional[str]:
-        # Slack threads are implicit — pack (channel, parent_ts) into a single
-        # target_id the handler passes back to the outbound send_* calls.
-        return _encode_target(channel_id, message_id)
-
-    async def rename_thread(self, thread_id: str, name: str) -> bool:
-        return False  # Slack threads have no name.
+        # Slack threads are implicit — re-pack (team, channel, parent_ts) into a
+        # single target_id the handler passes back to the outbound send_* calls.
+        team, channel, _ = _decode_target(channel_id)
+        return _encode_target(team, channel, message_id)
 
     # -- Proactive output --
 
     async def list_text_channels(
         self, server_ids: tuple[str, ...]
     ) -> list[ChannelInfo]:
-        team_id = await self._team_id_cached()
-        if not team_id or team_id not in server_ids:
-            return []
         channels: list[ChannelInfo] = []
-        cursor: Optional[str] = None
-        while True:
-            resp = await self._client.conversations_list(
-                types="public_channel",
-                exclude_archived=True,
-                limit=200,
-                cursor=cursor,
-            )
-            for c in resp.get("channels") or []:
-                # Only channels the bot is in can be posted to without a join.
-                if c.get("is_member"):
-                    channels.append(
-                        ChannelInfo(
-                            id=c["id"], name=c.get("name", ""), server_id=team_id
+        for team_id in server_ids:
+            client = await self._client_for(team_id)
+            if client is None:
+                continue
+            cursor: Optional[str] = None
+            while True:
+                resp = await client.conversations_list(
+                    types="public_channel",
+                    exclude_archived=True,
+                    limit=200,
+                    cursor=cursor,
+                )
+                for c in resp.get("channels") or []:
+                    # Only channels the bot is in can be posted to without a join.
+                    if c.get("is_member"):
+                        channels.append(
+                            ChannelInfo(
+                                id=_encode_target(team_id, c["id"]),
+                                name=c.get("name", ""),
+                                server_id=team_id,
+                            )
                         )
-                    )
-            cursor = (resp.get("response_metadata") or {}).get("next_cursor")
-            if not cursor:
-                break
+                cursor = (resp.get("response_metadata") or {}).get("next_cursor")
+                if not cursor:
+                    break
         return channels
 
     async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
-        team_id = await self._team_id_cached()
-        if not team_id:
+        team, channel, _ = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
             return None
         try:
-            await self._client.conversations_info(channel=channel_id)
+            await client.conversations_info(channel=channel)
         except Exception:
             return None
-        return team_id
+        if team:
+            return team
+        # Static single-workspace fallback: the ref carried no team, so resolve
+        # the bot's own workspace from auth_test.
+        try:
+            resp = await client.auth_test()
+            return resp.get("team_id") or None
+        except Exception:
+            return None
+
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        # A DM link carries no workspace, so this resolves via the static
+        # single-workspace token — multi-workspace installs can't be picked
+        # without a team id on the user link.
+        client = await self._client_for("")
+        if client is None:
+            return None
+        try:
+            resp = await client.conversations_open(users=platform_user_id)
+        except Exception:
+            logger.warning(f"Cannot open Slack DM with user {platform_user_id}")
+            return None
+        return (resp.get("channel") or {}).get("id") or None
 
     async def post_channel_message(
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:
-        channel, thread_ts = _decode_target(channel_id)
-        first_ts = await self._post_chunked(channel, text, thread_ts=thread_ts)
+        team, channel, thread_ts = _decode_target(channel_id)
+        first_ts = await self._post_chunked(team, channel, text, thread_ts=thread_ts)
         if first_ts is None:
             return None
-        return PostedRef(id=first_ts, url=await self._permalink(channel, first_ts))
+        return PostedRef(
+            id=first_ts, url=await self._permalink(team, channel, first_ts)
+        )
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
     ) -> Optional[PostedRef]:
         # Slack threads are implicit + unnamed: post text as the root message;
         # the returned ref threads subsequent sends off it.
-        channel, _ = _decode_target(channel_id)
-        root_ts = await self._post_chunked(channel, text)
+        team, channel, _ = _decode_target(channel_id)
+        root_ts = await self._post_chunked(team, channel, text)
         if root_ts is None:
             return None
         return PostedRef(
-            id=_encode_target(channel, root_ts),
-            url=await self._permalink(channel, root_ts),
+            id=_encode_target(team, channel, root_ts),
+            url=await self._permalink(team, channel, root_ts),
         )
 
     async def _post_chunked(
-        self, channel: str, text: str, thread_ts: Optional[str] = None
+        self, team_id: str, channel: str, text: str, thread_ts: Optional[str] = None
     ) -> Optional[str]:
         """Post ``text`` chunked under the message cap; return the first ts.
 
         Later chunks thread off the first so a long post stays one conversation.
         """
+        client = await self._client_for(team_id)
+        if client is None:
+            return None
         first_ts = thread_ts
         for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
-            resp = await self._client.chat_postMessage(
+            resp = await client.chat_postMessage(
                 channel=channel, text=chunk, thread_ts=first_ts
             )
             if first_ts is None:
                 first_ts = resp.get("ts")
         return first_ts
 
-    async def _permalink(self, channel: str, ts: str) -> Optional[str]:
+    async def _permalink(self, team_id: str, channel: str, ts: str) -> Optional[str]:
+        client = await self._client_for(team_id)
+        if client is None:
+            return None
         try:
-            resp = await self._client.chat_getPermalink(channel=channel, message_ts=ts)
+            resp = await client.chat_getPermalink(channel=channel, message_ts=ts)
             return resp.get("permalink")
         except Exception:
             return None
 
     # -- Helpers --
 
-    async def _user_display_name(self, user_id: str) -> str:
-        if user_id in self._user_name_cache:
-            return self._user_name_cache[user_id]
-        try:
-            resp = await self._client.users_info(user=user_id)
-            user = resp.get("user") or {}
-            profile = user.get("profile") or {}
-            name = (
-                profile.get("display_name")
-                or user.get("real_name")
-                or user.get("name")
-                or user_id
-            )
-        except Exception:
-            logger.warning("Failed to fetch Slack user %s", user_id, exc_info=True)
-            name = user_id
-        self._user_name_cache[user_id] = name
-        return name
+    async def _user_display_name(self, team_id: str, user_id: str) -> str:
+        cache_key = (team_id, user_id)
+        if cache_key in self._user_name_cache:
+            return self._user_name_cache[cache_key]
+        client = await self._client_for(team_id)
+        if client is not None:
+            try:
+                resp = await client.users_info(user=user_id)
+                user = resp.get("user") or {}
+                profile = user.get("profile") or {}
+                name = (
+                    profile.get("display_name")
+                    or user.get("real_name")
+                    or user.get("name")
+                    or user_id
+                )
+                # Only cache a real resolution — a transient API failure must not
+                # poison the cache with the raw id (mirrors _bot_user_id_for).
+                self._user_name_cache[cache_key] = name
+                return name
+            except Exception:
+                logger.warning("Failed to fetch Slack user %s", user_id, exc_info=True)
+        return user_id
 
-    async def _strip_mentions(self, text: str) -> str:
+    async def _strip_mentions(self, team_id: str, text: str) -> str:
         """Drop the bot's own mention; rewrite others as `@displayname`."""
-        bot_id = await self._bot_user_id_cached()
+        bot_id = await self._bot_user_id_for(team_id)
         names: dict[str, str] = {}
         for match in _USER_MENTION_RE.finditer(text):
             uid = match.group(1)
             if uid not in names:
-                names[uid] = await self._user_display_name(uid)
+                names[uid] = await self._user_display_name(team_id, uid)
 
         def _replace(match: re.Match[str]) -> str:
             uid = match.group(1)
@@ -439,44 +578,41 @@ class SlackAdapter(WebhookAdapter):
         return _USER_MENTION_RE.sub(_replace, text).strip()
 
     async def _collect_mentionable_users(
-        self, text: str
+        self, team_id: str, text: str
     ) -> tuple[tuple[str, str], ...]:
-        bot_id = await self._bot_user_id_cached()
+        bot_id = await self._bot_user_id_for(team_id)
         pairs: list[tuple[str, str]] = []
         for match in _USER_MENTION_RE.finditer(text):
             uid = match.group(1)
             if bot_id and uid == bot_id:
                 continue
-            pair = (await self._user_display_name(uid), uid)
+            pair = (await self._user_display_name(team_id, uid), uid)
             if pair not in pairs:
                 pairs.append(pair)
         return tuple(pairs)
 
-    async def _ensure_identity(self) -> None:
-        """Resolve the bot's own user_id + team_id from auth_test, once.
+    async def _bot_user_id_for(self, team_id: str) -> str:
+        """The bot's own user id in ``team_id`` — needed to strip its self-mention.
 
-        Only a truthy result is cached — on a transient failure *or* a falsy
-        response the fields stay ``None`` so the next event retries. Otherwise a
-        single blip would permanently break self-mention stripping and channel/
-        team lookups.
-        """
-        if self._bot_user_id and self._team_id:
-            return
+        Prefer the id captured at install time; fall back to auth_test on the
+        workspace's client. Only a truthy result is cached, so a transient blip
+        doesn't permanently break self-mention stripping."""
+        if team_id in self._bot_user_ids:
+            return self._bot_user_ids[team_id]
+        client = await self._client_for(team_id)
+        if team_id in self._bot_user_ids:  # populated by _client_for from install
+            return self._bot_user_ids[team_id]
+        if client is None:
+            return ""
         try:
-            resp = await self._client.auth_test()
+            resp = await client.auth_test()
         except Exception:
             logger.warning("Failed to fetch Slack identity (auth_test)", exc_info=True)
-            return
-        self._bot_user_id = self._bot_user_id or resp.get("user_id") or None
-        self._team_id = self._team_id or resp.get("team_id") or None
-
-    async def _bot_user_id_cached(self) -> str:
-        await self._ensure_identity()
-        return self._bot_user_id or ""
-
-    async def _team_id_cached(self) -> str:
-        await self._ensure_identity()
-        return self._team_id or ""
+            return ""
+        uid = resp.get("user_id") or ""
+        if uid:
+            self._bot_user_ids[team_id] = uid
+        return uid
 
 
 def _verify_signature(request: Request, body: bytes) -> bool:
@@ -487,15 +623,22 @@ def _verify_signature(request: Request, body: bytes) -> bool:
     )
 
 
-def _encode_target(channel_id: str, thread_ts: str) -> str:
-    return f"{channel_id}|{thread_ts}"
+def _encode_target(
+    team_id: str, channel_id: str, thread_ts: Optional[str] = None
+) -> str:
+    return f"{team_id}|{channel_id}|{thread_ts or ''}"
 
 
-def _decode_target(target_id: str) -> tuple[str, Optional[str]]:
-    if "|" in target_id:
-        channel, thread_ts = target_id.split("|", 1)
-        return channel, thread_ts
-    return target_id, None
+def _decode_target(target_id: str) -> tuple[str, str, Optional[str]]:
+    parts = target_id.split("|")
+    if len(parts) == 3:
+        team, channel, thread_ts = parts
+        return team, channel, (thread_ts or None)
+    if len(parts) == 2:
+        # Back-compat with the single-workspace 'channel|thread_ts' form.
+        channel, thread_ts = parts
+        return "", channel, (thread_ts or None)
+    return "", target_id, None
 
 
 def _link_blocks(text: str, link_label: str, link_url: str) -> list[dict[str, Any]]:

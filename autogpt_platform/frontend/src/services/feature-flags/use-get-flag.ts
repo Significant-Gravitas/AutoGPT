@@ -21,6 +21,7 @@ export enum Flag {
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
+  HIRE_EXPERTS = "hire-experts",
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
   // them when memory/dream-related UI surfaces ship (P6+ on the
@@ -34,6 +35,11 @@ export enum Flag {
   DREAM_PASS_ENABLED = "dream-pass-enabled",
   DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
+  // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
+  // Bots settings page. Lets ops hide a platform (e.g. Slack while its
+  // Marketplace review is pending) without a deploy. Missing keys default to
+  // visible — only an explicit ``false`` hides a card.
+  COPILOT_BOT_PLATFORMS = "copilot-bot-platforms",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -54,11 +60,13 @@ const defaultFlags = {
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
+  [Flag.HIRE_EXPERTS]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -112,6 +120,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_PINNING;
     case Flag.TASK_PROGRESS_BAR:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
+    case Flag.HIRE_EXPERTS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
     case Flag.GRAPHITI_MEMORY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
     case Flag.GRAPHITI_COMMUNITIES_ENABLED:
@@ -122,6 +132,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.COPILOT_BOT_PLATFORMS:
+      return undefined;
   }
 }
 
@@ -133,6 +145,7 @@ function readEnvOverride(flag: Flag): string | undefined {
 const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
   Flag.BETA_BLOCKS,
   Flag.MARKETPLACE_SEARCH_TERMS,
+  Flag.COPILOT_BOT_PLATFORMS,
 ]);
 
 export function envFlagOverride<T extends Flag>(

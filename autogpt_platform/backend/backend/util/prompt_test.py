@@ -8,6 +8,7 @@ from tiktoken import encoding_for_model
 from backend.util import json
 from backend.util.prompt import (
     DEFAULT_TOKEN_THRESHOLD,
+    MAIN_OBJECTIVE_PREFIX,
     CompressResult,
     _ensure_tool_pairs_intact,
     _msg_tokens,
@@ -745,6 +746,107 @@ class TestCompressContext:
         assert result.was_compacted is True
         # Should have truncated without summarization
         assert result.messages_summarized == 0
+
+    @pytest.mark.asyncio
+    async def test_final_tool_trim_updates_token_count(self):
+        """Keep incremental accounting accurate when Step 5 trims a tool result."""
+        enc = encoding_for_model("gpt-4o")
+        messages = [
+            {
+                "type": "function_call",
+                "call_id": "call_x",
+                "name": "lookup",
+                "arguments": "{}",
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_x",
+                "output": "tool result " * 100,
+            },
+        ]
+
+        result = await compress_context(
+            messages,
+            target_tokens=40,
+            client=None,
+            reserve=0,
+            model="gpt-4o",
+            start_cap=20,
+            floor_cap=20,
+        )
+
+        assert result.was_compacted is True
+        assert result.messages_dropped == 0
+        assert result.error is None
+        assert len(enc.encode(result.messages[-1]["output"])) < len(
+            enc.encode(messages[-1]["output"])
+        )
+        assert result.token_count == sum(
+            _msg_tokens(message, enc) for message in result.messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_large_history_middle_out_deletion_stays_correct(self):
+        """Guard incremental token accounting in compress_context."""
+        enc = encoding_for_model("gpt-4o")
+        target = 4000
+        reserve = 256
+
+        messages = [{"role": "system", "content": "You are a helpful assistant."}]
+        messages.append(
+            {
+                "role": "user",
+                "content": MAIN_OBJECTIVE_PREFIX + " keep this objective intact.",
+            }
+        )
+        for i in range(150):
+            role = "user" if i % 2 == 0 else "assistant"
+            body = (
+                f"item{i} " + "lorem ipsum dolor sit amet consectetur " * 15
+            ).strip()
+            messages.append({"role": role, "content": body})
+        messages.append(
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_x",
+                        "type": "function",
+                        "function": {"name": "f", "arguments": "{}"},
+                    }
+                ],
+            }
+        )
+        messages.append(
+            {"role": "tool", "tool_call_id": "call_x", "content": "tool result " * 50}
+        )
+
+        result = await compress_context(
+            messages, target_tokens=target, client=None, reserve=reserve, model="gpt-4o"
+        )
+
+        assert result.was_compacted is True
+        assert result.messages_dropped > 0
+        assert result.error is None
+        assert result.token_count + reserve <= target
+        assert result.token_count == sum(_msg_tokens(m, enc) for m in result.messages)
+
+        assert result.messages[0]["role"] == "system"
+        assert any(
+            isinstance(m.get("content"), str)
+            and m["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            for m in result.messages
+        )
+
+        tool_call_ids = {
+            tc["id"] for m in result.messages for tc in (m.get("tool_calls") or [])
+        }
+        tool_response_ids = {
+            m["tool_call_id"] for m in result.messages if m.get("tool_call_id")
+        }
+        assert tool_response_ids <= tool_call_ids
+
+        assert result.messages_dropped == 113
 
     @pytest.mark.asyncio
     async def test_with_mocked_llm_client(self):
