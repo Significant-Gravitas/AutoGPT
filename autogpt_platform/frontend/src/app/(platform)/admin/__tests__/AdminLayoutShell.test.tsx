@@ -62,7 +62,7 @@ describe("AdminLayout shell switching", () => {
     expect(screen.getByText("admin page body")).toBeDefined();
     // The new shell owns navigation (no top Navbar), so it must expose a way back.
     expect(
-      screen.getAllByRole("link", { name: /back to dashboard/i }).length,
+      screen.getAllByRole("link", { name: /back to home/i }).length,
     ).toBeGreaterThan(0);
   });
 
@@ -75,7 +75,7 @@ describe("AdminLayout shell switching", () => {
 
     expect(screen.getByText("admin page body")).toBeDefined();
     expect(
-      screen.queryByRole("link", { name: /back to dashboard/i }),
+      screen.queryByRole("link", { name: /back to home/i }),
     ).toBeNull();
   });
 
