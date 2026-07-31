@@ -74,37 +74,57 @@ async function main() {
       let createdAccounts = 0;
 
       for (const account of PREVIEW_ACCOUNTS) {
-        const existing = await client.query<{ id: string }>(
+        // Bare ON CONFLICT DO NOTHING arbitrates on ANY constraint, so both
+        // "id already taken" and "email already registered" (including a
+        // concurrent seeder racing this one) no-op instead of aborting the
+        // transaction.
+        const insertedIdentity = await client.query(
+          `INSERT INTO ${identityTable}
+             (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, true, $4, now(), now())
+           ON CONFLICT DO NOTHING`,
+          [
+            deterministicUserId(account.email),
+            account.name,
+            account.email,
+            account.role,
+          ],
+        );
+        createdIdentities += insertedIdentity.rowCount ?? 0;
+
+        // Resolve the id by email AFTER the insert: this is the identity the
+        // credential must attach to whether the row pre-existed, was just
+        // created, or was created by a concurrent run. If it's still absent,
+        // the deterministic id belongs to some other user and the insert
+        // no-opped — attaching a credential to that id would hand the preview
+        // password to an unrelated account, so fail loudly instead.
+        const identity = await client.query<{ id: string }>(
           `SELECT id FROM ${identityTable} WHERE email = $1`,
           [account.email],
         );
-        let userId = existing.rows[0]?.id;
+        const userId = identity.rows[0]?.id;
         if (!userId) {
-          userId = deterministicUserId(account.email);
-          await client.query(
-            `INSERT INTO ${identityTable}
-               (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, true, $4, now(), now())
-             ON CONFLICT (id) DO NOTHING`,
-            [userId, account.name, account.email, account.role],
+          throw new Error(
+            `Identity for ${account.email} neither existed nor could be ` +
+              "created (its deterministic id is taken by a different user)",
           );
-          createdIdentities++;
         }
 
-        const credential = await client.query(
-          `SELECT 1 FROM ${accountTable}
-           WHERE "userId" = $1 AND "providerId" = 'credential'`,
-          [userId],
+        // Single-statement guarded insert: no SELECT-then-INSERT window, so a
+        // retried or concurrent seeding can't double-create the credential.
+        // An existing credential is never touched — rotating the password
+        // only affects databases seeded fresh.
+        const insertedCredential = await client.query(
+          `INSERT INTO ${accountTable}
+             (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
+           SELECT gen_random_uuid()::text, $1, 'credential', $1, $2, now(), now()
+           WHERE NOT EXISTS (
+             SELECT 1 FROM ${accountTable}
+             WHERE "userId" = $1 AND "providerId" = 'credential'
+           )`,
+          [userId, passwordHash],
         );
-        if (credential.rowCount === 0) {
-          await client.query(
-            `INSERT INTO ${accountTable}
-               (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
-             VALUES (gen_random_uuid()::text, $1, 'credential', $1, $2, now(), now())`,
-            [userId, passwordHash],
-          );
-          createdAccounts++;
-        }
+        createdAccounts += insertedCredential.rowCount ?? 0;
       }
 
       await client.query("COMMIT");
