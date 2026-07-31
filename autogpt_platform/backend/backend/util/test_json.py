@@ -1,10 +1,12 @@
 import datetime
 from typing import Any, Optional, cast
 
+import jsonschema
+import pytest
 from prisma import Json
 from pydantic import BaseModel
 
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, validate_with_jsonschema
 
 
 class SamplePydanticModel(BaseModel):
@@ -754,3 +756,81 @@ class TestSafeJson:
         metadata = cast(dict[str, Any], inner["metadata"])
         nested_metadata = metadata["nested_key"]
         assert nested_metadata == "NestedValueDelete"
+
+
+class TestValidateWithJsonschema:
+    """Test cases for validate_with_jsonschema."""
+
+    SCHEMA: dict[str, Any] = {
+        "type": "object",
+        "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+        "required": ["name"],
+    }
+
+    def test_valid_data_returns_none(self):
+        """Valid data produces no error message."""
+        assert (
+            validate_with_jsonschema(self.SCHEMA, {"name": "John", "age": 30}) is None
+        )
+
+    def test_type_mismatch_returns_error_message(self):
+        """A type mismatch produces the underlying jsonschema message."""
+        error = validate_with_jsonschema(self.SCHEMA, {"name": 1})
+        assert error is not None
+        assert "is not of type 'string'" in error
+
+    def test_missing_required_field_returns_error_message(self):
+        """A missing required field produces the underlying jsonschema message."""
+        error = validate_with_jsonschema(self.SCHEMA, {"age": 30})
+        assert error is not None
+        assert "'name' is a required property" in error
+
+    def test_repeated_calls_with_one_schema_stay_correct(self):
+        """The executor validates the same schema against different data on
+        every node execution; repeated calls must not drift."""
+        for i in range(5):
+            assert validate_with_jsonschema(self.SCHEMA, {"name": f"n{i}"}) is None
+            assert validate_with_jsonschema(self.SCHEMA, {"name": i}) is not None
+
+    def test_distinct_schemas_are_not_conflated(self):
+        """Two different schemas must keep producing their own verdicts,
+        including when the first one is revisited."""
+        text_schema = {"type": "object", "properties": {"f": {"type": "string"}}}
+        int_schema = {"type": "object", "properties": {"f": {"type": "integer"}}}
+        assert validate_with_jsonschema(text_schema, {"f": "text"}) is None
+        assert validate_with_jsonschema(int_schema, {"f": "text"}) is not None
+        assert validate_with_jsonschema(text_schema, {"f": "text"}) is None
+
+    def test_equal_but_distinct_schema_objects_agree(self):
+        """A graph's input schema is rebuilt per execution, so the same schema
+        arrives as a fresh object each time."""
+        first = {"type": "object", "properties": {"f": {"type": "integer"}}}
+        second = {"type": "object", "properties": {"f": {"type": "integer"}}}
+        assert validate_with_jsonschema(first, {"f": 1}) is None
+        assert validate_with_jsonschema(second, {"f": 1}) is None
+        assert validate_with_jsonschema(second, {"f": "x"}) is not None
+
+    def test_malformed_schema_raises_on_every_call(self):
+        """`required` with duplicate entries fails the meta-schema check, and
+        agent graphs do carry such schemas. The SchemaError must keep escaping,
+        not just on the first call."""
+        malformed = {
+            "type": "object",
+            "properties": {"a": {"type": "string"}},
+            "required": ["a", "a"],
+        }
+        for _ in range(3):
+            with pytest.raises(jsonschema.SchemaError):
+                validate_with_jsonschema(malformed, {"a": "x"})
+
+    def test_schema_mutated_in_place_is_not_stale(self):
+        """Mutating a schema between calls must change the verdict."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {"f": {"type": "string"}},
+        }
+        assert validate_with_jsonschema(schema, {"f": "text"}) is None
+        schema["properties"]["f"] = {"type": "integer"}
+        assert validate_with_jsonschema(schema, {"f": "text"}) is not None
+        schema["properties"]["f"] = {"type": "string"}
+        assert validate_with_jsonschema(schema, {"f": "text"}) is None
