@@ -569,6 +569,7 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
         return_value=mock_workspace
     )
     mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+    mock_db_client.resolve_default_tenancy = mocker.AsyncMock(return_value=(None, None))
 
     mocker.patch(
         "backend.executor.utils.get_database_manager_async_client",
@@ -588,6 +589,85 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
         user_id=user_id,
     )
     assert result == mock_graph_exec
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnected(
+    mocker: MockerFixture,
+):
+    """In the scheduler/executor process (no direct prisma), the born-tenanted
+    fallback must resolve tenancy through the DB-manager RPC client — NOT the
+    direct prisma client, which would fail there and silently no-op, leaving
+    scheduled executions (the primary leak source) untenanted."""
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = 1
+
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.organization_id = "org-rpc"
+    mock_graph_exec.team_id = "team-rpc"
+    mock_graph_exec.id = "exec-id-rpc"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input",
+        return_value=(mock_graph, [], {}, set()),
+    )
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = False
+
+    mock_user = User(
+        id="sched-user",
+        email="sched@example.com",
+        name=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        stripe_customer_id=None,
+        top_up_config=None,
+        timezone="UTC",
+    )
+    mock_db_client = mocker.MagicMock()
+    mock_db_client.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_db_client.get_graph_settings = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        )
+    )
+    mock_db_client.create_graph_execution = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_node_execution_status_batch = mocker.AsyncMock()
+    mock_db_client.get_or_create_workspace = mocker.AsyncMock(
+        return_value=mocker.MagicMock(id="ws-id")
+    )
+    mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+    # The RPC resolver (runs in the DB-manager process, which HAS prisma).
+    mock_rpc_resolve = mocker.AsyncMock(return_value=("org-rpc", "team-rpc"))
+    mock_db_client.resolve_default_tenancy = mock_rpc_resolve
+
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=mock_db_client,
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        return_value=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=mocker.MagicMock(publish=mocker.AsyncMock()),
+    )
+
+    await add_graph_execution(graph_id="g", user_id="sched-user")
+
+    mock_rpc_resolve.assert_awaited_once_with("sched-user")
+    create_kwargs = mock_db_client.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "org-rpc"
+    assert create_kwargs["team_id"] == "team-rpc"
 
 
 # ============================================================================

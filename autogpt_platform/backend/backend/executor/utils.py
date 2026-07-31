@@ -1305,7 +1305,17 @@ async def add_graph_execution(
         if not organization_id and not team_id:
             from backend.api.features.orgs.db import resolve_default_tenancy
 
-            default_org_id, default_team_id = await resolve_default_tenancy(user_id)
+            # add_graph_execution runs in both the API server (direct prisma)
+            # and the scheduler/executor (no prisma — DB access via the RPC
+            # client). Dispatch the resolver the same way every other DB dep in
+            # this function does, or the fallback silently no-ops in the very
+            # process that runs the leaky scheduled executions.
+            resolve = (
+                resolve_default_tenancy
+                if prisma.is_connected()
+                else get_database_manager_async_client().resolve_default_tenancy
+            )
+            default_org_id, default_team_id = await resolve(user_id)
             if default_org_id:
                 organization_id, team_id = default_org_id, default_team_id
 
