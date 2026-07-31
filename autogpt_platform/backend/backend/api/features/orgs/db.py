@@ -174,20 +174,20 @@ async def get_user_default_team(
 
 
 async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]:
-    """Best-effort default org/team for born-tenanting newly created rows.
+    """Best-effort default org/team for tenanting newly created rows.
 
     Wraps ``get_user_default_team`` so tenancy resolution can never abort the
     operation that needs it (an execution, a library add, a notification): a
     raised lookup — or an unresolvable org — yields ``(None, None)`` and the
-    row is left for the startup migration sweep to backfill. Callers stamp the
-    returned pair only when non-null.
+    row is created untenanted. Callers stamp the returned pair only when
+    non-null.
     """
     try:
         return await get_user_default_team(user_id)
     except Exception:
         logger.warning(
             f"Default org/team lookup failed for user {user_id}; "
-            "leaving the row untenanted for the boot sweep to backfill",
+            "creating the row untenanted",
             exc_info=True,
         )
         return None, None

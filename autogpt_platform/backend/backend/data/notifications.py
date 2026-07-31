@@ -464,13 +464,11 @@ async def create_or_add_to_user_notification_batch(
 
         json_data: Json = SafeJson(notification_data.data.model_dump())
 
-        # Born-tenanted: stamp the batch with the user's default org/team so it
-        # doesn't land in the untenanted pool the startup migration sweep
-        # backfills on every boot. Resolve a default only when the caller
-        # supplied NEITHER field (never overwrite an explicit team_id).
-        # resolve_default_tenancy is best-effort — an unresolvable org or a
-        # raised lookup both leave the batch untenanted rather than crash a
-        # notification.
+        # Stamp the batch with the user's default org/team at creation.
+        # Resolve a default only when the caller supplied NEITHER field (never
+        # overwrite an explicit team_id). resolve_default_tenancy is
+        # best-effort — an unresolvable org or a raised lookup both leave the
+        # batch untenanted rather than crash a notification.
         if organization_id is None and team_id is None:
             from backend.api.features.orgs.db import resolve_default_tenancy
 

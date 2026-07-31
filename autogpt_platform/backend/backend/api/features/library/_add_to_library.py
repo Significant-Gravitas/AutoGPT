@@ -97,9 +97,8 @@ async def add_graph_to_library(
     )
     marketplace = _marketplace_metadata(store_listing_version)
 
-    # Born-tenanted: mirror create_library_agent — a library entry is the
-    # adding user's bookmark, so tag it with their default org/team instead of
-    # leaving it untenanted for the startup migration sweep to backfill.
+    # A library entry is the adding user's bookmark, so tag it with their
+    # default org/team at creation (mirrors create_library_agent).
     # resolve_default_tenancy is best-effort — an unresolvable org or a raised
     # lookup yields (None, None) and the row is left untagged; never block a
     # library add on tenancy resolution.
@@ -147,10 +146,9 @@ async def add_graph_to_library(
                 "description": marketplace["description"],
                 "imageUrl": marketplace["imageUrl"],
                 # Deliberately leave organizationId/Team untouched on re-add:
-                # an existing bookmark already carries its tenancy (stamped at
-                # create, or backfilled by the boot sweep). Only the create
-                # branch born-tenants; re-tagging here risked disconnecting an
-                # existing team when a default team couldn't be resolved.
+                # an existing bookmark already carries its tenancy. Only the
+                # create branch tenants; re-tagging here risked disconnecting
+                # an existing team when a default team couldn't be resolved.
             },
             include=_include,
         )

@@ -1282,34 +1282,30 @@ async def add_graph_execution(
             dry_run=dry_run,
         )
 
-        # Born-tenanted fallback: a NEW execution must carry org/team so it
-        # doesn't leak into the untenanted pool that the startup org-migration
-        # sweep has to backfill on every boot. Legacy schedules (empty
-        # organizationId → falsy), sub-graphs inheriting an untenanted parent
-        # (organization_id here comes from the parent's ExecutionContext, see
-        # AgentExecutorBlock), and any caller that omits tenancy all arrive
-        # with a falsy organization_id. Resolve the user's default org/team up
-        # front so the value handed to create_graph_execution is already
-        # non-null and the ExecutionContext built below inherits it.
+        # Tenant a NEW execution at creation: several callers arrive with a
+        # falsy organization_id — legacy schedules (empty organizationId),
+        # sub-graphs inheriting an untenanted parent's ExecutionContext (see
+        # AgentExecutorBlock), or any caller that omits tenancy. Resolve the
+        # user's default org/team so create_graph_execution gets a non-null
+        # value and the ExecutionContext built below inherits it.
         #
-        # CREATE path only — resume/requeue never reaches here; it backfills
-        # org/team from the persisted row (the graph_exec_id branch above and
-        # the execution_context backfill below), so we must not re-resolve and
-        # risk re-tenanting an existing row under a different org.
+        # CREATE path only — resume/requeue backfills org/team from the
+        # persisted row (the graph_exec_id branch above and the
+        # execution_context backfill below), so re-resolving here would risk
+        # re-tenanting an existing row under a different org.
         #
-        # Only resolve a default when NEITHER field was supplied — never
-        # overwrite an explicitly-passed team_id. resolve_default_tenancy is
-        # best-effort: an unresolvable org or a raised lookup yields
-        # (None, None) and the row is left for the boot sweep to backfill —
-        # never crash a run over tenancy.
+        # Only resolve when NEITHER field was supplied — never overwrite an
+        # explicit team_id. resolve_default_tenancy is best-effort: an
+        # unresolvable org or a raised lookup yields (None, None) and the row
+        # is created untenanted rather than crashing the run.
         if not organization_id and not team_id:
             from backend.api.features.orgs.db import resolve_default_tenancy
 
             # add_graph_execution runs in both the API server (direct prisma)
             # and the scheduler/executor (no prisma — DB access via the RPC
             # client). Dispatch the resolver the same way every other DB dep in
-            # this function does, or the fallback silently no-ops in the very
-            # process that runs the leaky scheduled executions.
+            # this function does, or it silently no-ops in the scheduler
+            # process — exactly where scheduled executions are created.
             resolve = (
                 resolve_default_tenancy
                 if prisma.is_connected()
