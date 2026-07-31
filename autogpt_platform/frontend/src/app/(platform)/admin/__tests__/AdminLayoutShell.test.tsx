@@ -74,9 +74,7 @@ describe("AdminLayout shell switching", () => {
     );
 
     expect(screen.getByText("admin page body")).toBeDefined();
-    expect(
-      screen.queryByRole("link", { name: /back to home/i }),
-    ).toBeNull();
+    expect(screen.queryByRole("link", { name: /back to home/i })).toBeNull();
   });
 
   it("keeps every admin destination reachable in the new shell", () => {
