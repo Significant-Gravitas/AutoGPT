@@ -11,7 +11,9 @@
  *
  * Usage (the preview CD pipeline runs this after `prisma migrate deploy`):
  *   DIRECT_URL=postgresql://... PREVIEW_ACCOUNTS_PASSWORD=... \
- *     pnpm exec tsx scripts/seed-preview-accounts.ts
+ *     npx --yes tsx scripts/seed-preview-accounts.ts
+ * (tsx is not a package dependency; npx fetches it, matching the other
+ * scripts in this folder.)
  *
  * Behavior:
  *   - Idempotent: existing identities are kept (matched by email), and an
@@ -48,7 +50,14 @@ async function main() {
 
   // Prisma-style URLs carry ?schema=/&pgbouncer= params that node-postgres
   // does not understand but tolerates; strip nothing, qualify tables instead.
-  const pool = new Pool({ connectionString, max: 1 });
+  // Bounded timeouts keep the exit-code contract honest: a database that
+  // accepts TCP but never answers must become exit 1, not a hung CI step.
+  const pool = new Pool({
+    connectionString,
+    max: 1,
+    connectionTimeoutMillis: 15_000,
+    query_timeout: 30_000,
+  });
 
   try {
     const { rows } = await pool.query<{ reg: string | null }>(
@@ -109,6 +118,19 @@ async function main() {
               "created (its deterministic id is taken by a different user)",
           );
         }
+
+        // Converge the roster contract on pre-existing rows: an identity that
+        // predates this seeder (older seed generations, or a DB cloned from a
+        // template) may carry the wrong role or an unverified email, and
+        // preview-admin's role='admin' is the property the roster exists to
+        // guarantee. Passwords are deliberately NOT converged (see above).
+        await client.query(
+          `UPDATE ${identityTable}
+           SET role = $2, "emailVerified" = true, "updatedAt" = now()
+           WHERE id = $1
+             AND (role IS DISTINCT FROM $2 OR "emailVerified" IS DISTINCT FROM true)`,
+          [userId, account.role],
+        );
 
         // Single-statement guarded insert: no SELECT-then-INSERT window, so a
         // retried or concurrent seeding can't double-create the credential.
