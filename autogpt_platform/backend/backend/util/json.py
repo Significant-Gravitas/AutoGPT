@@ -5,6 +5,8 @@ from copy import deepcopy
 from typing import Any, Type, TypeVar, overload
 
 import jsonschema
+import jsonschema.exceptions
+import jsonschema.validators
 import orjson
 from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
