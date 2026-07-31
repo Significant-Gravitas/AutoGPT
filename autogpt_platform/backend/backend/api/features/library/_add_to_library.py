@@ -13,6 +13,7 @@ import prisma.models
 import backend.api.features.library.model as library_model
 import backend.data.graph as graph_db
 from backend.api.features.library.db import _fetch_schedule_info
+from backend.api.features.orgs.db import resolve_default_tenancy
 from backend.data.graph import GraphModel, GraphSettings
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
@@ -102,8 +103,6 @@ async def add_graph_to_library(
     # resolve_default_tenancy is best-effort — an unresolvable org or a raised
     # lookup yields (None, None) and the row is left untagged; never block a
     # library add on tenancy resolution.
-    from backend.api.features.orgs.db import resolve_default_tenancy
-
     organization_id, team_id = await resolve_default_tenancy(user_id)
 
     try:
