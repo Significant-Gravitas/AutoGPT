@@ -151,6 +151,16 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
+            if (
+                owned.metadata.llm_auth_provider
+                != session.metadata.llm_auth_provider
+                or owned.metadata.llm_credential_id
+                != session.metadata.llm_credential_id
+            ):
+                return ErrorResponse(
+                    message="codex_session_route_mismatch",
+                    session_id=session.session_id,
+                )
             inner_session_id = sub_session_param
         else:
             new_session = await create_chat_session(
@@ -158,6 +168,8 @@ class RunSubSessionTool(BaseTool):
                 dry_run=session.dry_run,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
             )
             inner_session_id = new_session.session_id
 

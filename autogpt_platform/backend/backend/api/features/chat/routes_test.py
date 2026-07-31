@@ -212,7 +212,11 @@ def test_stream_chat_rejects_too_many_file_ids():
     assert response.status_code == 422
 
 
-def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
+def _mock_stream_internals(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    llm_auth_provider: str = "platform",
+):
     """Mock the async internals of stream_chat_post so tests can exercise
     validation and enrichment logic without needing RabbitMQ.
 
@@ -225,14 +229,24 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
     # The route anchors turn tenancy on the session row
     # (session.organization_id / session.team_id), so the stub must carry
     # both — None exercises the legacy ctx-fallback path.
+    mock_session = mocker.MagicMock(organization_id=None, team_id=None)
+    mock_session.metadata.llm_auth_provider = llm_auth_provider
+    mock_session.metadata.llm_credential_id = (
+        "cred-codex" if llm_auth_provider == "codex" else None
+    )
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=mocker.MagicMock(organization_id=None, team_id=None),
+        return_value=mock_session,
     )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
         return_value=False,
+    )
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+        return_value=None,
     )
     # ``schedule_chat_turn`` owns acquire-slot + persist-message + dispatch
     # in one call. Patching it at the route boundary lets tests exercise
@@ -244,7 +258,13 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
         new_callable=AsyncMock,
         return_value="turn-id-mock",
     )
-    return types.SimpleNamespace(enqueue=mock_schedule)
+    mocker.patch.object(
+        chat_routes.stream_registry,
+        "subscribe_to_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    return types.SimpleNamespace(enqueue=mock_schedule, paywall=mock_paywall)
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -378,6 +398,11 @@ def test_stream_chat_returns_429_on_daily_rate_limit(mocker: pytest_mock.MockerF
     mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
     mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
     mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
         "backend.api.features.chat.routes.check_rate_limit",
         side_effect=RateLimitExceeded("daily", datetime.now(UTC) + timedelta(hours=1)),
     )
@@ -388,6 +413,56 @@ def test_stream_chat_returns_429_on_daily_rate_limit(mocker: pytest_mock.MockerF
     )
     assert response.status_code == 429
     assert "daily" in response.json()["detail"].lower()
+
+
+def test_stream_chat_codex_skips_platform_paywall_and_cost_limit(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker, llm_auth_provider="codex")
+    mocks.paywall.side_effect = fastapi.HTTPException(
+        status_code=402,
+        detail="subscription required",
+    )
+    mock_global_limits = mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        side_effect=AssertionError("platform cost limits must not run for Codex"),
+    )
+    mock_cost_limit = mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        new_callable=AsyncMock,
+        side_effect=AssertionError("platform cost limits must not run for Codex"),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+
+    assert response.status_code == 200
+    mocks.paywall.assert_not_awaited()
+    mock_global_limits.assert_not_awaited()
+    mock_cost_limit.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
+
+
+def test_stream_chat_platform_still_enforces_paywall(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.paywall.side_effect = fastapi.HTTPException(
+        status_code=402,
+        detail="subscription required",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+
+    assert response.status_code == 402
+    mocks.paywall.assert_awaited_once()
+    mocks.enqueue.assert_not_awaited()
 
 
 def test_stream_chat_returns_429_on_weekly_rate_limit(
@@ -691,8 +766,15 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
         organization_id: str | None = None,
         team_id: str | None = None,
         source_platform: str | None = None,
+        llm_auth_provider: str = "platform",
+        llm_credential_id: str | None = None,
     ):
-        return ChatSession.new(user_id, dry_run=dry_run)
+        return ChatSession.new(
+            user_id,
+            dry_run=dry_run,
+            llm_auth_provider=llm_auth_provider,  # type: ignore[arg-type]
+            llm_credential_id=llm_credential_id,
+        )
 
     return mocker.patch(
         "backend.api.features.chat.routes.create_chat_session",
@@ -739,6 +821,126 @@ def test_create_session_rejects_nested_metadata(
     )
 
     assert response.status_code == 422
+
+
+def test_create_session_rejects_credential_on_platform_route() -> None:
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "platform", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "codex_credential_not_allowed"
+
+
+def test_create_session_requires_credential_for_codex_route() -> None:
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "codex_credential_required"
+
+
+def test_create_session_codex_route_requires_both_flags(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.is_feature_enabled",
+        new=AsyncMock(side_effect=[True, False]),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "codex_transport_disabled"
+
+
+def test_create_session_codex_route_rejects_unowned_credential(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.is_feature_enabled",
+        new=AsyncMock(return_value=True),
+    )
+    mocker.patch.object(
+        chat_routes.credentials_manager,
+        "get",
+        new=AsyncMock(return_value=None),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "other-cred"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "codex_credential_not_found"
+
+
+def test_create_session_codex_route_persists_owned_credential(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(
+            status_code=402,
+            detail="subscription required",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_feature_enabled",
+        new=AsyncMock(return_value=True),
+    )
+    credential = MagicMock(
+        type="oauth2",
+        provider="codex",
+        refresh_strategy="provider_runtime",
+        provider_state=MagicMock(),
+    )
+    mocker.patch.object(
+        chat_routes.credentials_manager,
+        "get",
+        new=AsyncMock(return_value=credential),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["llm_auth_provider"] == "codex"
+    assert response.json()["metadata"]["llm_credential_id"] == "cred-1"
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "codex"
+    assert mock_create.call_args.kwargs["llm_credential_id"] == "cred-1"
+    mock_paywall.assert_not_awaited()
+
+
+def test_create_session_platform_route_still_enforces_paywall(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(
+            status_code=402,
+            detail="subscription required",
+        ),
+    )
+
+    response = client.post("/sessions", json={"llm_auth_provider": "platform"})
+
+    assert response.status_code == 402
+    mock_paywall.assert_awaited_once()
+    mock_create.assert_not_awaited()
 
 
 class TestStreamChatRequestModeValidation:

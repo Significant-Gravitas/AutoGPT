@@ -442,11 +442,38 @@ describe("useCopilotUIStore", () => {
     });
   });
 
+  describe("copilotLlmAuth", () => {
+    it("defaults to the platform route", () => {
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+        authProvider: "platform",
+        credentialId: null,
+      });
+    });
+
+    it("stores an explicitly selected Codex credential", () => {
+      useCopilotUIStore.getState().setCopilotLlmAuth({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
+
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
+      expect(useCopilotUIStore.getState().copilotChatMode).toBe("fast");
+      expect(useCopilotUIStore.getState().copilotLlmModel).toBe("standard");
+    });
+  });
+
   describe("clearCopilotLocalData", () => {
     it("resets state and clears localStorage keys", () => {
       useCopilotUIStore.getState().setSearchOpen(true);
       useCopilotUIStore.getState().setCopilotChatMode("fast");
       useCopilotUIStore.getState().setCopilotLlmModel("advanced");
+      useCopilotUIStore.getState().setCopilotLlmAuth({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
       useCopilotUIStore.getState().setNotificationsEnabled(true);
       useCopilotUIStore.getState().toggleSound();
       useCopilotUIStore.getState().addCompletedSession("s1");
@@ -457,6 +484,10 @@ describe("useCopilotUIStore", () => {
       expect(state.isSearchOpen).toBe(false);
       expect(state.copilotChatMode).toBe("extended_thinking");
       expect(state.copilotLlmModel).toBe("standard");
+      expect(state.copilotLlmAuth).toEqual({
+        authProvider: "platform",
+        credentialId: null,
+      });
       expect(state.isNotificationsEnabled).toBe(false);
       expect(state.isSoundEnabled).toBe(true);
       expect(state.completedSessionIDs.size).toBe(0);

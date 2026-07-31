@@ -166,6 +166,13 @@ async def lifespan_context(app: fastapi.FastAPI):
         yield
 
     try:
+        from backend.api.features.integrations.codex import codex_login_coordinator
+
+        await codex_login_coordinator.shutdown()
+    except Exception:
+        logger.warning("Codex login coordinator shutdown failed", exc_info=True)
+
+    try:
         await shutdown_cloud_storage_handler()
     except Exception as e:
         logger.warning(f"Error shutting down cloud storage handler: {e}")

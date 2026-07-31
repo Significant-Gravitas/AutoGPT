@@ -81,6 +81,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
         openOAuthPopup(login_url, {
           stateToken: state_token,
           preOpenedWindow,
+          timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
           // BroadcastChannel + localStorage listeners are the only delivery
           // path when the flow runs in a tab without window.opener (the iOS
           // fallback) — the callback page already writes to both.

@@ -11,6 +11,11 @@ import {
   NEW_SKILL_PROMPT,
 } from "@/components/contextual/guidedPrompts";
 import type { UIMessage } from "ai";
+import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProviderData,
+} from "@/providers/agent-credentials/credentials-provider";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
@@ -33,6 +38,8 @@ const mockSetCopilotLlmModel = vi.fn((model: string) => {
   mockCopilotLlmModel = model;
 });
 
+let mockCopilotLlmAuthProvider = "platform";
+
 let mockInitialPrompt: string | null = null;
 const mockSetInitialPrompt = vi.fn((value: string | null) => {
   mockInitialPrompt = value;
@@ -47,6 +54,11 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
     copilotModePinned: mockCopilotModePinned,
     copilotLlmModel: mockCopilotLlmModel,
     setCopilotLlmModel: mockSetCopilotLlmModel,
+    copilotLlmAuth: {
+      authProvider: mockCopilotLlmAuthProvider,
+      credentialId: null,
+    },
+    setCopilotLlmAuth: vi.fn(),
     isDryRun: false,
     setIsDryRun: vi.fn(),
     initialPrompt: mockInitialPrompt,
@@ -191,12 +203,34 @@ vi.mock("../components/DryRunToggleButton", () => ({
 
 const mockOnSend = vi.fn();
 
+const codexCredential: CredentialsMetaResponse = {
+  id: "codex-credential-1",
+  provider: "codex",
+  type: "oauth2",
+  title: "Personal ChatGPT",
+  scopes: [],
+};
+
+const codexProvider: CredentialsProviderData = {
+  provider: "codex",
+  providerName: "Codex",
+  savedCredentials: [codexCredential],
+  isSystemProvider: false,
+  oAuthCallback: async () => codexCredential,
+  mcpOAuthCallback: async () => codexCredential,
+  createAPIKeyCredentials: async () => codexCredential,
+  createUserPasswordCredentials: async () => codexCredential,
+  createHostScopedCredentials: async () => codexCredential,
+  deleteCredentials: async () => ({ deleted: true, revoked: null }),
+};
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   mockCancel.mockReset();
   mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
+  mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
   mockInitialPrompt = null;
 });
@@ -212,6 +246,85 @@ describe("ChatInput mode toggle", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} />);
     expect(screen.getByLabelText(/switch to fast mode/i)).toBeDefined();
+  });
+
+  it("hides platform mode and model controls for the Codex route", () => {
+    mockFlagValue = true;
+    mockCopilotLlmAuthProvider = "codex";
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.queryByLabelText(/switch to fast mode/i)).toBeNull();
+    expect(screen.queryByLabelText(/switch to advanced model/i)).toBeNull();
+  });
+
+  it("hides unsupported file attachments for the Codex route", () => {
+    mockCopilotLlmAuthProvider = "codex";
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.queryByTestId("attachment-menu")).toBeNull();
+  });
+
+  it("does not report empty dropped files as consumed for the Codex route", () => {
+    mockCopilotLlmAuthProvider = "codex";
+    const onDroppedFilesConsumed = vi.fn();
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        droppedFiles={[]}
+        onDroppedFilesConsumed={onDroppedFilesConsumed}
+      />,
+    );
+
+    expect(onDroppedFilesConsumed).not.toHaveBeenCalled();
+  });
+
+  it("uses immutable Codex session metadata after reload", () => {
+    mockFlagValue = true;
+    mockCopilotLlmAuthProvider = "platform";
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        hasSession
+        sessionLlmAuthProvider="codex"
+        isSessionLlmRouteResolved
+      />,
+    );
+
+    expect(screen.queryByLabelText(/switch to fast mode/i)).toBeNull();
+    expect(screen.queryByLabelText(/switch to advanced model/i)).toBeNull();
+  });
+
+  it("does not leak a pending Codex choice into an active platform session", () => {
+    mockFlagValue = true;
+    mockCopilotLlmAuthProvider = "codex";
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        hasSession
+        sessionLlmAuthProvider="platform"
+        isSessionLlmRouteResolved
+      />,
+    );
+
+    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
+    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
+  });
+
+  it("only offers the route selector before a session is created", () => {
+    mockFlagValue = true;
+    const { rerender } = render(
+      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
+        <ChatInput onSend={mockOnSend} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.getByLabelText(/AI connection:/i)).toBeTruthy();
+
+    rerender(
+      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
+        <ChatInput onSend={mockOnSend} hasSession />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
   });
 
   it("shows Thinking label in extended_thinking mode", () => {

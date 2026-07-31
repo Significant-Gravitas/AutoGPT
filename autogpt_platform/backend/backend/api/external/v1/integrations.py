@@ -540,6 +540,11 @@ async def create_credential(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider}' not found",
         )
+    if provider == "codex":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codex credentials must be created through ChatGPT sign-in",
+        )
 
     # Create the appropriate credential type
     credentials: Credentials

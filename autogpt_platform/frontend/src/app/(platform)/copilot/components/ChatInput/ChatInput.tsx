@@ -31,6 +31,7 @@ import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
 import { ModelToggleButton } from "./components/ModelToggleButton";
 import { ModeToggleButton } from "./components/ModeToggleButton";
+import { LlmRouteSelector } from "./components/LlmRouteSelector";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
@@ -60,6 +61,8 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  sessionLlmAuthProvider?: "platform" | "codex" | null;
+  isSessionLlmRouteResolved?: boolean;
 }
 
 export function ChatInput({
@@ -75,6 +78,8 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  sessionLlmAuthProvider = null,
+  isSessionLlmRouteResolved = true,
 }: Props) {
   const {
     copilotChatMode,
@@ -82,12 +87,16 @@ export function ChatInput({
     setCopilotChatMode,
     copilotLlmModel,
     setCopilotLlmModel,
+    copilotLlmAuth,
     isDryRun,
     setIsDryRun,
   } = useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showDryRunToggle = showModeToggle;
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
+  const isCodexRoute = hasSession
+    ? sessionLlmAuthProvider === "codex"
+    : copilotLlmAuth.authProvider === "codex";
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
@@ -143,6 +152,12 @@ export function ChatInput({
 
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
+    if (isCodexRoute) {
+      if (droppedFiles && droppedFiles.length > 0) {
+        onDroppedFilesConsumed?.();
+      }
+      return;
+    }
     if (droppedFiles && droppedFiles.length > 0) {
       setAttachments((prev) => [
         ...prev,
@@ -150,7 +165,13 @@ export function ChatInput({
       ]);
       onDroppedFilesConsumed?.();
     }
-  }, [droppedFiles, onDroppedFilesConsumed]);
+  }, [droppedFiles, isCodexRoute, onDroppedFilesConsumed]);
+
+  useEffect(() => {
+    if (!isCodexRoute) return;
+    setAttachments([]);
+    setIsPickerOpen(false);
+  }, [isCodexRoute]);
 
   const hasAttachments = attachments.length > 0;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
@@ -182,7 +203,7 @@ export function ChatInput({
   });
 
   const mentions = useChatMentions({
-    enabled: showWorkspaceFiles && !isBusy,
+    enabled: showWorkspaceFiles && !isBusy && !isCodexRoute,
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
@@ -281,11 +302,13 @@ export function ChatInput({
             "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
-        <FileChips
-          attachments={attachments}
-          onRemove={handleRemoveAttachment}
-          isUploading={isUploadingFiles}
-        />
+        {!isCodexRoute && (
+          <FileChips
+            attachments={attachments}
+            onRemove={handleRemoveAttachment}
+            isUploading={isUploadingFiles}
+          />
+        )}
         <PromptInputBody className="relative block w-full">
           <PromptInputTextarea
             id={inputId}
@@ -313,28 +336,37 @@ export function ChatInput({
 
         <PromptInputFooter>
           <PromptInputTools>
-            <ComposerPlusMenu
-              onFilesSelected={handleFilesSelected}
-              onUseWorkspaceFile={() => setIsPickerOpen(true)}
-              onClearGuidedPrompt={handleClearGuidedPrompt}
-              disabled={isBusy}
-            />
+            {!isCodexRoute && (
+              <ComposerPlusMenu
+                onFilesSelected={handleFilesSelected}
+                onUseWorkspaceFile={() => setIsPickerOpen(true)}
+                onClearGuidedPrompt={handleClearGuidedPrompt}
+                disabled={isBusy}
+              />
+            )}
+            {!hasSession && <LlmRouteSelector />}
             {/* Mode and model are per-message settings sent with each stream request,
                 so they can be freely changed between turns in an existing session.
                 Hide only while actively streaming (too late to change for that turn). */}
-            {showModeToggle && !isStreaming && (
-              <ModeToggleButton
-                mode={copilotChatMode}
-                onToggle={handleToggleMode}
-                pinned={copilotModePinned}
-              />
-            )}
-            {showModeToggle && !isStreaming && (
-              <ModelToggleButton
-                model={copilotLlmModel}
-                onToggle={handleToggleModel}
-              />
-            )}
+            {showModeToggle &&
+              !isStreaming &&
+              isSessionLlmRouteResolved &&
+              !isCodexRoute && (
+                <ModeToggleButton
+                  mode={copilotChatMode}
+                  onToggle={handleToggleMode}
+                  pinned={copilotModePinned}
+                />
+              )}
+            {showModeToggle &&
+              !isStreaming &&
+              isSessionLlmRouteResolved &&
+              !isCodexRoute && (
+                <ModelToggleButton
+                  model={copilotLlmModel}
+                  onToggle={handleToggleModel}
+                />
+              )}
             {/* DryRun button only on new chats: once a session exists its
                 dry_run flag is locked and should be read from session metadata
                 (sessionDryRun in useCopilotPage), not toggled here. The banner
@@ -395,7 +427,7 @@ export function ChatInput({
         </PromptInputFooter>
       </InputGroup>
 
-      {showWorkspaceFiles && (
+      {showWorkspaceFiles && !isCodexRoute && (
         <WorkspaceFilePicker
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}

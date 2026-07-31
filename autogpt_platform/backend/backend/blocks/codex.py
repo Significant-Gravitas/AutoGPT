@@ -18,9 +18,17 @@ from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
     NodeExecutionStats,
+    OAuth2Credentials,
     SchemaField,
 )
+from backend.integrations.codex.models import (
+    CodexInvocationRequest,
+    CodexInvocationResult,
+)
+from backend.integrations.codex.transport import get_codex_transport
+from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.providers import ProviderName
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 
 @dataclass
@@ -46,10 +54,21 @@ class CodexReasoningEffort(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+    XHIGH = "xhigh"
+
+
+class CodexExecutionTransport(str, Enum):
+    OPENAI_API = "openai_api"
+    CODEX_APP_SERVER = "codex_app_server"
+
+
+def _app_server_effort(effort: CodexReasoningEffort) -> str | None:
+    return None if effort == CodexReasoningEffort.NONE else effort.value
 
 
 CodexCredentials = CredentialsMetaInput[
-    Literal[ProviderName.OPENAI], Literal["api_key"]
+    Literal[ProviderName.OPENAI, ProviderName.CODEX],
+    Literal["api_key", "oauth2"],
 ]
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -69,12 +88,21 @@ TEST_CREDENTIALS_INPUT = {
 
 def CodexCredentialsField() -> CodexCredentials:
     return CredentialsField(
-        description="OpenAI API key with access to Codex models (Responses API).",
+        description="OpenAI API key or connected ChatGPT plan for Codex.",
+        discriminator="transport",
+        discriminator_mapping={
+            CodexExecutionTransport.OPENAI_API.value: ProviderName.OPENAI,
+            CodexExecutionTransport.CODEX_APP_SERVER.value: ProviderName.CODEX,
+        },
+        discriminator_type_mapping={
+            CodexExecutionTransport.OPENAI_API.value: ["api_key"],
+            CodexExecutionTransport.CODEX_APP_SERVER.value: ["oauth2"],
+        },
     )
 
 
 class CodeGenerationBlock(Block):
-    """Block that talks to Codex models via the OpenAI Responses API."""
+    """Block that talks to Codex through an API key or ChatGPT connection."""
 
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(
@@ -90,10 +118,22 @@ class CodeGenerationBlock(Block):
             description="Optional instructions injected via the Responses API instructions field.",
             advanced=True,
         )
+        transport: CodexExecutionTransport = SchemaField(
+            title="Transport",
+            default=CodexExecutionTransport.OPENAI_API,
+            description=(
+                "Use an OpenAI API key or your connected ChatGPT plan through "
+                "Codex App Server."
+            ),
+            advanced=False,
+        )
         model: CodexModel = SchemaField(
             title="Codex Model",
             default=CodexModel.GPT5_3_CODEX,
-            description="Codex-optimized model served via the Responses API.",
+            description=(
+                "OpenAI API transport only. Codex App Server selects the current "
+                "subscription model from its live model catalog."
+            ),
             advanced=False,
         )
         reasoning_effort: CodexReasoningEffort = SchemaField(
@@ -105,7 +145,10 @@ class CodeGenerationBlock(Block):
         max_output_tokens: int | None = SchemaField(
             title="Max Output Tokens",
             default=2048,
-            description="Upper bound for generated tokens (hard limit 128,000). Leave blank to let OpenAI decide.",
+            description=(
+                "OpenAI API transport only: upper bound for generated tokens "
+                "(hard limit 128,000). Codex App Server uses its model and plan limits."
+            ),
             advanced=True,
         )
         credentials: CodexCredentials = CodexCredentialsField()
@@ -126,7 +169,10 @@ class CodeGenerationBlock(Block):
     def __init__(self):
         super().__init__(
             id="86a2a099-30df-47b4-b7e4-34ae5f83e0d5",
-            description="Generate or refactor code using OpenAI's Codex (Responses API).",
+            description=(
+                "Generate or refactor code using an OpenAI API key or a connected "
+                "ChatGPT plan through Codex App Server."
+            ),
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=CodeGenerationBlock.Input,
             output_schema=CodeGenerationBlock.Output,
@@ -221,10 +267,33 @@ class CodeGenerationBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | OAuth2Credentials,
+        credential_leases: dict[str, CredentialLease] | None = None,
+        user_id: str | None = None,
         **_kwargs,
     ) -> BlockOutput:
-        result = await self.call_codex(
+        if input_data.transport == CodexExecutionTransport.OPENAI_API:
+            result = await self._run_openai_api(input_data, credentials)
+        else:
+            result = await self._run_codex_app_server(
+                input_data,
+                credentials,
+                credential_leases or {},
+                user_id,
+            )
+
+        yield "response", result.response
+        yield "reasoning", result.reasoning
+        yield "response_id", result.response_id
+
+    async def _run_openai_api(
+        self,
+        input_data: Input,
+        credentials: APIKeyCredentials | OAuth2Credentials,
+    ) -> CodexCallResult:
+        if credentials.type != "api_key" or credentials.provider != "openai":
+            raise ValueError("OpenAI API transport requires an OpenAI API key")
+        return await self.call_codex(
             credentials=credentials,
             model=input_data.model,
             prompt=input_data.prompt,
@@ -233,6 +302,56 @@ class CodeGenerationBlock(Block):
             reasoning_effort=input_data.reasoning_effort,
         )
 
-        yield "response", result.response
-        yield "reasoning", result.reasoning
-        yield "response_id", result.response_id
+    async def _run_codex_app_server(
+        self,
+        input_data: Input,
+        credentials: APIKeyCredentials | OAuth2Credentials,
+        credential_leases: dict[str, CredentialLease],
+        user_id: str | None,
+    ) -> CodexCallResult:
+        if user_id is None or not await is_feature_enabled(
+            Flag.CODEX_SUBSCRIPTION_NATIVE,
+            user_id,
+            default=False,
+        ):
+            raise ValueError("Codex subscription transport is not enabled")
+        if credentials.type != "oauth2" or credentials.provider != "codex":
+            raise ValueError(
+                "Codex App Server transport requires connected ChatGPT credentials"
+            )
+        lease = credential_leases.get("credentials")
+        if lease is None or lease.credentials.id != credentials.id:
+            raise ValueError("Codex App Server transport requires a credential lease")
+        response = await get_codex_transport().invoke(
+            lease=lease,
+            request=CodexInvocationRequest(
+                prompt=input_data.prompt,
+                instructions=input_data.system_prompt or None,
+                model=None,
+                effort=_app_server_effort(input_data.reasoning_effort),
+            ),
+        )
+        self._record_subscription_usage(response)
+        return CodexCallResult(
+            response=response.final_response,
+            reasoning=response.reasoning_summary or "",
+            response_id=response.response_id,
+        )
+
+    def _record_subscription_usage(
+        self,
+        response: CodexInvocationResult,
+    ) -> None:
+        usage = response.usage
+        self.execution_stats.input_token_count = usage.input_tokens if usage else 0
+        self.execution_stats.cache_read_token_count = (
+            usage.cached_input_tokens if usage else 0
+        )
+        self.execution_stats.output_token_count = usage.output_tokens if usage else 0
+        self.execution_stats.llm_call_count += 1
+        self.execution_stats.provider_cost = usage.total_tokens if usage else None
+        self.execution_stats.provider_cost_type = "tokens" if usage else None
+        self.execution_stats.billing_mode = "user_subscription"
+        self.execution_stats.auth_provider = "codex"
+        self.execution_stats.execution_path = "codex_app_server"
+        self.execution_stats.resolved_model = None

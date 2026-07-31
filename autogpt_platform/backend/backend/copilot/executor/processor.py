@@ -11,6 +11,7 @@ import os
 import subprocess
 import threading
 import time
+from functools import partial
 from typing import Callable, cast
 
 from backend.copilot import stream_registry
@@ -52,6 +53,7 @@ _CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
 # session stays ``running`` until the stale-session watchdog reaps it, but
 # at least the pool worker thread isn't blocked forever.
 _FAIL_CLOSE_REDIS_TIMEOUT = 10.0
+_CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS = 5.0
 
 
 # Module-level symbol preserved for backward-compat with callers that import
@@ -518,47 +520,140 @@ class CoPilotProcessor:
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
+        credential_lease = None
 
         try:
-            # Choose service based on LaunchDarkly flag.
-            # Claude Code subscription forces SDK mode (CLI subprocess auth).
-            config = ChatConfig()
+            from backend.copilot.model import get_chat_session
 
-            if config.test_mode:
-                stream_fn = stream_chat_completion_dummy
-                log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
-                effective_mode = None
+            session = await get_chat_session(entry.session_id, entry.user_id)
+            if session is None:
+                raise RuntimeError("copilot_session_not_found")
+            if (
+                session.metadata.llm_auth_provider != entry.llm_auth_provider
+                or session.metadata.llm_credential_id != entry.llm_credential_id
+            ):
+                raise RuntimeError("codex_session_route_mismatch")
+
+            if entry.llm_auth_provider == "codex":
+                from backend.copilot.codex.service import (
+                    stream_chat_completion_codex,
+                )
+                from backend.copilot.tools.helpers import (
+                    session_entered_building_mode,
+                )
+                from backend.integrations.codex.credential_codec import (
+                    bundle_from_credentials,
+                )
+                from backend.integrations.creds_manager import (
+                    IntegrationCredentialsManager,
+                )
+
+                if entry.user_id is None:
+                    raise RuntimeError("codex_user_required")
+                codex_user_id = entry.user_id
+                auth_enabled, copilot_enabled = await asyncio.gather(
+                    is_feature_enabled(
+                        Flag.CODEX_SUBSCRIPTION_AUTH,
+                        codex_user_id,
+                        default=False,
+                    ),
+                    is_feature_enabled(
+                        Flag.CODEX_SUBSCRIPTION_COPILOT,
+                        codex_user_id,
+                        default=False,
+                    ),
+                )
+                if not auth_enabled or not copilot_enabled:
+                    raise RuntimeError("codex_transport_disabled")
+                if entry.llm_credential_id is None:
+                    raise RuntimeError("codex_credential_required")
+                if (
+                    session.metadata.builder_graph_id is not None
+                    or session_entered_building_mode(session)
+                ):
+                    raise RuntimeError("codex_builder_session_unsupported")
+                try:
+                    credential_lease = await asyncio.wait_for(
+                        IntegrationCredentialsManager().acquire_lease(
+                            codex_user_id,
+                            entry.llm_credential_id,
+                        ),
+                        timeout=_CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    raise RuntimeError("codex_credential_busy") from None
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    raise RuntimeError("codex_credential_not_found") from None
+                try:
+                    credentials = credential_lease.credentials
+                    if credentials.type != "oauth2":
+                        raise RuntimeError("codex_credential_not_found")
+                    bundle_from_credentials(credentials)
+                except asyncio.CancelledError:
+                    if credential_lease is not None:
+                        await credential_lease.release()
+                        credential_lease = None
+                    raise
+                except Exception:
+                    if credential_lease is not None:
+                        await credential_lease.release()
+                        credential_lease = None
+                    raise RuntimeError("codex_credential_not_found") from None
+                stream_fn = partial(
+                    stream_chat_completion_codex,
+                    credential_lease=credential_lease,
+                    session=session,
+                )
+                effective_mode = entry.mode
+                log.info("Using native Codex subscription service")
             else:
-                # Enforce server-side feature-flag gate so unauthorised
-                # users cannot force a mode by crafting the request.
-                effective_mode = await resolve_effective_mode(entry.mode, entry.user_id)
-                use_sdk = await resolve_use_sdk_for_mode(
-                    effective_mode,
-                    entry.user_id,
-                    use_claude_code_subscription=config.use_claude_code_subscription,
-                    config_default=config.use_claude_agent_sdk,
-                    thinking_available=config.thinking_available,
-                )
-                # Building-mode sessions are pinned to the SDK engine
-                # (guide-in-prompt + in-turn restart live there). Derived
-                # from message history — survives stale frontend mode
-                # pickers. get_chat_session is Redis-cached, so this is
-                # one cache hit, not a DB round-trip.
-                if not use_sdk and config.thinking_available:
-                    if await _building_mode_forces_sdk(entry.session_id):
-                        use_sdk = True
-                        log.info(
-                            "Forcing SDK engine: session is in agent building mode"
-                        )
-                stream_fn = (
-                    sdk_service.stream_chat_completion_sdk
-                    if use_sdk
-                    else stream_chat_completion_baseline
-                )
-                log.info(
-                    f"Using {'SDK' if use_sdk else 'baseline'} service "
-                    f"(mode={effective_mode or 'default'})"
-                )
+                if entry.llm_credential_id is not None:
+                    raise RuntimeError("codex_session_route_mismatch")
+                # Choose service based on LaunchDarkly flag.
+                # Claude Code subscription forces SDK mode (CLI subprocess auth).
+                config = ChatConfig()
+
+                if config.test_mode:
+                    stream_fn = stream_chat_completion_dummy
+                    log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
+                    effective_mode = None
+                else:
+                    # Enforce server-side feature-flag gate so unauthorised
+                    # users cannot force a mode by crafting the request.
+                    effective_mode = await resolve_effective_mode(
+                        entry.mode, entry.user_id
+                    )
+                    use_sdk = await resolve_use_sdk_for_mode(
+                        effective_mode,
+                        entry.user_id,
+                        use_claude_code_subscription=(
+                            config.use_claude_code_subscription
+                        ),
+                        config_default=config.use_claude_agent_sdk,
+                        thinking_available=config.thinking_available,
+                    )
+                    # Building-mode sessions are pinned to the SDK engine
+                    # (guide-in-prompt + in-turn restart live there). Derived
+                    # from message history — survives stale frontend mode
+                    # pickers. get_chat_session is Redis-cached, so this is
+                    # one cache hit, not a DB round-trip.
+                    if not use_sdk and config.thinking_available:
+                        if await _building_mode_forces_sdk(entry.session_id):
+                            use_sdk = True
+                            log.info(
+                                "Forcing SDK engine: session is in agent building mode"
+                            )
+                    stream_fn = (
+                        sdk_service.stream_chat_completion_sdk
+                        if use_sdk
+                        else stream_chat_completion_baseline
+                    )
+                    log.info(
+                        f"Using {'SDK' if use_sdk else 'baseline'} service "
+                        f"(mode={effective_mode or 'default'})"
+                    )
 
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
@@ -631,8 +726,16 @@ class CoPilotProcessor:
             if not error_msg and cancel.is_set():
                 error_msg = "Operation cancelled"
             try:
-                await stream_registry.mark_session_completed(
-                    entry.session_id, error_message=error_msg
-                )
-            except Exception as mark_err:
-                log.error(f"Failed to mark session completed: {mark_err}")
+                if credential_lease is not None:
+                    try:
+                        await credential_lease.release()
+                    except Exception as release_err:
+                        error_msg = error_msg or "codex_credential_release_failed"
+                        log.error(f"Failed to release Codex credential: {release_err}")
+            finally:
+                try:
+                    await stream_registry.mark_session_completed(
+                        entry.session_id, error_message=error_msg
+                    )
+                except Exception as mark_err:
+                    log.error(f"Failed to mark session completed: {mark_err}")

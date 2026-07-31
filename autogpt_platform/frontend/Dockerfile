@@ -12,6 +12,9 @@ COPY autogpt_platform/frontend/ .
 # Allow CI to opt-in to Playwright test build-time flags
 ARG NEXT_PUBLIC_PW_TEST="false"
 ENV NEXT_PUBLIC_PW_TEST=$NEXT_PUBLIC_PW_TEST
+ARG NEXT_PUBLIC_FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT="false"
+ENV NEXT_PUBLIC_FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT=$NEXT_PUBLIC_FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT
+ARG NEXT_PUBLIC_FRONTEND_BASE_URL
 # Allow CI to opt-in to browser sourcemaps for coverage path resolution.
 # Keep Docker builds defaulting to false to avoid the memory hit.
 ARG NEXT_PUBLIC_SOURCEMAPS="false"

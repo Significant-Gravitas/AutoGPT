@@ -3,17 +3,22 @@ import {
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { CreateSessionRequest } from "@/app/api/__generated__/models/createSessionRequest";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
+import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
-import { useEffect, useMemo, useRef } from "react";
+import { useContext, useEffect, useMemo, useRef } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { hasSavedCodexCredential } from "./helpers/copilotLlmAuth";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -22,6 +27,9 @@ interface UseChatSessionOptions {
 export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
+  const isCodexEnabled = useGetFlag(Flag.CODEX_SUBSCRIPTION_COPILOT);
+  const credentialProviders = useContext(CredentialsProvidersContext);
+  const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
@@ -134,10 +142,36 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
 
   async function createSession() {
     if (sessionId) return sessionId;
+    if (
+      copilotLlmAuth.authProvider === "codex" &&
+      (!isCodexEnabled ||
+        !hasSavedCodexCredential(
+          credentialProviders,
+          copilotLlmAuth.credentialId,
+        ))
+    ) {
+      toast({
+        variant: "destructive",
+        title: "ChatGPT/Codex connection unavailable",
+        description:
+          "Reconnect the account or choose AutoGPT before starting this task.",
+      });
+      throw new Error("Selected ChatGPT/Codex connection is unavailable");
+    }
+
     try {
-      const body = dryRun ? { data: { dry_run: true } } : { data: null };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await (createSessionMutation as any)(body);
+      const sessionData: CreateSessionRequest = {
+        llm_auth_provider: copilotLlmAuth.authProvider,
+      };
+      if (copilotLlmAuth.authProvider === "codex") {
+        sessionData.llm_credential_id = copilotLlmAuth.credentialId;
+      }
+      if (dryRun) sessionData.dry_run = true;
+      const body =
+        Object.keys(sessionData).length > 0
+          ? { data: sessionData }
+          : { data: null };
+      const response = await createSessionMutation(body);
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {
@@ -191,9 +225,17 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     freshSessionData as { chat_status?: string } | undefined
   )?.chat_status;
 
+  const sessionLlmAuthProvider: "platform" | "codex" | null =
+    sessionId && sessionQuery.data?.status === 200
+      ? sessionQuery.data.data.metadata?.llm_auth_provider === "codex"
+        ? "codex"
+        : "platform"
+      : null;
+
   return {
     sessionId,
     setSessionId,
+    sessionLlmAuthProvider,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,

@@ -110,6 +110,35 @@ afterEach(() => {
 });
 
 describe("CredentialsInput – OAuth flow", () => {
+  it("clears a credential retained from a different transport provider", async () => {
+    const onSelectCredentials = vi.fn();
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "Codex",
+        savedCredentials: [],
+      }),
+    );
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={{
+          id: "openai-key",
+          provider: "openai",
+          type: "api_key",
+          title: "OpenAI key",
+        }}
+        onSelectCredentials={onSelectCredentials}
+        showTitle={false}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(onSelectCredentials).toHaveBeenCalledWith(undefined),
+    );
+  });
+
   it("clicking the Add account button calls oAuthLogin without a credentialID", async () => {
     const oAuthLoginMock = vi.fn().mockResolvedValue({
       login_url: "https://accounts.google.com/o/oauth2/auth",

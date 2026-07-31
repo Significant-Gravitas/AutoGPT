@@ -1,4 +1,5 @@
 import logging
+import re
 from enum import Enum
 
 from pydantic import SecretStr
@@ -8,6 +9,7 @@ from sentry_sdk.api import flush as _sentry_flush
 from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 try:
     from sentry_sdk.integrations.anthropic import AnthropicIntegration
@@ -20,6 +22,7 @@ except ImportError:
     LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
 
 from backend.util import feature_flag
+from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
 
 settings = Settings()
@@ -69,6 +72,64 @@ _PIKA_RECONNECT_SIGNATURES = (
     "socket eof",
     "connection_lost",
 )
+
+_SENTRY_SENSITIVE_FIELDS = sorted(
+    set(DEFAULT_DENYLIST)
+    | SENSITIVE_FIELD_NAMES
+    | {
+        "anthropic_auth_token",
+        "client_secret",
+        "codex_access_token",
+        "codex_api_key",
+        "device_code",
+        "id_token",
+        "login_code",
+        "openai_api_key",
+        "provider_state",
+        "secrets",
+        "state_token",
+        "user_code",
+        "verification_url",
+    }
+)
+_SENTRY_EVENT_SCRUBBER = EventScrubber(
+    denylist=_SENTRY_SENSITIVE_FIELDS,
+    recursive=True,
+)
+_EMBEDDED_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
+    r"authorization|client[_-]?secret|password|provider[_-]?state|secret|"
+    r"device[_-]?code|login[_-]?code|state[_-]?token|user[_-]?code|"
+    r"verification[_-]?url)"
+    r"(?:\\?[\"']?)\s*[:=]"
+)
+_TOKEN_SHAPED_VALUE = re.compile(
+    r"(?i)(?:\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}|"
+    r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\b|"
+    r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
+)
+_FILTERED_VALUE = "[Filtered]"
+
+
+def _scrub_embedded_secret_values(value: object) -> object:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            value[key] = _scrub_embedded_secret_values(nested)
+        return value
+    if isinstance(value, list):
+        for index, nested in enumerate(value):
+            value[index] = _scrub_embedded_secret_values(nested)
+        return value
+    if isinstance(value, str) and (
+        _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value)
+    ):
+        return _FILTERED_VALUE
+    return value
+
+
+def _scrub_sentry_event(event: dict) -> None:
+    _SENTRY_EVENT_SCRUBBER.scrub_dict(event)
+    _scrub_embedded_secret_values(event)
 
 
 def _before_send(event, hint):
@@ -150,6 +211,7 @@ def _before_send(event, hint):
         if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
+    _scrub_sentry_event(event)
     return event
 
 

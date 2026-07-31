@@ -103,6 +103,14 @@ export function useCredentialsInput({
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
     const availableCreds = credentials.savedCredentials;
+    if (
+      selectedCredential &&
+      selectedCredential.provider !== credentials.provider
+    ) {
+      onSelectCredential(undefined);
+      hasAttemptedAutoSelect.current = false;
+      return;
+    }
     if (availableCreds.length === 0) return;
     if (
       selectedCredential &&
@@ -241,6 +249,7 @@ export function useCredentialsInput({
         openOAuthPopup(login_url, {
           stateToken: state_token,
           preOpenedWindow,
+          timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
           // Always enable BroadcastChannel + localStorage listeners — they are
           // the only path that works when the popup is blocked and we fall back
           // to a new tab (window.opener can be severed by cross-origin COOP).

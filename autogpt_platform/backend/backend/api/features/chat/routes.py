@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
+from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -21,7 +21,12 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
-from backend.copilot.config import ChatConfig, CopilotLLMModel, CopilotMode
+from backend.copilot.config import (
+    ChatConfig,
+    CopilotLlmAuthProvider,
+    CopilotLLMModel,
+    CopilotMode,
+)
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.model import (
@@ -113,7 +118,9 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -121,6 +128,7 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
+credentials_manager = IntegrationCredentialsManager()
 
 
 async def _validate_and_get_session(
@@ -284,6 +292,8 @@ class CreateSessionRequest(BaseModel):
 
     dry_run: bool = False
     builder_graph_id: str | None = Field(default=None, max_length=128)
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = Field(default=None, max_length=128)
 
 
 class CreateSessionResponse(BaseModel):
@@ -445,10 +455,43 @@ async def list_sessions(
     )
 
 
-@router.post(
-    "/sessions",
-    dependencies=[Depends(enforce_payment_paywall)],
-)
+async def _validate_llm_credentials(
+    user_id: str,
+    auth_provider: CopilotLlmAuthProvider,
+    credential_id: str | None,
+) -> None:
+    if auth_provider == "platform":
+        if credential_id is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="codex_credential_not_allowed",
+            )
+        return
+
+    if credential_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="codex_credential_required",
+        )
+    auth_enabled, copilot_enabled = await asyncio.gather(
+        is_feature_enabled(Flag.CODEX_SUBSCRIPTION_AUTH, user_id, default=False),
+        is_feature_enabled(Flag.CODEX_SUBSCRIPTION_COPILOT, user_id, default=False),
+    )
+    if not auth_enabled or not copilot_enabled:
+        raise HTTPException(status_code=404, detail="codex_transport_disabled")
+
+    credentials = await credentials_manager.get(user_id, credential_id)
+    if not (
+        credentials is not None
+        and credentials.type == "oauth2"
+        and credentials.provider == "codex"
+        and credentials.refresh_strategy == "provider_runtime"
+        and credentials.provider_state is not None
+    ):
+        raise HTTPException(status_code=404, detail="codex_credential_not_found")
+
+
+@router.post("/sessions")
 async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
@@ -479,6 +522,16 @@ async def create_session(
     """
     dry_run = request.dry_run if request else False
     builder_graph_id = request.builder_graph_id if request else None
+    llm_auth_provider = request.llm_auth_provider if request else "platform"
+    llm_credential_id = request.llm_credential_id if request else None
+
+    await _validate_llm_credentials(
+        user_id,
+        llm_auth_provider,
+        llm_credential_id,
+    )
+    if llm_auth_provider == "platform":
+        await enforce_payment_paywall(user_id)
 
     logger.info(
         f"Creating session with user_id: "
@@ -488,6 +541,11 @@ async def create_session(
     )
 
     if builder_graph_id:
+        if llm_auth_provider == "codex":
+            raise HTTPException(
+                status_code=422,
+                detail="codex_builder_session_unsupported",
+            )
         session = await get_or_create_builder_session(
             user_id,
             builder_graph_id,
@@ -500,6 +558,8 @@ async def create_session(
             dry_run=dry_run,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
         )
 
     return CreateSessionResponse(
@@ -1111,7 +1171,6 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
             "header before retrying."
         },
     },
-    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def stream_chat_post(
     session_id: str,
@@ -1154,6 +1213,9 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_session(session_id, user_id)
+    is_platform_route = session.metadata.llm_auth_provider == "platform"
+    if is_platform_route:
+        await enforce_payment_paywall(user_id)
 
     # Session-anchored tenancy: the ChatSession row is the authoritative
     # org/team for every turn in it — a user whose active header org
@@ -1208,12 +1270,11 @@ async def stream_chat_post(
         },
     )
 
-    # Pre-turn rate limit check (cost-based, microdollars).
-    # Entitlement (NO_TIER + ENABLE_PLATFORM_PAYMENT) is gated upstream by
-    # the route-level ``enforce_payment_paywall`` dependency; here we only
-    # enforce per-window USD caps. Global defaults sourced from
-    # LaunchDarkly, falling back to config.
-    if user_id:
+    # Subscription-backed Codex turns do not spend platform model dollars, so
+    # neither the platform paywall nor its USD usage windows apply. Admission,
+    # pending-message frequency, and concurrent-turn caps remain enforced by
+    # the shared scheduling path below.
+    if user_id and is_platform_route:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(
                 user_id,
@@ -1274,6 +1335,8 @@ async def stream_chat_post(
             team_id=turn_team_id,
             mode=request.mode,
             model=request.model,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
             permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
         )
@@ -1296,6 +1359,8 @@ async def stream_chat_post(
                 file_ids=sanitized_file_ids,
                 mode=request.mode,
                 model=request.model,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
                 permissions=(
                     builder_permissions.model_dump(exclude_none=True)
                     if builder_permissions

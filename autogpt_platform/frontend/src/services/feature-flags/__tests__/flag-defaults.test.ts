@@ -25,6 +25,11 @@ const DREAM_GRAPHITI_FLAGS = [
   Flag.DREAM_PASS_INVALIDATE_ENTITY,
 ] as const;
 
+const FAIL_CLOSED_FLAGS = [
+  ...DREAM_GRAPHITI_FLAGS,
+  Flag.CODEX_SUBSCRIPTION_COPILOT,
+] as const;
+
 describe("dream/graphiti flag defaults fail closed", () => {
   beforeEach(() => {
     Object.keys(process.env)
@@ -32,7 +37,7 @@ describe("dream/graphiti flag defaults fail closed", () => {
       .forEach((k) => delete process.env[k]);
   });
 
-  it.each(DREAM_GRAPHITI_FLAGS)(
+  it.each(FAIL_CLOSED_FLAGS)(
     "resolves %s to false when LaunchDarkly has not answered, mirroring the backend's default=False gating",
     (flag) => {
       const { result } = renderHook(() => useGetFlag(flag));

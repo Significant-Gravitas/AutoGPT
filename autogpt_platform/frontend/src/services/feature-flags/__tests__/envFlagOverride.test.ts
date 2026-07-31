@@ -84,6 +84,23 @@ describe("BUILDER_CHAT_PANEL default", () => {
   });
 });
 
+describe("CODEX_SUBSCRIPTION_COPILOT default", () => {
+  const key = "NEXT_PUBLIC_FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT";
+
+  beforeEach(() => {
+    delete process.env[key];
+  });
+
+  it("is disabled by default", () => {
+    expect(envFlagOverride(Flag.CODEX_SUBSCRIPTION_COPILOT)).toBeUndefined();
+  });
+
+  it("can be force-enabled for the local preview", () => {
+    process.env[key] = "true";
+    expect(envFlagOverride(Flag.CODEX_SUBSCRIPTION_COPILOT)).toBe(true);
+  });
+});
+
 describe("array-typed flags refuse env overrides", () => {
   beforeEach(() => {
     delete process.env["NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS"];

@@ -33,7 +33,7 @@ import uuid
 from typing import Any, Mapping
 
 from backend.copilot.active_turns import TurnSlot, count_running_turns
-from backend.copilot.config import ChatConfig
+from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,
@@ -101,6 +101,8 @@ async def try_enqueue_turn(
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
 ) -> ChatMessage:
@@ -124,6 +126,8 @@ async def try_enqueue_turn(
         file_ids=file_ids,
         mode=mode,
         model=model,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
     )
@@ -140,6 +144,8 @@ async def enqueue_turn(
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
 ) -> ChatMessage:
@@ -161,6 +167,9 @@ async def enqueue_turn(
         metadata["mode"] = mode
     if model is not None:
         metadata["model"] = model
+    metadata["llm_auth_provider"] = llm_auth_provider
+    if llm_credential_id is not None:
+        metadata["llm_credential_id"] = llm_credential_id
     if permissions is not None:
         metadata["permissions"] = dict(permissions)
     if request_arrival_at:
@@ -341,6 +350,8 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             team_id=head.team_id,
             mode=metadata.get("mode"),
             model=metadata.get("model"),
+            llm_auth_provider=head.metadata.llm_auth_provider,
+            llm_credential_id=head.metadata.llm_credential_id,
             permissions=metadata.get("permissions"),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
         )

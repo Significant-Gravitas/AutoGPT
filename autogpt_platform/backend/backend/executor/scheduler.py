@@ -230,6 +230,7 @@ async def _execute_copilot_turn(**kwargs):
                 team_id=args.team_id,
             )
             target_session_id = new_session.session_id
+            target_session = new_session
             logger.info(
                 f"Copilot turn schedule {args.schedule_id} creating fresh "
                 f"session {target_session_id[:12]} (sentinel session_id=None)"
@@ -244,6 +245,7 @@ async def _execute_copilot_turn(**kwargs):
                 await _self_delete_copilot_turn_schedule(args)
                 return
             target_session_id = args.session_id
+            target_session = session
 
         # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
         # point: it acquires a per-user concurrency slot AND registers the
@@ -259,6 +261,8 @@ async def _execute_copilot_turn(**kwargs):
             tool_name="schedule_followup",
             organization_id=args.organization_id,
             team_id=args.team_id,
+            llm_auth_provider=target_session.metadata.llm_auth_provider,
+            llm_credential_id=target_session.metadata.llm_credential_id,
         )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(

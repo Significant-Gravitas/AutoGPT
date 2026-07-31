@@ -633,20 +633,30 @@ def _dispatch_engine_switch_continuation(
     history, so the user's next message still lands on the SDK engine with
     the guide in the prefix.
     """
+    async def dispatch() -> None:
+        from backend.copilot.model import get_chat_session
+
+        session = await get_chat_session(session_id, switch.user_id)
+        if session is None:
+            raise RuntimeError("copilot_session_not_found")
+        if session.metadata.llm_auth_provider == "codex":
+            raise RuntimeError("codex_extended_thinking_unsupported")
+        await schedule_turn(
+            session_id=session_id,
+            user_id=switch.user_id,
+            turn_id=str(uuid.uuid4()),
+            message=engine_switch.CONTINUATION_MESSAGE,
+            is_user_message=False,
+            mode="extended_thinking",
+            organization_id=switch.organization_id,
+            team_id=switch.team_id,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
+        )
+
     for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
         try:
-            asyncio.run(
-                schedule_turn(
-                    session_id=session_id,
-                    user_id=switch.user_id,
-                    turn_id=str(uuid.uuid4()),
-                    message=engine_switch.CONTINUATION_MESSAGE,
-                    is_user_message=False,
-                    mode="extended_thinking",
-                    organization_id=switch.organization_id,
-                    team_id=switch.team_id,
-                )
-            )
+            asyncio.run(dispatch())
             logger.info(f"Dispatched engine-switch continuation for {session_id}")
             return
         except Exception as switch_err:

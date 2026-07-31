@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
@@ -34,11 +35,16 @@ from backend.data.model import (
     CredentialsType,
     HostScopedCredentials,
     OAuth2Credentials,
+    OAuthState,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
+from backend.integrations.codex.login import (
+    CodexLoginFailedError,
+    CodexLoginPendingError,
+)
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -64,6 +70,7 @@ from backend.util.exceptions import (
     NeedConfirmation,
     NotFoundError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 from .models import (
@@ -74,6 +81,14 @@ from .models import (
     get_provider_description,
     get_supported_auth_types,
 )
+from .codex import (
+    CODEX_LOGIN_STATE_KEY,
+    build_device_login_url,
+    codex_login_coordinator,
+    require_codex_auth,
+    revoke_codex_credentials,
+    router as codex_router,
+)
 
 if TYPE_CHECKING:
     from backend.integrations.oauth import BaseOAuthHandler
@@ -81,6 +96,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 settings = Settings()
 router = APIRouter()
+router.include_router(codex_router, prefix="/codex")
 
 creds_manager = IntegrationCredentialsManager()
 
@@ -105,6 +121,9 @@ async def login(
         Query(title="ID of existing credential to upgrade scopes for"),
     ] = None,
 ) -> LoginResponse:
+    if provider == ProviderName.CODEX:
+        return await _start_codex_login(user_id, scopes, credential_id)
+
     handler = _get_provider_oauth_handler(request, provider)
 
     requested_scopes = scopes.split(",") if scopes else []
@@ -123,6 +142,63 @@ async def login(
     )
 
     return LoginResponse(login_url=login_url, state_token=state_token)
+
+
+async def _start_codex_login(
+    user_id: str,
+    scopes: str,
+    credential_id: str | None,
+) -> LoginResponse:
+    await require_codex_auth(user_id)
+    if scopes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codex sign-in does not accept OAuth scopes",
+        )
+    if credential_id:
+        await _prepare_scope_upgrade(user_id, ProviderName.CODEX, credential_id, [])
+    frontend_base_url = settings.config.frontend_base_url
+    if not frontend_base_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Frontend base URL is not configured",
+        )
+    try:
+        login_attempt = await codex_login_coordinator.start(user_id)
+    except CodexLoginPendingError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A ChatGPT sign-in is already active",
+        ) from None
+    except CodexLoginFailedError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatGPT sign-in is temporarily unavailable",
+        ) from None
+    except Exception as error:
+        logger.warning("Could not start Codex device login: %s", type(error).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatGPT sign-in is temporarily unavailable",
+        ) from None
+
+    try:
+        state_token, _ = await creds_manager.store.store_state_token(
+            user_id,
+            ProviderName.CODEX.value,
+            [],
+            expires_in_seconds=settings.config.codex_login_timeout_seconds + 60,
+            credential_id=credential_id,
+            state_metadata={CODEX_LOGIN_STATE_KEY: login_attempt.login_id},
+        )
+    except Exception:
+        await codex_login_coordinator.cancel(user_id, login_attempt.login_id)
+        raise
+
+    return LoginResponse(
+        login_url=build_device_login_url(frontend_base_url, login_attempt, state_token),
+        state_token=state_token,
+    )
 
 
 class CredentialsMetaResponse(BaseModel):
@@ -179,6 +255,35 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
     )
 
 
+async def _complete_codex_login(
+    user_id: str,
+    login_id: str,
+    oauth_state: OAuthState,
+) -> CredentialsMetaResponse:
+    expected_login_id = oauth_state.state_metadata.get(CODEX_LOGIN_STATE_KEY)
+    if not isinstance(expected_login_id, str) or not secrets.compare_digest(
+        login_id, expected_login_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Codex login completion",
+        )
+    try:
+        credentials = await codex_login_coordinator.complete(user_id, login_id)
+    except CodexLoginPendingError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="ChatGPT sign-in is still pending",
+        ) from None
+    except CodexLoginFailedError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ChatGPT sign-in failed. Try again.",
+        ) from None
+
+    return to_meta_response(credentials)
+
+
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
 async def callback(
     provider: Annotated[
@@ -190,7 +295,8 @@ async def callback(
     request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
-    handler = _get_provider_oauth_handler(request, provider)
+    if provider == ProviderName.CODEX:
+        await require_codex_auth(user_id)
 
     # Verify the state token
     valid_state = await creds_manager.store.verify_state_token(
@@ -203,6 +309,11 @@ async def callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
         )
+
+    if provider == ProviderName.CODEX:
+        return await _complete_codex_login(user_id, code, valid_state)
+
+    handler = _get_provider_oauth_handler(request, provider)
     try:
         scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
@@ -452,6 +563,19 @@ async def create_credentials(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot create credentials with a reserved ID",
         )
+    if provider == ProviderName.CODEX:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codex credentials must be created through ChatGPT sign-in",
+        )
+    if (
+        isinstance(credentials, OAuth2Credentials)
+        and credentials.refresh_strategy == "provider_runtime"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provider-runtime credentials cannot be created directly",
+        )
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -526,10 +650,13 @@ async def delete_credentials(
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
-    await creds_manager.delete(user_id, cred_id)
-
     tokens_revoked = None
-    if isinstance(creds, OAuth2Credentials):
+    if provider == ProviderName.CODEX:
+        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
+    else:
+        await creds_manager.delete(user_id, cred_id)
+
+    if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
         if provider_matches(provider.value, ProviderName.MCP.value):
             # MCP uses dynamic per-server OAuth — create handler from metadata
             handler = create_mcp_oauth_handler(creds)
@@ -1253,8 +1380,7 @@ async def get_ayrshare_sso_url(
     ]
     if not ayrshare_creds:
         logger.error(
-            "Ayrshare credential provisioning did not produce a credential "
-            "for user %s",
+            "Ayrshare credential provisioning did not produce a credential for user %s",
             user_id,
         )
         raise HTTPException(
@@ -1299,7 +1425,9 @@ async def get_ayrshare_sso_url(
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
 @router.get("/providers", response_model=List[ProviderMetadata])
-async def list_providers() -> List[ProviderMetadata]:
+async def list_providers(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> List[ProviderMetadata]:
     """
     Get metadata for every available provider.
 
@@ -1321,6 +1449,16 @@ async def list_providers() -> List[ProviderMetadata]:
         logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
     all_providers = get_all_provider_names()
+    if not await is_feature_enabled(
+        Flag.CODEX_SUBSCRIPTION_AUTH,
+        user_id,
+        default=False,
+    ):
+        all_providers = [
+            provider
+            for provider in all_providers
+            if provider != ProviderName.CODEX.value
+        ]
     return [
         ProviderMetadata(
             name=name,

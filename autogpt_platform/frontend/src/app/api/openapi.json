@@ -6222,6 +6222,92 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/integrations/codex/credentials/{credential_id}/account": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Codex Account",
+        "operationId": "getV1CodexAccount",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexAccountSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/codex/credentials/{credential_id}/rate-limits": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Codex Rate Limits",
+        "operationId": "getV1CodexRateLimits",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexRateLimitsSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/credentials": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -6267,8 +6353,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/integrations/providers/constants": {
@@ -14595,6 +14685,16 @@
             "title": "Dry Run",
             "default": false
           },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Credential Id"
+          },
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
@@ -14715,6 +14815,96 @@
         "type": "object",
         "title": "CoPilotUsagePublic",
         "description": "Current usage status for a user — public (client-safe) shape."
+      },
+      "CodexAccountSnapshot": {
+        "properties": {
+          "connected": { "type": "boolean", "title": "Connected" },
+          "requires_openai_auth": {
+            "type": "boolean",
+            "title": "Requires Openai Auth"
+          },
+          "account_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Account Type"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "plan_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["connected", "requires_openai_auth"],
+        "title": "CodexAccountSnapshot"
+      },
+      "CodexRateLimitWindow": {
+        "properties": {
+          "used_percent": { "type": "integer", "title": "Used Percent" },
+          "window_duration_mins": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Window Duration Mins"
+          },
+          "resets_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Resets At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["used_percent"],
+        "title": "CodexRateLimitWindow"
+      },
+      "CodexRateLimitsSnapshot": {
+        "properties": {
+          "plan_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Type"
+          },
+          "limit_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Limit Id"
+          },
+          "limit_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Limit Name"
+          },
+          "rate_limit_reached_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Rate Limit Reached Type"
+          },
+          "primary": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CodexRateLimitWindow" },
+              { "type": "null" }
+            ]
+          },
+          "secondary": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CodexRateLimitWindow" },
+              { "type": "null" }
+            ]
+          },
+          "has_credits": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Has Credits"
+          },
+          "unlimited_credits": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Unlimited Credits"
+          },
+          "bucket_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Bucket Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CodexRateLimitsSnapshot"
       },
       "CommunityListResponse": {
         "properties": {
@@ -15266,6 +15456,26 @@
               { "type": "null" }
             ],
             "title": "Builder Graph Id"
+          },
+          "expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Expert Id"
+          },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Llm Credential Id"
           }
         },
         "additionalProperties": false,
@@ -15283,7 +15493,15 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "default": {
+              "dry_run": false,
+              "llm_auth_provider": "platform",
+              "kind": "normal"
+            }
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
@@ -19135,6 +19353,23 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
+          },
+          "refresh_strategy": {
+            "type": "string",
+            "enum": ["oauth_handler", "provider_runtime"],
+            "title": "Refresh Strategy",
+            "default": "oauth_handler"
+          },
+          "provider_state": {
+            "anyOf": [
+              { "type": "string", "format": "password", "writeOnly": true },
+              { "type": "null" }
+            ],
+            "title": "Provider State"
+          },
+          "provider_state_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Provider State Version"
           }
         },
         "type": "object",
@@ -21374,7 +21609,15 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "default": {
+              "dry_run": false,
+              "llm_auth_provider": "platform",
+              "kind": "normal"
+            }
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",

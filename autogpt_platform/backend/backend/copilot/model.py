@@ -30,7 +30,7 @@ from backend.data.redis_client import get_redis_async
 from backend.util import json
 from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
-from .config import ChatConfig
+from .config import ChatConfig, CopilotLlmAuthProvider
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -65,6 +65,8 @@ class ChatSessionMetadata(BaseModel):
     """
 
     dry_run: bool = False
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = None
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
@@ -362,6 +364,8 @@ class ChatSession(ChatSessionInfo):
         source_platform: str | None = None,
         organization_id: str | None = None,
         team_id: str | None = None,
+        llm_auth_provider: CopilotLlmAuthProvider = "platform",
+        llm_credential_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
@@ -376,6 +380,8 @@ class ChatSession(ChatSessionInfo):
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1138,6 +1144,8 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1162,6 +1170,8 @@ async def create_chat_session(
         source_platform=source_platform,
         organization_id=organization_id,
         team_id=team_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
     )
 
     # Create in database first - fail fast if this fails

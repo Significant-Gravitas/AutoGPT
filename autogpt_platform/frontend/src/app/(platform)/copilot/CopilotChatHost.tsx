@@ -21,6 +21,8 @@ export function CopilotChatHost({
 }: Props) {
   const {
     sessionId,
+    sessionLlmAuthProvider,
+    isSessionLlmRouteResolved,
     messages,
     status,
     error,
@@ -65,6 +67,8 @@ export function CopilotChatHost({
           status={status}
           error={error}
           sessionId={sessionId}
+          sessionLlmAuthProvider={sessionLlmAuthProvider}
+          isSessionLlmRouteResolved={isSessionLlmRouteResolved}
           sessionChatStatus={sessionChatStatus}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
