@@ -173,6 +173,31 @@ describe("WalletCompactPanel", () => {
     expect(screen.queryByText("Schedule your first agent")).toBeNull();
   });
 
+  it("collapses a group once its last task is completed", () => {
+    const { rerender } = render(
+      <WalletCompactPanel
+        groups={groups}
+        completedSteps={["SCHEDULE_AGENT"]}
+        formattedCredits="$9.79"
+        onAddCredits={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Run agents 3 days in a row")).toBeDefined();
+
+    rerender(
+      <WalletCompactPanel
+        groups={groups}
+        completedSteps={["SCHEDULE_AGENT", "RUN_3_DAYS"]}
+        formattedCredits="$9.79"
+        onAddCredits={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText("Run agents 3 days in a row")).toBeNull();
+    expect(screen.getByText("Consistency Challenge · 2 of 2")).toBeDefined();
+  });
+
   it("calls onAddCredits when the Add credits row is clicked", async () => {
     const onAddCredits = vi.fn();
     render(

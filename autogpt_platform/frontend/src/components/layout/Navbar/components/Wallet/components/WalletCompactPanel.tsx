@@ -55,7 +55,13 @@ export function WalletCompactPanel({
       </div>
       <div className="max-h-[20rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
         {earnGroups.map((group) => (
-          <EarnGroupSection key={group.key} group={group} />
+          // `defaultOpen` is part of the key so finishing the last task in a
+          // group remounts its section and re-seeds it collapsed, instead of
+          // leaving the completed group stuck open.
+          <EarnGroupSection
+            key={`${group.key}:${group.defaultOpen}`}
+            group={group}
+          />
         ))}
       </div>
     </div>
