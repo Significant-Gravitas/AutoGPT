@@ -530,3 +530,35 @@ async def test_create_batch_explicit_tenancy_not_overridden(mocker):
     create_input = mock_upsert.call_args.kwargs["data"]["create"]
     assert create_input["organizationId"] == "explicit-org"
     assert create_input["teamId"] == "explicit-team"
+
+
+@pytest.mark.asyncio
+async def test_create_batch_default_team_lookup_failure_stays_untenanted(mocker):
+    """The default-team lookup is best-effort: if it RAISES, the batch is still
+    created (untenanted) rather than crashing the notification."""
+    from unittest.mock import AsyncMock
+
+    mock_upsert = AsyncMock(return_value=object())
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatch.prisma"
+    ).return_value.upsert = mock_upsert
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatchDTO.from_db",
+        return_value="dto-sentinel",
+    )
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=AsyncMock(side_effect=RuntimeError("bootstrap unavailable")),
+    )
+
+    user_id = "notif-lookup-fail-user"
+    result = await create_or_add_to_user_notification_batch(
+        user_id=user_id,
+        notification_type=NotificationType.AGENT_RUN,
+        notification_data=_make_agent_run_event(user_id),
+    )
+
+    assert result == "dto-sentinel"
+    create_input = mock_upsert.call_args.kwargs["data"]["create"]
+    assert create_input.get("organizationId") is None
+    assert create_input.get("teamId") is None

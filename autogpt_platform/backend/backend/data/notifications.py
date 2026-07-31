@@ -466,14 +466,15 @@ async def create_or_add_to_user_notification_batch(
 
         # Born-tenanted: stamp the batch with the user's default org/team so it
         # doesn't land in the untenanted pool the startup migration sweep
-        # backfills on every boot. Callers may pass an explicit tenancy;
-        # otherwise resolve the user's default. get_user_default_team returns
-        # (None, None) on bootstrap failure — leave the batch untenanted rather
-        # than crash a notification.
-        if organization_id is None:
-            from backend.api.features.orgs.db import get_user_default_team
+        # backfills on every boot. Resolve a default only when the caller
+        # supplied NEITHER field (never overwrite an explicit team_id).
+        # resolve_default_tenancy is best-effort — an unresolvable org or a
+        # raised lookup both leave the batch untenanted rather than crash a
+        # notification.
+        if organization_id is None and team_id is None:
+            from backend.api.features.orgs.db import resolve_default_tenancy
 
-            organization_id, team_id = await get_user_default_team(user_id)
+            organization_id, team_id = await resolve_default_tenancy(user_id)
 
         # Prisma's upsert is find→INSERT/UPDATE under the hood, not a true
         # SQL ON CONFLICT, so two concurrent calls on a missing row can both

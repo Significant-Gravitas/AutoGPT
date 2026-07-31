@@ -2016,6 +2016,51 @@ async def test_add_graph_execution_explicit_org_not_overridden(
 
 
 @pytest.mark.asyncio
+async def test_add_graph_execution_explicit_team_id_preserved_when_org_absent(
+    mocker: MockerFixture,
+):
+    """An explicit team_id with no org must NOT be clobbered by the default-
+    team lookup — the fallback only fires when BOTH fields are unset."""
+    mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
+        mocker, org_id="fallback-org", team_id="fallback-team"
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="user-1",
+        organization_id=None,
+        team_id="explicit-team",
+    )
+
+    mock_get_default_team.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["team_id"] == "explicit-team"
+    assert create_kwargs["organization_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_default_team_lookup_failure_stays_untenanted(
+    mocker: MockerFixture,
+):
+    """The default-team lookup is best-effort: if it RAISES, the run is still
+    created (untenanted) rather than aborted."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id=None, team_id=None
+    )
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=mocker.AsyncMock(side_effect=RuntimeError("bootstrap unavailable")),
+    )
+
+    result = await add_graph_execution(graph_id="g", user_id="user-1")
+
+    assert result is not None
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] is None
+    assert create_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_add_graph_execution_subgraph_untenanted_parent_triggers_fallback(
     mocker: MockerFixture,
 ):

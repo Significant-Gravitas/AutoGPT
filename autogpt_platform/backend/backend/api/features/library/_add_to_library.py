@@ -99,11 +99,12 @@ async def add_graph_to_library(
     # Born-tenanted: mirror create_library_agent — a library entry is the
     # adding user's bookmark, so tag it with their default org/team instead of
     # leaving it untenanted for the startup migration sweep to backfill.
-    # get_user_default_team returns (None, None) if bootstrap failed; in that
-    # case leave the row untagged (never block a library add on tenancy).
-    from backend.api.features.orgs.db import get_user_default_team
+    # resolve_default_tenancy is best-effort — an unresolvable org or a raised
+    # lookup yields (None, None) and the row is left untagged; never block a
+    # library add on tenancy resolution.
+    from backend.api.features.orgs.db import resolve_default_tenancy
 
-    organization_id, team_id = await get_user_default_team(user_id)
+    organization_id, team_id = await resolve_default_tenancy(user_id)
 
     try:
         added_agent = await prisma.models.LibraryAgent.prisma().create(

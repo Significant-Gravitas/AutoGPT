@@ -1297,19 +1297,17 @@ async def add_graph_execution(
         # the execution_context backfill below), so we must not re-resolve and
         # risk re-tenanting an existing row under a different org.
         #
-        # If bootstrap hasn't provisioned the user's personal org yet,
-        # get_user_default_team returns (None, None); leave the row untenanted
-        # and let the boot sweep catch it — never crash a run over tenancy.
-        if not organization_id:
-            from backend.api.features.orgs.db import get_user_default_team
+        # Only resolve a default when NEITHER field was supplied — never
+        # overwrite an explicitly-passed team_id. resolve_default_tenancy is
+        # best-effort: an unresolvable org or a raised lookup yields
+        # (None, None) and the row is left for the boot sweep to backfill —
+        # never crash a run over tenancy.
+        if not organization_id and not team_id:
+            from backend.api.features.orgs.db import resolve_default_tenancy
 
-            default_org_id, default_team_id = await get_user_default_team(user_id)
+            default_org_id, default_team_id = await resolve_default_tenancy(user_id)
             if default_org_id:
                 organization_id, team_id = default_org_id, default_team_id
-                logger.info(
-                    "born-tenanted fallback: resolved default org/team "
-                    f"for user {user_id}"
-                )
 
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
