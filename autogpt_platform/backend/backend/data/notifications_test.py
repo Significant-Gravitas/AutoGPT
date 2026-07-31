@@ -468,8 +468,8 @@ async def test_get_all_batches_does_not_eager_load_events(server: SpinTestServer
 @pytest.mark.asyncio
 async def test_create_batch_born_tenanted_stamps_default_team(mocker):
     """The create branch of the upsert stamps the batch with the user's default
-    org/team so a new batch isn't left in the untenanted pool that the startup
-    migration sweep backfills on every boot. Mocked at the Prisma boundary."""
+    org/team at creation; the update branch must not, so re-batching never
+    overwrites an existing batch's tenant. Mocked at the Prisma boundary."""
     mock_upsert = AsyncMock(return_value=object())
     mocker.patch(
         "backend.data.notifications.UserNotificationBatch.prisma"
@@ -495,6 +495,11 @@ async def test_create_batch_born_tenanted_stamps_default_team(mocker):
     create_input = mock_upsert.call_args.kwargs["data"]["create"]
     assert create_input["organizationId"] == "org-notif"
     assert create_input["teamId"] == "team-notif"
+    # Re-batch (update) must leave tenancy alone — an existing batch keeps its
+    # tenant; only the create branch tenants.
+    update_input = mock_upsert.call_args.kwargs["data"]["update"]
+    assert "organizationId" not in update_input
+    assert "teamId" not in update_input
 
 
 @pytest.mark.asyncio

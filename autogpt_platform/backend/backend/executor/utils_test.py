@@ -945,6 +945,13 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     mock_get_queue.return_value = mocker.AsyncMock()
     mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
 
+    # Resume must backfill tenancy from the row, never re-resolve a default —
+    # re-resolving could re-tenant an existing row under a different org.
+    mock_get_default_team = mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=mocker.AsyncMock(return_value=(None, None)),
+    )
+
     # Caller-supplied context with NO org/team (the bug condition).
     resume_ctx = ExecutionContext(user_id="test-user-id", workspace_id="ws-1")
     assert resume_ctx.organization_id is None
@@ -958,6 +965,8 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
 
     assert captured_kwargs["execution_context"].organization_id == "org-row"
     assert captured_kwargs["execution_context"].team_id == "team-row"
+    # The "CREATE path only" invariant: resume never consults the resolver.
+    mock_get_default_team.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1956,9 +1965,8 @@ async def test_add_graph_execution_bypass_paywall_skips_check(
 
 
 # ============================================================================
-# Born-tenanted fallback: a NEW execution created without an explicit org must
-# be stamped with the user's default org/team so it never lands in the
-# untenanted pool that the startup org-migration sweep backfills every boot.
+# Born-tenanted fallback: a NEW execution created without an explicit org is
+# tenanted at creation with the user's default org/team.
 # ============================================================================
 
 
@@ -2040,8 +2048,8 @@ def _mock_add_graph_execution_create_path(
 async def test_add_graph_execution_born_tenanted_resolves_default_team(
     mocker: MockerFixture,
 ):
-    """CREATE path with no org → the row is born tenanted with the user's
-    default org/team (closes the startup-sweep leak)."""
+    """CREATE path with no org → the row is tenanted at creation with the
+    user's default org/team."""
     mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
         mocker, org_id="org-x", team_id="team-x"
     )
@@ -2059,7 +2067,7 @@ async def test_add_graph_execution_no_default_team_stays_untenanted(
     mocker: MockerFixture,
 ):
     """CREATE path when bootstrap hasn't provisioned an org → (None, None)
-    resolves, no crash, row stays untenanted for the boot sweep to backfill."""
+    resolves, no crash, row stays untenanted."""
     mock_edb, _ = _mock_add_graph_execution_create_path(
         mocker, org_id=None, team_id=None
     )
