@@ -16,10 +16,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainAgentPage } from "../components/MainAgentPage/MainAgentPage";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -86,7 +86,7 @@ function renderAgentPage() {
 
 describe("Install on Expert from marketplace detail", () => {
   beforeEach(() => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
     });
@@ -194,7 +194,7 @@ describe("Install on Expert from marketplace detail", () => {
 
   test("hides the action for signed-out visitors without fetching experts", async () => {
     let expertsRequested = false;
-    mockUseSupabase.mockReturnValue({ user: null, isLoggedIn: false });
+    mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
     useStoreHandlers();
     server.use(
       getListExpertsMockHandler(() => {

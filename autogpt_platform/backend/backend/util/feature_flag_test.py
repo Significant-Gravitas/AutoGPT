@@ -177,58 +177,168 @@ class TestEnvFlagOverride:
 
 class TestUserContext:
     @staticmethod
-    def _stub_supabase(mocker, *, created_at, role="authenticated", email="x@y.com"):
-        user = mocker.MagicMock(role=role, email=email, created_at=created_at)
-        response = mocker.MagicMock(user=user)
-        supabase = mocker.MagicMock()
-        supabase.auth.admin.get_user_by_id.return_value = response
-        mocker.patch("backend.util.clients.get_supabase", return_value=supabase)
-        return supabase
+    def _stub_flag_fields(mocker, *, created_at, role=None, email="x@y.com"):
+        """Stub the direct data-layer accessor with Prisma reported connected.
+
+        Returns the AsyncMock standing in for ``get_auth_user_flag_fields`` so
+        callers can assert on how it was invoked.
+        """
+        from backend.data.user import AuthUserFlagFields
+
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = True
+        fields = AuthUserFlagFields(role=role, email=email, created_at=created_at)
+        return mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(return_value=fields),
+        )
 
     @pytest.mark.asyncio
     async def test_context_includes_created_at_iso_string(self, mocker):
         created = datetime.datetime(2026, 5, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
-        supabase = self._stub_supabase(mocker, created_at=created)
+        accessor = self._stub_flag_fields(mocker, created_at=created)
         user_id = str(uuid.uuid4())
 
         ctx = await _fetch_user_context_data(user_id)
 
         assert ctx.get("created_at") == created.isoformat()
         assert ctx.get("email") == "x@y.com"
-        supabase.auth.admin.get_user_by_id.assert_called_once_with(user_id)
+        accessor.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio
     async def test_context_skips_created_at_when_missing(self, mocker):
-        supabase = self._stub_supabase(mocker, created_at=None)
+        accessor = self._stub_flag_fields(mocker, created_at=None)
         user_id = str(uuid.uuid4())
 
         ctx = await _fetch_user_context_data(user_id)
 
         assert "created_at" not in ctx.custom_attributes
         assert ctx.get("email") == "x@y.com"
-        supabase.auth.admin.get_user_by_id.assert_called_once_with(user_id)
+        accessor.assert_called_once_with(user_id)
+
+    @pytest.mark.asyncio
+    async def test_context_maps_admin_role_through(self, mocker):
+        self._stub_flag_fields(mocker, created_at=None, role="admin")
+
+        ctx = await _fetch_user_context_data(str(uuid.uuid4()))
+
+        assert ctx.get("role") == "admin"
+
+    @pytest.mark.asyncio
+    async def test_context_normalizes_non_admin_role_to_authenticated(self, mocker):
+        self._stub_flag_fields(mocker, created_at=None, role="user")
+
+        ctx = await _fetch_user_context_data(str(uuid.uuid4()))
+
+        assert ctx.get("role") == "authenticated"
+
+    @pytest.mark.asyncio
+    async def test_missing_user_falls_back_to_uncached_anonymous(self, mocker):
+        # A not-found user (e.g. mid auth-migration bridge window) must NOT be
+        # cached as anonymous — the inner lookup raises so @cached skips it and
+        # the caller returns an uncached anonymous context.
+        from backend.util import feature_flag as ff
+
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = True
+        mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(return_value=None),
+        )
+        user_id = str(uuid.uuid4())
+
+        with pytest.raises(LookupError):
+            await ff._fetch_user_context(user_id)
+
+        ctx = await _fetch_user_context_data(user_id)
+        assert ctx.get("email") is None
+        assert ctx.get("role") is None
+
+
+class TestUserContextConnectionRouting:
+    """The context lookup must reach the DB directly when Prisma is locally
+    connected, and through the DatabaseManager RPC client otherwise.
+
+    Prisma-less workers (scheduler, copilot-executor) previously hit a direct
+    Prisma call that raised ClientNotConnectedError and silently degraded the
+    LaunchDarkly context to anonymous.
+    """
+
+    @pytest.mark.asyncio
+    async def test_connected_uses_direct_accessor(self, mocker):
+        from backend.data.user import AuthUserFlagFields
+
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = True
+
+        fields = AuthUserFlagFields(role="admin", email="a@b.com", created_at=None)
+        direct = mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(return_value=fields),
+        )
+        rpc_client = mocker.MagicMock()
+        rpc_client.get_auth_user_flag_fields = mocker.AsyncMock(return_value=fields)
+        get_rpc_client = mocker.patch(
+            "backend.util.clients.get_database_manager_async_client",
+            return_value=rpc_client,
+        )
+        user_id = str(uuid.uuid4())
+
+        ctx = await _fetch_user_context_data(user_id)
+
+        assert ctx.get("role") == "admin"
+        direct.assert_called_once_with(user_id)
+        get_rpc_client.assert_not_called()
+        rpc_client.get_auth_user_flag_fields.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disconnected_routes_through_rpc_client(self, mocker):
+        from backend.data.user import AuthUserFlagFields
+
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = False
+
+        fields = AuthUserFlagFields(role="user", email="c@d.com", created_at=None)
+        direct = mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(return_value=fields),
+        )
+        rpc_client = mocker.MagicMock()
+        rpc_client.get_auth_user_flag_fields = mocker.AsyncMock(return_value=fields)
+        mocker.patch(
+            "backend.util.clients.get_database_manager_async_client",
+            return_value=rpc_client,
+        )
+        user_id = str(uuid.uuid4())
+
+        ctx = await _fetch_user_context_data(user_id)
+
+        assert ctx.get("role") == "authenticated"
+        assert ctx.get("email") == "c@d.com"
+        rpc_client.get_auth_user_flag_fields.assert_called_once_with(user_id)
+        direct.assert_not_called()
 
 
 class TestUserContextCacheDegradation:
-    """A failed Supabase lookup must not poison the 24h context cache.
+    """A failed user lookup must not poison the 24h context cache.
 
     If the degraded anonymous (email-less) context were cached, one
-    Supabase blip would make this process evaluate email/role-targeted
+    database blip would make this process evaluate email/role-targeted
     flags differently from its peers for a full day, silently.
     """
 
     @staticmethod
-    def _stub_failing_supabase(mocker):
-        supabase = mocker.MagicMock()
-        supabase.auth.admin.get_user_by_id.side_effect = ConnectionError(
-            "supabase unreachable"
+    def _stub_failing_lookup(mocker):
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = True
+        return mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(side_effect=ConnectionError("database unreachable")),
         )
-        mocker.patch("backend.util.clients.get_supabase", return_value=supabase)
-        return supabase
 
     @pytest.mark.asyncio
     async def test_degraded_anonymous_context_is_not_cached(self, mocker):
-        supabase = self._stub_failing_supabase(mocker)
+        accessor = self._stub_failing_lookup(mocker)
         user_id = str(uuid.uuid4())
 
         first = await _fetch_user_context_data(user_id)
@@ -236,11 +346,11 @@ class TestUserContextCacheDegradation:
 
         assert first.anonymous is True
         assert second.anonymous is True
-        assert supabase.auth.admin.get_user_by_id.call_count == 2
+        assert accessor.call_count == 2
 
     @pytest.mark.asyncio
     async def test_successful_context_is_cached_across_calls(self, mocker):
-        supabase = TestUserContext._stub_supabase(mocker, created_at=None)
+        accessor = TestUserContext._stub_flag_fields(mocker, created_at=None)
         user_id = str(uuid.uuid4())
 
         first = await _fetch_user_context_data(user_id)
@@ -248,18 +358,23 @@ class TestUserContextCacheDegradation:
 
         assert first.get("email") == "x@y.com"
         assert second.get("email") == "x@y.com"
-        assert supabase.auth.admin.get_user_by_id.call_count == 1
+        assert accessor.call_count == 1
 
     @pytest.mark.asyncio
     async def test_context_lookup_recovers_after_transient_failure(self, mocker):
-        user = mocker.MagicMock(role="authenticated", email="x@y.com", created_at=None)
-        response = mocker.MagicMock(user=user)
-        supabase = mocker.MagicMock()
-        supabase.auth.admin.get_user_by_id.side_effect = [
-            ConnectionError("supabase blip"),
-            response,
-        ]
-        mocker.patch("backend.util.clients.get_supabase", return_value=supabase)
+        from backend.data.user import AuthUserFlagFields
+
+        fields = AuthUserFlagFields(
+            role="authenticated", email="x@y.com", created_at=None
+        )
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = True
+        mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(
+                side_effect=[ConnectionError("database blip"), fields]
+            ),
+        )
         user_id = str(uuid.uuid4())
 
         degraded = await _fetch_user_context_data(user_id)
@@ -272,7 +387,7 @@ class TestUserContextCacheDegradation:
 
     @pytest.mark.asyncio
     async def test_degraded_lookup_logs_degradation_warning(self, mocker, caplog):
-        self._stub_failing_supabase(mocker)
+        self._stub_failing_lookup(mocker)
         user_id = str(uuid.uuid4())
 
         with caplog.at_level(logging.WARNING, logger="backend.util.feature_flag"):
@@ -286,10 +401,13 @@ class TestUserContextCacheDegradation:
         assert any(user_id in message and "degraded" in message for message in warnings)
 
     @pytest.mark.asyncio
-    async def test_non_uuid_key_skips_supabase_lookup(self, mocker):
-        get_supabase = mocker.patch("backend.util.clients.get_supabase")
+    async def test_non_uuid_key_skips_user_lookup(self, mocker):
+        accessor = mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(),
+        )
 
         ctx = await _fetch_user_context_data("system")
 
         assert ctx.anonymous is True
-        get_supabase.assert_not_called()
+        accessor.assert_not_called()

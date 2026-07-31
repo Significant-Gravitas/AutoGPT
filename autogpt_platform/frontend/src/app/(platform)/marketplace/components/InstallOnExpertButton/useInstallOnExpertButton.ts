@@ -1,12 +1,12 @@
 import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
 
 export function useInstallOnExpertButton() {
   const hireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const canFetchExperts = Boolean(hireExpertsEnabled) && isLoggedIn;
