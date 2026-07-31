@@ -22,11 +22,12 @@ describe("preview account roster", () => {
 });
 
 describe("deterministicUserId", () => {
-  it("matches Postgres md5(email)::uuid::text, which older seeded databases carry", () => {
-    // Pinned literal: changing the derivation would make re-seeds collide on
-    // the email unique constraint in any branch DB seeded before the change.
+  it("derives the pinned sha256-based id for a known email", () => {
+    // Pinned literal: the id must be stable across runs and machines so a
+    // re-run of the seeder computes the same id it inserted last time.
+    // (Older md5-seeded databases are handled by the email match, not this.)
     expect(deterministicUserId("preview-admin@previews.agpt.co")).toBe(
-      "6d08c936-9f91-dadf-0744-a7c3789b322c",
+      "5702fe7e-71d4-12ed-0728-436c56f6e8d1",
     );
   });
 

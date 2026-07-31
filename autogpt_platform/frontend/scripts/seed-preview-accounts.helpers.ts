@@ -31,13 +31,14 @@ export const PREVIEW_ACCOUNTS = [
 ] as const;
 
 /**
- * Deterministic user id: the byte-for-byte equivalent of Postgres
- * `md5(email)::uuid::text`, which earlier seed implementations used.
- * Keeping the same derivation means re-seeding a branch DB that was seeded
- * by the old SQL finds the same ids instead of colliding on email.
+ * Deterministic user id for FRESH inserts: uuid-shaped truncation of
+ * SHA-256(email). Databases seeded by the older SQL (which derived ids with
+ * Postgres md5(email)::uuid) are still safe to re-seed: the seeder matches
+ * existing identities by email before ever deriving an id, so the
+ * derivation only has to be stable, not backward-identical.
  */
 export function deterministicUserId(email: string): string {
-  const hex = createHash("md5").update(email).digest("hex");
+  const hex = createHash("sha256").update(email).digest("hex").slice(0, 32);
   return [
     hex.slice(0, 8),
     hex.slice(8, 12),
