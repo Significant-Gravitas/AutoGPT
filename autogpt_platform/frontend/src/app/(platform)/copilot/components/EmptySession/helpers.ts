@@ -1,4 +1,4 @@
-import { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 
 export function getInputPlaceholder(width?: number) {
   if (!width) return "What's your role and what eats up most of your day?";

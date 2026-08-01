@@ -6,9 +6,9 @@ import { server } from "@/mocks/mock-server";
 
 import { SidebarUserActions } from "../SidebarUserActions";
 
-const mockUseSupabase = vi.fn();
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => mockUseSupabase(),
+const mockUseAuth = vi.fn();
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => mockUseAuth(),
 }));
 
 vi.mock("@/components/ui/sidebar", async (importOriginal) => {
@@ -47,7 +47,7 @@ afterEach(() => {
 
 describe("SidebarUserActions", () => {
   it("renders nothing when the viewer is logged out", () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: null,
       isLoggedIn: false,
       isUserLoading: false,
@@ -57,7 +57,7 @@ describe("SidebarUserActions", () => {
   });
 
   it("renders the user actions row for a logged-in user", async () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: { id: "u1", email: "alice@example.com", role: "user" },
       isLoggedIn: true,
       isUserLoading: false,
