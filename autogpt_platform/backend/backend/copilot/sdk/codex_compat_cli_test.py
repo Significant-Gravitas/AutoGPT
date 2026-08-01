@@ -36,7 +36,10 @@ class _ClaudeHarnessAgentSession:
         tool_handler,
         event_handler=None,
     ) -> CodexInvocationResult:
-        echo_tool = next(tool for tool in dynamic_tools if tool.name.endswith("__echo"))
+        echo_tool = next(
+            tool for tool in dynamic_tools if tool.description == "Echo a value"
+        )
+        assert not echo_tool.name.startswith("mcp__")
         self.tool_result = await tool_handler(
             CodexDynamicToolCall(
                 thread_id="thread-cli",
@@ -94,11 +97,7 @@ async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     @tool("echo", "Echo a value", {"value": str})
     async def echo(arguments):
         tool_called.set()
-        return {
-            "content": [
-                {"type": "text", "text": f"echo:{arguments['value']}"}
-            ]
-        }
+        return {"content": [{"type": "text", "text": f"echo:{arguments['value']}"}]}
 
     mcp_server = create_sdk_mcp_server(
         name="codex-conformance",

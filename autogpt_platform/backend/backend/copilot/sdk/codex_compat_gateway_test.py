@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
@@ -9,7 +10,10 @@ from aiohttp import ClientSession
 from openai_codex.generated.v2_all import AgentMessageDeltaNotification
 from openai_codex.models import Notification
 
-from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.codex_compat_gateway import (
+    CodexAnthropicGateway,
+    _safe_tool_name,
+)
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
     CodexDynamicToolResult,
@@ -65,6 +69,21 @@ class _FakeAgentSession:
         except asyncio.CancelledError:
             self.cancelled.set()
             raise
+
+
+class _FailingAgentSession(_FakeAgentSession):
+    def __init__(self, error: BaseException) -> None:
+        super().__init__()
+        self.error = error
+
+    async def invoke(
+        self,
+        request,
+        dynamic_tools,
+        tool_handler,
+        event_handler=None,
+    ) -> CodexInvocationResult:
+        raise self.error
 
 
 class _FinalWithoutDeltaSession:
@@ -179,6 +198,17 @@ def _headers(gateway: CodexAnthropicGateway) -> dict[str, str]:
     return {"Authorization": f"Bearer {gateway.auth_token}"}
 
 
+async def _post_simple_message(gateway: CodexAnthropicGateway) -> int:
+    async with ClientSession() as client:
+        response = await client.post(
+            f"{gateway.base_url}/v1/messages",
+            headers=_headers(gateway),
+            json={"messages": [{"role": "user", "content": "hello"}]},
+        )
+        await response.read()
+        return response.status
+
+
 def _events(body: str) -> list[dict[str, object]]:
     return [
         json.loads(line.removeprefix("data: "))
@@ -241,6 +271,41 @@ def _tool_use_id(payload: dict[str, object]) -> str:
     return call_id
 
 
+def test_reserved_mcp_tool_name_is_deterministically_remapped() -> None:
+    original = "mcp__copilot__add_understanding"
+
+    first = _safe_tool_name(original, set())
+    second = _safe_tool_name(original, set())
+
+    assert first == second
+    assert first != original
+    assert not first.startswith("mcp__")
+    assert len(first) <= 128
+
+
+def test_reserved_mcp_tool_name_collision_is_remapped_uniquely() -> None:
+    original = "mcp__copilot__add_understanding"
+    first = _safe_tool_name(original, set())
+
+    collided = _safe_tool_name(original, {first})
+
+    assert collided != first
+    assert collided == _safe_tool_name(original, {first})
+    assert not collided.startswith("mcp__")
+    assert len(collided) <= 128
+
+
+def test_reserved_mcp_tool_name_remap_respects_max_length() -> None:
+    remapped = _safe_tool_name("mcp__" + "x" * 300, set())
+
+    assert len(remapped) == 128
+    assert not remapped.startswith("mcp__")
+
+
+def test_non_reserved_valid_tool_name_is_unchanged() -> None:
+    assert _safe_tool_name("regular_tool", set()) == "regular_tool"
+
+
 @pytest.mark.asyncio
 async def test_streams_codex_text_as_anthropic_events() -> None:
     session = _FakeAgentSession()
@@ -288,7 +353,92 @@ async def test_streams_codex_text_as_anthropic_events() -> None:
 
 
 @pytest.mark.asyncio
+async def test_transport_failure_logs_useful_bounded_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session = _FailingAgentSession(
+        RuntimeError("app-server overloaded while starting turn " + "x" * 500)
+    )
+    transport = _FakeTransport(session)
+    with caplog.at_level(
+        logging.ERROR,
+        logger="backend.copilot.sdk.codex_compat_gateway",
+    ):
+        async with CodexAnthropicGateway(
+            credential_lease=_lease(),
+            model="gpt-5.6-terra",
+            transport=transport,
+        ) as gateway:
+            status = await _post_simple_message(gateway)
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "backend.copilot.sdk.codex_compat_gateway"
+    ]
+    assert status == 502
+    assert len(messages) == 1
+    assert "exception_type=RuntimeError" in messages[0]
+    assert "app-server overloaded while starting turn" in messages[0]
+    assert len(messages[0]) < 340
+    assert messages[0].endswith("...")
+
+
+@pytest.mark.asyncio
+async def test_transport_failure_logs_redact_all_auth_shapes(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signaturevalue"
+    bearer = "bearer-top-secret-123"
+    access_token = "access-top-secret-456"
+    refresh_token = "refresh-top-secret-789"
+    provider_secret = "provider-top-secret-012"
+    device_code = "ABCD-EFGH"
+    session = _FailingAgentSession(RuntimeError("not configured"))
+    transport = _FakeTransport(session)
+    with caplog.at_level(
+        logging.ERROR,
+        logger="backend.copilot.sdk.codex_compat_gateway",
+    ):
+        async with CodexAnthropicGateway(
+            credential_lease=_lease(),
+            model="gpt-5.6-terra",
+            transport=transport,
+        ) as gateway:
+            capability = gateway.auth_token
+            session.error = RuntimeError(
+                f"upstream auth failed jwt={jwt} Authorization: Bearer {bearer} "
+                f"access_token={access_token} "
+                f'"refresh_token":"{refresh_token}" '
+                f"device verification {device_code} capability={capability} "
+                f'provider_state={{"tokens":{{"access_token":"{provider_secret}"}}}}'
+            )
+            status = await _post_simple_message(gateway)
+
+    message = "\n".join(
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "backend.copilot.sdk.codex_compat_gateway"
+    )
+    assert status == 502
+    assert "exception_type=RuntimeError" in message
+    assert "upstream auth failed" in message
+    assert "[REDACTED]" in message
+    for secret in (
+        jwt,
+        bearer,
+        access_token,
+        refresh_token,
+        provider_secret,
+        device_code,
+        capability,
+    ):
+        assert secret not in message
+
+
+@pytest.mark.asyncio
 async def test_round_trips_tool_use_through_claude_harness() -> None:
+    original_tool_name = "mcp__copilot__add_understanding"
     session = _FakeAgentSession(use_tool=True)
     transport = _FakeTransport(session)
     async with CodexAnthropicGateway(
@@ -305,7 +455,7 @@ async def test_round_trips_tool_use_through_claude_harness() -> None:
                     "messages": [{"role": "user", "content": "check"}],
                     "tools": [
                         {
-                            "name": "mcp.tool/status",
+                            "name": original_tool_name,
                             "description": "Read status",
                             "input_schema": {
                                 "type": "object",
@@ -323,7 +473,7 @@ async def test_round_trips_tool_use_through_claude_harness() -> None:
             )
             content_block = tool_start["content_block"]
             assert content_block["type"] == "tool_use"
-            assert content_block["name"] == "mcp.tool/status"
+            assert content_block["name"] == original_tool_name
             assert content_block["input"] == {}
             gateway_call_id = content_block["id"]
             assert isinstance(gateway_call_id, str)
@@ -347,7 +497,7 @@ async def test_round_trips_tool_use_through_claude_harness() -> None:
                                 {
                                     "type": "tool_use",
                                     "id": gateway_call_id,
-                                    "name": "mcp.tool/status",
+                                    "name": original_tool_name,
                                     "input": {"query": "status"},
                                 }
                             ],
@@ -379,7 +529,8 @@ async def test_round_trips_tool_use_through_claude_harness() -> None:
             content="all green",
             success=True,
         )
-        assert session.tools[0][0].name != "mcp.tool/status"
+        assert session.tools[0][0].name != original_tool_name
+        assert not session.tools[0][0].name.startswith("mcp__")
 
 
 @pytest.mark.asyncio

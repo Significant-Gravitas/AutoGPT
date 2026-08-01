@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 import secrets
 from collections.abc import Iterable
@@ -32,7 +33,26 @@ from backend.integrations.codex.transport import (
 from backend.integrations.credential_lease import CredentialLease
 
 _MAX_REQUEST_BYTES = 16 * 1024 * 1024
+_MAX_LOGGED_ERROR_MESSAGE_CHARS = 240
+_REDACTED = "[REDACTED]"
 _TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;]+")
+_JWT_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}"
+    r"\.[A-Za-z0-9_-]{6,}(?![A-Za-z0-9_-])"
+)
+_DEVICE_CODE_PATTERN = re.compile(r"\b[A-Z0-9]{4}(?:-[A-Z0-9]{4}){1,3}\b")
+_PROVIDER_STATE_PATTERN = re.compile(r"(?is)[\"']?provider[_ -]?state[\"']?\s*[:=].*$")
+_SECRET_ASSIGNMENT_PATTERN = re.compile(
+    r"(?ix)"
+    r"(?P<label>\b(?:access[_ -]?token|refresh[_ -]?token|id[_ -]?token|"
+    r"device[_ -]?code|user[_ -]?code|authorization|anthropic[_ -]?auth[_ -]?"
+    r"token|api[_ -]?key)\b)"
+    r"\s*[\"']?\s*[:=]\s*(?:Bearer\s+)?"
+    r"(?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|[^\s,;]+)"
+)
+
+logger = logging.getLogger(__name__)
 
 
 class _AgentTransport(Protocol):
@@ -424,6 +444,11 @@ class CodexAnthropicGateway:
         except asyncio.CancelledError:
             raise
         except BaseException as exc:
+            logger.error(
+                "Codex gateway conversation failed: exception_type=%s error=%s",
+                type(exc).__name__,
+                _safe_exception_message(exc, secrets_to_redact=(self._auth_token,)),
+            )
             await conversation.queue.put(_Failed(exc))
 
     async def _streaming_response(
@@ -692,6 +717,16 @@ def _parse_tools(
 
 
 def _safe_tool_name(original: str, used: set[str]) -> str:
+    if original.startswith("mcp__"):
+        normalized = re.sub(r"[^a-zA-Z0-9_-]", "_", original).strip("_") or "tool"
+        digest = hashlib.sha256(original.encode("utf-8")).hexdigest()[:10]
+        candidate = f"tool_{normalized[:112]}_{digest}"
+        counter = 1
+        while candidate in used:
+            suffix = f"_{counter}"
+            candidate = f"tool_{normalized[: 112 - len(suffix)]}_{digest}{suffix}"
+            counter += 1
+        return candidate
     if _TOOL_NAME_PATTERN.fullmatch(original) and original not in used:
         return original
     normalized = re.sub(r"[^a-zA-Z0-9_-]", "_", original).strip("_") or "tool"
@@ -814,6 +849,35 @@ def _estimate_input_tokens(payload: object) -> int:
         default=str,
     )
     return max(1, (len(serialized) + 3) // 4)
+
+
+def _safe_exception_message(
+    exc: BaseException,
+    *,
+    secrets_to_redact: Iterable[str] = (),
+) -> str:
+    try:
+        message = str(exc)
+    except BaseException:
+        message = "<unprintable exception message>"
+    for secret in sorted(
+        (value for value in secrets_to_redact if value),
+        key=len,
+        reverse=True,
+    ):
+        message = message.replace(secret, _REDACTED)
+    message = _PROVIDER_STATE_PATTERN.sub(f"provider_state={_REDACTED}", message)
+    message = _BEARER_PATTERN.sub(f"Bearer {_REDACTED}", message)
+    message = _SECRET_ASSIGNMENT_PATTERN.sub(
+        lambda match: f"{match.group('label')}={_REDACTED}",
+        message,
+    )
+    message = _JWT_PATTERN.sub(_REDACTED, message)
+    message = _DEVICE_CODE_PATTERN.sub(_REDACTED, message)
+    message = " ".join(message.split()) or "<empty exception message>"
+    if len(message) > _MAX_LOGGED_ERROR_MESSAGE_CHARS:
+        return message[: _MAX_LOGGED_ERROR_MESSAGE_CHARS - 3] + "..."
+    return message
 
 
 async def _write_sse(response: web.StreamResponse, event: dict[str, object]) -> None:
