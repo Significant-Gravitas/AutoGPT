@@ -11909,6 +11909,48 @@
         }
       }
     },
+    "/api/store/media/{user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get locally-stored submission media",
+        "description": "Serve marketplace media that was stored on the local filesystem because\nno GCS bucket is configured (e.g. self-hosted deployments).",
+        "operationId": "getV2Get locally-stored submission media",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],
