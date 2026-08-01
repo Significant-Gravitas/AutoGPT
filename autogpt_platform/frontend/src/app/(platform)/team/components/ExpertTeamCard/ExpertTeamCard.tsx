@@ -6,8 +6,9 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { PlusIcon } from "@phosphor-icons/react";
 import { MouseEvent } from "react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   expert: Expert;
@@ -108,7 +109,7 @@ export function ExpertTeamCard({
         <Button
           variant="ghost"
           size="small"
-          leftIcon={<PlusIcon size={16} />}
+          leftIcon={<Icon icon={PlusSignIcon} size={16} />}
           onClick={handleInstallClick}
         >
           Install workflow

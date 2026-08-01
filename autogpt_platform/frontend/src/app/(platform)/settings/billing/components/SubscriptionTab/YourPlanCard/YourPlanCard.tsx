@@ -1,8 +1,6 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowSquareOutIcon } from "@phosphor-icons/react";
-
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -17,6 +15,8 @@ import { CycleToggle } from "./CycleToggle";
 import { SwitchCycleDialog } from "./SwitchCycleDialog";
 import { SwitchTierDialog } from "./SwitchTierDialog";
 import { useYourPlanCard } from "./useYourPlanCard";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   index?: number;
@@ -185,7 +185,7 @@ export function YourPlanCard({ index = 0 }: Props) {
               loading={isUpdatingTier && !plan.nextTierIsTeamLink}
               rightIcon={
                 plan.nextTierIsTeamLink ? (
-                  <ArrowSquareOutIcon size={14} aria-hidden="true" />
+                  <Icon icon={LinkSquare01Icon} size={14} aria-hidden="true" />
                 ) : undefined
               }
             >

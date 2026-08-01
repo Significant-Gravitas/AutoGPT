@@ -1,13 +1,14 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Cpu } from "@phosphor-icons/react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { CopilotLlmModel } from "../../../store";
+import { CpuIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   model: CopilotLlmModel;
@@ -31,7 +32,7 @@ export function ModelToggleButton({ model, onToggle }: Props) {
             isAdvanced ? "Switch to Balanced model" : "Switch to Advanced model"
           }
         >
-          <Cpu size={14} />
+          <Icon icon={CpuIcon} size={14} />
           <span className="hidden sm:inline">
             {isAdvanced ? "Advanced" : "Balanced"}
           </span>

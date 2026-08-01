@@ -3,13 +3,14 @@ import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSav
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SuggestedGoalResponse } from "@/app/api/__generated__/models/suggestedGoalResponse";
-import {
-  PlusCircleIcon,
-  PlusIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import {
+  AlertDiamondIcon,
+  PlusSignCircleIcon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type CreateAgentToolOutput =
   | AgentPreviewResponse
@@ -119,18 +120,16 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <PlusIcon size={14} weight="regular" className="text-neutral-400" />;
+  return <Icon icon={PlusSignIcon} size={14} className="text-neutral-400" />;
 }
 
 export function AccordionIcon() {
-  return <PlusCircleIcon size={32} weight="light" />;
+  return <Icon icon={PlusSignCircleIcon} size={32} />;
 }
 
 export function formatMaybeJson(value: unknown): string {

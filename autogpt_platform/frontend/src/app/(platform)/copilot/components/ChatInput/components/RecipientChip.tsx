@@ -13,7 +13,8 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
-import { CaretDownIcon } from "@phosphor-icons/react";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface RecipientOption {
   id: string | null;
@@ -66,7 +67,7 @@ export function RecipientChip({
         >
           <RecipientAvatar option={recipient} />
           {recipient.name}
-          <CaretDownIcon className="size-3 text-zinc-400" weight="bold" />
+          <Icon icon={ArrowDown01Icon} className="size-3 text-zinc-400" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">

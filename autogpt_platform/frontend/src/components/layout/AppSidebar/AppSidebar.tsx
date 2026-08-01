@@ -16,16 +16,6 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import {
-  CaretDownIcon,
-  FlowArrowIcon,
-  FolderIcon,
-  type Icon,
-  NotePencilIcon,
-  SquaresFourIcon,
-  StorefrontIcon,
-  UsersThreeIcon,
-} from "@phosphor-icons/react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
@@ -40,21 +30,32 @@ import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
+import {
+  ArrowDown01Icon,
+  FlowIcon,
+  Folder01Icon,
+  GridViewIcon,
+  NoteEditIcon,
+  Store01Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type NavLink = {
   name: string;
   href: string;
-  icon: Icon;
+  icon: IconSvgElement;
 };
 
 const MAIN_LINKS: NavLink[] = [
-  { name: "Agents", href: "/library", icon: SquaresFourIcon },
-  { name: "Marketplace", href: "/marketplace", icon: StorefrontIcon },
-  { name: "Build", href: "/build", icon: FlowArrowIcon },
+  { name: "Agents", href: "/library", icon: GridViewIcon },
+  { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
+  { name: "Build", href: "/build", icon: FlowIcon },
 ];
 
 const WORKSPACE_LINKS: NavLink[] = [
-  { name: "Files", href: "/artifacts", icon: FolderIcon },
+  { name: "Files", href: "/artifacts", icon: Folder01Icon },
 ];
 
 function isLinkActive(pathname: string | null, href: string) {
@@ -86,7 +87,7 @@ function NewTaskIcon() {
     return <LoadingSpinner size="small" className="shrink-0" />;
   }
 
-  return <NotePencilIcon className="size-5" />;
+  return <Icon icon={NoteEditIcon} className="size-5" />;
 }
 
 // New Task shares the nav-item styling with the main links so it sits in the
@@ -133,7 +134,7 @@ function NavMenu({
             className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
           >
             <Link href={link.href}>
-              <link.icon className="size-5" />
+              <Icon icon={link.icon} className="size-5" />
               <span className="truncate">{link.name}</span>
               <NavLinkLoader />
             </Link>
@@ -170,8 +171,8 @@ function CollapsibleNavGroup({
         >
           <CollapsibleTrigger>
             {label}
-            <CaretDownIcon
-              weight="bold"
+            <Icon
+              icon={ArrowDown01Icon}
               className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
             />
           </CollapsibleTrigger>
@@ -208,10 +209,7 @@ export function AppSidebar(props: Props) {
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
   const workspaceLinks = isHireExpertsEnabled
-    ? [
-        { name: "Team", href: "/team", icon: UsersThreeIcon },
-        ...WORKSPACE_LINKS,
-      ]
+    ? [{ name: "Team", href: "/team", icon: UserGroupIcon }, ...WORKSPACE_LINKS]
     : WORKSPACE_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
