@@ -105,7 +105,10 @@ class CoPilotExecutor(AppProcess):
 
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
-        start_http_server(settings.config.copilot_executor_port)
+        start_http_server(
+            settings.config.copilot_executor_port,
+            addr=settings.config.pyro_host,
+        )
 
         self.cancel_thread.start()
         self.run_thread.start()

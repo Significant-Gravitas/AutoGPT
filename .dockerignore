@@ -13,6 +13,13 @@
 # Platform - Frontend
 !autogpt_platform/frontend/
 
+# Platform - single-container runtime and database bootstrap
+!autogpt_platform/single-container/
+!autogpt_platform/db/init/00-init.sql
+
+# Platform distribution license
+!autogpt_platform/LICENSE.md
+
 # Classic - AutoGPT
 !classic/original_autogpt/autogpt/
 !classic/original_autogpt/pyproject.toml

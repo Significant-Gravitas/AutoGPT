@@ -5,14 +5,18 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { useEffect, useState } from "react";
 
-export function VercelAnalyticsWrapper() {
+export function VercelAnalyticsWrapper({
+  enabled = true,
+}: {
+  enabled?: boolean;
+}) {
   const [hasAnalyticsConsent, setHasAnalyticsConsent] = useState(false);
 
   useEffect(() => {
     setHasAnalyticsConsent(consent.hasConsentFor("analytics"));
   }, []);
 
-  if (!hasAnalyticsConsent) {
+  if (!enabled || !hasAnalyticsConsent) {
     return null;
   }
 

@@ -50,7 +50,8 @@ beforeEach(() => {
     async () => ({ getAll: () => getAllCookiesMock() }) as CookieStore,
   );
   vi.stubGlobal("fetch", fetchMock);
-  vi.stubEnv("BETTER_AUTH_URL", "http://auth.internal:3000");
+  vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
+  vi.stubEnv("BETTER_AUTH_INTERNAL_URL", "http://auth.internal:3000");
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -118,6 +119,24 @@ describe("getServerAuthToken", () => {
         // so an unbounded wait can deadlock a worker instead of erroring.
         signal: expect.any(AbortSignal),
       },
+    );
+  });
+
+  it("falls back to the public Better Auth URL without an internal URL", async () => {
+    vi.stubEnv("BETTER_AUTH_INTERNAL_URL", "");
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-fresh" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ token: makeJwt(3600) }), { status: 200 }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    await getServerAuthToken();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://autogpt.example.com/api/auth/token",
+      expect.any(Object),
     );
   });
 

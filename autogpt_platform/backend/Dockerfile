@@ -1,6 +1,8 @@
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+
 # ============================ DEPENDENCY BUILDER ============================ #
 
-FROM debian:13-slim AS builder
+FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -39,7 +41,8 @@ ENV POETRY_VIRTUALENVS_CREATE=true
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV PATH=/opt/poetry/bin:$PATH
 
-RUN pip3 install poetry --break-system-packages
+ARG POETRY_VERSION=2.2.1
+RUN pip3 install "poetry==${POETRY_VERSION}" --break-system-packages
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
@@ -48,6 +51,7 @@ WORKDIR /app/autogpt_platform/backend
 RUN poetry install --no-ansi --no-root
 
 # Generate Prisma client
+ENV PRISMA_BINARY_CACHE_DIR=/opt/prisma-python/binaries
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
 COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
@@ -56,11 +60,12 @@ RUN poetry run prisma generate && poetry run gen-prisma-stub
 # =============================== DB MIGRATOR =============================== #
 
 # Lightweight migrate stage - only needs Prisma CLI, not full Python environment
-FROM debian:13-slim AS migrate
+FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS migrate
 
 WORKDIR /app/autogpt_platform/backend
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PRISMA_BINARY_CACHE_DIR=/opt/prisma-python/binaries
 
 # Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
 # libatomic1: debian:13-slim no longer ships it, but the Prisma CLI's bundled
@@ -78,11 +83,11 @@ COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
 COPY --from=builder /usr/bin/npm /usr/bin/npm
 
-# Copy Prisma binaries
-COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+# Copy Prisma binaries from a path that the non-root runtime roles can traverse.
+COPY --from=builder /opt/prisma-python/binaries /opt/prisma-python/binaries
 
 # Install prisma-client-py directly (much smaller than copying full venv)
-RUN pip3 install prisma>=0.15.0 --break-system-packages
+RUN pip3 install "prisma==0.15.0" --break-system-packages
 
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
@@ -91,7 +96,7 @@ COPY autogpt_platform/backend/migrations ./migrations
 
 # ============================== BACKEND SERVER ============================== #
 
-FROM debian:13-slim AS docs-filter
+FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS docs-filter
 # The copilot docs tools read markdown only — strip everything else
 # (images, scripts, configs) so no unused or untrusted files ship in the
 # server image or its layer history.
@@ -99,11 +104,12 @@ COPY docs /docs
 RUN find /docs -type f ! -name '*.md' ! -name '*.mdx' -delete \
     && find /docs -type d -empty -delete
 
-FROM debian:13-slim AS server
+FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS server
 
 WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PRISMA_BINARY_CACHE_DIR=/opt/prisma-python/binaries
 
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
@@ -132,7 +138,7 @@ COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
-COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+COPY --from=builder /opt/prisma-python/binaries /opt/prisma-python/binaries
 
 # Install agent-browser (Copilot browser tool) using the system chromium package.
 # Chrome for Testing (the binary agent-browser downloads via `agent-browser install`)
@@ -141,10 +147,11 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 # Note: system chromium tracks the Debian package schedule rather than a pinned
 # Chrome for Testing release. If agent-browser requires a specific Chrome version,
 # verify compatibility against the chromium package version in the base image.
+ARG AGENT_BROWSER_VERSION=0.33.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g agent-browser \
+    && npm install -g "agent-browser@${AGENT_BROWSER_VERSION}" \
     && rm -rf /tmp/* /root/.npm
 
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
@@ -171,3 +178,203 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
 ENV PORT=8000
 
 CMD ["rest"]
+
+# ======================= SINGLE-CONTAINER FRONTEND ======================== #
+
+# Build the relocatable frontend on glibc so its standalone native modules can
+# be copied into the Debian appliance image. Browser-facing service URLs are
+# intentionally same-origin paths; the in-container reverse proxy decides
+# where they land at runtime.
+FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS single-container-frontend
+
+WORKDIR /app
+RUN corepack enable
+
+COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/pnpm-lock.yaml ./
+RUN --mount=type=cache,target=/root/.local/share/pnpm \
+    pnpm install --frozen-lockfile
+
+COPY autogpt_platform/frontend/ ./
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_AGPT_SERVER_URL=/_agpt/api \
+    NEXT_PUBLIC_AGPT_WS_SERVER_URL=/_agpt/ws \
+    NEXT_PUBLIC_FRONTEND_BASE_URL="" \
+    NEXT_PUBLIC_APP_ENV=local \
+    NEXT_PUBLIC_BEHAVE_AS=LOCAL \
+    NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false \
+    NEXT_PUBLIC_REACT_QUERY_DEVTOOL=false \
+    NEXT_PUBLIC_SOURCEMAPS=false \
+    NEXT_PUBLIC_TURNSTILE=disabled \
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
+    BETTER_AUTH_SECRET=build-only-placeholder-not-used-at-runtime \
+    DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres
+
+RUN pnpm run generate:api \
+    && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
+    && rm -f .env .env.local .env.production
+
+# ====================== SINGLE-CONTAINER DEPENDENCIES ===================== #
+
+# RabbitMQ's official image ships a self-contained Erlang/OpenSSL runtime.
+# Pin the current supported 4.1.x patch by its multi-platform manifest.
+FROM rabbitmq:4.1.8@sha256:b921426eabfb39e201c60f0623f6b45a3160cf97b2dc3af2f5340365f65b5be3 AS single-container-rabbitmq
+
+# FalkorDB is copied without its Browser UI. This manifest is the audited
+# multi-platform FalkorDB 4.20.1 server-only image.
+# Its SSPL terms are copied separately and require approval before publishing.
+FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS single-container-falkordb
+
+# Seed ClamAV's persistent signature volume so a cold start can scan before the
+# first network refresh completes. Runtime binaries come from Debian packages.
+FROM clamav/clamav-debian:1.5.1@sha256:c102cd8fffe36fb27808a714f2d9c977e28549b3aae1ea0de7d7ac7814f8ded7 AS single-container-clamav-seed
+
+# ======================== SINGLE-CONTAINER IMAGE ========================== #
+
+FROM server AS single-container
+
+ARG POSTGRES_MAJOR=15
+ARG IMAGE_VERSION=dev
+ARG VCS_REF=unknown
+
+LABEL org.opencontainers.image.title="AutoGPT Platform single-container" \
+      org.opencontainers.image.description="Experimental single-node AutoGPT Platform distribution" \
+      org.opencontainers.image.source="https://github.com/Significant-Gravitas/AutoGPT" \
+      org.opencontainers.image.documentation="https://github.com/Significant-Gravitas/AutoGPT/blob/dev/docs/platform/single-container.md" \
+      org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0 AND SSPL-1.0" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Block service auto-start during package installation; Supervisor owns every
+# daemon at runtime. PostgreSQL comes from PGDG to retain PG15 parity on Debian
+# 13, while Valkey comes from Debian's security-maintained BSD build.
+# Persistent volume ownership must remain stable across package upgrades.
+# Pre-create the accounts with the IDs used by the first image release; fail
+# the build rather than silently shifting them if the base ever claims an ID.
+RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
+    && chmod 0755 /usr/sbin/policy-rc.d \
+    && groupadd --system --gid 102 postgres \
+    && useradd --system --uid 100 --gid postgres --home-dir /var/lib/postgresql --shell /bin/bash postgres \
+    && groupadd --system --gid 104 clamav \
+    && useradd --system --uid 102 --gid clamav --home-dir /var/lib/clamav --shell /bin/false clamav \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg \
+        postgresql-common \
+    && install -d -m 0755 /etc/apt/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg \
+    && printf 'deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main\n' \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && printf 'create_main_cluster = false\n' > /etc/postgresql-common/createcluster.conf \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        clamav \
+        clamav-daemon \
+        clamav-freshclam \
+        clamdscan \
+        libgomp1 \
+        netcat-openbsd \
+        nginx \
+        openssl \
+        postgresql-${POSTGRES_MAJOR} \
+        postgresql-client-${POSTGRES_MAJOR} \
+        postgresql-${POSTGRES_MAJOR}-pgvector \
+        procps \
+        supervisor \
+        tini \
+        valkey-server \
+        valkey-tools \
+    && rm -f /usr/sbin/policy-rc.d \
+    && rm -rf /var/lib/apt/lists/* /var/lib/postgresql/${POSTGRES_MAJOR}/main \
+    && find /var/lib/clamav -mindepth 1 -maxdepth 1 -delete
+
+# Node 24 is required by the frontend. Backend Prisma and agent-browser also
+# use this binary through PATH; their npm packages remain from the server stage.
+COPY --from=single-container-frontend /usr/local/bin/node /usr/local/bin/node
+COPY --from=single-container-frontend /usr/local/LICENSE /usr/share/licenses/nodejs/LICENSE
+
+# RabbitMQ + Erlang runtime and their bundled third-party license files.
+COPY --from=single-container-rabbitmq /opt/erlang /opt/erlang
+COPY --from=single-container-rabbitmq /opt/openssl /opt/openssl
+COPY --from=single-container-rabbitmq /opt/rabbitmq /opt/rabbitmq
+
+# FalkorDB server only (no bundled Browser UI).
+COPY --from=single-container-falkordb /usr/local/bin/redis-server /opt/falkordb/redis-server
+COPY --from=single-container-falkordb /var/lib/falkordb/bin/falkordb.so /opt/falkordb/falkordb.so
+
+# Cold-start antivirus definitions. entrypoint copies these into /data once.
+COPY --from=single-container-clamav-seed --chown=102:104 /var/lib/clamav /opt/clamav-seed
+
+# Next standalone server and immutable assets.
+COPY --from=single-container-frontend /app/.next/standalone /app/frontend
+COPY --from=single-container-frontend /app/.next/static /app/frontend/.next/static
+COPY --from=single-container-frontend /app/public /app/frontend/public
+
+# Runtime orchestration, proxy, health tooling, and database compatibility shim.
+COPY autogpt_platform/single-container /opt/autogpt/single-container
+COPY autogpt_platform/db/init/00-init.sql /opt/autogpt/single-container/00-init.sql
+COPY autogpt_platform/LICENSE.md /usr/share/licenses/autogpt-platform/LICENSE.md
+
+# FalkorDB 4.20.1's SSPL license is fetched from its immutable source commit
+# with an expected checksum. Publication still requires project legal review.
+ADD --checksum=sha256:34e94c5087ba6e9fb34f35ae71df5e6533c5fc7cbbf6c44186a71e82806b69e1 \
+    https://raw.githubusercontent.com/FalkorDB/FalkorDB/efea8d99f8492f3eeaadcafeae29967c66d825a0/LICENSE.txt \
+    /usr/share/licenses/falkordb/SSPL-1.0.txt
+
+RUN groupadd --system --gid 10001 autogpt \
+    && useradd --system --uid 10001 --gid autogpt --home-dir /data/home --shell /usr/sbin/nologin autogpt \
+    && groupadd --system --gid 10002 rabbitmq \
+    && useradd --system --uid 10002 --gid rabbitmq --home-dir /data/rabbitmq --shell /usr/sbin/nologin rabbitmq \
+    && groupadd --system --gid 10003 autogpt-valkey \
+    && useradd --system --uid 10003 --gid autogpt-valkey --home-dir /data/valkey --shell /usr/sbin/nologin autogpt-valkey \
+    && groupadd --system --gid 10004 autogpt-falkor \
+    && useradd --system --uid 10004 --gid autogpt-falkor --home-dir /data/falkordb --shell /usr/sbin/nologin autogpt-falkor \
+    && chmod -R a+rX /opt/autogpt/single-container /usr/share/licenses/autogpt-platform /usr/share/licenses/falkordb \
+    && find /opt/autogpt/single-container -type f \( -name '*.sh' -o -name 'entrypoint' -o -name 'autogpt-*' \) -exec chmod 0755 {} + \
+    && ln -sf /opt/autogpt/single-container/healthcheck.sh /usr/local/bin/autogpt-healthcheck \
+    && ln -sf /opt/autogpt/single-container/promote-admin.sh /usr/local/bin/autogpt-admin \
+    && rm -f /app/autogpt_platform/backend/config.json \
+    && ln -s /data/config/backend.json /app/autogpt_platform/backend/config.json \
+    && rm -rf /app/frontend/.next/cache \
+    && ln -s /data/cache/next /app/frontend/.next/cache \
+    && rm -f \
+        /app/autogpt_platform/backend/.venv/lib/python3.13/site-packages/ldclient/testing/selfsigned.key \
+        /app/autogpt_platform/backend/.venv/lib/python3.13/site-packages/ldclient/testing/selfsigned.pem \
+    && test -z "$(find /app/frontend /app/autogpt_platform/backend \( ! -user root -o ! -group root \) -print -quit)" \
+    && test -z "$(find /app/frontend /app/autogpt_platform/backend \( -type f -o -type d \) -perm /022 -print -quit)"
+
+ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresql/15/bin:/app/autogpt_platform/backend/.venv/bin:${PATH}" \
+    ERLANG_INSTALL_PATH_PREFIX=/opt/erlang \
+    OPENSSL_INSTALL_PATH_PREFIX=/opt/openssl \
+    RABBITMQ_HOME=/opt/rabbitmq \
+    RABBITMQ_DATA_DIR=/data/rabbitmq \
+    RUNNING_UNDER_SYSTEMD=true \
+    PGDATA=/data/postgres \
+    PORT=3001 \
+    HOSTNAME=127.0.0.1 \
+    LANG=C.UTF-8 \
+    LANGUAGE=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    AUTOGPT_PUBLIC_URL=http://localhost:3000
+
+WORKDIR /app/autogpt_platform/backend
+
+VOLUME ["/data"]
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=45s --start-period=5m --retries=10 \
+    CMD ["/usr/local/bin/autogpt-healthcheck"]
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/autogpt/single-container/entrypoint.sh"]
+CMD ["/usr/bin/supervisord", "-n", "-c", "/opt/autogpt/single-container/supervisor/supervisord.conf"]

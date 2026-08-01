@@ -68,18 +68,18 @@ from backend.util.service import (
 from backend.util.settings import Config
 
 
-def _extract_schema_from_url(database_url) -> tuple[str, str]:
-    """
-    Extracts the schema from the DATABASE_URL and returns the schema and cleaned URL.
-    """
+def _extract_schema_from_url(database_url: str) -> tuple[str, str]:
+    """Return the Prisma schema and a SQLAlchemy-compatible database URL."""
     parsed_url = urlparse(database_url)
     query_params = parse_qs(parsed_url.query)
 
-    # Extract the 'schema' parameter
     schema_list = query_params.pop("schema", None)
     schema = schema_list[0] if schema_list else "public"
+    # Prisma accepts these client-side pool settings in its URL, but psycopg2
+    # treats unknown query parameters as libpq DSN options and refuses them.
+    query_params.pop("connection_limit", None)
+    query_params.pop("pool_timeout", None)
 
-    # Reconstruct the query string without the 'schema' parameter
     new_query = urlencode(query_params, doseq=True)
     new_parsed_url = parsed_url._replace(query=new_query)
     database_url_clean = str(urlunparse(new_parsed_url))
@@ -1356,7 +1356,10 @@ class Scheduler(AppService):
         )
         _event_loop_thread.start()
 
-        db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
+        direct_url = os.getenv("DIRECT_URL")
+        if not direct_url:
+            raise ValueError("DIRECT_URL must be configured for the scheduler")
+        db_schema, db_url = _extract_schema_from_url(direct_url)
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 

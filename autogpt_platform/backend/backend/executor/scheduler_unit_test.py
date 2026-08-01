@@ -23,6 +23,7 @@ from backend.executor.scheduler import (
     _build_trigger,
     _cleanup_old_schedules_without_id,
     _execute_copilot_turn,
+    _extract_schema_from_url,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
@@ -31,6 +32,32 @@ from backend.executor.scheduler import (
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
+
+
+# ---------------------------------------------------------------------------
+# _extract_schema_from_url
+# ---------------------------------------------------------------------------
+
+
+def test_extract_schema_from_url_removes_prisma_only_parameters():
+    schema, url = _extract_schema_from_url(
+        "postgresql://postgres:secret@localhost:5432/postgres?"
+        "schema=platform&connection_limit=5&connect_timeout=60&pool_timeout=300"
+    )
+
+    assert schema == "platform"
+    assert url == (
+        "postgresql://postgres:secret@localhost:5432/postgres?connect_timeout=60"
+    )
+
+
+def test_extract_schema_from_url_preserves_supported_parameters():
+    schema, url = _extract_schema_from_url(
+        "postgresql://postgres:secret@localhost/postgres?sslmode=require"
+    )
+
+    assert schema == "public"
+    assert url == "postgresql://postgres:secret@localhost/postgres?sslmode=require"
 
 
 # ---------------------------------------------------------------------------

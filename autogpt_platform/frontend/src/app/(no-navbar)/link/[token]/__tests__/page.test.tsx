@@ -67,7 +67,7 @@ beforeEach(() => {
   setRoute();
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { href: "http://localhost/link/token-123" },
+    value: { href: "http://localhost:3000/link/token-123" },
   });
 });
 
