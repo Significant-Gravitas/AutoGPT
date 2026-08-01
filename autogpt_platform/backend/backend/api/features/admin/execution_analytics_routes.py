@@ -7,7 +7,7 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
-from backend.blocks.llm import LLMModel
+from backend.blocks.llm import DEFAULT_LLM_MODEL, LLMModel
 from backend.data.analytics import (
     AccuracyTrendsResponse,
     get_accuracy_trends_and_alerts,
@@ -176,8 +176,9 @@ async def get_execution_analytics_config(
         # Return with provider prefix for clarity
         return f"{provider_name}: {model_name}"
 
-    # Include all LLMModel values (no more filtering by hardcoded list)
-    recommended_model = LLMModel.GPT4O_MINI.value
+    # Label the platform default so the admin dropdown's "(Recommended)"
+    # tracks the catalog's is_recommended model instead of a hardcoded slug.
+    recommended_model = DEFAULT_LLM_MODEL.value
     for model in LLMModel:
         label = generate_model_label(model)
         # Add "(Recommended)" suffix to the recommended model

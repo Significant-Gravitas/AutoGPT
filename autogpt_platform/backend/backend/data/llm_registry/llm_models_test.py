@@ -170,3 +170,24 @@ def test_non_ga_model_flows_through_derivation_to_hidden_picker(monkeypatch):
     metadata = _schema_metadata()
     assert victim.value not in metadata  # non-GA -> hidden, via real derivation
     assert LLMModel(victim.value) is victim  # enum identity unaffected
+
+
+def test_metadata_completeness_guard_fires_on_missing_member(monkeypatch):
+    """_assert_metadata_complete is the boot-time safety net enforcing
+    enum ⊆ catalog (every LLMModel has derived MODEL_METADATA). Prove it
+    actually fires: drop one member's metadata and it must raise — otherwise
+    an enum member with no catalog entry would ship silently."""
+    import pytest
+
+    incomplete = dict(llm_models.MODEL_METADATA)
+    victim = next(iter(incomplete))
+    del incomplete[victim]
+    monkeypatch.setattr(llm_models, "MODEL_METADATA", incomplete)
+    with pytest.raises(ValueError, match="Missing MODEL_METADATA"):
+        llm_models._assert_metadata_complete()
+
+
+def test_metadata_completeness_guard_passes_for_real_catalog():
+    """The shipped enum/catalog pair must satisfy the guard (also enforced at
+    import, asserted here explicitly)."""
+    llm_models._assert_metadata_complete()
