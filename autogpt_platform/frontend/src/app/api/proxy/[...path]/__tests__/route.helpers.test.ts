@@ -1027,7 +1027,6 @@ describe("watchResponseStart", () => {
       ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
     }
   });
-
   it("does not abort once cleared (backend started responding)", () => {
     const watch = watchResponseStart(null);
 

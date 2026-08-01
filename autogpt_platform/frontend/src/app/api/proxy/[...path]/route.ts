@@ -2,7 +2,7 @@ import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
 } from "@/lib/constants";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 

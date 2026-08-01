@@ -104,8 +104,8 @@ export function useSidebarRunsList({
 
   const schedules = schedulesQuery.data || [];
   const allPresets = useMemo(
-    () => presetsQuery.data?.presets ?? [],
-    [presetsQuery.data],
+    () => presetsQuery.presets ?? [],
+    [presetsQuery.presets],
   );
   const triggers = useMemo(
     () => allPresets.filter(isWebhookPreset),
@@ -128,7 +128,7 @@ export function useSidebarRunsList({
   const loading =
     !runsQuery.isSuccess ||
     !schedulesQuery.isSuccess ||
-    !presetsQuery.isSuccess ||
+    !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
   const stale =
     runsQuery.isStale ||

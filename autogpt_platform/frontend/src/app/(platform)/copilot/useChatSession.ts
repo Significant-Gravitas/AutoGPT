@@ -1,6 +1,7 @@
 import {
   getGetV2GetSessionQueryKey,
   useGetV2GetSession,
+  useGetV2ListSessions,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { CreateSessionRequest } from "@/app/api/__generated__/models/createSessionRequest";
@@ -22,9 +23,13 @@ import { hasSavedCodexCredential } from "./helpers/copilotLlmAuth";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
+  expertId?: string | null;
 }
 
-export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
+export function useChatSession({
+  dryRun = false,
+  expertId = null,
+}: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
   const isCodexEnabled = useGetFlag(Flag.CODEX_SUBSCRIPTION_COPILOT);
@@ -75,6 +80,66 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
       });
     }
   }, [sessionId, queryClient]);
+
+  // Deep link /copilot?expertId=<id>: adopt the expert's latest thread. Only
+  // the mount-time expertId adopts — a recipient picked in the UI after mount
+  // must keep the fresh new-task state, not jump to the expert's old thread.
+  // The once-per-expert latch lives in the UI store, NOT in a ref: the chat
+  // host remounts on every sessionId change (CopilotPage keys the subtree),
+  // and "New Chat" clears the expertId param asynchronously via nuqs — a
+  // ref-based latch is wiped by the remount before the param clears, which
+  // bounced New Chat straight back into the adopted thread.
+  const mountExpertIdRef = useRef(expertId);
+  const adoptedExpertThreads = useCopilotUIStore((s) => s.adoptedExpertThreads);
+  const markExpertThreadAdopted = useCopilotUIStore(
+    (s) => s.markExpertThreadAdopted,
+  );
+  // Once the user commits to a new thread by hitting send, adoption must stop:
+  // `useSendMessage` flushes its pending first message on *any* sessionId
+  // change, so a late adoption would post that message into the old thread.
+  const sendStartedRef = useRef(false);
+  const canAdoptExpertSession =
+    !!expertId &&
+    !sessionId &&
+    expertId === mountExpertIdRef.current &&
+    !adoptedExpertThreads.has(expertId);
+
+  const latestExpertSessionQuery = useGetV2ListSessions(
+    { expert_id: expertId ?? undefined, limit: 1 },
+    {
+      query: {
+        enabled: canAdoptExpertSession,
+        refetchOnWindowFocus: false,
+      },
+    },
+  );
+
+  useEffect(() => {
+    if (!canAdoptExpertSession || !expertId) return;
+    if (sendStartedRef.current) return;
+    if (latestExpertSessionQuery.data?.status !== 200) return;
+    const latest = latestExpertSessionQuery.data.data.sessions[0];
+    if (!latest) return;
+    markExpertThreadAdopted(expertId);
+    setSessionId(latest.id);
+  }, [
+    canAdoptExpertSession,
+    expertId,
+    latestExpertSessionQuery.data,
+    markExpertThreadAdopted,
+    setSessionId,
+  ]);
+
+  // True while the deep-link adoption could still navigate away from the
+  // new-task screen. Callers disable the composer for that window so a draft
+  // (or a send) can't be swallowed by the navigation. Keyed on `isLoading`
+  // rather than `isPending` so a failing request releases the composer instead
+  // of locking it for the length of the retry schedule; `sendStartedRef` is
+  // what actually guarantees a send is never misrouted.
+  const isAdoptingExpertSession =
+    canAdoptExpertSession &&
+    !sendStartedRef.current &&
+    latestExpertSessionQuery.isLoading;
 
   const freshSessionData =
     !!sessionId && sessionQuery.data?.status === 200 && !sessionQuery.isFetching
@@ -142,6 +207,10 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
 
   async function createSession() {
     if (sessionId) return sessionId;
+    // Latched for the life of this mount, including on failure: once the user
+    // has asked for a new thread, auto-navigating them into an old one is
+    // never the right recovery.
+    sendStartedRef.current = true;
     if (
       copilotLlmAuth.authProvider === "codex" &&
       (!isCodexEnabled ||
@@ -167,6 +236,7 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
         sessionData.llm_credential_id = copilotLlmAuth.credentialId;
       }
       if (dryRun) sessionData.dry_run = true;
+      if (expertId) sessionData.expert_id = expertId;
       const body =
         Object.keys(sessionData).length > 0
           ? { data: sessionData }
@@ -232,10 +302,22 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
         : "platform"
       : null;
 
+  // The expert this session actually belongs to, straight off the session
+  // response rather than the URL — the ?expertId= param only describes what
+  // the NEXT session will be and is absent on most ways of reaching a thread.
+  // Read from the query rather than `freshSessionData` (which nulls out during
+  // background refetches) so the expert header doesn't blink.
+  const sessionExpertId =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.expert_id ?? null)
+      : null;
+
   return {
     sessionId,
     setSessionId,
     sessionLlmAuthProvider,
+    sessionExpertId,
+    isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,

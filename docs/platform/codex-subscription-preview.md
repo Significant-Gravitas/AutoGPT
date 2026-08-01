@@ -83,8 +83,10 @@ then validate it against the models advertised by the connected account. The
 preview maps Fast/Balanced to GPT-5.6 Luna, Fast/Advanced and Thinking/Balanced
 to GPT-5.6 Terra, and Thinking/Advanced to GPT-5.6 Sol when the account exposes
 them. It otherwise uses the visible account default. File attachments,
-builder-bound sessions, agent-building tools, and SDK sub-sessions use the same
-Claude Agent SDK path as platform-funded AutoPilot.
+agent-building tools, and SDK sub-sessions use the same Claude Agent SDK path as
+platform-funded AutoPilot. Builder-panel-bound sessions remain platform-funded
+in this preview because their persistent session is created without an AI
+connection selector.
 
 One exclusive lease is held for the selected credential for the full turn, so
 a concurrent top-level turn using the same connection fails with a bounded,
