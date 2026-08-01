@@ -8,6 +8,7 @@ import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credit
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getExecutionsMock } from "@/app/api/__generated__/endpoints/executions/executions.msw";
+import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getHealthMock } from "@/app/api/__generated__/endpoints/health/health.msw";
@@ -35,6 +36,7 @@ export const mockHandlers = [
   ...getDefaultMock(),
   ...getEmailMock(),
   ...getExecutionsMock(),
+  ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),
   ...getHealthMock(),

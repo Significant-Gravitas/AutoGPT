@@ -1,7 +1,8 @@
 import { environment } from "@/services/environment";
 import { DefaultChatTransport } from "ai";
-import type { FileUIPart } from "ai";
+import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 
+import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getCopilotAuthHeaders } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
@@ -23,6 +24,23 @@ interface CreateTransportArgs {
 }
 
 /**
+ * `DefaultChatTransport` with typewriter smoothing on live sends.
+ *
+ * POST streams (new user turns) are piped through the word-pacing transform
+ * so bursty backend deltas render as steady text. GET-resume streams are
+ * deliberately left raw — they replay the whole turn from `0-0`, and slow-
+ * typing already-produced history would be worse than a single jump.
+ */
+class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
+  async sendMessages(
+    options: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0],
+  ) {
+    const stream = await super.sendMessages(options);
+    return stream.pipeThrough(createSmoothingTransform());
+  }
+}
+
+/**
  * Build the `DefaultChatTransport` that wires `useChat` directly at the
  * Python backend's SSE endpoint (bypassing the Next.js serverless proxy to
  * avoid the Vercel 800 s function timeout on long-running tasks).
@@ -41,7 +59,7 @@ export function createCopilotTransport({
 }: CreateTransportArgs) {
   const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
 
-  return new DefaultChatTransport({
+  return new SmoothedCopilotChatTransport({
     api: baseUrl,
     prepareSendMessagesRequest: async ({ messages }) => {
       const last = messages[messages.length - 1];

@@ -28,6 +28,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
+from backend.copilot import engine_switch
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -43,6 +44,7 @@ from backend.copilot.builder_context import (
 )
 from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
@@ -75,8 +77,10 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamModeChanged,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -1765,11 +1769,15 @@ async def stream_chat_completion_baseline(
     # the ~20KB guide warm for the whole session.  Empty string for
     # non-builder sessions keeps the cross-user cache hot.
     builder_session_suffix = await build_builder_system_prompt_suffix(session)
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id, session.expert_id
+    )
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
         + graphiti_supplement
         + builder_session_suffix
+        + expert_session_suffix
     )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
@@ -1866,6 +1874,7 @@ async def stream_chat_completion_baseline(
             session_ctx=session_ctx_content,
             skills_ctx=skills_ctx,
             user_id=user_id,
+            expert_id=session.expert_id,
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not
@@ -2126,6 +2135,18 @@ async def stream_chat_completion_baseline(
                 last_iteration_message=_LAST_ITERATION_HINT,
             ):
                 loop_result_holder[0] = loop_result
+                # Engine switch requested (enter_agent_building_mode): end
+                # the loop at this iteration boundary — the round's tool
+                # results are already folded into the conversation, so the
+                # tool-call rows persist and the processor's derived
+                # building-mode signal holds. The processor dispatches the
+                # SDK continuation turn after the slot is released.
+                if engine_switch.is_pending(session_id):
+                    logger.info(
+                        f"[Baseline] Engine switch pending for "
+                        f"{session_id[:12]} — ending tool loop"
+                    )
+                    break
                 # Inject any messages the user queued while the turn was
                 # running.  ``tool_call_loop`` mutates ``openai_messages``
                 # in-place, so appending here means the model sees the new
@@ -2546,4 +2567,21 @@ async def stream_chat_completion_baseline(
             cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
+    for event in _engine_switch_finish_events(session_id):
+        yield event
     yield StreamFinish()
+
+
+def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
+    """Terminal events for a turn that registered an engine switch.
+
+    Emitted right before StreamFinish so the frontend flips its mode picker
+    (StreamModeChanged) and narrates the handoff (StreamStatus) exactly once,
+    at the turn boundary where the baseline loop stopped.
+    """
+    if not engine_switch.is_pending(session_id):
+        return []
+    return [
+        StreamModeChanged(mode="extended_thinking"),
+        StreamStatus(message="Switching to Thinking mode for agent building…"),
+    ]
