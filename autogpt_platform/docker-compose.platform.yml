@@ -207,6 +207,7 @@ services:
       - "8006:8006"
     volumes:
       - workspace-data:/app/autogpt_platform/backend/workspaces
+      - store-media-data:/app/autogpt_platform/backend/store_media
     networks:
       - app-network
     logging:
@@ -485,6 +486,7 @@ services:
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
 volumes:
   workspace-data:
+  store-media-data:
   falkordb_data:
 
 networks:

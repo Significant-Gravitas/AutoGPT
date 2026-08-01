@@ -8,6 +8,7 @@ volumes:
   supabase-config:
   clamav-data:
   workspace-data:
+  store-media-data:
   falkordb_data:
 
 x-agpt-services:
