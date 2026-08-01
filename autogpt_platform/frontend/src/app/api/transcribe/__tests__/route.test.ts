@@ -81,7 +81,7 @@ describe("transcribe route", () => {
     );
   });
 
-  it("uses the OpenAI API key for the default transcription endpoint", async () => {
+  it("uses GPT Transcribe and the OpenAI API key by default", async () => {
     process.env.OPENAI_API_KEY = "openai-token";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ text: "ok" }), {
@@ -103,6 +103,8 @@ describe("transcribe route", () => {
     expect((fetchInit.headers as Headers).get("Authorization")).toBe(
       "Bearer openai-token",
     );
+    const upstreamBody = fetchInit.body as FormData;
+    expect(upstreamBody.get("model")).toBe("gpt-transcribe");
   });
 
   it("does not send the OpenAI API key to a custom transcription endpoint", async () => {

@@ -2,8 +2,8 @@ import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { NextRequest, NextResponse } from "next/server";
 
 const DEFAULT_TRANSCRIPTION_API_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_TRANSCRIPTION_MODEL = "whisper-1";
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB - Whisper's limit
+const DEFAULT_TRANSCRIPTION_MODEL = "gpt-transcribe";
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB - Transcriptions API limit
 
 function getTranscriptionApiBaseUrl(): string {
   return (
@@ -76,9 +76,9 @@ export async function POST(request: NextRequest) {
     }
 
     const ext = getExtensionFromMimeType(audioFile.type);
-    const whisperFormData = new FormData();
-    whisperFormData.append("file", audioFile, `recording.${ext}`);
-    whisperFormData.append("model", getTranscriptionModel());
+    const transcriptionFormData = new FormData();
+    transcriptionFormData.append("file", audioFile, `recording.${ext}`);
+    transcriptionFormData.append("model", getTranscriptionModel());
     const headers = new Headers();
     if (apiKey) {
       headers.set("Authorization", `Bearer ${apiKey}`);
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     const response = await fetch(getTranscriptionApiUrl(), {
       method: "POST",
       headers,
-      body: whisperFormData,
+      body: transcriptionFormData,
     });
 
     if (!response.ok) {
