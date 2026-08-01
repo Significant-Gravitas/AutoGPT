@@ -1,1 +1,1 @@
-"""Native Codex subscription transport for AutoPilot."""
+"""Codex subscription support for AutoPilot."""

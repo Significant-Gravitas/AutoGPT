@@ -66,8 +66,9 @@ independently of public API model names.
 1. Open **AutoPilot** and start a new task.
 2. Before sending the first message, open the AI connection selector and choose
    the saved **ChatGPT/Codex** connection.
-3. Send the message normally. Text, reasoning summaries, and permitted AutoGPT
-   tool calls stream through the existing AutoPilot event surface.
+3. Choose Fast or Thinking and Balanced or Advanced as usual, then send the
+   message. Text and permitted AutoGPT tool calls stream through the existing
+   AutoPilot event surface.
 
 The route and credential are stored on the new session and are immutable for
 that session. Start another task to switch between AutoGPT-funded inference and
@@ -77,14 +78,18 @@ tokens. A missing, revoked, busy, or disabled Codex credential fails visibly.
 There is no silent fallback to an AutoGPT-funded model or another user's
 credential.
 
-The platform mode and model controls are intentionally hidden while
-ChatGPT/Codex is selected. V1 does not support AutoPilot file attachments,
-builder-bound or agent-building sessions, or nested `run_sub_session` turns on
-this route. `enter_agent_building_mode` and `run_sub_session` are not exposed to
-the native Codex agent. One exclusive lease is held for the selected credential
-for the full turn, so a concurrent turn using the same connection fails with a
-bounded, retryable `codex_credential_busy` error instead of deadlocking. The
-normal platform AutoPilot route is unchanged.
+The mode and model controls select a Codex route from the shared model catalog,
+then validate it against the models advertised by the connected account. The
+preview maps Fast/Balanced to GPT-5.6 Luna, Fast/Advanced and Thinking/Balanced
+to GPT-5.6 Terra, and Thinking/Advanced to GPT-5.6 Sol when the account exposes
+them. It otherwise uses the visible account default. File attachments,
+builder-bound sessions, agent-building tools, and SDK sub-sessions use the same
+Claude Agent SDK path as platform-funded AutoPilot.
+
+One exclusive lease is held for the selected credential for the full turn, so
+a concurrent top-level turn using the same connection fails with a bounded,
+retryable `codex_credential_busy` error instead of deadlocking. The normal
+platform AutoPilot route is unchanged.
 
 ### Test the AutoPilot graph block
 
@@ -99,30 +104,32 @@ single runtime lease when it consumes the queued turn. This preserves normal
 credential rebinding without deadlocking the nested execution path. Leaving the
 field empty preserves the existing platform-funded behavior.
 
-## Native AutoPilot tool loop
+## Claude Agent SDK transport
 
-AutoPilot uses the pinned Codex App Server's experimental `dynamicTools`
-protocol; it does not send the AutoPilot request through the Claude Agent SDK or
-an Anthropic compatibility proxy. Each turn starts an ephemeral App Server
-thread from AutoGPT's persisted transcript. When App Server emits an
-`item/tool/call` request, AutoGPT:
+AutoPilot keeps the existing Claude Agent SDK and Claude Code CLI as its agent
+harness. A request-scoped loopback Anthropic Messages endpoint translates model
+rounds to the pinned Codex App Server's experimental `dynamicTools` protocol.
+Claude Code still owns the MCP tool loop, permission hooks, builder behavior,
+transcript, resume, compaction, and sub-session machinery. Codex supplies the
+model response using the selected user's ChatGPT/Codex credential.
 
-1. Checks that the requested tool was exposed for the turn.
-2. Applies the existing AutoPilot permission filter.
-3. Executes it through AutoGPT's existing tool executor while preserving the
-   call ID and stream events.
-4. Returns the tool result to App Server and persists it in the AutoGPT
-   transcript.
+The loopback endpoint is bound to `127.0.0.1` on an ephemeral port and accepts
+only a random capability generated for that turn. The capability is placed in
+the Claude CLI child environment; ChatGPT access, refresh, and ID tokens are
+never placed there. Anthropic text and tool-use events are mapped to the same
+Claude SDK response adapter used by normal AutoPilot.
 
 The App Server process itself is fail-closed: native shell, filesystem, web
 search, apps, plugins, environments, workspace roots, and approval requests are
-disabled, and its sandbox is read-only. Any side effect comes only from an
-AutoGPT tool that the current session was already permitted to use.
+disabled, and its sandbox is read-only. Any side effect comes only through a
+tool that Claude Code was already permitted to invoke through AutoGPT's MCP and
+security hooks.
 
 The implementation pins `openai-codex` and its bundled runtime together at
-`0.144.4`. Do not float either dependency independently. Because
-`dynamicTools` is experimental, runtime updates require the focused protocol
-and AutoPilot tool-loop tests to pass before rollout.
+`0.144.4`. Do not float either dependency independently. The Claude Agent SDK
+and bundled CLI are also pinned by the backend lock. Because `dynamicTools` and
+the compatibility surface are version-sensitive, updates require the focused
+protocol, Messages conformance, and bundled-CLI tests to pass before rollout.
 
 ## Verify an existing local login
 
@@ -194,7 +201,7 @@ device-code completion.
   Codex-managed refresh before releasing the credential, and cleans the home
   after success, failure, timeout, or cancellation.
 - Code Generation turns expose no dynamic tools or host workspace. AutoPilot
-  exposes only its permission-filtered tools as described above.
+  exposes only the tools registered by its existing Claude SDK/MCP harness.
 - One user credential is never pooled, shared, or substituted for another.
 - There is no silent platform-key fallback.
 

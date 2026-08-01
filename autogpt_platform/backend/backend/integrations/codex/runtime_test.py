@@ -3,6 +3,7 @@ import importlib.metadata
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -18,6 +19,7 @@ from backend.integrations.codex.runtime import (
     CodexRuntime,
     CodexRuntimeError,
     _deny_server_request,
+    _install_concurrent_server_request_dispatcher,
     _install_fail_closed_approval_handler,
     assert_pinned_versions,
     build_runtime_config,
@@ -26,6 +28,7 @@ from backend.integrations.codex.models import (
     CodexDynamicToolResult,
     CodexDynamicToolSpec,
     CodexInvocationRequest,
+    CodexModelInfo,
 )
 from backend.integrations.codex.temporary_home import TemporaryCodexHome
 
@@ -120,6 +123,53 @@ def test_approval_handler_fails_closed_for_unknown_server_requests():
         _deny_server_request("item/future/requestApproval", {})
 
 
+async def test_model_discovery_preserves_account_catalog_metadata(tmp_path):
+    client = SimpleNamespace(
+        models=AsyncMock(
+            return_value=SimpleNamespace(
+                data=[
+                    SimpleNamespace(
+                        model="gpt-5.6-sol",
+                        display_name="GPT-5.6 Sol",
+                        is_default=True,
+                        hidden=False,
+                        default_reasoning_effort=SimpleNamespace(value="high"),
+                        supported_reasoning_efforts=[
+                            SimpleNamespace(
+                                reasoning_effort=SimpleNamespace(value="low")
+                            ),
+                            SimpleNamespace(
+                                reasoning_effort=SimpleNamespace(value="ultra")
+                            ),
+                        ],
+                        input_modalities=[
+                            SimpleNamespace(value="text"),
+                            SimpleNamespace(value="image"),
+                        ],
+                    )
+                ]
+            )
+        )
+    )
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(client, home)  # type: ignore[arg-type]
+        models = await runtime.models()
+
+    assert models == [
+        CodexModelInfo(
+            model="gpt-5.6-sol",
+            display_name="GPT-5.6 Sol",
+            is_default=True,
+            hidden=False,
+            default_reasoning_effort="high",
+            supported_reasoning_efforts=["low", "ultra"],
+            input_modalities=["text", "image"],
+        )
+    ]
+    client.models.assert_awaited_once_with(include_hidden=True)
+
+
 async def test_repeated_app_server_start_close_leaves_no_temporary_home(tmp_path):
     created_paths: list[Path] = []
     for _attempt in range(2):
@@ -211,7 +261,7 @@ async def test_dynamic_tool_request_round_trips_on_copilot_loop(tmp_path):
 
     with TemporaryCodexHome.create(tmp_path) as home:
         runtime = CodexRuntime(client, home)  # type: ignore[arg-type]
-        runtime._install_dynamic_tool_handler(execute, timeout_seconds=1)
+        runtime._register_dynamic_tool_handler("thread-1", execute, timeout_seconds=1)
         response = await asyncio.to_thread(
             sync_client._approval_handler,
             "item/tool/call",
@@ -247,7 +297,9 @@ async def test_dynamic_tool_timeout_cancels_callback_and_fails_closed(tmp_path):
 
     with TemporaryCodexHome.create(tmp_path) as home:
         runtime = CodexRuntime(client, home)  # type: ignore[arg-type]
-        runtime._install_dynamic_tool_handler(execute, timeout_seconds=0.01)
+        runtime._register_dynamic_tool_handler(
+            "thread-1", execute, timeout_seconds=0.01
+        )
         response = await asyncio.to_thread(
             sync_client._approval_handler,
             "item/tool/call",
@@ -265,6 +317,277 @@ async def test_dynamic_tool_timeout_cancels_callback_and_fails_closed(tmp_path):
         "contentItems": [{"type": "inputText", "text": "codex_tool_execution_timeout"}],
         "success": False,
     }
+
+
+def test_concurrent_dispatcher_keeps_reading_while_tool_result_is_pending():
+    handler_started = threading.Event()
+    allow_handler = threading.Event()
+    notification_routed = threading.Event()
+    response_written = threading.Event()
+    messages = [
+        {"id": "request-1", "method": "item/tool/call", "params": {}},
+        {"method": "item/agentMessage/delta", "params": {"delta": "still-live"}},
+    ]
+
+    class Router:
+        def route_notification(self, _notification):
+            notification_routed.set()
+
+        def route_response(self, _message):
+            raise AssertionError("unexpected response")
+
+        def fail_all(self, _error):
+            pass
+
+    class SyncClient:
+        _proc = object()
+        _router = Router()
+
+        def _read_message(self):
+            if messages:
+                return messages.pop(0)
+            raise EOFError
+
+        def _handle_server_request(self, _message):
+            handler_started.set()
+            assert allow_handler.wait(timeout=1)
+            return {"success": True}
+
+        def _write_message(self, message):
+            assert message == {
+                "id": "request-1",
+                "result": {"success": True},
+            }
+            response_written.set()
+
+        def _coerce_notification(self, method, params):
+            return method, params
+
+    sync_client = SyncClient()
+    client = SimpleNamespace(_client=SimpleNamespace(_sync=sync_client))
+    _install_concurrent_server_request_dispatcher(client)  # type: ignore[arg-type]
+
+    reader = threading.Thread(target=sync_client._reader_loop, daemon=True)
+    reader.start()
+    assert handler_started.wait(timeout=1)
+    assert notification_routed.wait(timeout=1)
+    assert not response_written.is_set()
+    allow_handler.set()
+    assert response_written.wait(timeout=1)
+
+
+def test_concurrent_dispatcher_rejects_requests_above_its_bound(monkeypatch):
+    monkeypatch.setattr(runtime_module, "_SERVER_REQUEST_MAX_CONCURRENCY", 1)
+    handler_started = threading.Event()
+    allow_handler = threading.Event()
+    notification_routed = threading.Event()
+    first_response_written = threading.Event()
+    overload_response_written = threading.Event()
+    messages = [
+        {"id": "request-1", "method": "item/tool/call", "params": {}},
+        {"id": "request-2", "method": "item/tool/call", "params": {}},
+        {"method": "item/agentMessage/delta", "params": {"delta": "still-live"}},
+    ]
+
+    class Router:
+        def route_notification(self, _notification):
+            notification_routed.set()
+
+        def route_response(self, _message):
+            raise AssertionError("unexpected response")
+
+        def fail_all(self, _error):
+            pass
+
+    class SyncClient:
+        _proc = object()
+        _router = Router()
+
+        def _read_message(self):
+            if messages:
+                return messages.pop(0)
+            raise EOFError
+
+        def _handle_server_request(self, message):
+            assert message["id"] == "request-1"
+            handler_started.set()
+            assert allow_handler.wait(timeout=1)
+            return {"success": True}
+
+        def _write_message(self, message):
+            if message.get("id") == "request-1":
+                assert message == {
+                    "id": "request-1",
+                    "result": {"success": True},
+                }
+                first_response_written.set()
+                return
+            assert message == {
+                "id": "request-2",
+                "error": {
+                    "code": -32001,
+                    "message": "Codex tool bridge is busy",
+                },
+            }
+            overload_response_written.set()
+
+        def _coerce_notification(self, method, params):
+            return method, params
+
+    sync_client = SyncClient()
+    client = SimpleNamespace(_client=SimpleNamespace(_sync=sync_client))
+    _install_concurrent_server_request_dispatcher(client)  # type: ignore[arg-type]
+
+    reader = threading.Thread(target=sync_client._reader_loop, daemon=True)
+    reader.start()
+    assert handler_started.wait(timeout=1)
+    assert overload_response_written.wait(timeout=1)
+    assert notification_routed.wait(timeout=1)
+    allow_handler.set()
+    assert first_response_written.wait(timeout=1)
+
+
+async def test_runtime_close_drains_accepted_server_requests(tmp_path):
+    handler_started = threading.Event()
+    allow_handler = threading.Event()
+    response_written = threading.Event()
+    client_close_called = asyncio.Event()
+    messages = [{"id": "request-1", "method": "item/tool/call", "params": {}}]
+
+    class Router:
+        def route_notification(self, _notification):
+            raise AssertionError("unexpected notification")
+
+        def route_response(self, _message):
+            raise AssertionError("unexpected response")
+
+        def fail_all(self, _error):
+            pass
+
+    class SyncClient:
+        _proc = object()
+        _router = Router()
+
+        def _read_message(self):
+            if messages:
+                return messages.pop(0)
+            raise EOFError
+
+        def _handle_server_request(self, _message):
+            handler_started.set()
+            assert allow_handler.wait(timeout=1)
+            return {"success": True}
+
+        def _write_message(self, message):
+            assert self._proc is not None
+            assert message == {
+                "id": "request-1",
+                "result": {"success": True},
+            }
+            response_written.set()
+
+        def _coerce_notification(self, method, params):
+            return method, params
+
+    sync_client = SyncClient()
+
+    class Client:
+        _client = SimpleNamespace(_sync=sync_client)
+
+        async def close(self):
+            client_close_called.set()
+            sync_client._proc = None
+
+    client = Client()
+    _install_concurrent_server_request_dispatcher(client)  # type: ignore[arg-type]
+    reader = threading.Thread(target=sync_client._reader_loop, daemon=True)
+    reader.start()
+    assert handler_started.wait(timeout=1)
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(  # type: ignore[arg-type]
+            client,
+            home,
+            close_timeout_seconds=1,
+        )
+        closing = asyncio.create_task(runtime.close())
+        await asyncio.sleep(0.01)
+        assert not client_close_called.is_set()
+        allow_handler.set()
+        await asyncio.wait_for(closing, timeout=1)
+
+    assert response_written.is_set()
+    assert client_close_called.is_set()
+
+
+async def test_runtime_close_abandons_stuck_server_request_after_deadline(tmp_path):
+    handler_started = threading.Event()
+    allow_handler = threading.Event()
+    handler_finished = threading.Event()
+    response_written = threading.Event()
+    client_close_called = asyncio.Event()
+    messages = [{"id": "request-1", "method": "item/tool/call", "params": {}}]
+
+    class Router:
+        def route_notification(self, _notification):
+            raise AssertionError("unexpected notification")
+
+        def route_response(self, _message):
+            raise AssertionError("unexpected response")
+
+        def fail_all(self, _error):
+            pass
+
+    class SyncClient:
+        _proc = object()
+        _router = Router()
+
+        def _read_message(self):
+            if messages:
+                return messages.pop(0)
+            raise EOFError
+
+        def _handle_server_request(self, _message):
+            handler_started.set()
+            assert allow_handler.wait(timeout=1)
+            handler_finished.set()
+            return {"success": True}
+
+        def _write_message(self, _message):
+            if self._proc is None:
+                raise RuntimeError("process closed")
+            response_written.set()
+
+        def _coerce_notification(self, method, params):
+            return method, params
+
+    sync_client = SyncClient()
+
+    class Client:
+        _client = SimpleNamespace(_sync=sync_client)
+
+        async def close(self):
+            client_close_called.set()
+            sync_client._proc = None
+
+    client = Client()
+    _install_concurrent_server_request_dispatcher(client)  # type: ignore[arg-type]
+    reader = threading.Thread(target=sync_client._reader_loop, daemon=True)
+    reader.start()
+    assert handler_started.wait(timeout=1)
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(  # type: ignore[arg-type]
+            client,
+            home,
+            close_timeout_seconds=0.01,
+        )
+        await asyncio.wait_for(runtime.close(), timeout=0.2)
+
+    assert client_close_called.is_set()
+    assert not response_written.is_set()
+    allow_handler.set()
+    assert handler_finished.wait(timeout=1)
 
 
 async def test_runtime_close_force_stops_child_when_client_close_never_returns(
@@ -367,6 +690,11 @@ async def test_cancelled_start_does_not_wait_forever_for_stuck_enter(
 
     monkeypatch.setattr(runtime_module, "AsyncCodex", create_client)
     monkeypatch.setattr(runtime_module, "assert_pinned_versions", lambda: None)
+    monkeypatch.setattr(
+        runtime_module,
+        "_install_concurrent_server_request_dispatcher",
+        lambda _client: None,
+    )
     monkeypatch.setattr(runtime_module, "_RUNTIME_CLOSE_TIMEOUT_SECONDS", 0.01)
 
     with TemporaryCodexHome.create(tmp_path) as home:

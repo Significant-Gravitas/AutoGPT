@@ -248,20 +248,20 @@ describe("ChatInput mode toggle", () => {
     expect(screen.getByLabelText(/switch to fast mode/i)).toBeDefined();
   });
 
-  it("hides platform mode and model controls for the Codex route", () => {
+  it("shows Codex mode and model controls backed by the model catalog", () => {
     mockFlagValue = true;
     mockCopilotLlmAuthProvider = "codex";
     render(<ChatInput onSend={mockOnSend} />);
 
-    expect(screen.queryByLabelText(/switch to fast mode/i)).toBeNull();
-    expect(screen.queryByLabelText(/switch to advanced model/i)).toBeNull();
+    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
+    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
   });
 
-  it("hides unsupported file attachments for the Codex route", () => {
+  it("keeps Claude SDK file attachments available for the Codex route", () => {
     mockCopilotLlmAuthProvider = "codex";
     render(<ChatInput onSend={mockOnSend} />);
 
-    expect(screen.queryByTestId("attachment-menu")).toBeNull();
+    expect(screen.getByTestId("attachment-menu")).toBeTruthy();
   });
 
   it("does not report empty dropped files as consumed for the Codex route", () => {
@@ -290,8 +290,8 @@ describe("ChatInput mode toggle", () => {
       />,
     );
 
-    expect(screen.queryByLabelText(/switch to fast mode/i)).toBeNull();
-    expect(screen.queryByLabelText(/switch to advanced model/i)).toBeNull();
+    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
+    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
   });
 
   it("does not leak a pending Codex choice into an active platform session", () => {

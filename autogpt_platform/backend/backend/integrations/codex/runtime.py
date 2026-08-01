@@ -3,11 +3,13 @@ import concurrent.futures
 import os
 import sys
 import threading
+import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from importlib.metadata import version
 from pathlib import Path
-from typing import cast
+from types import MethodType
+from typing import Any, cast
 
 from codex_cli_bin import bundled_codex_path
 from openai_codex import (
@@ -28,8 +30,8 @@ from openai_codex.generated.v2_all import (
     ReasoningThreadItem,
     ThreadStartResponse,
 )
-from openai_codex.types import JsonObject
 from openai_codex.models import Notification
+from openai_codex.types import JsonObject
 
 from backend.integrations.codex.models import (
     CodexAccountSnapshot,
@@ -39,8 +41,10 @@ from backend.integrations.codex.models import (
     CodexDynamicToolSpec,
     CodexInvocationRequest,
     CodexInvocationResult,
+    CodexModelInfo,
     CodexRateLimitsSnapshot,
     CodexRateLimitWindow,
+    CodexReasoningEffort,
     CodexTokenUsage,
 )
 from backend.integrations.codex.temporary_home import TemporaryCodexHome
@@ -48,6 +52,87 @@ from backend.integrations.codex.temporary_home import TemporaryCodexHome
 OPENAI_CODEX_VERSION = "0.144.4"
 CODEX_RUNTIME_VERSION = "0.144.4"
 _RUNTIME_CLOSE_TIMEOUT_SECONDS = 3.0
+_SERVER_REQUEST_MAX_CONCURRENCY = 8
+
+
+class _ConcurrentServerRequestDispatcher:
+    def __init__(self, sync_client: Any, *, max_concurrency: int) -> None:
+        if max_concurrency < 1:
+            raise ValueError("max_concurrency must be positive")
+        self._sync_client = sync_client
+        self._capacity = threading.BoundedSemaphore(max_concurrency)
+        self._closing = threading.Event()
+        self._workers: set[threading.Thread] = set()
+        self._workers_lock = threading.Lock()
+
+    def dispatch(self, message: dict[str, object]) -> None:
+        if self._closing.is_set():
+            self._write_error(message, "Codex tool bridge is shutting down")
+            return
+        if not self._capacity.acquire(blocking=False):
+            self._write_error(message, "Codex tool bridge is busy")
+            return
+
+        worker = threading.Thread(
+            target=self._answer,
+            args=(message,),
+            name="autogpt-codex-server-request",
+            daemon=True,
+        )
+        rejection: str | None = None
+        with self._workers_lock:
+            if self._closing.is_set():
+                self._capacity.release()
+                rejection = "Codex tool bridge is shutting down"
+            else:
+                self._workers.add(worker)
+                try:
+                    worker.start()
+                except BaseException:
+                    self._workers.discard(worker)
+                    self._capacity.release()
+                    rejection = "Codex tool bridge request failed"
+        if rejection is not None:
+            self._write_error(message, rejection)
+
+    def close(self, timeout_seconds: float) -> bool:
+        self._closing.set()
+        deadline = time.monotonic() + max(timeout_seconds, 0)
+        current = threading.current_thread()
+        while True:
+            with self._workers_lock:
+                workers = tuple(worker for worker in self._workers if worker != current)
+            if not workers:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            workers[0].join(timeout=remaining)
+
+    def _answer(self, message: dict[str, object]) -> None:
+        try:
+            response = self._sync_client._handle_server_request(message)
+            self._sync_client._write_message({"id": message["id"], "result": response})
+        except BaseException:
+            self._write_error(message, "Codex tool bridge request failed")
+        finally:
+            with self._workers_lock:
+                self._workers.discard(threading.current_thread())
+            self._capacity.release()
+
+    def _write_error(self, message: dict[str, object], detail: str) -> None:
+        if getattr(self._sync_client, "_proc", None) is None:
+            return
+        with suppress(BaseException):
+            self._sync_client._write_message(
+                {
+                    "id": message.get("id"),
+                    "error": {
+                        "code": -32001,
+                        "message": detail,
+                    },
+                }
+            )
 
 
 class CodexRuntimeError(RuntimeError):
@@ -84,7 +169,16 @@ class CodexRuntime:
         self._close_timeout_seconds = close_timeout_seconds
         self._closed = False
         self._close_lock = asyncio.Lock()
-        self._dynamic_tool_futures: set[concurrent.futures.Future[object]] = set()
+        self._dynamic_tool_handlers: dict[
+            str,
+            tuple[
+                Callable[[CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]],
+                float,
+            ],
+        ] = {}
+        self._dynamic_tool_futures: dict[
+            str, set[concurrent.futures.Future[object]]
+        ] = {}
         self._dynamic_tool_futures_lock = threading.Lock()
 
     @classmethod
@@ -92,6 +186,7 @@ class CodexRuntime:
         assert_pinned_versions()
         config = build_runtime_config(home)
         client = AsyncCodex(config)
+        _install_concurrent_server_request_dispatcher(client)
         _install_fail_closed_approval_handler(client)
         startup = asyncio.create_task(client.__aenter__())
         try:
@@ -162,9 +257,28 @@ class CodexRuntime:
             bucket_ids=sorted((response.rate_limits_by_limit_id or {}).keys()),
         )
 
-    async def models(self) -> list[str]:
+    async def models(self) -> list[CodexModelInfo]:
         response = await self._client.models(include_hidden=True)
-        return [model.model for model in response.data]
+        return [
+            CodexModelInfo(
+                model=model.model,
+                display_name=model.display_name,
+                is_default=model.is_default,
+                hidden=model.hidden,
+                default_reasoning_effort=cast(
+                    CodexReasoningEffort,
+                    model.default_reasoning_effort.value,
+                ),
+                supported_reasoning_efforts=[
+                    cast(CodexReasoningEffort, option.reasoning_effort.value)
+                    for option in model.supported_reasoning_efforts
+                ],
+                input_modalities=[
+                    modality.value for modality in (model.input_modalities or [])
+                ],
+            )
+            for model in response.data
+        ]
 
     async def invoke(
         self,
@@ -224,39 +338,43 @@ class CodexRuntime:
         *,
         tool_timeout_seconds: float,
     ) -> CodexInvocationResult:
-        self._install_dynamic_tool_handler(
+        thread = await self._start_thread(request, dynamic_tools)
+        self._register_dynamic_tool_handler(
+            thread.id,
             tool_handler,
             timeout_seconds=tool_timeout_seconds,
         )
-        thread = await self._start_thread(request, dynamic_tools)
-        effort = ReasoningEffort(request.effort) if request.effort else None
-        turn = await thread.turn(
-            request.prompt,
-            approval_mode=ApprovalMode.deny_all,
-            effort=effort,
-            model=request.model,
-            sandbox=Sandbox.read_only,
-        )
-        stream = turn.stream()
-
-        async def observed_stream():
-            async for event in stream:
-                if event_handler is not None:
-                    await event_handler(event)
-                yield event
-
         try:
-            result = await _collect_async_turn_result(
-                observed_stream(),
-                turn_id=turn.id,
+            effort = ReasoningEffort(request.effort) if request.effort else None
+            turn = await thread.turn(
+                request.prompt,
+                approval_mode=ApprovalMode.deny_all,
+                effort=effort,
+                model=request.model,
+                sandbox=Sandbox.read_only,
             )
-        except asyncio.CancelledError:
-            self._cancel_dynamic_tool_futures()
-            with suppress(BaseException):
-                await asyncio.wait_for(turn.interrupt(), timeout=2)
-            raise
+            stream = turn.stream()
+
+            async def observed_stream():
+                async for event in stream:
+                    if event_handler is not None:
+                        await event_handler(event)
+                    yield event
+
+            try:
+                result = await _collect_async_turn_result(
+                    observed_stream(),
+                    turn_id=turn.id,
+                )
+            except asyncio.CancelledError:
+                self._cancel_dynamic_tool_futures(thread.id)
+                with suppress(BaseException):
+                    await asyncio.wait_for(turn.interrupt(), timeout=2)
+                raise
+            finally:
+                await self._close_agent_stream(stream)
         finally:
-            await self._close_agent_stream(stream)
+            self._unregister_dynamic_tool_handler(thread.id)
         if result.final_response is None:
             raise CodexRuntimeError("Codex turn completed without a final response")
         return CodexInvocationResult(
@@ -332,12 +450,25 @@ class CodexRuntime:
         )
         return AsyncThread(self._client, started.thread.id)
 
-    def _install_dynamic_tool_handler(
+    def _register_dynamic_tool_handler(
         self,
+        thread_id: str,
         handler: Callable[[CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]],
         *,
         timeout_seconds: float,
     ) -> None:
+        self._ensure_dynamic_tool_dispatcher()
+        with self._dynamic_tool_futures_lock:
+            self._dynamic_tool_handlers[thread_id] = (handler, timeout_seconds)
+            self._dynamic_tool_futures.setdefault(thread_id, set())
+
+    def _unregister_dynamic_tool_handler(self, thread_id: str) -> None:
+        self._cancel_dynamic_tool_futures(thread_id)
+        with self._dynamic_tool_futures_lock:
+            self._dynamic_tool_handlers.pop(thread_id, None)
+            self._dynamic_tool_futures.pop(thread_id, None)
+
+    def _ensure_dynamic_tool_dispatcher(self) -> None:
         loop = asyncio.get_running_loop()
 
         def handle(method: str, params: JsonObject | None) -> JsonObject:
@@ -357,12 +488,18 @@ class CodexRuntime:
             except Exception:
                 return _dynamic_tool_error("codex_tool_request_invalid")
 
+            with self._dynamic_tool_futures_lock:
+                registration = self._dynamic_tool_handlers.get(call.thread_id)
+            if registration is None:
+                return _dynamic_tool_error("codex_tool_handler_unavailable")
+            handler, timeout_seconds = registration
+
             async def execute_handler() -> CodexDynamicToolResult:
                 return await handler(call)
 
             future = asyncio.run_coroutine_threadsafe(execute_handler(), loop)
             with self._dynamic_tool_futures_lock:
-                self._dynamic_tool_futures.add(future)
+                self._dynamic_tool_futures.setdefault(call.thread_id, set()).add(future)
             try:
                 result = future.result(timeout=timeout_seconds)
             except concurrent.futures.TimeoutError:
@@ -372,7 +509,9 @@ class CodexRuntime:
                 return _dynamic_tool_error("codex_tool_execution_failed")
             finally:
                 with self._dynamic_tool_futures_lock:
-                    self._dynamic_tool_futures.discard(future)
+                    futures = self._dynamic_tool_futures.get(call.thread_id)
+                    if futures is not None:
+                        futures.discard(future)
             return {
                 "contentItems": [{"type": "inputText", "text": result.content}],
                 "success": result.success,
@@ -384,11 +523,21 @@ class CodexRuntime:
             raise CodexRuntimeError(
                 "Pinned Codex SDK approval-handler layout changed"
             ) from exc
+        if getattr(sync_client, "_autogpt_dynamic_tool_dispatcher", False):
+            return
         sync_client._approval_handler = handle
+        sync_client._autogpt_dynamic_tool_dispatcher = True
 
-    def _cancel_dynamic_tool_futures(self) -> None:
+    def _cancel_dynamic_tool_futures(self, thread_id: str | None = None) -> None:
         with self._dynamic_tool_futures_lock:
-            futures = tuple(self._dynamic_tool_futures)
+            if thread_id is None:
+                futures = tuple(
+                    future
+                    for group in self._dynamic_tool_futures.values()
+                    for future in group
+                )
+            else:
+                futures = tuple(self._dynamic_tool_futures.get(thread_id, ()))
         for future in futures:
             future.cancel()
 
@@ -420,14 +569,80 @@ class CodexRuntime:
         raise CodexRuntimeError("codex_stream_shutdown_timeout")
 
 
+def _install_concurrent_server_request_dispatcher(client: AsyncCodex) -> None:
+    try:
+        sync_client = client._client._sync
+        sync_client._read_message
+        sync_client._write_message
+        sync_client._handle_server_request
+        sync_client._coerce_notification
+        sync_client._router
+    except AttributeError as exc:
+        raise CodexRuntimeError("Pinned Codex SDK reader layout changed") from exc
+
+    if getattr(sync_client, "_autogpt_server_request_dispatcher", None) is not None:
+        return
+    dispatcher = _ConcurrentServerRequestDispatcher(
+        sync_client,
+        max_concurrency=_SERVER_REQUEST_MAX_CONCURRENCY,
+    )
+    sync_client._autogpt_server_request_dispatcher = dispatcher
+
+    def reader_loop(instance: Any) -> None:
+        try:
+            while True:
+                message = instance._read_message()
+                if "method" in message and "id" in message:
+                    dispatcher.dispatch(message)
+                    continue
+                if "method" in message and "id" not in message:
+                    method = message["method"]
+                    if isinstance(method, str):
+                        instance._router.route_notification(
+                            instance._coerce_notification(
+                                method,
+                                message.get("params"),
+                            )
+                        )
+                    continue
+                instance._router.route_response(message)
+        except BaseException as exc:
+            instance._router.fail_all(exc)
+
+    sync_client._reader_loop = MethodType(reader_loop, sync_client)
+
+
+def _shutdown_concurrent_server_request_dispatcher(
+    client: AsyncCodex,
+    timeout_seconds: float,
+) -> bool:
+    try:
+        dispatcher = client._client._sync._autogpt_server_request_dispatcher
+    except AttributeError:
+        return True
+    return dispatcher.close(timeout_seconds)
+
+
 async def _close_codex_client(
     client: AsyncCodex,
     timeout_seconds: float,
 ) -> None:
     process = _runtime_process(client)
-    closing = asyncio.create_task(client.close())
+    deadline = time.monotonic() + max(timeout_seconds, 0)
+    closing: asyncio.Task[None] | None = None
     try:
-        done, _ = await asyncio.wait({closing}, timeout=timeout_seconds)
+        await asyncio.to_thread(
+            _shutdown_concurrent_server_request_dispatcher,
+            client,
+            timeout_seconds,
+        )
+        closing = asyncio.create_task(client.close())
+        remaining = max(deadline - time.monotonic(), 0)
+        if remaining == 0:
+            await asyncio.sleep(0)
+            done = {closing} if closing.done() else set()
+        else:
+            done, _ = await asyncio.wait({closing}, timeout=remaining)
         if closing in done:
             await closing
             return
@@ -435,8 +650,9 @@ async def _close_codex_client(
         _detach_task(closing)
         _force_stop_process(process)
     except asyncio.CancelledError:
-        closing.cancel()
-        _detach_task(closing)
+        if closing is not None:
+            closing.cancel()
+            _detach_task(closing)
         _force_stop_process(process)
         raise
     except BaseException:

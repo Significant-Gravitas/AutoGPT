@@ -30,6 +30,7 @@ from backend.integrations.codex.models import (
     CodexInvocationRequest,
     CodexInvocationResult,
     CodexLoginCompletion,
+    CodexModelInfo,
     CodexRateLimitsSnapshot,
 )
 from backend.integrations.codex.runtime import CODEX_RUNTIME_VERSION, CodexRuntime
@@ -72,7 +73,7 @@ class RuntimeClient(Protocol):
 
     async def rate_limits(self) -> CodexRateLimitsSnapshot: ...
 
-    async def models(self) -> list[str]: ...
+    async def models(self) -> list[CodexModelInfo]: ...
 
     async def invoke(
         self,
@@ -97,6 +98,47 @@ class RuntimeClient(Protocol):
 
 
 RuntimeFactory = Callable[[TemporaryCodexHome], Awaitable[RuntimeClient]]
+
+
+class CodexAgentSession:
+    def __init__(
+        self,
+        runtime: "_LeasedRuntime",
+        *,
+        turn_timeout_seconds: float,
+        tool_timeout_seconds: float,
+    ) -> None:
+        self._runtime = runtime
+        self._turn_timeout_seconds = turn_timeout_seconds
+        self._tool_timeout_seconds = tool_timeout_seconds
+
+    async def invoke(
+        self,
+        request: CodexInvocationRequest,
+        dynamic_tools: list[CodexDynamicToolSpec],
+        tool_handler: Callable[
+            [CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]
+        ],
+        event_handler: Callable[[Notification], Awaitable[None]] | None = None,
+    ) -> CodexInvocationResult:
+        try:
+            result = await asyncio.wait_for(
+                self._runtime.run(
+                    self._runtime.runtime.invoke_agent(
+                        request,
+                        dynamic_tools,
+                        tool_handler,
+                        event_handler,
+                        tool_timeout_seconds=self._tool_timeout_seconds,
+                    )
+                ),
+                timeout=self._turn_timeout_seconds,
+            )
+            return result.model_copy(
+                update={"resolved_model": result.resolved_model or request.model}
+            )
+        except asyncio.TimeoutError:
+            raise CodexInvocationTimeoutError("codex_copilot_turn_timeout") from None
 
 
 class CodexDeviceLoginSession:
@@ -266,13 +308,13 @@ class CodexTransport:
         async with self._credential_runtime(lease) as session:
             return await session.run(session.runtime.rate_limits())
 
-    async def models(self, lease: CredentialLease) -> list[str]:
+    async def models(self, lease: CredentialLease) -> list[CodexModelInfo]:
         return await self._run_control_operation(
             "model lookup",
             self._models(lease),
         )
 
-    async def _models(self, lease: CredentialLease) -> list[str]:
+    async def _models(self, lease: CredentialLease) -> list[CodexModelInfo]:
         async with self._credential_runtime(lease) as session:
             return await session.run(session.runtime.models())
 
@@ -300,7 +342,14 @@ class CodexTransport:
         async with self._credential_runtime(lease) as session:
             await session.run(session.runtime.account(refresh_token=True))
             await session.checkpoint_now()
-            return await session.run(session.runtime.invoke(request))
+            models = await session.run(session.runtime.models())
+            resolved_model = _resolve_invocation_model(request.model, models)
+            result = await session.run(
+                session.runtime.invoke(
+                    request.model_copy(update={"model": resolved_model})
+                )
+            )
+            return result.model_copy(update={"resolved_model": resolved_model})
 
     async def invoke_agent(
         self,
@@ -325,6 +374,20 @@ class CodexTransport:
             )
         except asyncio.TimeoutError:
             raise CodexInvocationTimeoutError("codex_copilot_turn_timeout") from None
+
+    @asynccontextmanager
+    async def agent_session(
+        self,
+        lease: CredentialLease,
+    ) -> AsyncIterator[CodexAgentSession]:
+        async with self._credential_runtime(lease) as session:
+            await session.run(session.runtime.account(refresh_token=True))
+            await session.checkpoint_now()
+            yield CodexAgentSession(
+                session,
+                turn_timeout_seconds=self._copilot_turn_timeout_seconds,
+                tool_timeout_seconds=self._copilot_tool_timeout_seconds,
+            )
 
     async def _invoke_agent_with_runtime(
         self,
@@ -449,6 +512,25 @@ def _codex_credentials(lease: CredentialLease) -> OAuth2Credentials:
     oauth_credentials = cast(OAuth2Credentials, credentials)
     bundle_from_credentials(oauth_credentials)
     return oauth_credentials
+
+
+def _resolve_invocation_model(
+    requested_model: str | None,
+    models: list[CodexModelInfo],
+) -> str:
+    available = {model.model: model for model in models}
+    if requested_model is not None:
+        if requested_model not in available:
+            raise CodexTransportError(
+                f"Codex model is not available for this account: {requested_model}"
+            )
+        return requested_model
+    default = next((model for model in models if model.is_default), None)
+    visible = next((model for model in models if not model.hidden), None)
+    selected = default or visible or (models[0] if models else None)
+    if selected is None:
+        raise CodexTransportError("Codex account advertised no available models")
+    return selected.model
 
 
 @dataclass

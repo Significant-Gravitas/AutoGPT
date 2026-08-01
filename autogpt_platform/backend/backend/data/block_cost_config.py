@@ -399,12 +399,46 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIStructuredResponseGeneratorBlock: LLM_COST,
     AITextSummarizerBlock: LLM_COST,
     AIListGeneratorBlock: LLM_COST,
-    # CodeGenerationBlock (Codex): block computes USD from
-    # response.usage.input_tokens/output_tokens using GPT-5.1-Codex rates
-    # ($1.25/$10 per 1M) and emits provider_cost + cost_usd. COST_USD 150
-    # cr/$ matches the TOKEN_COST margin — a 30K-token generation
-    # (~25K in + 5K out) ≈ $0.081 → 13 cr, vs the prior flat 5 cr.
+    # CodeGenerationBlock (Codex): block computes USD from response usage with
+    # the selected model's rate and emits provider_cost + cost_usd. COST_USD
+    # 150 cr/$ matches the TOKEN_COST margin.
     CodeGenerationBlock: [
+        BlockCost(
+            cost_type=BlockCostType.COST_USD,
+            cost_filter={
+                "model": CodexModel.GPT5_6_SOL,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+            cost_amount=150,
+        ),
+        BlockCost(
+            cost_type=BlockCostType.COST_USD,
+            cost_filter={
+                "model": CodexModel.GPT5_6_TERRA,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+            cost_amount=150,
+        ),
+        BlockCost(
+            cost_type=BlockCostType.COST_USD,
+            cost_filter={
+                "model": CodexModel.GPT5_6_LUNA,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+            cost_amount=150,
+        ),
         BlockCost(
             cost_type=BlockCostType.COST_USD,
             cost_filter={

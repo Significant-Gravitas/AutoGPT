@@ -90,7 +90,7 @@ async def run_smoke(auth_path: Path, temp_root: Path | None) -> dict[str, object
             "plan_type": account.plan_type,
             "rate_limit_plan": rate_limits.plan_type,
             "model_count": len(models),
-            "models": models,
+            "models": [model.model_dump(mode="json") for model in models],
             "response": result.final_response,
             "input_tokens": usage.input_tokens if usage else None,
             "output_tokens": usage.output_tokens if usage else None,

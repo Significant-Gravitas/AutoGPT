@@ -43,6 +43,9 @@ class CodexCallResult:
 class CodexModel(str, Enum):
     """Codex-capable OpenAI models."""
 
+    GPT5_6_SOL = "gpt-5.6-sol"
+    GPT5_6_TERRA = "gpt-5.6-terra"
+    GPT5_6_LUNA = "gpt-5.6-luna"
     GPT5_3_CODEX = "gpt-5.3-codex"
     GPT5_1_CODEX = "gpt-5.1-codex"
 
@@ -55,6 +58,8 @@ class CodexReasoningEffort(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
     XHIGH = "xhigh"
+    MAX = "max"
+    ULTRA = "ultra"
 
 
 class CodexExecutionTransport(str, Enum):
@@ -198,16 +203,23 @@ class CodeGenerationBlock(Block):
         )
         self.execution_stats = NodeExecutionStats()
 
-    # GPT-5.1-Codex published pricing: $1.25 / 1M input, $10 / 1M output.
-    _INPUT_USD_PER_1M = 1.25
-    _OUTPUT_USD_PER_1M = 10.0
+    _MODEL_USD_PER_1M: dict[CodexModel, tuple[float, float]] = {
+        CodexModel.GPT5_6_SOL: (5.0, 30.0),
+        CodexModel.GPT5_6_TERRA: (2.5, 15.0),
+        CodexModel.GPT5_6_LUNA: (1.0, 6.0),
+        CodexModel.GPT5_3_CODEX: (1.75, 14.0),
+        CodexModel.GPT5_1_CODEX: (1.25, 10.0),
+    }
 
-    @staticmethod
-    def _compute_token_usd(input_tokens: int, output_tokens: int) -> float:
-        return (
-            input_tokens * CodeGenerationBlock._INPUT_USD_PER_1M
-            + output_tokens * CodeGenerationBlock._OUTPUT_USD_PER_1M
-        ) / 1_000_000
+    @classmethod
+    def _compute_token_usd(
+        cls,
+        model: CodexModel,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> float:
+        input_rate, output_rate = cls._MODEL_USD_PER_1M[model]
+        return (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
 
     async def call_codex(
         self,
@@ -253,7 +265,7 @@ class CodeGenerationBlock(Block):
         self.execution_stats.output_token_count = output_tokens
         self.execution_stats.llm_call_count += 1
         self.execution_stats.provider_cost = self._compute_token_usd(
-            input_tokens, output_tokens
+            model, input_tokens, output_tokens
         )
         self.execution_stats.provider_cost_type = "cost_usd"
 
@@ -354,4 +366,4 @@ class CodeGenerationBlock(Block):
         self.execution_stats.billing_mode = "user_subscription"
         self.execution_stats.auth_provider = "codex"
         self.execution_stats.execution_path = "codex_app_server"
-        self.execution_stats.resolved_model = None
+        self.execution_stats.resolved_model = response.resolved_model

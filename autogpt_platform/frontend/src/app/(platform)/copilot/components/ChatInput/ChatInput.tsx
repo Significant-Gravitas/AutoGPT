@@ -78,7 +78,6 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
-  sessionLlmAuthProvider = null,
   isSessionLlmRouteResolved = true,
 }: Props) {
   const {
@@ -87,16 +86,12 @@ export function ChatInput({
     setCopilotChatMode,
     copilotLlmModel,
     setCopilotLlmModel,
-    copilotLlmAuth,
     isDryRun,
     setIsDryRun,
   } = useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showDryRunToggle = showModeToggle;
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
-  const isCodexRoute = hasSession
-    ? sessionLlmAuthProvider === "codex"
-    : copilotLlmAuth.authProvider === "codex";
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
@@ -152,12 +147,6 @@ export function ChatInput({
 
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
-    if (isCodexRoute) {
-      if (droppedFiles && droppedFiles.length > 0) {
-        onDroppedFilesConsumed?.();
-      }
-      return;
-    }
     if (droppedFiles && droppedFiles.length > 0) {
       setAttachments((prev) => [
         ...prev,
@@ -165,13 +154,7 @@ export function ChatInput({
       ]);
       onDroppedFilesConsumed?.();
     }
-  }, [droppedFiles, isCodexRoute, onDroppedFilesConsumed]);
-
-  useEffect(() => {
-    if (!isCodexRoute) return;
-    setAttachments([]);
-    setIsPickerOpen(false);
-  }, [isCodexRoute]);
+  }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasAttachments = attachments.length > 0;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
@@ -203,7 +186,7 @@ export function ChatInput({
   });
 
   const mentions = useChatMentions({
-    enabled: showWorkspaceFiles && !isBusy && !isCodexRoute,
+    enabled: showWorkspaceFiles && !isBusy,
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
@@ -302,13 +285,11 @@ export function ChatInput({
             "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
-        {!isCodexRoute && (
-          <FileChips
-            attachments={attachments}
-            onRemove={handleRemoveAttachment}
-            isUploading={isUploadingFiles}
-          />
-        )}
+        <FileChips
+          attachments={attachments}
+          onRemove={handleRemoveAttachment}
+          isUploading={isUploadingFiles}
+        />
         <PromptInputBody className="relative block w-full">
           <PromptInputTextarea
             id={inputId}
@@ -336,37 +317,29 @@ export function ChatInput({
 
         <PromptInputFooter>
           <PromptInputTools>
-            {!isCodexRoute && (
-              <ComposerPlusMenu
-                onFilesSelected={handleFilesSelected}
-                onUseWorkspaceFile={() => setIsPickerOpen(true)}
-                onClearGuidedPrompt={handleClearGuidedPrompt}
-                disabled={isBusy}
-              />
-            )}
+            <ComposerPlusMenu
+              onFilesSelected={handleFilesSelected}
+              onUseWorkspaceFile={() => setIsPickerOpen(true)}
+              onClearGuidedPrompt={handleClearGuidedPrompt}
+              disabled={isBusy}
+            />
             {!hasSession && <LlmRouteSelector />}
             {/* Mode and model are per-message settings sent with each stream request,
                 so they can be freely changed between turns in an existing session.
                 Hide only while actively streaming (too late to change for that turn). */}
-            {showModeToggle &&
-              !isStreaming &&
-              isSessionLlmRouteResolved &&
-              !isCodexRoute && (
-                <ModeToggleButton
-                  mode={copilotChatMode}
-                  onToggle={handleToggleMode}
-                  pinned={copilotModePinned}
-                />
-              )}
-            {showModeToggle &&
-              !isStreaming &&
-              isSessionLlmRouteResolved &&
-              !isCodexRoute && (
-                <ModelToggleButton
-                  model={copilotLlmModel}
-                  onToggle={handleToggleModel}
-                />
-              )}
+            {showModeToggle && !isStreaming && isSessionLlmRouteResolved && (
+              <ModeToggleButton
+                mode={copilotChatMode}
+                onToggle={handleToggleMode}
+                pinned={copilotModePinned}
+              />
+            )}
+            {showModeToggle && !isStreaming && isSessionLlmRouteResolved && (
+              <ModelToggleButton
+                model={copilotLlmModel}
+                onToggle={handleToggleModel}
+              />
+            )}
             {/* DryRun button only on new chats: once a session exists its
                 dry_run flag is locked and should be read from session metadata
                 (sessionDryRun in useCopilotPage), not toggled here. The banner
@@ -427,7 +400,7 @@ export function ChatInput({
         </PromptInputFooter>
       </InputGroup>
 
-      {showWorkspaceFiles && !isCodexRoute && (
+      {showWorkspaceFiles && (
         <WorkspaceFilePicker
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}

@@ -6,10 +6,13 @@ from backend.integrations.codex.auth_bundle import CodexAuthBundleV1
 
 CodexReasoningEffort = Literal[
     "none",
+    "minimal",
     "low",
     "medium",
     "high",
     "xhigh",
+    "max",
+    "ultra",
 ]
 
 
@@ -63,6 +66,18 @@ class CodexTokenUsage(BaseModel):
     total_tokens: int
 
 
+class CodexModelInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model: str
+    display_name: str
+    is_default: bool
+    hidden: bool
+    default_reasoning_effort: CodexReasoningEffort
+    supported_reasoning_efforts: list[CodexReasoningEffort]
+    input_modalities: list[str] = Field(default_factory=list)
+
+
 class CodexInvocationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -81,6 +96,7 @@ class CodexInvocationResult(BaseModel):
     final_response: str
     reasoning_summary: str | None = None
     status: str
+    resolved_model: str | None = None
     duration_ms: int | None = None
     usage: CodexTokenUsage | None = None
 

@@ -345,7 +345,9 @@ def _codex_entry(*, credential_id: str = "cred-1") -> CoPilotExecutionEntry:
     )
 
 
-def _codex_session(*, credential_id: str = "cred-1") -> ChatSession:
+def _codex_session(
+    *, credential_id: str = "cred-1", builder_graph_id: str | None = None
+) -> ChatSession:
     session = ChatSession.new(
         "user-1",
         dry_run=False,
@@ -353,25 +355,25 @@ def _codex_session(*, credential_id: str = "cred-1") -> ChatSession:
         llm_credential_id=credential_id,
     )
     session.session_id = "sess-codex"
+    session.metadata.builder_graph_id = builder_graph_id
     return session
 
 
 @pytest.mark.asyncio
-async def test_codex_route_uses_authoritative_session_and_releases_lease():
+async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
     published = _TrackedStream(events=[])
     lease = MagicMock()
     lease.credentials = SimpleNamespace(type="oauth2", id="cred-1")
     lease.release = AsyncMock()
     manager = MagicMock()
     manager.acquire_lease = AsyncMock(return_value=lease)
-    codex_stream = MagicMock(return_value=MagicMock())
     baseline_stream = MagicMock()
-    sdk_stream = MagicMock()
+    sdk_stream = MagicMock(return_value=MagicMock())
 
     with (
         patch(
             "backend.copilot.model.get_chat_session",
-            new=AsyncMock(return_value=_codex_session()),
+            new=AsyncMock(return_value=_codex_session(builder_graph_id="graph-1")),
         ),
         patch(
             "backend.copilot.executor.processor.is_feature_enabled",
@@ -382,14 +384,6 @@ async def test_codex_route_uses_authoritative_session_and_releases_lease():
             return_value=manager,
         ),
         patch("backend.integrations.codex.credential_codec.bundle_from_credentials"),
-        patch(
-            "backend.copilot.tools.helpers.session_entered_building_mode",
-            return_value=False,
-        ),
-        patch(
-            "backend.copilot.codex.service.stream_chat_completion_codex",
-            codex_stream,
-        ),
         patch(
             "backend.copilot.executor.processor.stream_chat_completion_baseline",
             baseline_stream,
@@ -420,10 +414,10 @@ async def test_codex_route_uses_authoritative_session_and_releases_lease():
 
     manager.acquire_lease.assert_awaited_once_with("user-1", "cred-1")
     lease.release.assert_awaited_once()
-    codex_stream.assert_called_once()
-    assert codex_stream.call_args.kwargs["credential_lease"] is lease
+    sdk_stream.assert_called_once()
+    assert sdk_stream.call_args.kwargs["credential_lease"] is lease
+    assert sdk_stream.call_args.kwargs["session"].session_id == "sess-codex"
     baseline_stream.assert_not_called()
-    sdk_stream.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -479,10 +473,6 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
         patch(
             "backend.integrations.creds_manager.IntegrationCredentialsManager",
             return_value=manager,
-        ),
-        patch(
-            "backend.copilot.tools.helpers.session_entered_building_mode",
-            return_value=False,
         ),
         patch(
             "backend.copilot.executor.processor.stream_chat_completion_baseline",

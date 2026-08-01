@@ -503,6 +503,75 @@ class TestBuildSdkEnvLocalTransportGuard:
             ):
                 build_sdk_env()
 
+    def test_codex_override_runs_sdk_under_local_transport(self):
+        cfg = _make_config(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://host.docker.internal:11434/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                codex_gateway_url="http://127.0.0.1:43210/",
+                codex_gateway_token="loopback-capability",
+            )
+
+        assert result["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:43210"
+        assert result["ANTHROPIC_AUTH_TOKEN"] == "loopback-capability"
+        assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert result["CLAUDE_CODE_REFRESH_TOKEN"] == ""
+        assert {"127.0.0.1", "localhost", "::1"} <= set(result["NO_PROXY"].split(","))
+        assert result["no_proxy"] == result["NO_PROXY"]
+
+    def test_codex_override_preserves_existing_no_proxy_hosts(self):
+        cfg = _make_config(use_openrouter=False)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch.dict(
+                "backend.copilot.sdk.env.os.environ",
+                {
+                    "NO_PROXY": "internal.example,metadata.internal,localhost",
+                },
+                clear=True,
+            ),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                codex_gateway_url="http://localhost:43210",
+                codex_gateway_token="loopback-capability",
+            )
+
+        assert set(result["NO_PROXY"].split(",")) == {
+            "internal.example",
+            "metadata.internal",
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }
+        assert result["no_proxy"] == result["NO_PROXY"]
+
+    def test_codex_override_requires_url_and_token_together(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(ValueError, match="must be provided together"):
+                build_sdk_env(codex_gateway_url="http://127.0.0.1:43210")
+
+    def test_codex_override_rejects_non_loopback_url(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(ValueError, match="loopback HTTP URL"):
+                build_sdk_env(
+                    codex_gateway_url="https://example.com",
+                    codex_gateway_token="must-not-leak",
+                )
+
 
 class TestAutocompactPctSonnet5Scaling:
     """Sonnet 5's trigger percentage is scaled by the ~1.3x tokenizer

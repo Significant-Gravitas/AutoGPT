@@ -22,6 +22,7 @@ from backend.integrations.codex.models import (
     CodexDynamicToolSpec,
     CodexInvocationRequest,
     CodexInvocationResult,
+    CodexModelInfo,
     CodexRateLimitsSnapshot,
 )
 from backend.integrations.codex.transport import (
@@ -92,9 +93,32 @@ async def test_invoke_checkpoints_rotated_auth_before_cleanup(tmp_path):
     )
 
     assert result.final_response == "ok"
+    assert result.resolved_model == "gpt-test"
+    assert runtime.last_request is not None
+    assert runtime.last_request.model == "gpt-test"
     checkpoint.assert_awaited_once()
     updated = checkpoint.await_args.args[0]
     assert updated.refresh_token.get_secret_value() == "refresh-rotated"
+    assert runtime.closed
+    assert not tuple(tmp_path.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_invoke_rejects_model_not_advertised_by_account(tmp_path):
+    lease, _ = _lease()
+    runtime = _FakeRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+
+    with pytest.raises(CodexTransportError, match="not available"):
+        await transport.invoke(
+            lease,
+            CodexInvocationRequest(prompt="ok", model="gpt-not-on-account"),
+        )
+
+    assert runtime.last_request is None
     assert runtime.closed
     assert not tuple(tmp_path.iterdir())
 
@@ -529,6 +553,7 @@ class _FakeRuntime:
         self.checkpoint_probe: Callable[[], bool] = lambda: False
         self.agent_tool_timeout: float | None = None
         self.agent_dynamic_tools: list[CodexDynamicToolSpec] | None = None
+        self.last_request: CodexInvocationRequest | None = None
 
     async def start_device_code_login(self) -> _FakeLogin:
         if self.complete_login:
@@ -552,10 +577,21 @@ class _FakeRuntime:
     async def rate_limits(self) -> CodexRateLimitsSnapshot:
         return CodexRateLimitsSnapshot(plan_type="pro")
 
-    async def models(self) -> list[str]:
-        return ["gpt-test"]
+    async def models(self) -> list[CodexModelInfo]:
+        return [
+            CodexModelInfo(
+                model="gpt-test",
+                display_name="GPT Test",
+                is_default=True,
+                hidden=False,
+                default_reasoning_effort="medium",
+                supported_reasoning_efforts=["low", "medium", "high"],
+                input_modalities=["text"],
+            )
+        ]
 
     async def invoke(self, request: CodexInvocationRequest) -> CodexInvocationResult:
+        self.last_request = request
         if self.rotate_on_account:
             self.refresh_was_checkpointed_before_invoke = self.checkpoint_probe()
         if self.rotate_auth:

@@ -11,7 +11,6 @@ import os
 import subprocess
 import threading
 import time
-from functools import partial
 from typing import Callable, cast
 
 from backend.copilot import stream_registry
@@ -535,12 +534,6 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             if entry.llm_auth_provider == "codex":
-                from backend.copilot.codex.service import (
-                    stream_chat_completion_codex,
-                )
-                from backend.copilot.tools.helpers import (
-                    session_entered_building_mode,
-                )
                 from backend.integrations.codex.credential_codec import (
                     bundle_from_credentials,
                 )
@@ -567,11 +560,6 @@ class CoPilotProcessor:
                     raise RuntimeError("codex_transport_disabled")
                 if entry.llm_credential_id is None:
                     raise RuntimeError("codex_credential_required")
-                if (
-                    session.metadata.builder_graph_id is not None
-                    or session_entered_building_mode(session)
-                ):
-                    raise RuntimeError("codex_builder_session_unsupported")
                 try:
                     credential_lease = await asyncio.wait_for(
                         IntegrationCredentialsManager().acquire_lease(
@@ -601,13 +589,9 @@ class CoPilotProcessor:
                         await credential_lease.release()
                         credential_lease = None
                     raise RuntimeError("codex_credential_not_found") from None
-                stream_fn = partial(
-                    stream_chat_completion_codex,
-                    credential_lease=credential_lease,
-                    session=session,
-                )
+                stream_fn = sdk_service.stream_chat_completion_sdk
                 effective_mode = entry.mode
-                log.info("Using native Codex subscription service")
+                log.info("Using Claude SDK with Codex subscription transport")
             else:
                 if entry.llm_credential_id is not None:
                     raise RuntimeError("codex_session_route_mismatch")
@@ -673,6 +657,8 @@ class CoPilotProcessor:
                 request_arrival_at=entry.request_arrival_at,
                 organization_id=entry.organization_id,
                 team_id=entry.team_id,
+                credential_lease=credential_lease,
+                session=session,
             )
             # Surround the driver stream with a silence watchdog so the
             # FE shows escalating ``StreamStatus`` messages during long

@@ -6,7 +6,10 @@ engine-switch flow (see ``backend.copilot.engine_switch``). These tests
 pin its retry/give-up contract.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
 
@@ -18,6 +21,22 @@ from .manager import (
 )
 
 _SWITCH = SwitchRequest(user_id="user-1", organization_id="org-1", team_id=None)
+
+
+@pytest.fixture(autouse=True)
+def mock_chat_session():
+    session = SimpleNamespace(
+        metadata=SimpleNamespace(
+            llm_auth_provider=None,
+            llm_credential_id=None,
+        )
+    )
+    with patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    ) as mock_get_session:
+        yield mock_get_session
 
 
 def test_dispatch_succeeds_first_try():
@@ -36,6 +55,23 @@ def test_dispatch_succeeds_first_try():
     assert kwargs["message"] == CONTINUATION_MESSAGE
     assert kwargs["is_user_message"] is False
     assert kwargs["mode"] == "extended_thinking"
+
+
+def test_dispatch_preserves_codex_transport_for_extended_thinking(
+    mock_chat_session,
+):
+    mock_chat_session.return_value.metadata.llm_auth_provider = "codex"
+    mock_chat_session.return_value.metadata.llm_credential_id = "cred-codex"
+    with patch(
+        "backend.copilot.executor.manager.schedule_turn",
+        new_callable=AsyncMock,
+    ) as mock_schedule:
+        _dispatch_engine_switch_continuation("sess-1", _SWITCH)
+
+    kwargs = mock_schedule.call_args.kwargs
+    assert kwargs["mode"] == "extended_thinking"
+    assert kwargs["llm_auth_provider"] == "codex"
+    assert kwargs["llm_credential_id"] == "cred-codex"
 
 
 def test_dispatch_retries_until_success():

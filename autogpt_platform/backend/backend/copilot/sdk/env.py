@@ -8,7 +8,9 @@ circular import through ``executor`` → ``credit`` → ``block_cost_config``).
 
 from __future__ import annotations
 
+import os
 import re
+from urllib.parse import urlparse
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.moonshot import is_moonshot_model
@@ -22,6 +24,20 @@ config = ChatConfig()
 # RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
 _HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
 _MAX_HEADER_VALUE_LEN = 128
+_LOOPBACK_NO_PROXY_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def _loopback_no_proxy_value() -> str:
+    entries: list[str] = []
+    for value in (os.environ.get("NO_PROXY", ""), os.environ.get("no_proxy", "")):
+        for entry in value.split(","):
+            entry = entry.strip()
+            if entry and entry.lower() not in {item.lower() for item in entries}:
+                entries.append(entry)
+    for host in _LOOPBACK_NO_PROXY_HOSTS:
+        if host.lower() not in {item.lower() for item in entries}:
+            entries.append(host)
+    return ",".join(entries)
 
 
 def build_sdk_env(
@@ -29,14 +45,17 @@ def build_sdk_env(
     user_id: str | None = None,
     sdk_cwd: str | None = None,
     model: str | None = None,
+    codex_gateway_url: str | None = None,
+    codex_gateway_token: str | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
-    Three modes (checked in order):
-    1. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
-    2. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
+    Four modes (checked in order):
+    1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
+    2. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
+    3. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
        from the parent environment (no overrides needed).
-    3. **OpenRouter** (default) — overrides base URL and auth token to
+    4. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with Langfuse trace headers.
 
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
@@ -48,12 +67,43 @@ def build_sdk_env(
     vars (currently: ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` is skipped for
     Moonshot since the cache-cost rationale doesn't apply there).
     """
+    if (codex_gateway_url is None) != (codex_gateway_token is None):
+        raise ValueError(
+            "codex_gateway_url and codex_gateway_token must be provided together"
+        )
+    if codex_gateway_token is not None and not codex_gateway_token:
+        raise ValueError("Codex gateway token must not be empty")
+    if codex_gateway_url is not None:
+        parsed_gateway = urlparse(codex_gateway_url)
+        if parsed_gateway.scheme != "http" or parsed_gateway.hostname not in {
+            "127.0.0.1",
+            "::1",
+            "localhost",
+        }:
+            raise ValueError("Codex gateway must use a loopback HTTP URL")
+
+    # A connected Codex account is a request-scoped auth transport.  It must
+    # win over the deployment-wide profile, including ``local``: the loopback
+    # gateway speaks the Anthropic wire protocol expected by Claude Code even
+    # when the configured baseline provider does not.
+    if codex_gateway_url is not None and codex_gateway_token is not None:
+        no_proxy = _loopback_no_proxy_value()
+        env: dict[str, str] = {
+            "ANTHROPIC_BASE_URL": codex_gateway_url.rstrip("/"),
+            "ANTHROPIC_AUTH_TOKEN": codex_gateway_token,
+            "ANTHROPIC_API_KEY": "",
+            "CLAUDE_CODE_OAUTH_TOKEN": "",
+            "CLAUDE_CODE_REFRESH_TOKEN": "",
+            "NO_PROXY": no_proxy,
+            "no_proxy": no_proxy,
+        }
+
     # Transports that don't run the SDK at all (currently: ``local`` —
     # Ollama et al. don't implement Anthropic's wire protocol) must not
     # reach this builder. The processor downgrades extended_thinking →
     # fast for those transports, so an entry here indicates a bug
     # upstream.  Fail loudly rather than constructing a doomed env.
-    if not config.transport.supports_sdk:
+    elif not config.transport.supports_sdk:
         raise RuntimeError(
             f"build_sdk_env() called under transport "
             f"{config.transport.name!r}, which doesn't support the SDK. "
@@ -62,7 +112,7 @@ def build_sdk_env(
         )
 
     # --- Mode 1: Claude Code subscription auth ---
-    if config.use_claude_code_subscription:
+    elif config.use_claude_code_subscription:
         validate_subscription()
         env: dict[str, str] = {
             "ANTHROPIC_API_KEY": "",

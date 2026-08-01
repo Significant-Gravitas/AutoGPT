@@ -56,6 +56,27 @@ def test_subscription_none_effort_omits_model_specific_reasoning_value():
     assert _app_server_effort(CodexReasoningEffort.HIGH) == "high"
 
 
+def test_openai_api_costs_are_model_specific():
+    assert (
+        CodeGenerationBlock._compute_token_usd(
+            CodexModel.GPT5_1_CODEX, 1_000_000, 1_000_000
+        )
+        == 11.25
+    )
+    assert (
+        CodeGenerationBlock._compute_token_usd(
+            CodexModel.GPT5_3_CODEX, 1_000_000, 1_000_000
+        )
+        == 15.75
+    )
+    assert (
+        CodeGenerationBlock._compute_token_usd(
+            CodexModel.GPT5_6_TERRA, 1_000_000, 1_000_000
+        )
+        == 17.5
+    )
+
+
 @pytest.mark.asyncio
 async def test_openai_api_transport_preserves_existing_call_path():
     block = CodeGenerationBlock()
@@ -110,6 +131,7 @@ async def test_codex_app_server_uses_existing_lease_and_records_non_usd_usage():
             final_response="implemented",
             reasoning_summary="used the transport",
             status="completed",
+            resolved_model="gpt-5.6-sol",
             usage=CodexTokenUsage(
                 input_tokens=100,
                 cached_input_tokens=25,
@@ -161,7 +183,7 @@ async def test_codex_app_server_uses_existing_lease_and_records_non_usd_usage():
     assert block.execution_stats.provider_cost_type == "tokens"
     assert block.execution_stats.billing_mode == "user_subscription"
     assert block.execution_stats.execution_path == "codex_app_server"
-    assert block.execution_stats.resolved_model is None
+    assert block.execution_stats.resolved_model == "gpt-5.6-sol"
 
 
 @pytest.mark.asyncio

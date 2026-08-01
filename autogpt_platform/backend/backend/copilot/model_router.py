@@ -43,15 +43,19 @@ payload, or LD failure all fall through to the next layer.
 from __future__ import annotations
 
 import logging
-from typing import Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 import sentry_sdk
 
 import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
+from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
+
+if TYPE_CHECKING:
+    from backend.integrations.credential_lease import CredentialLease
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -61,13 +65,41 @@ ModelTier = Literal["standard", "advanced"]
 # "fallback" is stamped (never resolved): it marks turns where the CLI's
 # 529-overload fallback served a different model than the routed one.
 RoutingSource = Literal["ld", "catalog", "env", "fallback"]
+CodexRoutingSource = Literal[
+    "catalog",
+    "preferred",
+    "account_default",
+    "account_available",
+]
 
 ROUTE_SURFACE_COPILOT = "copilot"
+ROUTE_SURFACE_CODEX = "copilot_codex"
 
 
 class ResolvedModel(NamedTuple):
     model: str
     source: RoutingSource
+
+
+class ResolvedCodexModel(NamedTuple):
+    model: str
+    effort: CodexReasoningEffort | None
+    source: CodexRoutingSource
+
+
+_CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
+    ("fast", "standard"): LLMModel.GPT5_6_LUNA.value,
+    ("fast", "advanced"): LLMModel.GPT5_6_TERRA.value,
+    ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
+    ("thinking", "advanced"): LLMModel.GPT5_6_SOL.value,
+}
+
+_CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort] = {
+    ("fast", "standard"): "low",
+    ("fast", "advanced"): "medium",
+    ("thinking", "standard"): "high",
+    ("thinking", "advanced"): "xhigh",
+}
 
 
 def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
@@ -293,3 +325,108 @@ async def resolve_model_route(
         return ResolvedModel(cell_slug, "catalog")
 
     return await _env_floor(config, mode, tier)
+
+
+async def resolve_codex_model_route(
+    mode: ModelMode,
+    tier: ModelTier,
+    credential_lease: "CredentialLease",
+    config: ChatConfig,
+) -> ResolvedCodexModel:
+    """Resolve a Codex model against both the catalog and the account."""
+    del config
+    from backend.integrations.codex.transport import get_codex_transport
+
+    advertised = await get_codex_transport().models(credential_lease)
+    by_slug = {model.model: model for model in advertised}
+
+    catalog_slug = llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier)
+    if catalog_slug:
+        model = by_slug.get(catalog_slug)
+        if model is not None and _codex_catalog_allows(catalog_slug):
+            return ResolvedCodexModel(
+                model.model,
+                _codex_effort(model, mode, tier),
+                "catalog",
+            )
+        logger.warning(
+            "[model_router] Codex catalog route %r is disabled or unavailable "
+            "for this account; falling through for (%s, %s)",
+            catalog_slug,
+            mode,
+            tier,
+        )
+
+    preferred_slug = _CODEX_PREFERRED_MODELS[(mode, tier)]
+    preferred = by_slug.get(preferred_slug)
+    if preferred is not None and _codex_catalog_allows(preferred_slug):
+        return ResolvedCodexModel(
+            preferred.model,
+            _codex_effort(preferred, mode, tier),
+            "preferred",
+        )
+
+    account_default = next(
+        (
+            model
+            for model in advertised
+            if model.is_default
+            and not model.hidden
+            and _codex_account_fallback_allowed(model.model)
+        ),
+        None,
+    )
+    if account_default is not None:
+        return ResolvedCodexModel(
+            account_default.model,
+            _codex_effort(account_default, mode, tier),
+            "account_default",
+        )
+
+    account_available = next(
+        (
+            model
+            for model in advertised
+            if not model.hidden and _codex_account_fallback_allowed(model.model)
+        ),
+        None,
+    )
+    if account_available is not None:
+        return ResolvedCodexModel(
+            account_available.model,
+            _codex_effort(account_available, mode, tier),
+            "account_available",
+        )
+
+    raise RuntimeError("codex_model_unavailable")
+
+
+def _codex_catalog_allows(slug: str) -> bool:
+    if not llm_registry.has_models():
+        return True
+    model = _catalog_lookup(slug)
+    return bool(
+        model is not None and model.is_enabled and model.metadata.provider == "openai"
+    )
+
+
+def _codex_account_fallback_allowed(slug: str) -> bool:
+    if not llm_registry.has_models():
+        return True
+    model = _catalog_lookup(slug)
+    if model is None:
+        return True
+    return model.is_enabled and model.metadata.provider == "openai"
+
+
+def _codex_effort(
+    model: CodexModelInfo,
+    mode: ModelMode,
+    tier: ModelTier,
+) -> CodexReasoningEffort | None:
+    preferred = _CODEX_PREFERRED_EFFORTS[(mode, tier)]
+    if preferred in model.supported_reasoning_efforts:
+        return preferred
+    if model.default_reasoning_effort in model.supported_reasoning_efforts:
+        return model.default_reasoning_effort
+    return None

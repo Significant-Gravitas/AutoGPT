@@ -21,18 +21,85 @@ from .service import (
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
+    _close_codex_gateway_for_finally,
     _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _normalize_model_name,
     _prepare_file_attachments,
+    _redact_cli_stderr,
+    _raise_deferred_codex_cleanup_error,
     _resolve_dynamic_max_budget_usd,
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
     _strip_synthetic_reprompt_from_cli_jsonl,
 )
+
+
+class TestCliStderrRedaction:
+    def test_redacts_capability_even_without_header_label(self):
+        capability = "private-loopback-capability"
+
+        result = _redact_cli_stderr(
+            f"gateway request failed for {capability}", secrets=(capability,)
+        )
+
+        assert capability not in result
+        assert result == "gateway request failed for [REDACTED]"
+
+    def test_redacts_labeled_capability_once(self):
+        capability = "private-loopback-capability"
+
+        result = _redact_cli_stderr(
+            f"Authorization: Bearer {capability}", secrets=(capability,)
+        )
+
+        assert result == "Authorization: [REDACTED]"
+
+    @pytest.mark.parametrize(
+        ("line", "secret"),
+        [
+            ("Authorization: Bearer secret-one", "secret-one"),
+            ('{"Authorization":"Bearer secret-two"}', "secret-two"),
+            ("proxy-authorization=Basic secret-three", "secret-three"),
+            ("ANTHROPIC_AUTH_TOKEN=secret-four", "secret-four"),
+            ("x-api-key: secret-five", "secret-five"),
+        ],
+    )
+    def test_redacts_authorization_shaped_values(self, line, secret):
+        result = _redact_cli_stderr(line)
+
+        assert secret not in result
+        assert "[REDACTED]" in result
+
+    def test_preserves_unrelated_stderr(self):
+        line = "fallback model activated after an overload"
+
+        assert _redact_cli_stderr(line) == line
+
+
+class TestCodexGatewayCleanup:
+    @pytest.mark.asyncio
+    async def test_returns_checkpoint_failure_for_deferred_raise(self):
+        failure = RuntimeError("credential checkpoint failed")
+        gateway = SimpleNamespace(close=AsyncMock(side_effect=failure))
+
+        result = await _close_codex_gateway_for_finally(gateway, "[test]")
+
+        assert result is failure
+        gateway.close.assert_awaited_once()
+
+    def test_deferred_failure_propagates_with_turn_error_as_cause(self):
+        turn_error = ValueError("turn failed")
+        cleanup_error = RuntimeError("credential checkpoint failed")
+
+        with pytest.raises(RuntimeError, match="checkpoint failed") as raised:
+            _raise_deferred_codex_cleanup_error(cleanup_error, turn_error)
+
+        assert raised.value is cleanup_error
+        assert raised.value.__cause__ is turn_error
 
 
 @dataclass

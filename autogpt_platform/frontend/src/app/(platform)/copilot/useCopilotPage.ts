@@ -40,8 +40,7 @@ export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
 
-  const { copilotChatMode, copilotLlmModel, copilotLlmAuth, isDryRun } =
-    useCopilotUIStore();
+  const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
 
   const {
     sessionId,
@@ -64,10 +63,6 @@ export function useCopilotPage() {
 
   const isSessionLlmRouteResolved =
     !sessionId || sessionLlmAuthProvider !== null;
-  const isCodexRoute = sessionId
-    ? sessionLlmAuthProvider === "codex"
-    : copilotLlmAuth.authProvider === "codex";
-
   const {
     messages: currentMessages,
     setMessages,
@@ -86,16 +81,8 @@ export function useCopilotPage() {
     hydratedMessages,
     hasActiveStream,
     refetchSession,
-    copilotMode: isModeToggleEnabled
-      ? isCodexRoute
-        ? "fast"
-        : copilotChatMode
-      : undefined,
-    copilotModel: isModeToggleEnabled
-      ? isCodexRoute
-        ? "standard"
-        : copilotLlmModel
-      : undefined,
+    copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
+    copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
 
   const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =

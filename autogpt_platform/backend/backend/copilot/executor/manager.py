@@ -633,14 +633,13 @@ def _dispatch_engine_switch_continuation(
     history, so the user's next message still lands on the SDK engine with
     the guide in the prefix.
     """
+
     async def dispatch() -> None:
         from backend.copilot.model import get_chat_session
 
         session = await get_chat_session(session_id, switch.user_id)
         if session is None:
             raise RuntimeError("copilot_session_not_found")
-        if session.metadata.llm_auth_provider == "codex":
-            raise RuntimeError("codex_extended_thinking_unsupported")
         await schedule_turn(
             session_id=session_id,
             user_id=switch.user_id,

@@ -44,6 +44,8 @@ from pydantic import BaseModel
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
+from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
@@ -63,7 +65,12 @@ from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
-from ..model_router import ResolvedModel, RoutingSource, resolve_model_route
+from ..model_router import (
+    CodexRoutingSource,
+    ResolvedModel,
+    RoutingSource,
+    resolve_model_route,
+)
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
     override_cost_usd as _override_cost_for_moonshot,
@@ -2073,6 +2080,16 @@ async def _resolve_sdk_model_for_request(
     return sdk_model, resolved.source
 
 
+def _codex_gateway_usage(gateway: Any) -> CodexTokenUsage | None:
+    """Read authoritative aggregate usage from a completed Codex gateway."""
+    usage = getattr(gateway, "usage", None)
+    if isinstance(usage, CodexTokenUsage):
+        return usage
+    result = getattr(gateway, "result", None)
+    result_usage = getattr(result, "usage", None)
+    return result_usage if isinstance(result_usage, CodexTokenUsage) else None
+
+
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
 
 
@@ -2153,6 +2170,54 @@ def _is_fallback_stderr(line: str) -> bool:
     without wiring up the full ``_on_stderr`` closure.
     """
     return "fallback model" in line.lower()
+
+
+_CLI_STDERR_AUTH_RE = re.compile(
+    r"(?i)(?P<prefix>\b(?:authorization|proxy-authorization|x-api-key|"
+    r"anthropic[_-]auth[_-]token)\b[\"']?\s*[:=]\s*[\"']?)"
+    r"(?:(?:bearer|basic)\s+)?[^,\s;\"'}\]]+"
+)
+
+
+def _redact_cli_stderr(line: str, *, secrets: tuple[str, ...] = ()) -> str:
+    """Remove known capabilities and authorization values from CLI logs."""
+    redacted = _CLI_STDERR_AUTH_RE.sub(r"\g<prefix>[REDACTED]", line)
+    for secret in secrets:
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
+
+
+async def _close_codex_gateway_for_finally(
+    gateway: Any,
+    log_prefix: str,
+) -> BaseException | None:
+    """Finish gateway checkpointing and return any error for deferred raising."""
+    close_task = asyncio.create_task(gateway.close())
+    try:
+        await asyncio.shield(close_task)
+    except asyncio.CancelledError as cancellation:
+        try:
+            await close_task
+        except BaseException as cleanup_error:
+            logger.exception("%s Codex gateway cleanup failed", log_prefix)
+            return cleanup_error
+        return cancellation
+    except Exception as cleanup_error:
+        logger.exception("%s Codex gateway cleanup failed", log_prefix)
+        return cleanup_error
+    return None
+
+
+def _raise_deferred_codex_cleanup_error(
+    cleanup_error: BaseException | None,
+    turn_error: BaseException | None,
+) -> None:
+    if cleanup_error is None:
+        return
+    if turn_error is not None and turn_error is not cleanup_error:
+        raise cleanup_error from turn_error
+    raise cleanup_error
 
 
 def _build_system_prompt_value(
@@ -3921,6 +3986,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
+    credential_lease: CredentialLease | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -3956,7 +4022,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Stamping state for THIS turn: messages beyond this index were created
     # by the current turn and get model/routing_source at persist time.
     # Pre-feature history rows (NULL model) must never be back-stamped.
-    routing_source: RoutingSource = "env"
+    routing_source: RoutingSource | CodexRoutingSource = "env"
 
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
@@ -4116,6 +4182,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
+    codex_effort: CodexReasoningEffort | None = None
+    codex_gateway: Any = None
+    deferred_codex_cleanup_error: BaseException | None = None
+    is_codex_transport = credential_lease is not None
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
     # files created during THIS turn contribute gen-IDs.  Without this
@@ -4232,7 +4302,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        if mode == "fast":
+        if mode == "fast" and not is_codex_transport:
             # The request asked for Fast but this turn runs on the SDK
             # engine (building-mode pin or engine-switch continuation).
             # Tell stale pickers — a client that missed the original
@@ -4247,7 +4317,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             permissions=permissions,
         )
 
-        if not config.api_key and not config.use_claude_code_subscription:
+        if (
+            not is_codex_transport
+            and not config.api_key
+            and not config.use_claude_code_subscription
+        ):
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
                 "CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
@@ -4282,10 +4356,32 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Resolve model (request tier → LD per-user override → config default).
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
-        sdk_model, routing_source = await _resolve_sdk_model_for_request(
-            model, session_id, user_id
-        )
-        fallback_model = _resolve_fallback_model()
+        if credential_lease is not None:
+            from ..model_router import resolve_codex_model_route
+            from .codex_compat_gateway import CodexAnthropicGateway
+
+            tier_name: CopilotLLMModel = (
+                "advanced" if model == "advanced" else "standard"
+            )
+            route_mode = "fast" if mode == "fast" else "thinking"
+            sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
+                route_mode,
+                tier_name,
+                credential_lease,
+                config=config,
+            )
+            codex_gateway = CodexAnthropicGateway(
+                credential_lease=credential_lease,
+                model=sdk_model,
+                effort=codex_effort,
+            )
+            await codex_gateway.start()
+            fallback_model = None
+        else:
+            sdk_model, routing_source = await _resolve_sdk_model_for_request(
+                model, session_id, user_id
+            )
+            fallback_model = _resolve_fallback_model()
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
@@ -4294,6 +4390,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id=user_id,
             sdk_cwd=sdk_cwd,
             model=_resolve_env_model(sdk_model, fallback_model),
+            codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
+            codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -4320,7 +4418,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             """Log a stderr line emitted by the Claude CLI subprocess."""
             nonlocal fallback_model_activated_per_attempt
             sid = session_id[:12] if session_id else "?"
-            logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
+            capability = codex_gateway.auth_token if codex_gateway is not None else ""
+            safe_line = _redact_cli_stderr(line, secrets=(capability,))
+            logger.info("[SDK] [%s] CLI stderr: %s", sid, safe_line.rstrip())
             # Detect SDK fallback-model activation via the module-level pure
             # helper so the detection logic can be unit-tested independently.
             # Sets the per-attempt flag which is preserved across transient
@@ -4355,27 +4455,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             cwd=sdk_cwd,
             max_buffer_size=config.claude_agent_max_buffer_size,
             stderr=_on_stderr,
-            # --- P0 guardrails ---
-            # fallback_model: SDK auto-retries with this cheaper model on
-            # 529 (overloaded) errors, avoiding user-visible failures.
-            fallback_model=fallback_model,
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
             max_turns=config.agent_max_turns,
-            # max_budget_usd: per-query spend ceiling enforced by the CLI.
-            # Sized to the smaller of the configured per-query default and
-            # the user's *actual* remaining daily/weekly USD cap so the
-            # CLI's "wrap up gracefully" reminder fires when they're close
-            # to the real limit, not the static $10 default.
-            max_budget_usd=await _resolve_dynamic_max_budget_usd(user_id),
-            # thinking: specify extended thinking mode. Thinking tokens are
-            # billed at output rate ($75/M for Opus) and account for ~54%
-            # of total cost.  The CLI silently ignores this field for
-            # models without native extended thinking, so it is safe to
-            # pass unconditionally.
-            # NOTE: Claude 4.7+ does not support capped thinking token
-            # budget: use `effort` instead to steer thinking effort.
-            thinking={"type": "adaptive"},
             # effort: applies to models with extended thinking (Sonnet,
             # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
             # extension (#12871).
@@ -4385,11 +4467,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 else (config.claude_agent_thinking_effort or "high")
             ),
         )
-        # max_thinking_tokens: legacy cost cap retained for non-4.7 models
-        # and Kimi K2.6.  Setting to 0 acts as the kill switch (same as
-        # baseline): omit the kwarg so the CLI falls back to its default.
-        if config.claude_agent_max_thinking_tokens > 0:
-            sdk_options.max_thinking_tokens = config.claude_agent_max_thinking_tokens
+        if not is_codex_transport:
+            # The Claude/OpenRouter paths use provider-USD controls. A Codex
+            # subscription consumes the connected account's allowance, so
+            # presenting a fabricated USD ceiling or provider fallback to the
+            # CLI would produce incorrect policy and accounting behavior.
+            sdk_options.fallback_model = fallback_model
+            sdk_options.max_budget_usd = await _resolve_dynamic_max_budget_usd(user_id)
+            sdk_options.thinking = {"type": "adaptive"}
+            if config.claude_agent_max_thinking_tokens > 0:
+                sdk_options.max_thinking_tokens = (
+                    config.claude_agent_max_thinking_tokens
+                )
         if sdk_model:
             sdk_options.model = sdk_model
         if config.sdk_include_partial_messages:
@@ -5173,10 +5262,28 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         raise
     finally:
+        turn_error = sys.exception()
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
         # nothing to clean up here — any message pushed after that
         # point belongs to the next turn.
+
+        if codex_gateway is not None:
+            deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
+                codex_gateway,
+                log_prefix,
+            )
+
+            turn_cost_usd = None
+            codex_usage = _codex_gateway_usage(codex_gateway)
+            if codex_usage is not None:
+                turn_prompt_tokens = max(
+                    0, codex_usage.input_tokens - codex_usage.cached_input_tokens
+                )
+                turn_completion_tokens = codex_usage.output_tokens
+                turn_cache_read_tokens = codex_usage.cached_input_tokens
+                turn_cache_creation_tokens = 0
+                turn_cost_usd = None
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,
@@ -5232,7 +5339,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             list(state.generation_ids) if state is not None else []
         )
         _use_openrouter_reconcile = bool(
-            config.openrouter_active
+            not is_codex_transport
+            and config.openrouter_active
             and config.sdk_reconcile_openrouter_cost
             and collected_gen_ids
         )
@@ -5251,7 +5359,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 encode_cwd_for_cli(sdk_cwd),
             )
 
-        if _use_openrouter_reconcile:
+        if is_codex_transport:
+            await persist_and_record_usage(
+                session=session,
+                user_id=user_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=0,
+                log_prefix=log_prefix,
+                cost_usd=None,
+                model=effective_model,
+                provider="codex",
+                credential_id_override=(
+                    credential_lease.credentials.id if credential_lease else None
+                ),
+                extra_metadata={"billing_mode": "user_subscription"},
+                execution_path="codex_claude_sdk",
+            )
+        elif _use_openrouter_reconcile:
             # Defer the single cost-and-rate-limit write to a background
             # task that queries OpenRouter's authoritative
             # ``/generation?id=`` for every round in this turn.  Covers
@@ -5494,6 +5620,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # Release stream lock to allow new streams for this session
             await lock.release()
 
+        _raise_deferred_codex_cleanup_error(
+            deferred_codex_cleanup_error,
+            turn_error,
+        )
+
     # -------------------------------------------------------------------------
     # Auto-continue: drain any messages the user queued AFTER the turn-start
     # drain window and process them as a new turn automatically.
@@ -5550,10 +5681,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     message=_auto_combined,
                     is_user_message=True,
                     user_id=user_id,
+                    session=session,
                     file_ids=None,
                     permissions=permissions,
                     mode=mode,
                     model=model,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                    credential_lease=credential_lease,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False
@@ -5623,7 +5758,7 @@ def _stamp_turn_messages(
     start_index: int,
     requested_model: str | None,
     actual_model: str | None,
-    routing_source: RoutingSource,
+    routing_source: RoutingSource | CodexRoutingSource,
 ) -> None:
     """Stamp THIS turn's assistant messages with the serving model and
     routing layer.
