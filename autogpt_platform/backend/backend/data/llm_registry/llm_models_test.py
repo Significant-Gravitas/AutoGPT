@@ -58,6 +58,34 @@ def test_default_model_survives_killing_the_recommended_entry(monkeypatch):
     assert not any(m.is_recommended and m.is_enabled for m in killed.models)
 
 
+def test_default_model_skips_non_ga_recommended(monkeypatch):
+    """The default is offered to every user and must be picker-selectable,
+    so it clears the same GA bar as _PICKER_HIDDEN_SLUGS. A model flagged
+    is_recommended but demoted below GA must NOT win the default — otherwise
+    the default would be a model the picker hides."""
+    from backend.data.llm_registry.catalog import get_catalog
+
+    payload = get_catalog()
+    rec_slug = next(m.slug for m in payload.models if m.is_recommended)
+    demoted = payload.model_copy(
+        update={
+            "models": [
+                (
+                    m.model_copy(update={"visibility": "EMPLOYEES"})
+                    if m.is_recommended
+                    else m
+                )
+                for m in payload.models
+            ]
+        }
+    )
+    monkeypatch.setattr(llm_models, "get_catalog", lambda: demoted)
+    default = llm_models._default_model_from_catalog()
+    assert default.value != rec_slug  # non-GA recommendation skipped
+    chosen = next(m for m in demoted.models if m.slug == default.value)
+    assert chosen.is_enabled and chosen.visibility == "GA"  # picker-selectable
+
+
 def test_non_ga_model_hidden_from_picker_metadata(monkeypatch):
     """visibility != GA drops a model from picker metadata (the catalog's
     documented "who can SEE this" contract) while the enum value stays
@@ -111,3 +139,34 @@ def test_picker_hidden_derivation_from_catalog_payload():
     assert ga.slug not in hidden
     assert others[0].slug in hidden
     assert others[1].slug in hidden
+
+
+def test_non_ga_model_flows_through_derivation_to_hidden_picker(monkeypatch):
+    """End-to-end (not a patched frozenset): a real model marked non-GA lands
+    in the DERIVED hidden set and is therefore absent from picker metadata —
+    chaining _picker_hidden_slugs -> _PICKER_HIDDEN_SLUGS -> schema so an
+    inverted or dropped visibility check would fail here, not just in the
+    isolated derivation test above."""
+    from backend.data.llm_registry.catalog import get_catalog
+    from backend.data.llm_registry.llm_models import _picker_hidden_slugs
+
+    victim = LLMModel.GPT5_2
+    payload = get_catalog()
+    modified = payload.model_copy(
+        update={
+            "models": [
+                (
+                    m.model_copy(update={"visibility": "EMPLOYEES"})
+                    if m.slug == victim.value
+                    else m
+                )
+                for m in payload.models
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        llm_models, "_PICKER_HIDDEN_SLUGS", _picker_hidden_slugs(modified)
+    )
+    metadata = _schema_metadata()
+    assert victim.value not in metadata  # non-GA -> hidden, via real derivation
+    assert LLMModel(victim.value) is victim  # enum identity unaffected

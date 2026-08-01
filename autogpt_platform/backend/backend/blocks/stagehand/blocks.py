@@ -27,10 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 class StagehandRecommendedLLMModel(str, Enum):
-    """
-    This is subset of LLModel from autogpt_platform/backend/backend/blocks/llm.py
-
-    It contains only the models recommended by Stagehand
+    """A subset of ``LLMModel`` (canonical home:
+    ``backend/data/llm_registry/llm_models.py``, re-exported from
+    ``blocks/llm.py``) containing only the models recommended by Stagehand.
     """
 
     # OpenAI
