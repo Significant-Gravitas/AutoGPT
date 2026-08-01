@@ -1,11 +1,14 @@
 import logging
 import os
 import uuid
+from pathlib import Path
 
+import aiofiles
 import fastapi
 from gcloud.aio import storage as async_storage
 
-from backend.util.exceptions import MissingConfigError
+from backend.util.data import get_data_path
+from backend.util.file import sanitize_filename
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
@@ -16,6 +19,56 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+
+def _get_local_media_dir() -> Path:
+    """Base directory for storing marketplace media when GCS is not configured
+    (e.g. self-hosted deployments without a GCS bucket)."""
+    base_dir = Path(get_data_path()) / "store_media"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return base_dir
+
+
+def get_local_media_path(user_id: str, media_type: str, filename: str) -> Path:
+    """Resolve the on-disk path for a piece of local marketplace media,
+    guarding against path traversal via the user_id/filename components."""
+    base_dir = _get_local_media_dir()
+    safe_user_id = sanitize_filename(user_id)
+    safe_filename = sanitize_filename(filename)
+    file_path = (
+        base_dir / "users" / safe_user_id / media_type / safe_filename
+    ).resolve()
+
+    if not file_path.is_relative_to(base_dir.resolve()):
+        raise ValueError("Invalid media path: path traversal detected")
+
+    return file_path
+
+
+def _local_media_url(user_id: str, media_type: str, filename: str) -> str:
+    safe_user_id = sanitize_filename(user_id)
+    safe_filename = sanitize_filename(filename)
+    return f"/api/store/media/{safe_user_id}/{media_type}/{safe_filename}"
+
+
+def _check_media_exists_locally(user_id: str, filename: str) -> str | None:
+    for media_type in ("images", "videos"):
+        if get_local_media_path(user_id, media_type, filename).is_file():
+            return _local_media_url(user_id, media_type, filename)
+    return None
+
+
+async def _store_media_locally(
+    user_id: str, media_type: str, filename: str, content: bytes
+) -> str:
+    file_path = get_local_media_path(user_id, media_type, filename)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(content)
+
+    logger.info(f"Successfully uploaded file to local storage: {file_path}")
+    return _local_media_url(user_id, media_type, filename)
 
 
 async def check_media_exists(user_id: str, filename: str) -> str | None:
@@ -32,7 +85,7 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     """
     settings = Settings()
     if not settings.config.media_gcs_bucket_name:
-        raise MissingConfigError("GCS media bucket is not configured")
+        return _check_media_exists_locally(user_id, filename)
 
     async with async_storage.Storage() as async_client:
         bucket_name = settings.config.media_gcs_bucket_name
@@ -113,13 +166,7 @@ async def upload_media(
             raise store_exceptions.InvalidFileTypeError("Invalid video file signature")
 
     settings = Settings()
-
-    # Check required settings first before doing any file processing
-    if not settings.config.media_gcs_bucket_name:
-        logger.error("Missing GCS bucket name setting")
-        raise store_exceptions.StorageConfigError(
-            "Missing storage bucket configuration"
-        )
+    use_local_storage = not settings.config.media_gcs_bucket_name
 
     try:
         # Validate file type
@@ -167,14 +214,20 @@ async def upload_media(
 
         # Construct storage path
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
+
+        file_bytes = await file.read()
+        await scan_content_safe(file_bytes, filename=unique_filename)
+
+        if use_local_storage:
+            return await _store_media_locally(
+                user_id, media_type, unique_filename, file_bytes
+            )
+
         storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
 
         try:
             async with async_storage.Storage() as async_client:
                 bucket_name = settings.config.media_gcs_bucket_name
-
-                file_bytes = await file.read()
-                await scan_content_safe(file_bytes, filename=unique_filename)
 
                 # Upload using pure async client
                 await async_client.upload(
