@@ -1,12 +1,13 @@
 "use client";
 
-import { useTallyPopup } from "@/components/molecules/TallyPoup/useTallyPopup";
+import { useTallyPopupContext } from "@/components/molecules/TallyPoup/TallyPopup";
 import { ChatCircleDotsIcon } from "@phosphor-icons/react";
 
 export function FeedbackButton() {
-  const { state } = useTallyPopup();
+  const popup = useTallyPopupContext();
 
-  if (state.isFormVisible) return null;
+  if (!popup?.enabled || popup.state.isFormVisible) return null;
+  const { state } = popup;
 
   return (
     <button

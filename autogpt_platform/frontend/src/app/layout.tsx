@@ -7,7 +7,7 @@ import "./globals.css";
 import { Providers } from "@/app/providers";
 import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
 import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
-import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
+import { TallyPopupProvider } from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
@@ -18,6 +18,12 @@ import { headers } from "next/headers";
 
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
+const telemetryEnabled =
+  !isLocal || process.env.AUTOGPT_TELEMETRY_ENABLED === "true";
+const feedbackEnabled =
+  !isLocal || process.env.AUTOGPT_FEEDBACK_ENABLED === "true";
+const developerUiEnabled =
+  isDev || process.env.AUTOGPT_DEVELOPER_UI_ENABLED === "true";
 
 const faviconPath = isDev
   ? "/favicon-dev.ico"
@@ -58,29 +64,34 @@ export default async function RootLayout({
             // enableSystem
             disableTransitionOnChange
           >
-            <SetupAnalytics
-              host={host}
-              ga={{
-                gaId:
-                  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
-              }}
-            />
-            <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
-              {children}
-              <TallyPopupSimple />
-              <VercelAnalyticsWrapper />
+            <TallyPopupProvider enabled={feedbackEnabled}>
+              <SetupAnalytics
+                enabled={telemetryEnabled}
+                host={host}
+                ga={{
+                  gaId:
+                    process.env.AUTOGPT_GA_MEASUREMENT_ID ||
+                    process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ||
+                    "G-FH2XK2W4GN",
+                }}
+              />
+              <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
+                {children}
+                <VercelAnalyticsWrapper enabled={telemetryEnabled} />
 
-              {/* React Query DevTools is only available in development */}
-              {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
-                <ReactQueryDevtools
-                  initialIsOpen={false}
-                  buttonPosition={"bottom-left"}
-                />
-              )}
-            </div>
-            <Toaster />
-            <CookieConsentBanner />
-            {(isLocal || isDev) && <AgentationDevtool />}
+                {/* React Query DevTools is only available in development */}
+                {developerUiEnabled &&
+                  process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL === "true" && (
+                    <ReactQueryDevtools
+                      initialIsOpen={false}
+                      buttonPosition={"bottom-left"}
+                    />
+                  )}
+              </div>
+              <Toaster />
+              <CookieConsentBanner />
+              {developerUiEnabled && <AgentationDevtool />}
+            </TallyPopupProvider>
           </Providers>
         </ErrorBoundary>
       </body>
