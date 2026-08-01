@@ -6,7 +6,7 @@
 
 * [Setting Up Auto-GPT (Local Host)](getting-started.md)
 * [AutoGPT Platform Installer](installer.md)
-* [Single-container Image (Experimental)](single-container.md)
+* [Run AutoGPT in one container (Experimental)](single-container.md)
 * [Edit an Agent](edit-agent.md)
 * [Delete an Agent](delete-agent.md)
 * [Download & Import an Agent](download-agent-from-marketplace-local.md)
