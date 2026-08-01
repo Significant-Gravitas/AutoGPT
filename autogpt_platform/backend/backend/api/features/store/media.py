@@ -1,5 +1,4 @@
 import logging
-import os
 import uuid
 from pathlib import Path
 
@@ -19,6 +18,20 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+# Extension used for stored files, keyed by the *validated* content type (see
+# the signature checks in upload_media). Never derive the stored extension
+# from the client-supplied filename: FileResponse infers Content-Type from
+# it, so an untrusted extension (e.g. "payload.html") would let a validated
+# image/video be served back as HTML/script content on this origin.
+CONTENT_TYPE_EXTENSIONS = {
+    "image/jpeg": ".jpeg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+}
 
 
 def _get_local_media_dir() -> Path:
@@ -206,10 +219,10 @@ async def upload_media(
 
         # Generate unique filename
         filename = file.filename or ""
-        file_ext = os.path.splitext(filename)[1].lower()
         if use_file_name:
             unique_filename = filename
         else:
+            file_ext = CONTENT_TYPE_EXTENSIONS[content_type]
             unique_filename = f"{uuid.uuid4()}{file_ext}"
 
         # Construct storage path

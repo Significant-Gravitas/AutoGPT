@@ -225,6 +225,25 @@ async def test_upload_media_webm_success(mock_settings, mock_storage_client):
     assert result.endswith(".webm")
 
 
+async def test_upload_media_extension_matches_validated_content_type(
+    mock_settings, mock_storage_client
+):
+    # An attacker can send a validated image with an arbitrary client-supplied
+    # filename extension. The stored/served extension must come from the
+    # validated content type, not from the untrusted filename, otherwise the
+    # file could later be served back as e.g. HTML on this origin.
+    test_file = fastapi.UploadFile(
+        filename="payload.html",
+        file=io.BytesIO(b"GIF89a"),  # Valid GIF signature
+        headers=starlette.datastructures.Headers({"content-type": "image/gif"}),
+    )
+
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert result.endswith(".gif")
+    assert not result.endswith(".html")
+
+
 async def test_upload_media_mismatched_signature(mock_settings, mock_storage_client):
     test_file = fastapi.UploadFile(
         filename="test.jpeg",
