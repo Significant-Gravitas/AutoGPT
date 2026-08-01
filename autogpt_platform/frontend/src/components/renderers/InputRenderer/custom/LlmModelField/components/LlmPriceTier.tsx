@@ -1,7 +1,8 @@
+"use client";
+
 import { DollarSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-("use client");
 type Props = {
   tier?: number;
 };

@@ -1,7 +1,7 @@
+"use client";
+
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-
-("use client");
 
 interface Props {
   value: string;
