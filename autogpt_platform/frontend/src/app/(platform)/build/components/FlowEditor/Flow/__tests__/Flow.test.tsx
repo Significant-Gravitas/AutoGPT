@@ -33,10 +33,19 @@ vi.mock("../helpers/resolve-collision", () => ({
   resolveCollisions: (nodes: unknown) => nodes,
 }));
 
+const mockCapturedReactFlowProps: Record<string, unknown>[] = [];
+
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ children }: { children: ReactNode }) => (
-    <div data-testid="react-flow">{children}</div>
-  ),
+  ReactFlow: ({
+    children,
+    ...props
+  }: {
+    children: ReactNode;
+    [key: string]: unknown;
+  }) => {
+    mockCapturedReactFlowProps.push(props);
+    return <div data-testid="react-flow">{children}</div>;
+  },
   Background: () => <div data-testid="background" />,
   useReactFlow: () => ({ zoomIn: vi.fn(), zoomOut: vi.fn(), fitView: vi.fn() }),
 }));
@@ -173,5 +182,29 @@ describe("Flow read-only gating", () => {
 
     expect(screen.queryByTestId("read-only-banner")).not.toBeNull();
     expect(screen.queryByTestId("trigger-agent-banner")).toBeNull();
+  });
+});
+
+describe("Flow canvas re-render stability", () => {
+  beforeEach(() => {
+    mockIsReadOnly = false;
+    mockHasWebhookNodes = false;
+    mockCapturedReactFlowProps.length = 0;
+  });
+
+  test("deleteKeyCode and onNodeContextMenu keep a stable reference across re-renders", () => {
+    const { rerender } = render(<Flow />);
+    rerender(<Flow />);
+
+    expect(mockCapturedReactFlowProps.length).toBeGreaterThanOrEqual(2);
+    const [firstProps, secondProps] = mockCapturedReactFlowProps;
+
+    // A new array/function identity on every render forces React Flow's
+    // internal effects (e.g. the delete-key listener) to tear down and
+    // re-subscribe on every render, which is a real cause of jank while
+    // panning/zooming/dragging blocks since Flow re-renders on every
+    // node-position update.
+    expect(secondProps.deleteKeyCode).toBe(firstProps.deleteKeyCode);
+    expect(secondProps.onNodeContextMenu).toBe(firstProps.onNodeContextMenu);
   });
 });
