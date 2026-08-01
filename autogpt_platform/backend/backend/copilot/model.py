@@ -255,6 +255,8 @@ class ChatSessionInfo(BaseModel):
     team_id: str | None = None
     # Whether the user has pinned this session to the top of the sidebar.
     is_pinned: bool = False
+    # Hired expert this session is scoped to; None = plain Autopilot session.
+    expert_id: str | None = None
 
     @property
     def dry_run(self) -> bool:
@@ -307,6 +309,7 @@ class ChatSessionInfo(BaseModel):
             organization_id=prisma_session.organizationId,
             team_id=prisma_session.teamId,
             is_pinned=prisma_session.isPinned,
+            expert_id=prisma_session.expertId,
         )
 
 
@@ -362,6 +365,7 @@ class ChatSession(ChatSessionInfo):
         source_platform: str | None = None,
         organization_id: str | None = None,
         team_id: str | None = None,
+        expert_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
@@ -379,6 +383,7 @@ class ChatSession(ChatSessionInfo):
             ),
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
     @classmethod
@@ -1138,6 +1143,7 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1149,6 +1155,8 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
+        expert_id: Hired expert this session is scoped to. Ownership and
+            archived state must be validated by the caller.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1162,6 +1170,7 @@ async def create_chat_session(
         source_platform=source_platform,
         organization_id=organization_id,
         team_id=team_id,
+        expert_id=expert_id,
     )
 
     # Create in database first - fail fast if this fails
@@ -1172,6 +1181,7 @@ async def create_chat_session(
             organization_id=organization_id,
             team_id=team_id,
             metadata=session.metadata,
+            expert_id=expert_id,
         )
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")
@@ -1250,12 +1260,15 @@ async def get_user_sessions(
     offset: int = 0,
     organization_id: str | None = None,
     title_contains: str | None = None,
+    expert_id: str | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
     ``title_contains`` is a case-insensitive substring filter used by
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
+
+    ``expert_id`` restricts the listing to sessions scoped to that expert.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
@@ -1268,9 +1281,10 @@ async def get_user_sessions(
         offset,
         organization_id=organization_id,
         title_contains=title_contains,
+        expert_id=expert_id,
     )
     total_count = await db.get_user_session_count(
-        user_id, organization_id=organization_id
+        user_id, organization_id=organization_id, expert_id=expert_id
     )
 
     return sessions, total_count

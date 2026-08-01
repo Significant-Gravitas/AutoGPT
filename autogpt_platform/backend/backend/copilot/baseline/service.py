@@ -44,6 +44,7 @@ from backend.copilot.builder_context import (
 )
 from backend.copilot.config import CopilotLLMModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
@@ -1777,11 +1778,15 @@ async def stream_chat_completion_baseline(
     # the ~20KB guide warm for the whole session.  Empty string for
     # non-builder sessions keeps the cross-user cache hot.
     builder_session_suffix = await build_builder_system_prompt_suffix(session)
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id, session.expert_id
+    )
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
         + graphiti_supplement
         + builder_session_suffix
+        + expert_session_suffix
     )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
@@ -1878,6 +1883,7 @@ async def stream_chat_completion_baseline(
             session_ctx=session_ctx_content,
             skills_ctx=skills_ctx,
             user_id=user_id,
+            expert_id=session.expert_id,
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not
