@@ -3,7 +3,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator, Self, cast
+from typing import Any, AsyncIterator, Literal, Self, cast
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -34,6 +34,14 @@ from .config import ChatConfig
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+# The routing layer that picked a turn's model. Defined here — on the
+# persistence model, the lowest layer — so ChatMessage can type its
+# stamped column and model_router / the SDK service import the ONE
+# definition instead of re-declaring the Literal. ("fallback" is stamped,
+# never routed: it marks a CLI 529-overload fallback to a different model.)
+RoutingSource = Literal["ld", "catalog", "env", "fallback"]
 
 
 # Redis cache key prefix for chat sessions
@@ -117,7 +125,7 @@ class ChatMessage(BaseModel):
     # persists — the DB save path maps fields explicitly (not via
     # model_dump) and the back-fill reads attributes.
     model: str | None = None
-    routing_source: str | None = Field(default=None, exclude=True)
+    routing_source: RoutingSource | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
@@ -179,7 +187,9 @@ class ChatMessage(BaseModel):
             session_id=prisma_message.sessionId,
             metadata=_parse_json_field(prisma_message.metadata),
             model=prisma_message.model,
-            routing_source=prisma_message.routingSource,
+            # DB column is a plain string; the values are always ones we wrote
+            # (this PR owns the column) and Pydantic re-validates on construct.
+            routing_source=cast("RoutingSource | None", prisma_message.routingSource),
         )
 
 
