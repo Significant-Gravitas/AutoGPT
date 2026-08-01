@@ -1,0 +1,93 @@
+name: autogpt-platform-single-container
+
+services:
+  autogpt:
+    image: "${AUTOGPT_IMAGE:-autogpt-platform}:${AUTOGPT_TAG:-single-container-dev}"
+    build:
+      context: ..
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: single-container
+    restart: unless-stopped
+    # Supervisor stops priority groups in reverse order. Allow the application
+    # group and durable-service group to finish their own graceful timeouts.
+    stop_grace_period: 6m
+    ports:
+      - "${AUTOGPT_BIND_ADDRESS:-127.0.0.1}:${AUTOGPT_PORT:-3000}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Pass through additional block/provider settings without baking the
+    # development defaults into the image. Use --env-file as documented so
+    # explicitly interpolated values below see the same file.
+    env_file:
+      - path: single-container/.env
+        required: false
+    environment:
+      AUTOGPT_COMPOSE_ENV_LOADED: "${AUTOGPT_COMPOSE_ENV_LOADED:?copy .env.example to .env and pass it with docker compose --env-file}"
+      AUTOGPT_PUBLIC_URL: "${AUTOGPT_PUBLIC_URL:-http://localhost:3000}"
+      AUTOGPT_ENABLE_FALKORDB: "${AUTOGPT_ENABLE_FALKORDB:-true}"
+      AUTOGPT_ENABLE_CLAMAV: "${AUTOGPT_ENABLE_CLAMAV:-true}"
+      AUTOGPT_ENABLE_BOT_SERVICES: "${AUTOGPT_ENABLE_BOT_SERVICES:-false}"
+      AUTOGPT_ENABLE_LEGACY_AUTH: "${AUTOGPT_ENABLE_LEGACY_AUTH:-false}"
+      AUTH_REQUIRE_EMAIL_VERIFICATION: "${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}"
+      AUTH_ALLOW_NEW_ACCOUNTS: "${AUTH_ALLOW_NEW_ACCOUNTS:-true}"
+      AUTH_SIGNUP_ALLOWLIST: "${AUTH_SIGNUP_ALLOWLIST:-}"
+      # Self-hosted telemetry is opt-in. When enabled, the default destination
+      # is the AutoGPT project property unless a custom GA ID is supplied.
+      AUTOGPT_TELEMETRY_ENABLED: "${AUTOGPT_TELEMETRY_ENABLED:-false}"
+      AUTOGPT_GA_MEASUREMENT_ID: "${AUTOGPT_GA_MEASUREMENT_ID:-}"
+      AUTOGPT_FEEDBACK_ENABLED: "${AUTOGPT_FEEDBACK_ENABLED:-false}"
+      AUTOGPT_DEVELOPER_UI_ENABLED: "${AUTOGPT_DEVELOPER_UI_ENABLED:-false}"
+      # Bound each Python role's Prisma pool so the bundled roles collectively
+      # stay below PostgreSQL's connection ceiling on high-core hosts.
+      DB_CONNECTION_LIMIT: "${DB_CONNECTION_LIMIT:-5}"
+      DB_CONNECT_TIMEOUT: "${DB_CONNECT_TIMEOUT:-60}"
+      DB_POOL_TIMEOUT: "${DB_POOL_TIMEOUT:-300}"
+      VAPID_CLAIM_EMAIL: "${VAPID_CLAIM_EMAIL:-mailto:admin@localhost}"
+      OPEN_ROUTER_API_KEY: "${OPEN_ROUTER_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      CHAT_USE_LOCAL: "${CHAT_USE_LOCAL:-false}"
+      CHAT_BASE_URL: "${CHAT_BASE_URL:-}"
+      CHAT_API_KEY: "${CHAT_API_KEY:-}"
+      AUTH_GOOGLE_CLIENT_ID: "${AUTH_GOOGLE_CLIENT_ID:-}"
+      AUTH_GOOGLE_CLIENT_SECRET: "${AUTH_GOOGLE_CLIENT_SECRET:-}"
+      AUTH_GITHUB_CLIENT_ID: "${AUTH_GITHUB_CLIENT_ID:-}"
+      AUTH_GITHUB_CLIENT_SECRET: "${AUTH_GITHUB_CLIENT_SECRET:-}"
+      AUTH_DISCORD_CLIENT_ID: "${AUTH_DISCORD_CLIENT_ID:-}"
+      AUTH_DISCORD_CLIENT_SECRET: "${AUTH_DISCORD_CLIENT_SECRET:-}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
+      GOOGLE_APP_ID: "${GOOGLE_APP_ID:-}"
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID:-}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET:-}"
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
+      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
+      POSTMARK_SERVER_API_TOKEN: "${POSTMARK_SERVER_API_TOKEN:-}"
+      POSTMARK_SENDER_EMAIL: "${POSTMARK_SENDER_EMAIL:-}"
+      POSTMARK_WEBHOOK_TOKEN: "${POSTMARK_WEBHOOK_TOKEN:-}"
+      SUPABASE_JWT_SECRET: "${SUPABASE_JWT_SECRET:-}"
+      SUPABASE_BRIDGE_MAX_TOKEN_AGE_DAYS: "${SUPABASE_BRIDGE_MAX_TOKEN_AGE_DAYS:-30}"
+    volumes:
+      - autogpt-data:/data
+    shm_size: "${AUTOGPT_SHM_SIZE:-2gb}"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/autogpt-healthcheck"]
+      interval: 30s
+      timeout: 45s
+      retries: 10
+      start_period: 5m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  autogpt-data:
+    name: "${AUTOGPT_DATA_VOLUME:-autogpt-platform-data}"
