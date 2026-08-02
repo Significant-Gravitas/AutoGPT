@@ -85,12 +85,14 @@ async def finalize_voice_dump(
     )
     if not claimed:
         current = await db.get_dump(user_id)
-        if current is not None and current.recordingId == recording_id:
+        if current is not None:
+            # Either this take is already moving, or a newer one from a
+            # second tab owns the row. Neither is ours to process.
             return _pipeline_response(
                 current.status, current.transcript, BrainDumpInputMode.voice
             )
-        # No row at all, or a different take entirely. Fall through so the
-        # missing-audio path below produces the usual failure response.
+        # No row at all — nothing ever uploaded a part. Fall through so
+        # the missing-audio path below produces the usual failure.
 
     audio = await storage.assemble_parts(user_id, recording_id)
     if not audio:
@@ -201,11 +203,18 @@ async def finalize_typed_dump(
         transcript=text.strip(),
     )
     if not claimed:
+        # Losing the claim means another finalize owns the row — this
+        # take, or a newer one submitted from a second tab. Either way
+        # this request must not queue a second pipeline, so there is no
+        # falling through to the tasks below.
         current = await db.get_dump(user_id)
-        if current is not None and current.recordingId == recording_id:
-            return _pipeline_response(
-                current.status, current.transcript, BrainDumpInputMode.typed
+        if current is None:
+            return FinalizeResponse(
+                status=BrainDumpStatus.failed, input_mode=BrainDumpInputMode.typed
             )
+        return _pipeline_response(
+            current.status, current.transcript, BrainDumpInputMode.typed
+        )
 
     background_tasks.add_task(
         _run_completion, user_id, text.strip(), BrainDumpInputMode.typed

@@ -75,10 +75,14 @@ export function useBrainDumpStep() {
     });
   }, [recorder.permissionDenied]);
 
+  // Keyed on whether the mic has actually heard anything. It used to key
+  // on `!isSavedLocally`, which flips as soon as the first chunk is
+  // persisted — MediaRecorder produces one every timeslice whether or not
+  // the user spoke, so the nudge could never reach its own threshold.
   const showSilenceNudge =
     screen === "recording" &&
     recorder.elapsedSeconds >= SILENCE_NUDGE_SECONDS &&
-    !recorder.isSavedLocally;
+    !recorder.hasSpoken;
 
   async function handleStart() {
     const started = await recorder.start();

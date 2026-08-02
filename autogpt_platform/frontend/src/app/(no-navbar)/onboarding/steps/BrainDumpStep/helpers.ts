@@ -15,6 +15,10 @@ export const HARD_STOP_SECONDS = 1800;
 export const TIMESLICE_MS = 3000;
 
 export const SILENCE_NUDGE_SECONDS = 5;
+
+// Waveform peak (0-127 either side of the 128 midpoint) that counts as
+// somebody talking rather than a quiet room.
+export const SPEECH_PEAK_THRESHOLD = 12;
 export const SILENCE_NUDGE_COPY =
   "Start anywhere. What did you do yesterday that bored you?";
 

@@ -365,6 +365,55 @@ async def test_two_concurrent_typed_finalizes_only_queue_one_pipeline(
 
 
 @pytest.mark.asyncio
+async def test_a_typed_finalize_that_loses_the_claim_queues_nothing(
+    mocker: MockerFixture, dumps: DumpStore, extraction: dict[str, AsyncMock]
+):
+    """Losing the claim must not fall through to the background jobs.
+
+    The earlier version returned early only when the row still belonged
+    to this take; any other losing case carried on and queued a second
+    extraction and greeting on top of the winner's.
+    """
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.typed)
+    mocker.patch(
+        "backend.api.features.onboarding_dump.db.claim_transition",
+        new=AsyncMock(return_value=False),
+    )
+    tasks = BackgroundTasks()
+
+    response = await service.finalize_typed_dump(
+        USER_ID, RECORDING_ID, "I run a bakery.", tasks
+    )
+
+    assert tasks.tasks == []
+    assert response.input_mode == BrainDumpInputMode.typed
+    await tasks()
+    extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_voice_finalize_that_loses_the_claim_does_no_work(
+    mocker: MockerFixture,
+    dumps: DumpStore,
+    storage_mocks: dict[str, AsyncMock],
+    transcribe: AsyncMock,
+):
+    await start_voice_take(dumps)
+    mocker.patch(
+        "backend.api.features.onboarding_dump.db.claim_transition",
+        new=AsyncMock(return_value=False),
+    )
+
+    await service.finalize_voice_dump(
+        USER_ID, RECORDING_ID, 12.0, None, BackgroundTasks()
+    )
+
+    storage_mocks["assemble_parts"].assert_not_awaited()
+    storage_mocks["store_audio"].assert_not_awaited()
+    transcribe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_failed_extraction_still_preserves_the_transcript(
     dumps: DumpStore, extraction: dict[str, AsyncMock]
 ):

@@ -78,6 +78,27 @@ describe("useBrainDumpRecorder", () => {
     vi.unstubAllGlobals();
   });
 
+  // The regression: the silence nudge keyed off `isSavedLocally`, which
+  // flips as soon as the first chunk is persisted. MediaRecorder emits
+  // one every timeslice whether or not anybody spoke, so by the nudge's
+  // own 5s threshold the flag was always already true and the nudge
+  // could never appear.
+  it("does not report speech from a silent room", async () => {
+    const { result } = renderHook(() => useBrainDumpRecorder());
+
+    await act(async () => {
+      await result.current.start();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+
+    // Well past the 5s nudge threshold, and still silent — which is
+    // exactly when the nudge should be showing.
+    expect(result.current.elapsedSeconds).toBeGreaterThan(5);
+    expect(result.current.hasSpoken).toBe(false);
+  });
+
   // The regression: `stop()` reported `elapsedSeconds` straight off React
   // state, which is the value from the caller's own render. Every second
   // spent stopping was missing from it. The backend splits recordings

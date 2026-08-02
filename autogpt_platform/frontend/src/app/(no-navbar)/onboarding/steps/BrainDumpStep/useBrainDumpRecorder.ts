@@ -9,6 +9,7 @@ import {
   isPermissionDenied,
   newRecordingId,
   pickMimeType,
+  SPEECH_PEAK_THRESHOLD,
   TIMESLICE_MS,
 } from "./helpers";
 import { getMeta, getParts, savePart, saveMeta } from "./recordingStore";
@@ -21,6 +22,7 @@ export function useBrainDumpRecorder() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isSavedLocally, setIsSavedLocally] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [hasSpoken, setHasSpoken] = useState(false);
 
   const recordingIdRef = useRef<string | null>(null);
   const mimeTypeRef = useRef<string>("audio/webm");
@@ -35,6 +37,13 @@ export function useBrainDumpRecorder() {
   // is short. The backend splits recordings over 20 minutes on this
   // number, so it has to be the real one.
   const elapsedSecondsRef = useRef(0);
+  // Whether the mic has picked up anything above room noise yet. The
+  // silence nudge used to key off `isSavedLocally`, but MediaRecorder
+  // emits a chunk every timeslice whether or not anyone spoke, so that
+  // flag was always true well before the nudge was due.
+  const hasSpokenRef = useRef(false);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // `ondataavailable` fires before `onstop`, and persisting is async — so
   // stopping has to wait on the in-flight writes or the final few seconds
@@ -51,6 +60,23 @@ export function useBrainDumpRecorder() {
     timerRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    analyserRef.current = null;
+  }
+
+  function listenForSpeech(stream: MediaStream) {
+    try {
+      const context = new AudioContext();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      context.createMediaStreamSource(stream).connect(analyser);
+      audioContextRef.current = context;
+      analyserRef.current = analyser;
+    } catch {
+      // No AudioContext available. The nudge simply never fires; the
+      // recording itself does not depend on this.
+    }
   }
 
   async function start() {
@@ -75,7 +101,10 @@ export function useBrainDumpRecorder() {
     partIndexRef.current = 0;
     startedAtRef.current = Date.now();
     elapsedSecondsRef.current = 0;
+    hasSpokenRef.current = false;
+    setHasSpoken(false);
     streamRef.current = stream;
+    listenForSpeech(stream);
     setElapsedSeconds(0);
     setIsSavedLocally(false);
 
@@ -119,9 +148,26 @@ export function useBrainDumpRecorder() {
     const seconds = (Date.now() - startedAtRef.current) / 1000;
     elapsedSecondsRef.current = seconds;
     setElapsedSeconds(seconds);
+    detectSpeech();
     // 30 minutes stops the recorder but keeps every second captured —
     // the dump still submits, it just stops growing.
     if (seconds >= HARD_STOP_SECONDS) void stop();
+  }
+
+  // One-way: the nudge is for someone who has not started yet, so it
+  // must not come back during a pause for breath.
+  function detectSpeech() {
+    const analyser = analyserRef.current;
+    if (hasSpokenRef.current || !analyser) return;
+    const samples = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(samples);
+    const peak = samples.reduce(
+      (loudest, sample) => Math.max(loudest, Math.abs(sample - 128)),
+      0,
+    );
+    if (peak < SPEECH_PEAK_THRESHOLD) return;
+    hasSpokenRef.current = true;
+    setHasSpoken(true);
   }
 
   async function stop(): Promise<number> {
@@ -202,6 +248,7 @@ export function useBrainDumpRecorder() {
     elapsedSeconds,
     isSavedLocally,
     permissionDenied,
+    hasSpoken,
     pendingUploads: queue.pendingCount,
     isOffline: queue.isOffline,
     audioStream: streamRef.current,
