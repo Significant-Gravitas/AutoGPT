@@ -140,3 +140,90 @@ async def test_a_long_recording_is_split_and_stitched(mocker: MockerFixture):
     assert transcript == "first half of the dump and then the rest"
     # Language is unreliable across segments, so it is not reported.
     assert language is None
+
+
+def _ffmpeg_banner(duration_line: str) -> bytes:
+    return (
+        b"ffmpeg version 6.0\n"
+        b"  Input #0, matroska,webm, from 'source.webm':\n"
+        + duration_line.encode()
+        + b"\n  Stream #0:0: Audio: opus\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "duration_line",
+    [
+        # What an unmuxed MediaRecorder stream actually reports — the
+        # normal case for the long takes that reach split_audio.
+        "  Duration: N/A, start: 0.000000, bitrate: N/A",
+        # A damaged header can produce values that would make the segment
+        # loop spin forever or emit nothing.
+        "  Duration: -00:00:01.00, start: 0.000000, bitrate: 32 kb/s",
+        "  Duration: 00:00:00.00, start: 0.000000, bitrate: 32 kb/s",
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_unusable_ffmpeg_duration_is_reported_as_unknown(
+    mocker: MockerFixture, duration_line: str
+):
+    process = MagicMock()
+    process.communicate = AsyncMock(return_value=(b"", _ffmpeg_banner(duration_line)))
+    mocker.patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=process))
+
+    assert await transcription._probe_duration("ffmpeg", "source.webm") is None
+
+
+@pytest.mark.asyncio
+async def test_a_readable_ffmpeg_duration_is_parsed(mocker: MockerFixture):
+    process = MagicMock()
+    process.communicate = AsyncMock(
+        return_value=(
+            b"",
+            _ffmpeg_banner(
+                "  Duration: 00:21:30.50, start: 0.000000, bitrate: 32 kb/s"
+            ),
+        )
+    )
+    mocker.patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=process))
+
+    assert await transcription._probe_duration("ffmpeg", "source.webm") == 1290.5
+
+
+@pytest.mark.asyncio
+async def test_split_falls_back_to_the_browser_duration_when_ffmpeg_cannot_tell(
+    mocker: MockerFixture,
+):
+    """The take must still be split when the container has no duration.
+
+    ffmpeg reporting ``N/A`` is the norm for a browser MediaRecorder
+    stream, so treating it as fatal would fail exactly the long
+    recordings this code path exists to handle.
+    """
+    mocker.patch.object(transcription.shutil, "which", return_value="ffmpeg")
+    mocker.patch.object(
+        transcription, "_probe_duration", new=AsyncMock(return_value=None)
+    )
+    run = mocker.patch.object(transcription, "_run_ffmpeg", new=AsyncMock())
+    mocker.patch.object(transcription, "_write_file", new=MagicMock())
+    mocker.patch.object(transcription, "_read_file", new=MagicMock(return_value=b"seg"))
+
+    hint = transcription.SEGMENT_SECONDS * 2 + 5
+    segments = await transcription.split_audio(b"opus", "dump.webm", hint)
+
+    assert len(segments) == 3
+    assert run.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_split_fails_cleanly_when_no_duration_is_available(
+    mocker: MockerFixture,
+):
+    mocker.patch.object(transcription.shutil, "which", return_value="ffmpeg")
+    mocker.patch.object(
+        transcription, "_probe_duration", new=AsyncMock(return_value=None)
+    )
+    mocker.patch.object(transcription, "_write_file", new=MagicMock())
+
+    with pytest.raises(transcription.TranscriptionFailedError):
+        await transcription.split_audio(b"opus", "dump.webm", None)

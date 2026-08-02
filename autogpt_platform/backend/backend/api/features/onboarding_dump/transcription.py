@@ -15,6 +15,7 @@ and the caller records a ``failed`` status with the audio still stored.
 
 import asyncio
 import logging
+import math
 import os
 import shutil
 import tempfile
@@ -93,7 +94,7 @@ async def transcribe(
     if not needs_split:
         return await _transcribe_one(client, audio, filename)
 
-    segments = await split_audio(audio, filename)
+    segments = await split_audio(audio, filename, duration_secs)
     logger.info("Brain dump split into %s segments for transcription", len(segments))
     transcripts = [
         (await _transcribe_one(client, segment, f"{index}-{filename}"))[0]
@@ -131,7 +132,9 @@ async def _transcribe_one(
     raise TranscriptionFailedError(str(last_error))
 
 
-async def split_audio(audio: bytes, filename: str) -> list[bytes]:
+async def split_audio(
+    audio: bytes, filename: str, duration_hint: float | None = None
+) -> list[bytes]:
     """Cut ``audio`` into overlapping segments with ffmpeg.
 
     Byte-slicing an opus stream would produce unplayable fragments, so
@@ -153,7 +156,15 @@ async def split_audio(audio: bytes, filename: str) -> list[bytes]:
         # and this runs as a background task alongside live requests.
         await asyncio.to_thread(_write_file, source, audio)
 
-        duration = await _probe_duration(ffmpeg, source)
+        # A browser MediaRecorder stream is not muxed, so its header
+        # usually carries no duration at all — for precisely the long
+        # takes that land here. The browser timed the take with a wall
+        # clock, so its figure is the fallback rather than a failure.
+        duration = await _probe_duration(ffmpeg, source) or duration_hint
+        if duration is None or duration <= 0:
+            raise TranscriptionFailedError(
+                f"Could not determine the duration of {os.path.basename(filename)}"
+            )
         segments: list[bytes] = []
         start = 0.0
         index = 0
@@ -181,12 +192,16 @@ async def split_audio(audio: bytes, filename: str) -> list[bytes]:
         return segments
 
 
-async def _probe_duration(ffmpeg: str, path: str) -> float:
+async def _probe_duration(ffmpeg: str, path: str) -> float | None:
     """Read the container duration via ffmpeg's stderr banner.
 
     ffprobe is not guaranteed to be installed alongside ffmpeg, so this
     parses the ``Duration: HH:MM:SS.ms`` line instead of shelling out to a
     second binary.
+
+    Best-effort by design: ``None`` means "ffmpeg would not tell us",
+    which is the normal answer for an unmuxed stream, and the caller
+    falls back to the duration the browser measured.
     """
     process = await asyncio.create_subprocess_exec(
         ffmpeg,
@@ -201,19 +216,24 @@ async def _probe_duration(ffmpeg: str, path: str) -> float:
         if marker not in line:
             continue
         raw = line.split(marker, 1)[1].split(",", 1)[0].strip()
+        # ffmpeg writes the sign on the hours field, and ``int("-00")`` is
+        # ``0`` — so a negative duration would otherwise parse as a
+        # positive one of the same magnitude.
+        if raw.startswith("-"):
+            return None
         try:
             hours, minutes, seconds = raw.split(":")
-            return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+            probed = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
         except ValueError:
-            # ``Duration: N/A`` is what ffmpeg prints for a container with
-            # no finalized duration metadata — which is what a browser
-            # MediaRecorder stream looks like before it is remuxed. Fall
-            # through to the same error every other failure here raises
-            # rather than letting a ValueError escape the module.
-            break
-    raise TranscriptionFailedError(
-        f"Could not read duration of {os.path.basename(path)}"
-    )
+            # ``Duration: N/A``, which is what an unmuxed MediaRecorder
+            # stream reports.
+            return None
+        # A damaged header can also yield zero or a non-finite value,
+        # which would make the segment loop produce nothing or spin.
+        if not math.isfinite(probed) or probed <= 0:
+            return None
+        return probed
+    return None
 
 
 def _write_file(path: str, data: bytes) -> None:

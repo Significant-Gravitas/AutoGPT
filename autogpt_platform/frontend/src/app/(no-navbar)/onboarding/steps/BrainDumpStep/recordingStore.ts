@@ -53,14 +53,26 @@ function openDB(): Promise<IDBDatabase> {
       }
       db.createObjectStore(META_STORE, { keyPath: "recordingId" });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
     // Another tab still holding v1 open blocks the upgrade, and without
     // this the promise never settles — the recorder would hang before it
     // ever reached the mic. Failing here instead falls back to
     // upload-only, which is degraded but alive.
-    request.onblocked = () =>
+    let blocked = false;
+    request.onsuccess = () => {
+      // The other tab can close after we have already given up, at which
+      // point the upgrade completes and hands us a connection nobody is
+      // holding. Closing it keeps it from blocking the *next* upgrade.
+      if (blocked) {
+        request.result.close();
+        return;
+      }
+      resolve(request.result);
+    };
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => {
+      blocked = true;
       reject(new Error("IndexedDB upgrade blocked by another tab"));
+    };
   });
 }
 
