@@ -226,9 +226,6 @@ importers:
       nuqs:
         specifier: 2.7.2
         version: 2.7.2(next@15.5.18(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      ogl:
-        specifier: 1.0.11
-        version: 1.0.11
       pg:
         specifier: 8.21.0
         version: 8.21.0
@@ -7326,9 +7323,6 @@ packages:
 
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
-
-  ogl@1.0.11:
-    resolution: {integrity: sha512-kUpC154AFfxi16pmZUK4jk3J+8zxwTWGPo03EoYA8QPbzikHoaC82n6pNTbd+oEaJonaE8aPWBlX7ad9zrqLsA==}
 
   on-finished@2.4.1:
     resolution: {integrity: sha512-oVlzkg3ENAhCk2zdv7IJwd/QUD4z2RxRwpkcGY8psCVcCYZNq4wYnVWALHM+brtuJjePWiYF/ClmuDr8Ch5+kg==}
@@ -17219,8 +17213,6 @@ snapshots:
   objectorarray@1.0.5: {}
 
   obug@2.1.1: {}
-
-  ogl@1.0.11: {}
 
   on-finished@2.4.1:
     dependencies:

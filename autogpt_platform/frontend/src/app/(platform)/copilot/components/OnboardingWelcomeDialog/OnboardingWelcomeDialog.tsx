@@ -29,8 +29,6 @@ interface CapabilityCard {
   title: string;
   // Capped at 20 words — an icon, short title, one sentence.
   body: string;
-  /** Animated product vignette rendered on the stage. */
-  vignette?: ComponentType;
   /** Stage art: big duotone-violet icon in a white tile. */
   icon?: Icon;
   /** Expands the dialog into the embedded provider picker. */
@@ -69,9 +67,6 @@ const CARDS: CapabilityCard[] = [
 // starts animating, after this closes.
 export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
   const [cardIndex, setCardIndex] = useState(0);
-  // Testing-only: bumping the key remounts the vignette, replaying its
-  // one-shot animation. Remove before release.
-  const [vignetteKey, setVignetteKey] = useState(0);
   // The CTA resizes the dialog into the provider picker instead of
   // navigating away — connecting must never close this dialog.
   const [isConnectOpen, setIsConnectOpen] = useState(false);
@@ -181,20 +176,16 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                             className="absolute inset-0"
                             data-testid="capability-card"
                           >
-                            {card.vignette ? (
-                              <card.vignette key={vignetteKey} />
-                            ) : (
-                              card.icon && (
-                                <div className="flex h-full items-center justify-center">
-                                  <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-lg">
-                                    <card.icon
-                                      size={40}
-                                      weight="duotone"
-                                      className="text-violet-600"
-                                    />
-                                  </div>
+                            {card.icon && (
+                              <div className="flex h-full items-center justify-center">
+                                <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-lg">
+                                  <card.icon
+                                    size={40}
+                                    weight="duotone"
+                                    className="text-violet-600"
+                                  />
                                 </div>
-                              )
+                              </div>
                             )}
                           </motion.div>
                         </AnimatePresence>
@@ -238,16 +229,6 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                             ))}
                           </div>
                           <div className="flex items-center gap-3">
-                            {card.vignette && (
-                              <button
-                                type="button"
-                                aria-label="Replay animation"
-                                onClick={() => setVignetteKey((key) => key + 1)}
-                                className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-                              >
-                                <ArrowClockwiseIcon size={16} />
-                              </button>
-                            )}
                             <Button
                               variant="secondary"
                               size="small"

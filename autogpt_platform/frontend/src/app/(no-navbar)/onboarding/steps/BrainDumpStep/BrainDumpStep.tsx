@@ -16,36 +16,13 @@ import { SwapFade } from "./components/SwapFade";
 import { TapHint } from "./components/TapHint";
 import { TypedFallback } from "./components/TypedFallback";
 import { ringProgress } from "./helpers";
-import type { CaptionsEngine } from "./components/useLiveCaptions";
 import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";
-import { useState } from "react";
 
 const MIC_CAPTION = "Tap and talk. Most people go 2 to 3 minutes.";
 const FAILURE_HEADLINE = "That didn't go through.";
 
-// A/B toggle for the live-caption engine, persisted so the choice
-// survives refreshes while comparing the two.
-const ENGINE_STORAGE_KEY = "autogpt:live-captions-engine";
-const ENGINE_TABS: Array<{ id: CaptionsEngine; label: string }> = [
-  { id: "browser", label: "Browser" },
-  { id: "elevenlabs", label: "ElevenLabs" },
-];
-
-function readStoredEngine(): CaptionsEngine {
-  if (typeof window === "undefined") return "elevenlabs";
-  const stored = window.localStorage.getItem(ENGINE_STORAGE_KEY);
-  return stored === "browser" || stored === "deepgram" ? stored : "elevenlabs";
-}
-
 export function BrainDumpStep() {
   const dump = useBrainDumpStep();
-  const [captionsEngine, setCaptionsEngine] =
-    useState<CaptionsEngine>(readStoredEngine);
-
-  function selectEngine(engine: CaptionsEngine) {
-    window.localStorage.setItem(ENGINE_STORAGE_KEY, engine);
-    setCaptionsEngine(engine);
-  }
   const isRecording = dump.screen === "recording";
   const isMicScreen = dump.screen === "rest" || isRecording;
   const isTyping = dump.screen === "typing";
@@ -69,24 +46,6 @@ export function BrainDumpStep() {
           isTyping ? "max-w-4xl" : "max-w-2xl",
         )}
       >
-        <div className="absolute left-1/2 top-6 flex -translate-x-1/2 items-center gap-1 rounded-full bg-zinc-100 p-1">
-          {ENGINE_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => selectEngine(tab.id)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                captionsEngine === tab.id
-                  ? "bg-white text-zinc-900 shadow-sm"
-                  : "text-zinc-500 hover:text-zinc-800",
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
         <div className="absolute right-6 top-6 flex items-center gap-5">
           {isRecording && (
             <Button
@@ -152,7 +111,6 @@ export function BrainDumpStep() {
                       screen={orbScreen}
                       audioStream={dump.audioStream}
                       captionsKey={dump.captionsKey}
-                      captionsEngine={captionsEngine}
                     />
                   </SwapFade>
                 </div>
@@ -266,12 +224,10 @@ function OrbCaption({
   screen,
   audioStream,
   captionsKey,
-  captionsEngine,
 }: {
   screen: OrbScreen;
   audioStream: MediaStream | null;
   captionsKey: number;
-  captionsEngine: CaptionsEngine;
 }) {
   if (screen === "processing") {
     return (
@@ -287,12 +243,7 @@ function OrbCaption({
 
   if (screen === "recording") {
     return (
-      <LiveCaptions
-        key={`${captionsKey}-${captionsEngine}`}
-        isRecording
-        audioStream={audioStream}
-        engine={captionsEngine}
-      />
+      <LiveCaptions key={captionsKey} isRecording audioStream={audioStream} />
     );
   }
 
