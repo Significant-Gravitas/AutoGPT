@@ -19,6 +19,7 @@ from backend.api.features.onboarding_dump import routes
 from backend.api.features.onboarding_dump.models import (
     MAX_PART_BYTES,
     MAX_RECORDING_BYTES,
+    SuggestedPrompt,
 )
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.data.understanding import BusinessUnderstandingInput
@@ -37,6 +38,7 @@ INTRO_COMPLETE_URL = "/onboarding/brain-dump/intro/complete"
 
 RECORDING_ID = "rec-1"
 TRANSCRIPT = "I run a small bakery and I want the weekly order emails handled."
+GREETING = "Let's get those weekly order emails off your plate."
 
 
 class DumpStore:
@@ -174,6 +176,35 @@ def extraction(mocker: MockerFixture) -> dict[str, AsyncMock]:
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
     return mocks
+
+
+@pytest.fixture(autouse=True)
+def generation(mocker: MockerFixture) -> dict[str, AsyncMock]:
+    """Stub the two LLM jobs the background half of finalize kicks off.
+
+    Both degrade instead of raising, so without this the tests still pass
+    — while quietly building a real client and reaching for the network
+    on every finalize. Deterministic stubs keep the suite offline and
+    give the intro assertions something fixed to match.
+    """
+    intro_mock = AsyncMock(
+        return_value=(
+            GREETING,
+            [
+                SuggestedPrompt(title=f"Prompt {index}", prompt="Do the thing")
+                for index in range(5)
+            ],
+        )
+    )
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro", new=intro_mock
+    )
+    recommend_mock = AsyncMock(return_value=[])
+    mocker.patch(
+        "backend.api.features.onboarding_dump.recommend.generate_recommendations",
+        new=recommend_mock,
+    )
+    return {"generate_intro": intro_mock, "generate_recommendations": recommend_mock}
 
 
 def upload_part(
