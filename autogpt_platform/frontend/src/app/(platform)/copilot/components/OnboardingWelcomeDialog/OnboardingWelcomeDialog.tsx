@@ -5,7 +5,6 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
-  ArrowClockwiseIcon,
   BrainIcon,
   CaretLeftIcon,
   GraduationCapIcon,
@@ -14,7 +13,6 @@ import {
   type Icon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
-import type { ComponentType } from "react";
 import { useState } from "react";
 import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
 import { ConnectToolsPanel } from "./ConnectToolsPanel";
@@ -60,7 +58,7 @@ const CARDS: CapabilityCard[] = [
 ];
 
 // First-run capability cards on the copilot home (ChatGPT/Claude style):
-// a tinted stage on top playing a one-shot product vignette, copy below,
+// a tinted stage on top carrying the card's icon, copy below,
 // skippable at any card, shown once — completion is recorded server-side
 // as the CAPABILITY_CARDS onboarding step. It also buys the background
 // pipeline its last seconds: the greeting is only fetched, and only
@@ -150,7 +148,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
                     >
-                      {/* Tinted stage: the vignette floats here, reference-style. */}
+                      {/* Tinted stage: the card's icon floats here. */}
                       <div className="relative h-44 bg-gradient-to-br from-[#e6dbff] via-[#ddccff] to-[#d0b9ff]">
                         <GlassPixelBackdrop />
                         <span className="absolute left-5 top-4 z-10 flex items-center gap-1 text-xs font-medium text-[#5b21b6]/70">
