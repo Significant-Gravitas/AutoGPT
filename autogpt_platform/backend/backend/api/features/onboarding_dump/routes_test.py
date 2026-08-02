@@ -311,6 +311,25 @@ def test_part_pushing_the_recording_over_the_total_limit_is_rejected(
     storage_mocks["append_part"].assert_not_awaited()
 
 
+def test_a_racing_part_that_blows_the_total_limit_is_rejected_after_the_write(
+    storage_mocks: dict[str, AsyncMock]
+):
+    """The pre-check races; the post-check is the authoritative one.
+
+    Two parts in flight can both read a buffer that is under the cap and
+    both be admitted. `append_part` reports the size from inside the same
+    transaction that wrote the part, so that figure cannot race.
+    """
+    storage_mocks["buffered_size"].return_value = 0
+    storage_mocks["append_part"].return_value = MAX_RECORDING_BYTES + 1
+
+    response = upload_part(part_index=1)
+
+    assert response.status_code == 413
+    assert "Recording exceeds" in response.json()["detail"]
+    storage_mocks["discard_parts"].assert_awaited_once()
+
+
 def test_unsupported_mime_type_is_rejected():
     response = upload_part(content_type="video/mp4")
 

@@ -108,6 +108,21 @@ async def upload_brain_dump_part(
     cumulative = await storage.append_part(
         user_id, recording_id, part_index, b"".join(chunks)
     )
+    # The check above races: two parts in flight can both read a buffer
+    # that is under the cap and both be admitted. This one is
+    # authoritative because the size comes back from inside the same
+    # transaction that wrote the part. A recording past the ceiling is
+    # not going to assemble into anything usable, so the buffer goes.
+    if cumulative > MAX_RECORDING_BYTES:
+        await storage.discard_parts(user_id, recording_id)
+        raise fastapi.HTTPException(
+            status_code=413,
+            detail=(
+                "Recording exceeds the "
+                f"{MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
+            ),
+        )
+
     return UploadPartResponse(
         recording_id=recording_id,
         part_index=part_index,

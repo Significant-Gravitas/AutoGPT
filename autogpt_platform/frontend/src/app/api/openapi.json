@@ -14852,7 +14852,11 @@
       "Body_upload_brain_dump_part": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" },
-          "recording_id": { "type": "string", "title": "Recording Id" },
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
           "part_index": {
             "type": "integer",
             "minimum": 0.0,
@@ -17189,8 +17193,7 @@
         "properties": {
           "recording_id": {
             "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "title": "Recording Id"
           },
           "input_mode": {
