@@ -330,6 +330,25 @@ def test_a_racing_part_that_blows_the_total_limit_is_rejected_after_the_write(
     storage_mocks["discard_parts"].assert_awaited_once()
 
 
+def test_discard_targets_the_recording_the_caller_names(
+    storage_mocks: dict[str, AsyncMock], dumps: DumpStore
+):
+    """A second tab must not be able to clear the wrong buffer.
+
+    Without an explicit id the server drops whatever the row points at,
+    which after another tab has claimed it is a take still being filled.
+    """
+    client.post(
+        FINALIZE_URL, json={"recording_id": "rec-other", "input_mode": "skipped"}
+    )
+
+    response = client.delete(DISCARD_URL.rstrip("/"), params={"recording_id": "rec-1"})
+
+    assert response.status_code == 200
+    # The take the caller named, not the one the row happens to hold.
+    assert storage_mocks["discard_parts"].await_args.args[1] == "rec-1"
+
+
 def test_unsupported_mime_type_is_rejected():
     response = upload_part(content_type="video/mp4")
 

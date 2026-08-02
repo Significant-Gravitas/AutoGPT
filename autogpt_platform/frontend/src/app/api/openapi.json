@@ -8933,8 +8933,23 @@
       "delete": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Discard Brain Dump",
-        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
         "operationId": "discard_brain_dump",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "recording_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+                { "type": "null" }
+              ],
+              "title": "Recording Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8946,9 +8961,16 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/onboarding/brain-dump/finalize": {

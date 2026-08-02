@@ -262,15 +262,28 @@ async def download_brain_dump_recording(
 @router.delete("", operation_id="discard_brain_dump")
 async def discard_brain_dump(
     user_id: Annotated[str, Security(get_user_id)],
+    recording_id: Annotated[
+        str | None, fastapi.Query(pattern=RECORDING_ID_PATTERN)
+    ] = None,
 ) -> DumpStatusResponse:
     """Drop a half-uploaded take's server buffer when the user re-records.
 
     The row and any stored audio are left alone — only the disposable
     part buffer is cleared.
+
+    ``recording_id`` says *which* take to drop. Without it the row's
+    current take is assumed, which is wrong as soon as a second tab has
+    moved the row on: the caller would clear a buffer that is still being
+    filled. Callers know their own id, so they send it.
     """
     dump = await db.get_dump(user_id)
-    if dump is not None and dump.status != BrainDumpStatus.completed:
-        await storage.discard_parts(user_id, dump.recordingId)
+    target = recording_id or (dump.recordingId if dump else None)
+    if target and not (
+        dump is not None
+        and dump.recordingId == target
+        and dump.status == BrainDumpStatus.completed
+    ):
+        await storage.discard_parts(user_id, target)
     return DumpStatusResponse(
         status=dump.status if dump else None,
         input_mode=dump.inputMode if dump else None,
