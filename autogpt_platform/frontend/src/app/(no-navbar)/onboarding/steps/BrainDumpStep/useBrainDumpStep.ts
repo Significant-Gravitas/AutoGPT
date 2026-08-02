@@ -82,8 +82,11 @@ export function useBrainDumpStep() {
 
   async function handleDone() {
     setScreen("processing");
-    await recorder.stop();
-    await submitRecording(recorder.recordingId, recorder.elapsedSeconds);
+    // Duration comes back from `stop()` for the same reason the id is
+    // passed in below — `recorder.elapsedSeconds` here is this render's
+    // value, and it is short by however long stopping took.
+    const durationSecs = await recorder.stop();
+    await submitRecording(recorder.recordingId, durationSecs);
   }
 
   // The id is passed in rather than read off the recorder: `adoptRecovered`

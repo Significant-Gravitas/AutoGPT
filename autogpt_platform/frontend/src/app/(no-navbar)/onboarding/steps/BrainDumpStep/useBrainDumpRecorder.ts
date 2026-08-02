@@ -28,6 +28,13 @@ export function useBrainDumpRecorder() {
   const streamRef = useRef<MediaStream | null>(null);
   const partIndexRef = useRef(0);
   const startedAtRef = useRef(0);
+  // Mirrors `elapsedSeconds` because the state value a caller reads is the
+  // one from its own render. `handleDone` awaits `stop()` — which itself
+  // waits on the recorder and the pending IndexedDB writes — so by the
+  // time it reports a duration, React has not re-rendered and the state
+  // is short. The backend splits recordings over 20 minutes on this
+  // number, so it has to be the real one.
+  const elapsedSecondsRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // `ondataavailable` fires before `onstop`, and persisting is async — so
   // stopping has to wait on the in-flight writes or the final few seconds
@@ -67,6 +74,7 @@ export function useBrainDumpRecorder() {
     mimeTypeRef.current = mimeType;
     partIndexRef.current = 0;
     startedAtRef.current = Date.now();
+    elapsedSecondsRef.current = 0;
     streamRef.current = stream;
     setElapsedSeconds(0);
     setIsSavedLocally(false);
@@ -109,15 +117,18 @@ export function useBrainDumpRecorder() {
 
   function tick() {
     const seconds = (Date.now() - startedAtRef.current) / 1000;
+    elapsedSecondsRef.current = seconds;
     setElapsedSeconds(seconds);
     // 30 minutes stops the recorder but keeps every second captured —
     // the dump still submits, it just stops growing.
     if (seconds >= HARD_STOP_SECONDS) void stop();
   }
 
-  async function stop() {
+  async function stop(): Promise<number> {
     const recorder = recorderRef.current;
-    if (!recorder || recorder.state === "inactive") return;
+    if (!recorder || recorder.state === "inactive") {
+      return elapsedSecondsRef.current;
+    }
     setPhase("stopping");
     await new Promise<void>((resolve) => {
       recorder.onstop = () => resolve();
@@ -127,14 +138,20 @@ export function useBrainDumpRecorder() {
     pendingWritesRef.current = [];
     stopTracks();
     recorderRef.current = null;
+    // Measured here rather than read off state: the awaits above mean the
+    // last tick is already behind, and the tail of the take counts.
+    const durationSecs = (Date.now() - startedAtRef.current) / 1000;
+    elapsedSecondsRef.current = durationSecs;
+    setElapsedSeconds(durationSecs);
     await rememberMeta({
       recordingId: recordingIdRef.current ?? "",
       mimeType: mimeTypeRef.current,
       startedAt: startedAtRef.current,
-      durationSecs: elapsedSeconds,
+      durationSecs,
       finalized: false,
     });
     setPhase("stopped");
+    return durationSecs;
   }
 
   // On mount, an unfinalized recording in IndexedDB means the last
