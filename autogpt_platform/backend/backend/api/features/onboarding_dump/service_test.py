@@ -211,6 +211,34 @@ async def test_typed_dump_is_labelled_as_typed_in_the_understanding(
 
 
 @pytest.mark.asyncio
+async def test_repeating_a_typed_finalize_does_not_restart_the_pipeline(
+    dumps: DumpStore, extraction: dict[str, AsyncMock]
+):
+    """A second submit of the same typed take is a no-op.
+
+    Without the guard the row was re-claimed — dropping an in-flight
+    extraction back to ``recording_uploaded`` — and a second pair of
+    background jobs was queued on top of the running ones.
+    """
+    first = BackgroundTasks()
+    await service.finalize_typed_dump(USER_ID, RECORDING_ID, "I run a bakery.", first)
+    await first()
+    statuses_after_first = list(dumps.statuses)
+
+    second = BackgroundTasks()
+    response = await service.finalize_typed_dump(
+        USER_ID, RECORDING_ID, "I run a bakery.", second
+    )
+
+    assert response.status == BrainDumpStatus.completed
+    assert dumps.statuses == statuses_after_first
+    assert BrainDumpStatus.recording_uploaded not in statuses_after_first[1:]
+    # Nothing queued the second time round.
+    assert second.tasks == []
+    assert extraction["upsert_business_understanding"].await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_a_failed_extraction_still_preserves_the_transcript(
     dumps: DumpStore, extraction: dict[str, AsyncMock]
 ):

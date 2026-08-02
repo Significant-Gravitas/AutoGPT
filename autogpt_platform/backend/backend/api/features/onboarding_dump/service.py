@@ -146,6 +146,24 @@ async def finalize_typed_dump(
     text: str,
     background_tasks: BackgroundTasks,
 ) -> FinalizeResponse:
+    # Same idempotency contract as the voice path: a repeated submit must
+    # not reset the row or queue a second extraction and greeting on top
+    # of the pair already running.
+    existing = await db.get_dump(user_id)
+    if (
+        existing is not None
+        and existing.recordingId == recording_id
+        and existing.status
+        in (
+            BrainDumpStatus.transcribed,
+            BrainDumpStatus.extracting,
+            BrainDumpStatus.completed,
+        )
+    ):
+        return _pipeline_response(
+            existing.status, existing.transcript, BrainDumpInputMode.typed
+        )
+
     await db.start_dump(user_id, recording_id, BrainDumpInputMode.typed)
     await db.update_dump(
         user_id, status=BrainDumpStatus.transcribed, transcript=text.strip()

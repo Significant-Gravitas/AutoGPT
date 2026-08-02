@@ -15,12 +15,41 @@ async def get_dump(user_id: str) -> OnboardingBrainDump | None:
     return await OnboardingBrainDump.prisma().find_unique(where={"userId": user_id})
 
 
+# A take that has reached any of these is being processed, or is already
+# done. Re-claiming it would knock it back to the start of the pipeline.
+# ``failed`` is deliberately absent: retrying a failed take must reset it.
+_IN_FLIGHT_STATUSES = frozenset(
+    {
+        BrainDumpStatus.transcribing,
+        BrainDumpStatus.transcribed,
+        BrainDumpStatus.extracting,
+        BrainDumpStatus.completed,
+    }
+)
+
+
 async def start_dump(
     user_id: str,
     recording_id: str,
     input_mode: BrainDumpInputMode,
 ) -> OnboardingBrainDump:
-    """Claim the row for ``recording_id``, resetting any prior take's state."""
+    """Claim the row for ``recording_id``, resetting any prior take's state.
+
+    A take already moving through the pipeline is returned untouched. Two
+    callers reach here after a dump has been finalized — recovery replays
+    every part on disk, part 0 included, and a repeated finalize — and
+    neither should reset an in-flight transcription to
+    ``recording_uploaded``. A *different* recording id is a genuinely new
+    take and always claims the row.
+    """
+    existing = await get_dump(user_id)
+    if (
+        existing
+        and existing.recordingId == recording_id
+        and existing.status in _IN_FLIGHT_STATUSES
+    ):
+        return existing
+
     fields: dict[str, Any] = {
         "recordingId": recording_id,
         "status": BrainDumpStatus.recording_uploaded,
