@@ -4,6 +4,7 @@ import { GlassOrb } from "@/app/(no-navbar)/onboarding/steps/BrainDumpStep/compo
 import type { GlassParams } from "@/app/(no-navbar)/onboarding/steps/BrainDumpStep/components/GlassOrb/GlassSurface";
 import type { SuggestedPrompt } from "@/app/api/__generated__/models/suggestedPrompt";
 import { Text } from "@/components/atoms/Text/Text";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 import {
   Tooltip,
@@ -123,9 +124,21 @@ export function OnboardingIntroCard({
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
+  const { toast } = useToast();
 
   async function handleCopyTranscript() {
-    await navigator.clipboard.writeText(transcript);
+    // Denied clipboard permission, or a non-secure origin. Showing the
+    // tick regardless would claim a copy that never happened.
+    try {
+      await navigator.clipboard.writeText(transcript);
+    } catch {
+      toast({
+        title: "Could not copy the transcript",
+        description: "Your browser blocked clipboard access.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   }

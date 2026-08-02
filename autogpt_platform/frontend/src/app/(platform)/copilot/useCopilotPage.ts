@@ -49,6 +49,7 @@ export function useCopilotPage() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;
   const { expertsById } = useExpertMap();
@@ -210,9 +211,15 @@ export function useCopilotPage() {
     // Sending anything retires the greeting for good: flag it done on
     // the server (kept in the DB, just never shown again) and cache the
     // fact locally so no future visit even has to ask.
-    if (!peekGreetingDone(user?.id)) {
+    // Gated on the flag: the endpoint 404s without it, and because the
+    // local cache is only written on success, an ungated call retried on
+    // every single message the user ever sent.
+    if (isBrainDumpEnabled && !peekGreetingDone(user?.id)) {
       completeGreeting(undefined, {
         onSuccess: () => setGreetingDone(user?.id),
+        // Retiring the greeting is bookkeeping — the worst case is
+        // seeing it once more — so a failure must never surface here.
+        onError: () => undefined,
       });
     }
     if (takeIntroAwaitingFollowup()) {
