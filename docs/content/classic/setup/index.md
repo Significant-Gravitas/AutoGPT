@@ -149,6 +149,40 @@ If you don't know which to choose, you can safely go with OpenAI*.
 [openai/python-sdk/azure]: https://github.com/openai/openai-python?tab=readme-ov-file#microsoft-azure-openai
 
 
+### OpenAI-compatible gateways
+
+AutoGPT already supports pointing the OpenAI provider at any OpenAI-compatible
+HTTP endpoint via `OPENAI_API_BASE_URL` (see `classic/forge/forge/llm/providers/openai.py`
+and `classic/original_autogpt/.env.template`).
+
+1. Set your gateway base URL (must include `/v1` if the server expects it):
+   ```ini
+   OPENAI_API_BASE_URL=https://api.example.com/v1
+   ```
+2. Set an API key **issued by that endpoint** (not necessarily an OpenAI platform key):
+   ```ini
+   OPENAI_API_KEY=sk-...
+   ```
+3. Pick a **model id the endpoint actually serves** (check its `/v1/models` or docs).
+   Model names differ across providers — do not assume `gpt-4o` exists everywhere.
+
+Concrete example using a multi-model OpenAI-compatible gateway ([DaoXE](https://daoxe.com)):
+
+```ini
+OPENAI_API_BASE_URL=https://api.daoxe.com/v1
+OPENAI_API_KEY=sk-...
+# Then set SMART_LLM / FAST_LLM to model ids listed by that gateway
+```
+
+This is useful when you want one key for multiple vendors, or when the official
+OpenAI endpoint is unavailable in your region. Leave `OPENAI_API_BASE_URL` blank
+to keep the default `https://api.openai.com/v1`.
+
+!!! note
+    During an upstream vendor outage, any gateway that resells that same vendor
+    may also be degraded. The value of a multi-vendor gateway is **switching
+    model families**, not immunity from outages.
+
 ### Anthropic
 
 1. Make sure you have credits in your account: [Settings > Plans & billing][anthropic/billing]
