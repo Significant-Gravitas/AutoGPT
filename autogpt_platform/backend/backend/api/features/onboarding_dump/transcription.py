@@ -1,0 +1,259 @@
+"""Speech-to-text for the onboarding brain dump.
+
+``gpt-4o-transcribe`` is the primary model: on messy, rambling natural
+speech it is markedly more accurate and hallucinates far less than
+``whisper-1``, which is the failure mode that matters most here (a
+hallucinated sentence becomes a *fact* about the user). ``whisper-1`` is
+the automatic fallback so a model outage degrades rather than fails.
+
+Both models take a 25 MB request and roughly 25 minutes of audio, so a
+long dump is split with ffmpeg into overlapping segments and the
+transcripts stitched back together. ffmpeg is present in the backend
+image (``backend/Dockerfile``); if it ever isn't, the split path raises
+and the caller records a ``failed`` status with the audio still stored.
+"""
+
+import asyncio
+import logging
+import os
+import shutil
+import tempfile
+
+from openai import AsyncOpenAI
+
+from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+settings = Settings()
+
+PRIMARY_MODEL = os.environ.get("BRAIN_DUMP_TRANSCRIPTION_MODEL", "gpt-4o-transcribe")
+FALLBACK_MODEL = os.environ.get("BRAIN_DUMP_TRANSCRIPTION_FALLBACK_MODEL", "whisper-1")
+
+# Both caps are the provider's, minus headroom for the multipart envelope.
+SINGLE_REQUEST_MAX_BYTES = 20 * 1024 * 1024
+SINGLE_REQUEST_MAX_SECONDS = 20 * 60
+
+SEGMENT_SECONDS = 10 * 60
+# Cutting mid-word loses the word on both sides of the seam; a few seconds
+# of overlap means the word survives in at least one segment and the
+# stitcher drops the duplicate.
+SEGMENT_OVERLAP_SECONDS = 5
+
+TRANSCRIBE_TIMEOUT_SECONDS = 180
+MAX_ATTEMPTS = 3
+
+
+class TranscriptionUnavailableError(RuntimeError):
+    """No STT provider is configured."""
+
+
+class TranscriptionFailedError(RuntimeError):
+    """Every model and retry was exhausted."""
+
+
+def get_stt_client() -> AsyncOpenAI | None:
+    """Return a client that can reach the audio-transcriptions endpoint.
+
+    Deliberately not ``backend.util.clients.get_openai_client()``: that
+    helper falls back to OpenRouter, which does not implement
+    ``/audio/transcriptions``, so a deployment with only an OpenRouter key
+    would get a confusing 404 from the provider instead of a clean
+    "not configured" error here.
+    """
+    api_key = (
+        settings.secrets.openai_internal_api_key or settings.secrets.openai_api_key
+    )
+    if not api_key:
+        return None
+    return AsyncOpenAI(api_key=api_key)
+
+
+async def transcribe(
+    audio: bytes,
+    filename: str,
+    duration_secs: float | None = None,
+) -> tuple[str, str | None]:
+    """Transcribe ``audio``, returning ``(transcript, language)``.
+
+    ``language`` is never passed to the provider — a non-English dump must
+    transcribe in the language it was spoken in, never error or silently
+    translate.
+    """
+    client = get_stt_client()
+    if client is None:
+        raise TranscriptionUnavailableError(
+            "Brain-dump transcription needs a direct OpenAI key. Set "
+            "OPENAI_INTERNAL_API_KEY or OPENAI_API_KEY."
+        )
+
+    needs_split = len(audio) > SINGLE_REQUEST_MAX_BYTES or (
+        duration_secs is not None and duration_secs > SINGLE_REQUEST_MAX_SECONDS
+    )
+    if not needs_split:
+        return await _transcribe_one(client, audio, filename)
+
+    segments = await split_audio(audio, filename)
+    logger.info("Brain dump split into %s segments for transcription", len(segments))
+    transcripts = [
+        (await _transcribe_one(client, segment, f"{index}-{filename}"))[0]
+        for index, segment in enumerate(segments)
+    ]
+    return stitch_transcripts(transcripts), None
+
+
+async def _transcribe_one(
+    client: AsyncOpenAI, audio: bytes, filename: str
+) -> tuple[str, str | None]:
+    last_error: Exception | None = None
+    for model in (PRIMARY_MODEL, FALLBACK_MODEL):
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                response = await asyncio.wait_for(
+                    client.audio.transcriptions.create(
+                        model=model,
+                        file=(filename, audio),
+                    ),
+                    timeout=TRANSCRIBE_TIMEOUT_SECONDS,
+                )
+                language = getattr(response, "language", None)
+                return response.text, language if isinstance(language, str) else None
+            except Exception as e:  # retried across models below
+                last_error = e
+                logger.warning(
+                    "Brain dump transcription failed (model=%s attempt=%s): %s",
+                    model,
+                    attempt + 1,
+                    e,
+                )
+                if attempt < MAX_ATTEMPTS - 1:
+                    await asyncio.sleep(2**attempt)
+    raise TranscriptionFailedError(str(last_error))
+
+
+async def split_audio(audio: bytes, filename: str) -> list[bytes]:
+    """Cut ``audio`` into overlapping segments with ffmpeg.
+
+    Byte-slicing an opus stream would produce unplayable fragments, so
+    this is a real container-aware re-cut. Segments are re-encoded to
+    16 kHz mono opus, which is what the STT models downsample to anyway
+    and keeps every segment far inside the request cap.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise TranscriptionFailedError(
+            "ffmpeg is required to transcribe recordings over "
+            f"{SINGLE_REQUEST_MAX_SECONDS // 60} minutes but is not installed"
+        )
+
+    suffix = os.path.splitext(filename)[1] or ".webm"
+    with tempfile.TemporaryDirectory() as workdir:
+        source = os.path.join(workdir, f"source{suffix}")
+        with open(source, "wb") as handle:
+            handle.write(audio)
+
+        duration = await _probe_duration(ffmpeg, source)
+        segments: list[bytes] = []
+        start = 0.0
+        index = 0
+        while start < duration:
+            target = os.path.join(workdir, f"segment-{index}.ogg")
+            await _run_ffmpeg(
+                ffmpeg,
+                "-ss",
+                str(start),
+                "-t",
+                str(SEGMENT_SECONDS + SEGMENT_OVERLAP_SECONDS),
+                "-i",
+                source,
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "libopus",
+                target,
+            )
+            with open(target, "rb") as handle:
+                segments.append(handle.read())
+            start += SEGMENT_SECONDS
+            index += 1
+        return segments
+
+
+async def _probe_duration(ffmpeg: str, path: str) -> float:
+    """Read the container duration via ffmpeg's stderr banner.
+
+    ffprobe is not guaranteed to be installed alongside ffmpeg, so this
+    parses the ``Duration: HH:MM:SS.ms`` line instead of shelling out to a
+    second binary.
+    """
+    process = await asyncio.create_subprocess_exec(
+        ffmpeg,
+        "-i",
+        path,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    for line in stderr.decode(errors="replace").splitlines():
+        marker = "Duration:"
+        if marker not in line:
+            continue
+        raw = line.split(marker, 1)[1].split(",", 1)[0].strip()
+        hours, minutes, seconds = raw.split(":")
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    raise TranscriptionFailedError(
+        f"Could not read duration of {os.path.basename(path)}"
+    )
+
+
+async def _run_ffmpeg(ffmpeg: str, *args: str) -> None:
+    process = await asyncio.create_subprocess_exec(
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        *args,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    if process.returncode != 0:
+        raise TranscriptionFailedError(
+            f"ffmpeg failed: {stderr.decode(errors='replace')[-500:]}"
+        )
+
+
+def stitch_transcripts(transcripts: list[str]) -> str:
+    """Join segment transcripts, dropping the duplicated overlap words.
+
+    The overlap is a few seconds of speech, so the seam is found by
+    looking for the longest word-sequence that ends the previous segment
+    and starts the next one.
+    """
+    stitched: list[str] = []
+    for transcript in transcripts:
+        words = transcript.split()
+        if not words:
+            continue
+        if not stitched:
+            stitched = words
+            continue
+        overlap = _overlap_length(stitched, words)
+        stitched.extend(words[overlap:])
+    return " ".join(stitched)
+
+
+# A 5s overlap is at most ~25 spoken words; searching beyond that risks
+# collapsing a genuinely repeated phrase.
+MAX_OVERLAP_WORDS = 40
+
+
+def _overlap_length(left: list[str], right: list[str]) -> int:
+    limit = min(MAX_OVERLAP_WORDS, len(left), len(right))
+    for size in range(limit, 0, -1):
+        if [w.lower() for w in left[-size:]] == [w.lower() for w in right[:size]]:
+            return size
+    return 0

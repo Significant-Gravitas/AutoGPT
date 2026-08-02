@@ -1,0 +1,134 @@
+"""Request / response models for the onboarding brain dump."""
+
+from prisma.enums import BrainDumpInputMode, BrainDumpStatus
+from pydantic import BaseModel, Field
+
+# A 3s MediaRecorder timeslice of webm/opus voice is ~10 KB; 2 MB per part
+# leaves three orders of magnitude of headroom while still rejecting a
+# client that tries to stream a movie through the endpoint.
+MAX_PART_BYTES = 2 * 1024 * 1024
+
+# ~30 min of webm/opus voice is ~6 MB. 50 MB is the cumulative ceiling for
+# one recording — generous enough that no honest dump ever hits it.
+MAX_RECORDING_BYTES = 50 * 1024 * 1024
+
+# Typed fallback. Copilot's own message ceiling is 64,000 chars; the typed
+# composer is a paragraph or two, so cap well below that.
+MAX_TYPED_CHARS = 20_000
+
+ALLOWED_AUDIO_MIME_TYPES = frozenset(
+    {
+        "audio/webm",
+        "audio/mp4",
+        "audio/mpeg",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/ogg",
+    }
+)
+
+
+class UploadPartResponse(BaseModel):
+    recording_id: str
+    part_index: int
+    received_bytes: int
+    total_bytes: int
+
+
+class FinalizeRequest(BaseModel):
+    """Finalize one take.
+
+    ``text`` is the typed fallback: when set, no audio is expected and the
+    dump is stored with ``input_mode=typed``. ``input_mode=skipped``
+    records the deliberate skip so Path B can be chosen server-side.
+    """
+
+    recording_id: str = Field(min_length=1, max_length=200)
+    input_mode: BrainDumpInputMode = BrainDumpInputMode.voice
+    duration_secs: float | None = Field(default=None, ge=0)
+    mime_type: str | None = None
+    text: str | None = Field(default=None, max_length=MAX_TYPED_CHARS)
+
+
+class FinalizeResponse(BaseModel):
+    status: BrainDumpStatus
+    input_mode: BrainDumpInputMode
+    transcript_preview: str | None = None
+    error_code: str | None = None
+
+
+class DumpStatusResponse(BaseModel):
+    status: BrainDumpStatus | None = None
+    input_mode: BrainDumpInputMode | None = None
+    error_code: str | None = None
+    has_audio: bool = False
+    """True once the copilot greeting is stored and ready to render — the
+    onboarding loading screen holds the user until this flips (or the
+    pipeline terminally fails)."""
+    greeting_ready: bool = False
+
+
+class SuggestedPrompt(BaseModel):
+    """One pickable prompt under the greeting.
+
+    ``title`` is the short line the user sees; ``prompt`` is the full
+    message that gets sent when they pick it. ``icon`` is a Phosphor icon
+    slug from ``intro.PROMPT_ICONS`` — the frontend maps it to the actual
+    icon component and falls back to a sparkle for anything unknown.
+    """
+
+    title: str
+    prompt: str
+    icon: str = "sparkle"
+
+
+class IntroCardResponse(BaseModel):
+    """Content for the copilot home's onboarding greeting.
+
+    ``path`` is "A" when we have something to reflect back and "B" when
+    the greeting's job is to invite a recording instead. ``greeting_done``
+    is the server-side "already seen it" flag — when true the client
+    shows nothing and caches the fact locally.
+    """
+
+    path: str
+    greeting: str
+    prompts: list[SuggestedPrompt] = []
+    greeting_done: bool = False
+    """The full transcript of the recorded dump, so the greeting page can
+    offer a copy button. Only present on Path A while the greeting is
+    still showing."""
+    transcript: str | None = None
+
+
+class RecommendedProvider(BaseModel):
+    """One provider Claude picked from the transcript.
+
+    ``provider`` is a registry id (validated against the live provider
+    list before storage); ``reason`` is the one-liner shown under it in
+    the welcome dialog's Recommended section.
+    """
+
+    provider: str
+    reason: str = ""
+
+
+class RecommendedProvidersResponse(BaseModel):
+    """Recommendations for the "Connect your tools" panel.
+
+    ``ready`` is false while the background job is still running — the
+    client keeps polling. Once true, ``providers`` is the final answer,
+    empty included ("nothing worth recommending" is a real result).
+    """
+
+    ready: bool
+    providers: list[RecommendedProvider] = []
+
+
+class GreetingDoneResponse(BaseModel):
+    greeting_done: bool
+
+
+class RecordingUrlResponse(BaseModel):
+    url: str
+    mime_type: str | None = None

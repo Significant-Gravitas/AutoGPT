@@ -1,0 +1,68 @@
+"use client";
+
+import { CheckCircleIcon, PlusIcon } from "@phosphor-icons/react";
+import Image from "next/image";
+import { useState } from "react";
+
+import type { ConnectableProvider } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
+
+interface Props {
+  provider: ConnectableProvider;
+  onSelect: (id: string) => void;
+  isConnected?: boolean;
+}
+
+// The welcome dialog's provider card: compact (two per row), name only,
+// with a Connected state once credentials exist for the provider.
+export function ConnectProviderRow({ provider, onSelect, isConnected }: Props) {
+  const src = `/integrations/${provider.id}.png`;
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
+  const broken = brokenSrc === src;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(provider.id)}
+      className="group flex h-14 w-full items-center gap-2.5 rounded-xl bg-neutral-100 px-3 text-left transition-colors hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-neutral-200"
+    >
+      {broken ? (
+        <div
+          aria-hidden
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white text-[12px] font-semibold uppercase text-zinc-600"
+        >
+          {provider.name?.charAt(0) ?? provider.id.charAt(0)}
+        </div>
+      ) : (
+        <Image
+          src={src}
+          alt=""
+          width={28}
+          height={28}
+          loading="lazy"
+          className="size-7 shrink-0 object-contain"
+          onError={() => setBrokenSrc(src)}
+        />
+      )}
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="truncate text-[14px] font-medium leading-[22px] text-zinc-800">
+          {provider.name}
+        </span>
+        {/* Connected mark beside the title — the + stays because a
+            provider can hold multiple credentials. */}
+        {isConnected && (
+          <CheckCircleIcon
+            size={18}
+            weight="fill"
+            className="shrink-0 text-emerald-500"
+          />
+        )}
+      </span>
+      <span
+        aria-hidden
+        className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-zinc-700 text-white transition-transform group-hover:bg-zinc-800 group-active:scale-[0.96]"
+      >
+        <PlusIcon size={14} weight="bold" />
+      </span>
+    </button>
+  );
+}

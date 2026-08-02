@@ -5,8 +5,8 @@ import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/c
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
+import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
@@ -15,6 +15,13 @@ import {
   getSuggestionThemes,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
+import { GlassOrb } from "@/app/(no-navbar)/onboarding/steps/BrainDumpStep/components/GlassOrb/GlassOrb";
+import {
+  OnboardingIntroCard,
+  SMALL_ORB_PARAMS,
+} from "../OnboardingIntroCard/OnboardingIntroCard";
+import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
+import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
 import { PulseChips } from "../PulseChips/PulseChips";
 import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -49,6 +56,7 @@ export function EmptySession({
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
+  const intro = useOnboardingIntroCard();
   const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const pulseChips = usePulseChips();
@@ -86,14 +94,17 @@ export function EmptySession({
   }, []);
 
   return (
-    <div className="relative flex h-full flex-1 items-center justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      <DotDistortionShader
-        dotGap={14}
-        dotSize={1}
-        opacity={0.2}
-        enableMouseInteraction={false}
-        breathingSpeed={0.4}
-        className="pointer-events-none absolute inset-0 !bg-transparent [&_canvas]:opacity-70"
+    <div
+      className={cn(
+        "relative flex h-full flex-1 justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10",
+        // The greeting reads top-down like a letter, so it anchors to the
+        // top; the regular hero stays vertically centered.
+        intro.isVisible ? "items-start" : "items-center",
+      )}
+    >
+      <OnboardingWelcomeDialog
+        isOpen={intro.isWelcomeOpen}
+        onClose={intro.closeWelcome}
       />
       <motion.div
         className="relative z-10 w-full max-w-[52rem] text-center"
@@ -102,63 +113,117 @@ export function EmptySession({
         transition={{ duration: 0.3 }}
       >
         <div className="mx-auto max-w-[52rem]">
-          <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">
-            Hey, <span className="text-violet-600">{greetingName}</span>
-            <EditNameDialog currentName={greetingName} />
-          </Text>
-          <TextGenerateEffect
-            className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-[1.375rem] [&_div]:!leading-normal [&_div]:!tracking-normal"
-            duration={0.6}
-            words="Tell me about your work — I'll find what to automate."
-          />
-
-          {isAgentBriefingEnabled && (
-            <PulseChips chips={pulseChips} onChipClick={onSend} />
+          {intro.isVisible ? (
+            <OnboardingIntroCard
+              name={greetingName}
+              greeting={intro.greeting}
+              prompts={intro.prompts}
+              transcript={intro.transcript}
+              onSelectPrompt={onSend}
+              disabled={isComposerDisabled}
+            />
+          ) : (
+            // The regular hero also renders behind the welcome modal's
+            // blur and while the greeting is still generating — it swaps
+            // to the greeting the moment the real one arrives. While the
+            // greeting is on its way the orb already fronts the heading,
+            // matching the greeting page it is about to become.
+            <>
+              <div className="mb-1 flex items-center justify-center gap-3">
+                {intro.isAwaitingGreeting && (
+                  <span className="relative size-8 shrink-0">
+                    <GlassOrb params={SMALL_ORB_PARAMS} />
+                  </span>
+                )}
+                <Text variant="h3" className="!text-[1.375rem] text-zinc-700">
+                  Hey, <span className="text-violet-600">{greetingName}</span>
+                  <EditNameDialog currentName={greetingName} />
+                </Text>
+              </div>
+              {/* Held back with the composer: while the greeting decision
+                  is pending this line appearing then vanishing read as
+                  the page changing its mind on refresh. */}
+              {!intro.isAwaitingGreeting && (
+                <TextGenerateEffect
+                  className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-[1.375rem] [&_div]:!leading-normal [&_div]:!tracking-normal"
+                  duration={0.6}
+                  words="Tell me about your work — I'll find what to automate."
+                />
+              )}
+            </>
           )}
 
-          <div className="mb-6">
-            <motion.div
-              layoutId={inputLayoutId}
-              transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
-              className="w-full px-2"
-            >
-              <ChatInput
-                inputId="chat-input-empty"
-                onSend={onSend}
-                disabled={isComposerDisabled}
-                isUploadingFiles={isUploadingFiles}
-                placeholder={inputPlaceholder}
-                className="w-full"
-                droppedFiles={droppedFiles}
-                onDroppedFilesConsumed={onDroppedFilesConsumed}
-                recipientPicker={
-                  isExpertsEnabled ? (
-                    <RecipientChip
-                      recipient={recipient}
-                      options={options}
-                      isLoading={isLoadingRecipient}
-                      onSelect={selectRecipient}
-                    />
-                  ) : undefined
-                }
-              />
-            </motion.div>
-          </div>
+          {isAgentBriefingEnabled &&
+            !intro.isVisible &&
+            !intro.isAwaitingGreeting && (
+              <PulseChips chips={pulseChips} onChipClick={onSend} />
+            )}
+
+          {/* Held back while the greeting is on its way — it enters with
+              the greeting page instead of sitting under a bare hero. */}
+          {!intro.isAwaitingGreeting && (
+            <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+              <motion.div
+                layoutId={inputLayoutId}
+                transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
+                className={cn(
+                  "overflow-hidden rounded-xlarge border text-left transition-colors duration-300 ease-out",
+                  // The greeting's prompt card bleeds 1.25rem past the text
+                  // (-mx-5); the composer stretches the same amount so their
+                  // borders line up. The regular hero keeps it centered.
+                  intro.isVisible
+                    ? "-mx-5 max-w-[50.5rem]"
+                    : "mx-auto w-full max-w-[42rem]",
+                )}
+                style={{
+                  borderColor: "#e4e4e7",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                }}
+              >
+                <ChatInput
+                  inputId="chat-input-empty"
+                  onSend={onSend}
+                  disabled={isComposerDisabled}
+                  hideSubmitWhenEmpty
+                  isUploadingFiles={isUploadingFiles}
+                  placeholder={inputPlaceholder}
+                  className="w-full [&_textarea]:min-h-[4.5rem]"
+                  droppedFiles={droppedFiles}
+                  onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  recipientPicker={
+                    isExpertsEnabled ? (
+                      <RecipientChip
+                        recipient={recipient}
+                        options={options}
+                        isLoading={isLoadingRecipient}
+                        onSelect={selectRecipient}
+                      />
+                    ) : undefined
+                  }
+                />
+              </motion.div>
+            </div>
+          )}
         </div>
 
-        {isLoadingPrompts ? (
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            {Array.from({ length: 4 }, (_, i) => (
-              <Skeleton key={i} className="h-10 w-28 shrink-0 rounded-full" />
-            ))}
-          </div>
-        ) : (
-          <SuggestionThemes
-            themes={themes}
-            onSend={onSend}
-            disabled={isComposerDisabled}
-          />
-        )}
+        {/* The greeting page is deliberately quiet: its own prompts are
+            the suggestions, so the theme chips stay out of the way. Also
+            held while the greeting decision is pending. */}
+        {!intro.isVisible &&
+          !intro.isAwaitingGreeting &&
+          (isLoadingPrompts ? (
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {Array.from({ length: 4 }, (_, i) => (
+                <Skeleton key={i} className="h-10 w-28 shrink-0 rounded-full" />
+              ))}
+            </div>
+          ) : (
+            <SuggestionThemes
+              themes={themes}
+              onSend={onSend}
+              disabled={isComposerDisabled}
+            />
+          ))}
       </motion.div>
     </div>
   );

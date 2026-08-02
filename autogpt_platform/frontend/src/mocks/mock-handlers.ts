@@ -3,6 +3,10 @@ import { getAnalyticsMock } from "@/app/api/__generated__/endpoints/analytics/an
 import { getApiKeysMock } from "@/app/api/__generated__/endpoints/api-keys/api-keys.msw";
 import { getAuthMock } from "@/app/api/__generated__/endpoints/auth/auth.msw";
 import { getBlocksMock } from "@/app/api/__generated__/endpoints/blocks/blocks.msw";
+import {
+  getCompleteBrainDumpGreetingMockHandler200,
+  getGetBrainDumpIntroMockHandler200,
+} from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getChatMock } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
@@ -31,6 +35,15 @@ export const mockHandlers = [
   ...getApiKeysMock(),
   ...getAuthMock(),
   ...getBlocksMock(),
+  // Greeting already done by default so the onboarding greeting stays out
+  // of unrelated tests; greeting tests override with their own handler.
+  getGetBrainDumpIntroMockHandler200({
+    path: "A",
+    greeting: "",
+    prompts: [],
+    greeting_done: true,
+  }),
+  getCompleteBrainDumpGreetingMockHandler200({ greeting_done: true }),
   ...getChatMock(),
   ...getCreditsMock(),
   ...getDefaultMock(),

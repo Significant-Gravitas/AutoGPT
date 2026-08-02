@@ -4,6 +4,7 @@ import { CaretLeftIcon, SignOutIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
+import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
 import { PainPointsStep } from "./steps/PainPointsStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
@@ -18,11 +19,13 @@ export default function OnboardingPage() {
     isLoading,
     handlePreparingComplete,
     isPaymentEnabled,
+    isBrainDumpEnabled,
     steps,
     preparingStep,
     totalSteps,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
+  const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
 
   if (isLoading) return null;
 
@@ -31,8 +34,11 @@ export default function OnboardingPage() {
   const showDots = currentStep <= totalSteps;
   // Back is hidden on Welcome (the first profile step): going back from there
   // when payments are on would return the user to the paywall they already
-  // paid through and let them re-trigger checkout.
-  const showBack = currentStep > steps.welcome && currentStep <= totalSteps;
+  // paid through and let them re-trigger checkout. Also hidden while the
+  // current step is mid-flight (brain dump processing) — there is nothing
+  // coherent to go back to.
+  const showBack =
+    currentStep > steps.welcome && currentStep <= totalSteps && !isStepBusy;
   const showProgressBar = currentStep <= totalSteps;
   const showLogout = currentStep <= totalSteps;
 
@@ -60,9 +66,13 @@ export default function OnboardingPage() {
           )}
         {currentStep === steps.welcome && <WelcomeStep />}
         {currentStep === steps.role && <RoleStep />}
-        {currentStep === steps.painPoints && <PainPointsStep />}
+        {currentStep === steps.painPoints &&
+          (isBrainDumpEnabled ? <BrainDumpStep /> : <PainPointsStep />)}
         {currentStep === preparingStep && (
-          <PreparingStep onComplete={handlePreparingComplete} />
+          <PreparingStep
+            onComplete={handlePreparingComplete}
+            isBrainDumpEnabled={isBrainDumpEnabled}
+          />
         )}
       </div>
 

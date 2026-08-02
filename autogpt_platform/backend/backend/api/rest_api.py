@@ -37,6 +37,7 @@ import backend.api.features.library.model
 import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
+import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
@@ -425,6 +426,11 @@ app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
 
+app.include_router(
+    onboarding_dump_routes.router,
+    tags=["v1", "onboarding"],
+    prefix="/api",
+)
 app.include_router(
     backend.api.features.postmark.postmark.router,
     tags=["v1", "email"],

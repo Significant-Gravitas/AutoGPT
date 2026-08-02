@@ -37,6 +37,11 @@ export function useVoiceRecording({
   const isRecordingRef = useRef(false);
 
   const [isSupported, setIsSupported] = useState(false);
+  const valueRef = useRef(value);
+
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     setIsSupported(
@@ -83,6 +88,10 @@ export function useVoiceRecording({
       try {
         const formData = new FormData();
         formData.append("audio", audioBlob);
+        const draft = valueRef.current.trim();
+        if (draft) {
+          formData.append("context", draft);
+        }
 
         const response = await fetch("/api/transcribe", {
           method: "POST",

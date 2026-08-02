@@ -58,6 +58,7 @@ export function PlatformChrome({ children }: Props) {
   if (showNewLayout) {
     return (
       <SidebarProvider
+        defaultOpen={false}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
         <AppSidebar />

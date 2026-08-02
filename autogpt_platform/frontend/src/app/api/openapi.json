@@ -11,7 +11,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "blocks"],
         "summary": "Export Block Cost Estimates",
-        "description": "Aggregate per-block average credits-per-execution over [start, end].\n\nCapped at ANALYTICS_MAX_DAYS days. Returns only blocks whose current cost\ntype is dynamic (SECOND/ITEMS/COST_USD) — static-cost blocks already\ncharge correctly pre-flight and don't need an estimate override. TOKENS\nis excluded because `compute_token_credits` already supplies a per-model\nfloor at pre-flight; a per-block historical mean would lose that\ngranularity.",
+        "description": "Aggregate per-block average credits-per-execution over [start, end].\n\nCapped at ANALYTICS_MAX_DAYS days. Returns only blocks whose current cost\ntype is dynamic (SECOND/ITEMS/COST_USD) \u2014 static-cost blocks already\ncharge correctly pre-flight and don't need an estimate override. TOKENS\nis excluded because `compute_token_credits` already supplies a per-model\nfloor at pre-flight; a per-block historical mean would lose that\ngranularity.",
         "operationId": "getV2Export block cost estimates",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -650,7 +650,7 @@
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Invalid Executions",
-        "description": "Get detailed list of executions in invalid states (READ-ONLY).\n\nInvalid states indicate data corruption and require manual investigation:\n- QUEUED but has startedAt (impossible - can't start while queued)\n- RUNNING but no startedAt (impossible - can't run without starting)\n\n⚠️ NO BULK ACTIONS PROVIDED - These need case-by-case investigation.\n\nEach invalid execution likely has a different root cause (crashes, race conditions,\nDB corruption). Investigate the execution history and logs to determine appropriate\naction (manual cleanup, status fix, or leave as-is if system recovered).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of invalid state executions with details",
+        "description": "Get detailed list of executions in invalid states (READ-ONLY).\n\nInvalid states indicate data corruption and require manual investigation:\n- QUEUED but has startedAt (impossible - can't start while queued)\n- RUNNING but no startedAt (impossible - can't run without starting)\n\n\u26a0\ufe0f NO BULK ACTIONS PROVIDED - These need case-by-case investigation.\n\nEach invalid execution likely has a different root cause (crashes, race conditions,\nDB corruption). Investigate the execution history and logs to determine appropriate\naction (manual cleanup, status fix, or leave as-is if system recovered).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of invalid state executions with details",
         "operationId": "getV2List invalid executions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -788,7 +788,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue Stuck Execution",
-        "description": "Requeue a stuck QUEUED execution (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
+        "description": "Requeue a stuck QUEUED execution (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
         "operationId": "postV2Requeue stuck execution",
         "requestBody": {
           "content": {
@@ -828,7 +828,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue ALL Stuck Queued Executions",
-        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
+        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
         "operationId": "postV2Requeue all stuck queued executions",
         "responses": {
           "200": {
@@ -852,7 +852,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue Multiple Stuck Executions",
-        "description": "Requeue multiple stuck QUEUED executions (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
+        "description": "Requeue multiple stuck QUEUED executions (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
         "operationId": "postV2Requeue multiple stuck executions",
         "requestBody": {
           "content": {
@@ -1301,11 +1301,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Reserved — the fire-and-forget wrapper currently always honours the activity gate. Kept on the signature so the frontend hook doesn't need a contract change when the force flag is threaded through to the wrapper.",
+              "description": "Reserved \u2014 the fire-and-forget wrapper currently always honours the activity gate. Kept on the signature so the frontend hook doesn't need a contract change when the force flag is threaded through to the wrapper.",
               "default": false,
               "title": "Force"
             },
-            "description": "Reserved — the fire-and-forget wrapper currently always honours the activity gate. Kept on the signature so the frontend hook doesn't need a contract change when the force flag is threaded through to the wrapper."
+            "description": "Reserved \u2014 the fire-and-forget wrapper currently always honours the activity gate. Kept on the signature so the frontend hook doesn't need a contract change when the force flag is threaded through to the wrapper."
           }
         ],
         "responses": {
@@ -1391,7 +1391,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Dream Pass",
-        "description": "Fire a dream pass and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``\nfor progress. Runs ONLY the dream pass submitter — for the full\nnightly fan-out use ``POST /{user_id}/nightly``.",
+        "description": "Fire a dream pass and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``\nfor progress. Runs ONLY the dream pass submitter \u2014 for the full\nnightly fan-out use ``POST /{user_id}/nightly``.",
         "operationId": "postV2TriggerDreamPass",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1616,7 +1616,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Graph",
-        "description": "Single-shot graph payload for the visualizer canvas.\n\nReturns nodes + edges in one round-trip so the frontend can hand\nthe whole thing to a force-directed layout without N+1 fetches.\n\nDefaults to entities + communities (the \"what does my memory know\nabout\" view). ``include_episodes=True`` adds the temporal\n:Episodic nodes — useful for debugging extraction but noisy for the\ntypical inspector view.",
+        "description": "Single-shot graph payload for the visualizer canvas.\n\nReturns nodes + edges in one round-trip so the frontend can hand\nthe whole thing to a force-directed layout without N+1 fetches.\n\nDefaults to entities + communities (the \"what does my memory know\nabout\" view). ``include_episodes=True`` adds the temporal\n:Episodic nodes \u2014 useful for debugging extraction but noisy for the\ntypical inspector view.",
         "operationId": "getV2GetGraph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1703,7 +1703,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Nightly Batch",
-        "description": "Fire the full nightly batch fan-out and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/nightly/{job_id}``\nfor progress. Same composition as the 03:00 cron — every enabled\nbatch-family submitter runs in sequence sharing one ``nightly_id``\nfor cost-log attribution.",
+        "description": "Fire the full nightly batch fan-out and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/nightly/{job_id}``\nfor progress. Same composition as the 03:00 cron \u2014 every enabled\nbatch-family submitter runs in sequence sharing one ``nightly_id``\nfor cost-log attribution.",
         "operationId": "postV2TriggerNightlyBatch",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1842,7 +1842,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Ratification Pass",
-        "description": "Trigger an on-demand ratification sweep for the user (in isolation).\n\nForwards to ``Scheduler.execute_ratification_pass_now``. Runs ONLY\nthe ratification supersession sweep — does NOT run dream pass or\ncommunity rebuild. Useful for testing ratification behavior\nwithout the full nightly fan-out.",
+        "description": "Trigger an on-demand ratification sweep for the user (in isolation).\n\nForwards to ``Scheduler.execute_ratification_pass_now``. Runs ONLY\nthe ratification supersession sweep \u2014 does NOT run dream pass or\ncommunity rebuild. Useful for testing ratification behavior\nwithout the full nightly fan-out.",
         "operationId": "postV2TriggerRatificationPass",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3587,7 +3587,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Cancel Session Task",
-        "description": "Cancel an in-flight task for a session.\n\nHandles both lifecycle states uniformly:\n\n* **Queued** (``chatStatus='queued'``) — the dispatcher hasn't\n  claimed the row yet.  Flip the session back to ``idle`` and\n  return; no executor cancel event needed.\n* **Running** (``chatStatus='running'``) — publish a cancel event\n  to the executor via RabbitMQ FANOUT, then poll Redis until the\n  task status flips out of ``running`` or a 5 s timeout is hit.",
+        "description": "Cancel an in-flight task for a session.\n\nHandles both lifecycle states uniformly:\n\n* **Queued** (``chatStatus='queued'``) \u2014 the dispatcher hasn't\n  claimed the row yet.  Flip the session back to ``idle`` and\n  return; no executor cancel event needed.\n* **Running** (``chatStatus='running'``) \u2014 publish a cancel event\n  to the executor via RabbitMQ FANOUT, then poll Redis until the\n  task status flips out of ``running`` or a 5 s timeout is hit.",
         "operationId": "postV2CancelSessionTask",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3777,7 +3777,7 @@
       "delete": {
         "tags": ["v2", "chat", "share", "chat", "share"],
         "summary": "Disable Chat Sharing",
-        "description": "Revoke sharing for a chat session.\n\nCascade-revokes linked executions whose share originated here\n(``sharedVia == CHAT_LINK``).  User-initiated execution shares\nsurvive — see :func:`backend.copilot.sharing.db.disable_chat_session_share`.",
+        "description": "Revoke sharing for a chat session.\n\nCascade-revokes linked executions whose share originated here\n(``sharedVia == CHAT_LINK``).  User-initiated execution shares\nsurvive \u2014 see :func:`backend.copilot.sharing.db.disable_chat_session_share`.",
         "operationId": "deleteV2DisableChatSharing",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4085,7 +4085,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns the percentage of the daily/weekly allowance used — not the\nraw spend or cap — so clients cannot derive per-turn cost or platform\nmargins. Global defaults sourced from LaunchDarkly (falling back to\nconfig). Includes the user's rate-limit tier.",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns the percentage of the daily/weekly allowance used \u2014 not the\nraw spend or cap \u2014 so clients cannot derive per-turn cost or platform\nmargins. Global defaults sourced from LaunchDarkly (falling back to\nconfig). Includes the user's rate-limit tier.",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {
@@ -4235,7 +4235,7 @@
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Search Users by Name or Email",
-        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly — returns results even for users\nwithout credit transaction history.",
+        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly \u2014 returns results even for users\nwithout credit transaction history.",
         "operationId": "getV2Search users by name or email",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6932,7 +6932,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Issue a short-lived access token for a provider-hosted picker",
-        "description": "Return the raw access token for an OAuth2 credential so the frontend\ncan initialize a provider-hosted picker (e.g. Google Drive Picker).\n\n`GET /{provider}/credentials/{cred_id}` deliberately strips secrets (see\n`CredentialsMetaResponse` + `TestGetCredentialReturnsMetaOnly` in\n`router_test.py`). That hardening broke the Drive picker, which needs the\nraw access token to call `google.picker.Builder.setOAuthToken(...)`. This\nendpoint carves a narrow, explicit hole: the caller must own the\ncredential, it must be OAuth2, and the endpoint returns only the access\ntoken + its expiry — nothing else about the credential. SDK-default\ncredentials are excluded for the same reason as `get_credential`.",
+        "description": "Return the raw access token for an OAuth2 credential so the frontend\ncan initialize a provider-hosted picker (e.g. Google Drive Picker).\n\n`GET /{provider}/credentials/{cred_id}` deliberately strips secrets (see\n`CredentialsMetaResponse` + `TestGetCredentialReturnsMetaOnly` in\n`router_test.py`). That hardening broke the Drive picker, which needs the\nraw access token to call `google.picker.Builder.setOAuthToken(...)`. This\nendpoint carves a narrow, explicit hole: the caller must own the\ncredential, it must be OAuth2, and the endpoint returns only the access\ntoken + its expiry \u2014 nothing else about the credential. SDK-default\ncredentials are excluded for the same reason as `get_credential`.",
         "operationId": "postV1GetPickerToken",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -8327,7 +8327,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
-        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth token.",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically \u2014 no need to pass an explicit auth token.",
         "operationId": "postV2Discover available tools on an mcp server",
         "requestBody": {
           "content": {
@@ -8929,6 +8929,192 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump": {
+      "delete": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Discard Brain Dump",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone \u2014 only the disposable\npart buffer is cleared.",
+        "operationId": "discard_brain_dump",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/finalize": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Finalize Brain Dump",
+        "description": "Close out a take: assemble, scan, store, transcribe.\n\nExtraction and greeting generation continue in the background after\nthis responds \u2014 the preparing step polls ``/status`` until\n``greeting_ready``. Idempotent per ``recording_id`` \u2014 a client that\nretries after a timeout gets the stored result rather than a second\ntranscription.",
+        "operationId": "finalize_brain_dump",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FinalizeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FinalizeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Intro",
+        "description": "Content for the copilot home's onboarding greeting.\n\nPre-generated during finalize, so this is a plain row read \u2014 the\ncopilot home never waits on a model to render its first screen.\n``greeting_done=true`` means the client should show nothing and cache\nthat locally.",
+        "operationId": "get_brain_dump_intro",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IntroCardResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro/complete": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Complete Brain Dump Greeting",
+        "description": "Mark the greeting as done \u2014 called when the first message is sent.\n\nPermanent and content-preserving: the flag flips, the stored greeting\nstays in the row.",
+        "operationId": "complete_brain_dump_greeting",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreetingDoneResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/parts": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Upload Brain Dump Part",
+        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.",
+        "operationId": "upload_brain_dump_part",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_brain_dump_part"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadPartResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recording": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Download Brain Dump Recording",
+        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` \u2014 \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "operationId": "download_brain_dump_recording",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/status": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Status",
+        "description": "Polled by the loading screen while the pipeline runs.",
+        "operationId": "get_brain_dump_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
@@ -9029,7 +9215,8 @@
                 "AGENT_INPUT",
                 "CONGRATS",
                 "VISIT_COPILOT",
-                "BUILDER_OPEN"
+                "BUILDER_OPEN",
+                "CAPABILITY_CARDS"
               ],
               "type": "string",
               "title": "Step"
@@ -10555,7 +10742,7 @@
       "get": {
         "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
         "summary": "Download a file from a shared chat",
-        "description": "Download a workspace file allowlisted by a shared chat (no auth).\n\nReturns uniform 404 for every failure mode to prevent enumeration —\nindistinguishable from \"unknown token\" or \"wrong file id\".",
+        "description": "Download a workspace file allowlisted by a shared chat (no auth).\n\nReturns uniform 404 for every failure mode to prevent enumeration \u2014\nindistinguishable from \"unknown token\" or \"wrong file id\".",
         "operationId": "download_shared_chat_file",
         "parameters": [
           {
@@ -10585,7 +10772,7 @@
             "content": { "application/json": { "schema": {} } }
           },
           "404": {
-            "description": "Uniform 404 for every failure mode (unknown token, wrong file id, file no longer present) — prevents enumeration."
+            "description": "Uniform 404 for every failure mode (unknown token, wrong file id, file no longer present) \u2014 prevents enumeration."
           },
           "422": {
             "description": "Validation Error",
@@ -11104,11 +11291,11 @@
               "type": "integer",
               "maximum": 10,
               "minimum": 1,
-              "description": "Maximum items returned per bucket. The response contains *at most* this many agents, files, and chats — fewer when the bucket has no/few matches.",
+              "description": "Maximum items returned per bucket. The response contains *at most* this many agents, files, and chats \u2014 fewer when the bucket has no/few matches.",
               "default": 4,
               "title": "Per Type Limit"
             },
-            "description": "Maximum items returned per bucket. The response contains *at most* this many agents, files, and chats — fewer when the bucket has no/few matches."
+            "description": "Maximum items returned per bucket. The response contains *at most* this many agents, files, and chats \u2014 fewer when the bucket has no/few matches."
           }
         ],
         "responses": {
@@ -11206,7 +11393,7 @@
       "delete": {
         "tags": ["v1", "skills"],
         "summary": "Delete a user-distilled copilot skill",
-        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable \u2014 attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
         "operationId": "deleteCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -13188,6 +13375,30 @@
           }
         }
       }
+    },
+    "/api/onboarding/brain-dump/recommended-providers": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Recommended Providers",
+        "description": "Provider picks for the welcome dialog's \"Connect your tools\" panel.\n\nWritten by a background job that runs beside the greeting one; a plain\nrow read here. ``ready=false`` means keep polling.",
+        "operationId": "get_brain_dump_recommended_providers",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
     }
   },
   "components": {
@@ -13511,7 +13722,7 @@
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ],
-            "description": "Webhook-trigger setup info (provider, config_schema, credentials_input_name) for agents with an external trigger. Configure the trigger by passing config_schema fields to setup_agent_webhook_trigger — never by editing the trigger node in the graph. None for agents without a webhook trigger."
+            "description": "Webhook-trigger setup info (provider, config_schema, credentials_input_name) for agents with an external trigger. Configure the trigger by passing config_schema fields to setup_agent_webhook_trigger \u2014 never by editing the trigger node in the graph. None for agents without a webhook trigger."
           }
         },
         "type": "object",
@@ -13676,7 +13887,7 @@
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ],
-            "description": "Webhook-trigger setup info (provider, config_schema, credentials_input_name) for agents with an external trigger. Configure the trigger by passing config_schema fields to setup_agent_webhook_trigger — never by editing the trigger node in the graph. None for agents without a webhook trigger."
+            "description": "Webhook-trigger setup info (provider, config_schema, credentials_input_name) for agents with an external trigger. Configure the trigger by passing config_schema fields to setup_agent_webhook_trigger \u2014 never by editing the trigger node in the graph. None for agents without a webhook trigger."
           }
         },
         "type": "object",
@@ -14638,6 +14849,20 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "Body_upload_brain_dump_part": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" },
+          "recording_id": { "type": "string", "title": "Recording Id" },
+          "part_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Part Index"
+          }
+        },
+        "type": "object",
+        "required": ["file", "recording_id", "part_index"],
+        "title": "Body_upload_brain_dump_part"
+      },
       "BotAnalyticsSummary": {
         "properties": {
           "platform": {
@@ -14648,7 +14873,7 @@
           "live_servers": {
             "type": "integer",
             "title": "Live Servers",
-            "description": "Current count of servers the bot is in right now. Point-in-time gauge — intentionally ignores window_days. Use the server-count timeseries endpoint for the windowed growth curve."
+            "description": "Current count of servers the bot is in right now. Point-in-time gauge \u2014 intentionally ignores window_days. Use the server-count timeseries endpoint for the windowed growth curve."
           },
           "messages_received": {
             "type": "integer",
@@ -14744,7 +14969,7 @@
         "type": "object",
         "required": ["platform", "display_name", "icon"],
         "title": "BotPlatformInfo",
-        "description": "A bot platform enabled on this deployment plus the caller's links to it.\n\nPlatforms whose adapter isn't configured (missing token/credentials) are\nomitted from the response entirely — the Bots settings page hides them."
+        "description": "A bot platform enabled on this deployment plus the caller's links to it.\n\nPlatforms whose adapter isn't configured (missing token/credentials) are\nomitted from the response entirely \u2014 the Bots settings page hides them."
       },
       "BotServerActivity": {
         "properties": {
@@ -14780,6 +15005,23 @@
         "type": "object",
         "required": ["date", "messages", "replies", "errors"],
         "title": "BotTimeseriesPoint"
+      },
+      "BrainDumpInputMode": {
+        "type": "string",
+        "enum": ["voice", "typed", "skipped"],
+        "title": "BrainDumpInputMode"
+      },
+      "BrainDumpStatus": {
+        "type": "string",
+        "enum": [
+          "recording_uploaded",
+          "transcribing",
+          "transcribed",
+          "extracting",
+          "completed",
+          "failed"
+        ],
+        "title": "BrainDumpStatus"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -14883,7 +15125,7 @@
         },
         "type": "object",
         "title": "ChatSessionMetadata",
-        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
+        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns \u2014\nno migration required for new fields as long as a default is provided."
       },
       "ChatShareStateResponse": {
         "properties": {
@@ -14919,7 +15161,7 @@
         },
         "type": "object",
         "title": "ChatShareStateResponse",
-        "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state — sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
+        "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state \u2014 sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -14986,7 +15228,7 @@
         },
         "type": "object",
         "title": "CoPilotUsagePublic",
-        "description": "Current usage status for a user — public (client-safe) shape."
+        "description": "Current usage status for a user \u2014 public (client-safe) shape."
       },
       "CommunityListResponse": {
         "properties": {
@@ -15100,7 +15342,7 @@
         },
         "type": "object",
         "title": "ConfirmLinkRequest",
-        "description": "Optional confirm payload. ``telegram_auth`` carries the signed identity\nTelegram appends when the user reached this page via a login_url button —\nwhen present it must verify, and the link token must belong to that same\nTelegram user."
+        "description": "Optional confirm payload. ``telegram_auth`` carries the signed identity\nTelegram appends when the user reached this page via a login_url button \u2014\nwhen present it must verify, and the link token must belong to that same\nTelegram user."
       },
       "ConfirmLinkResponse": {
         "properties": {
@@ -15201,7 +15443,7 @@
         "type": "object",
         "required": ["name", "description"],
         "title": "CopilotSkillInfo",
-        "description": "User-distilled copilot skill metadata for the library UI.\n\nDefaults (built-in agent-building / MCP-tool guides) are intentionally\nexcluded — they cannot be edited or deleted, so surfacing them in the\nuser-facing list would add noise without affordances."
+        "description": "User-distilled copilot skill metadata for the library UI.\n\nDefaults (built-in agent-building / MCP-tool guides) are intentionally\nexcluded \u2014 they cannot be edited or deleted, so surfacing them in the\nuser-facing list would add noise without affordances."
       },
       "CopilotTurnJobInfo": {
         "properties": {
@@ -15550,7 +15792,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field \u2014 do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  \u2014 see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, \u2026) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) \u2014 builder-bound sessions are never\nexpert-scoped.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -15856,7 +16098,7 @@
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "Plain-English description of what this step does for the user. Do not put block class names or wiring verbs here — block_name and action carry that technical detail."
+            "description": "Plain-English description of what this step does for the user. Do not put block class names or wiring verbs here \u2014 block_name and action carry that technical detail."
           },
           "action": {
             "type": "string",
@@ -16249,6 +16491,38 @@
         "type": "object",
         "title": "DreamPassUsage",
         "description": "Aggregate usage across all phases of one dream pass.\n\nSurfaced on ``DreamPassResult.usage`` so eval / admin UI / billing\ncan read tokens + cost without recomputing. Written to\n``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;\ncharged against the user's rate-limit window via\n``persist_and_record_usage`` so dream-pass spend rolls into the\nsame daily/weekly subscription tier budget as chat-execution\noverage."
+      },
+      "DumpStatusResponse": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpStatus" },
+              { "type": "null" }
+            ]
+          },
+          "input_mode": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpInputMode" },
+              { "type": "null" }
+            ]
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          },
+          "has_audio": {
+            "type": "boolean",
+            "title": "Has Audio",
+            "default": false
+          },
+          "greeting_ready": {
+            "type": "boolean",
+            "title": "Greeting Ready",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "DumpStatusResponse"
       },
       "EnableShareRequest": {
         "properties": {
@@ -16910,6 +17184,56 @@
         "required": ["executions", "total"],
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
+      },
+      "FinalizeRequest": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Recording Id"
+          },
+          "input_mode": {
+            "$ref": "#/components/schemas/BrainDumpInputMode",
+            "default": "voice"
+          },
+          "duration_secs": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Duration Secs"
+          },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "text": {
+            "anyOf": [
+              { "type": "string", "maxLength": 20000 },
+              { "type": "null" }
+            ],
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "FinalizeRequest",
+        "description": "Finalize one take.\n\n``text`` is the typed fallback: when set, no audio is expected and the\ndump is stored with ``input_mode=typed``. ``input_mode=skipped``\nrecords the deliberate skip so Path B can be chosen server-side."
+      },
+      "FinalizeResponse": {
+        "properties": {
+          "status": { "$ref": "#/components/schemas/BrainDumpStatus" },
+          "input_mode": { "$ref": "#/components/schemas/BrainDumpInputMode" },
+          "transcript_preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript Preview"
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": ["status", "input_mode"],
+        "title": "FinalizeResponse"
       },
       "FolderCreateRequest": {
         "properties": {
@@ -17856,6 +18180,14 @@
         "required": ["provider", "config_schema", "credentials_input_name"],
         "title": "GraphTriggerInfo"
       },
+      "GreetingDoneResponse": {
+        "properties": {
+          "greeting_done": { "type": "boolean", "title": "Greeting Done" }
+        },
+        "type": "object",
+        "required": ["greeting_done"],
+        "title": "GreetingDoneResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -17995,6 +18327,31 @@
         "required": ["store_listing_version_id"],
         "title": "InstallWorkflowRequest"
       },
+      "IntroCardResponse": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "greeting": { "type": "string", "title": "Greeting" },
+          "prompts": {
+            "items": { "$ref": "#/components/schemas/SuggestedPrompt" },
+            "type": "array",
+            "title": "Prompts",
+            "default": []
+          },
+          "greeting_done": {
+            "type": "boolean",
+            "title": "Greeting Done",
+            "default": false
+          },
+          "transcript": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript"
+          }
+        },
+        "type": "object",
+        "required": ["path", "greeting"],
+        "title": "IntroCardResponse",
+        "description": "Content for the copilot home's onboarding greeting.\n\n``path`` is \"A\" when we have something to reflect back and \"B\" when\nthe greeting's job is to invite a recording instead. ``greeting_done``\nis the server-side \"already seen it\" flag \u2014 when true the client\nshows nothing and caches the fact locally."
+      },
       "InvitationCreateResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -18117,7 +18474,7 @@
           "status"
         ],
         "title": "InvoiceListItem",
-        "description": "A single invoice surfaced from Stripe for the billing UI.\n\nMirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``\nopens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.\n\n``total_cents`` is the invoice total (what the user owes / will be charged); use it\nfor the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled\nso far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to\nshow outstanding balances separately."
+        "description": "A single invoice surfaced from Stripe for the billing UI.\n\nMirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``\nopens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.\n\n``total_cents`` is the invoice total (what the user owes / will be charged); use it\nfor the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled\nso far \u2014 `0` for ``open``/``draft`` invoices \u2014 and is kept for callers that need to\nshow outstanding balances separately."
       },
       "JobTriggerResponse": {
         "properties": {
@@ -18142,7 +18499,7 @@
         "type": "object",
         "required": ["job_id", "user_id", "kind", "state", "started_at"],
         "title": "JobTriggerResponse",
-        "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
+        "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point \u2014 the\nscheduler picks the job up within sub-second and flips it to\n``running``."
       },
       "LibraryAgent": {
         "properties": {
@@ -19695,7 +20052,8 @@
           "RUN_14_DAYS",
           "RUN_AGENTS_100",
           "BUILDER_OPEN",
-          "BUILDER_RUN_AGENT"
+          "BUILDER_RUN_AGENT",
+          "CAPABILITY_CARDS"
         ],
         "title": "OnboardingStep"
       },
@@ -19867,7 +20225,7 @@
         "type": "object",
         "required": ["messages", "count"],
         "title": "PeekPendingMessagesResponse",
-        "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
+        "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer \u2014 messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
       },
       "PendingHumanReviewModel": {
         "properties": {
@@ -20928,7 +21286,7 @@
         "type": "object",
         "required": ["buffer_length", "max_buffer_length", "turn_in_flight"],
         "title": "QueuePendingMessageResponse",
-        "description": "Response returned when a message is queued because the session already\nhas a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback."
+        "description": "Response returned when a message is queued because the session already\nhas a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked \u2014 purely informational for UX feedback."
       },
       "RateLimitResetResponse": {
         "properties": {
@@ -22830,7 +23188,7 @@
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-click UUID generated by the frontend.  Becomes the persisted ``ChatMessage.id`` (PK).  Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the id, so the Postgres unique-constraint on the PK is the atomic dedup primitive: a duplicate INSERT returns a subscribe-only response without creating a parallel turn.  Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
+            "description": "Optional per-click UUID generated by the frontend.  Becomes the persisted ``ChatMessage.id`` (PK).  Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the id, so the Postgres unique-constraint on the PK is the atomic dedup primitive: a duplicate INSERT returns a subscribe-only response without creating a parallel turn.  Distinct user clicks (even with identical text) MUST send different ids \u2014 the frontend's per-click ``crypto.randomUUID()`` guarantees that."
           }
         },
         "type": "object",
@@ -22858,7 +23216,7 @@
           "average_rating"
         ],
         "title": "SubmissionStats",
-        "description": "Creator-wide aggregates over a user's non-deleted submissions.\n\nComputed server-side so values stay accurate regardless of pagination —\nsumming client-side over the current page silently undercounts once the\ncreator has more submissions than fit on one page."
+        "description": "Creator-wide aggregates over a user's non-deleted submissions.\n\nComputed server-side so values stay accurate regardless of pagination \u2014\nsumming client-side over the current page silently undercounts once the\ncreator has more submissions than fit on one page."
       },
       "SubmissionStatus": {
         "type": "string",
@@ -22889,7 +23247,7 @@
             "additionalProperties": { "type": "integer" },
             "type": "object",
             "title": "Tier Costs Yearly",
-            "description": "Tier → yearly amount in cents. Populated only for tiers with a yearly Stripe price configured in LaunchDarkly. Empty for monthly-only configurations."
+            "description": "Tier \u2192 yearly amount in cents. Populated only for tiers with a yearly Stripe price configured in LaunchDarkly. Empty for monthly-only configurations."
           },
           "billing_cycle": {
             "type": "string",
@@ -22902,7 +23260,7 @@
             "additionalProperties": { "type": "number" },
             "type": "object",
             "title": "Tier Multipliers",
-            "description": "Tier → rate-limit multiplier. Covers the same tiers listed in ``tier_costs`` so the frontend can render rate-limit badges relative to the lowest visible tier without knowing backend defaults."
+            "description": "Tier \u2192 rate-limit multiplier. Covers the same tiers listed in ``tier_costs`` so the frontend can render rate-limit badges relative to the lowest visible tier without knowing backend defaults."
           },
           "proration_credit_cents": {
             "type": "integer",
@@ -22942,12 +23300,12 @@
               { "type": "null" }
             ],
             "title": "Pending Billing Cycle",
-            "description": "Billing cycle of the queued change, when resolvable. Set alongside ``pending_tier`` for tier downgrades and same-tier cycle switches (yearly→monthly). The frontend uses this to differentiate a cycle-only schedule (``pending_tier == current tier``) from a real tier downgrade so the UI copy can describe the actual change. ``None`` for cancellations and unconfigured legacy prices."
+            "description": "Billing cycle of the queued change, when resolvable. Set alongside ``pending_tier`` for tier downgrades and same-tier cycle switches (yearly\u2192monthly). The frontend uses this to differentiate a cycle-only schedule (``pending_tier == current tier``) from a real tier downgrade so the UI copy can describe the actual change. ``None`` for cancellations and unconfigured legacy prices."
           },
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC \u2192 paid upgrade). Empty string in all other branches \u2014 the client redirects to this URL when non-empty.",
             "default": ""
           }
         },
@@ -23035,6 +23393,17 @@
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
       },
+      "SuggestedPrompt": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "prompt": { "type": "string", "title": "Prompt" },
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" }
+        },
+        "type": "object",
+        "required": ["title", "prompt"],
+        "title": "SuggestedPrompt",
+        "description": "One pickable prompt under the greeting.\n\n``title`` is the short line the user sees; ``prompt`` is the full\nmessage that gets sent when they pick it. ``icon`` is a Phosphor icon\nslug from ``intro.PROMPT_ICONS`` \u2014 the frontend maps it to the actual\nicon component and falls back to a sparkle for anything unknown."
+      },
       "SuggestedPromptsResponse": {
         "properties": {
           "themes": {
@@ -23118,7 +23487,7 @@
         "type": "object",
         "required": ["message", "goal", "steps"],
         "title": "TaskDecompositionResponse",
-        "description": "Response for decompose_goal tool — shows the plan to the user."
+        "description": "Response for decompose_goal tool \u2014 shows the plan to the user."
       },
       "TeamMemberResponse": {
         "properties": {
@@ -23848,7 +24217,7 @@
         "type": "object",
         "required": ["message"],
         "title": "TodoWriteResponse",
-        "description": "Ack returned by ``TodoWrite``.\n\nThe tool is effectively stateless — the authoritative task list lives in\nthe assistant's latest tool-call arguments, which are replayed from the\ntranscript on each turn. The tool output only needs to confirm that the\nupdate was accepted so the model can proceed."
+        "description": "Ack returned by ``TodoWrite``.\n\nThe tool is effectively stateless \u2014 the authoritative task list lives in\nthe assistant's latest tool-call arguments, which are replayed from the\ntranscript on each turn. The tool output only needs to confirm that the\nupdate was accepted so the model can proceed."
       },
       "TokenIntrospectionResult": {
         "properties": {
@@ -23909,7 +24278,7 @@
         "type": "object",
         "required": ["input_usd_per_1m", "output_usd_per_1m"],
         "title": "TokenRateDisplay",
-        "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
+        "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only \u2014 billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
       "TokenRequestByCode": {
         "properties": {
@@ -24939,6 +25308,22 @@
         "title": "UploadCopilotSkillRequest",
         "description": "Body for the library UI's \"upload skill\" action.\n\nCarries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the\nuser picked from disk; the server parses + validates it so the upload and\nthe copilot's ``store_skill`` tool share one source of truth."
       },
+      "UploadPartResponse": {
+        "properties": {
+          "recording_id": { "type": "string", "title": "Recording Id" },
+          "part_index": { "type": "integer", "title": "Part Index" },
+          "received_bytes": { "type": "integer", "title": "Received Bytes" },
+          "total_bytes": { "type": "integer", "title": "Total Bytes" }
+        },
+        "type": "object",
+        "required": [
+          "recording_id",
+          "part_index",
+          "received_bytes",
+          "total_bytes"
+        ],
+        "title": "UploadPartResponse"
+      },
       "UsageWindowPublic": {
         "properties": {
           "percent_used": {
@@ -24957,7 +25342,7 @@
         "type": "object",
         "required": ["percent_used", "resets_at"],
         "title": "UsageWindowPublic",
-        "description": "Public view of a usage window — only the percentage and reset time.\n\nHides the raw spend and the cap so clients cannot derive per-turn cost\nor reverse-engineer platform margins.  ``percent_used`` is capped at 100."
+        "description": "Public view of a usage window \u2014 only the percentage and reset time.\n\nHides the raw spend and the cap so clients cannot derive per-turn cost\nor reverse-engineer platform margins.  ``percent_used`` is capped at 100."
       },
       "UserAgentCostRollup": {
         "properties": {
@@ -25718,7 +26103,7 @@
         "type": "object",
         "required": ["content"],
         "title": "WriteSummary",
-        "description": "One line per envelope written by apply.py.\n\nCarries the durable Graphiti edge uuid so the eval / admin UI / the\nfuture inline chat-stream `dream.operations` event (P9 daydreaming)\ncan render or audit individual operations. ``edge_uuid`` is None\nwhen the underlying ``enqueue_episode`` call did not return one\n(FalkorDB unreachable, etc.) — we still record the attempted write."
+        "description": "One line per envelope written by apply.py.\n\nCarries the durable Graphiti edge uuid so the eval / admin UI / the\nfuture inline chat-stream `dream.operations` event (P9 daydreaming)\ncan render or audit individual operations. ``edge_uuid`` is None\nwhen the underlying ``enqueue_episode`` call did not return one\n(FalkorDB unreachable, etc.) \u2014 we still record the attempted write."
       },
       "backend__api__features__chat__share__ShareResponse": {
         "properties": {
@@ -25768,6 +26153,31 @@
           "expires_in_hours"
         ],
         "title": "UploadFileResponse"
+      },
+      "RecommendedProvider": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
+        },
+        "type": "object",
+        "required": ["provider"],
+        "title": "RecommendedProvider",
+        "description": "One provider Claude picked from the transcript.\n\n``provider`` is a registry id (validated against the live provider\nlist before storage); ``reason`` is the one-liner shown under it in\nthe welcome dialog's Recommended section."
+      },
+      "RecommendedProvidersResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "providers": {
+            "items": { "$ref": "#/components/schemas/RecommendedProvider" },
+            "type": "array",
+            "title": "Providers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["ready"],
+        "title": "RecommendedProvidersResponse",
+        "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running \u2014 the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
       }
     },
     "securitySchemes": {

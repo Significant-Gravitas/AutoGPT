@@ -20,6 +20,13 @@ import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
+import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
+import {
+  peekGreetingDone,
+  setGreetingDone,
+  takeIntroAwaitingFollowup,
+} from "@/services/onboarding/brain-dump-handoff";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
   const lastUserIndex = messages.findLastIndex(
@@ -39,7 +46,7 @@ function hasAssistantTail(messages: UIMessage[]) {
 }
 
 export function useCopilotPage() {
-  const { isUserLoading, isLoggedIn } = useAuth();
+  const { user, isUserLoading, isLoggedIn } = useAuth();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
@@ -47,6 +54,7 @@ export function useCopilotPage() {
   const { expertsById } = useExpertMap();
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
     sessionId,
@@ -198,6 +206,18 @@ export function useCopilotPage() {
     const hasAttachments =
       (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
     if (!trimmed && !hasAttachments) return;
+
+    // Sending anything retires the greeting for good: flag it done on
+    // the server (kept in the DB, just never shown again) and cache the
+    // fact locally so no future visit even has to ask.
+    if (!peekGreetingDone(user?.id)) {
+      completeGreeting(undefined, {
+        onSuccess: () => setGreetingDone(user?.id),
+      });
+    }
+    if (takeIntroAwaitingFollowup()) {
+      trackBrainDump("intro_followup_sent", { chars: trimmed.length });
+    }
 
     if (sessionId && isInflightRef.current) {
       if (hasAttachments) {

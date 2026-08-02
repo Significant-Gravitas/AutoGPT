@@ -628,7 +628,7 @@ export function ChatMessagesContainer({
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +
-                  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+                  "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] " +
                   "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
@@ -779,7 +779,7 @@ export function ChatMessagesContainer({
         {!readOnly &&
           queuedMessages?.map((msg, idx) => (
             <Message key={idx} from="user">
-              <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
+              <MessageContent className="flex flex-col gap-1 rounded-3xl border border-dashed border-[#b18aff] bg-gradient-to-br from-[#f3edff] to-[#e4d4ff] px-4 py-3 text-[1rem] leading-relaxed text-[#3b1e75] opacity-60 [border-bottom-right-radius:0.5rem]">
                 <span>{msg}</span>
                 <span className="flex items-center gap-1 text-xs text-slate-500">
                   <Clock className="size-3" weight="bold" />

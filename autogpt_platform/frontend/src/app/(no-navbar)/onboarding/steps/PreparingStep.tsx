@@ -5,57 +5,21 @@ import { Text } from "@/components/atoms/Text/Text";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
 import { Check } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
-
-const CHECKLIST = [
-  "Personalizing your experience",
-  "Connecting automation engines",
-  "Building your space",
-] as const;
-
-const STEP_DURATION_MS = 4000;
-const STEP_INTERVAL = STEP_DURATION_MS / CHECKLIST.length;
+import { usePreparingStep } from "./usePreparingStep";
 
 interface Props {
   onComplete: () => void;
+  isBrainDumpEnabled?: boolean;
 }
 
-export function PreparingStep({ onComplete }: Props) {
-  const [started, setStarted] = useState(false);
-  const [completedItems, setCompletedItems] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
-
-  useEffect(() => {
-    const timer = setTimeout(() => setStarted(true), 300);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!started) return;
-
-    const startTime = Date.now();
-
-    const progressInterval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const pct = Math.min(100, (elapsed / STEP_DURATION_MS) * 100);
-      setProgress(pct);
-
-      const items = Math.min(
-        CHECKLIST.length,
-        Math.floor(elapsed / STEP_INTERVAL) + 1,
-      );
-      setCompletedItems(items);
-
-      if (elapsed >= STEP_DURATION_MS) {
-        clearInterval(progressInterval);
-        onCompleteRef.current();
-      }
-    }, 50);
-
-    return () => clearInterval(progressInterval);
-  }, [started]);
+export function PreparingStep({
+  onComplete,
+  isBrainDumpEnabled = false,
+}: Props) {
+  const { started, progress, completedItems, checklist } = usePreparingStep({
+    onComplete,
+    isBrainDumpEnabled,
+  });
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-8 px-4">
@@ -82,7 +46,7 @@ export function PreparingStep({ onComplete }: Props) {
       </div>
 
       <ul className="flex flex-col gap-3">
-        {CHECKLIST.map((item, i) => (
+        {checklist.map((item, i) => (
           <li key={item} className="flex items-center gap-3">
             <div
               className={cn(

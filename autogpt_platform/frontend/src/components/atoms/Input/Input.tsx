@@ -106,7 +106,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           className={cn(
             baseStyles,
             errorStyles,
-            "-mb-1 h-auto min-h-[2.875rem] rounded-xl",
+            "-mb-1 h-auto min-h-[2.875rem]",
             // Size variants for textarea
             size === "small" && [
               "min-h-[2.25rem]", // 36px minimum
