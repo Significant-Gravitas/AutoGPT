@@ -155,10 +155,18 @@ AutoGPT already supports pointing the OpenAI provider at any OpenAI-compatible
 HTTP endpoint via `OPENAI_API_BASE_URL` (see `classic/forge/forge/llm/providers/openai.py`
 and `classic/original_autogpt/.env.template`).
 
-1. Set your gateway base URL (must include `/v1` if the server expects it):
+!!! warning
+    `OPENAI_API_BASE_URL` has **no effect when `USE_AZURE=True`**. Azure uses
+    `azure.yaml` / the Azure OpenAI path instead (see the Azure note above).
+
+1. Set your gateway base URL (must include `/v1` if the server expects it).
+   Prefer **HTTPS** for any remote gateway — you will be sending `OPENAI_API_KEY`
+   on every request:
    ```ini
    OPENAI_API_BASE_URL=https://api.example.com/v1
    ```
+   Plain `http://` is only appropriate for local loopback servers (e.g. Ollama on
+   `http://localhost:11434/v1`).
 2. Set an API key **issued by that endpoint** (not necessarily an OpenAI platform key):
    ```ini
    OPENAI_API_KEY=sk-...
