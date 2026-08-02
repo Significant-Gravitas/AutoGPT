@@ -53,6 +53,7 @@ from backend.copilot.local_context_probe import (
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
+    RoutingSource,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
@@ -426,9 +427,11 @@ class _BaselineStreamState:
     """
 
     model: str = ""
-    # Which routing layer picked ``model`` ("ld" | "catalog" | "env") — stamped
-    # onto persisted assistant messages for product-intelligence segmentation.
-    routing_source: str = "env"
+    # Which routing layer picked ``model`` — stamped onto persisted assistant
+    # messages for product-intelligence segmentation. The baseline path only
+    # ever produces "ld" | "catalog" | "env" ("fallback" is SDK-only, marking
+    # a CLI 529-overload swap); typed as the shared RoutingSource superset.
+    routing_source: RoutingSource = "env"
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a

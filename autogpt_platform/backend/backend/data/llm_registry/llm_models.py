@@ -96,7 +96,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GPT5_1 = "gpt-5.1-2025-11-13"
     GPT5 = "gpt-5-2025-08-07"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
-    # O-series reasoning (added on dev via #12619, translated to catalog)
+    # O-series reasoning models
     O4_MINI = "o4-mini"
     O3_PRO = "o3-pro"
     O1 = "o1"
@@ -335,11 +335,21 @@ def _default_model_from_catalog() -> LLMModel:
     """The platform default IS the catalog's recommended model — one fact,
     one home. First enabled ``is_recommended`` entry with an enum identifier
     wins (catalog order); no recommendation is a data error caught at boot.
+
+    The default must also be GA: it is offered to every user and must be
+    picker-selectable, so it has to clear the same ``visibility == "GA"``
+    bar as ``_PICKER_HIDDEN_SLUGS`` — otherwise the default could be a model
+    the picker hides. A non-GA model flagged ``is_recommended`` is skipped
+    here (pre-launch models are not the public default).
     """
     members = {m.value for m in LLMModel}
     first_enabled: LLMModel | None = None
     for model in get_catalog().models:
-        if not model.is_enabled or model.slug not in members:
+        if (
+            not model.is_enabled
+            or model.visibility != "GA"
+            or model.slug not in members
+        ):
             continue
         if model.is_recommended:
             return LLMModel(model.slug)

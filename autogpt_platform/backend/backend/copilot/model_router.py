@@ -49,6 +49,7 @@ import sentry_sdk
 
 import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
+from backend.copilot.model import RoutingSource
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
 from backend.util.feature_flag import Flag, get_feature_flag_value
@@ -62,9 +63,6 @@ settings = Settings()
 
 ModelMode = Literal["fast", "thinking"]
 ModelTier = Literal["standard", "advanced"]
-# "fallback" is stamped (never resolved): it marks turns where the CLI's
-# 529-overload fallback served a different model than the routed one.
-RoutingSource = Literal["ld", "catalog", "env", "fallback"]
 CodexRoutingSource = Literal[
     "catalog",
     "preferred",
