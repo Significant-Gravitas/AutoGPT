@@ -78,6 +78,32 @@ async def update_dump(user_id: str, **fields: Any) -> OnboardingBrainDump | None
     )
 
 
+async def claim_transition(
+    user_id: str,
+    recording_id: str,
+    *,
+    expected: BrainDumpStatus,
+    new: BrainDumpStatus,
+    **fields: Any,
+) -> bool:
+    """Move a take from ``expected`` to ``new``, once.
+
+    Returns ``True`` only for the caller that won. The read-then-write
+    idempotency guards in the service can both be passed by two finalize
+    requests that arrive together; this cannot, because the status is
+    part of the ``WHERE`` clause, so the database decides the winner.
+    """
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={
+            "userId": user_id,
+            "recordingId": recording_id,
+            "status": expected,
+        },
+        data={"status": new, **fields},
+    )
+    return updated == 1
+
+
 async def mark_failed(user_id: str, error_code: str) -> None:
     """Record a terminal failure without ever dropping the stored audio."""
     await update_dump(user_id, status=BrainDumpStatus.failed, errorCode=error_code)

@@ -54,6 +54,21 @@ class DumpStore:
     async def start_dump(
         self, user_id: str, recording_id: str, input_mode: BrainDumpInputMode
     ) -> OnboardingBrainDump:
+        # Mirrors the real `start_dump`: a take already moving through
+        # the pipeline is returned untouched, so a replayed part 0 or a
+        # repeated finalize cannot reset it.
+        if (
+            self.row is not None
+            and self.row.recordingId == recording_id
+            and self.row.status
+            in (
+                BrainDumpStatus.transcribing,
+                BrainDumpStatus.transcribed,
+                BrainDumpStatus.extracting,
+                BrainDumpStatus.completed,
+            )
+        ):
+            return self.row
         self.row = OnboardingBrainDump.model_construct(
             userId=user_id,
             recordingId=recording_id,
@@ -80,6 +95,25 @@ class DumpStore:
         if status is not None:
             self.statuses.append(status)
         return self.row
+
+    async def claim_transition(
+        self,
+        user_id: str,
+        recording_id: str,
+        *,
+        expected: BrainDumpStatus,
+        new: BrainDumpStatus,
+        **fields: Any,
+    ) -> bool:
+        """Mirrors the conditional UPDATE: only matching rows transition."""
+        if (
+            self.row is None
+            or self.row.recordingId != recording_id
+            or self.row.status != expected
+        ):
+            return False
+        await self.update_dump(user_id, status=new, **fields)
+        return True
 
     async def mark_failed(self, user_id: str, error_code: str) -> None:
         await self.update_dump(
@@ -130,6 +164,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.start_dump", new=store.start_dump)
     mocker.patch(f"{module}.update_dump", new=store.update_dump)
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
+    mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
     return store
 
@@ -249,6 +284,10 @@ def test_parts_upload_then_finalize_completes_with_full_transcript(
     assert body["transcript_preview"] == TRANSCRIPT
     assert dumps.statuses == [
         BrainDumpStatus.recording_uploaded,
+        # Written twice: once by the atomic claim that decides which
+        # concurrent finalize proceeds, then again with the audio
+        # metadata once the recording is stored.
+        BrainDumpStatus.transcribing,
         BrainDumpStatus.transcribing,
         BrainDumpStatus.transcribed,
         BrainDumpStatus.extracting,

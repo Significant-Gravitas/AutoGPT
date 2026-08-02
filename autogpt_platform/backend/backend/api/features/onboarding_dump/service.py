@@ -72,6 +72,26 @@ async def finalize_voice_dump(
             existing.status, existing.transcript, BrainDumpInputMode.voice
         )
 
+    # The guard above is a read followed by a write, so two finalizes
+    # that arrive together can both pass it and both go on to assemble,
+    # store and transcribe the same take. This claim is decided by the
+    # database, so exactly one of them proceeds.
+    claimed = await db.claim_transition(
+        user_id,
+        recording_id,
+        expected=BrainDumpStatus.recording_uploaded,
+        new=BrainDumpStatus.transcribing,
+        errorCode=None,
+    )
+    if not claimed:
+        current = await db.get_dump(user_id)
+        if current is not None and current.recordingId == recording_id:
+            return _pipeline_response(
+                current.status, current.transcript, BrainDumpInputMode.voice
+            )
+        # No row at all, or a different take entirely. Fall through so the
+        # missing-audio path below produces the usual failure response.
+
     audio = await storage.assemble_parts(user_id, recording_id)
     if not audio:
         # Nothing buffered server-side. The browser still holds every part
@@ -171,9 +191,22 @@ async def finalize_typed_dump(
         )
 
     await db.start_dump(user_id, recording_id, BrainDumpInputMode.typed)
-    await db.update_dump(
-        user_id, status=BrainDumpStatus.transcribed, transcript=text.strip()
+    # Same reasoning as the voice path: only the caller that wins this
+    # transition queues the extraction and greeting pair.
+    claimed = await db.claim_transition(
+        user_id,
+        recording_id,
+        expected=BrainDumpStatus.recording_uploaded,
+        new=BrainDumpStatus.transcribed,
+        transcript=text.strip(),
     )
+    if not claimed:
+        current = await db.get_dump(user_id)
+        if current is not None and current.recordingId == recording_id:
+            return _pipeline_response(
+                current.status, current.transcript, BrainDumpInputMode.typed
+            )
+
     background_tasks.add_task(
         _run_completion, user_id, text.strip(), BrainDumpInputMode.typed
     )

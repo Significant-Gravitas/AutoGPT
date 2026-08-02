@@ -6,6 +6,7 @@ what reaches the database and the understanding) can be asserted on the
 stored row rather than inferred from a response body.
 """
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -39,6 +40,21 @@ class DumpStore:
     async def start_dump(
         self, user_id: str, recording_id: str, input_mode: BrainDumpInputMode
     ) -> OnboardingBrainDump:
+        # Mirrors the real `start_dump`: a take already moving through
+        # the pipeline is returned untouched, so a replayed part 0 or a
+        # repeated finalize cannot reset it.
+        if (
+            self.row is not None
+            and self.row.recordingId == recording_id
+            and self.row.status
+            in (
+                BrainDumpStatus.transcribing,
+                BrainDumpStatus.transcribed,
+                BrainDumpStatus.extracting,
+                BrainDumpStatus.completed,
+            )
+        ):
+            return self.row
         # model_construct skips defaults, so every column the code under
         # test reads has to be seeded explicitly — otherwise a plain
         # attribute access raises instead of returning the DB default.
@@ -71,6 +87,25 @@ class DumpStore:
             self.transcripts.append(fields["transcript"])
         return self.row
 
+    async def claim_transition(
+        self,
+        user_id: str,
+        recording_id: str,
+        *,
+        expected: BrainDumpStatus,
+        new: BrainDumpStatus,
+        **fields: Any,
+    ) -> bool:
+        """Mirrors the conditional UPDATE: only matching rows transition."""
+        if (
+            self.row is None
+            or self.row.recordingId != recording_id
+            or self.row.status != expected
+        ):
+            return False
+        await self.update_dump(user_id, status=new, **fields)
+        return True
+
     async def mark_failed(self, user_id: str, error_code: str) -> None:
         await self.update_dump(
             user_id, status=BrainDumpStatus.failed, errorCode=error_code
@@ -85,6 +120,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.start_dump", new=store.start_dump)
     mocker.patch(f"{module}.update_dump", new=store.update_dump)
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
+    mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     return store
 
 
@@ -235,6 +271,96 @@ async def test_repeating_a_typed_finalize_does_not_restart_the_pipeline(
     assert BrainDumpStatus.recording_uploaded not in statuses_after_first[1:]
     # Nothing queued the second time round.
     assert second.tasks == []
+    assert extraction["upsert_business_understanding"].await_count == 1
+
+
+def release_both_past_the_guard(mocker: MockerFixture, dumps: "DumpStore"):
+    """Hold the first two `get_dump` calls until both have happened.
+
+    Without this the coroutines never interleave — none of the fakes
+    suspend, so `asyncio.gather` just runs one to completion and then the
+    other, and the race under test never occurs.
+    """
+    barrier = asyncio.Barrier(2)
+    inner = dumps.get_dump
+    arrivals = 0
+
+    async def gated(user_id: str):
+        nonlocal arrivals
+        arrivals += 1
+        row = await inner(user_id)
+        # Snapshot first, *then* wait. The read is what races: both
+        # callers must come away holding the status as it was before
+        # either of them acted. The store mutates its single row in
+        # place, so without the copy the loser would silently observe
+        # the winner's later writes and the race would vanish.
+        snapshot = row.model_copy() if row is not None else None
+        if arrivals <= 2:
+            await barrier.wait()
+        return snapshot
+
+    mocker.patch("backend.api.features.onboarding_dump.db.get_dump", new=gated)
+
+
+@pytest.mark.asyncio
+async def test_two_concurrent_voice_finalizes_only_process_the_take_once(
+    mocker: MockerFixture,
+    dumps: DumpStore,
+    storage_mocks: dict[str, AsyncMock],
+    transcribe: AsyncMock,
+):
+    """Only the caller that wins the atomic claim does the work.
+
+    Both requests read the guard while the status is still
+    `recording_uploaded`, so both pass it. Without the conditional UPDATE
+    both then assembled, stored and transcribed the same recording.
+    """
+    await start_voice_take(dumps)
+    release_both_past_the_guard(mocker, dumps)
+
+    await asyncio.gather(
+        service.finalize_voice_dump(
+            USER_ID, RECORDING_ID, 12.0, None, BackgroundTasks()
+        ),
+        service.finalize_voice_dump(
+            USER_ID, RECORDING_ID, 12.0, None, BackgroundTasks()
+        ),
+    )
+
+    print(
+        "DBG transcribe:",
+        transcribe.await_count,
+        "store:",
+        storage_mocks["store_audio"].await_count,
+        "statuses:",
+        dumps.statuses,
+    )
+    transcribe.assert_awaited_once()
+    storage_mocks["store_audio"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_two_concurrent_typed_finalizes_only_queue_one_pipeline(
+    mocker: MockerFixture, dumps: DumpStore, extraction: dict[str, AsyncMock]
+):
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.typed)
+    release_both_past_the_guard(mocker, dumps)
+    first_tasks = BackgroundTasks()
+    second_tasks = BackgroundTasks()
+
+    await asyncio.gather(
+        service.finalize_typed_dump(
+            USER_ID, RECORDING_ID, "I run a bakery.", first_tasks
+        ),
+        service.finalize_typed_dump(
+            USER_ID, RECORDING_ID, "I run a bakery.", second_tasks
+        ),
+    )
+    await first_tasks()
+    await second_tasks()
+
+    # One winner queues the extraction/greeting pair; the loser queues
+    # nothing, so the understanding is written exactly once.
     assert extraction["upsert_business_understanding"].await_count == 1
 
 
