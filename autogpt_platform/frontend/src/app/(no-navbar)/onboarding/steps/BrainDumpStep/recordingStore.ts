@@ -55,6 +55,12 @@ function openDB(): Promise<IDBDatabase> {
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
+    // Another tab still holding v1 open blocks the upgrade, and without
+    // this the promise never settles — the recorder would hang before it
+    // ever reached the mic. Failing here instead falls back to
+    // upload-only, which is degraded but alive.
+    request.onblocked = () =>
+      reject(new Error("IndexedDB upgrade blocked by another tab"));
   });
 }
 
@@ -77,9 +83,29 @@ function runTransaction<T>(
       new Promise<T>((resolve, reject) => {
         const transaction = db.transaction(storeName, mode);
         const request = run(transaction.objectStore(storeName));
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-        transaction.oncomplete = () => db.close();
+        let result: T;
+        request.onsuccess = () => {
+          result = request.result;
+        };
+        // Settled on the transaction, not the request. `onsuccess` fires
+        // before the transaction commits, so resolving there would report
+        // a chunk as persisted that a later abort (a quota error on a big
+        // blob, say) silently throws away — precisely the thing the
+        // zero-loss guarantee at the top of this file promises not to do.
+        transaction.oncomplete = () => {
+          db.close();
+          resolve(result);
+        };
+        // Closing on every exit, not just the happy one: a leaked
+        // connection also blocks the next version upgrade.
+        transaction.onabort = () => {
+          db.close();
+          reject(transaction.error ?? request.error);
+        };
+        transaction.onerror = () => {
+          db.close();
+          reject(transaction.error ?? request.error);
+        };
       }),
   );
 }
@@ -123,6 +149,19 @@ export async function getMeta() {
   const unfinalized = all.filter((meta) => !meta.finalized);
   const candidates = unfinalized.length > 0 ? unfinalized : all;
   return candidates.sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
+}
+
+// The finalize path knows exactly which take it just submitted, and must
+// say so: `getMeta()` answers "what should we offer to recover", which in
+// a second tab is a different, newer take. Marking that one finalized
+// would strand the take that actually completed.
+export async function getMetaById(recordingId: string) {
+  const meta = await runTransaction<RecordingMeta | undefined>(
+    META_STORE,
+    "readonly",
+    (store) => store.get(recordingId),
+  );
+  return meta ?? null;
 }
 
 // Called only after the server reports `completed` — an unfinalized

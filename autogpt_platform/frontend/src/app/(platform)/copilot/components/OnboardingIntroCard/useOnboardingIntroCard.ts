@@ -1,5 +1,6 @@
 import { useGetBrainDumpIntro } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   clearWelcomePending,
@@ -23,6 +24,9 @@ const PENDING_POLL_MS = 1500;
 export function useOnboardingIntroCard() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
+  // The endpoint 404s with the flag off, so without this every copilot
+  // visit for every user pays for a request that cannot succeed.
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
 
   // localStorage answers first so a returning user never flashes the
   // greeting; only when it has no answer do we ask the server. The flag
@@ -72,7 +76,7 @@ export function useOnboardingIntroCard() {
 
   const { data, isError } = useGetBrainDumpIntro({
     query: {
-      enabled: !isDone && !isWelcomeOpen,
+      enabled: Boolean(isBrainDumpEnabled) && !isDone && !isWelcomeOpen,
       staleTime: Infinity,
       gcTime: Infinity,
       refetchInterval: (query) => {

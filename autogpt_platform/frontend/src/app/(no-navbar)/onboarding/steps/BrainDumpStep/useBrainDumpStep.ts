@@ -7,7 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import { useOnboardingWizardStore } from "../../store";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import { headline, SILENCE_NUDGE_SECONDS } from "./helpers";
-import { clearRecording, getMeta, getParts, saveMeta } from "./recordingStore";
+import {
+  clearRecording,
+  getMetaById,
+  getParts,
+  saveMeta,
+} from "./recordingStore";
 import { useBrainDumpRecorder } from "./useBrainDumpRecorder";
 
 export type ScreenState =
@@ -161,7 +166,9 @@ export function useBrainDumpStep() {
     setScreen("processing");
     const recordingId = recorder.recordingId;
     if (recordingId) await recorder.resendAllParts(recordingId);
-    await submitRecording(recordingId, recorder.elapsedSeconds);
+    // Same reason `handleDone` takes the duration from `stop()`: the
+    // state value on this closure is whatever the last render saw.
+    await submitRecording(recordingId, recorder.getElapsedSeconds());
   }
 
   function handleShowTyping() {
@@ -179,11 +186,18 @@ export function useBrainDumpStep() {
     setScreen("processing");
     const recordingId = recorder.recordingId ?? crypto.randomUUID();
     try {
-      await finalizeBrainDump({
+      const response = await finalizeBrainDump({
         recording_id: recordingId,
         input_mode: "typed",
         text,
       });
+      // A 2xx envelope can still carry a failed pipeline, exactly as on
+      // the voice path — advancing on it would hand the user a copilot
+      // home built from nothing.
+      if (response.status !== 200 || response.data.status === "failed") {
+        setScreen("failed");
+        return;
+      }
     } catch {
       setScreen("failed");
       return;
@@ -219,7 +233,10 @@ export function useBrainDumpStep() {
     // server, so a storage error here must not strand the user on the
     // loading screen.
     try {
-      const meta = await getMeta();
+      // By id, not "the newest take": a second tab may have started a
+      // more recent one, and finalizing that instead would leave the
+      // take we actually completed looking recoverable forever.
+      const meta = await getMetaById(recordingId);
       if (meta) await saveMeta({ ...meta, finalized: true });
       await clearRecording(recordingId);
     } catch {

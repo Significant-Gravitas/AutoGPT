@@ -15,6 +15,10 @@ const ELEVENLABS_TOKEN_URL =
 // a leaked token is worthless soon after. ElevenLabs single-use tokens
 // are fixed at 15 minutes and consumed on connect.
 const TOKEN_TTL_SECONDS = 600;
+// A stalled provider must not hold the route open until the platform's
+// own limit fires: failing fast lets useLiveCaptions drop to the browser
+// engine while the user is still talking.
+const UPSTREAM_TIMEOUT_MS = 5000;
 
 export async function POST(request: NextRequest) {
   const authToken = await getServerAuthToken();
@@ -25,7 +29,20 @@ export async function POST(request: NextRequest) {
   const { provider } = (await request.json().catch(() => ({}))) as {
     provider?: string;
   };
-  return provider === "deepgram" ? mintDeepgram() : mintElevenLabs();
+  try {
+    return provider === "deepgram"
+      ? await mintDeepgram()
+      : await mintElevenLabs();
+  } catch (error) {
+    // Includes the timeout aborting. Captions are cosmetic, so a dead
+    // provider is a 502 and a browser-engine fallback, never a failed
+    // onboarding step.
+    console.error("Live transcription token mint errored:", error);
+    return NextResponse.json(
+      { error: "Could not start live transcription" },
+      { status: 502 },
+    );
+  }
 }
 
 async function mintElevenLabs() {
@@ -35,6 +52,7 @@ async function mintElevenLabs() {
   const response = await fetch(ELEVENLABS_TOKEN_URL, {
     method: "POST",
     headers: { "xi-api-key": apiKey },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
   if (!response.ok) return mintFailed("elevenlabs", response);
 
@@ -54,6 +72,7 @@ async function mintDeepgram() {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ ttl_seconds: TOKEN_TTL_SECONDS }),
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
   if (!response.ok) return mintFailed("deepgram", response);
 

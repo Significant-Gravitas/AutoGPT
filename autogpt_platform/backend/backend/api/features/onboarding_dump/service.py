@@ -57,6 +57,12 @@ async def finalize_voice_dump(
             # Also idempotent while the background half of the pipeline is
             # still running: a client retry must not re-transcribe (the
             # part buffer is already discarded) or double-run extraction.
+            #
+            # ``transcribing`` matters most of all. The buffer is dropped
+            # the moment the audio is stored, so a retry that arrives
+            # while a long recording is still being transcribed would
+            # assemble nothing and mark a perfectly good take failed.
+            BrainDumpStatus.transcribing,
             BrainDumpStatus.transcribed,
             BrainDumpStatus.extracting,
             BrainDumpStatus.completed,

@@ -61,7 +61,12 @@ export function useUploadQueue() {
       }
       queueRef.current = queueRef.current.slice(1);
       setPendingCount(queueRef.current.length);
-      await markPartUploaded(part.id);
+      // Bookkeeping only, and the part is already on the server. Where
+      // IndexedDB is unavailable this rejects — and an unhandled
+      // rejection here would take out `flush()` (reporting failure for a
+      // dump that fully uploaded) and leave `enqueue()`'s `void drain()`
+      // dangling.
+      await markPartUploaded(part.id).catch(() => undefined);
     }
   }
 

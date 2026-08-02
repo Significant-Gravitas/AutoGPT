@@ -20,6 +20,7 @@ from backend.api.features.onboarding_dump.models import (
     ALLOWED_AUDIO_MIME_TYPES,
     MAX_PART_BYTES,
     MAX_RECORDING_BYTES,
+    RECORDING_ID_PATTERN,
     DumpStatusResponse,
     FinalizeRequest,
     FinalizeResponse,
@@ -65,7 +66,7 @@ router = APIRouter(
 async def upload_brain_dump_part(
     user_id: Annotated[str, Security(get_user_id)],
     file: UploadFile,
-    recording_id: Annotated[str, Form()],
+    recording_id: Annotated[str, Form(pattern=RECORDING_ID_PATTERN)],
     part_index: Annotated[int, Form(ge=0)],
 ) -> UploadPartResponse:
     """Accept one MediaRecorder timeslice blob.

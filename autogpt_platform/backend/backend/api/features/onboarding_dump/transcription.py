@@ -149,8 +149,9 @@ async def split_audio(audio: bytes, filename: str) -> list[bytes]:
     suffix = os.path.splitext(filename)[1] or ".webm"
     with tempfile.TemporaryDirectory() as workdir:
         source = os.path.join(workdir, f"source{suffix}")
-        with open(source, "wb") as handle:
-            handle.write(audio)
+        # Off the event loop: these are multi-megabyte reads and writes,
+        # and this runs as a background task alongside live requests.
+        await asyncio.to_thread(_write_file, source, audio)
 
         duration = await _probe_duration(ffmpeg, source)
         segments: list[bytes] = []
@@ -174,8 +175,7 @@ async def split_audio(audio: bytes, filename: str) -> list[bytes]:
                 "libopus",
                 target,
             )
-            with open(target, "rb") as handle:
-                segments.append(handle.read())
+            segments.append(await asyncio.to_thread(_read_file, target))
             start += SEGMENT_SECONDS
             index += 1
         return segments
@@ -201,11 +201,29 @@ async def _probe_duration(ffmpeg: str, path: str) -> float:
         if marker not in line:
             continue
         raw = line.split(marker, 1)[1].split(",", 1)[0].strip()
-        hours, minutes, seconds = raw.split(":")
-        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        try:
+            hours, minutes, seconds = raw.split(":")
+            return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        except ValueError:
+            # ``Duration: N/A`` is what ffmpeg prints for a container with
+            # no finalized duration metadata — which is what a browser
+            # MediaRecorder stream looks like before it is remuxed. Fall
+            # through to the same error every other failure here raises
+            # rather than letting a ValueError escape the module.
+            break
     raise TranscriptionFailedError(
         f"Could not read duration of {os.path.basename(path)}"
     )
+
+
+def _write_file(path: str, data: bytes) -> None:
+    with open(path, "wb") as handle:
+        handle.write(data)
+
+
+def _read_file(path: str) -> bytes:
+    with open(path, "rb") as handle:
+        return handle.read()
 
 
 async def _run_ffmpeg(ffmpeg: str, *args: str) -> None:

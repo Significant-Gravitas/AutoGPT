@@ -3,6 +3,7 @@
 import { usePostV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   BrainIcon,
@@ -13,7 +14,7 @@ import {
   type Icon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
 import { ConnectToolsPanel } from "./ConnectToolsPanel";
 import { GlassPixelBackdrop } from "./GlassPixelBackdrop";
@@ -69,7 +70,18 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
   // navigating away — connecting must never close this dialog.
   const [isConnectOpen, setIsConnectOpen] = useState(false);
   const [contentRef, contentHeight] = useMeasuredHeight<HTMLDivElement>();
-  const { mutate: completeStep } = usePostV1CompleteOnboardingStep();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+  const { mutate: completeStep } = usePostV1CompleteOnboardingStep({
+    mutation: {
+      onError: () =>
+        toast({
+          title: "Could not save your onboarding progress",
+          description: "You may see this introduction again next time.",
+          variant: "destructive",
+        }),
+    },
+  });
   const card = CARDS[cardIndex];
   const isLastCard = cardIndex === CARDS.length - 1;
 
@@ -83,6 +95,19 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
     completeStep({ params: { step: "CAPABILITY_CARDS" } });
     onClose();
   }
+
+  // Escape closes, and focus starts inside the card rather than on
+  // whatever was behind the overlay.
+  useEffect(() => {
+    if (!isOpen) return;
+    dialogRef.current?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") finish("skipped");
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, cardIndex]);
 
   function handleNext() {
     if (isLastCard) {
@@ -103,6 +128,9 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
           transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-white/30 px-4 backdrop-blur-sm"
           data-testid="onboarding-welcome-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Welcome to AutoPilot"
         >
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.97, maxWidth: "26rem" }}
@@ -113,7 +141,9 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
               maxWidth: isConnectOpen ? "30rem" : "26rem",
             }}
             transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
-            className="w-full max-w-[26rem] overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_-24px_rgba(0,0,0,0.3)]"
+            className="w-full max-w-[26rem] overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_-24px_rgba(0,0,0,0.3)] outline-none"
+            ref={dialogRef}
+            tabIndex={-1}
           >
             {/* Card-resize morph: the dialog animates between the compact
                 capability card and the wider provider picker; height tracks

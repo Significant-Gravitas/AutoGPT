@@ -109,8 +109,17 @@ export function useDeepgramLiveCaptions({
       socket = new WebSocket(LISTEN_URL, ["bearer", accessToken]);
       socket.onopen = () => {
         if (disposed) return;
+        // "live" only once the audio graph is actually running. If
+        // AudioContext or the processor node throws, reporting live
+        // would pin useLiveCaptions to a cloud engine that will never
+        // send a word, instead of falling back to the browser one.
+        try {
+          startAudio();
+        } catch {
+          fail();
+          return;
+        }
         setStatus("live");
-        startAudio();
       };
       socket.onmessage = (message) => {
         const result = JSON.parse(message.data as string) as DeepgramResult;

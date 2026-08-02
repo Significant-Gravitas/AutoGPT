@@ -1,7 +1,16 @@
 """Request / response models for the onboarding brain dump."""
 
+from typing import Annotated
+
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+# ``recording_id`` is concatenated into a cloud-storage object key and a
+# Redis key, so anything with a path or namespace separator in it would
+# let a caller reach outside their own prefix. The client sends a
+# ``crypto.randomUUID()``; this is the server refusing everything else.
+RECORDING_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+RecordingId = Annotated[str, StringConstraints(pattern=RECORDING_ID_PATTERN)]
 
 # A 3s MediaRecorder timeslice of webm/opus voice is ~10 KB; 2 MB per part
 # leaves three orders of magnitude of headroom while still rejecting a
@@ -43,7 +52,7 @@ class FinalizeRequest(BaseModel):
     records the deliberate skip so Path B can be chosen server-side.
     """
 
-    recording_id: str = Field(min_length=1, max_length=200)
+    recording_id: RecordingId
     input_mode: BrainDumpInputMode = BrainDumpInputMode.voice
     duration_secs: float | None = Field(default=None, ge=0)
     mime_type: str | None = None

@@ -205,6 +205,9 @@ export function useBrainDumpRecorder() {
     pendingUploads: queue.pendingCount,
     isOffline: queue.isOffline,
     audioStream: streamRef.current,
+    // The live figure, for callers that need it outside a render (the
+    // retry path). `elapsedSeconds` above is this render's snapshot.
+    getElapsedSeconds: () => elapsedSecondsRef.current,
     recordingId: recordingIdRef.current,
     mimeType: mimeTypeRef.current,
     start,
