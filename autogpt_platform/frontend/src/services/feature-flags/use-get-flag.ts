@@ -60,12 +60,16 @@ const defaultFlags = {
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: true,
+  [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
-  [Flag.ONBOARDING_BRAIN_DUMP]: true,
+  // Off by default: with no LaunchDarkly key (local dev, CI, Playwright)
+  // the wizard falls back to this map, and a ``true`` here renders the
+  // brain dump for everyone — which is what the backend 404s are meant to
+  // prevent. Use NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP locally.
+  [Flag.ONBOARDING_BRAIN_DUMP]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
