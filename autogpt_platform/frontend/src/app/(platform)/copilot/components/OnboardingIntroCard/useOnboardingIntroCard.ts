@@ -1,6 +1,6 @@
 import { useGetBrainDumpIntro } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   clearWelcomePending,
@@ -26,7 +26,9 @@ export function useOnboardingIntroCard() {
   const userId = user?.id ?? null;
   // The endpoint 404s with the flag off, so without this every copilot
   // visit for every user pays for a request that cannot succeed.
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const { enabled: isBrainDumpEnabled, ready: isFlagReady } = useFlagStatus(
+    Flag.ONBOARDING_BRAIN_DUMP,
+  );
 
   // localStorage answers first so a returning user never flashes the
   // greeting; only when it has no answer do we ask the server. The flag
@@ -98,8 +100,12 @@ export function useOnboardingIntroCard() {
   // subscribes, which flashed the regular hero + composer for a beat
   // before the greeting page took over on refresh. A non-200 or a
   // failed request counts as an answer so the composer is never held
-  // hostage by an unavailable endpoint.
-  const hasIntroAnswer = data !== undefined || isError;
+  // hostage by an unavailable endpoint — and so does a flag we know is
+  // off, since that query is disabled and will never answer at all. Wait
+  // for LaunchDarkly to actually say so: treating "not answered yet" as
+  // off is what flashes the composer before the greeting page arrives.
+  const hasIntroAnswer =
+    (isFlagReady && !isBrainDumpEnabled) || data !== undefined || isError;
   const serverSaysDone = Boolean(intro?.greeting_done);
   const isPendingGeneration = Boolean(
     intro && !intro.greeting_done && intro.path === "A" && !intro.greeting,
