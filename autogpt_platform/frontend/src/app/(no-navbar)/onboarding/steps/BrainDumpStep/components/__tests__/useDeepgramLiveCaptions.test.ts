@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useScribeLiveCaptions } from "../useScribeLiveCaptions";
+import { useDeepgramLiveCaptions } from "../useDeepgramLiveCaptions";
 import {
   FakeAudioContext,
   FakeWebSocket,
@@ -10,14 +10,14 @@ import {
   stubTokenFetch,
 } from "./captionsTestDoubles";
 
-function renderScribe(audioStream: MediaStream | null = fakeStream()) {
+function renderDeepgram(audioStream: MediaStream | null = fakeStream()) {
   return renderHook(() =>
-    useScribeLiveCaptions({ enabled: true, audioStream }),
+    useDeepgramLiveCaptions({ enabled: true, audioStream }),
   );
 }
 
 async function connected() {
-  const rendered = renderScribe();
+  const rendered = renderDeepgram();
   await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
   const socket = FakeWebSocket.last();
   act(() => socket.open());
@@ -29,7 +29,15 @@ function texts(words: { text: string }[]) {
   return words.map((word) => word.text);
 }
 
-describe("useScribeLiveCaptions", () => {
+function results(transcript: string, isFinal: boolean) {
+  return {
+    type: "Results",
+    is_final: isFinal,
+    channel: { alternatives: [{ transcript }] },
+  };
+}
+
+describe("useDeepgramLiveCaptions", () => {
   beforeEach(() => {
     FakeWebSocket.reset();
     FakeAudioContext.reset();
@@ -40,34 +48,20 @@ describe("useScribeLiveCaptions", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  // Restarting a take stops the old stream before starting a new one, so
-  // the hook is re-rendered with a null stream in between. It has to pick
-  // the new one up when it arrives, otherwise the second take records
-  // with no captions at all.
-  it("connects once the audio stream arrives after mount", async () => {
-    const { rerender } = renderHook(
-      ({ audioStream }: { audioStream: MediaStream | null }) =>
-        useScribeLiveCaptions({ enabled: true, audioStream }),
-      { initialProps: { audioStream: null as MediaStream | null } },
+  it("stays idle while disabled or without a stream", async () => {
+    const { result } = renderHook(() =>
+      useDeepgramLiveCaptions({ enabled: false, audioStream: fakeStream() }),
     );
+    renderDeepgram(null);
 
     expect(fetch).not.toHaveBeenCalled();
-
-    rerender({ audioStream: fakeStream() });
-
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(result.current.status).toBe("idle");
   });
 
-  it("stays idle while disabled even with a stream", async () => {
-    renderHook(() =>
-      useScribeLiveCaptions({ enabled: false, audioStream: fakeStream() }),
-    );
-
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("mints an ElevenLabs token and carries it on the socket URL", async () => {
-    const { result } = renderScribe();
+  // Browsers cannot set WebSocket headers, so the disposable token has to
+  // ride in the subprotocol. Sending it any other way authenticates nothing.
+  it("mints a Deepgram token and passes it as a bearer subprotocol", async () => {
+    const { result } = renderDeepgram();
 
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
 
@@ -75,23 +69,23 @@ describe("useScribeLiveCaptions", () => {
       "/api/transcribe/live-session",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ provider: "elevenlabs" }),
+        body: JSON.stringify({ provider: "deepgram" }),
       }),
     );
-    const url = new URL(FakeWebSocket.last().url);
-    expect(url.host).toBe("api.elevenlabs.io");
-    expect(url.searchParams.get("token")).toBe("tok");
-    expect(url.searchParams.get("model_id")).toBe("scribe_v2_realtime");
-    // Still only connecting: the socket has not opened yet.
+    const socket = FakeWebSocket.last();
+    expect(socket.protocols).toEqual(["bearer", "tok"]);
+    const url = new URL(socket.url);
+    expect(url.host).toBe("api.deepgram.com");
+    expect(url.searchParams.get("model")).toBe("nova-3");
+    expect(url.searchParams.get("sample_rate")).toBe("24000");
     expect(result.current.status).toBe("connecting");
   });
 
   it("only reports live once the audio graph is running", async () => {
-    const { result, socket } = await connected();
+    const { result } = await connected();
 
-    expect(socket.readyState).toBe(FakeWebSocket.OPEN);
     const context = FakeAudioContext.last();
-    expect(context.sampleRate).toBe(16000);
+    expect(context.sampleRate).toBe(24000);
     expect(context.processor?.connectCount).toBe(1);
     expect(result.current.status).toBe("live");
   });
@@ -105,7 +99,7 @@ describe("useScribeLiveCaptions", () => {
         }
       },
     );
-    const { result } = renderScribe();
+    const { result } = renderDeepgram();
 
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     act(() => FakeWebSocket.last().open());
@@ -113,69 +107,57 @@ describe("useScribeLiveCaptions", () => {
     await waitFor(() => expect(result.current.status).toBe("failed"));
   });
 
-  it("replaces the tail on partials and locks it in on commit", async () => {
+  it("replaces the tail on interims and commits it when final", async () => {
     const { result, socket } = await connected();
 
-    act(() =>
-      socket.emit({ message_type: "partial_transcript", text: "so I" }),
-    );
-    expect(texts(result.current.words)).toEqual(["so", "I"]);
+    act(() => socket.emit(results("build me", false)));
+    expect(texts(result.current.words)).toEqual(["build", "me"]);
 
-    // A partial rewrites the whole tail rather than appending to it.
-    act(() =>
-      socket.emit({ message_type: "partial_transcript", text: "so I want" }),
-    );
-    expect(texts(result.current.words)).toEqual(["so", "I", "want"]);
+    act(() => socket.emit(results("build me a", false)));
+    expect(texts(result.current.words)).toEqual(["build", "me", "a"]);
 
-    act(() =>
-      socket.emit({
-        message_type: "committed_transcript",
-        text: "so I want a bot",
-      }),
-    );
+    act(() => socket.emit(results("build me a bot.", true)));
+    expect(texts(result.current.words)).toEqual(["build", "me", "a", "bot."]);
+
+    // The finalised phrase stays while the next interim tail grows behind it.
+    act(() => socket.emit(results("It should", false)));
     expect(texts(result.current.words)).toEqual([
-      "so",
-      "I",
-      "want",
+      "build",
+      "me",
       "a",
-      "bot",
-    ]);
-
-    // The committed phrase stays put while the next tail grows behind it.
-    act(() =>
-      socket.emit({ message_type: "partial_transcript", text: "that" }),
-    );
-    expect(texts(result.current.words)).toEqual([
-      "so",
-      "I",
-      "want",
-      "a",
-      "bot",
-      "that",
+      "bot.",
+      "It",
+      "should",
     ]);
   });
 
-  it("reads the transcript field when the message has no text", async () => {
+  it("drops the interim tail on an empty final without losing the phrase", async () => {
     const { result, socket } = await connected();
 
-    act(() =>
-      socket.emit({ message_type: "final_transcript", transcript: "hello" }),
-    );
+    act(() => socket.emit(results("hello", false)));
+    act(() => socket.emit(results("hello", true)));
+    // Deepgram closes an utterance with an empty final; nothing to commit.
+    act(() => socket.emit(results("", true)));
 
     expect(texts(result.current.words)).toEqual(["hello"]);
   });
 
-  // Without stable ids the marquee replays its enter animation for every
-  // word on every partial, which reads as a flicker.
+  it("ignores non-Results frames such as metadata", async () => {
+    const { result, socket } = await connected();
+
+    act(() => socket.emit({ type: "Metadata", request_id: "abc" }));
+
+    expect(result.current.words).toEqual([]);
+    expect(result.current.status).toBe("live");
+  });
+
   it("keeps a word's id while its text holds", async () => {
     const { result, socket } = await connected();
 
-    act(() => socket.emit({ message_type: "partial_transcript", text: "hel" }));
+    act(() => socket.emit(results("hel", false)));
     const firstId = result.current.words[0].id;
 
-    act(() =>
-      socket.emit({ message_type: "partial_transcript", text: "hello there" }),
-    );
+    act(() => socket.emit(results("hello there", false)));
 
     expect(result.current.words[0].id).toBe(firstId);
     expect(result.current.words[1].id).not.toBe(firstId);
@@ -185,35 +167,10 @@ describe("useScribeLiveCaptions", () => {
     const { result, socket } = await connected();
     const spoken = Array.from({ length: 30 }, (_, index) => `w${index}`);
 
-    act(() =>
-      socket.emit({
-        message_type: "committed_transcript",
-        text: spoken.join(" "),
-      }),
-    );
+    act(() => socket.emit(results(spoken.join(" "), true)));
 
     expect(result.current.words).toHaveLength(24);
     expect(texts(result.current.words)).toEqual(spoken.slice(-24));
-  });
-
-  it.each<[string, Record<string, string>]>([
-    ["transcription_error", { message_type: "transcription_error" }],
-    ["quota_exceeded", { message_type: "quota_exceeded" }],
-  ])("fails on a %s message", async (_label, payload) => {
-    const { result, socket } = await connected();
-
-    act(() => socket.emit(payload));
-
-    await waitFor(() => expect(result.current.status).toBe("failed"));
-  });
-
-  it("ignores message types it does not understand", async () => {
-    const { result, socket } = await connected();
-
-    act(() => socket.emit({ message_type: "session_started" }));
-
-    expect(result.current.status).toBe("live");
-    expect(result.current.words).toEqual([]);
   });
 
   it.each(["onerror", "onclose"] as const)(
@@ -239,13 +196,13 @@ describe("useScribeLiveCaptions", () => {
     ],
   ])("fails when %s", async (_label, stub) => {
     stub();
-    const { result } = renderScribe();
+    const { result } = renderDeepgram();
 
     await waitFor(() => expect(result.current.status).toBe("failed"));
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
-  it("streams base64 PCM16 only while the socket is open", async () => {
+  it("streams raw PCM16 only while the socket is open", async () => {
     const { socket } = await connected();
     const processor = FakeAudioContext.last().processor!;
 
@@ -257,20 +214,16 @@ describe("useScribeLiveCaptions", () => {
     processor.feed(PCM_SAMPLES);
 
     expect(socket.sent).toHaveLength(1);
-    const chunk = JSON.parse(socket.sent[0] as string);
-    expect(chunk.message_type).toBe("input_audio_chunk");
-    expect(chunk.sample_rate).toBe(16000);
-    const bytes = Uint8Array.from(atob(chunk.audio_base_64), (character) =>
-      character.charCodeAt(0),
+    expect(Array.from(new Int16Array(socket.sent[0] as ArrayBuffer))).toEqual(
+      PCM_EXPECTED,
     );
-    expect(Array.from(new Int16Array(bytes.buffer))).toEqual(PCM_EXPECTED);
   });
 
   it("tears the socket and audio graph down on unmount", async () => {
     const { unmount, result, socket } = await connected();
     const context = FakeAudioContext.last();
 
-    act(() => socket.emit({ message_type: "partial_transcript", text: "hi" }));
+    act(() => socket.emit(results("hi", false)));
     expect(result.current.words).toHaveLength(1);
 
     unmount();
@@ -280,8 +233,6 @@ describe("useScribeLiveCaptions", () => {
     expect(context.closeCount).toBe(1);
   });
 
-  // The take can end while the token request is still on the wire; opening
-  // a socket afterwards would stream a dead mic to ElevenLabs.
   it("does not open a socket when the take ends before the token lands", async () => {
     let release!: (value: {
       ok: boolean;
@@ -296,7 +247,7 @@ describe("useScribeLiveCaptions", () => {
       ),
     );
 
-    const { unmount } = renderScribe();
+    const { unmount } = renderDeepgram();
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     unmount();
 
@@ -307,11 +258,11 @@ describe("useScribeLiveCaptions", () => {
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
-  it("goes back to idle when the take stops", async () => {
+  it("goes back to idle and closes the socket when the take stops", async () => {
     const audioStream = fakeStream();
     const { result, rerender } = renderHook(
       ({ enabled }: { enabled: boolean }) =>
-        useScribeLiveCaptions({ enabled, audioStream }),
+        useDeepgramLiveCaptions({ enabled, audioStream }),
       { initialProps: { enabled: true } },
     );
 
