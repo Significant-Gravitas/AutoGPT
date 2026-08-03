@@ -140,6 +140,11 @@ async def test_a_long_recording_is_split_and_stitched(mocker: MockerFixture):
     assert transcript == "first half of the dump and then the rest"
     # Language is unreliable across segments, so it is not reported.
     assert language is None
+    # Segments come back as ogg regardless of what the browser recorded, and
+    # the client infers the format from the filename — announcing an ogg body
+    # as ``.webm`` makes the provider reject it.
+    sent = [call.kwargs["file"][0] for call in create.await_args_list]
+    assert sent == ["segment-0.ogg", "segment-1.ogg"]
 
 
 def _ffmpeg_banner(duration_line: str) -> bytes:

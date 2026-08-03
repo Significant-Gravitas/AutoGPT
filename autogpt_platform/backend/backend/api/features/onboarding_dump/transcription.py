@@ -36,6 +36,10 @@ SINGLE_REQUEST_MAX_BYTES = 20 * 1024 * 1024
 SINGLE_REQUEST_MAX_SECONDS = 20 * 60
 
 SEGMENT_SECONDS = 10 * 60
+# ``split_audio`` re-encodes to opus in an ogg container, so a segment must
+# not inherit the source extension: the STT client infers the format from
+# the filename, and an ogg body announced as ``.webm`` is rejected.
+SEGMENT_SUFFIX = ".ogg"
 # Cutting mid-word loses the word on both sides of the seam; a few seconds
 # of overlap means the word survives in at least one segment and the
 # stitcher drops the duplicate.
@@ -97,7 +101,7 @@ async def transcribe(
     segments = await split_audio(audio, filename, duration_secs)
     logger.info("Brain dump split into %s segments for transcription", len(segments))
     transcripts = [
-        (await _transcribe_one(client, segment, f"{index}-{filename}"))[0]
+        (await _transcribe_one(client, segment, f"segment-{index}{SEGMENT_SUFFIX}"))[0]
         for index, segment in enumerate(segments)
     ]
     return stitch_transcripts(transcripts), None
@@ -169,7 +173,7 @@ async def split_audio(
         start = 0.0
         index = 0
         while start < duration:
-            target = os.path.join(workdir, f"segment-{index}.ogg")
+            target = os.path.join(workdir, f"segment-{index}{SEGMENT_SUFFIX}")
             await _run_ffmpeg(
                 ffmpeg,
                 "-ss",
