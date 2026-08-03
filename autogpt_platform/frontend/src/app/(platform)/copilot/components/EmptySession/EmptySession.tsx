@@ -3,10 +3,8 @@
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Text } from "@/components/atoms/Text/Text";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
-import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -16,18 +14,14 @@ import {
   getSuggestionThemes,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
-import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
-import {
-  OnboardingIntroCard,
-  SMALL_ORB_PARAMS,
-} from "../OnboardingIntroCard/OnboardingIntroCard";
+import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
 import { PulseChips } from "../PulseChips/PulseChips";
 import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
-import { EditNameDialog } from "./components/EditNameDialog/EditNameDialog";
+import { EmptyHero } from "./components/EmptyHero";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
 
@@ -138,32 +132,14 @@ export function EmptySession({
           ) : (
             // The regular hero also renders behind the welcome modal's
             // blur and while the greeting is still generating — it swaps
-            // to the greeting the moment the real one arrives. While the
-            // greeting is on its way the orb already fronts the heading,
-            // matching the greeting page it is about to become.
-            <>
-              <div className="mb-1 flex items-center justify-center gap-3">
-                {intro.isAwaitingGreeting && (
-                  <span className="relative size-8 shrink-0">
-                    <GlassOrb params={SMALL_ORB_PARAMS} />
-                  </span>
-                )}
-                <Text variant="h3" className="!text-[1.375rem] text-zinc-700">
-                  Hey, <span className="text-violet-600">{greetingName}</span>
-                  <EditNameDialog currentName={greetingName} />
-                </Text>
-              </div>
-              {/* Held back with the composer: while the greeting decision
-                  is pending this line appearing then vanishing read as
-                  the page changing its mind on refresh. */}
-              {!intro.isAwaitingGreeting && (
-                <TextGenerateEffect
-                  className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-[1.375rem] [&_div]:!leading-normal [&_div]:!tracking-normal"
-                  duration={0.6}
-                  words="Tell me about your work — I'll find what to automate."
-                />
-              )}
-            </>
+            // to the greeting the moment the real one arrives. Through
+            // that whole flow it wears the greeting page's own layout so
+            // the heading never moves when the swap happens.
+            <EmptyHero
+              name={greetingName}
+              isAwaitingGreeting={intro.isAwaitingGreeting}
+              isGreetingFlow={intro.anchorTop}
+            />
           )}
 
           {isAgentBriefingEnabled &&

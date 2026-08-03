@@ -90,8 +90,9 @@ export const SMALL_ORB_PARAMS: GlassParams = {
   ringDark: 0.25,
 };
 
-// The purple the orb's blobs blend into — the name mirrors it.
-const ORB_PURPLE = "#8a4dff";
+// The purple the orb's blobs blend into — the name mirrors it. Shared with
+// the hero heading this card replaces so the swap is invisible.
+export const ORB_PURPLE = "#8a4dff";
 
 const GREETING_START = 0.35;
 const WORD_STAGGER = 0.08;
@@ -167,7 +168,10 @@ export function OnboardingIntroCard({
       className="mb-8 w-full max-w-[48rem] text-left"
       data-testid="onboarding-intro-card"
     >
-      <motion.div {...reveal(0)} className="mb-4 flex items-center gap-3">
+      {/* Not revealed: this exact row is already on screen as the hero's
+          heading while the greeting generates, in this exact spot. Fading
+          and rising it here would blink a heading that never moved. */}
+      <div className="mb-4 flex items-center gap-3">
         <span className="relative size-8 shrink-0">
           <GlassOrb params={SMALL_ORB_PARAMS} />
         </span>
@@ -195,7 +199,7 @@ export function OnboardingIntroCard({
             </TooltipContent>
           </Tooltip>
         )}
-      </motion.div>
+      </div>
 
       <TextGenerateEffect
         words={greeting}
