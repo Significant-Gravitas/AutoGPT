@@ -1,7 +1,7 @@
 "use client";
 
-import { GlassOrb } from "@/app/(no-navbar)/onboarding/steps/BrainDumpStep/components/GlassOrb/GlassOrb";
-import type { GlassParams } from "@/app/(no-navbar)/onboarding/steps/BrainDumpStep/components/GlassOrb/GlassSurface";
+import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
+import type { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 import type { SuggestedPrompt } from "@/app/api/__generated__/models/suggestedPrompt";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";

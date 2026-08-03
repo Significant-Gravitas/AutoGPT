@@ -1,4 +1,5 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import React, {
   KeyboardEvent,
   useCallback,
@@ -37,6 +38,11 @@ export function useVoiceRecording({
   const isRecordingRef = useRef(false);
 
   const [isSupported, setIsSupported] = useState(false);
+  // Sending the draft as transcription context ships with the brain-dump
+  // experience (Path B records a dump on top of AutoPilot's intro text).
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const isBrainDumpEnabledRef = useRef(isBrainDumpEnabled);
+  isBrainDumpEnabledRef.current = isBrainDumpEnabled;
   const valueRef = useRef(value);
 
   useEffect(() => {
@@ -89,7 +95,7 @@ export function useVoiceRecording({
         const formData = new FormData();
         formData.append("audio", audioBlob);
         const draft = valueRef.current.trim();
-        if (draft) {
+        if (isBrainDumpEnabledRef.current && draft) {
           formData.append("context", draft);
         }
 

@@ -227,6 +227,11 @@ export function ChatInput({
     isTranscribing,
   });
 
+  // The composer restyle (flat card, chips relocated into the tray
+  // below) ships with the brain-dump experience; off keeps the original
+  // glowing composer with pill toggles in the footer.
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     if (isRecording) return;
     baseHandleChange(e);
@@ -306,9 +311,16 @@ export function ChatInput({
       )}
       <InputGroup
         className={cn(
-          "relative z-10 overflow-hidden border-neutral-200 shadow-none has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          isBrainDumpEnabled
+            ? "relative z-10 overflow-hidden border-neutral-200 shadow-none has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0"
+            : [
+                "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+                "shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_36px_-4px_rgba(99,102,241,0.45)]",
+              ],
           isRecording &&
-            "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
+            (isBrainDumpEnabled
+              ? "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400"
+              : "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400"),
         )}
       >
         <FileChips
@@ -351,6 +363,28 @@ export function ChatInput({
               disabled={isBusy}
             />
             {recipientPicker}
+            {!isBrainDumpEnabled && showModeToggle && !isStreaming && (
+              <>
+                <ModeToggleButton
+                  variant="pill"
+                  mode={copilotChatMode}
+                  onToggle={handleToggleMode}
+                  pinned={copilotModePinned}
+                />
+                <ModelToggleButton
+                  variant="pill"
+                  model={copilotLlmModel}
+                  onToggle={handleToggleModel}
+                />
+              </>
+            )}
+            {!isBrainDumpEnabled && showDryRunToggle && !hasSession && (
+              <DryRunToggleButton
+                variant="pill"
+                isDryRun={isDryRun}
+                onToggle={handleToggleDryRun}
+              />
+            )}
           </PromptInputTools>
 
           <div className="flex items-center gap-4">
@@ -411,7 +445,7 @@ export function ChatInput({
           DryRun is new-chat only: once a session exists its dry_run flag is
           locked and read from session metadata (sessionDryRun in useCopilotPage),
           with the banner in CopilotPage.tsx reflecting the actual state. */}
-      {hasTrayItems && (
+      {Boolean(isBrainDumpEnabled) && hasTrayItems && (
         <ComposerTray>
           {showModeToggle && !isStreaming && (
             <>

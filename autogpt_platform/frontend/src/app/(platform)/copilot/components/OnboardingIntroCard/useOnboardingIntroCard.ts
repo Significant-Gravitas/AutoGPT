@@ -20,6 +20,10 @@ import { useEffect, useState } from "react";
 // answers with an empty Path A — poll at this cadence until the real
 // greeting lands (or the pipeline terminally resolves).
 const PENDING_POLL_MS = 1500;
+// A pipeline killed between transcription and completion leaves the dump
+// in a non-terminal status forever — without a ceiling this poll would
+// spin for the rest of the session and the composer would never appear.
+const PENDING_GIVE_UP_MS = 120_000;
 
 export function useOnboardingIntroCard() {
   const { user } = useAuth();
@@ -49,6 +53,10 @@ export function useOnboardingIntroCard() {
   // Everyone gets one held frame, then the real state takes over.
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
+
+  // Give-up switch for a greeting pipeline that never terminates; once
+  // flipped the hero releases the composer instead of holding forever.
+  const [gaveUpWaiting, setGaveUpWaiting] = useState(false);
 
   useEffect(() => {
     // The user record can arrive after mount — re-check once it does.
@@ -82,6 +90,7 @@ export function useOnboardingIntroCard() {
       staleTime: Infinity,
       gcTime: Infinity,
       refetchInterval: (query) => {
+        if (gaveUpWaiting) return false;
         const latest = query.state.data;
         if (!latest || latest.status !== 200) return false;
         const body = latest.data;
@@ -107,9 +116,16 @@ export function useOnboardingIntroCard() {
   const hasIntroAnswer =
     (isFlagReady && !isBrainDumpEnabled) || data !== undefined || isError;
   const serverSaysDone = Boolean(intro?.greeting_done);
-  const isPendingGeneration = Boolean(
+  const isPendingPerServer = Boolean(
     intro && !intro.greeting_done && intro.path === "A" && !intro.greeting,
   );
+  const isPendingGeneration = isPendingPerServer && !gaveUpWaiting;
+
+  useEffect(() => {
+    if (!isPendingPerServer) return;
+    const timer = setTimeout(() => setGaveUpWaiting(true), PENDING_GIVE_UP_MS);
+    return () => clearTimeout(timer);
+  }, [isPendingPerServer]);
 
   useEffect(() => {
     // The server already saw the first message (possibly from another
@@ -127,6 +143,17 @@ export function useOnboardingIntroCard() {
     setIsWelcomeOpen(false);
   }
 
+  // The whole greeting flow reads top-down like a letter, so it anchors
+  // to the top from its first visible frame — flipping the container
+  // from centered to top only when the greeting arrived made the "Hey"
+  // heading visibly jump. `isWelcomeOpen` needs no flag check (only the
+  // gated handoff ever sets it) and is seeded synchronously, so the
+  // fresh-out-of-onboarding user is anchored before LaunchDarkly answers.
+  const isGreetingFlow =
+    isWelcomeOpen ||
+    (Boolean(isBrainDumpEnabled) &&
+      (!hasIntroAnswer || isPendingGeneration || Boolean(intro?.greeting)));
+
   return {
     // The page renders the regular hero behind the welcome modal and
     // while the greeting is generating; it swaps to the greeting the
@@ -143,6 +170,7 @@ export function useOnboardingIntroCard() {
     isAwaitingGreeting:
       !isMounted ||
       (!isDone && (isWelcomeOpen || !hasIntroAnswer || isPendingGeneration)),
+    anchorTop: isMounted && !isDone && isGreetingFlow,
     isWelcomeOpen: !isDone && isWelcomeOpen,
     closeWelcome,
     greeting: intro?.greeting ?? "",

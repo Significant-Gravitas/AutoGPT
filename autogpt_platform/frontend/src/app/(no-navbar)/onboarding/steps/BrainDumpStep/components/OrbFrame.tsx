@@ -1,8 +1,8 @@
 "use client";
 
 import { ReactNode } from "react";
-import { GlassOrb } from "./GlassOrb/GlassOrb";
-import { GlassParams } from "./GlassOrb/GlassSurface";
+import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
+import { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 
 export const ORB_SIZE = 160;
 const STROKE = 6;

@@ -6,6 +6,7 @@ import { getBlocksMock } from "@/app/api/__generated__/endpoints/blocks/blocks.m
 import {
   getCompleteBrainDumpGreetingMockHandler200,
   getGetBrainDumpIntroMockHandler200,
+  getGetBrainDumpRecommendedProvidersMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getChatMock } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credits.msw";
@@ -44,6 +45,12 @@ export const mockHandlers = [
     greeting_done: true,
   }),
   getCompleteBrainDumpGreetingMockHandler200({ greeting_done: true }),
+  // Ready by default so the preparing step's recommendation gate never
+  // holds unrelated tests; gate tests override with ready: false.
+  getGetBrainDumpRecommendedProvidersMockHandler200({
+    ready: true,
+    providers: [],
+  }),
   ...getChatMock(),
   ...getCreditsMock(),
   ...getDefaultMock(),

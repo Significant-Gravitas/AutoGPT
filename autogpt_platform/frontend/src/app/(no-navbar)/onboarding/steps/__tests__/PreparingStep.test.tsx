@@ -16,6 +16,7 @@ const DUMP_CHECKLIST = [
   "Reading your brain dump",
   "Briefing AutoPilot on your work",
   "Building your space",
+  "Finding tools for your work",
 ];
 
 beforeEach(() => {

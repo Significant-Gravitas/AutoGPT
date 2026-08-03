@@ -5,6 +5,7 @@ import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/c
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -15,7 +16,7 @@ import {
   getSuggestionThemes,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
-import { GlassOrb } from "@/app/(no-navbar)/onboarding/steps/BrainDumpStep/components/GlassOrb/GlassOrb";
+import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
 import {
   OnboardingIntroCard,
   SMALL_ORB_PARAMS,
@@ -57,6 +58,7 @@ export function EmptySession({
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const intro = useOnboardingIntroCard();
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const pulseChips = usePulseChips();
@@ -97,11 +99,22 @@ export function EmptySession({
     <div
       className={cn(
         "relative flex h-full flex-1 justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10",
-        // The greeting reads top-down like a letter, so it anchors to the
-        // top; the regular hero stays vertically centered.
-        intro.isVisible ? "items-start" : "items-center",
+        // The whole greeting flow reads top-down like a letter, so it
+        // anchors to the top from its first visible frame; the regular
+        // hero stays vertically centered.
+        intro.anchorTop ? "items-start" : "items-center",
       )}
     >
+      {!isBrainDumpEnabled && (
+        <DotDistortionShader
+          dotGap={14}
+          dotSize={1}
+          opacity={0.2}
+          enableMouseInteraction={false}
+          breathingSpeed={0.4}
+          className="pointer-events-none absolute inset-0 !bg-transparent [&_canvas]:opacity-70"
+        />
+      )}
       <OnboardingWelcomeDialog
         isOpen={intro.isWelcomeOpen}
         onClose={intro.closeWelcome}
@@ -167,27 +180,38 @@ export function EmptySession({
                 layoutId={inputLayoutId}
                 transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
                 className={cn(
-                  "overflow-hidden rounded-xlarge border text-left transition-colors duration-300 ease-out",
+                  isBrainDumpEnabled
+                    ? "overflow-hidden rounded-xlarge border text-left transition-colors duration-300 ease-out"
+                    : "w-full px-2",
                   // The greeting's prompt card bleeds 1.25rem past the text
                   // (-mx-5); the composer stretches the same amount so their
                   // borders line up. The regular hero keeps it centered.
-                  intro.isVisible
-                    ? "-mx-5 max-w-[50.5rem]"
-                    : "mx-auto w-full max-w-[42rem]",
+                  isBrainDumpEnabled &&
+                    (intro.isVisible
+                      ? "-mx-5 max-w-[50.5rem]"
+                      : "mx-auto w-full max-w-[42rem]"),
                 )}
-                style={{
-                  borderColor: "#e4e4e7",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                }}
+                style={
+                  isBrainDumpEnabled
+                    ? {
+                        borderColor: "#e4e4e7",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                      }
+                    : undefined
+                }
               >
                 <ChatInput
                   inputId="chat-input-empty"
                   onSend={onSend}
                   disabled={isComposerDisabled}
-                  hideSubmitWhenEmpty
+                  hideSubmitWhenEmpty={Boolean(isBrainDumpEnabled)}
                   isUploadingFiles={isUploadingFiles}
                   placeholder={inputPlaceholder}
-                  className="w-full [&_textarea]:min-h-[4.5rem]"
+                  className={
+                    isBrainDumpEnabled
+                      ? "w-full [&_textarea]:min-h-[4.5rem]"
+                      : "w-full"
+                  }
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   recipientPicker={

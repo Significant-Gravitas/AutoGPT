@@ -7,7 +7,7 @@ import {
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AudioWaveform } from "@/app/(platform)/copilot/components/ChatInput/components/AudioWaveform";
-import { GlassParams } from "./GlassOrb/GlassSurface";
+import { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 import { OrbFrame } from "./OrbFrame";
 
 export type OrbScreen = "rest" | "recording" | "processing" | "failed";
