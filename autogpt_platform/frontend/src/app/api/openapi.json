@@ -11926,7 +11926,11 @@
             "name": "media_type",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Media Type" }
+            "schema": {
+              "enum": ["images", "videos"],
+              "type": "string",
+              "title": "Media Type"
+            }
           },
           {
             "name": "filename",
@@ -11940,6 +11944,7 @@
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
           },
+          "404": { "description": "Media not found" },
           "422": {
             "description": "Validation Error",
             "content": {

@@ -518,17 +518,15 @@ async def upload_submission_media(
     "/media/{user_id}/{media_type}/{filename}",
     summary="Get locally-stored submission media",
     tags=["store", "public"],
+    responses={404: {"description": "Media not found"}},
 )
 async def get_local_submission_media(
-    user_id: str, media_type: str, filename: str
+    user_id: str, media_type: Literal["images", "videos"], filename: str
 ) -> fastapi.responses.FileResponse:
     """
     Serve marketplace media that was stored on the local filesystem because
     no GCS bucket is configured (e.g. self-hosted deployments).
     """
-    if media_type not in ("images", "videos"):
-        raise fastapi.HTTPException(status_code=404, detail="Media not found")
-
     try:
         file_path = store_media.get_local_media_path(user_id, media_type, filename)
     except ValueError:
