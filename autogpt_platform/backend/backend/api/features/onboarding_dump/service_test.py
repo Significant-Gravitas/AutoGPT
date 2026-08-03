@@ -414,6 +414,30 @@ async def test_a_voice_finalize_that_loses_the_claim_does_no_work(
 
 
 @pytest.mark.asyncio
+async def test_finalizing_a_take_that_never_uploaded_writes_no_row(
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock], transcribe: AsyncMock
+):
+    """Finalize without a single part told the caller, not the database.
+
+    Nothing was ever uploaded, so there is no row to fail — and creating
+    one here would let a late finalize resurrect a dump for a user whose
+    row was deleted, which ``update_dump`` exists to prevent. The browser
+    still holds every part in IndexedDB, so the caller re-uploads on the
+    strength of the response alone.
+    """
+    storage_mocks["assemble_parts"].return_value = b""
+
+    response = await service.finalize_voice_dump(
+        USER_ID, RECORDING_ID, 12.0, None, BackgroundTasks()
+    )
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "no_audio_received"
+    assert dumps.row is None
+    transcribe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_failed_extraction_still_preserves_the_transcript(
     dumps: DumpStore, extraction: dict[str, AsyncMock]
 ):
