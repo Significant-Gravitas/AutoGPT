@@ -28,7 +28,6 @@ from backend.integrations.codex.models import (
 from backend.integrations.codex.transport import get_codex_transport
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.providers import ProviderName
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 
 @dataclass
@@ -281,7 +280,6 @@ class CodeGenerationBlock(Block):
         *,
         credentials: APIKeyCredentials | OAuth2Credentials,
         credential_leases: dict[str, CredentialLease] | None = None,
-        user_id: str | None = None,
         **_kwargs,
     ) -> BlockOutput:
         if input_data.transport == CodexExecutionTransport.OPENAI_API:
@@ -291,7 +289,6 @@ class CodeGenerationBlock(Block):
                 input_data,
                 credentials,
                 credential_leases or {},
-                user_id,
             )
 
         yield "response", result.response
@@ -319,14 +316,7 @@ class CodeGenerationBlock(Block):
         input_data: Input,
         credentials: APIKeyCredentials | OAuth2Credentials,
         credential_leases: dict[str, CredentialLease],
-        user_id: str | None,
     ) -> CodexCallResult:
-        if user_id is None or not await is_feature_enabled(
-            Flag.CODEX_SUBSCRIPTION_NATIVE,
-            user_id,
-            default=False,
-        ):
-            raise ValueError("Codex subscription transport is not enabled")
         if credentials.type != "oauth2" or credentials.provider != "codex":
             raise ValueError(
                 "Codex App Server transport requires connected ChatGPT credentials"

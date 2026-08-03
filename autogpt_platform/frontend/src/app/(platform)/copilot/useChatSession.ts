@@ -9,7 +9,6 @@ import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -19,7 +18,10 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
-import { hasSavedCodexCredential } from "./helpers/copilotLlmAuth";
+import {
+  getConnectedSubsidizedLlmTransports,
+  resolveCopilotLlmAuthSelection,
+} from "./helpers/copilotLlmAuth";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -32,7 +34,6 @@ export function useChatSession({
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
-  const isCodexEnabled = useGetFlag(Flag.CODEX_SUBSCRIPTION_COPILOT);
   const credentialProviders = useContext(CredentialsProvidersContext);
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
 
@@ -211,29 +212,47 @@ export function useChatSession({
     // has asked for a new thread, auto-navigating them into an old one is
     // never the right recovery.
     sendStartedRef.current = true;
-    if (
-      copilotLlmAuth.authProvider === "codex" &&
-      (!isCodexEnabled ||
-        !hasSavedCodexCredential(
-          credentialProviders,
-          copilotLlmAuth.credentialId,
-        ))
-    ) {
+    const resolvedLlmAuth = resolveCopilotLlmAuthSelection(
+      credentialProviders,
+      copilotLlmAuth,
+    );
+    const connectedSubsidizedTransports =
+      getConnectedSubsidizedLlmTransports(credentialProviders);
+    if (!resolvedLlmAuth) {
+      const credentialsAreLoading = credentialProviders === null;
       toast({
         variant: "destructive",
-        title: "ChatGPT/Codex connection unavailable",
-        description:
-          "Reconnect the account or choose AutoGPT before starting this task.",
+        title: credentialsAreLoading
+          ? "AI connections are still loading"
+          : "AI connection unavailable",
+        description: credentialsAreLoading
+          ? "Wait a moment and try again."
+          : "Reconnect the selected account or choose another connected subscription.",
       });
-      throw new Error("Selected ChatGPT/Codex connection is unavailable");
+      throw new Error(
+        credentialsAreLoading
+          ? "AI connections are still loading"
+          : "Selected AI connection is unavailable",
+      );
+    }
+    if (
+      copilotLlmAuth.authProvider !== "platform" &&
+      resolvedLlmAuth.authProvider === "platform"
+    ) {
+      toast({
+        title: "AI connections changed",
+        description:
+          "The next AutoPilot task will resolve the currently available connection before it starts.",
+      });
     }
 
     try {
-      const sessionData: CreateSessionRequest = {
-        llm_auth_provider: copilotLlmAuth.authProvider,
-      };
-      if (copilotLlmAuth.authProvider === "codex") {
-        sessionData.llm_credential_id = copilotLlmAuth.credentialId;
+      const sessionData: CreateSessionRequest = {};
+      if (connectedSubsidizedTransports.length > 1) {
+        sessionData.llm_auth_provider = resolvedLlmAuth.authProvider;
+        if (resolvedLlmAuth.authProvider === "codex") {
+          sessionData.llm_credential_id = resolvedLlmAuth.credentialId;
+        }
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;

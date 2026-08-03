@@ -116,12 +116,14 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+from backend.data.model import Credentials
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.integrations.codex.auth_bundle import CodexAuthBundleError
+from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -487,22 +489,52 @@ async def _validate_llm_credentials(
             status_code=422,
             detail="codex_credential_required",
         )
-    auth_enabled, copilot_enabled = await asyncio.gather(
-        is_feature_enabled(Flag.CODEX_SUBSCRIPTION_AUTH, user_id, default=False),
-        is_feature_enabled(Flag.CODEX_SUBSCRIPTION_COPILOT, user_id, default=False),
-    )
-    if not auth_enabled or not copilot_enabled:
-        raise HTTPException(status_code=404, detail="codex_transport_disabled")
-
     credentials = await credentials_manager.get(user_id, credential_id)
-    if not (
-        credentials is not None
-        and credentials.type == "oauth2"
-        and credentials.provider == "codex"
-        and credentials.refresh_strategy == "provider_runtime"
-        and credentials.provider_state is not None
-    ):
+    if not _is_valid_codex_credentials(credentials):
         raise HTTPException(status_code=404, detail="codex_credential_not_found")
+
+
+def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
+    if credentials is None or credentials.type != "oauth2":
+        return False
+    try:
+        bundle_from_credentials(credentials)
+    except CodexAuthBundleError:
+        return False
+    return True
+
+
+async def _resolve_new_session_llm_route(
+    user_id: str,
+    request: CreateSessionRequest | None,
+) -> tuple[CopilotLlmAuthProvider, str | None]:
+    auth_provider = request.llm_auth_provider if request else "platform"
+    credential_id = request.llm_credential_id if request else None
+
+    if request is not None:
+        route_was_explicit = bool(
+            {"llm_auth_provider", "llm_credential_id"} & request.model_fields_set
+        )
+        if request.builder_graph_id is not None or route_was_explicit:
+            return auth_provider, credential_id
+
+    codex_credentials = await credentials_manager.store.get_creds_by_provider(
+        user_id, "codex"
+    )
+    if not codex_credentials:
+        return "platform", None
+    if len(codex_credentials) != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="codex_default_route_ambiguous",
+        )
+    credentials = codex_credentials[0]
+    if not _is_valid_codex_credentials(credentials):
+        raise HTTPException(
+            status_code=409,
+            detail="codex_default_route_invalid",
+        )
+    return "codex", credentials.id
 
 
 @router.post("/sessions")
@@ -536,8 +568,6 @@ async def create_session(
     """
     dry_run = request.dry_run if request else False
     builder_graph_id = request.builder_graph_id if request else None
-    llm_auth_provider = request.llm_auth_provider if request else "platform"
-    llm_credential_id = request.llm_credential_id if request else None
     expert_id = request.expert_id if request else None
 
     # The builder branch below ignores expert_id, so accepting both would
@@ -552,6 +582,10 @@ async def create_session(
         expert = await experts_db.get_expert(user_id, expert_id)
         if expert is None or expert.is_archived:
             raise HTTPException(status_code=404, detail="Expert not found")
+
+    llm_auth_provider, llm_credential_id = await _resolve_new_session_llm_route(
+        user_id, request
+    )
 
     await _validate_llm_credentials(
         user_id,

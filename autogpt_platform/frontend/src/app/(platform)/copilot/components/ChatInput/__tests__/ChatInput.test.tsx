@@ -314,14 +314,14 @@ describe("ChatInput mode toggle", () => {
     expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
   });
 
-  it("only offers the route selector before a session is created", () => {
+  it("hides the route selector when only one subsidized transport is connected", () => {
     mockFlagValue = true;
     const { rerender } = render(
       <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
         <ChatInput onSend={mockOnSend} />
       </CredentialsProvidersContext.Provider>,
     );
-    expect(screen.getByLabelText(/AI connection:/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
 
     rerender(
       <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>

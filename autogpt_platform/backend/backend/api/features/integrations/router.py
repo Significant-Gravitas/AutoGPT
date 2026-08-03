@@ -70,9 +70,15 @@ from backend.util.exceptions import (
     NeedConfirmation,
     NotFoundError,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
+from .codex import (
+    CODEX_LOGIN_STATE_KEY,
+    build_device_login_url,
+    codex_login_coordinator,
+    revoke_codex_credentials,
+)
+from .codex import router as codex_router
 from .models import (
     ProviderConstants,
     ProviderMetadata,
@@ -80,14 +86,6 @@ from .models import (
     get_all_provider_names,
     get_provider_description,
     get_supported_auth_types,
-)
-from .codex import (
-    CODEX_LOGIN_STATE_KEY,
-    build_device_login_url,
-    codex_login_coordinator,
-    require_codex_auth,
-    revoke_codex_credentials,
-    router as codex_router,
 )
 
 if TYPE_CHECKING:
@@ -149,7 +147,6 @@ async def _start_codex_login(
     scopes: str,
     credential_id: str | None,
 ) -> LoginResponse:
-    await require_codex_auth(user_id)
     if scopes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -295,8 +292,6 @@ async def callback(
     request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
-    if provider == ProviderName.CODEX:
-        await require_codex_auth(user_id)
 
     # Verify the state token
     valid_state = await creds_manager.store.verify_state_token(
@@ -1464,16 +1459,6 @@ async def list_providers(
         logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
     all_providers = get_all_provider_names()
-    if not await is_feature_enabled(
-        Flag.CODEX_SUBSCRIPTION_AUTH,
-        user_id,
-        default=False,
-    ):
-        all_providers = [
-            provider
-            for provider in all_providers
-            if provider != ProviderName.CODEX.value
-        ]
     return [
         ProviderMetadata(
             name=name,

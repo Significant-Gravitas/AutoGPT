@@ -8,9 +8,7 @@ from fastapi import APIRouter, HTTPException, Path, Security, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from backend.api.features.integrations.codex_device_page import (
-    render_device_login_page,
-)
+from backend.api.features.integrations.codex_device_page import render_device_login_page
 from backend.integrations.codex.login import (
     CodexDeviceLogin,
     CodexDeviceLoginState,
@@ -22,7 +20,6 @@ from backend.integrations.codex.models import (
 )
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -94,7 +91,6 @@ async def device_login_page(
     login_id: Annotated[str, Path(min_length=1)],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> HTMLResponse:
-    await require_codex_auth(user_id)
     attempt = await codex_login_coordinator.get(user_id, login_id)
     if attempt is None:
         raise _login_not_found()
@@ -111,7 +107,6 @@ async def device_login_status(
     login_id: Annotated[str, Path(min_length=1)],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CodexLoginStatusResponse:
-    await require_codex_auth(user_id)
     attempt = await codex_login_coordinator.get(user_id, login_id)
     if attempt is None:
         raise _login_not_found()
@@ -127,7 +122,6 @@ async def cancel_device_login(
     login_id: Annotated[str, Path(min_length=1)],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> None:
-    await require_codex_auth(user_id)
     if not await codex_login_coordinator.cancel(user_id, login_id):
         raise _login_not_found()
 
@@ -150,16 +144,6 @@ def build_device_login_url(
         f"{base_url}/api/proxy/api/integrations/codex/"
         f"device-login/{login_id}#{fragment}"
     )
-
-
-async def require_codex_auth(user_id: str) -> None:
-    if not await is_feature_enabled(
-        Flag.CODEX_SUBSCRIPTION_AUTH, user_id, default=False
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Feature not available",
-        )
 
 
 async def revoke_codex_credentials(
@@ -256,7 +240,6 @@ __all__ = [
     "CodexDeviceLoginState",
     "build_device_login_url",
     "render_device_login_page",
-    "require_codex_auth",
     "revoke_codex_credentials",
     "router",
 ]

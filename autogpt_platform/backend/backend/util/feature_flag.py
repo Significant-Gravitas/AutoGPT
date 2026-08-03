@@ -62,9 +62,6 @@ class Flag(str, Enum):
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
-    CODEX_SUBSCRIPTION_AUTH = "codex-subscription-auth"
-    CODEX_SUBSCRIPTION_NATIVE = "codex-subscription-native"
-    CODEX_SUBSCRIPTION_COPILOT = "codex-subscription-copilot"
     GRAPHITI_MEMORY = "graphiti-memory"
 
     # Gates the per-user weekly community rebuild registered by

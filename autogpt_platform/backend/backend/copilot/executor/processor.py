@@ -544,20 +544,6 @@ class CoPilotProcessor:
                 if entry.user_id is None:
                     raise RuntimeError("codex_user_required")
                 codex_user_id = entry.user_id
-                auth_enabled, copilot_enabled = await asyncio.gather(
-                    is_feature_enabled(
-                        Flag.CODEX_SUBSCRIPTION_AUTH,
-                        codex_user_id,
-                        default=False,
-                    ),
-                    is_feature_enabled(
-                        Flag.CODEX_SUBSCRIPTION_COPILOT,
-                        codex_user_id,
-                        default=False,
-                    ),
-                )
-                if not auth_enabled or not copilot_enabled:
-                    raise RuntimeError("codex_transport_disabled")
                 if entry.llm_credential_id is None:
                     raise RuntimeError("codex_credential_required")
                 try:

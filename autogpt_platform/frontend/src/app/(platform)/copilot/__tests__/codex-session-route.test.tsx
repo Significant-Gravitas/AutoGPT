@@ -17,19 +17,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "../store";
 import { useChatSession } from "../useChatSession";
 
-const testState = vi.hoisted(() => ({
-  isCodexEnabled: true,
-  toast: vi.fn(),
-}));
+const testState = vi.hoisted(() => ({ toast: vi.fn() }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => testState.toast(...args),
   useToast: () => ({ toast: testState.toast, dismiss: vi.fn() }),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { CODEX_SUBSCRIPTION_COPILOT: "codex-subscription-copilot" },
-  useGetFlag: () => testState.isCodexEnabled,
 }));
 
 const codexCredential: CredentialsMetaResponse = {
@@ -104,7 +96,6 @@ function captureCreateRequest() {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
-  testState.isCodexEnabled = true;
   testState.toast.mockClear();
   useCopilotUIStore.getState().setCopilotLlmAuth({
     authProvider: "platform",
@@ -113,36 +104,29 @@ afterEach(() => {
 });
 
 describe("useChatSession Codex route", () => {
-  it("creates a platform session without a credential ID by default", async () => {
+  it("defers an empty transport set to server-authoritative routing", async () => {
     const getRequestBody = captureCreateRequest();
     renderSessionHarness({});
 
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
 
     await waitFor(() => {
-      expect(getRequestBody()).toEqual({ llm_auth_provider: "platform" });
+      expect(getRequestBody()).toBeNull();
     });
   });
 
-  it("sends the explicitly selected saved Codex credential", async () => {
-    useCopilotUIStore.getState().setCopilotLlmAuth({
-      authProvider: "codex",
-      credentialId: "codex-credential-1",
-    });
+  it("defers a sole saved Codex credential to server-authoritative routing", async () => {
     const getRequestBody = captureCreateRequest();
     renderSessionHarness({ codex: makeCodexProvider([codexCredential]) });
 
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
 
     await waitFor(() => {
-      expect(getRequestBody()).toEqual({
-        llm_auth_provider: "codex",
-        llm_credential_id: "codex-credential-1",
-      });
+      expect(getRequestBody()).toBeNull();
     });
   });
 
-  it("refuses to create a session after the selected credential disappears", async () => {
+  it("visibly restores platform for a new session after disconnect", async () => {
     useCopilotUIStore.getState().setCopilotLlmAuth({
       authProvider: "codex",
       credentialId: "codex-credential-1",
@@ -155,27 +139,30 @@ describe("useChatSession Codex route", () => {
     await waitFor(() => {
       expect(testState.toast).toHaveBeenCalledWith(
         expect.objectContaining({
-          variant: "destructive",
-          title: "ChatGPT/Codex connection unavailable",
+          title: "AI connections changed",
         }),
       );
+      expect(getRequestBody()).toBeNull();
     });
-    expect(getRequestBody()).toBeNull();
   });
 
-  it("refuses the Codex route when the feature flag is disabled", async () => {
-    testState.isCodexEnabled = false;
-    useCopilotUIStore.getState().setCopilotLlmAuth({
-      authProvider: "codex",
-      credentialId: "codex-credential-1",
-    });
+  it("refuses to choose a platform route while credentials are loading", async () => {
     const getRequestBody = captureCreateRequest();
-    renderSessionHarness({ codex: makeCodexProvider([codexCredential]) });
+    render(
+      <CredentialsProvidersContext.Provider value={null}>
+        <SessionHarness />
+      </CredentialsProvidersContext.Provider>,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
 
     await waitFor(() => {
-      expect(testState.toast).toHaveBeenCalled();
+      expect(testState.toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: "destructive",
+          title: "AI connections are still loading",
+        }),
+      );
     });
     expect(getRequestBody()).toBeNull();
   });

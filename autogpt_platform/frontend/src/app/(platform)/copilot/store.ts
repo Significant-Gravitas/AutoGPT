@@ -534,16 +534,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
 
   copilotLlmAuth: { authProvider: "platform", credentialId: null },
   setCopilotLlmAuth: (selection) => {
-    if (selection.authProvider === "codex") {
-      storage.set(Key.COPILOT_MODE, "fast");
-      storage.set(Key.COPILOT_MODEL, "standard");
-      set({
-        copilotLlmAuth: selection,
-        copilotChatMode: "fast",
-        copilotLlmModel: "standard",
-      });
-      return;
-    }
     set({ copilotLlmAuth: selection });
   },
 

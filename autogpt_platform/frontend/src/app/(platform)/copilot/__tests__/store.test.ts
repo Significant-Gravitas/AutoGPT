@@ -450,7 +450,9 @@ describe("useCopilotUIStore", () => {
       });
     });
 
-    it("stores an explicitly selected Codex credential", () => {
+    it("stores a Codex credential without changing the selected mode or model", () => {
+      useCopilotUIStore.getState().setCopilotChatMode("extended_thinking");
+      useCopilotUIStore.getState().setCopilotLlmModel("advanced");
       useCopilotUIStore.getState().setCopilotLlmAuth({
         authProvider: "codex",
         credentialId: "codex-credential-1",
@@ -460,8 +462,10 @@ describe("useCopilotUIStore", () => {
         authProvider: "codex",
         credentialId: "codex-credential-1",
       });
-      expect(useCopilotUIStore.getState().copilotChatMode).toBe("fast");
-      expect(useCopilotUIStore.getState().copilotLlmModel).toBe("standard");
+      expect(useCopilotUIStore.getState().copilotChatMode).toBe(
+        "extended_thinking",
+      );
+      expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced");
     });
   });
 

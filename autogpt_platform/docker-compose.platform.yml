@@ -37,9 +37,6 @@ x-backend-env:
   DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
   DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
   FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
-  FORCE_FLAG_CODEX_SUBSCRIPTION_AUTH: ${FORCE_FLAG_CODEX_SUBSCRIPTION_AUTH:-true}
-  FORCE_FLAG_CODEX_SUBSCRIPTION_NATIVE: ${FORCE_FLAG_CODEX_SUBSCRIPTION_NATIVE:-true}
-  FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT: ${FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT:-true}
 
 # Common env_file configuration for backend services
 x-backend-env-files: &backend-env-files
@@ -473,7 +470,6 @@ services:
       target: prod
       args:
         NEXT_PUBLIC_PW_TEST: ${NEXT_PUBLIC_PW_TEST:-false}
-        NEXT_PUBLIC_FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT: ${NEXT_PUBLIC_FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT:-true}
         NEXT_PUBLIC_FRONTEND_BASE_URL: ${NEXT_PUBLIC_FRONTEND_BASE_URL:-http://localhost:3000}
     depends_on:
       db:

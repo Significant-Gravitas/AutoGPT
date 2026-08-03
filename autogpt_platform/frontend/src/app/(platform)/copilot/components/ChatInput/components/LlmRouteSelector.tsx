@@ -9,131 +9,138 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   CaretDownIcon,
-  RobotIcon,
   TerminalIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useContext, useEffect } from "react";
-import { getSavedCodexCredentials } from "../../../helpers/copilotLlmAuth";
+import {
+  getConnectedSubsidizedLlmTransports,
+  getSubsidizedTransportSelection,
+  resolveCopilotLlmAuthSelection,
+} from "../../../helpers/copilotLlmAuth";
 import { useCopilotUIStore } from "../../../store";
 
 export function LlmRouteSelector() {
-  const isCodexEnabled = useGetFlag(Flag.CODEX_SUBSCRIPTION_COPILOT);
   const providers = useContext(CredentialsProvidersContext);
-  const codexCredentials = getSavedCodexCredentials(providers);
+  const transports = getConnectedSubsidizedLlmTransports(providers);
   const { copilotLlmAuth, setCopilotLlmAuth } = useCopilotUIStore();
-  const selectedCredential =
-    copilotLlmAuth.authProvider === "codex"
-      ? codexCredentials.find(
-          (credential) => credential.id === copilotLlmAuth.credentialId,
-        )
-      : null;
+  const resolvedSelection = resolveCopilotLlmAuthSelection(
+    providers,
+    copilotLlmAuth,
+  );
+  const selectedTransport = transports.find(
+    (transport) => transport.authProvider === copilotLlmAuth.authProvider,
+  );
+  const selectedCredential = selectedTransport?.credentials.find(
+    (credential) => credential.id === copilotLlmAuth.credentialId,
+  );
+  const selectedConnectionMissing =
+    providers !== null &&
+    copilotLlmAuth.authProvider !== "platform" &&
+    !selectedCredential;
 
   useEffect(() => {
-    if (copilotLlmAuth.authProvider !== "codex") return;
-    if (isCodexEnabled && (providers === null || selectedCredential)) return;
+    if (transports.length > 1 || !resolvedSelection) return;
+    if (
+      resolvedSelection.authProvider === copilotLlmAuth.authProvider &&
+      resolvedSelection.credentialId === copilotLlmAuth.credentialId
+    ) {
+      return;
+    }
+
+    setCopilotLlmAuth(resolvedSelection);
+  }, [
+    copilotLlmAuth.authProvider,
+    copilotLlmAuth.credentialId,
+    resolvedSelection?.authProvider,
+    resolvedSelection?.credentialId,
+    setCopilotLlmAuth,
+    transports.length,
+  ]);
+
+  useEffect(() => {
+    if (!selectedConnectionMissing || transports.length === 1) return;
 
     toast({
-      variant: "destructive",
-      title: "ChatGPT/Codex connection unavailable",
-      description: isCodexEnabled
-        ? "The selected connection was removed. Choose a connection before starting a new task."
-        : "ChatGPT/Codex is not available for new AutoPilot tasks right now.",
+      variant: transports.length === 0 ? "default" : "destructive",
+      title:
+        transports.length === 0
+          ? "AI connections changed"
+          : "ChatGPT/Codex connection unavailable",
+      description:
+        transports.length === 0
+          ? "The next AutoPilot task will resolve the currently available connection before it starts."
+          : "The selected connection was removed. Choose another connected subscription before starting a new task.",
     });
-  }, [copilotLlmAuth, isCodexEnabled, providers, selectedCredential]);
+  }, [selectedConnectionMissing, transports.length]);
 
-  const isCodexSelected = copilotLlmAuth.authProvider === "codex";
-  const isSelectionUnavailable =
-    isCodexSelected &&
-    (!isCodexEnabled || (providers !== null && !selectedCredential));
-  if (!isCodexSelected && (!isCodexEnabled || codexCredentials.length === 0)) {
-    return null;
-  }
+  if (transports.length <= 1) return null;
+
+  const selectionLabel = selectedConnectionMissing
+    ? "Connection unavailable"
+    : (selectedTransport?.label ?? "Choose connection");
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`AI connection: ${isSelectionUnavailable ? "ChatGPT/Codex unavailable" : isCodexSelected ? "ChatGPT/Codex" : "AutoGPT platform"} — change connection`}
+          aria-label={`AI connection: ${selectionLabel} — change connection`}
           className={cn(
             "ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
-            isSelectionUnavailable
-              ? "text-red-600"
-              : isCodexSelected
-                ? "text-emerald-600"
-                : "text-zinc-700",
+            selectedConnectionMissing ? "text-red-600" : "text-emerald-600",
           )}
         >
-          {isSelectionUnavailable ? (
+          {selectedConnectionMissing ? (
             <WarningCircleIcon size={14} />
-          ) : isCodexSelected ? (
-            <TerminalIcon size={14} />
           ) : (
-            <RobotIcon size={14} />
+            <TerminalIcon size={14} />
           )}
-          <span className="hidden sm:inline">
-            {isSelectionUnavailable
-              ? "Connection missing"
-              : isCodexSelected
-                ? "ChatGPT/Codex"
-                : "AutoGPT"}
-          </span>
+          <span className="hidden sm:inline">{selectionLabel}</span>
           <CaretDownIcon className="size-3 text-zinc-400" weight="bold" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuItem
-          onClick={() =>
-            setCopilotLlmAuth({
-              authProvider: "platform",
-              credentialId: null,
-            })
-          }
-          className={cn("gap-2", !isCodexSelected && "bg-zinc-100")}
-        >
-          <RobotIcon size={16} />
-          <div>
-            <div>AutoGPT platform</div>
-            <div className="text-xs text-zinc-500">Uses platform credits</div>
-          </div>
-        </DropdownMenuItem>
-        {isSelectionUnavailable && (
+        {selectedConnectionMissing && (
           <DropdownMenuItem disabled className="gap-2 text-red-600">
             <WarningCircleIcon size={16} />
-            Selected ChatGPT/Codex connection is unavailable
+            Selected connection is unavailable
           </DropdownMenuItem>
         )}
-        {isCodexEnabled &&
-          codexCredentials.map((credential) => (
+        {transports.map((transport) => {
+          const selection = getSubsidizedTransportSelection(
+            transport,
+            copilotLlmAuth,
+          );
+          const credential = transport.credentials.find(
+            (candidate) => candidate.id === selection.credentialId,
+          );
+          return (
             <DropdownMenuItem
-              key={credential.id}
-              onClick={() =>
-                setCopilotLlmAuth({
-                  authProvider: "codex",
-                  credentialId: credential.id,
-                })
-              }
+              key={transport.authProvider}
+              onClick={() => setCopilotLlmAuth(selection)}
               className={cn(
                 "gap-2",
-                selectedCredential?.id === credential.id && "bg-zinc-100",
+                selectedTransport?.authProvider === transport.authProvider &&
+                  selectedCredential &&
+                  "bg-zinc-100",
               )}
             >
               <TerminalIcon size={16} />
               <div className="min-w-0">
-                <div>ChatGPT/Codex</div>
+                <div>{transport.label}</div>
                 <div className="truncate text-xs text-zinc-500">
-                  {credential.title ??
-                    credential.username ??
+                  {credential?.title ??
+                    credential?.username ??
                     "Connected account"}
-                  {" · Uses your ChatGPT plan"}
+                  {` · ${transport.description}`}
                 </div>
               </div>
             </DropdownMenuItem>
-          ))}
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

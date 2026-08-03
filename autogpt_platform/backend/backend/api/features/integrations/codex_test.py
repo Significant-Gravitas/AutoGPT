@@ -21,7 +21,6 @@ from backend.integrations.codex.models import (
     CodexRateLimitWindow,
 )
 
-
 app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
@@ -77,10 +76,6 @@ def test_codex_login_reuses_generic_oauth_contract():
         patch(
             "backend.api.features.integrations.router.codex_login_coordinator"
         ) as coordinator,
-        patch(
-            "backend.api.features.integrations.router.require_codex_auth",
-            new=AsyncMock(),
-        ),
         patch("backend.api.features.integrations.router.creds_manager") as manager,
         patch("backend.api.features.integrations.router.settings") as settings,
     ):
@@ -116,10 +111,6 @@ def test_codex_login_start_failure_is_sanitized(caplog):
         patch(
             "backend.api.features.integrations.router.codex_login_coordinator"
         ) as coordinator,
-        patch(
-            "backend.api.features.integrations.router.require_codex_auth",
-            new=AsyncMock(),
-        ),
         patch("backend.api.features.integrations.router.settings") as settings,
     ):
         settings.config.frontend_base_url = "http://localhost:3000"
@@ -145,10 +136,6 @@ def test_codex_callback_persists_one_safe_credential():
         patch(
             "backend.api.features.integrations.router.codex_login_coordinator"
         ) as coordinator,
-        patch(
-            "backend.api.features.integrations.router.require_codex_auth",
-            new=AsyncMock(),
-        ),
         patch("backend.api.features.integrations.router.creds_manager") as manager,
     ):
         manager.store.verify_state_token = AsyncMock(return_value=_oauth_state())
@@ -181,10 +168,6 @@ def test_codex_callback_rejects_login_id_mismatch():
         patch(
             "backend.api.features.integrations.router.codex_login_coordinator"
         ) as coordinator,
-        patch(
-            "backend.api.features.integrations.router.require_codex_auth",
-            new=AsyncMock(),
-        ),
         patch("backend.api.features.integrations.router.creds_manager") as manager,
     ):
         manager.store.verify_state_token = AsyncMock(return_value=_oauth_state())
@@ -243,10 +226,6 @@ def test_device_login_page_reads_fragment_and_contains_no_tokens():
 def test_device_login_status_enforces_user_ownership():
     with (
         patch(
-            "backend.api.features.integrations.codex.require_codex_auth",
-            new=AsyncMock(),
-        ),
-        patch(
             "backend.api.features.integrations.codex.codex_login_coordinator"
         ) as coordinator,
     ):
@@ -263,10 +242,6 @@ def test_device_login_status_returns_only_nonsecret_state():
     )
     with (
         patch(
-            "backend.api.features.integrations.codex.require_codex_auth",
-            new=AsyncMock(),
-        ),
-        patch(
             "backend.api.features.integrations.codex.codex_login_coordinator"
         ) as coordinator,
     ):
@@ -278,46 +253,7 @@ def test_device_login_status_returns_only_nonsecret_state():
     assert "ABCD-EFGH" not in response.text
 
 
-def test_device_login_status_is_hidden_when_feature_is_disabled():
-    with (
-        patch(
-            "backend.api.features.integrations.codex.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "backend.api.features.integrations.codex.codex_login_coordinator"
-        ) as coordinator,
-    ):
-        coordinator.get = AsyncMock()
-        response = client.get("/codex/device-login/login-123/status")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Feature not available"
-    coordinator.get.assert_not_awaited()
-
-
-def test_codex_login_is_hidden_when_feature_is_disabled():
-    with (
-        patch(
-            "backend.api.features.integrations.codex.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "backend.api.features.integrations.router.codex_login_coordinator"
-        ) as coordinator,
-        patch("backend.api.features.integrations.router.creds_manager") as manager,
-    ):
-        coordinator.start = AsyncMock()
-        manager.store.store_state_token = AsyncMock()
-        response = client.get("/codex/login")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Feature not available"
-    coordinator.start.assert_not_awaited()
-    manager.store.store_state_token.assert_not_awaited()
-
-
-def test_provider_discovery_hides_codex_when_auth_flag_is_disabled():
+def test_provider_discovery_always_includes_codex():
     with (
         patch("backend.blocks.load_all_blocks"),
         patch(
@@ -332,47 +268,16 @@ def test_provider_discovery_hides_codex_when_auth_flag_is_disabled():
             "backend.api.features.integrations.router.get_supported_auth_types",
             return_value=[],
         ),
-        patch(
-            "backend.api.features.integrations.router.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ),
     ):
         response = client.get("/providers")
 
     assert response.status_code == 200
-    assert [provider["name"] for provider in response.json()] == ["github"]
-
-
-def test_codex_callback_is_hidden_without_consuming_state_when_disabled():
-    with (
-        patch(
-            "backend.api.features.integrations.codex.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "backend.api.features.integrations.router.codex_login_coordinator"
-        ) as coordinator,
-        patch("backend.api.features.integrations.router.creds_manager") as manager,
-    ):
-        coordinator.complete = AsyncMock()
-        manager.store.verify_state_token = AsyncMock()
-        response = client.post(
-            "/codex/callback",
-            json={"code": "login-123", "state_token": "state-123"},
-        )
-
-    assert response.status_code == 404
-    manager.store.verify_state_token.assert_not_awaited()
-    coordinator.complete.assert_not_awaited()
+    assert [provider["name"] for provider in response.json()] == ["codex", "github"]
 
 
 def test_device_login_page_has_no_store_and_restrictive_browser_headers():
     state = CodexDeviceLoginState(status="pending")
     with (
-        patch(
-            "backend.api.features.integrations.codex.require_codex_auth",
-            new=AsyncMock(),
-        ),
         patch(
             "backend.api.features.integrations.codex.codex_login_coordinator"
         ) as coordinator,

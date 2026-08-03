@@ -5,8 +5,9 @@ account's Codex allowance for three explicit execution paths:
 
 - The existing **Code Generation** block through the `codex_app_server`
   transport.
-- A newly created AutoPilot chat session whose AI connection is explicitly set
-  to **ChatGPT/Codex**.
+- A newly created AutoPilot chat session when **ChatGPT/Codex** is the only
+  connected subscription transport, or is selected from multiple connected
+  subscription transports.
 - An **AutoPilot** graph block with an explicitly selected ChatGPT/Codex
   connection.
 
@@ -19,8 +20,8 @@ spend.
 
 The preview does not route Orchestrator, shared LLM blocks, image generation,
 or background system work through the connected account. Existing graphs and
-AutoPilot sessions remain on their current platform or API-key routes unless a
-Codex connection is explicitly selected.
+AutoPilot sessions keep their stored route. New AutoPilot sessions use a
+connected subscription transport automatically when exactly one is available.
 
 ## Run locally
 
@@ -30,20 +31,10 @@ From `autogpt_platform`:
 docker compose up -d --build
 ```
 
-The development Compose stack enables all three backend preview flags by
-default:
-
-```text
-FORCE_FLAG_CODEX_SUBSCRIPTION_AUTH
-FORCE_FLAG_CODEX_SUBSCRIPTION_NATIVE
-FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT
-```
-
-It also compiles the matching AutoPilot UI override,
-`NEXT_PUBLIC_FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT`, into the frontend image.
-Set any backend flag, and the frontend override when applicable, to `false` to
-disable that surface. The stack mounts `/run/autogpt-codex` as a memory-backed
-temporary filesystem for REST, executor, and Copilot executor processes.
+Codex pairing and its supported execution routes are available without feature
+flag environment variables. The stack mounts `/run/autogpt-codex` as a
+memory-backed temporary filesystem for REST, executor, and Copilot executor
+processes.
 
 Open `http://localhost:3000`, then open **Settings > Integrations** and connect
 **Codex**. In the sign-in window, open the ChatGPT verification page and enter
@@ -64,19 +55,20 @@ independently of public API model names.
 ### Test AutoPilot
 
 1. Open **AutoPilot** and start a new task.
-2. Before sending the first message, open the AI connection selector and choose
-   the saved **ChatGPT/Codex** connection.
+2. If ChatGPT/Codex is the only connected subscription transport, it is used
+   automatically and no connection selector is shown. If multiple subscription
+   transports are connected, choose the desired connection before sending the
+   first message.
 3. Choose Fast or Thinking and Balanced or Advanced as usual, then send the
    message. Text and permitted AutoGPT tool calls stream through the existing
    AutoPilot event surface.
 
 The route and credential are stored on the new session and are immutable for
-that session. Start another task to switch between AutoGPT-funded inference and
-ChatGPT/Codex. The server reloads the authoritative session route before each
+that session. Start another task to use a different connected subscription
+transport. The server reloads the authoritative session route before each
 queued turn; queued messages carry only the credential ID, never the OAuth
-tokens. A missing, revoked, busy, or disabled Codex credential fails visibly.
-There is no silent fallback to an AutoGPT-funded model or another user's
-credential.
+tokens. A missing, revoked, or busy Codex credential fails visibly. There is no
+silent fallback to an AutoGPT-funded model or another user's credential.
 
 The mode and model controls select a Codex route from the shared model catalog,
 then validate it against the models advertised by the connected account. The
@@ -149,20 +141,12 @@ does consume a small amount of the connected account's Codex usage.
 
 ## Deploy a private cloud preview
 
-Application defaults are fail-closed outside the development Compose stack.
-Enable only the required flags for an explicitly scoped cohort:
-
-- Auth and Code Generation require `codex-subscription-auth` and
-  `codex-subscription-native`.
-- AutoPilot requires `codex-subscription-auth` and
-  `codex-subscription-copilot`.
-
-The `FORCE_FLAG_*` environment overrides enable a flag deployment-wide. Do not
-copy the development Compose defaults into a shared multi-tenant environment.
-Use user-targeted feature flags, or an isolated and access-controlled preview
-deployment. To expose the AutoPilot selector without targeted frontend flags,
-pass `NEXT_PUBLIC_FORCE_FLAG_CODEX_SUBSCRIPTION_COPILOT=true` as a frontend
-image build argument; this is also deployment-wide.
+Codex pairing and supported execution routes do not require availability flags
+or frontend build-time overrides. Scope a private preview with the deployment's
+ordinary access controls instead of hiding device login with environment
+variables. The transport selector is driven by the connected, compatible
+subscription providers: it is hidden for zero or one and shown when more than
+one is available.
 
 REST, executor, and Copilot executor must share the normal AutoGPT credential
 database, encryption configuration, and Redis cluster. Give every process that

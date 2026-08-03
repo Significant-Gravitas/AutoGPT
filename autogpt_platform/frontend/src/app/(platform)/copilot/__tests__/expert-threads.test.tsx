@@ -3,6 +3,7 @@ import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/exp
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { server } from "@/mocks/mock-server";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import {
   cleanup,
   fireEvent,
@@ -242,16 +243,17 @@ describe("useChatSession — expert sessions", () => {
     );
 
     render(
-      <NuqsWrapper>
-        <ExpertSessionHarness />
-      </NuqsWrapper>,
+      <CredentialsProvidersContext.Provider value={{}}>
+        <NuqsWrapper>
+          <ExpertSessionHarness />
+        </NuqsWrapper>
+      </CredentialsProvidersContext.Provider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     await waitFor(() => {
       expect(createBody).toEqual({
         expert_id: "expert-maria",
-        llm_auth_provider: "platform",
       });
     });
   });

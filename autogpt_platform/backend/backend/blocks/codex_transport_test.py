@@ -5,18 +5,15 @@ from pydantic import SecretStr
 
 from backend.blocks.codex import (
     TEST_CREDENTIALS_INPUT,
-    CodexCallResult,
     CodeGenerationBlock,
+    CodexCallResult,
     CodexExecutionTransport,
     CodexModel,
     CodexReasoningEffort,
     _app_server_effort,
 )
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
-from backend.integrations.codex.models import (
-    CodexInvocationResult,
-    CodexTokenUsage,
-)
+from backend.integrations.codex.models import CodexInvocationResult, CodexTokenUsage
 
 
 def test_existing_graphs_default_to_openai_api_transport():
@@ -151,19 +148,15 @@ async def test_codex_app_server_uses_existing_lease_and_records_non_usd_usage():
     )
 
     with patch("backend.blocks.codex.get_codex_transport", return_value=transport):
-        with patch(
-            "backend.blocks.codex.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ):
-            outputs = [
-                item
-                async for item in block.run(
-                    input_data,
-                    credentials=credentials,
-                    credential_leases={"credentials": lease},
-                    user_id="user-1",
-                )
-            ]
+        outputs = [
+            item
+            async for item in block.run(
+                input_data,
+                credentials=credentials,
+                credential_leases={"credentials": lease},
+                user_id="user-1",
+            )
+        ]
 
     assert outputs == [
         ("response", "implemented"),
@@ -196,48 +189,8 @@ async def test_codex_app_server_rejects_execution_without_credential_lease():
         credentials=_credential_metadata(credentials),
     )
 
-    with (
-        patch(
-            "backend.blocks.codex.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ),
-        pytest.raises(ValueError, match="credential lease"),
-    ):
+    with pytest.raises(ValueError, match="credential lease"):
         await anext(block.run(input_data, credentials=credentials, user_id="user-1"))
-
-
-@pytest.mark.asyncio
-async def test_codex_app_server_requires_native_feature_flag():
-    block = CodeGenerationBlock()
-    credentials = _codex_credentials()
-    lease = MagicMock(credentials=credentials)
-    input_data = CodeGenerationBlock.Input(
-        prompt="implement it",
-        transport=CodexExecutionTransport.CODEX_APP_SERVER,
-        credentials=_credential_metadata(credentials),
-    )
-
-    with (
-        patch(
-            "backend.blocks.codex.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ) as flag_check,
-        pytest.raises(ValueError, match="not enabled"),
-    ):
-        await anext(
-            block.run(
-                input_data,
-                credentials=credentials,
-                credential_leases={"credentials": lease},
-                user_id="user-1",
-            )
-        )
-
-    flag_check.assert_awaited_once_with(
-        "codex-subscription-native",
-        "user-1",
-        default=False,
-    )
 
 
 def _codex_credentials() -> OAuth2Credentials:
