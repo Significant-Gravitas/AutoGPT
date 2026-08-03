@@ -382,8 +382,8 @@ describe("DEFAULT_CAPTIONS_ENGINE", () => {
     vi.stubEnv("NEXT_PUBLIC_LIVE_CAPTIONS_ENGINE", configured);
     vi.resetModules();
 
-    const module = await import("../useLiveCaptions");
+    const captions = await import("../useLiveCaptions");
 
-    expect(module.DEFAULT_CAPTIONS_ENGINE).toBe(expected);
+    expect(captions.DEFAULT_CAPTIONS_ENGINE).toBe(expected);
   });
 });
