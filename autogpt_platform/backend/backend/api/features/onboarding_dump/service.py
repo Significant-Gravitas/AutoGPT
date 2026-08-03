@@ -85,9 +85,20 @@ async def finalize_voice_dump(
     )
     if not claimed:
         current = await db.get_dump(user_id)
+        if current is not None and current.recordingId != recording_id:
+            # There is one row per user, so a newer take from a second
+            # tab has taken it over. Returning its status would narrate
+            # somebody else's recording back to this client, and writing
+            # anything would knock the live take over — so report this
+            # take's own outcome and leave the row alone.
+            return FinalizeResponse(
+                status=BrainDumpStatus.failed,
+                input_mode=BrainDumpInputMode.voice,
+                error_code="superseded",
+            )
         if current is not None:
-            # Either this take is already moving, or a newer one from a
-            # second tab owns the row. Neither is ours to process.
+            # This take is already moving under another request. Not
+            # ours to process, but its status is the honest answer.
             return _pipeline_response(
                 current.status, current.transcript, BrainDumpInputMode.voice
             )

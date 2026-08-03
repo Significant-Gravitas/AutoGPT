@@ -414,6 +414,37 @@ async def test_a_voice_finalize_that_loses_the_claim_does_no_work(
 
 
 @pytest.mark.asyncio
+async def test_a_voice_finalize_for_a_superseded_take_reports_its_own_take(
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock], transcribe: AsyncMock
+):
+    """A second tab's take owns the row — say so, don't mirror it.
+
+    There is one row per user, so a newer recording overwrites the older
+    one. The losing finalize used to return whatever status it found,
+    which is the *other* take's progress dressed up as this one: the old
+    tab would narrate a recording it never made, and could be walked
+    through to a greeting built from audio the user recorded elsewhere.
+    """
+    await start_voice_take(dumps)
+    # Second tab starts its own take; the row is now theirs.
+    await dumps.start_dump(USER_ID, "rec-2", BrainDumpInputMode.voice)
+
+    response = await service.finalize_voice_dump(
+        USER_ID, RECORDING_ID, 12.0, None, BackgroundTasks()
+    )
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "superseded"
+    # The live take must come through untouched — no status write, and
+    # none of the pipeline run against the wrong recording.
+    assert dumps.row is not None
+    assert dumps.row.recordingId == "rec-2"
+    assert dumps.row.status == BrainDumpStatus.recording_uploaded
+    storage_mocks["assemble_parts"].assert_not_awaited()
+    transcribe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_finalizing_a_take_that_never_uploaded_writes_no_row(
     dumps: DumpStore, storage_mocks: dict[str, AsyncMock], transcribe: AsyncMock
 ):
