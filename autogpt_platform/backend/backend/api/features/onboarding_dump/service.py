@@ -85,7 +85,19 @@ async def finalize_voice_dump(
     )
     if not claimed:
         current = await db.get_dump(user_id)
-        if current is not None and current.recordingId != recording_id:
+        if current is None:
+            # No row, so there is nothing to write results to: every
+            # ``update_dump`` below would no-op while ``discard_parts``
+            # dropped the buffer for real, leaving stored audio nobody
+            # can reach and a client told its dump succeeded. Stop here
+            # and keep the parts — the browser still holds them, and a
+            # re-upload recreates the row on part 0.
+            return FinalizeResponse(
+                status=BrainDumpStatus.failed,
+                input_mode=BrainDumpInputMode.voice,
+                error_code="no_audio_received",
+            )
+        if current.recordingId != recording_id:
             # There is one row per user, so a newer take from a second
             # tab has taken it over. Returning its status would narrate
             # somebody else's recording back to this client, and writing
@@ -96,14 +108,11 @@ async def finalize_voice_dump(
                 input_mode=BrainDumpInputMode.voice,
                 error_code="superseded",
             )
-        if current is not None:
-            # This take is already moving under another request. Not
-            # ours to process, but its status is the honest answer.
-            return _pipeline_response(
-                current.status, current.transcript, BrainDumpInputMode.voice
-            )
-        # No row at all — nothing ever uploaded a part. Fall through so
-        # the missing-audio path below produces the usual failure.
+        # Our take, already moving under another request. Not ours to
+        # process, but its status is the honest answer.
+        return _pipeline_response(
+            current.status, current.transcript, BrainDumpInputMode.voice
+        )
 
     audio = await storage.assemble_parts(user_id, recording_id)
     if not audio:

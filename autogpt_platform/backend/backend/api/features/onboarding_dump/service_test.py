@@ -469,6 +469,33 @@ async def test_finalizing_a_take_that_never_uploaded_writes_no_row(
 
 
 @pytest.mark.asyncio
+async def test_a_buffer_with_no_row_is_kept_rather_than_processed_into_nothing(
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock], transcribe: AsyncMock
+):
+    """Parts but no row is the one shape that could lose a recording.
+
+    Every ``update_dump`` keys on ``userId`` and silently no-ops when
+    there is no row, so processing here would store the audio, drop the
+    Redis buffer and hand the client a success it can never read back —
+    the transcript, the greeting and the status all written nowhere. The
+    buffer has to survive so a re-upload (part 0 recreates the row) can
+    still recover the take.
+    """
+    storage_mocks["assemble_parts"].return_value = b"opus-audio-bytes"
+
+    response = await service.finalize_voice_dump(
+        USER_ID, RECORDING_ID, 12.0, None, BackgroundTasks()
+    )
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "no_audio_received"
+    assert dumps.row is None
+    storage_mocks["store_audio"].assert_not_awaited()
+    storage_mocks["discard_parts"].assert_not_awaited()
+    transcribe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_failed_extraction_still_preserves_the_transcript(
     dumps: DumpStore, extraction: dict[str, AsyncMock]
 ):
