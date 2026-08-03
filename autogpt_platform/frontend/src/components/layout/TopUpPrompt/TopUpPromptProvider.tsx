@@ -3,6 +3,7 @@
 import { ReactNode, useState } from "react";
 
 import useCredits from "@/hooks/useCredits";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { DailyTopUpAutoOpener } from "./DailyTopUpAutoOpener";
@@ -15,9 +16,10 @@ interface Props {
 
 export function TopUpPromptProvider({ children }: Props) {
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isLoggedIn } = useSupabase();
   const { credits, autoTopUpConfig } = useCredits({
-    fetchInitialCredits: true,
-    fetchInitialAutoTopUpConfig: true,
+    fetchInitialCredits: isLoggedIn,
+    fetchInitialAutoTopUpConfig: isLoggedIn,
   });
 
   // Backend treats amount === 0 as disabled, so auto-refill only actually

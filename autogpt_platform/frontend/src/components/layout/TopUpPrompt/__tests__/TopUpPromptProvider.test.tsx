@@ -20,6 +20,12 @@ import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
 // `Flag` enum and let each test toggle whether the flag resolves true.
 let isBillingEnabled = true;
 
+// Simulate an authenticated user so that fetchInitialCredits and
+// fetchInitialAutoTopUpConfig are enabled (they gate on isLoggedIn).
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => ({ isLoggedIn: true }),
+}));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<

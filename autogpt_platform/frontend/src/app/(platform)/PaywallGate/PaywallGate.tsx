@@ -33,7 +33,7 @@ export function PaywallGate({ children }: { children: ReactNode }) {
       select: (res) => (res.status === 200 ? res.data : null),
       // Skip the call entirely when the flag is off — beta cohort never hits
       // the paywall, no need to read /credits/subscription on every page load.
-      enabled: isPaymentEnabled === true,
+      enabled: isPaymentEnabled === true && isLoggedIn,
     },
   });
 
