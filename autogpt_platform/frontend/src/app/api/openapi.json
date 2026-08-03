@@ -15729,13 +15729,6 @@
             ],
             "title": "Builder Graph Id"
           },
-          "expert_id": {
-            "anyOf": [
-              { "type": "string", "maxLength": 128 },
-              { "type": "null" }
-            ],
-            "title": "Expert Id"
-          },
           "llm_auth_provider": {
             "type": "string",
             "enum": ["platform", "codex"],
@@ -15748,6 +15741,13 @@
               { "type": "null" }
             ],
             "title": "Llm Credential Id"
+          },
+          "expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Expert Id"
           }
         },
         "additionalProperties": false,
