@@ -153,8 +153,8 @@ def _is_reasoning_route(model: str) -> bool:
 
     OpenRouter exposes reasoning tokens via a unified ``reasoning`` request
     param that works on any provider that supports extended thinking —
-    currently Anthropic (Claude Opus / Sonnet) and Moonshot (Kimi K2.6 +
-    kimi-k2-thinking) advertise it in their ``supported_parameters``.
+    currently Anthropic (Claude Opus / Sonnet) and Moonshot (Kimi K2.6,
+    kimi-k2-thinking, K3) advertise it in their ``supported_parameters``.
     Other providers silently drop the field, but we skip it anyway to keep
     the payload tight and avoid confusing cache diagnostics.
 
