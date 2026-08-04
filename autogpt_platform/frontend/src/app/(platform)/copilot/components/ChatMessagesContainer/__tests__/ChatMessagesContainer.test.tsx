@@ -85,6 +85,9 @@ vi.mock("../components/ThinkingIndicator", () => ({
     <div data-testid="thinking-indicator">{statusMessage ?? "thinking"}</div>
   ),
 }));
+vi.mock("../../ToolChain/ToolChain", () => ({
+  ToolChain: () => <div data-testid="tool-chain" />,
+}));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
 }));
@@ -98,6 +101,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 vi.mock("../helpers", () => ({
   buildRenderSegments: () => [],
   getTurnMessages: () => [],
+  isChainableToolPart: () => false,
   parseSpecialMarkers: (text: string) => {
     if (typeof text === "string" && text.startsWith("[__COPILOT_ERROR_")) {
       return { markerType: "error" };

@@ -635,6 +635,12 @@ class BlockInfoSummary(BaseModel):
         default_factory=list,
         description="List of input fields for this block",
     )
+    provider: str | None = Field(
+        default=None,
+        description="Integration provider slug when the block uses exactly "
+        "one provider (e.g. 'google', 'discord'); used for provider icons "
+        "in the chat UI",
+    )
 
 
 class BlockListResponse(ToolResponseBase):
@@ -676,6 +682,7 @@ class BlockOutputResponse(ToolResponseBase):
     block_id: str
     block_name: str
     outputs: dict[str, list[Any]]
+    provider: str | None = None
     success: bool = True
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs
@@ -705,6 +712,8 @@ class WebFetchResponse(ToolResponseBase):
     status_code: int
     content_type: str
     content: str
+    title: str | None = None
+    content_length: int = 0
     truncated: bool = False
 
 

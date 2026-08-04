@@ -32,6 +32,7 @@ export enum Flag {
   // Mirror of the backend ``Flag`` enum — the endpoints 404 when off, so
   // both sides must agree. Off renders the pillbox flow untouched.
   ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump",
+  NEW_TOOL_UI = "new-tool-ui",
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
   // them when memory/dream-related UI surfaces ship (P6+ on the
@@ -66,7 +67,7 @@ const defaultFlags = {
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: false,
+  [Flag.AUTOGPT_NEW_LAYOUT]: true,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
@@ -79,6 +80,7 @@ const defaultFlags = {
   // brain dump for everyone — which is what the backend 404s are meant to
   // prevent. Use NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP locally.
   [Flag.ONBOARDING_BRAIN_DUMP]: false,
+  [Flag.NEW_TOOL_UI]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
@@ -144,6 +146,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_SETTINGS_NOTIFICATIONS;
     case Flag.ONBOARDING_BRAIN_DUMP:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP;
+    case Flag.NEW_TOOL_UI:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_NEW_TOOL_UI;
     case Flag.GRAPHITI_MEMORY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
     case Flag.GRAPHITI_COMMUNITIES_ENABLED:

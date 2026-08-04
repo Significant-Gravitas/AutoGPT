@@ -1,0 +1,180 @@
+"use client";
+
+import {
+  ArrowSquareOutIcon,
+  BookOpenIcon,
+  ClockIcon,
+  FileIcon,
+  FolderIcon,
+  ImageIcon,
+  RepeatIcon,
+} from "@phosphor-icons/react";
+import Link from "next/link";
+import { CARD, HALF } from "./ResultCards";
+import { formatBytes, formatWhen, inline, str } from "./resultHelpers";
+
+export function ScheduleList({
+  schedules,
+}: {
+  schedules: Record<string, unknown>[];
+}) {
+  return (
+    <div className="grid gap-1.5 sm:grid-cols-2">
+      {schedules.map((schedule, i) => {
+        const next = str(schedule, "next_run_time");
+        const recurring = !!str(schedule, "cron");
+        return (
+          <div key={i} className={CARD + " flex items-center gap-2.5 p-2.5"}>
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+              <ClockIcon size={15} className="text-zinc-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-zinc-800">
+                {str(schedule, "name", "message") ?? inline(schedule)}
+              </p>
+              {next && (
+                <p className="flex items-center gap-1 text-xs text-zinc-500">
+                  {recurring && <RepeatIcon size={11} />}
+                  {formatWhen(next)}
+                </p>
+              )}
+            </div>
+            {str(schedule, "kind") && (
+              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+                {str(schedule, "kind") === "copilot_turn" ? "chat" : "agent"}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function ScheduleCreatedCard({
+  output,
+}: {
+  output: Record<string, unknown>;
+}) {
+  const next = str(output, "next_run_time");
+  return (
+    <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+        <ClockIcon size={15} className="text-zinc-600" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium text-zinc-800">
+          Follow-up scheduled
+        </p>
+        {next && (
+          <p className="flex items-center gap-1 text-xs text-zinc-500">
+            {output.is_recurring === true && <RepeatIcon size={11} />}
+            {formatWhen(next)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function FolderList({
+  folders,
+}: {
+  folders: Record<string, unknown>[];
+}) {
+  return (
+    <div className="grid gap-1.5 sm:grid-cols-2">
+      {folders.map((folder, i) => {
+        const count =
+          typeof folder.agent_count === "number" ? folder.agent_count : null;
+        return (
+          <div key={i} className={CARD + " flex items-center gap-2.5 p-2.5"}>
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+              <FolderIcon size={15} className="text-zinc-600" />
+            </div>
+            <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+              {str(folder, "name") ?? inline(folder)}
+            </p>
+            {count !== null && (
+              <span className="shrink-0 text-xs text-zinc-400">
+                {count} agent{count === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function FileList({ files }: { files: Record<string, unknown>[] }) {
+  return (
+    <div className={`${CARD} ${HALF} divide-y divide-zinc-100`}>
+      {files.map((file, i) => {
+        const mime = str(file, "mime_type") ?? "";
+        const size =
+          typeof file.size_bytes === "number" ? file.size_bytes : null;
+        const Icon = mime.startsWith("image/") ? ImageIcon : FileIcon;
+        return (
+          <div key={i} className="flex items-center gap-2.5 px-2.5 py-2">
+            <Icon size={14} className="shrink-0 text-zinc-400" />
+            <p className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-700">
+              {str(file, "path", "name") ?? inline(file)}
+            </p>
+            {size !== null && (
+              <span className="shrink-0 text-xs text-zinc-400">
+                {formatBytes(size)}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function DocsList({ results }: { results: Record<string, unknown>[] }) {
+  return (
+    <div className="grid gap-1.5 sm:grid-cols-2">
+      {results.map((doc, i) => {
+        const docUrl = str(doc, "doc_url");
+        const section = str(doc, "section");
+        return (
+          <div key={i} className={CARD + " flex items-start gap-2.5 p-2.5"}>
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+              <BookOpenIcon size={15} className="text-zinc-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <p className="min-w-0 truncate text-[13px] font-medium text-zinc-800">
+                  {str(doc, "title", "path") ?? inline(doc)}
+                </p>
+                {section && (
+                  <span className="shrink-0 truncate text-[11px] text-zinc-400">
+                    {section}
+                  </span>
+                )}
+              </div>
+              {str(doc, "snippet") && (
+                <p className="truncate text-xs text-zinc-500">
+                  {str(doc, "snippet")}
+                </p>
+              )}
+            </div>
+            {docUrl && (
+              <Link
+                href={docUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open doc"
+                className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+              >
+                <ArrowSquareOutIcon size={14} />
+              </Link>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

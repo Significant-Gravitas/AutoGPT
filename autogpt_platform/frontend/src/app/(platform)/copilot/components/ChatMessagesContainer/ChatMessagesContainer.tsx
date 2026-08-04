@@ -24,12 +24,15 @@ import { stripKickoffMessages } from "../../expertKickoff";
 import {
   buildRenderSegments,
   getTurnMessages,
+  isChainableToolPart,
   type MessagePart,
   type RenderSegment,
   parseSpecialMarkers,
   shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "./helpers";
+import { ToolChain } from "../ToolChain/ToolChain";
+import { buildChainSegments } from "../ToolChain/helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { WorkCard } from "../WorkCard/WorkCard";
@@ -95,6 +98,9 @@ interface Props {
   /** Expert identity for expert-scoped sessions: drives the thread header
    *  and the assistant avatar/name. Null/undefined = default header. */
   expertIdentity?: ExpertIdentity | null;
+  /** Ignore the NEW_TOOL_UI flag — used by the tool-ui-debug page so its
+   *  "Old" view stays on the legacy renderer regardless of flag state. */
+  forceOldToolUI?: boolean;
 }
 
 interface RenderSegmentOptions {
@@ -102,6 +108,40 @@ interface RenderSegmentOptions {
   fileUrlBuilder?: (fileId: string) => string;
   forceArtifacts?: boolean;
   readOnly?: boolean;
+}
+
+function renderChainSegments(
+  parts: MessagePart[],
+  messageID: string,
+  isCurrentlyStreaming: boolean,
+  options: RenderSegmentOptions = {},
+): React.ReactNode[] {
+  const segments = buildChainSegments(parts, isChainableToolPart);
+  return segments.map((segment, segmentIndex) => {
+    if (segment.kind === "chain") {
+      return (
+        <ToolChain
+          key={`${messageID}-chain-${segment.index}`}
+          parts={segment.parts}
+          isStreaming={
+            isCurrentlyStreaming && segmentIndex === segments.length - 1
+          }
+        />
+      );
+    }
+    return (
+      <MessagePartRenderer
+        key={`${messageID}-${segment.index}`}
+        part={segment.part}
+        messageID={messageID}
+        partIndex={segment.index}
+        onRetry={options.onRetry}
+        fileUrlBuilder={options.fileUrlBuilder}
+        forceArtifacts={options.forceArtifacts}
+        readOnly={options.readOnly}
+      />
+    );
+  });
 }
 
 function renderSegments(
@@ -333,6 +373,7 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
   expertIdentity,
+  forceOldToolUI = false,
 }: Props) {
   // The expert-kickoff control prompt is filtered at the transcript renderer
   // only so lifecycle, dedup and metadata-preserving retry logic still see it.
@@ -346,6 +387,7 @@ export function ChatMessagesContainer({
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI) && !forceOldToolUI;
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList =
     !isTaskBarEnabled &&
@@ -632,8 +674,12 @@ export function ChatMessagesContainer({
 
           // For finalized assistant messages, split into reasoning + response.
           // During streaming, show everything normally with tool collapsing.
+          // The new tool UI renders chains inline instead, so it skips the
+          // reasoning split (and its "Show steps" modal) entirely.
           const isFinalized =
-            message.role === "assistant" && !isCurrentlyStreaming;
+            !isNewToolUI &&
+            message.role === "assistant" &&
+            !isCurrentlyStreaming;
           const { reasoning, response } = isFinalized
             ? splitReasoningAndResponse(renderableParts)
             : { reasoning: [] as MessagePart[], response: renderableParts };
@@ -676,25 +722,37 @@ export function ChatMessagesContainer({
                     })}
                   </StepsCollapse>
                 )}
-                {responseSegments
-                  ? renderSegments(responseSegments, message.id, {
-                      onRetry: isLastAssistant ? onRetry : undefined,
-                      fileUrlBuilder,
-                      forceArtifacts: readOnly,
-                      readOnly,
-                    })
-                  : renderableParts.map((part, i) => (
-                      <MessagePartRenderer
-                        key={`${message.id}-${i}`}
-                        part={part}
-                        messageID={message.id}
-                        partIndex={i}
-                        onRetry={isLastAssistant ? onRetry : undefined}
-                        fileUrlBuilder={fileUrlBuilder}
-                        forceArtifacts={readOnly}
-                        readOnly={readOnly}
-                      />
-                    ))}
+                {isAssistant && isNewToolUI
+                  ? renderChainSegments(
+                      renderableParts,
+                      message.id,
+                      isCurrentlyStreaming,
+                      {
+                        onRetry: isLastAssistant ? onRetry : undefined,
+                        fileUrlBuilder,
+                        forceArtifacts: readOnly,
+                        readOnly,
+                      },
+                    )
+                  : responseSegments
+                    ? renderSegments(responseSegments, message.id, {
+                        onRetry: isLastAssistant ? onRetry : undefined,
+                        fileUrlBuilder,
+                        forceArtifacts: readOnly,
+                        readOnly,
+                      })
+                    : renderableParts.map((part, i) => (
+                        <MessagePartRenderer
+                          key={`${message.id}-${i}`}
+                          part={part}
+                          messageID={message.id}
+                          partIndex={i}
+                          onRetry={isLastAssistant ? onRetry : undefined}
+                          fileUrlBuilder={fileUrlBuilder}
+                          forceArtifacts={readOnly}
+                          readOnly={readOnly}
+                        />
+                      ))}
                 {isLastInTurn && !isCurrentlyStreaming && (
                   <TurnStatsBar
                     turnMessages={getTurnMessages(messages, messageIndex)}

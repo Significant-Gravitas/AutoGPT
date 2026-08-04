@@ -168,6 +168,23 @@ async def _charge_block_credits(
         # BILLING_LEAK log above is the signal for reconciliation.
 
 
+def get_block_provider(block: AnyBlockSchema) -> str | None:
+    """Sole integration provider slug for a block, or None when the block
+    uses zero or multiple providers."""
+    try:
+        infos = block.input_schema.get_credentials_fields_info()
+    except Exception:
+        return None
+    providers = {
+        getattr(provider, "value", str(provider))
+        for info in infos.values()
+        for provider in info.provider
+    }
+    if len(providers) != 1:
+        return None
+    return next(iter(providers))
+
+
 async def execute_block(
     *,
     block: AnyBlockSchema,
@@ -221,6 +238,7 @@ async def execute_block(
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
+                provider=get_block_provider(block),
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
@@ -443,6 +461,7 @@ async def execute_block(
                     block_id=block_id,
                     block_name=block.name,
                     outputs=dict(outputs),
+                    provider=get_block_provider(block),
                     success=True,
                     session_id=session_id,
                 )

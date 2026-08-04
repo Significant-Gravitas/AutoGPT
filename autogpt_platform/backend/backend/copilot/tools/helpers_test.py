@@ -13,6 +13,7 @@ from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
     execute_block,
+    get_block_provider,
     prepare_block_for_execution,
     require_library_check,
 )
@@ -30,6 +31,34 @@ from ._test_data import make_session
 
 _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
+
+
+class TestGetBlockProvider:
+    def test_returns_only_provider(self):
+        block = MagicMock()
+        info = MagicMock()
+        info.provider = ["google"]
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+
+        assert get_block_provider(block) == "google"
+
+    def test_returns_none_for_multiple_providers(self):
+        block = MagicMock()
+        info = MagicMock()
+        info.provider = ["google", "github"]
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_when_schema_introspection_fails(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.side_effect = RuntimeError
+
+        assert get_block_provider(block) is None
 
 
 def _make_block(

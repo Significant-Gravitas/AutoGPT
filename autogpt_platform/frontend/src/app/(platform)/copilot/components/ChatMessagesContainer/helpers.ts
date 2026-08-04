@@ -69,6 +69,18 @@ export function isReasoningToolPart(part: MessagePart): boolean {
   return REASONING_TOOL_TYPES.has(part.type);
 }
 
+// New tool UI: reasoning + non-custom tools fold into a ToolChain;
+// custom-card tools keep their interactive components. ask_question is the
+// exception — it renders as an interactive chain row (QuestionRowForm) and
+// the chain pins itself open while it awaits an answer.
+export function isChainableToolPart(part: MessagePart): boolean {
+  return (
+    part.type === "reasoning" ||
+    part.type === "tool-ask_question" ||
+    (part.type.startsWith("tool-") && !CUSTOM_TOOL_TYPES.has(part.type))
+  );
+}
+
 // Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
 // Other surfaces (e.g. public share viewer) pass their own pattern into
 // ``filePartToArtifactRef`` rather than loosen this one — keeping the
