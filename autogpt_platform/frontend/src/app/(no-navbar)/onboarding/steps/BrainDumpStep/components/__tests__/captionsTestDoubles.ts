@@ -160,7 +160,7 @@ export class FakeSpeechRecognition {
         results: ArrayLike<ArrayLike<{ transcript: string }>>;
       }) => void)
     | null = null;
-  onerror: (() => void) | null = null;
+  onerror: ((event?: { error?: string }) => void) | null = null;
   onend: (() => void) | null = null;
 
   constructor() {

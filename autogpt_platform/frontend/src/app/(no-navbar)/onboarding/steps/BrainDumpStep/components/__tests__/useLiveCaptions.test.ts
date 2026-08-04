@@ -292,6 +292,47 @@ describe("useLiveCaptions", () => {
       expect(texts(result.current.words)).toEqual(["already", "said"]);
     });
 
+    it("keeps listening through a transient error", () => {
+      const { result } = render({ engine: "browser" });
+      const recognition = FakeSpeechRecognition.last();
+
+      act(() => recognition.onerror?.({ error: "no-speech" }));
+
+      expect(result.current.isSpeechSupported).toBe(true);
+      expect(recognition.stopCount).toBe(0);
+    });
+
+    // The API being present says nothing about it working. A mic revoked
+    // mid-take, or a Chrome that cannot reach the speech service, used to
+    // leave the caption box blank for the rest of the recording with no
+    // meter to replace it.
+    it("hands over to the level meter on an error it cannot come back from", () => {
+      const { result } = render({ engine: "browser" });
+      const recognition = FakeSpeechRecognition.last();
+
+      act(() => recognition.say("heard this much"));
+      expect(result.current.isSpeechSupported).toBe(true);
+
+      act(() => recognition.onerror?.({ error: "not-allowed" }));
+
+      expect(result.current.isSpeechSupported).toBe(false);
+      expect(recognition.stopCount).toBe(1);
+      expect(FakeAudioContext.instances).toHaveLength(1);
+    });
+
+    it("hands over to the level meter after giving up on rapid restarts", () => {
+      vi.useFakeTimers();
+      const { result } = render({ engine: "browser" });
+      const recognition = FakeSpeechRecognition.last();
+
+      for (let attempt = 0; attempt < 8; attempt++) {
+        act(() => recognition.onend?.());
+      }
+
+      expect(recognition.startCount).toBe(6);
+      expect(result.current.isSpeechSupported).toBe(false);
+    });
+
     it("stops the recogniser and clears the line on unmount", () => {
       const { result, unmount } = render({ engine: "browser" });
       const recognition = FakeSpeechRecognition.last();

@@ -207,6 +207,52 @@ describe("useBrainDumpRecorder", () => {
     expect(lastMeta?.durationSecs).toBeCloseTo(expected, 1);
   });
 
+  // The regression: `start()` awaits the permission prompt, and the orb
+  // stays tappable across it. A second tap reset `partIndexRef` under the
+  // first take, so both recorders wrote into one recording id with
+  // interleaved indices (0,2,4… and 1,3,5…) — the server's contiguity
+  // check rejects that — and the first stream's tracks were never
+  // stopped, leaving the mic indicator lit.
+  it("ignores a second tap while the permission prompt is still open", async () => {
+    vi.stubGlobal("MediaRecorder", ChunkingMediaRecorder);
+    let grantPermission!: (stream: unknown) => void;
+    const getUserMedia = vi.fn().mockReturnValue(
+      new Promise((resolve) => {
+        grantPermission = resolve;
+      }),
+    );
+    stubGetUserMedia(getUserMedia);
+    const { result } = renderHook(() => useBrainDumpRecorder());
+
+    const first = result.current.start();
+    const second = result.current.start();
+    let firstStarted: boolean | undefined;
+    let secondStarted: boolean | undefined;
+    await act(async () => {
+      grantPermission({ getTracks: () => [] });
+      firstStarted = await first;
+      secondStarted = await second;
+    });
+
+    expect(firstStarted).toBe(true);
+    expect(secondStarted).toBe(false);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+    // One take, one contiguous run of part indices.
+    await act(async () => {
+      ChunkingMediaRecorder.latest?.emit(new Blob(["a"]));
+      ChunkingMediaRecorder.latest?.emit(new Blob(["b"]));
+      await Promise.resolve();
+    });
+    expect(store.savePart.mock.calls.map(([part]) => part.partIndex)).toEqual([
+      0, 1,
+    ]);
+    const recordingIds = new Set(
+      store.savePart.mock.calls.map(([part]) => part.recordingId),
+    );
+    expect(recordingIds.size).toBe(1);
+  });
+
   it("reports a denial so the step can offer the typed composer", async () => {
     stubGetUserMedia(
       vi.fn().mockRejectedValue(new DOMException("no", "NotAllowedError")),
@@ -351,6 +397,48 @@ describe("useBrainDumpRecorder", () => {
     expect(result.current.phase).toBe("stopped");
     expect(result.current.getElapsedSeconds()).toBeGreaterThanOrEqual(1800);
     expect(savedMeta.at(-1)?.durationSecs).toBeGreaterThanOrEqual(1800);
+    // The step submits on this, not on the phase: a restart stops the
+    // recorder too, and that take is thrown away rather than sent.
+    expect(result.current.hitTimeLimit).toBe(true);
+  });
+
+  it("does not call an ordinary stop a time limit", async () => {
+    const { result } = renderHook(() => useBrainDumpRecorder());
+
+    await act(async () => {
+      await result.current.start();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await result.current.stop();
+    });
+
+    expect(result.current.phase).toBe("stopped");
+    expect(result.current.hitTimeLimit).toBe(false);
+  });
+
+  // The regression: the meta row was written with `durationSecs: 0` at
+  // start and only refreshed by `stop()`. A crash or a refresh — the exact
+  // case recovery exists for — never gets there, so the prompt offered
+  // back "the 0:00 you already recorded" and finalize submitted 0, which
+  // skips the backend's splitting of long takes.
+  it("keeps the stored duration current while the take runs", async () => {
+    const { result } = renderHook(() => useBrainDumpRecorder());
+
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(savedMeta.at(-1)?.durationSecs).toBe(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+    });
+
+    const stored = savedMeta.at(-1);
+    expect(stored?.durationSecs).toBeGreaterThanOrEqual(55);
+    expect(stored?.finalized).toBe(false);
+    expect(stored?.recordingId).toBe(result.current.recordingId);
   });
 
   it("reports the known duration when there is nothing to stop", async () => {

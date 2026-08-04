@@ -30,9 +30,21 @@ interface SpeechRecognitionLike {
   start: () => void;
   stop: () => void;
   onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: { error?: string }) => void) | null;
   onend: (() => void) | null;
 }
+
+// The recogniser drops out constantly for reasons that resolve
+// themselves — a pause in speech, a blip on the network — and `onend`
+// just listens again. These are the ones that never recover, and after
+// them the caption box would sit empty for the rest of the take unless
+// the level meter takes over.
+const FATAL_SPEECH_ERRORS = [
+  "not-allowed",
+  "service-not-allowed",
+  "audio-capture",
+  "language-not-supported",
+];
 
 interface SpeechRecognitionResultEventLike {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
@@ -68,6 +80,10 @@ export function useLiveCaptions({
   const [words, setWords] = useState<CaptionWord[]>([]);
   const [level, setLevel] = useState(0);
   const [isSpeechSupported] = useState(() => getSpeechRecognition() !== null);
+  // Feature detection only answers "is the API here", never "does it
+  // work". On a Chrome that cannot reach the speech service, or a mic
+  // revoked mid-take, the API is present and useless.
+  const [speechFailed, setSpeechFailed] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   // Interim results rewrite the tail of an utterance, so a word keeps its
   // id while its text holds. Without stable ids the marquee would replay
@@ -85,9 +101,10 @@ export function useLiveCaptions({
   });
   const cloud = engine === "deepgram" ? deepgram : scribe;
   const useBrowserEngine = engine === "browser" || cloud.status === "failed";
+  const canTranscribeLocally = isSpeechSupported && !speechFailed;
 
   useEffect(() => {
-    if (!isRecording || !isSpeechSupported || !useBrowserEngine) return;
+    if (!isRecording || !canTranscribeLocally || !useBrowserEngine) return;
     const Recognition = getSpeechRecognition();
     if (!Recognition) return;
 
@@ -145,8 +162,13 @@ export function useLiveCaptions({
     };
     // Recognition dropping out is cosmetic: the recording and the real
     // transcription are untouched, so the words already on screen stay
-    // and `onend` decides whether to listen again.
-    recognition.onerror = function handleError() {};
+    // and `onend` decides whether to listen again. Only the errors it
+    // can never come back from give up on the engine.
+    recognition.onerror = function handleError(event) {
+      if (FATAL_SPEECH_ERRORS.includes(event?.error ?? "")) {
+        setSpeechFailed(true);
+      }
+    };
     recognition.onend = function handleEnd() {
       if (disposed) return;
       base = wordsRef.current;
@@ -154,7 +176,10 @@ export function useLiveCaptions({
       // (mic revoked, no speech service) — retrying forever would spin.
       if (Date.now() - sessionStartedAt < 1000) {
         rapidRestarts += 1;
-        if (rapidRestarts > 5) return;
+        if (rapidRestarts > 5) {
+          setSpeechFailed(true);
+          return;
+        }
       }
       begin();
     };
@@ -167,10 +192,15 @@ export function useLiveCaptions({
       recognitionRef.current = null;
       replaceWords([]);
     };
-  }, [isRecording, isSpeechSupported, useBrowserEngine]);
+  }, [isRecording, canTranscribeLocally, useBrowserEngine]);
 
   useEffect(() => {
-    if (!isRecording || !useBrowserEngine || isSpeechSupported || !audioStream)
+    if (
+      !isRecording ||
+      !useBrowserEngine ||
+      canTranscribeLocally ||
+      !audioStream
+    )
       return;
     const context = new AudioContext();
     const analyser = context.createAnalyser();
@@ -194,13 +224,14 @@ export function useLiveCaptions({
       cancelAnimationFrame(frame);
       void context.close();
     };
-  }, [isRecording, isSpeechSupported, audioStream, useBrowserEngine]);
+  }, [isRecording, canTranscribeLocally, audioStream, useBrowserEngine]);
 
   return {
     words: useBrowserEngine ? words : cloud.words,
     level,
     // The cloud engines work everywhere a mic works, so "supported"
-    // only depends on the browser API when we have fallen back to it.
-    isSpeechSupported: useBrowserEngine ? isSpeechSupported : true,
+    // only depends on the browser API when we have fallen back to it —
+    // and on whether that API is actually producing anything.
+    isSpeechSupported: useBrowserEngine ? canTranscribeLocally : true,
   };
 }

@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RecordingPart } from "../recordingStore";
@@ -144,6 +145,54 @@ describe("useUploadQueue", () => {
     expect(new Set(attempted)).toEqual(new Set([0]));
     vi.useRealTimers();
   });
+
+  // A part the server rejects on its merits fails identically every time.
+  // Retrying it burned 12s per pass and then again on every 3-second
+  // chunk that followed, holding the queue — and its blobs — at the head
+  // for the rest of the take.
+  it.each([413, 422, 401])(
+    "gives up immediately on a %s rather than working the retry ladder",
+    async (status) => {
+      uploadBrainDumpPart.mockRejectedValue(
+        new ApiError("nope", status, undefined),
+      );
+
+      const { result } = renderHook(() => useUploadQueue());
+
+      let flushed: boolean | undefined;
+      await act(async () => {
+        result.current.enqueue(part(0));
+        flushed = await result.current.flush();
+      });
+
+      expect(flushed).toBe(false);
+      // One attempt per flush pass, no back-off waits in between.
+      expect(uploadBrainDumpPart).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it.each([408, 429, 500])(
+    "still retries a %s, which the server may honour next time",
+    async (status) => {
+      uploadBrainDumpPart.mockRejectedValue(
+        new ApiError("later", status, undefined),
+      );
+      vi.useFakeTimers();
+
+      const { result } = renderHook(() => useUploadQueue());
+
+      await act(async () => {
+        result.current.enqueue(part(0));
+        const pending = result.current.flush();
+        await vi.runAllTimersAsync();
+        await pending;
+      });
+
+      // Four attempts (one plus the three delays) on the first pass alone.
+      expect(uploadBrainDumpPart.mock.calls.length).toBeGreaterThan(3);
+      vi.useRealTimers();
+    },
+  );
 
   it("counts the parts still waiting to go out", async () => {
     const inFlight = deferred();

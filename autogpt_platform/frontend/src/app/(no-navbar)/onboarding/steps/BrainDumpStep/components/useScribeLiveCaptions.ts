@@ -57,7 +57,26 @@ export function useScribeLiveCaptions({
     wordsRef.current = [];
     setWords([]);
 
+    // Every exit runs the same teardown. An in-band error message leaves
+    // the socket OPEN, so without this the processor would keep streaming
+    // the mic to ElevenLabs for the rest of the take while the browser
+    // recogniser transcribes the same audio alongside it. Idempotent: the
+    // handlers are detached before closing, so the resulting `onclose`
+    // cannot re-enter.
+    function teardown() {
+      processor?.disconnect();
+      processor = null;
+      void context?.close();
+      context = null;
+      if (!socket) return;
+      socket.onerror = null;
+      socket.onclose = null;
+      socket.close();
+      socket = null;
+    }
+
     function fail() {
+      teardown();
       if (!disposed) setStatus("failed");
     }
 
@@ -156,9 +175,7 @@ export function useScribeLiveCaptions({
 
     return () => {
       disposed = true;
-      processor?.disconnect();
-      void context?.close();
-      socket?.close();
+      teardown();
       wordsRef.current = [];
       setWords([]);
     };

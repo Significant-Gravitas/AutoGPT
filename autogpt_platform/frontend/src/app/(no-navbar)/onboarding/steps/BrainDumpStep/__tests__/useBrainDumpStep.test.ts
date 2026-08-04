@@ -8,8 +8,11 @@ import type { RecordingPart } from "../recordingStore";
 // argument instead of reading them off the recorder.
 const { recorderState } = vi.hoisted(() => ({
   recorderState: {
+    phase: "idle" as "idle" | "recording" | "stopping" | "stopped",
+    hitTimeLimit: false,
     elapsedSeconds: 0,
     isOffline: false,
+    isSavedLocally: false,
     audioStream: null as MediaStream | null,
     hasSpoken: false,
     permissionDenied: false,
@@ -103,8 +106,11 @@ function finalizeBody(callIndex = 0) {
 beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(recorderState, {
+    phase: "idle",
+    hitTimeLimit: false,
     elapsedSeconds: 0,
     isOffline: false,
+    isSavedLocally: false,
     audioStream: null,
     hasSpoken: false,
     permissionDenied: false,
@@ -213,6 +219,67 @@ describe("useBrainDumpStep — recording", () => {
 
     // Leaving the step must never strand the wizard with Back hidden.
     expect(useOnboardingWizardStore.getState().isStepBusy).toBe(false);
+  });
+});
+
+describe("useBrainDumpStep — the 30-minute cap", () => {
+  // The recorder enforces the cap from the inside. Nothing observed
+  // `phase`, so the screen stayed on "recording" with a frozen timer and
+  // a closed mic while the user kept talking.
+  it("submits the take when the recorder stops itself", async () => {
+    recorderState.recordingId = "rec-1";
+    recorderState.getElapsedSeconds.mockReturnValue(1800.4);
+    const { result, rerender } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStart();
+    });
+    expect(result.current.screen).toBe("recording");
+
+    recorderState.hitTimeLimit = true;
+    await act(async () => {
+      rerender();
+    });
+
+    await waitFor(() => expect(result.current.reachedTimeLimit).toBe(true));
+    expect(finalizeBody()).toMatchObject({
+      recording_id: "rec-1",
+      duration_secs: 1800.4,
+    });
+    expect(result.current.screen).not.toBe("recording");
+  });
+
+  // A restart stops the recorder too, and the screen stays on "recording"
+  // right through it — submitting there would upload the take the user
+  // just threw away.
+  it("stays quiet while a restart stops the recorder", async () => {
+    recorderState.recordingId = "rec-old";
+    const stopped = deferred<number>();
+    recorderState.stop.mockReturnValue(stopped.promise);
+    const { result, rerender } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStart();
+    });
+
+    let restarting: Promise<void> | undefined;
+    await act(async () => {
+      restarting = result.current.handleRestart();
+      await Promise.resolve();
+    });
+
+    // Mid-restart the recorder is stopped and the screen still says
+    // "recording" — the same shape as the hard stop, but this take is
+    // being thrown away, not submitted.
+    recorderState.phase = "stopped";
+    await act(async () => {
+      rerender();
+      stopped.resolve(0);
+      await restarting;
+    });
+
+    expect(finalizeBrainDump).not.toHaveBeenCalled();
+    expect(result.current.screen).toBe("recording");
   });
 });
 
@@ -603,6 +670,76 @@ describe("useBrainDumpStep — skip", () => {
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+  });
+
+  // Recording for minutes and then skipping used to leave the blobs and
+  // an unfinalized meta row behind, so the next visit offered back a take
+  // the user had explicitly abandoned — and the server's part buffer sat
+  // there until its TTL.
+  it("throws away a recorded take it is skipping past", async () => {
+    recorderState.recordingId = "rec-1";
+    getMetaById.mockResolvedValue({
+      recordingId: "rec-1",
+      mimeType: "audio/webm",
+      startedAt: 5,
+      durationSecs: 120,
+      finalized: false,
+    });
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(saveMeta).toHaveBeenCalledWith(
+      expect.objectContaining({ recordingId: "rec-1", finalized: true }),
+    );
+    expect(clearRecording).toHaveBeenCalledWith("rec-1");
+    expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    expect(recorderState.resetQueue).toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+  });
+
+  it("has nothing to throw away when no take was ever recorded", async () => {
+    recorderState.recordingId = null;
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(clearRecording).not.toHaveBeenCalled();
+    expect(discardBrainDump).not.toHaveBeenCalled();
+  });
+
+  // Both `handleSkip` and the finalize in flight call `nextStep()`, and
+  // the second one lands past the last step — a blank screen with Back
+  // and Log out hidden, escapable only by refreshing.
+  it("ignores a skip while a submit is already in flight", async () => {
+    const inFlight = deferred<ReturnType<typeof completed>>();
+    finalizeBrainDump.mockReturnValue(inFlight.promise);
+    recorderState.recordingId = "rec-1";
+    const { result } = await renderStep();
+
+    await act(async () => {
+      void result.current.handleDone();
+      await Promise.resolve();
+    });
+    expect(result.current.screen).toBe("processing");
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+    expect(finalizeBrainDump).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      inFlight.resolve(completed());
+      await Promise.resolve();
+    });
+
+    // One advance, down the path the recording earned.
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
   });
 
   // Being unable to say "no thanks" because the network is down would be

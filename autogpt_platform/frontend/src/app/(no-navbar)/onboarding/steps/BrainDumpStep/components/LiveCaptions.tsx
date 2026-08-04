@@ -18,12 +18,16 @@ interface Props {
 // Must match the `gap-2` between words below.
 const WORD_GAP_PX = 8;
 
-// Proof that something is listening. The words come from the browser's own
-// speech recogniser and are never sent anywhere — the real transcript is
-// produced server-side from the recording. Where the API is missing
-// (Firefox, some Safari builds) this degrades to a level meter, which
-// carries the same "we can hear you" signal without pretending to
-// transcribe.
+// Proof that something is listening, and nothing more — the transcript
+// that matters is produced server-side from the recording after finalize.
+//
+// The words come from whichever engine `useLiveCaptions` resolves to. By
+// default that is ElevenLabs Scribe, which means mic audio is streamed to
+// api.elevenlabs.io in real time; if its token cannot be minted or the
+// socket dies it falls back to the browser's on-device recogniser (which
+// on Chrome is itself a Google service), and where no recogniser exists
+// (Firefox, some Safari builds) to a level meter, which carries the same
+// "we can hear you" signal without pretending to transcribe.
 export function LiveCaptions({ isRecording, audioStream, engine }: Props) {
   const { words, level, isSpeechSupported } = useLiveCaptions({
     isRecording,

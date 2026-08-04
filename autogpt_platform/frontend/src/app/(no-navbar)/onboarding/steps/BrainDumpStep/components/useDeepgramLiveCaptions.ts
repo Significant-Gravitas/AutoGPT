@@ -56,7 +56,24 @@ export function useDeepgramLiveCaptions({
     wordsRef.current = [];
     setWords([]);
 
+    // Every exit runs the same teardown, so a failure stops the mic
+    // reaching Deepgram instead of leaving an OPEN socket streaming
+    // alongside whichever engine took over. Idempotent: the handlers are
+    // detached before closing, so the resulting `onclose` cannot re-enter.
+    function teardown() {
+      processor?.disconnect();
+      processor = null;
+      void context?.close();
+      context = null;
+      if (!socket) return;
+      socket.onerror = null;
+      socket.onclose = null;
+      socket.close();
+      socket = null;
+    }
+
     function fail() {
+      teardown();
       if (!disposed) setStatus("failed");
     }
 
@@ -143,9 +160,7 @@ export function useDeepgramLiveCaptions({
 
     return () => {
       disposed = true;
-      processor?.disconnect();
-      void context?.close();
-      socket?.close();
+      teardown();
       wordsRef.current = [];
       setWords([]);
     };

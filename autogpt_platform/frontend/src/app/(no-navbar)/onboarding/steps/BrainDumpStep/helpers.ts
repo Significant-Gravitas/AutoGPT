@@ -5,14 +5,18 @@
 // Nothing stops at 3:00 — the longer someone talks, the better the dump.
 export const RING_TARGET_SECONDS = 180;
 
-// Recording keeps going far past the ring. 10 min gets a gentle nudge,
-// 30 min is the hard stop — and even then everything captured is kept.
-export const NUDGE_SECONDS = 600;
+// Recording keeps going far past the ring: 30 min is the hard stop, and
+// even then everything captured is kept.
 export const HARD_STOP_SECONDS = 1800;
 
 // Every 3s the recorder hands us a chunk to persist. Small enough that a
 // crash costs almost nothing, large enough not to thrash IndexedDB.
 export const TIMESLICE_MS = 3000;
+
+// How often the take's metadata row is refreshed with the duration so
+// far. A crash never reaches `stop()`, so without this the recovery
+// prompt would offer back a take it believes is 0:00 long.
+export const META_REFRESH_SECONDS = 5;
 
 export const SILENCE_NUDGE_SECONDS = 5;
 

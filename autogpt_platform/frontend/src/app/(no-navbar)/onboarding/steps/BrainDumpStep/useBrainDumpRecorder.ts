@@ -7,6 +7,7 @@ import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   HARD_STOP_SECONDS,
   isPermissionDenied,
+  META_REFRESH_SECONDS,
   newRecordingId,
   pickMimeType,
   SPEECH_PEAK_THRESHOLD,
@@ -23,6 +24,10 @@ export function useBrainDumpRecorder() {
   const [isSavedLocally, setIsSavedLocally] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [hasSpoken, setHasSpoken] = useState(false);
+  // The recorder stopping itself is indistinguishable from any other stop
+  // by phase alone, and the step has to tell them apart: this one has to
+  // submit the take, a restart has to throw it away.
+  const [hitTimeLimit, setHitTimeLimit] = useState(false);
 
   const recordingIdRef = useRef<string | null>(null);
   const mimeTypeRef = useRef<string>("audio/webm");
@@ -30,6 +35,17 @@ export function useBrainDumpRecorder() {
   const streamRef = useRef<MediaStream | null>(null);
   const partIndexRef = useRef(0);
   const startedAtRef = useRef(0);
+  // `start()` is only half a function until the permission prompt is
+  // answered, and the orb stays tappable throughout. A second tap without
+  // this would reset `partIndexRef` under the first take, leaving two live
+  // recorders interleaving their part indices into one recording id.
+  const isStartingRef = useRef(false);
+  // Elapsed seconds as of the last metadata write, so the row is refreshed
+  // on a schedule rather than on every 250ms tick.
+  const metaWrittenAtRef = useRef(0);
+  // Metadata writes are chained so the final duration written by `stop()`
+  // cannot be overtaken by a refresh issued a moment earlier.
+  const metaWriteRef = useRef<Promise<void>>(Promise.resolve());
   // Mirrors `elapsedSeconds` because the state value a caller reads is the
   // one from its own render. `handleDone` awaits `stop()` — which itself
   // waits on the recorder and the pending IndexedDB writes — so by the
@@ -80,6 +96,18 @@ export function useBrainDumpRecorder() {
   }
 
   async function start() {
+    // A tap that lands while the permission prompt from the previous one
+    // is still open is the same tap, not a second take.
+    if (isStartingRef.current) return false;
+    isStartingRef.current = true;
+    try {
+      return await openMicAndRecord();
+    } finally {
+      isStartingRef.current = false;
+    }
+  }
+
+  async function openMicAndRecord() {
     // Permission is requested on the first tap, never on screen load —
     // a browser prompt before the user has read the headline is how
     // denial rates go up.
@@ -101,12 +129,14 @@ export function useBrainDumpRecorder() {
     partIndexRef.current = 0;
     startedAtRef.current = Date.now();
     elapsedSecondsRef.current = 0;
+    metaWrittenAtRef.current = 0;
     hasSpokenRef.current = false;
     setHasSpoken(false);
     streamRef.current = stream;
     listenForSpeech(stream);
     setElapsedSeconds(0);
     setIsSavedLocally(false);
+    setHitTimeLimit(false);
 
     await rememberMeta({
       recordingId,
@@ -149,9 +179,28 @@ export function useBrainDumpRecorder() {
     elapsedSecondsRef.current = seconds;
     setElapsedSeconds(seconds);
     detectSpeech();
+    refreshMetaDuration(seconds);
     // 30 minutes stops the recorder but keeps every second captured —
     // the dump still submits, it just stops growing.
-    if (seconds >= HARD_STOP_SECONDS) void stop();
+    if (seconds < HARD_STOP_SECONDS) return;
+    setHitTimeLimit(true);
+    void stop();
+  }
+
+  // The duration only used to be written by `stop()`, and a crash or a
+  // refresh — the exact case recovery exists for — never gets there. The
+  // recovery prompt quotes this number back to the user and finalize
+  // submits it, and the backend splits long recordings on it.
+  function refreshMetaDuration(seconds: number) {
+    if (seconds - metaWrittenAtRef.current < META_REFRESH_SECONDS) return;
+    metaWrittenAtRef.current = seconds;
+    void rememberMeta({
+      recordingId: recordingIdRef.current ?? "",
+      mimeType: mimeTypeRef.current,
+      startedAt: startedAtRef.current,
+      durationSecs: seconds,
+      finalized: false,
+    });
   }
 
   // One-way: the nudge is for someone who has not started yet, so it
@@ -238,9 +287,14 @@ export function useBrainDumpRecorder() {
   }
 
   // Metadata is a convenience for crash recovery, not part of the audio —
-  // failing to write it must never abort a take in progress.
+  // failing to write it must never abort a take in progress. Writes are
+  // serialised so the last one issued is the last one to land.
   async function rememberMeta(meta: Parameters<typeof saveMeta>[0]) {
-    await saveMeta(meta).catch(() => undefined);
+    const write = metaWriteRef.current.then(() =>
+      saveMeta(meta).catch(() => undefined),
+    );
+    metaWriteRef.current = write;
+    await write;
   }
 
   return {
@@ -249,7 +303,7 @@ export function useBrainDumpRecorder() {
     isSavedLocally,
     permissionDenied,
     hasSpoken,
-    pendingUploads: queue.pendingCount,
+    hitTimeLimit,
     isOffline: queue.isOffline,
     audioStream: streamRef.current,
     // The live figure, for callers that need it outside a render (the

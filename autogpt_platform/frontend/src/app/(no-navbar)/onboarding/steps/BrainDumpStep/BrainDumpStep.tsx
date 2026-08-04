@@ -20,10 +20,13 @@ import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";
 
 const MIC_CAPTION = "Tap and talk. Most people go 2 to 3 minutes.";
 const FAILURE_HEADLINE = "That didn't go through.";
+const TIME_LIMIT_CAPTION =
+  "That's 30 minutes — the most we record in one go. Saving all of it…";
 
 export function BrainDumpStep() {
   const dump = useBrainDumpStep();
   const isRecording = dump.screen === "recording";
+  const isProcessing = dump.screen === "processing";
   const isMicScreen = dump.screen === "rest" || isRecording;
   const isTyping = dump.screen === "typing";
   const showSubline = dump.screen !== "failed" && dump.screen !== "recovery";
@@ -56,13 +59,18 @@ export function BrainDumpStep() {
               Restart
             </Button>
           )}
-          <button
-            type="button"
-            onClick={dump.handleSkip}
-            className="text-sm text-zinc-400 transition-colors hover:text-zinc-700"
-          >
-            Skip for now
-          </button>
+          {/* Skipping mid-submit would advance the wizard a second time
+              behind the finalize that is already in flight, landing past
+              the last step on a blank screen. */}
+          {!isProcessing && (
+            <button
+              type="button"
+              onClick={dump.handleSkip}
+              className="text-sm text-zinc-400 transition-colors hover:text-zinc-700"
+            >
+              Skip for now
+            </button>
+          )}
         </div>
 
         <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-2 px-4 text-center">
@@ -111,6 +119,7 @@ export function BrainDumpStep() {
                       screen={orbScreen}
                       audioStream={dump.audioStream}
                       captionsKey={dump.captionsKey}
+                      reachedTimeLimit={dump.reachedTimeLimit}
                     />
                   </SwapFade>
                 </div>
@@ -166,6 +175,8 @@ export function BrainDumpStep() {
                 <RecordingStatus
                   elapsedSeconds={dump.elapsedSeconds}
                   showSilenceNudge={dump.showSilenceNudge}
+                  isOffline={dump.isOffline}
+                  isSavedLocally={dump.isSavedLocally}
                 />
                 <Button
                   variant="primary"
@@ -224,15 +235,17 @@ function OrbCaption({
   screen,
   audioStream,
   captionsKey,
+  reachedTimeLimit,
 }: {
   screen: OrbScreen;
   audioStream: MediaStream | null;
   captionsKey: number;
+  reachedTimeLimit: boolean;
 }) {
   if (screen === "processing") {
     return (
       <Text variant="lead" className="!text-base !text-zinc-500">
-        Got it. One second…
+        {reachedTimeLimit ? TIME_LIMIT_CAPTION : "Got it. One second…"}
       </Text>
     );
   }

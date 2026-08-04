@@ -24,6 +24,9 @@ import { useOnboardingWizardStore } from "../store";
 // the recovery prompt) runs for real.
 const { recordingStoreState } = vi.hoisted(() => ({
   recordingStoreState: {
+    // Ids the store was asked to mark finalized, kept separately because
+    // `clearRecording` deletes the row moments later.
+    finalizedIds: [] as string[],
     meta: null as {
       key: string;
       recordingId: string;
@@ -63,12 +66,19 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
       .filter((p) => p.recordingId === recordingId)
       .sort((a, b) => a.partIndex - b.partIndex),
   saveMeta: async (meta: Record<string, unknown>) => {
+    if (meta.finalized) {
+      recordingStoreState.finalizedIds.push(String(meta.recordingId));
+    }
     recordingStoreState.meta = {
       ...meta,
       key: "current",
     } as typeof recordingStoreState.meta;
   },
   getMeta: async () => recordingStoreState.meta,
+  getMetaById: async (recordingId: string) =>
+    recordingStoreState.meta?.recordingId === recordingId
+      ? recordingStoreState.meta
+      : null,
   clearRecording: async () => {
     recordingStoreState.parts = [];
     recordingStoreState.meta = null;
@@ -296,6 +306,7 @@ beforeEach(() => {
   routerReplace.mockClear();
   recordingStoreState.meta = null;
   recordingStoreState.parts = [];
+  recordingStoreState.finalizedIds = [];
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
   window.sessionStorage.removeItem(INTRO_PATH_KEY);
@@ -431,6 +442,91 @@ describe("onboarding brain dump — skip", () => {
 
     expect(await screen.findByTestId("step-preparing")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+  });
+});
+
+describe("onboarding brain dump — finishing a take", () => {
+  // The success path all the way through: without it the finalize
+  // bookkeeping could throw and be swallowed by its own try/catch and no
+  // test would notice.
+  it("marks the take finalized and clears it before advancing", async () => {
+    const partUploads: string[] = [];
+    server.use(
+      getUploadBrainDumpPartMockHandler200(() => {
+        partUploads.push("part");
+        return {
+          recording_id: "r",
+          part_index: 0,
+          received_bytes: 9,
+          total_bytes: 9,
+        };
+      }),
+    );
+    const bodies = finalizeReturns({ status: "completed" });
+    mockFlags = { "onboarding-brain-dump": true };
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start recording" }),
+    );
+    await waitFor(() => expect(partUploads).toHaveLength(1));
+    const doneButtons = await screen.findAllByRole("button", {
+      name: "I'm done",
+    });
+    await userEvent.click(doneButtons[doneButtons.length - 1]);
+
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(bodies).toHaveLength(1);
+    const recordingId = (bodies[0] as { recording_id: string }).recording_id;
+    // Marked finalized by id, then cleared: an unfinalized row left behind
+    // makes the next visit offer back a take that is already submitted.
+    expect(recordingStoreState.finalizedIds).toEqual([recordingId]);
+    expect(recordingStoreState.meta).toBeNull();
+    expect(recordingStoreState.parts).toEqual([]);
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+  });
+
+  // Skipping mid-submit ran a second `nextStep()` behind the finalize
+  // already in flight, landing past the last step on a blank screen with
+  // Back and Log out hidden.
+  it("takes 'Skip for now' away while the dump is being submitted", async () => {
+    const partUploads: string[] = [];
+    server.use(
+      getUploadBrainDumpPartMockHandler200(() => {
+        partUploads.push("part");
+        return {
+          recording_id: "r",
+          part_index: 0,
+          received_bytes: 9,
+          total_bytes: 9,
+        };
+      }),
+      getFinalizeBrainDumpMockHandler200(async () => {
+        await new Promise(() => undefined);
+        return { status: "completed" as const, input_mode: "voice" as const };
+      }),
+    );
+    mockFlags = { "onboarding-brain-dump": true };
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start recording" }),
+    );
+    await waitFor(() => expect(partUploads).toHaveLength(1));
+    const doneButtons = await screen.findAllByRole("button", {
+      name: "I'm done",
+    });
+    await userEvent.click(doneButtons[doneButtons.length - 1]);
+
+    expect(await screen.findByText("Got it. One second…")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
   });
 });
 

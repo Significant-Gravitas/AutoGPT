@@ -1,10 +1,12 @@
-import { act, render, screen } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LiveCaptions } from "../LiveCaptions";
 import {
   FakeAudioContext,
   FakeSpeechRecognition,
+  FakeWebSocket,
   fakeStream,
+  stubTokenFetch,
 } from "./captionsTestDoubles";
 
 const stream = fakeStream();
@@ -123,6 +125,53 @@ describe("LiveCaptions", () => {
     expect(container.querySelectorAll("[data-word-id]")).toHaveLength(24);
     expect(screen.queryByText("w5")).toBeNull();
     expect(screen.getByText("w29")).toBeDefined();
+  });
+
+  // Production never passes `engine`, so the default — ElevenLabs Scribe —
+  // is the configuration that actually ships. Every other test here pins
+  // the browser engine, which nothing renders.
+  describe("on the shipped default engine", () => {
+    beforeEach(() => {
+      FakeWebSocket.reset();
+      stubTokenFetch();
+      vi.stubGlobal("WebSocket", FakeWebSocket);
+      vi.stubGlobal("SpeechRecognition", FakeSpeechRecognition);
+    });
+
+    it("renders the words the cloud engine sends", async () => {
+      render(<LiveCaptions isRecording audioStream={stream} />);
+
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      const socket = FakeWebSocket.last();
+      act(() => socket.open());
+      act(() =>
+        socket.emit({ message_type: "partial_transcript", text: "build a bot" }),
+      );
+
+      for (const word of ["build", "a", "bot"]) {
+        expect(screen.getByText(word)).toBeDefined();
+      }
+      // The browser recogniser stays out of the way while the cloud one
+      // is working.
+      expect(FakeSpeechRecognition.instances).toHaveLength(0);
+    });
+
+    it("swaps in the browser recogniser when the socket dies", async () => {
+      render(<LiveCaptions isRecording audioStream={stream} />);
+
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      const socket = FakeWebSocket.last();
+      act(() => socket.open());
+      act(() => socket.onclose?.());
+
+      await waitFor(() =>
+        expect(FakeSpeechRecognition.instances).toHaveLength(1),
+      );
+      act(() => FakeSpeechRecognition.last().say("still listening"));
+
+      expect(screen.getByText("still")).toBeDefined();
+      expect(screen.getByText("listening")).toBeDefined();
+    });
   });
 
   describe("without a speech recogniser", () => {

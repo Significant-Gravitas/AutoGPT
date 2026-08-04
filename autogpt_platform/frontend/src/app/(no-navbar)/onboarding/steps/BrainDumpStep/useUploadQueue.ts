@@ -7,11 +7,18 @@
 // the queue until the browser says it is back.
 
 import { uploadBrainDumpPart } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useEffect, useRef, useState } from "react";
 import { markPartUploaded, partId, RecordingPart } from "./recordingStore";
 
 const RETRY_DELAYS_MS = [1000, 3000, 8000];
 const FLUSH_PASSES = 3;
+
+// 408 and 429 are the server asking us to come back. Every other 4xx is a
+// verdict on the request itself — a part over the size cap, a body the
+// server will not accept, an expired session — and retrying it produces
+// the identical rejection three more times.
+const RETRYABLE_CLIENT_STATUSES = [408, 429];
 
 export function useUploadQueue() {
   const queueRef = useRef<RecordingPart[]>([]);
@@ -107,13 +114,27 @@ async function uploadWithRetries(part: RecordingPart) {
         part_index: part.partIndex,
       });
       return true;
-    } catch {
+    } catch (error) {
+      // A part the server will never accept would otherwise be retried
+      // for 12s here and then again on every 3-second chunk that follows,
+      // holding the whole queue — and its blobs — at the head for the
+      // rest of the take.
+      if (isPermanentFailure(error)) return false;
       const delay = RETRY_DELAYS_MS[attempt];
       if (delay === undefined) return false;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
   return false;
+}
+
+function isPermanentFailure(error: unknown) {
+  if (!(error instanceof ApiError)) return false;
+  return (
+    error.status >= 400 &&
+    error.status < 500 &&
+    !RETRYABLE_CLIENT_STATUSES.includes(error.status)
+  );
 }
 
 export function buildPart(

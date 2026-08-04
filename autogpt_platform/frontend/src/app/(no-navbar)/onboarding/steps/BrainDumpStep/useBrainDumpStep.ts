@@ -31,6 +31,7 @@ export function useBrainDumpStep() {
 
   const [screen, setScreen] = useState<ScreenState>("rest");
   const [typedText, setTypedText] = useState("");
+  const [reachedTimeLimit, setReachedTimeLimit] = useState(false);
 
   // While the recording is being processed there is no way back — the
   // wizard's Back button hides itself on this flag.
@@ -48,6 +49,10 @@ export function useBrainDumpStep() {
     durationSecs: number;
   } | null>(null);
   const retryCountRef = useRef(0);
+  // A submit in flight owns the screen: "Skip for now" must not race
+  // `completeAndAdvance` to `nextStep()`, or the wizard advances twice and
+  // lands past the last step with nothing to render.
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     async function checkForRecovery() {
@@ -84,6 +89,19 @@ export function useBrainDumpStep() {
     recorder.elapsedSeconds >= SILENCE_NUDGE_SECONDS &&
     !recorder.hasSpoken;
 
+  // The recorder enforces the 30-minute cap from the inside, so without
+  // this the mic would close while the screen still said "recording" — a
+  // frozen timer and dead captions until the user thought to press "I'm
+  // done". Keyed on the cap specifically, not on the recorder having
+  // stopped: a restart stops it too, and that take is being thrown away.
+  useEffect(() => {
+    if (screen !== "recording" || !recorder.hitTimeLimit) return;
+    setReachedTimeLimit(true);
+    setScreen("processing");
+    void submitRecording(recorder.recordingId, recorder.getElapsedSeconds());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, recorder.hitTimeLimit]);
+
   async function handleStart() {
     const started = await recorder.start();
     if (started) setScreen("recording");
@@ -102,6 +120,18 @@ export function useBrainDumpStep() {
   // writes it to a ref, and this function's closure would still be holding
   // the previous render's `null`.
   async function submitRecording(
+    recordingId: string | null,
+    durationSecs: number,
+  ) {
+    isSubmittingRef.current = true;
+    try {
+      await finalizeRecording(recordingId, durationSecs);
+    } finally {
+      isSubmittingRef.current = false;
+    }
+  }
+
+  async function finalizeRecording(
     recordingId: string | null,
     durationSecs: number,
   ) {
@@ -194,6 +224,15 @@ export function useBrainDumpStep() {
   async function handleSubmitTyped() {
     const text = typedText.trim();
     if (!text) return;
+    isSubmittingRef.current = true;
+    try {
+      await submitTyped(text);
+    } finally {
+      isSubmittingRef.current = false;
+    }
+  }
+
+  async function submitTyped(text: string) {
     setScreen("processing");
     const recordingId = recorder.recordingId ?? crypto.randomUUID();
     try {
@@ -221,18 +260,31 @@ export function useBrainDumpStep() {
   }
 
   async function handleSkip() {
+    // A skip that lands while the dump is being submitted would advance
+    // the wizard a second time behind `completeAndAdvance`.
+    if (isSubmittingRef.current) return;
     trackBrainDump("brain_dump_skipped");
-    const recordingId = recorder.recordingId ?? crypto.randomUUID();
+    const recordedId = recorder.recordingId;
     // Best effort: a failed skip-record still has to let the user
     // through — being unable to say "no thanks" would be absurd.
     try {
       await finalizeBrainDump({
-        recording_id: recordingId,
+        recording_id: recordedId ?? crypto.randomUUID(),
         input_mode: "skipped",
       });
     } catch {
       // Path B is the safe default anyway.
     }
+    // Someone who talked for minutes and then skipped leaves multi-MB
+    // blobs behind, and an unfinalized meta row makes the next visit
+    // offer back a take they explicitly abandoned.
+    if (recordedId) {
+      await releaseTake(recordedId);
+      await discardBrainDump({ recording_id: recordedId }).catch(
+        () => undefined,
+      );
+    }
+    recorder.resetQueue();
     setIntroPath("B");
     nextStep();
   }
@@ -240,9 +292,18 @@ export function useBrainDumpStep() {
   // IndexedDB is only cleared once the server has confirmed the dump —
   // until then the browser is the backup of record.
   async function completeAndAdvance(recordingId: string, path: "A" | "B") {
-    // Local cleanup is best-effort: the dump is already safe on the
-    // server, so a storage error here must not strand the user on the
-    // loading screen.
+    await releaseTake(recordingId);
+    recorder.resetQueue();
+    setIntroPath(path);
+    nextStep();
+  }
+
+  // Marking finalized before clearing is belt and braces: if the delete
+  // fails, the flag alone is enough to stop the take being offered back.
+  async function releaseTake(recordingId: string) {
+    // Best-effort: the dump is either already safe on the server or
+    // deliberately abandoned, so a storage error here must not strand
+    // the user on the loading screen.
     try {
       // By id, not "the newest take": a second tab may have started a
       // more recent one, and finalizing that instead would leave the
@@ -251,11 +312,8 @@ export function useBrainDumpStep() {
       if (meta) await saveMeta({ ...meta, finalized: true });
       await clearRecording(recordingId);
     } catch {
-      // Nothing left to protect — the server has the recording.
+      // Nothing left to protect.
     }
-    recorder.resetQueue();
-    setIntroPath(path);
-    nextStep();
   }
 
   async function handleResumeRecovered() {
@@ -316,9 +374,11 @@ export function useBrainDumpStep() {
     setTypedText,
     elapsedSeconds: recorder.elapsedSeconds,
     isOffline: recorder.isOffline,
+    isSavedLocally: recorder.isSavedLocally,
     audioStream: recorder.audioStream,
     captionsKey,
     showSilenceNudge,
+    reachedTimeLimit,
     recoverable,
     handleStart,
     handleDone,
