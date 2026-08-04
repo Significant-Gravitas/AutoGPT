@@ -2,13 +2,10 @@
 
 Two layers with different prompt weights:
 
-- ``build_expert_identity_suffix()`` → ``<expert_identity>`` (name, role,
-  persona doc, precedence over the AutoPilot base identity).  Appended to the
-  per-session SYSTEM prompt by both engines, exactly like the building-mode
-  guide suffix: session-stable, so the cacheable base prefix stays
-  byte-identical and cross-user cache hits are preserved for plain sessions
-  (empty suffix).  Identity must live here — injected user-message context
-  loses to the system prompt on direct identity questions.
+- ``build_expert_identity_suffix()`` → ``<expert_identity>`` (the latest Soul,
+  with precedence over the AutoPilot base identity). Appended to the SYSTEM
+  prompt on every turn by both engines, so edits affect existing sessions
+  while the cacheable base prefix stays byte-identical.
 - ``build_expert_context()`` → first-user-message context blocks:
   ``<expert_workflows>`` (expert session: installed workflows the model
   should prefer ``run_agent`` on) or ``<team_context>`` (plain session:
@@ -22,20 +19,16 @@ directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 """
 
 import logging
+from xml.sax.saxutils import escape
 
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.data.db_accessors import experts_db
 
 logger = logging.getLogger(__name__)
 
 
 def _escape(value: str) -> str:
-    """Escape angle brackets so user-supplied (expert name) or marketplace
-    (workflow name/description) text cannot terminate the surrounding trusted
-    block. Mirrors ``service._sanitize_user_context_field``; duplicated here
-    because ``service`` imports this module.
-    """
-    return value.replace("<", "&lt;").replace(">", "&gt;")
+    return escape(value)
 
 
 async def build_expert_identity_suffix(
@@ -63,11 +56,20 @@ async def build_expert_identity_suffix(
         return ""
 
     name = _escape(expert.name)
+    identity = _escape(expert.identity)
+    voice = _escape(expert.voice_preferences) or "Not specified."
+    boundaries = _escape(expert.boundaries) or "Not specified."
+    learned_notes = _learned_notes(expert)
+    protected_rules = "\n".join(f"- {rule}" for rule in PROTECTED_SOUL_RULES)
     return (
         f"\n\n<expert_identity>\n"
-        f"For this session you are {name} — {expert.role}, a hired "
+        f"For this session you are {name} — {_escape(expert.role)}, a hired "
         f"expert on the user's team.\n"
-        f"{expert.identity}\n"
+        f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
+        f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
+        f"<boundaries>\n{boundaries}\n</boundaries>\n"
+        f"<what_ive_learned>\n{learned_notes}\n</what_ive_learned>\n"
+        f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
         f"The base instructions above describe AutoPilot, the platform "
         f"engine you run on. All platform capabilities and tools remain "
         f"available to you, but you always speak and act as {name}: "
@@ -75,6 +77,12 @@ async def build_expert_identity_suffix(
         f"you are {name}.\n"
         f"</expert_identity>"
     )
+
+
+def _learned_notes(expert: Expert) -> str:
+    if not expert.learned_notes:
+        return "- Nothing recorded yet."
+    return "\n".join(f"- {_escape(note)}" for note in expert.learned_notes)
 
 
 async def build_expert_context(user_id: str | None, expert_id: str | None) -> str:

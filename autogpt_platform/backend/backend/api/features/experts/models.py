@@ -1,6 +1,10 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
+EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
+PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
 
 
 class ExpertWorkflowRef(BaseModel):
@@ -26,6 +30,10 @@ class Expert(BaseModel):
     bio: str | None
     skills: list[str]
     identity: str
+    voice_preferences: str
+    boundaries: str
+    learned_notes: list[str]
+    protected_soul_rules: list[str]
     is_template: bool
     source_template_id: str | None
     is_archived: bool
@@ -51,3 +59,10 @@ class ExpertDetachPreview(BaseModel):
 class HireResult(BaseModel):
     expert: Expert
     failed_preloads: list[str]
+
+
+class ExpertSoulUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    identity: str = Field(min_length=1, max_length=10_000)
+    voice_preferences: str = Field(max_length=4_000)
+    boundaries: str = Field(max_length=4_000)

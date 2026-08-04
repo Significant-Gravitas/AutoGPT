@@ -5632,6 +5632,52 @@
         }
       }
     },
+    "/api/experts/{expert_id}/soul": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Soul",
+        "operationId": "update_expert_soul",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertSoulUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/workflows": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -17111,6 +17157,21 @@
             "title": "Skills"
           },
           "identity": { "type": "string", "title": "Identity" },
+          "voice_preferences": {
+            "type": "string",
+            "title": "Voice Preferences"
+          },
+          "boundaries": { "type": "string", "title": "Boundaries" },
+          "learned_notes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Learned Notes"
+          },
+          "protected_soul_rules": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Protected Soul Rules"
+          },
           "is_template": { "type": "boolean", "title": "Is Template" },
           "source_template_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -17160,6 +17221,10 @@
           "bio",
           "skills",
           "identity",
+          "voice_preferences",
+          "boundaries",
+          "learned_notes",
+          "protected_soul_rules",
           "is_template",
           "source_template_id",
           "is_archived",
@@ -17184,6 +17249,35 @@
         "required": ["schedule_names", "trigger_names"],
         "title": "ExpertDetachPreview",
         "description": "What archiving the expert would pause — drives the confirm dialog."
+      },
+      "ExpertSoulUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "identity": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "voice_preferences": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Voice Preferences"
+          },
+          "boundaries": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Boundaries"
+          }
+        },
+        "type": "object",
+        "required": ["name", "identity", "voice_preferences", "boundaries"],
+        "title": "ExpertSoulUpdate"
       },
       "ExpertWorkflowRef": {
         "properties": {

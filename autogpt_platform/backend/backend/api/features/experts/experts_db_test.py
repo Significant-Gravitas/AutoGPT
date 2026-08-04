@@ -8,6 +8,7 @@ import pytest
 
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
+from backend.api.features.experts.models import ExpertSoulUpdate
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.data.graph import Graph, Node
@@ -211,6 +212,90 @@ async def test_get_expert_scopes_by_owner(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
     assert await experts_db.get_expert(other_user.id, hired.expert.id) is None
     assert await experts_db.get_expert(test_user.id, hired.expert.id) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_owner_can_update_expert_soul(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    updated = await experts_db.update_soul(
+        test_user.id,
+        hired.expert.id,
+        ExpertSoulUpdate(
+            name="Mara",
+            identity="You are Mara, a thoughtful strategist.",
+            voice_preferences="Warm, concise, and direct.",
+            boundaries="Never invent customer evidence.",
+        ),
+    )
+
+    assert updated.name == "Mara"
+    assert updated.identity == "You are Mara, a thoughtful strategist."
+    assert updated.voice_preferences == "Warm, concise, and direct."
+    assert updated.boundaries == "Never invent customer evidence."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_other_user_cannot_update_expert_soul(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_soul(
+            other_user.id,
+            hired.expert.id,
+            ExpertSoulUpdate(
+                name="Stolen",
+                identity=hired.expert.identity,
+                voice_preferences="",
+                boundaries="",
+            ),
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_templates_and_archived_experts_cannot_update_soul(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    soul = ExpertSoulUpdate(
+        name="Mara",
+        identity="You are Mara.",
+        voice_preferences="Direct.",
+        boundaries="Ask before sending.",
+    )
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_soul(test_user.id, template.id, soul)
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_soul(test_user.id, hired.expert.id, soul)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_copies_soul_fields_from_template(server: SpinTestServer, test_user):
+    template = await prisma.models.Expert.prisma().create(
+        data={
+            "name": f"Otto {uuid.uuid4().hex[:8]}",
+            "role": "Writer",
+            "identity": "You are Otto, a playful writer.",
+            "voicePreferences": "Direct, playful, and concise.",
+            "boundaries": "Never publish without approval.",
+            "learnedNotes": ["The user prefers short drafts."],
+            "isTemplate": True,
+        }
+    )
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert hired.expert.identity == "You are Otto, a playful writer."
+    assert hired.expert.voice_preferences == "Direct, playful, and concise."
+    assert hired.expert.boundaries == "Never publish without approval."
+    assert hired.expert.learned_notes == ["The user prefers short drafts."]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -603,6 +688,8 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
         "bio": "Maria is a senior marketing strategist.",
         "skills": ["Content strategy", "SEO writing"],
         "identity": template.identity,
+        "voice_preferences": "Clear and confident.",
+        "boundaries": "Never invent customer evidence.",
         "preloads": [],
     }
     refreshed_template = await seed._upsert_template(entry)

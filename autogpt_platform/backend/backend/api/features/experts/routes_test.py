@@ -17,7 +17,13 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.experts import experts_db
-from backend.api.features.experts.models import Expert, ExpertWorkflowRef, HireResult
+from backend.api.features.experts.models import (
+    PROTECTED_SOUL_RULES,
+    Expert,
+    ExpertSoulUpdate,
+    ExpertWorkflowRef,
+    HireResult,
+)
 from backend.api.features.experts.routes import router
 
 app = fastapi.FastAPI()
@@ -45,6 +51,10 @@ def _make_expert(**overrides) -> Expert:
         "bio": None,
         "skills": [],
         "identity": "You are Maria, a pragmatic marketing specialist.",
+        "voice_preferences": "Direct and concise.",
+        "boundaries": "Ask before external actions.",
+        "learned_notes": [],
+        "protected_soul_rules": list(PROTECTED_SOUL_RULES),
         "is_template": False,
         "source_template_id": "template-1",
         "is_archived": False,
@@ -191,6 +201,77 @@ def test_get_expert_returns_expert(
     assert response.status_code == 200
     assert response.json()["id"] == "expert-1"
     mock_get.assert_awaited_once_with(test_user_id, "expert-1")
+
+
+# ─── Soul ──────────────────────────────────────────────────────────────
+
+
+def test_update_expert_soul_returns_updated_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    updated = _make_expert(
+        name="Mara",
+        identity="You are Mara, a thoughtful strategist.",
+    )
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_soul",
+        new_callable=AsyncMock,
+        return_value=updated,
+        create=True,
+    )
+    soul = {
+        "name": "Mara",
+        "identity": "You are Mara, a thoughtful strategist.",
+        "voice_preferences": "Warm, concise, and direct.",
+        "boundaries": "Never invent customer evidence.",
+    }
+
+    response = client.patch("/experts/expert-1/soul", json=soul)
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Mara"
+    mock_update.assert_awaited_once_with(
+        test_user_id, "expert-1", ExpertSoulUpdate(**soul)
+    )
+
+
+def test_update_expert_soul_not_found_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_soul",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("expert-1"),
+        create=True,
+    )
+
+    response = client.patch(
+        "/experts/expert-1/soul",
+        json={
+            "name": "Mara",
+            "identity": "You are Mara.",
+            "voice_preferences": "Direct.",
+            "boundaries": "Ask before sending.",
+        },
+    )
+
+    assert response.status_code == 404
+    mock_update.assert_awaited_once()
+
+
+def test_update_expert_soul_validates_field_lengths() -> None:
+    response = client.patch(
+        "/experts/expert-1/soul",
+        json={
+            "name": "x" * 101,
+            "identity": "You are Maria.",
+            "voice_preferences": "Direct.",
+            "boundaries": "Ask before sending.",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 # ─── Install workflow ──────────────────────────────────────────────────

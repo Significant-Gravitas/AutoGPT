@@ -6,11 +6,12 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { PencilIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { MouseEvent } from "react";
 
 import { Progress } from "@/components/atoms/Progress/Progress";
 import {
@@ -24,12 +25,14 @@ interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
   onInstallWorkflow: (expertId: string) => void;
+  onEditSoul: (expertId: string) => void;
 }
 
 export function ExpertTeamCard({
   expert,
   schedules,
   onInstallWorkflow,
+  onEditSoul,
 }: Props) {
   const workflowCount = expert.workflows.length;
   const needsSetupCount = getNeedsSetupCount(expert);
@@ -40,6 +43,11 @@ export function ExpertTeamCard({
 
   function handleInstallClick() {
     onInstallWorkflow(expert.id);
+  }
+
+  function handleEditSoulClick(event: MouseEvent) {
+    event.stopPropagation();
+    onEditSoul(expert.id);
   }
 
   return (
@@ -112,7 +120,8 @@ export function ExpertTeamCard({
           </Button>
         </div>
       ) : null}
-      <div className="mt-auto flex gap-2">
+      <div className="mt-auto flex flex-wrap gap-2">
+
         <Button
           as="NextLink"
           href={`/copilot?expertId=${expert.id}`}
@@ -120,6 +129,14 @@ export function ExpertTeamCard({
           size="small"
         >
           Chat
+        </Button>
+        <Button
+          variant="secondary"
+          size="small"
+          leftIcon={<Icon icon={PencilIcon} size={16} />}
+          onClick={handleEditSoulClick}
+        >
+          Edit Soul
         </Button>
         <Button
           variant="ghost"

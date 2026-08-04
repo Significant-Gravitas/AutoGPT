@@ -1,0 +1,4 @@
+ALTER TABLE "Expert"
+ADD COLUMN "voicePreferences" TEXT NOT NULL DEFAULT '',
+ADD COLUMN "boundaries" TEXT NOT NULL DEFAULT '',
+ADD COLUMN "learnedNotes" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

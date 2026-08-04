@@ -848,6 +848,9 @@ model Expert {
   identity  String
   bio       String?
   skills    String[] @default([])
+  voicePreferences String @default("")
+  boundaries       String @default("")
+  learnedNotes     String[] @default([])
 
   toolProfile Json?
 

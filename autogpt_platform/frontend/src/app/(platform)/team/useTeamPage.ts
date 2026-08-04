@@ -11,6 +11,7 @@ interface Args {
 
 export function useTeamPage({ enabled }: Args) {
   const [pickerExpertId, setPickerExpertId] = useState<string | null>(null);
+  const [soulExpertId, setSoulExpertId] = useState<string | null>(null);
 
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled },
@@ -48,5 +49,9 @@ export function useTeamPage({ enabled }: Args) {
     installWorkflow,
     pickerExpertId,
     closeWorkflowPicker,
+    soulExpert:
+      hiredExperts.find((expert) => expert.id === soulExpertId) ?? null,
+    openSoul: setSoulExpertId,
+    closeSoul: () => setSoulExpertId(null),
   };
 }
