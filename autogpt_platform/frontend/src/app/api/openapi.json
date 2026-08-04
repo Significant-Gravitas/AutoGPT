@@ -15472,6 +15472,11 @@
             "type": "array",
             "title": "Required Inputs",
             "description": "List of input fields for this block"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider",
+            "description": "Integration provider slug when the block uses exactly one provider (e.g. 'google', 'discord'); used for provider icons in the chat UI"
           }
         },
         "type": "object",
@@ -15546,6 +15551,10 @@
             "additionalProperties": { "items": {}, "type": "array" },
             "type": "object",
             "title": "Outputs"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
           },
           "success": { "type": "boolean", "title": "Success", "default": true },
           "is_dry_run": {
