@@ -11,7 +11,7 @@ import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { PencilIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
-import { MouseEvent } from "react";
+import { KeyboardEvent, MouseEvent } from "react";
 
 import { Progress } from "@/components/atoms/Progress/Progress";
 import {
@@ -26,6 +26,10 @@ interface Props {
   schedules: GraphExecutionJobInfo[];
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
+}
+
+function stopKeyboardPropagation(event: KeyboardEvent<HTMLButtonElement>) {
+  event.stopPropagation();
 }
 
 export function ExpertTeamCard({
@@ -121,7 +125,6 @@ export function ExpertTeamCard({
         </div>
       ) : null}
       <div className="mt-auto flex flex-wrap gap-2">
-
         <Button
           as="NextLink"
           href={`/copilot?expertId=${expert.id}`}
@@ -135,6 +138,7 @@ export function ExpertTeamCard({
           size="small"
           leftIcon={<Icon icon={PencilIcon} size={16} />}
           onClick={handleEditSoulClick}
+          onKeyDown={stopKeyboardPropagation}
         >
           Edit Soul
         </Button>

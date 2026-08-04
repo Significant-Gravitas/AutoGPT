@@ -303,6 +303,20 @@ describe("TeamPage", () => {
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
   });
 
+  test("opens only the Soul drawer when activated with the keyboard", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    const editSoul = await screen.findByRole("button", { name: "Edit Soul" });
+    editSoul.focus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByRole("dialog", { name: "Maria's Soul" })).toBeDefined();
+    expect(screen.queryByRole("dialog", { name: "Maria" })).toBeNull();
+  });
+
   test("saves Soul edits and refreshes the experts query", async () => {
     const user = userEvent.setup();
     let listRequests = 0;

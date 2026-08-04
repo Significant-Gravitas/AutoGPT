@@ -208,10 +208,13 @@ def test_get_expert_returns_expert(
 def test_update_expert_soul_returns_updated_expert(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    configured_snapshot: Snapshot,
 ) -> None:
     updated = _make_expert(
         name="Mara",
         identity="You are Mara, a thoughtful strategist.",
+        voice_preferences="Warm, concise, and direct.",
+        boundaries="Never invent customer evidence.",
     )
     mock_update = mocker.patch(
         "backend.api.features.experts.routes.experts_db.update_soul",
@@ -230,6 +233,10 @@ def test_update_expert_soul_returns_updated_expert(
 
     assert response.status_code == 200
     assert response.json()["name"] == "Mara"
+    configured_snapshot.assert_match(
+        f"{json.dumps(response.json(), indent=2, sort_keys=True)}\n",
+        "expert_soul_update",
+    )
     mock_update.assert_awaited_once_with(
         test_user_id, "expert-1", ExpertSoulUpdate(**soul)
     )

@@ -1,6 +1,7 @@
 "use client";
 
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertSoulUpdate } from "@/app/api/__generated__/models/expertSoulUpdate";
 import {
   Avatar,
   AvatarFallback,
@@ -86,16 +87,8 @@ export function SoulDrawer({ expert, onClose }: Props) {
 }
 
 interface SoulFieldsProps {
-  soul: {
-    name: string;
-    identity: string;
-    voice_preferences: string;
-    boundaries: string;
-  };
-  updateField: (
-    field: "name" | "identity" | "voice_preferences" | "boundaries",
-    value: string,
-  ) => void;
+  soul: ExpertSoulUpdate;
+  updateField: (field: keyof ExpertSoulUpdate, value: string) => void;
 }
 
 function SoulFields({ soul, updateField }: SoulFieldsProps) {

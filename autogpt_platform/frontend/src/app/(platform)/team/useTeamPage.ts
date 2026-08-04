@@ -40,6 +40,11 @@ export function useTeamPage({ enabled }: Args) {
     return Promise.all([expertsQuery.refetch(), schedulesQuery.refetch()]);
   }
 
+  function closeSoul() {
+    setSoulExpertId(null);
+  }
+
+
   return {
     hiredExperts,
     schedulesForExpert,
@@ -52,6 +57,6 @@ export function useTeamPage({ enabled }: Args) {
     soulExpert:
       hiredExperts.find((expert) => expert.id === soulExpertId) ?? null,
     openSoul: setSoulExpertId,
-    closeSoul: () => setSoulExpertId(null),
+    closeSoul,
   };
 }
