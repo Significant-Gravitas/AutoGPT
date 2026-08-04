@@ -17223,7 +17223,10 @@
             "default": "voice"
           },
           "duration_secs": {
-            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "anyOf": [
+              { "type": "number", "maximum": 14400.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
             "title": "Duration Secs"
           },
           "mime_type": {

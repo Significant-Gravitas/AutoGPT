@@ -24,7 +24,6 @@ import tempfile
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from backend.util.cache import cached
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -79,17 +78,21 @@ class TranscriptionResult(BaseModel):
     model: str
 
 
-@cached(ttl_seconds=3600)
 def get_stt_client() -> AsyncOpenAI | None:
-    """Return a process-cached client for the audio-transcriptions endpoint.
+    """Return a client for the audio-transcriptions endpoint.
 
     Deliberately not ``backend.util.clients.get_openai_client()``: that
     helper falls back to OpenRouter, which does not implement
     ``/audio/transcriptions``, so a deployment with only an OpenRouter key
     would get a confusing 404 from the provider instead of a clean
-    "not configured" error here. Cached like every other client helper in
-    the repo — a fresh ``AsyncOpenAI`` per finalize is a fresh httpx pool
-    that nothing ever closes.
+    "not configured" error here.
+
+    Built per call rather than ``@cached``: ``AsyncOpenAI`` binds its
+    connection pool to the first event loop that uses it, so a process-wide
+    cache poisons itself across loops. ``backend/util/architecture_test.py``
+    enforces this — the cached helpers in ``util/clients.py`` are a
+    grandfathered allowlist that is being burned down, not the pattern to
+    copy. Finalize runs once per user, so the pool churn is negligible.
     """
     api_key = (
         settings.secrets.openai_internal_api_key or settings.secrets.openai_api_key
