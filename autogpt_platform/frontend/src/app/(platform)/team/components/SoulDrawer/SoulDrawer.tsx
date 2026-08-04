@@ -17,7 +17,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { LockSimpleIcon } from "@phosphor-icons/react";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { useSoulDrawer } from "./useSoulDrawer";
 
 interface Props {
@@ -26,6 +26,7 @@ interface Props {
 }
 
 export function SoulDrawer({ expert, onClose }: Props) {
+  const [displayedExpert] = useState(expert);
   const { soul, updateField, save, isPending, canSave } = useSoulDrawer({
     expert,
     onClose,
@@ -45,13 +46,16 @@ export function SoulDrawer({ expert, onClose }: Props) {
         <div className="border-b border-zinc-200 bg-white px-6 py-5 pr-12 sm:px-8">
           <div className="flex items-center gap-3">
             <Avatar className="h-11 w-11">
-              {expert?.avatar_url ? (
-                <AvatarImage src={expert.avatar_url} alt={expert.name} />
+              {displayedExpert?.avatar_url ? (
+                <AvatarImage
+                  src={displayedExpert.avatar_url}
+                  alt={displayedExpert.name}
+                />
               ) : null}
-              <AvatarFallback>{expert?.name ?? "Soul"}</AvatarFallback>
+              <AvatarFallback>{displayedExpert?.name ?? "Soul"}</AvatarFallback>
             </Avatar>
             <div>
-              <SheetTitle>{`${expert?.name ?? "Expert"}'s Soul`}</SheetTitle>
+              <SheetTitle>{`${displayedExpert?.name ?? "Expert"}'s Soul`}</SheetTitle>
               <SheetDescription>
                 A living document that shapes every reply.
               </SheetDescription>
@@ -64,7 +68,9 @@ export function SoulDrawer({ expert, onClose }: Props) {
             <div className="mx-auto max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-8">
               <SoulFields soul={soul} updateField={updateField} />
               <LearnedNotes />
-              <ProtectedRules rules={expert?.protected_soul_rules ?? []} />
+              <ProtectedRules
+                rules={displayedExpert?.protected_soul_rules ?? []}
+              />
             </div>
           </div>
           <div className="flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4 sm:px-8">

@@ -29,6 +29,7 @@ export default function TeamPage() {
     pickerExpertId,
     closeWorkflowPicker,
     soulExpert,
+    soulDrawerKey,
     openSoul,
     closeSoul,
   } = useTeamPage({ enabled: Boolean(enabled) && ready });
@@ -92,12 +93,7 @@ export default function TeamPage() {
         open={pickerExpertId !== null}
         onClose={closeWorkflowPicker}
       />
-      <SoulDrawer
-        key={soulExpert?.id ?? "closed-soul"}
-        expert={soulExpert}
-        onClose={closeSoul}
-      />
-
+      <SoulDrawer key={soulDrawerKey} expert={soulExpert} onClose={closeSoul} />
     </main>
   );
 }

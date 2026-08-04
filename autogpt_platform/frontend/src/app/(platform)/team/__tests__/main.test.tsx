@@ -303,6 +303,22 @@ describe("TeamPage", () => {
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
   });
 
+  test("keeps the Soul drawer mounted for its exit animation", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
+    const dialog = screen.getByRole("dialog", { name: "Maria's Soul" });
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(dialog.getAttribute("data-state")).toBe("closed");
+    });
+    expect(dialog.textContent).toContain("Maria's Soul");
+  });
+
   test("opens only the Soul drawer when activated with the keyboard", async () => {
     const user = userEvent.setup();
     server.use(getListExpertsMockHandler([hiredMaria]));
