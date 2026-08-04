@@ -145,7 +145,8 @@ describe("live-session token route — deepgram", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe(
       `Token ${DEEPGRAM_KEY}`,
     );
-    expect(JSON.parse(init.body as string)).toEqual({ ttl_seconds: 600 });
+    // Only has to cover the handshake — see TOKEN_TTL_SECONDS.
+    expect(JSON.parse(init.body as string)).toEqual({ ttl_seconds: 60 });
   });
 
   it("reports 'not configured' when no key is present, without calling out", async () => {

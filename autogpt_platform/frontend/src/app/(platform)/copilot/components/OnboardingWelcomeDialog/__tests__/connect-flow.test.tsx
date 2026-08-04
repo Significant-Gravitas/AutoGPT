@@ -16,6 +16,18 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToastOnFail: () => () => {},
 }));
 
+// The recommended list — the panel's default view — is flag-gated.
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) => flag === actual.Flag.ONBOARDING_BRAIN_DUMP,
+  };
+});
+
 const openOAuthPopup = vi.fn();
 vi.mock("@/lib/oauth-popup", () => ({
   OAUTH_ERROR_POPUP_BLOCKED: "Popup blocked",
@@ -142,6 +154,23 @@ describe("ConnectToolsPanel — picking a provider", () => {
       await screen.findByText("No connection method available"),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  });
+
+  it("returns to the list on Escape rather than leaving the picker", async () => {
+    stubPanel();
+    const onBack = vi.fn();
+    render(<ConnectToolsPanel onBack={onBack} onNext={vi.fn()} />);
+    const user = await openGithub();
+
+    await user.keyboard("{Escape}");
+
+    expect(await screen.findByLabelText("Search services")).toBeDefined();
+    expect(onBack).not.toHaveBeenCalled();
+
+    // Only from the list does Escape hand back to the dialog.
+    await user.keyboard("{Escape}");
+
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 
   it("marks providers that already hold credentials as connected", async () => {

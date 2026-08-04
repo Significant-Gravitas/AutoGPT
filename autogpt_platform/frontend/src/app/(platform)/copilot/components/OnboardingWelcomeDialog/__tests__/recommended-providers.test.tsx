@@ -3,6 +3,19 @@ import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Recommendations only exist behind the brain-dump flag; these tests are
+// about what the panel does once it is on.
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) => flag === actual.Flag.ONBOARDING_BRAIN_DUMP,
+  };
+});
+
 import { ConnectToolsPanel } from "../ConnectToolsPanel";
 
 const PROVIDERS_URL =
@@ -83,9 +96,24 @@ describe("ConnectToolsPanel — recommendations", () => {
 
     expect(await screen.findByText(RECOMMENDED_HEADING)).toBeDefined();
     expect(screen.getByRole("button", { name: /Notion/ })).toBeDefined();
+    // The reason is the whole point of the section — it has to be on screen,
+    // not just in the mapped data.
+    expect(screen.getByText("You mentioned meeting notes")).toBeDefined();
     // Only what the model picked — not the whole registry.
     expect(screen.queryByRole("button", { name: /Slack/ })).toBeNull();
     expect(screen.queryByText(SEARCH_PROMPT)).toBeNull();
+  });
+
+  it("falls back to the registry blurb when the model gave no reason", async () => {
+    stubRegistry();
+    scriptRecommendations({
+      ready: true,
+      providers: [{ provider: "notion", reason: "" }],
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText("Docs and wikis")).toBeDefined();
   });
 
   it("drops recommendations whose provider is no longer in the registry", async () => {

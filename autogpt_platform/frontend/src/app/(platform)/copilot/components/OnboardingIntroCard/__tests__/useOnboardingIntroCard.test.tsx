@@ -34,6 +34,7 @@ import { useOnboardingIntroCard } from "../useOnboardingIntroCard";
 const INTRO_URL =
   "http://localhost:3000/api/proxy/api/onboarding/brain-dump/intro";
 const MIC_GLOW_KEY = "autogpt:onboarding-mic-glow";
+const LATER_DUMP_KEY = "autogpt:onboarding-pending-later-dump";
 const FOLLOWUP_KEY = "autogpt:onboarding-intro-awaiting-followup";
 const WELCOME_PENDING_KEY = "autogpt:onboarding-welcome-pending";
 const GREETING_DONE_KEY = "autogpt:copilot-greeting-done";
@@ -117,9 +118,24 @@ describe("useOnboardingIntroCard — flag gating", () => {
     expect(result.current.isVisible).toBe(false);
   });
 
-  it("still holds the composer while LaunchDarkly has not answered", async () => {
+  it("renders the plain hero while LaunchDarkly has not answered for a user with no handoff", async () => {
+    // Holding on "no answer yet" alone hid the composer on every flag-off
+    // /copilot load until LaunchDarkly replied — the flag-off page has to
+    // render untouched.
+    flags.current = {};
+    flagsReady.current = false;
+
+    const { result } = renderIntro();
+
+    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(false));
+    expect(result.current.isVisible).toBe(false);
+  });
+
+  it("still holds the composer while LaunchDarkly has not answered for a user coming out of the wizard", async () => {
     // The hold exists to stop the regular hero flashing before the
-    // greeting page takes over, so an unresolved flag must not release it.
+    // greeting page takes over, and the pending overlay is seeded
+    // synchronously — so this user is held before the flag resolves.
+    window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
     flags.current = {};
     flagsReady.current = false;
 
@@ -169,7 +185,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBeNull();
   });
 
-  it("glows the composer mic only for the skip path", async () => {
+  it("glows the composer mic only for the skip path, and arms the later dump", async () => {
     setIntroPath("B");
     countIntroRequests();
 
@@ -177,7 +193,47 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     await waitFor(() => expect(result.current.isWelcomeOpen).toBe(true));
 
     expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBe("1");
+    // The invitation AutoPilot just issued: the first voice message in the
+    // composer is the dump this user skipped, and is reported as such.
+    expect(window.sessionStorage.getItem(LATER_DUMP_KEY)).toBe("1");
     expect(capture).toHaveBeenCalledWith("intro_path", { path: "B" });
+  });
+
+  it("drops the handoff instead of running it when the flag is off", async () => {
+    // The wizard wrote these while the flag was on; a rollback in between
+    // must not still buy the user the overlay and its 404-ing polls.
+    flags.current = {};
+    setIntroPath("B");
+    window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
+    const urls = countIntroRequests();
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(false));
+
+    expect(result.current.isWelcomeOpen).toBe(false);
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
+      null,
+    );
+    expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem(LATER_DUMP_KEY)).toBeNull();
+    expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
+    expect(urls).toEqual([]);
+  });
+
+  it("waits for LaunchDarkly before consuming the handoff", async () => {
+    flagsReady.current = false;
+    setIntroPath("A");
+    countIntroRequests();
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current).toBeDefined());
+
+    expect(result.current.isWelcomeOpen).toBe(false);
+    expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
+      "A",
+    );
+    expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
   });
 
   it("shows no overlay for a user who did not just come out of onboarding", async () => {

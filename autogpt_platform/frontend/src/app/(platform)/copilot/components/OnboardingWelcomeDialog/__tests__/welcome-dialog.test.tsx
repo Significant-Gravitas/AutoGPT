@@ -213,6 +213,37 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
     expect(screen.getByText("2 of 4")).toBeDefined();
   });
 
+  it("steps back out of the picker on Escape instead of ending onboarding", async () => {
+    stubConnectPanelEndpoints();
+    const steps = recordCompletedSteps();
+    const onClose = vi.fn();
+
+    render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
+    const user = await advanceToCard(1);
+    await user.click(
+      screen.getByRole("button", { name: "Connect your tools" }),
+    );
+    await screen.findByRole("heading", { name: "Connect your tools" });
+
+    await user.keyboard("{Escape}");
+
+    // Back to the deck, with the introduction still running.
+    expect(
+      await screen.findByText("It works inside your tools."),
+    ).toBeDefined();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(steps).toEqual([]);
+    expect(capture).not.toHaveBeenCalledWith(
+      "capability_cards_skipped",
+      expect.anything(),
+    );
+
+    // Escape is a skip again once the picker is gone.
+    await user.keyboard("{Escape}");
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("advances to the next card when the picker's Next is used", async () => {
     stubConnectPanelEndpoints();
 

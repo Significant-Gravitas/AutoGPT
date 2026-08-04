@@ -11,10 +11,13 @@ import { NextRequest, NextResponse } from "next/server";
 const DEEPGRAM_GRANT_URL = "https://api.deepgram.com/v1/auth/grant";
 const ELEVENLABS_TOKEN_URL =
   "https://api.elevenlabs.io/v1/single-use-token/realtime_scribe";
-// Deepgram tokens: long enough to cover one recording, short enough that
-// a leaked token is worthless soon after. ElevenLabs single-use tokens
-// are fixed at 15 minutes and consumed on connect.
-const TOKEN_TTL_SECONDS = 600;
+// Deepgram tokens are minted immediately before the socket opens and the
+// socket authenticates once at handshake, so the TTL only has to cover
+// that handshake — not the recording, which can outrun any grant. Keeping
+// it near Deepgram's own default limits what a lifted token (it is visible
+// to the browser) can spend. ElevenLabs single-use tokens are fixed at 15
+// minutes and consumed on connect.
+const TOKEN_TTL_SECONDS = 60;
 // A stalled provider must not hold the route open until the platform's
 // own limit fires: failing fast lets useLiveCaptions drop to the browser
 // engine while the user is still talking.

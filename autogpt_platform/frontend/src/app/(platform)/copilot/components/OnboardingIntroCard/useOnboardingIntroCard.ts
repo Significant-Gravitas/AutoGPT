@@ -11,6 +11,7 @@ import {
   setGreetingDone,
   setIntroAwaitingFollowup,
   setMicGlow,
+  setPendingLaterDump,
   setWelcomePending,
   takeIntroPath,
 } from "@/services/onboarding/brain-dump-handoff";
@@ -73,16 +74,32 @@ export function useOnboardingIntroCard() {
   }, [isWelcomeOpen, userId]);
 
   useEffect(() => {
+    // The handoff keys are written by the wizard while the flag is on, so
+    // they can outlive it: wait for LaunchDarkly, then either run the
+    // handoff or drop it. Consuming it with the flag off would put the
+    // overlay and its 404-ing polls in front of a rolled-back user.
+    if (!isFlagReady) return;
+    if (!isBrainDumpEnabled) {
+      takeIntroPath();
+      clearWelcomePending();
+      setIsWelcomeOpen(false);
+      return;
+    }
     const path = takeIntroPath();
     if (!path) return;
-    if (path === "B") setMicGlow();
+    if (path === "B") {
+      setMicGlow();
+      // Path B's intro asks for the dump from the composer instead, so the
+      // first voice message there is the answer to that invitation.
+      setPendingLaterDump();
+    }
     // Measures whether the greeting actually started a conversation —
     // consumed by the first real message afterwards.
     setIntroAwaitingFollowup();
     trackBrainDump("intro_path", { path });
     setWelcomePending();
     setIsWelcomeOpen(true);
-  }, []);
+  }, [isFlagReady, isBrainDumpEnabled]);
 
   const { data, isError } = useGetBrainDumpIntro({
     query: {
@@ -154,6 +171,12 @@ export function useOnboardingIntroCard() {
     (Boolean(isBrainDumpEnabled) &&
       (!hasIntroAnswer || isPendingGeneration || Boolean(intro?.greeting)));
 
+  // Holding the composer is only ever right while this flow is in play:
+  // the overlay is up (seeded synchronously from the handoff) or the flag
+  // already reads on. Holding on "LaunchDarkly has not answered" alone
+  // hid the composer on every flag-off /copilot load until it did.
+  const isGreetingExpected = isWelcomeOpen || Boolean(isBrainDumpEnabled);
+
   return {
     // The page renders the regular hero behind the welcome modal and
     // while the greeting is generating; it swaps to the greeting the
@@ -169,7 +192,9 @@ export function useOnboardingIntroCard() {
     // composer back until the greeting page takes over.
     isAwaitingGreeting:
       !isMounted ||
-      (!isDone && (isWelcomeOpen || !hasIntroAnswer || isPendingGeneration)),
+      (!isDone &&
+        isGreetingExpected &&
+        (isWelcomeOpen || !hasIntroAnswer || isPendingGeneration)),
     anchorTop: isMounted && !isDone && isGreetingFlow,
     isWelcomeOpen: !isDone && isWelcomeOpen,
     closeWelcome,

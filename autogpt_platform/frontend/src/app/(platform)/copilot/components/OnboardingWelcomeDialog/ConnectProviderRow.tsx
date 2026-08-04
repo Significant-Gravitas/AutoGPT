@@ -10,11 +10,19 @@ interface Props {
   provider: ConnectableProvider;
   onSelect: (id: string) => void;
   isConnected?: boolean;
+  /** Second line, used by the recommended list to show the model's reason. */
+  description?: string | null;
 }
 
-// The welcome dialog's provider card: compact (two per row), name only,
-// with a Connected state once credentials exist for the provider.
-export function ConnectProviderRow({ provider, onSelect, isConnected }: Props) {
+// The welcome dialog's provider card: compact (two per row), name plus an
+// optional one-line reason, with a Connected state once credentials exist
+// for the provider.
+export function ConnectProviderRow({
+  provider,
+  onSelect,
+  isConnected,
+  description,
+}: Props) {
   const src = `/integrations/${provider.id}.png`;
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
   const broken = brokenSrc === src;
@@ -43,18 +51,25 @@ export function ConnectProviderRow({ provider, onSelect, isConnected }: Props) {
           onError={() => setBrokenSrc(src)}
         />
       )}
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="truncate text-[14px] font-medium leading-[22px] text-zinc-800">
-          {provider.name}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[14px] font-medium leading-[22px] text-zinc-800">
+            {provider.name}
+          </span>
+          {/* Connected mark beside the title — the + stays because a
+              provider can hold multiple credentials. */}
+          {isConnected && (
+            <CheckCircleIcon
+              size={18}
+              weight="fill"
+              className="shrink-0 text-emerald-500"
+            />
+          )}
         </span>
-        {/* Connected mark beside the title — the + stays because a
-            provider can hold multiple credentials. */}
-        {isConnected && (
-          <CheckCircleIcon
-            size={18}
-            weight="fill"
-            className="shrink-0 text-emerald-500"
-          />
+        {description && (
+          <span className="truncate text-[11px] leading-[16px] text-zinc-500">
+            {description}
+          </span>
         )}
       </span>
       <span

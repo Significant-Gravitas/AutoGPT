@@ -8,6 +8,7 @@ import { ConnectProviderRow } from "./ConnectProviderRow";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { MagnifyingGlassIcon, PlugIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useEffect } from "react";
 import { useConnectToolsPanel } from "./useConnectToolsPanel";
 
 interface Props {
@@ -58,6 +59,21 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
   } = useConnectToolsPanel();
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
+
+  // Escape steps back one level (detail → list → cards) instead of
+  // reaching the dialog's skip handler, which would end onboarding.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (selectedProvider) {
+        handleBackToList();
+        return;
+      }
+      onBack();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedProvider, handleBackToList, onBack]);
 
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -162,6 +178,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                               provider={provider}
                               onSelect={handleSelect}
                               isConnected={connectedProviders.has(provider.id)}
+                              description={provider.description}
                             />
                           </li>
                         ))}

@@ -96,18 +96,20 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
     onClose();
   }
 
-  // Escape closes, and focus starts inside the card rather than on
-  // whatever was behind the overlay.
+  // Escape ends the cards, and focus starts inside the card rather than on
+  // whatever was behind the overlay. While the provider picker is open
+  // Escape belongs to it — stepping back out of a half-typed API key must
+  // not end onboarding for good.
   useEffect(() => {
     if (!isOpen) return;
     dialogRef.current?.focus();
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") finish("skipped");
+      if (event.key === "Escape" && !isConnectOpen) finish("skipped");
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, cardIndex]);
+  }, [isOpen, cardIndex, isConnectOpen]);
 
   function handleNext() {
     if (isLastCard) {
