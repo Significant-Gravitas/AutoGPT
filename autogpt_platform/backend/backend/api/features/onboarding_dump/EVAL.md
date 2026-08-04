@@ -19,6 +19,9 @@ poetry run brain-dump-eval --dir /path/to/dumps
 # override the primary model (fallback stays whisper-1)
 poetry run brain-dump-eval --dir /path/to/dumps --model gpt-4o-mini-transcribe
 
+# duration fallback for chunked files whose container header reports none
+poetry run brain-dump-eval --dir /path/to/dumps --duration-secs 1800
+
 # also dump machine-readable results
 poetry run brain-dump-eval --dir /path/to/dumps --json /tmp/wer.json
 ```
@@ -84,9 +87,9 @@ before comparing — but *words* do.
 ## Reading the report
 
 ```
-file                      WER   sub   ins   del     ref    secs  segments
-dump01                  3.20%     8     2     1     344    12.4  1
-dump02                  7.10%    15     4     3     312    41.9  3
+file                      WER   sub   ins   del     ref    secs  segments  model
+dump01                  3.20%     8     2     1     344    12.4  1         gpt-4o-transcribe
+dump02                  7.10%    15     4     3     312    41.9  3         gpt-4o-transcribe,whisper-1
 
 Stitch boundaries (chunked files):
   dump02 — 3 segments
@@ -113,6 +116,10 @@ Release gate: aggregate WER must stay under 5% — PASS (exit 0)
   hallucinated sentence becomes a "fact" about the user), deletions for
   dropped audio and bad seams.
 - **segments** — `1` means single-request; more means the chunked path ran.
+- **model** — which STT model actually produced the transcript. The pipeline
+  falls back silently, so a run meant to gate `gpt-4o-transcribe` that shows
+  `whisper-1` here measured the fallback, not the model you asked for. A
+  chunked file lists every model that contributed.
 - **Stitch boundaries** — for chunked files only, the last ~10 words of each
   segment and the first ~10 of the next, plus how many words the overlap-dedup
   removed. `dropped 0` at a seam usually means the dedup failed to find the
@@ -130,7 +137,9 @@ regardless of WER.
   (`SINGLE_REQUEST_MAX_BYTES`) alone — exactly what
   `transcribe(audio, filename, duration_secs=None)` does. In production the
   frontend supplies a duration, so a long-but-small recording can chunk there
-  and not here.
+  and not here. When a chunked file's container header carries no duration
+  either (the norm for browser `MediaRecorder` webm), pass `--duration-secs`;
+  an upper bound is safe, since the split stops at the first empty segment.
 - WER is computed with an inline Levenshtein over normalised words
   (`brain_dump_wer.py`); no `jiwer` dependency.
 - The corpus is deliberately **not** committed — the recordings are personal

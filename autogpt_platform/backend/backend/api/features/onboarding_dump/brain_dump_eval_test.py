@@ -8,6 +8,7 @@ from backend.api.features.onboarding_dump.brain_dump_wer import (
     compute_word_errors,
     normalize_words,
 )
+from backend.api.features.onboarding_dump.transcription import TranscriptionResult
 
 
 def test_identical_text_has_no_errors():
@@ -83,6 +84,12 @@ def test_normalisation_handles_non_english_punctuation():
     assert normalize_words("¿Qué tal? Muy bien.") == ["qué", "tal", "muy", "bien"]
 
 
+def _result(text: str, language: str | None = None) -> TranscriptionResult:
+    return TranscriptionResult(
+        text=text, language=language, model=transcription.PRIMARY_MODEL
+    )
+
+
 def _write_pair(directory: Path, name: str, extension: str) -> None:
     (directory / f"{name}{extension}").write_bytes(b"audio-bytes")
     (directory / f"{name}.txt").write_text("hello world", encoding="utf-8")
@@ -127,7 +134,10 @@ async def test_run_eval_scores_every_pair(tmp_path: Path, monkeypatch):
     (tmp_path / "dump02.mp3").write_bytes(b"audio")
     (tmp_path / "dump02.txt").write_text("hello there world", encoding="utf-8")
     transcribe = AsyncMock(
-        side_effect=[("The quick brown fox!", "en"), ("hello world", "en")]
+        side_effect=[
+            _result("The quick brown fox!", "en"),
+            _result("hello world", "en"),
+        ]
     )
     monkeypatch.setattr(transcription, "transcribe", transcribe)
 
@@ -147,7 +157,7 @@ async def test_run_eval_passes_when_under_the_gate(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         transcription,
         "transcribe",
-        AsyncMock(return_value=("the quick brown fox", None)),
+        AsyncMock(return_value=_result("the quick brown fox")),
     )
 
     report = await brain_dump_eval.run_eval(tmp_path)
@@ -155,6 +165,28 @@ async def test_run_eval_passes_when_under_the_gate(tmp_path: Path, monkeypatch):
     assert report.passed is True
     assert report.gate == brain_dump_eval.WER_RELEASE_GATE
     assert "PASS (exit 0)" in brain_dump_eval.render_report(report)
+
+
+async def test_run_eval_reports_which_model_produced_the_transcript(
+    tmp_path: Path, monkeypatch
+):
+    """A silent fallback must not be able to pass as the gated model."""
+    (tmp_path / "dump01.webm").write_bytes(b"audio")
+    (tmp_path / "dump01.txt").write_text("the quick brown fox", encoding="utf-8")
+    monkeypatch.setattr(
+        transcription,
+        "transcribe",
+        AsyncMock(
+            return_value=TranscriptionResult(
+                text="the quick brown fox", model=transcription.FALLBACK_MODEL
+            )
+        ),
+    )
+
+    report = await brain_dump_eval.run_eval(tmp_path)
+
+    assert report.files[0].model == transcription.FALLBACK_MODEL
+    assert transcription.FALLBACK_MODEL in brain_dump_eval.render_report(report)
 
 
 async def test_run_eval_records_pipeline_failures(tmp_path: Path, monkeypatch):
@@ -177,20 +209,26 @@ async def test_run_eval_reports_seams_for_chunked_files(tmp_path: Path, monkeypa
     (tmp_path / "dump01.webm").write_bytes(b"audio")
     (tmp_path / "dump01.txt").write_text("one two three four", encoding="utf-8")
     monkeypatch.setattr(transcription, "SINGLE_REQUEST_MAX_BYTES", 1)
-    monkeypatch.setattr(
-        transcription, "split_audio", AsyncMock(return_value=[b"a", b"b"])
+    split = AsyncMock(return_value=[b"a", b"b"])
+    monkeypatch.setattr(transcription, "split_audio", split)
+    transcribe = AsyncMock(
+        side_effect=[_result("one two three"), _result("two three four")]
     )
-    monkeypatch.setattr(
-        transcription,
-        "transcribe",
-        AsyncMock(side_effect=[("one two three", None), ("two three four", None)]),
-    )
+    monkeypatch.setattr(transcription, "transcribe", transcribe)
 
-    report = await brain_dump_eval.run_eval(tmp_path)
+    report = await brain_dump_eval.run_eval(tmp_path, duration_secs=1800)
     result = report.files[0]
 
     assert result.chunked is True
     assert result.segment_count == 2
+    # The split re-encodes to ogg/opus and the STT client infers the format
+    # from the filename, so a segment must not keep the source extension.
+    assert [call.args[1] for call in transcribe.await_args_list] == [
+        "segment-0.ogg",
+        "segment-1.ogg",
+    ]
+    # A `.webm` with no container duration cannot be split without a hint.
+    assert split.await_args.args[2] == 1800
     assert result.errors.wer == 0.0
     assert result.seams == [
         brain_dump_eval.Seam(

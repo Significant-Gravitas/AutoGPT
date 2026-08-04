@@ -30,6 +30,27 @@ def test_stitch_matches_the_seam_case_insensitively():
     assert stitched == "we ship on friday is when the boxes go out"
 
 
+def test_stitch_matches_the_seam_across_the_terminal_punctuation():
+    """STT models end every segment as if it were a whole utterance.
+
+    The same spoken word therefore comes back as ``schedule.`` on the left
+    of the seam and ``schedule`` on the right. Comparing raw words finds
+    no overlap at all, and the deliberate 5s overlap is duplicated into
+    the transcript at every 10-minute seam.
+    """
+    stitched = transcription.stitch_transcripts(
+        [
+            "and then I have to go and rebuild the whole schedule.",
+            "Rebuild the whole schedule, and that eats my monday.",
+        ]
+    )
+
+    assert stitched == (
+        "and then I have to go and rebuild the whole schedule. "
+        "and that eats my monday."
+    )
+
+
 def test_stitch_joins_segments_that_do_not_overlap():
     stitched = transcription.stitch_transcripts(
         ["alpha beta gamma", "delta epsilon zeta"]
@@ -82,9 +103,11 @@ async def test_transcribe_falls_back_to_whisper_after_the_primary_exhausts_retri
     stt.audio.transcriptions.create = AsyncMock(side_effect=create)
     mocker.patch.object(transcription, "get_stt_client", return_value=stt)
 
-    transcript, language = await transcription.transcribe(b"opus", "dump.webm")
+    result = await transcription.transcribe(b"opus", "dump.webm")
 
-    assert (transcript, language) == ("hello there", "en")
+    assert (result.text, result.language) == ("hello there", "en")
+    # The fallback is silent, so the result has to say which model won.
+    assert result.model == transcription.FALLBACK_MODEL
     assert attempted_models == (
         [transcription.PRIMARY_MODEL] * transcription.MAX_ATTEMPTS
         + [transcription.FALLBACK_MODEL]
@@ -132,14 +155,15 @@ async def test_a_long_recording_is_split_and_stitched(mocker: MockerFixture):
         transcription, "split_audio", new=AsyncMock(return_value=[b"one", b"two"])
     )
 
-    transcript, language = await transcription.transcribe(
+    result = await transcription.transcribe(
         b"opus", "dump.webm", duration_secs=transcription.SINGLE_REQUEST_MAX_SECONDS + 1
     )
 
     split.assert_awaited_once()
-    assert transcript == "first half of the dump and then the rest"
+    assert result.text == "first half of the dump and then the rest"
     # Language is unreliable across segments, so it is not reported.
-    assert language is None
+    assert result.language is None
+    assert result.model == transcription.PRIMARY_MODEL
     # Segments come back as ogg regardless of what the browser recorded, and
     # the client infers the format from the filename — announcing an ogg body
     # as ``.webm`` makes the provider reject it.
@@ -211,13 +235,45 @@ async def test_split_falls_back_to_the_browser_duration_when_ffmpeg_cannot_tell(
     )
     run = mocker.patch.object(transcription, "_run_ffmpeg", new=AsyncMock())
     mocker.patch.object(transcription, "_write_file", new=MagicMock())
-    mocker.patch.object(transcription, "_read_file", new=MagicMock(return_value=b"seg"))
+    mocker.patch.object(
+        transcription,
+        "_read_file",
+        new=MagicMock(return_value=b"s" * transcription.MIN_SEGMENT_BYTES),
+    )
 
     hint = transcription.SEGMENT_SECONDS * 2 + 5
     segments = await transcription.split_audio(b"opus", "dump.webm", hint)
 
     assert len(segments) == 3
     assert run.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_split_stops_at_the_first_empty_segment(mocker: MockerFixture):
+    """The duration hint is the client's number, and it can be a lie.
+
+    ``-ss`` past the end of the stream is not an error — ffmpeg exits 0
+    and writes an empty container — so a hostile ``duration_secs`` would
+    otherwise buy one ffmpeg run and one billed transcription per 10
+    minutes of it, however little audio was actually uploaded.
+    """
+    mocker.patch.object(transcription.shutil, "which", return_value="ffmpeg")
+    mocker.patch.object(
+        transcription, "_probe_duration", new=AsyncMock(return_value=None)
+    )
+    run = mocker.patch.object(transcription, "_run_ffmpeg", new=AsyncMock())
+    mocker.patch.object(transcription, "_write_file", new=MagicMock())
+    real = b"a" * transcription.MIN_SEGMENT_BYTES
+    mocker.patch.object(
+        transcription, "_read_file", new=MagicMock(side_effect=[real, b"OggS-header"])
+    )
+
+    segments = await transcription.split_audio(
+        b"opus", "dump.webm", transcription.SEGMENT_SECONDS * 10_000
+    )
+
+    assert segments == [real]
+    assert run.await_count == 2
 
 
 @pytest.mark.asyncio

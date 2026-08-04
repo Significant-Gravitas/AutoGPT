@@ -40,6 +40,16 @@ class Seam(BaseModel):
     dropped_words: int
 
 
+class PipelineRun(BaseModel):
+    """What one trip through the pipeline produced, before scoring."""
+
+    transcript: str
+    language: str | None = None
+    model: str
+    segment_count: int
+    seams: list[Seam] = []
+
+
 class FileResult(BaseModel):
     name: str
     audio_path: str
@@ -48,6 +58,13 @@ class FileResult(BaseModel):
     chunked: bool
     hypothesis_words: int = 0
     language: str | None = None
+    model: str = ""
+    """Which STT model actually produced this transcript.
+
+    The pipeline falls back to ``FALLBACK_MODEL`` silently, so without
+    this a run meant to gate ``gpt-4o-transcribe`` can pass on
+    ``whisper-1``'s numbers with nothing in the report saying so.
+    """
     segment_count: int = 0
     seams: list[Seam] = []
     error: str | None = None
@@ -86,6 +103,16 @@ def main() -> None:
     )
     parser.add_argument("--model", default=None, help="override the primary STT model")
     parser.add_argument(
+        "--duration-secs",
+        dest="duration_secs",
+        default=None,
+        type=float,
+        help=(
+            "fallback duration for chunked files whose container header "
+            "reports none (an upper bound is safe)"
+        ),
+    )
+    parser.add_argument(
         "--json", dest="json_path", default=None, type=Path, help="write results here"
     )
     args = parser.parse_args()
@@ -95,7 +122,7 @@ def main() -> None:
         # it overrides the model for the run without touching the env.
         transcription.PRIMARY_MODEL = args.model
 
-    report = asyncio.run(run_eval(args.dir))
+    report = asyncio.run(run_eval(args.dir, args.duration_secs))
     print(render_report(report))
     if args.json_path:
         args.json_path.write_text(
@@ -104,10 +131,10 @@ def main() -> None:
     sys.exit(0 if report.passed else 1)
 
 
-async def run_eval(directory: Path) -> EvalReport:
+async def run_eval(directory: Path, duration_secs: float | None = None) -> EvalReport:
     discovery = discover_pairs(directory)
     started = time.monotonic()
-    results = [await evaluate_pair(pair) for pair in discovery.pairs]
+    results = [await evaluate_pair(pair, duration_secs) for pair in discovery.pairs]
     scored = [result for result in results if result.error is None]
     pooled = WordErrors(
         substitutions=sum(r.errors.substitutions for r in scored),
@@ -131,7 +158,9 @@ async def run_eval(directory: Path) -> EvalReport:
     )
 
 
-async def evaluate_pair(pair: DumpPair) -> FileResult:
+async def evaluate_pair(
+    pair: DumpPair, duration_secs: float | None = None
+) -> FileResult:
     audio = pair.audio_path.read_bytes()
     reference = pair.reference_path.read_text(encoding="utf-8")
     # The harness has no duration metadata, so it takes the split decision
@@ -139,9 +168,7 @@ async def evaluate_pair(pair: DumpPair) -> FileResult:
     chunked = len(audio) > transcription.SINGLE_REQUEST_MAX_BYTES
     started = time.monotonic()
     try:
-        hypothesis, language, seams, segments = await _run_pipeline(
-            audio, pair.audio_path.name, chunked
-        )
+        run = await _run_pipeline(audio, pair.audio_path.name, chunked, duration_secs)
     except Exception as e:
         return FileResult(
             name=pair.name,
@@ -154,13 +181,14 @@ async def evaluate_pair(pair: DumpPair) -> FileResult:
     return FileResult(
         name=pair.name,
         audio_path=pair.audio_path.name,
-        errors=compute_word_errors(reference, hypothesis),
+        errors=compute_word_errors(reference, run.transcript),
         latency_secs=time.monotonic() - started,
         chunked=chunked,
-        hypothesis_words=len(normalize_words(hypothesis)),
-        language=language,
-        segment_count=segments,
-        seams=seams,
+        hypothesis_words=len(normalize_words(run.transcript)),
+        language=run.language,
+        model=run.model,
+        segment_count=run.segment_count,
+        seams=run.seams,
     )
 
 
@@ -174,22 +202,36 @@ def _empty_errors(reference: str) -> WordErrors:
 
 
 async def _run_pipeline(
-    audio: bytes, filename: str, chunked: bool
-) -> tuple[str, str | None, list[Seam], int]:
+    audio: bytes,
+    filename: str,
+    chunked: bool,
+    duration_secs: float | None = None,
+) -> PipelineRun:
     if not chunked:
-        transcript, language = await transcription.transcribe(audio, filename)
-        return transcript, language, [], 1
+        result = await transcription.transcribe(audio, filename)
+        return PipelineRun(
+            transcript=result.text,
+            language=result.language,
+            model=result.model,
+            segment_count=1,
+        )
 
-    segments = await transcription.split_audio(audio, filename)
-    parts = [
-        (await transcription.transcribe(segment, f"{index}-{filename}"))[0]
+    segments = await transcription.split_audio(audio, filename, duration_secs)
+    # ``split_audio`` re-encodes to ogg/opus, and the STT client infers the
+    # format from the filename — naming a segment after the source (e.g.
+    # ``0-dump01.webm``) gets the whole corpus rejected.
+    results = [
+        await transcription.transcribe(
+            segment, f"segment-{index}{transcription.SEGMENT_SUFFIX}"
+        )
         for index, segment in enumerate(segments)
     ]
-    return (
-        transcription.stitch_transcripts(parts),
-        None,
-        describe_seams(parts),
-        len(parts),
+    parts = [result.text for result in results]
+    return PipelineRun(
+        transcript=transcription.stitch_transcripts(parts),
+        model=",".join(dict.fromkeys(result.model for result in results)),
+        segment_count=len(parts),
+        seams=describe_seams(parts),
     )
 
 
@@ -235,7 +277,7 @@ def render_report(report: EvalReport) -> str:
         f"Brain-dump transcription WER — {len(report.files)} file(s)",
         "",
         f"{'file':<20}{'WER':>9}{'sub':>6}{'ins':>6}{'del':>6}"
-        f"{'ref':>8}{'secs':>8}  segments",
+        f"{'ref':>8}{'secs':>8}  {'segments':<10}model",
     ]
     lines.extend(_render_row(result) for result in report.files)
     lines.extend(_render_seams(report))
@@ -263,7 +305,7 @@ def _render_row(result: FileResult) -> str:
         f"{result.name:<20}{result.errors.wer:>9.2%}"
         f"{result.errors.substitutions:>6}{result.errors.insertions:>6}"
         f"{result.errors.deletions:>6}{result.errors.reference_words:>8}"
-        f"{result.latency_secs:>8.1f}  {result.segment_count}"
+        f"{result.latency_secs:>8.1f}  {result.segment_count:<10}{result.model}"
     )
 
 

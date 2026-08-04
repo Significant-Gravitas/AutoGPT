@@ -5,6 +5,7 @@ can narrate honestly, and no failure ever deletes the audio — a failed
 dump stays downloadable and retryable.
 """
 
+import asyncio
 import logging
 import time
 
@@ -118,7 +119,7 @@ async def finalize_voice_dump(
     if not audio:
         # Nothing buffered server-side. The browser still holds every part
         # in IndexedDB, so this is a re-upload prompt, not a lost dump.
-        await db.mark_failed(user_id, "no_audio_received")
+        await db.mark_failed(user_id, recording_id, "no_audio_received")
         return FinalizeResponse(
             status=BrainDumpStatus.failed,
             input_mode=BrainDumpInputMode.voice,
@@ -131,6 +132,7 @@ async def finalize_voice_dump(
 
     await db.update_dump(
         user_id,
+        recording_id,
         status=BrainDumpStatus.transcribing,
         audioPath=audio_path,
         mimeType=mime_type,
@@ -143,9 +145,7 @@ async def finalize_voice_dump(
 
     started_at = time.monotonic()
     try:
-        transcript, language = await transcription.transcribe(
-            audio, filename, duration_secs
-        )
+        result = await transcription.transcribe(audio, filename, duration_secs)
     except Exception as e:
         logger.warning("Brain dump transcription failed for user %s: %s", user_id, e)
         error_code = (
@@ -153,7 +153,7 @@ async def finalize_voice_dump(
             if isinstance(e, transcription.TranscriptionUnavailableError)
             else "transcription_failed"
         )
-        await db.mark_failed(user_id, error_code)
+        await db.mark_failed(user_id, recording_id, error_code)
         return FinalizeResponse(
             status=BrainDumpStatus.failed,
             input_mode=BrainDumpInputMode.voice,
@@ -164,13 +164,14 @@ async def finalize_voice_dump(
         "Brain dump transcribed for user %s in %.1fs (%s chars)",
         user_id,
         time.monotonic() - started_at,
-        len(transcript),
+        len(result.text),
     )
     await db.update_dump(
         user_id,
+        recording_id,
         status=BrainDumpStatus.transcribed,
-        transcript=transcript,
-        transcriptLang=language,
+        transcript=result.text,
+        transcriptLang=result.language,
     )
     # Finalize only does the audio work. Extraction and the Sonnet
     # greeting are LLM calls that can outlive the frontend proxy's 30s
@@ -178,13 +179,14 @@ async def finalize_voice_dump(
     # preparing step polls /status and holds the user until
     # ``greeting_ready`` flips.
     background_tasks.add_task(
-        _run_completion, user_id, transcript, BrainDumpInputMode.voice
+        _run_background_jobs,
+        user_id,
+        recording_id,
+        result.text,
+        BrainDumpInputMode.voice,
     )
-    # Provider recommendations run as their own job — nothing waits on
-    # them, so they must never slow down or fail the greeting pipeline.
-    background_tasks.add_task(_run_provider_recommendations, user_id, transcript)
     return _pipeline_response(
-        BrainDumpStatus.transcribed, transcript, BrainDumpInputMode.voice
+        BrainDumpStatus.transcribed, result.text, BrainDumpInputMode.voice
     )
 
 
@@ -237,9 +239,12 @@ async def finalize_typed_dump(
         )
 
     background_tasks.add_task(
-        _run_completion, user_id, text.strip(), BrainDumpInputMode.typed
+        _run_background_jobs,
+        user_id,
+        recording_id,
+        text.strip(),
+        BrainDumpInputMode.typed,
     )
-    background_tasks.add_task(_run_provider_recommendations, user_id, text.strip())
     return _pipeline_response(
         BrainDumpStatus.transcribed, text.strip(), BrainDumpInputMode.typed
     )
@@ -252,14 +257,38 @@ async def finalize_skipped_dump(user_id: str, recording_id: str) -> FinalizeResp
     the intro endpoint can tell "skipped" apart from "never got here".
     """
     await db.start_dump(user_id, recording_id, BrainDumpInputMode.skipped)
-    await db.update_dump(user_id, status=BrainDumpStatus.completed)
+    await db.update_dump(user_id, recording_id, status=BrainDumpStatus.completed)
     return FinalizeResponse(
         status=BrainDumpStatus.completed, input_mode=BrainDumpInputMode.skipped
     )
 
 
+async def _run_background_jobs(
+    user_id: str,
+    recording_id: str,
+    transcript: str,
+    input_mode: BrainDumpInputMode,
+) -> None:
+    """Run the greeting pipeline and the recommendation job side by side.
+
+    One background task, not two: ``BackgroundTasks`` awaits what it is
+    given strictly in order, so a second entry would not start until the
+    greeting's LLM calls had finished — and would never start at all if
+    something escaped the first one. Gathered here they are genuinely
+    concurrent, and neither can take the other down.
+    """
+    await asyncio.gather(
+        _run_completion(user_id, recording_id, transcript, input_mode),
+        _run_provider_recommendations(user_id, recording_id, transcript),
+        return_exceptions=True,
+    )
+
+
 async def _run_completion(
-    user_id: str, transcript: str, input_mode: BrainDumpInputMode
+    user_id: str,
+    recording_id: str,
+    transcript: str,
+    input_mode: BrainDumpInputMode,
 ) -> None:
     """Background half of the pipeline, run after the response is sent.
 
@@ -268,13 +297,15 @@ async def _run_completion(
     /status) instead of leaving it to hang until its ceiling.
     """
     try:
-        await _extract_and_complete(user_id, transcript, input_mode)
+        await _extract_and_complete(user_id, recording_id, transcript, input_mode)
     except Exception as e:  # background task, nowhere to raise
         logger.error("Brain dump completion failed for user %s: %s", user_id, e)
-        await db.mark_failed(user_id, "understanding_failed")
+        await db.mark_failed(user_id, recording_id, "understanding_failed")
 
 
-async def _run_provider_recommendations(user_id: str, transcript: str) -> None:
+async def _run_provider_recommendations(
+    user_id: str, recording_id: str, transcript: str
+) -> None:
     """The recommendation job, deliberately separate from ``_run_completion``.
 
     It writes only ``recommendedProviders`` — never the dump status — so a
@@ -286,6 +317,7 @@ async def _run_provider_recommendations(user_id: str, transcript: str) -> None:
     try:
         await db.update_dump(
             user_id,
+            recording_id,
             recommendedProviders=Json([r.model_dump() for r in recommendations]),
         )
     except Exception as e:  # background task, nowhere to raise
@@ -327,9 +359,12 @@ def _stored_recommendations(raw: object) -> list[RecommendedProvider]:
 
 
 async def _extract_and_complete(
-    user_id: str, transcript: str, input_mode: BrainDumpInputMode
+    user_id: str,
+    recording_id: str,
+    transcript: str,
+    input_mode: BrainDumpInputMode,
 ) -> FinalizeResponse:
-    await db.update_dump(user_id, status=BrainDumpStatus.extracting)
+    await db.update_dump(user_id, recording_id, status=BrainDumpStatus.extracting)
 
     understanding = await get_business_understanding(user_id)
     formatted = format_brain_dump_for_extraction(
@@ -358,6 +393,7 @@ async def _extract_and_complete(
 
     await db.update_dump(
         user_id,
+        recording_id,
         status=BrainDumpStatus.completed,
         errorCode=None,
         greeting=greeting,

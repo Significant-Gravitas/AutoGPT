@@ -35,6 +35,10 @@ def _parts_key(user_id: str, recording_id: str) -> str:
     return f"onboarding:braindump:parts:{user_id}:{recording_id}"
 
 
+def _sizes_key(user_id: str, recording_id: str) -> str:
+    return f"onboarding:braindump:sizes:{user_id}:{recording_id}"
+
+
 async def _read_parts(user_id: str, recording_id: str) -> dict[str, str]:
     redis = await redis_client.get_redis_async()
     # The shared client runs with ``decode_responses=True``, so values come
@@ -58,23 +62,40 @@ async def append_part(
     Parts are base64-encoded because the shared Redis client decodes
     responses as UTF-8 text — handing it raw opus bytes would round-trip
     them through a lossy decode and corrupt the recording.
+
+    The running total comes from a companion hash of per-part *sizes*
+    rather than from the parts themselves: summing ``hvals`` on the parts
+    would pull every buffered byte back over the wire on every single
+    upload — ~136 MB of live buffers at the 50 MB cap, and quadratic
+    traffic across the ~600 parts of a 30-minute dump. Sizes are keyed by
+    part index, so a replayed part overwrites its own entry instead of
+    being counted twice, and the sum is read inside the same transaction
+    that wrote the part, which is what makes it authoritative.
     """
     redis = await redis_client.get_redis_async()
-    key = _parts_key(user_id, recording_id)
+    parts_key = _parts_key(user_id, recording_id)
+    sizes_key = _sizes_key(user_id, recording_id)
     encoded = base64.b64encode(content).decode("ascii")
     async with redis.pipeline(transaction=True) as pipe:
-        pipe.hset(key, str(part_index), encoded)
-        pipe.expire(key, PART_BUFFER_TTL_SECONDS)
-        pipe.hvals(key)
+        pipe.hset(parts_key, str(part_index), encoded)
+        pipe.hset(sizes_key, str(part_index), str(len(content)))
+        pipe.expire(parts_key, PART_BUFFER_TTL_SECONDS)
+        pipe.expire(sizes_key, PART_BUFFER_TTL_SECONDS)
+        pipe.hvals(sizes_key)
         results = await cast(Awaitable[list[Any]], pipe.execute())
-    values = cast(list[str], results[-1])
-    return sum(_decoded_size(v) for v in values)
+    return _sum_sizes(cast(list[str], results[-1]))
 
 
 async def buffered_size(user_id: str, recording_id: str) -> int:
-    return sum(
-        _decoded_size(v) for v in (await _read_parts(user_id, recording_id)).values()
+    redis = await redis_client.get_redis_async()
+    sizes = await cast(
+        Awaitable[list[str]], redis.hvals(_sizes_key(user_id, recording_id))
     )
+    return _sum_sizes(sizes)
+
+
+def _sum_sizes(sizes: list[str]) -> int:
+    return sum(int(size) for size in sizes)
 
 
 async def assemble_parts(user_id: str, recording_id: str) -> bytes:
@@ -86,15 +107,11 @@ async def assemble_parts(user_id: str, recording_id: str) -> bytes:
     return b"".join(base64.b64decode(value) for _, value in ordered)
 
 
-def _decoded_size(encoded: str) -> int:
-    """Byte length the base64 payload will have once decoded."""
-    padding = encoded.count("=")
-    return (len(encoded) * 3) // 4 - padding
-
-
 async def discard_parts(user_id: str, recording_id: str) -> None:
     redis = await redis_client.get_redis_async()
-    await redis.delete(_parts_key(user_id, recording_id))
+    await redis.delete(
+        _parts_key(user_id, recording_id), _sizes_key(user_id, recording_id)
+    )
 
 
 async def store_audio(user_id: str, content: bytes, filename: str) -> str:

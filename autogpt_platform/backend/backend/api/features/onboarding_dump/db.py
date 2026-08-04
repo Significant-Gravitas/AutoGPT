@@ -55,6 +55,11 @@ async def start_dump(
         "status": BrainDumpStatus.recording_uploaded,
         "inputMode": input_mode,
         "errorCode": None,
+        # Only ever set to True, and read as "never show a greeting
+        # again". A user who sent a message before recording would
+        # otherwise run the whole pipeline for a greeting the intro
+        # endpoint short-circuits away.
+        "greetingSeen": False,
     }
     return await OnboardingBrainDump.prisma().upsert(
         where={"userId": user_id},
@@ -65,17 +70,26 @@ async def start_dump(
     )
 
 
-async def update_dump(user_id: str, **fields: Any) -> OnboardingBrainDump | None:
-    """Advance the user's dump row.
+async def update_dump(user_id: str, recording_id: str, **fields: Any) -> bool:
+    """Advance one take's row, and only that take's.
 
-    Returns ``None`` when there is no row — a status update for a take
-    that was never started is a no-op, not an error, so a late-arriving
-    retry can't resurrect a deleted user's dump.
+    ``recordingId`` is part of the ``WHERE`` on purpose. There is one row
+    per user, so a second tab starting a new take moves the row on while
+    the old take's transcription is still running — minutes, for a long
+    dump. Scoped on ``userId`` alone, that old take's transcript, greeting
+    and failure code all land on the *new* take's row, and the new
+    recording is never transcribed at all.
+
+    Returns ``False`` when nothing matched: no row (a status update for a
+    take that was never started is a no-op, not an error, so a
+    late-arriving retry can't resurrect a deleted user's dump) or a take
+    that has since been superseded.
     """
-    return await OnboardingBrainDump.prisma().update(
-        where={"userId": user_id},
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={"userId": user_id, "recordingId": recording_id},
         data=fields,
     )
+    return updated == 1
 
 
 async def claim_transition(
@@ -104,9 +118,11 @@ async def claim_transition(
     return updated == 1
 
 
-async def mark_failed(user_id: str, error_code: str) -> None:
+async def mark_failed(user_id: str, recording_id: str, error_code: str) -> None:
     """Record a terminal failure without ever dropping the stored audio."""
-    await update_dump(user_id, status=BrainDumpStatus.failed, errorCode=error_code)
+    await update_dump(
+        user_id, recording_id, status=BrainDumpStatus.failed, errorCode=error_code
+    )
 
 
 async def mark_greeting_seen(user_id: str) -> None:

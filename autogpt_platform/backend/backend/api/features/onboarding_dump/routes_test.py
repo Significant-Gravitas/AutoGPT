@@ -17,6 +17,7 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import routes
 from backend.api.features.onboarding_dump.models import (
+    MAX_DURATION_SECS,
     MAX_PART_BYTES,
     MAX_RECORDING_BYTES,
     SuggestedPrompt,
@@ -35,6 +36,7 @@ RECORDING_URL = "/onboarding/brain-dump/recording"
 DISCARD_URL = "/onboarding/brain-dump/"
 INTRO_URL = "/onboarding/brain-dump/intro"
 INTRO_COMPLETE_URL = "/onboarding/brain-dump/intro/complete"
+RECOMMENDED_URL = "/onboarding/brain-dump/recommended-providers"
 
 RECORDING_ID = "rec-1"
 TRANSCRIPT = "I run a small bakery and I want the weekly order emails handled."
@@ -80,21 +82,22 @@ class DumpStore:
             greetingSeen=False,
             audioPath=None,
             errorCode=None,
+            recommendedProviders=None,
         )
         self.statuses.append(BrainDumpStatus.recording_uploaded)
         return self.row
 
-    async def update_dump(
-        self, user_id: str, **fields: Any
-    ) -> OnboardingBrainDump | None:
-        if self.row is None:
-            return None
+    async def update_dump(self, user_id: str, recording_id: str, **fields: Any) -> bool:
+        # Mirrors the scoped UPDATE: a write from a take the row has
+        # already moved past hits nothing.
+        if self.row is None or self.row.recordingId != recording_id:
+            return False
         for name, value in fields.items():
             setattr(self.row, name, value)
         status = fields.get("status")
         if status is not None:
             self.statuses.append(status)
-        return self.row
+        return True
 
     async def claim_transition(
         self,
@@ -112,12 +115,17 @@ class DumpStore:
             or self.row.status != expected
         ):
             return False
-        await self.update_dump(user_id, status=new, **fields)
+        await self.update_dump(user_id, recording_id, status=new, **fields)
         return True
 
-    async def mark_failed(self, user_id: str, error_code: str) -> None:
+    async def mark_failed(
+        self, user_id: str, recording_id: str, error_code: str
+    ) -> None:
         await self.update_dump(
-            user_id, status=BrainDumpStatus.failed, errorCode=error_code
+            user_id,
+            recording_id,
+            status=BrainDumpStatus.failed,
+            errorCode=error_code,
         )
 
     async def mark_greeting_seen(self, user_id: str) -> None:
@@ -410,6 +418,21 @@ def test_typed_finalize_skips_audio_and_extracts_directly(
     stt_create.assert_not_awaited()
 
 
+def test_a_duration_past_the_ceiling_is_rejected(stt_create: AsyncMock):
+    """``duration_secs`` is not just metadata — it bounds the split loop.
+
+    An unmuxed MediaRecorder stream carries no container duration, so the
+    client's number is what ``split_audio`` iterates over: one ffmpeg run
+    and one billed transcription per 10 minutes of whatever is claimed.
+    """
+    upload_part()
+
+    response = finalize(duration_secs=MAX_DURATION_SECS + 1)
+
+    assert response.status_code == 422
+    stt_create.assert_not_awaited()
+
+
 def test_typed_finalize_with_empty_text_is_rejected():
     response = finalize(input_mode="typed", text="   ")
 
@@ -505,6 +528,38 @@ def test_intro_returns_greeting_and_prompts_before_completion(dumps: DumpStore):
     assert all(p["title"] and p["prompt"] for p in body["prompts"])
 
 
+def test_recommended_providers_are_pending_until_the_job_writes(dumps: DumpStore):
+    upload_part()
+    finalize()
+    assert dumps.row is not None
+    # A null column is the job still running, not "nothing to recommend".
+    dumps.row.recommendedProviders = None
+
+    response = client.get(RECOMMENDED_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {"ready": False, "providers": []}
+
+
+def test_recommended_providers_returns_the_stored_picks(dumps: DumpStore):
+    upload_part()
+    finalize()
+    assert dumps.row is not None
+    dumps.row.recommendedProviders = [
+        {"provider": "github", "reason": "You mentioned chasing issues."}
+    ]
+
+    response = client.get(RECOMMENDED_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ready": True,
+        "providers": [
+            {"provider": "github", "reason": "You mentioned chasing issues."}
+        ],
+    }
+
+
 @pytest.mark.parametrize(
     "call",
     [
@@ -515,8 +570,18 @@ def test_intro_returns_greeting_and_prompts_before_completion(dumps: DumpStore):
         lambda: client.delete(DISCARD_URL),
         lambda: client.get(INTRO_URL),
         lambda: client.post(INTRO_COMPLETE_URL),
+        lambda: client.get(RECOMMENDED_URL),
     ],
-    ids=["parts", "finalize", "status", "recording", "discard", "intro", "complete"],
+    ids=[
+        "parts",
+        "finalize",
+        "status",
+        "recording",
+        "discard",
+        "intro",
+        "complete",
+        "recommended-providers",
+    ],
 )
 def test_every_endpoint_is_404_when_the_flag_is_off(
     monkeypatch: pytest.MonkeyPatch, call

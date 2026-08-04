@@ -167,10 +167,10 @@ async def finalize_brain_dump(
             background_tasks,
         )
     except VirusDetectedError as e:
-        await db.mark_failed(user_id, "virus_detected")
+        await db.mark_failed(user_id, request.recording_id, "virus_detected")
         raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
     except VirusScanError as e:
-        await db.mark_failed(user_id, "virus_scan_failed")
+        await db.mark_failed(user_id, request.recording_id, "virus_scan_failed")
         raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
 
 

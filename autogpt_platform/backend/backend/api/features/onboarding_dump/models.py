@@ -25,6 +25,14 @@ MAX_RECORDING_BYTES = 50 * 1024 * 1024
 # composer is a paragraph or two, so cap well below that.
 MAX_TYPED_CHARS = 20_000
 
+# The client stops recording at 30 minutes, and this number is not just
+# metadata: an unmuxed MediaRecorder stream carries no container duration,
+# so it becomes the loop bound in ``transcription.split_audio`` — one
+# ffmpeg run and one billed STT call per 10 minutes of it. Four hours
+# leaves room for clock skew and a paused-and-resumed take while keeping
+# a hostile value from turning a 10 KB upload into six figures of both.
+MAX_DURATION_SECS = 4 * 60 * 60
+
 ALLOWED_AUDIO_MIME_TYPES = frozenset(
     {
         "audio/webm",
@@ -54,7 +62,7 @@ class FinalizeRequest(BaseModel):
 
     recording_id: RecordingId
     input_mode: BrainDumpInputMode = BrainDumpInputMode.voice
-    duration_secs: float | None = Field(default=None, ge=0)
+    duration_secs: float | None = Field(default=None, ge=0, le=MAX_DURATION_SECS)
     mime_type: str | None = None
     text: str | None = Field(default=None, max_length=MAX_TYPED_CHARS)
 
@@ -71,10 +79,10 @@ class DumpStatusResponse(BaseModel):
     input_mode: BrainDumpInputMode | None = None
     error_code: str | None = None
     has_audio: bool = False
+    greeting_ready: bool = False
     """True once the copilot greeting is stored and ready to render — the
     onboarding loading screen holds the user until this flips (or the
     pipeline terminally fails)."""
-    greeting_ready: bool = False
 
 
 class SuggestedPrompt(BaseModel):
@@ -104,10 +112,10 @@ class IntroCardResponse(BaseModel):
     greeting: str
     prompts: list[SuggestedPrompt] = []
     greeting_done: bool = False
+    transcript: str | None = None
     """The full transcript of the recorded dump, so the greeting page can
     offer a copy button. Only present on Path A while the greeting is
     still showing."""
-    transcript: str | None = None
 
 
 class RecommendedProvider(BaseModel):

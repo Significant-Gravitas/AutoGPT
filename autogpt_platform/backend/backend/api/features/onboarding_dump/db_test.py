@@ -89,7 +89,36 @@ async def test_a_new_recording_id_always_claims_the_row(
     await db.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
 
     upsert.assert_awaited_once()
-    assert upsert.await_args.kwargs["data"]["update"]["recordingId"] == RECORDING_ID
+    update = upsert.await_args.kwargs["data"]["update"]
+    assert update["recordingId"] == RECORDING_ID
+    # ``greetingSeen`` is only ever written True and short-circuits the
+    # intro endpoint, so a new take that inherited it would run the whole
+    # pipeline for a greeting that can never render.
+    assert update["greetingSeen"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_write_for_a_superseded_take_hits_nothing(mocker: MockerFixture):
+    """Post-claim writes are scoped to the take that made them.
+
+    One row per user means a second tab's take can own the row by the time
+    a long transcription finishes. On ``userId`` alone the old take's
+    transcript and greeting land on the new take's row.
+    """
+    update_many = AsyncMock(return_value=0)
+    mocker.patch.object(
+        OnboardingBrainDump,
+        "prisma",
+        MagicMock(return_value=MagicMock(update_many=update_many)),
+    )
+
+    updated = await db.update_dump(USER_ID, RECORDING_ID, transcript="anything")
+
+    assert updated is False
+    assert update_many.await_args.kwargs["where"] == {
+        "userId": USER_ID,
+        "recordingId": RECORDING_ID,
+    }
 
 
 @pytest.mark.asyncio

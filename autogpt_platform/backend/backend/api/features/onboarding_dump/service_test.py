@@ -16,7 +16,7 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import intro, prompts, service
+from backend.api.features.onboarding_dump import intro, prompts, service, transcription
 from backend.data.understanding import BusinessUnderstandingInput
 
 USER_ID = "user-1"
@@ -73,11 +73,11 @@ class DumpStore:
         self.statuses.append(BrainDumpStatus.recording_uploaded)
         return self.row
 
-    async def update_dump(
-        self, user_id: str, **fields: Any
-    ) -> OnboardingBrainDump | None:
-        if self.row is None:
-            return None
+    async def update_dump(self, user_id: str, recording_id: str, **fields: Any) -> bool:
+        # Mirrors the scoped UPDATE: a write from a take the row has
+        # already moved past hits nothing.
+        if self.row is None or self.row.recordingId != recording_id:
+            return False
         for name, value in fields.items():
             setattr(self.row, name, value)
         status = fields.get("status")
@@ -85,7 +85,7 @@ class DumpStore:
             self.statuses.append(status)
         if "transcript" in fields:
             self.transcripts.append(fields["transcript"])
-        return self.row
+        return True
 
     async def claim_transition(
         self,
@@ -103,12 +103,17 @@ class DumpStore:
             or self.row.status != expected
         ):
             return False
-        await self.update_dump(user_id, status=new, **fields)
+        await self.update_dump(user_id, recording_id, status=new, **fields)
         return True
 
-    async def mark_failed(self, user_id: str, error_code: str) -> None:
+    async def mark_failed(
+        self, user_id: str, recording_id: str, error_code: str
+    ) -> None:
         await self.update_dump(
-            user_id, status=BrainDumpStatus.failed, errorCode=error_code
+            user_id,
+            recording_id,
+            status=BrainDumpStatus.failed,
+            errorCode=error_code,
         )
 
 
@@ -139,7 +144,11 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
 
 @pytest.fixture(autouse=True)
 def transcribe(mocker: MockerFixture) -> AsyncMock:
-    mock = AsyncMock(return_value=(TRANSCRIPT, "en"))
+    mock = AsyncMock(
+        return_value=transcription.TranscriptionResult(
+            text=TRANSCRIPT, language="en", model="gpt-4o-transcribe"
+        )
+    )
     mocker.patch(
         "backend.api.features.onboarding_dump.transcription.transcribe", new=mock
     )
@@ -327,14 +336,6 @@ async def test_two_concurrent_voice_finalizes_only_process_the_take_once(
         ),
     )
 
-    print(
-        "DBG transcribe:",
-        transcribe.await_count,
-        "store:",
-        storage_mocks["store_audio"].await_count,
-        "statuses:",
-        dumps.statuses,
-    )
     transcribe.assert_awaited_once()
     storage_mocks["store_audio"].assert_awaited_once()
 
@@ -445,6 +446,37 @@ async def test_a_voice_finalize_for_a_superseded_take_reports_its_own_take(
 
 
 @pytest.mark.asyncio
+async def test_a_take_superseded_mid_transcription_never_writes_to_the_new_row(
+    dumps: DumpStore, transcribe: AsyncMock
+):
+    """The old take loses the row the moment a second tab claims it.
+
+    Transcription can run for minutes. Scoped on ``userId`` alone, every
+    write after the claim — transcript, status, greeting, failure code —
+    landed on whatever take held the row by the time it finished. The new
+    recording then looked already-transcribed to the idempotency guard
+    and was never transcribed at all.
+    """
+    await start_voice_take(dumps)
+
+    async def supersede(*args: Any, **kwargs: Any):
+        await dumps.start_dump(USER_ID, "rec-2", BrainDumpInputMode.voice)
+        return transcription.TranscriptionResult(
+            text=TRANSCRIPT, language="en", model="gpt-4o-transcribe"
+        )
+
+    transcribe.side_effect = supersede
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.recordingId == "rec-2"
+    assert dumps.row.transcript is None
+    assert dumps.row.greeting is None
+    assert dumps.row.status == BrainDumpStatus.recording_uploaded
+
+
+@pytest.mark.asyncio
 async def test_finalizing_a_take_that_never_uploaded_writes_no_row(
     dumps: DumpStore, storage_mocks: dict[str, AsyncMock], transcribe: AsyncMock
 ):
@@ -518,7 +550,9 @@ async def test_long_transcript_is_stored_whole(
     dumps: DumpStore, transcribe: AsyncMock, extraction: dict[str, AsyncMock]
 ):
     await start_voice_take(dumps)
-    transcribe.return_value = (LONG_TRANSCRIPT, "en")
+    transcribe.return_value = transcription.TranscriptionResult(
+        text=LONG_TRANSCRIPT, language="en", model="gpt-4o-transcribe"
+    )
 
     await finalize_voice(duration_secs=900.0)
 
@@ -534,6 +568,7 @@ async def test_intro_card_takes_path_a_with_the_stored_greeting(dumps: DumpStore
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
     await dumps.update_dump(
         USER_ID,
+        RECORDING_ID,
         status=BrainDumpStatus.completed,
         transcript=TRANSCRIPT,
         greeting="You mentioned the weekly order emails.",
@@ -555,7 +590,7 @@ async def test_intro_card_takes_path_a_with_the_stored_greeting(dumps: DumpStore
 @pytest.mark.asyncio
 async def test_intro_card_takes_path_b_when_the_user_skipped(dumps: DumpStore):
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.skipped)
-    await dumps.update_dump(USER_ID, status=BrainDumpStatus.completed)
+    await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.completed)
 
     card = await service.get_intro_card(USER_ID)
 
@@ -570,7 +605,11 @@ async def test_intro_card_takes_path_b_when_the_user_skipped(dumps: DumpStore):
 async def test_intro_card_takes_path_b_when_the_transcript_is_empty(dumps: DumpStore):
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
     await dumps.update_dump(
-        USER_ID, status=BrainDumpStatus.failed, transcript="   ", errorCode="whatever"
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.failed,
+        transcript="   ",
+        errorCode="whatever",
     )
 
     card = await service.get_intro_card(USER_ID)
@@ -594,6 +633,7 @@ async def test_intro_card_is_withheld_once_the_greeting_was_seen(dumps: DumpStor
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
     await dumps.update_dump(
         USER_ID,
+        RECORDING_ID,
         status=BrainDumpStatus.completed,
         transcript=TRANSCRIPT,
         greeting="You mentioned the weekly order emails.",
@@ -616,7 +656,7 @@ async def test_intro_card_falls_back_when_the_greeting_was_never_generated(
     # failed. Still Path A — we did hear them — just without the prose.
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
     await dumps.update_dump(
-        USER_ID, status=BrainDumpStatus.completed, transcript=TRANSCRIPT
+        USER_ID, RECORDING_ID, status=BrainDumpStatus.completed, transcript=TRANSCRIPT
     )
 
     card = await service.get_intro_card(USER_ID)

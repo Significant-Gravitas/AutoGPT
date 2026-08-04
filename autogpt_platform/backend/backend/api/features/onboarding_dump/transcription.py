@@ -18,10 +18,13 @@ import logging
 import math
 import os
 import shutil
+import string
 import tempfile
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
+from backend.util.cache import cached
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -44,6 +47,12 @@ SEGMENT_SUFFIX = ".ogg"
 # of overlap means the word survives in at least one segment and the
 # stitcher drops the duplicate.
 SEGMENT_OVERLAP_SECONDS = 5
+# ``-ss`` past the end of the stream is not an error: ffmpeg exits 0 and
+# writes a container with nothing in it. Any real segment is orders of
+# magnitude bigger than an empty ogg/opus header, so this is how the
+# segment loop finds the true end of an audio whose claimed duration is
+# longer than what is actually there.
+MIN_SEGMENT_BYTES = 1024
 
 TRANSCRIBE_TIMEOUT_SECONDS = 180
 MAX_ATTEMPTS = 3
@@ -57,14 +66,30 @@ class TranscriptionFailedError(RuntimeError):
     """Every model and retry was exhausted."""
 
 
+class TranscriptionResult(BaseModel):
+    """One transcription, plus which model actually produced it.
+
+    ``model`` matters because the fallback is silent: a run that thinks it
+    measured ``gpt-4o-transcribe`` may be reading ``whisper-1``'s output.
+    For a stitched transcript it lists every model that contributed.
+    """
+
+    text: str
+    language: str | None = None
+    model: str
+
+
+@cached(ttl_seconds=3600)
 def get_stt_client() -> AsyncOpenAI | None:
-    """Return a client that can reach the audio-transcriptions endpoint.
+    """Return a process-cached client for the audio-transcriptions endpoint.
 
     Deliberately not ``backend.util.clients.get_openai_client()``: that
     helper falls back to OpenRouter, which does not implement
     ``/audio/transcriptions``, so a deployment with only an OpenRouter key
     would get a confusing 404 from the provider instead of a clean
-    "not configured" error here.
+    "not configured" error here. Cached like every other client helper in
+    the repo — a fresh ``AsyncOpenAI`` per finalize is a fresh httpx pool
+    that nothing ever closes.
     """
     api_key = (
         settings.secrets.openai_internal_api_key or settings.secrets.openai_api_key
@@ -78,12 +103,13 @@ async def transcribe(
     audio: bytes,
     filename: str,
     duration_secs: float | None = None,
-) -> tuple[str, str | None]:
-    """Transcribe ``audio``, returning ``(transcript, language)``.
+) -> TranscriptionResult:
+    """Transcribe ``audio``.
 
     ``language`` is never passed to the provider — a non-English dump must
     transcribe in the language it was spoken in, never error or silently
-    translate.
+    translate. It is also not reported for a stitched transcript, where
+    the per-segment answers can disagree.
     """
     client = get_stt_client()
     if client is None:
@@ -100,16 +126,19 @@ async def transcribe(
 
     segments = await split_audio(audio, filename, duration_secs)
     logger.info("Brain dump split into %s segments for transcription", len(segments))
-    transcripts = [
-        (await _transcribe_one(client, segment, f"segment-{index}{SEGMENT_SUFFIX}"))[0]
+    results = [
+        await _transcribe_one(client, segment, f"segment-{index}{SEGMENT_SUFFIX}")
         for index, segment in enumerate(segments)
     ]
-    return stitch_transcripts(transcripts), None
+    return TranscriptionResult(
+        text=stitch_transcripts([result.text for result in results]),
+        model=",".join(dict.fromkeys(result.model for result in results)),
+    )
 
 
 async def _transcribe_one(
     client: AsyncOpenAI, audio: bytes, filename: str
-) -> tuple[str, str | None]:
+) -> TranscriptionResult:
     last_error: Exception | None = None
     for model in (PRIMARY_MODEL, FALLBACK_MODEL):
         for attempt in range(MAX_ATTEMPTS):
@@ -122,7 +151,11 @@ async def _transcribe_one(
                     timeout=TRANSCRIBE_TIMEOUT_SECONDS,
                 )
                 language = getattr(response, "language", None)
-                return response.text, language if isinstance(language, str) else None
+                return TranscriptionResult(
+                    text=response.text,
+                    language=language if isinstance(language, str) else None,
+                    model=model,
+                )
             except Exception as e:  # retried across models below
                 last_error = e
                 logger.warning(
@@ -145,6 +178,10 @@ async def split_audio(
     this is a real container-aware re-cut. Segments are re-encoded to
     16 kHz mono opus, which is what the STT models downsample to anyway
     and keeps every segment far inside the request cap.
+
+    ``duration_hint`` is only ever an upper bound: it usually comes from
+    the browser's wall clock, so the loop stops at the first empty segment
+    rather than trusting it to the second.
     """
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -190,7 +227,13 @@ async def split_audio(
                 "libopus",
                 target,
             )
-            segments.append(await asyncio.to_thread(_read_file, target))
+            segment = await asyncio.to_thread(_read_file, target)
+            if len(segment) < MIN_SEGMENT_BYTES:
+                # Past the real end of the audio. Everything from here on
+                # would be another empty container, another ffmpeg run and
+                # another billed transcription of silence.
+                break
+            segments.append(segment)
             start += SEGMENT_SECONDS
             index += 1
         return segments
@@ -295,7 +338,21 @@ MAX_OVERLAP_WORDS = 40
 
 def _overlap_length(left: list[str], right: list[str]) -> int:
     limit = min(MAX_OVERLAP_WORDS, len(left), len(right))
+    normalised_left = [_seam_word(w) for w in left[-limit:]] if limit else []
+    normalised_right = [_seam_word(w) for w in right[:limit]] if limit else []
     for size in range(limit, 0, -1):
-        if [w.lower() for w in left[-size:]] == [w.lower() for w in right[:size]]:
+        if normalised_left[-size:] == normalised_right[:size]:
             return size
     return 0
+
+
+def _seam_word(word: str) -> str:
+    """Fold a word to what the seam comparison should care about.
+
+    STT models punctuate each segment as if it were a whole utterance, so
+    the same spoken word comes back as ``schedule.`` at the end of one
+    segment and ``schedule`` at the start of the next. Comparing them raw
+    finds no overlap at all and the whole 5s overlap is duplicated into
+    the stitched transcript at every seam.
+    """
+    return word.lower().strip(string.punctuation)
