@@ -7,12 +7,25 @@ be retried safely.
 
 from typing import Any
 
+from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 
 
 async def get_dump(user_id: str) -> OnboardingBrainDump | None:
     return await OnboardingBrainDump.prisma().find_unique(where={"userId": user_id})
+
+
+async def owns_dump(user_id: str, recording_id: str) -> bool:
+    """Whether ``recording_id`` is still the take the row belongs to.
+
+    Row writes carry their own ``recordingId`` guard, but the business
+    understanding is shared user context with no take on it. A background
+    job for a superseded take has to be told to stop before it writes
+    there, and this is what tells it.
+    """
+    dump = await get_dump(user_id)
+    return dump is not None and dump.recordingId == recording_id
 
 
 # A take that has reached any of these is being processed, or is already
@@ -27,6 +40,31 @@ _IN_FLIGHT_STATUSES = frozenset(
     }
 )
 
+# Everything a single take owns. One row per user means a new take
+# inherits whatever the last one left here, so unless these are cleared
+# ``/recording``, ``/intro`` and ``/recommended-providers`` keep serving
+# the *previous* take's audio, transcript, greeting and picks whenever the
+# new one fails, is skipped or is abandoned half-recorded.
+#
+# ``greetingSeen`` belongs with them. It is only ever written True and
+# short-circuits the intro endpoint, so a new take that inherited it would
+# run the whole pipeline for a greeting that could never render. Clearing
+# it is only safe *because* the transcript goes too: a take that never
+# produces a greeting leaves nothing to reflect back, so the intro falls
+# through to Path B rather than waiting on a greeting that isn't coming.
+_TAKE_OWNED_RESET: dict[str, Any] = {
+    "audioPath": None,
+    "mimeType": None,
+    "sizeBytes": None,
+    "durationSecs": None,
+    "transcript": None,
+    "transcriptLang": None,
+    "greeting": None,
+    "suggestedPrompts": Json([]),
+    "recommendedProviders": None,
+    "greetingSeen": False,
+}
+
 
 async def start_dump(
     user_id: str,
@@ -40,7 +78,9 @@ async def start_dump(
     every part on disk, part 0 included, and a repeated finalize — and
     neither should reset an in-flight transcription to
     ``recording_uploaded``. A *different* recording id is a genuinely new
-    take and always claims the row.
+    take and always claims the row, taking every take-owned column with
+    it; a retry of the *same* id keeps what that take has produced so
+    far, because it still needs it.
     """
     existing = await get_dump(user_id)
     if (
@@ -50,16 +90,13 @@ async def start_dump(
     ):
         return existing
 
+    is_new_take = existing is None or existing.recordingId != recording_id
     fields: dict[str, Any] = {
         "recordingId": recording_id,
         "status": BrainDumpStatus.recording_uploaded,
         "inputMode": input_mode,
         "errorCode": None,
-        # Only ever set to True, and read as "never show a greeting
-        # again". A user who sent a message before recording would
-        # otherwise run the whole pipeline for a greeting the intro
-        # endpoint short-circuits away.
-        "greetingSeen": False,
+        **(_TAKE_OWNED_RESET if is_new_take else {}),
     }
     return await OnboardingBrainDump.prisma().upsert(
         where={"userId": user_id},

@@ -364,27 +364,25 @@ async def _extract_and_complete(
     transcript: str,
     input_mode: BrainDumpInputMode,
 ) -> FinalizeResponse:
-    await db.update_dump(user_id, recording_id, status=BrainDumpStatus.extracting)
+    # Losing this write means a newer take owns the row. The row writes
+    # below would all no-op on their own, but the business understanding
+    # is shared user context with no recording id on it — carrying on
+    # would fold an abandoned take's transcript into the context the live
+    # take is about to write. So the whole job stops here.
+    if not await db.update_dump(
+        user_id, recording_id, status=BrainDumpStatus.extracting
+    ):
+        return _superseded_response(user_id, input_mode)
 
-    understanding = await get_business_understanding(user_id)
-    formatted = format_brain_dump_for_extraction(
-        user_name=(understanding.user_name if understanding else None) or "",
-        user_role=(understanding.user_role if understanding else None) or "",
-        transcript=transcript,
-    )
-
-    try:
-        extracted = await extract_business_understanding(formatted)
-    except Exception as e:
-        # A failed extraction must not cost the user their transcript: the
-        # raw text still lands in the understanding, so the copilot's
-        # <user_context> is personalised even without structured fields.
-        logger.warning("Brain dump extraction failed for user %s: %s", user_id, e)
-        extracted = BusinessUnderstandingInput.model_construct()
-
+    extracted = await _extract_understanding(user_id, transcript)
     extracted.additional_notes = _append_note(
         extracted.additional_notes, transcript, input_mode
     )
+    # Re-checked rather than inferred from the claim above: extraction is
+    # an LLM call, so the row has had seconds — minutes, for a long
+    # transcript — to change hands since.
+    if not await db.owns_dump(user_id, recording_id):
+        return _superseded_response(user_id, input_mode)
     await upsert_business_understanding(user_id, extracted)
 
     # Generated here, while the onboarding loading screen is still up, so
@@ -400,6 +398,34 @@ async def _extract_and_complete(
         suggestedPrompts=Json([p.model_dump() for p in suggested_prompts]),
     )
     return _completed_response(transcript, input_mode)
+
+
+async def _extract_understanding(
+    user_id: str, transcript: str
+) -> BusinessUnderstandingInput:
+    understanding = await get_business_understanding(user_id)
+    formatted = format_brain_dump_for_extraction(
+        user_name=(understanding.user_name if understanding else None) or "",
+        user_role=(understanding.user_role if understanding else None) or "",
+        transcript=transcript,
+    )
+    try:
+        return await extract_business_understanding(formatted)
+    except Exception as e:
+        # A failed extraction must not cost the user their transcript: the
+        # raw text still lands in the understanding, so the copilot's
+        # <user_context> is personalised even without structured fields.
+        logger.warning("Brain dump extraction failed for user %s: %s", user_id, e)
+        return BusinessUnderstandingInput.model_construct()
+
+
+def _superseded_response(
+    user_id: str, input_mode: BrainDumpInputMode
+) -> FinalizeResponse:
+    logger.info("Brain dump take for user %s superseded; stopping", user_id)
+    return FinalizeResponse(
+        status=BrainDumpStatus.failed, input_mode=input_mode, error_code="superseded"
+    )
 
 
 def _append_note(

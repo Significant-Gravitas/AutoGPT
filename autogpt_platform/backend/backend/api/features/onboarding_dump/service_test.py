@@ -16,7 +16,13 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import intro, prompts, service, transcription
+from backend.api.features.onboarding_dump import (
+    db,
+    intro,
+    prompts,
+    service,
+    transcription,
+)
 from backend.data.understanding import BusinessUnderstandingInput
 
 USER_ID = "user-1"
@@ -24,6 +30,15 @@ RECORDING_ID = "rec-1"
 TRANSCRIPT = "I run a bakery and want the weekly order emails handled."
 AUDIO_PATH = "brain-dumps/rec-1.webm"
 LONG_TRANSCRIPT = "the bakery ships pastries every friday morning " * 400
+
+# The columns a new take clears, taken from the module under test so this
+# fake cannot drift from it. A real read returns ``suggestedPrompts`` as a
+# plain list rather than the ``Json`` wrapper used to write it.
+_NEW_TAKE_COLUMNS: dict[str, Any] = {
+    **db._TAKE_OWNED_RESET,
+    "suggestedPrompts": [],
+    "errorCode": None,
+}
 
 
 class DumpStore:
@@ -36,6 +51,9 @@ class DumpStore:
 
     async def get_dump(self, user_id: str) -> OnboardingBrainDump | None:
         return self.row
+
+    async def owns_dump(self, user_id: str, recording_id: str) -> bool:
+        return self.row is not None and self.row.recordingId == recording_id
 
     async def start_dump(
         self, user_id: str, recording_id: str, input_mode: BrainDumpInputMode
@@ -55,21 +73,24 @@ class DumpStore:
             )
         ):
             return self.row
-        # model_construct skips defaults, so every column the code under
-        # test reads has to be seeded explicitly — otherwise a plain
-        # attribute access raises instead of returning the DB default.
-        self.row = OnboardingBrainDump.model_construct(
-            userId=user_id,
-            recordingId=recording_id,
-            status=BrainDumpStatus.recording_uploaded,
-            inputMode=input_mode,
-            transcript=None,
-            greeting=None,
-            suggestedPrompts=[],
-            greetingSeen=False,
-            audioPath=None,
-            errorCode=None,
-        )
+        if self.row is not None and self.row.recordingId == recording_id:
+            # A retry of the same take: it keeps everything it has already
+            # produced, exactly as the real claim does.
+            self.row.status = BrainDumpStatus.recording_uploaded
+            self.row.inputMode = input_mode
+            self.row.errorCode = None
+        else:
+            # model_construct skips defaults, so every column the code
+            # under test reads has to be seeded explicitly — otherwise a
+            # plain attribute access raises instead of returning the DB
+            # default. A different take starts from the cleared set.
+            self.row = OnboardingBrainDump.model_construct(
+                userId=user_id,
+                recordingId=recording_id,
+                status=BrainDumpStatus.recording_uploaded,
+                inputMode=input_mode,
+                **_NEW_TAKE_COLUMNS,
+            )
         self.statuses.append(BrainDumpStatus.recording_uploaded)
         return self.row
 
@@ -122,6 +143,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     store = DumpStore()
     module = "backend.api.features.onboarding_dump.db"
     mocker.patch(f"{module}.get_dump", new=store.get_dump)
+    mocker.patch(f"{module}.owns_dump", new=store.owns_dump)
     mocker.patch(f"{module}.start_dump", new=store.start_dump)
     mocker.patch(f"{module}.update_dump", new=store.update_dump)
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
@@ -474,6 +496,112 @@ async def test_a_take_superseded_mid_transcription_never_writes_to_the_new_row(
     assert dumps.row.transcript is None
     assert dumps.row.greeting is None
     assert dumps.row.status == BrainDumpStatus.recording_uploaded
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_take_never_writes_to_the_shared_understanding(
+    dumps: DumpStore, extraction: dict[str, AsyncMock]
+):
+    """The background half has to stop, not just fail to write its row.
+
+    Row writes carry a ``recordingId`` guard so they no-op once a second
+    tab owns the row, but the business understanding is shared user
+    context with no take on it. An abandoned take that kept going folded
+    its transcript into the context the live take is about to write.
+    """
+    await start_voice_take(dumps)
+    background = BackgroundTasks()
+    await service.finalize_voice_dump(USER_ID, RECORDING_ID, 12.0, None, background)
+    # A second tab claims the row between the response and the background
+    # half that starlette runs after it.
+    await dumps.start_dump(USER_ID, "rec-2", BrainDumpInputMode.voice)
+
+    await background()
+
+    extraction["upsert_business_understanding"].assert_not_awaited()
+    assert dumps.row is not None
+    assert dumps.row.recordingId == "rec-2"
+    assert dumps.row.status == BrainDumpStatus.recording_uploaded
+
+
+@pytest.mark.asyncio
+async def test_a_take_superseded_during_extraction_stops_before_the_understanding(
+    dumps: DumpStore, extraction: dict[str, AsyncMock]
+):
+    """Ownership is re-checked next to the understanding write.
+
+    Extraction is an LLM call, so passing the claim before it says
+    nothing about who owns the row after it.
+    """
+    await start_voice_take(dumps)
+
+    async def supersede(*args: Any, **kwargs: Any) -> BusinessUnderstandingInput:
+        await dumps.start_dump(USER_ID, "rec-2", BrainDumpInputMode.voice)
+        return BusinessUnderstandingInput.model_construct()
+
+    extraction["extract_business_understanding"].side_effect = supersede
+
+    await finalize_voice()
+
+    extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_new_take_never_serves_the_previous_takes_answers(dumps: DumpStore):
+    """One row per user, so a new take inherits the last one's columns.
+
+    Left there, the user re-records, gets nowhere, and the copilot greets
+    them with the greeting and transcript of a take they replaced —
+    while ``/recording`` hands back its audio.
+    """
+    await start_voice_take(dumps)
+    await finalize_voice()
+    await dumps.update_dump(USER_ID, RECORDING_ID, greetingSeen=True)
+    assert dumps.row is not None and dumps.row.greeting
+
+    # They record again and never finish this one.
+    await dumps.start_dump(USER_ID, "rec-2", BrainDumpInputMode.voice)
+
+    card = await service.get_intro_card(USER_ID)
+    providers = await service.get_recommended_providers(USER_ID)
+
+    assert dumps.row.transcript is None
+    assert dumps.row.greeting is None
+    assert dumps.row.audioPath is None
+    assert card.path == "B"
+    assert card.greeting == prompts.PATH_B_GREETING
+    assert card.transcript is None
+    assert card.greeting_done is False
+    assert providers.ready is True
+    assert providers.providers == []
+
+
+@pytest.mark.asyncio
+async def test_a_failed_new_take_gets_an_answer_rather_than_an_endless_wait(
+    dumps: DumpStore, transcribe: AsyncMock
+):
+    """Claiming a new take clears ``greetingSeen``, so the intro is live again.
+
+    That is right while a new greeting is on its way, and it must not
+    strand a user whose new take dies: an empty Path A tells the client
+    to keep polling, so a failed take has to resolve to Path B instead.
+    """
+    await start_voice_take(dumps)
+    await finalize_voice()
+    await dumps.update_dump(USER_ID, RECORDING_ID, greetingSeen=True)
+
+    await dumps.start_dump(USER_ID, "rec-2", BrainDumpInputMode.voice)
+    transcribe.side_effect = RuntimeError("provider blew up")
+    background = BackgroundTasks()
+    await service.finalize_voice_dump(USER_ID, "rec-2", 12.0, None, background)
+    await background()
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.failed
+    assert card.path == "B"
+    assert card.greeting == prompts.PATH_B_GREETING
 
 
 @pytest.mark.asyncio

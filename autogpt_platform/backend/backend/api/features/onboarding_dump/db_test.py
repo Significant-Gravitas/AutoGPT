@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
@@ -95,6 +96,83 @@ async def test_a_new_recording_id_always_claims_the_row(
     # intro endpoint, so a new take that inherited it would run the whole
     # pipeline for a greeting that can never render.
     assert update["greetingSeen"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_new_recording_id_clears_every_column_the_last_take_owned(
+    mocker: MockerFixture, upsert: AsyncMock
+):
+    """A new take must not be able to answer with the old take's work.
+
+    There is one row per user, so anything left behind here is served as
+    if it belonged to the new recording: ``/recording`` hands back the
+    previous audio, ``/intro`` its greeting and transcript, and
+    ``/recommended-providers`` its picks — for a take that may never get
+    past its first part.
+    """
+    mocker.patch.object(
+        db,
+        "get_dump",
+        AsyncMock(return_value=_row(BrainDumpStatus.completed, "rec-previous")),
+    )
+
+    await db.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+
+    update = upsert.await_args.kwargs["data"]["update"]
+    assert update["audioPath"] is None
+    assert update["mimeType"] is None
+    assert update["sizeBytes"] is None
+    assert update["durationSecs"] is None
+    assert update["transcript"] is None
+    assert update["transcriptLang"] is None
+    assert update["greeting"] is None
+    assert update["recommendedProviders"] is None
+    # Non-nullable with a ``[]`` default, so it is emptied, not nulled.
+    assert update["suggestedPrompts"] == Json([])
+
+
+@pytest.mark.asyncio
+async def test_retrying_the_same_take_keeps_what_that_take_produced(
+    mocker: MockerFixture, upsert: AsyncMock
+):
+    """A retry is the same recording, not a replacement for it.
+
+    Re-uploading part 0 after a failed finalize, or finalizing again, has
+    to leave the audio and transcript that retry still needs.
+    """
+    mocker.patch.object(
+        db, "get_dump", AsyncMock(return_value=_row(BrainDumpStatus.failed))
+    )
+
+    await db.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+
+    update = upsert.await_args.kwargs["data"]["update"]
+    assert set(update) == {"recordingId", "status", "inputMode", "errorCode"}
+
+
+@pytest.mark.asyncio
+async def test_ownership_is_lost_as_soon_as_another_take_claims_the_row(
+    mocker: MockerFixture,
+):
+    """Guards the one write that is not scoped to a take.
+
+    The business understanding is shared user context, so the background
+    job checks this before writing there.
+    """
+    mocker.patch.object(
+        db,
+        "get_dump",
+        AsyncMock(return_value=_row(BrainDumpStatus.transcribing, "rec-2")),
+    )
+    assert await db.owns_dump(USER_ID, RECORDING_ID) is False
+
+    mocker.patch.object(db, "get_dump", AsyncMock(return_value=None))
+    assert await db.owns_dump(USER_ID, RECORDING_ID) is False
+
+    mocker.patch.object(
+        db, "get_dump", AsyncMock(return_value=_row(BrainDumpStatus.transcribing))
+    )
+    assert await db.owns_dump(USER_ID, RECORDING_ID) is True
 
 
 @pytest.mark.asyncio
