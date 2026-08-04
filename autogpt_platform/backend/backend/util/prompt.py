@@ -5,7 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from tiktoken import encoding_for_model
+from tiktoken import encoding_for_model, encoding_name_for_model
 
 from backend.data.llm_registry.llm_models import (
     CLAUDE_5_TOKENIZER_GENERATION_PREFIXES,
@@ -340,6 +340,13 @@ def _normalize_model_for_tokenizer(model: str) -> str:
     if "claude" in model.lower() or not any(
         known in model.lower() for known in ["gpt", "o1", "chatgpt", "text-"]
     ):
+        return "gpt-4o"
+    try:
+        encoding_name_for_model(model)
+    except KeyError:
+        # GPT-named model newer than the pinned tiktoken's mapping table
+        # (e.g. gpt-5.6-*) — estimates must degrade to the default
+        # encoding, not crash the LLM call.
         return "gpt-4o"
     return model
 

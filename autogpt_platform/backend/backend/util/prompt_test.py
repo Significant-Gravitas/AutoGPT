@@ -1151,6 +1151,17 @@ class TestClaude5TokenFactor:
             text, model=prefixed
         ) == estimate_token_count_str(text, model="claude-sonnet-5")
 
+    def test_unknown_gpt_model_falls_back_to_default_encoding(self):
+        """A GPT-named model tiktoken doesn't know (newer than its mapping
+        table) must fall back to the default encoding, not KeyError — this
+        is the llm_call path for every catalog default."""
+        from backend.util.prompt import estimate_token_count_str
+
+        text = "hello world " * 200
+        assert estimate_token_count_str(
+            text, model="gpt-5.6-terra"
+        ) == estimate_token_count_str(text, model="gpt-4o")
+
     @pytest.mark.parametrize("model", ["claude-sonnet-4-6", "claude-opus-4-6"])
     def test_pre_4_7_generation_unscaled(self, model: str):
         from backend.util.prompt import estimate_token_count_str
