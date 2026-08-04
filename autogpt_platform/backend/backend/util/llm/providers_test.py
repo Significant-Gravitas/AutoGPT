@@ -2106,6 +2106,16 @@ class TestClaude5TemperatureRejection:
         assert _anthropic_accepts_temperature("claude-sonnet-5") is False
         assert _anthropic_accepts_temperature("claude-sonnet-4-6") is True
 
+    def test_sonnet_5_temperature_stripped_vendor_prefixed(self):
+        """OpenRouter/Bedrock callers pass ``anthropic/`` or ``anthropic.``
+        prefixed model strings — the prefix must be stripped before the
+        deprecated-prefix check or batch submissions 400 hours later."""
+        from backend.util.llm.providers import _anthropic_accepts_temperature
+
+        assert _anthropic_accepts_temperature("anthropic/claude-sonnet-5") is False
+        assert _anthropic_accepts_temperature("anthropic.claude-sonnet-5") is False
+        assert _anthropic_accepts_temperature("anthropic/claude-sonnet-4-6") is True
+
     def test_self_heal_matches_unsupported_phrasing(self):
         import anthropic
         import httpx

@@ -52,6 +52,7 @@ def strip_anthropic_vendor_prefix(model: str) -> str:
             return lowered[len(prefix) :]
     return lowered
 
+
 # Anthropic snapshot-date suffix (claude-haiku-4-5-20251001 → -20251001).
 # Shared by every slug canonicalizer so the pattern can't drift.
 MODEL_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
