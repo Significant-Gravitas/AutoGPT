@@ -128,7 +128,16 @@ async def finalize_voice_dump(
 
     filename = _audio_filename(recording_id, mime_type)
     await scan_content_safe(audio, filename=filename)
-    audio_path = await storage.store_audio(user_id, audio, filename)
+    try:
+        audio_path = await storage.store_audio(user_id, audio, filename)
+    except Exception as e:
+        logger.warning("Brain dump audio storage failed for user %s: %s", user_id, e)
+        await db.mark_failed(user_id, recording_id, "storage_failed")
+        return FinalizeResponse(
+            status=BrainDumpStatus.failed,
+            input_mode=BrainDumpInputMode.voice,
+            error_code="storage_failed",
+        )
 
     await db.update_dump(
         user_id,

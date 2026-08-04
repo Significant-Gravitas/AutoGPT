@@ -244,6 +244,26 @@ async def test_missing_stt_provider_is_reported_as_unavailable(
 
 
 @pytest.mark.asyncio
+async def test_audio_storage_failure_is_retryable(
+    dumps: DumpStore,
+    storage_mocks: dict[str, AsyncMock],
+    transcribe: AsyncMock,
+):
+    await start_voice_take(dumps)
+    storage_mocks["store_audio"].side_effect = RuntimeError("storage unavailable")
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "storage_failed"
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.failed
+    assert dumps.row.errorCode == "storage_failed"
+    storage_mocks["discard_parts"].assert_not_awaited()
+    transcribe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_transcript_lands_in_the_business_understanding(
     dumps: DumpStore, extraction: dict[str, AsyncMock]
 ):
