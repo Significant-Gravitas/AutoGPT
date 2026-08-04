@@ -330,11 +330,8 @@ MODEL_METADATA = {
     LlmModel.REGOLO_LLAMA3_3_70B: ModelMetadata(
         "regolo", 60000, 60000, "Llama-3.3-70B-Instruct", "Regolo.ai", "Meta", 2
     ),
-    LlmModel.REGOLO_MINIMAX_M2_5: ModelMetadata(
-        "regolo", 190000, 95000, "MiniMax-M2.5", "Regolo.ai", "MiniMax", 3
-    ),
-    LlmModel.REGOLO_MISTRAL_SMALL_4: ModelMetadata(
-        "regolo", 120000, 60000, "Mistral-Small-4", "Regolo.ai", "Mistral AI", 2
+    LlmModel.REGOLO_GLM52: ModelMetadata(
+        "regolo", 200000, 96000, "GLM 5.2", "Regolo.ai", "GLM", 3
     ),
     LlmModel.REGOLO_QWEN3_CODER: ModelMetadata(
         "regolo", 240000, 120000, "Qwen3-Coder-Next", "Regolo.ai", "Qwen", 2
