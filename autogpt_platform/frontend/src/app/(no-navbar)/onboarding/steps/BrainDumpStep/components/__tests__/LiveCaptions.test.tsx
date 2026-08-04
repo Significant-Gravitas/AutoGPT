@@ -145,7 +145,10 @@ describe("LiveCaptions", () => {
       const socket = FakeWebSocket.last();
       act(() => socket.open());
       act(() =>
-        socket.emit({ message_type: "partial_transcript", text: "build a bot" }),
+        socket.emit({
+          message_type: "partial_transcript",
+          text: "build a bot",
+        }),
       );
 
       for (const word of ["build", "a", "bot"]) {
