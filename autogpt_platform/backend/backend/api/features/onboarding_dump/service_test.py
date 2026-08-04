@@ -352,6 +352,25 @@ async def test_a_stale_typed_finalize_cannot_replace_a_completed_take(
     assert stale_tasks.tasks == []
 
 
+@pytest.mark.asyncio
+async def test_typed_finalize_does_not_relabel_voice_transcription(
+    dumps: DumpStore,
+):
+    await start_voice_take(dumps)
+    await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.transcribing)
+    tasks = BackgroundTasks()
+
+    response = await service.finalize_typed_dump(
+        USER_ID, RECORDING_ID, "Typed text arrived late.", tasks
+    )
+
+    assert response.status == BrainDumpStatus.transcribing
+    assert response.input_mode == BrainDumpInputMode.voice
+    assert dumps.row is not None
+    assert dumps.row.inputMode == BrainDumpInputMode.voice
+    assert tasks.tasks == []
+
+
 def release_both_past_the_guard(mocker: MockerFixture, dumps: "DumpStore"):
     """Hold the first two `get_dump` calls until both have happened.
 

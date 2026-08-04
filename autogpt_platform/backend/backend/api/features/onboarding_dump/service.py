@@ -214,13 +214,14 @@ async def finalize_typed_dump(
         and existing.recordingId == recording_id
         and existing.status
         in (
+            BrainDumpStatus.transcribing,
             BrainDumpStatus.transcribed,
             BrainDumpStatus.extracting,
             BrainDumpStatus.completed,
         )
     ):
         return _pipeline_response(
-            existing.status, existing.transcript, BrainDumpInputMode.typed
+            existing.status, existing.transcript, existing.inputMode
         )
 
     await db.start_dump(user_id, recording_id, BrainDumpInputMode.typed)
@@ -249,9 +250,7 @@ async def finalize_typed_dump(
                 input_mode=BrainDumpInputMode.typed,
                 error_code="superseded",
             )
-        return _pipeline_response(
-            current.status, current.transcript, BrainDumpInputMode.typed
-        )
+        return _pipeline_response(current.status, current.transcript, current.inputMode)
 
     background_tasks.add_task(
         _run_background_jobs,
