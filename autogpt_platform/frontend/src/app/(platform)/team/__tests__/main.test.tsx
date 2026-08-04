@@ -317,6 +317,24 @@ describe("TeamPage", () => {
     expect(screen.queryByRole("dialog", { name: "Maria" })).toBeNull();
   });
 
+  test("keeps nested card actions independent for keyboard users", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    const installWorkflow = await screen.findByRole("button", {
+      name: "Install workflow",
+    });
+    installWorkflow.focus();
+    await user.keyboard("{Enter}");
+
+    expect(
+      screen.getByRole("dialog", { name: /Install a workflow/ }),
+    ).toBeDefined();
+    expect(screen.queryByRole("dialog", { name: "Maria" })).toBeNull();
+  });
+
   test("saves Soul edits and refreshes the experts query", async () => {
     const user = userEvent.setup();
     let listRequests = 0;
