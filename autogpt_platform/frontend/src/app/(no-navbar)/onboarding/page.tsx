@@ -9,7 +9,7 @@ import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
 import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
 import { WelcomeStep } from "./steps/WelcomeStep";
-import { useOnboardingWizardStore } from "./store";
+import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
 
 export default function OnboardingPage() {
@@ -18,6 +18,7 @@ export default function OnboardingPage() {
     isLoading,
     handlePreparingComplete,
     isPaymentEnabled,
+    steps,
     preparingStep,
     totalSteps,
   } = useOnboardingPage();
@@ -28,7 +29,10 @@ export default function OnboardingPage() {
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
   const showDots = currentStep <= totalSteps;
-  const showBack = currentStep > 1 && currentStep <= totalSteps;
+  // Back is hidden on Welcome (the first profile step): going back from there
+  // when payments are on would return the user to the paywall they already
+  // paid through and let them re-trigger checkout.
+  const showBack = currentStep > steps.welcome && currentStep <= totalSteps;
   const showProgressBar = currentStep <= totalSteps;
   const showLogout = currentStep <= totalSteps;
 
@@ -50,10 +54,13 @@ export default function OnboardingPage() {
       )}
 
       <div className="flex flex-1 items-center pb-8 pt-16">
-        {currentStep === 1 && <WelcomeStep />}
-        {currentStep === 2 && <RoleStep />}
-        {currentStep === 3 && <PainPointsStep />}
-        {isPaymentEnabled && currentStep === 4 && <SubscriptionStep />}
+        {isPaymentEnabled &&
+          currentStep === PAYWALL_FIRST_STEPS.subscription && (
+            <SubscriptionStep />
+          )}
+        {currentStep === steps.welcome && <WelcomeStep />}
+        {currentStep === steps.role && <RoleStep />}
+        {currentStep === steps.painPoints && <PainPointsStep />}
         {currentStep === preparingStep && (
           <PreparingStep onComplete={handlePreparingComplete} />
         )}

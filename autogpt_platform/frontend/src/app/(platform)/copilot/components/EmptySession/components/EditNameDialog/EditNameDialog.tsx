@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { PencilSimpleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
@@ -16,7 +16,7 @@ export function EditNameDialog({ currentName }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState(currentName);
   const [isSaving, setIsSaving] = useState(false);
-  const { refreshSession } = useSupabase();
+  const { refreshSession } = useAuth();
   const { toast } = useToast();
 
   function handleOpenChange(open: boolean) {
@@ -30,10 +30,11 @@ export function EditNameDialog({ currentName }: Props) {
 
     setIsSaving(true);
     try {
+      // preferred_name is also written by onboarding's "What should I call you?"
       const res = await fetch("/api/auth/user", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: trimmed }),
+        body: JSON.stringify({ preferred_name: trimmed }),
       });
 
       if (!res.ok) {

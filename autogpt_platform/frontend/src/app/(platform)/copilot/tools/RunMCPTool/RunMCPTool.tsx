@@ -16,6 +16,10 @@ import {
   serverHost,
   type MCPErrorOutput,
 } from "./helpers";
+import {
+  isUnparseableJsonOutput,
+  reportCorruptedToolOutput,
+} from "../../helpers/toolOutput";
 
 export interface RunMCPToolPart {
   type: string;
@@ -35,8 +39,15 @@ export function RunMCPToolComponent({ part }: Props) {
     part.state === "input-streaming" || part.state === "input-available";
 
   const output = getRunMCPToolOutput(part);
+  const isCorrupted =
+    part.state === "output-available" &&
+    !output &&
+    isUnparseableJsonOutput(part.output);
+  if (isCorrupted) reportCorruptedToolOutput(part.toolCallId, part.type);
   const isError =
-    part.state === "output-error" || (!!output && isErrorOutput(output));
+    part.state === "output-error" ||
+    isCorrupted ||
+    (!!output && isErrorOutput(output));
 
   const setupRequirementsOutput =
     part.state === "output-available" &&
@@ -60,10 +71,17 @@ export function RunMCPToolComponent({ part }: Props) {
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
-          text={text}
+          text={isCorrupted ? "Tool result could not be displayed" : text}
           className={isError ? "text-red-500" : undefined}
         />
       </div>
+
+      {isCorrupted && (
+        <p className="mt-1 text-sm text-red-500">
+          The result data arrived corrupted, so any sign-in or setup card it
+          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+        </p>
+      )}
 
       {/* Error detail card */}
       {errorOutput && (

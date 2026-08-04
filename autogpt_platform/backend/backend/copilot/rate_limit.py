@@ -62,7 +62,7 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
-from backend.data.db_accessors import user_db
+from backend.data.db_accessors import credit_db, user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
@@ -657,6 +657,8 @@ async def check_rate_limit(
     user_id: str,
     daily_cost_limit: int,
     weekly_cost_limit: int,
+    *,
+    skip_daily: bool = False,
 ) -> None:
     """Check if user is within rate limits.
 
@@ -671,6 +673,11 @@ async def check_rate_limit(
     ``ENABLE_PLATFORM_PAYMENT``) is enforced upstream by the route
     dependency :func:`enforce_payment_paywall`, so this function is
     purely about per-window USD usage.
+
+    ``skip_daily`` skips the daily-cap check; the weekly cap still
+    applies. Used by the dream pass so a user with a busy interactive
+    day still gets their nightly background pass — dream rolls under
+    the weekly account ceiling instead.
 
     This is a pre-turn soft check. The authoritative usage counter is updated
     by ``record_cost_usage()`` after the turn completes. Under concurrency,
@@ -709,7 +716,7 @@ async def check_rate_limit(
     # silently treated 0 as unlimited, which collided with the multiplier-
     # collapse semantics of :func:`get_global_rate_limits` and produced
     # the autopilot paywall bypass.
-    if daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
+    if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
         raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
     if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
@@ -817,6 +824,8 @@ async def increment_daily_reset_count(user_id: str) -> None:
 async def record_cost_usage(
     user_id: str,
     cost_microdollars: int,
+    *,
+    skip_daily: bool = False,
 ) -> None:
     """Record a user's generation spend against daily and weekly counters.
 
@@ -830,12 +839,21 @@ async def record_cost_usage(
         user_id: The user's ID.
         cost_microdollars: Spend to record in microdollars (1 USD = 1_000_000).
             Non-positive values are ignored.
+        skip_daily: When True, only the weekly counter is incremented. Used
+            by the dream pass so background work doesn't eat the user's
+            interactive daily budget. Dream still counts toward the weekly
+            cap so a user can't dream-pass their way out of an account-wide
+            spend ceiling.
     """
     cost_microdollars = max(0, cost_microdollars)
     if cost_microdollars <= 0:
         return
 
-    logger.info("Recording copilot spend: %d microdollars", cost_microdollars)
+    logger.info(
+        "Recording copilot spend: %d microdollars (skip_daily=%s)",
+        cost_microdollars,
+        skip_daily,
+    )
 
     now = datetime.now(UTC)
     d_key = _daily_key(user_id, now=now)
@@ -848,7 +866,8 @@ async def record_cost_usage(
         # MULTI/EXEC is not supported, so each counter gets its own
         # single-key transaction. Per-counter INCRBY+EXPIRE atomicity is the
         # invariant that matters; the two counters are independent budgets.
-        await _incr_counter_atomic(redis, d_key, cost_microdollars, daily_ttl)
+        if not skip_daily:
+            await _incr_counter_atomic(redis, d_key, cost_microdollars, daily_ttl)
         await _incr_counter_atomic(redis, w_key, cost_microdollars, weekly_ttl)
     except (RedisError, RedisClusterException, ConnectionError, OSError):
         logger.warning(
@@ -936,6 +955,11 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
     all fan out simultaneously. The key is deleted on transient errors so
     the next request can retry. Returns True when a subscription was found
     and synced (tier was updated in DB + cache cleared).
+
+    The DB work routes through ``credit_db()`` so the reconcile also works
+    from Prisma-less processes (scheduler-server, copilot-executor), where
+    a direct ``backend.data.credit`` call would raise
+    ``ClientNotConnectedError``.
     """
     gate_key = f"{_STRIPE_RECONCILE_PREFIX}{user_id}"
     try:
@@ -949,9 +973,7 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
         return False
 
     try:
-        from backend.data.credit import reconcile_stripe_tier_for_user  # avoid circular
-
-        return await reconcile_stripe_tier_for_user(user_id)
+        return await credit_db().reconcile_stripe_tier_for_user(user_id)
     except Exception as exc:
         logger.warning("stripe_reconcile: check failed for %s: %s", user_id[:8], exc)
         try:

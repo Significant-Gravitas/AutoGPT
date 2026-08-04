@@ -19,13 +19,17 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
     """Normalize a model name for the **actual** SDK CLI / OpenAI-compat
     transport.
 
-    Three transports (see ``ChatConfig.effective_transport``):
+    Four transports (see ``ChatConfig.effective_transport``):
 
     1. **OpenRouter** — return the prefixed ``vendor/model`` slug
        unchanged (``anthropic/claude-opus-4-6``,
        ``moonshotai/kimi-k2-6``, ...).  Stripping the prefix would break
        routing for non-Anthropic vendors.
-    2. **Subscription / Direct Anthropic** — strip the OpenRouter
+    2. **Local** (Ollama, vLLM, LM Studio, ...) — return the operator's
+       slug unchanged (``llama3.1:8b-instruct-q4_K_M``,
+       ``qwen3:0.6b``, ...).  Self-hosted backends use their own
+       naming and the Anthropic-prefix rewrite would 404 every call.
+    3. **Subscription / Direct Anthropic** — strip the OpenRouter
        ``anthropic/`` prefix and convert dots to hyphens
        (``claude-opus-4.6`` → ``claude-opus-4-6``).  The CLI subprocess
        (subscription mode) and the Anthropic Messages / OpenAI-compat
@@ -43,7 +47,10 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
     cache that goes stale when tests mutate env vars.
     """
     config = cfg if cfg is not None else ChatConfig()
-    if config.effective_transport == "openrouter":
+    # OpenRouter accepts ``vendor/model`` for any vendor; the local
+    # transport (Ollama, vLLM, …) speaks raw operator-chosen slugs and
+    # must never have them rewritten — both pass through unchanged.
+    if config.effective_transport in ("openrouter", "local"):
         return raw_model
     model = raw_model
     if "/" in model:

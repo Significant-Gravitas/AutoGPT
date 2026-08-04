@@ -34,8 +34,8 @@ vi.mock("../helpers", async (importActual) => {
   };
 });
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isUserLoading: false, isLoggedIn: true }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -112,7 +112,7 @@ describe("AutoPilot streaming — submit / stop lifecycle", () => {
     await clickStop();
 
     expect(
-      await screen.findByText(/you manually stopped this chat/i, undefined, {
+      await screen.findByText(/task stopped/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();

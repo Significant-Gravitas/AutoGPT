@@ -21,7 +21,12 @@ from typing import Any
 from e2b import AsyncSandbox, CommandExitException
 from e2b.exceptions import TimeoutException
 
-from backend.copilot.context import E2B_WORKDIR, get_current_sandbox
+from backend.copilot.context import (
+    E2B_WORKDIR,
+    get_current_sandbox,
+    looks_like_sdk_tool_result_path,
+    sdk_tool_result_redirect_hint,
+)
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
@@ -122,6 +127,16 @@ class BashExecTool(BaseTool):
             return ErrorResponse(
                 message="No command provided.",
                 error="empty_command",
+                session_id=session_id,
+            )
+
+        # Pre-flight redirect: bash sandbox can't reach host-side SDK
+        # tool-result paths. Without this the model burns turns retrying
+        # `cat /root/.claude/projects/...` after `Permission denied`.
+        if looks_like_sdk_tool_result_path(command):
+            return ErrorResponse(
+                message=sdk_tool_result_redirect_hint(command),
+                error="sdk_tool_result_path_in_bash_command",
                 session_id=session_id,
             )
 

@@ -211,3 +211,7 @@ test-screenshots/
 # (``.ign.testing.lock``), and any future ``.ign*`` variant.
 .ign*
 **/.ign*
+.claude/scheduled_tasks.lock
+
+# Supabase CLI machine-local state (linked project ref, etc.)
+supabase/.temp/

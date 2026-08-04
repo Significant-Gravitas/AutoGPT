@@ -6,11 +6,12 @@ import {
 import { ConfirmLinkResponse } from "@/app/api/__generated__/models/confirmLinkResponse";
 import { ConfirmUserLinkResponse } from "@/app/api/__generated__/models/confirmUserLinkResponse";
 import { LinkType } from "@/app/api/__generated__/models/linkType";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useParams, useSearchParams } from "next/navigation";
 import {
   getLoginRedirect,
   getPlatformDisplayName,
+  getTelegramAuth,
   isUserLink,
   TOKEN_PATTERN,
 } from "./helpers";
@@ -35,7 +36,7 @@ export function usePlatformLinkingPage() {
   const rawToken = (params.token as string | undefined) ?? "";
   const token = TOKEN_PATTERN.test(rawToken) ? rawToken : null;
   const platformFromUrl = getPlatformDisplayName(searchParams.get("platform"));
-  const { user, isUserLoading, logOut } = useSupabase();
+  const { user, isUserLoading, logOut } = useAuth();
 
   const {
     data: info,
@@ -74,7 +75,12 @@ export function usePlatformLinkingPage() {
 
   function handleLink() {
     if (!token || !info) return;
-    mutation.mutate({ token });
+    // A login_url button tap appends a Telegram-signed identity to this
+    // page's URL; forwarding it lets the backend verify WHO opened the link.
+    mutation.mutate({
+      token,
+      data: { telegram_auth: getTelegramAuth(searchParams) },
+    });
   }
 
   async function handleSwitchAccount() {

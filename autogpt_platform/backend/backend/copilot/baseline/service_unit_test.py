@@ -12,6 +12,7 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.baseline.service import (
     _BUDGET_EXHAUSTED_FALLBACK_TEXT,
     _NATURAL_FINISH_EMPTY_FALLBACK_TEXT,
+    _apply_skills_cache_breakpoint,
     _baseline_conversation_updater,
     _baseline_llm_caller,
     _BaselineStreamState,
@@ -26,6 +27,7 @@ from backend.copilot.baseline.service import (
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
     _natural_finish_empty_notice_text,
+    _split_user_message_after_skills_block,
     _supports_prompt_cache_markers,
 )
 from backend.copilot.model import ChatMessage
@@ -146,6 +148,43 @@ class TestBaselineConversationUpdater:
         assert messages[1]["role"] == "tool"
         assert messages[1]["tool_call_id"] == "tc_1"
         assert messages[1]["content"] == "Found result"
+
+    def test_stamps_model_and_routing_source_on_persisted_assistant(self):
+        """The persisted assistant ChatMessage (state.session_messages) must
+        carry the turn's model and routing_source so product-intelligence can
+        segment quality by model/layer — stamped from the stream state. Tool
+        rows stay unstamped (model is None)."""
+        messages: list = []
+        builder = self._make_transcript_builder()
+        state = _BaselineStreamState(
+            model="anthropic/claude-sonnet-4-6", routing_source="ld"
+        )
+        response = LLMLoopResponse(
+            response_text="searching",
+            tool_calls=[LLMToolCall(id="tc_1", name="search", arguments="{}")],
+            raw_response=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+        )
+        tool_results = [
+            ToolCallResult(tool_call_id="tc_1", tool_name="search", content="ok"),
+        ]
+
+        _baseline_conversation_updater(
+            messages,
+            response,
+            tool_results=tool_results,
+            transcript_builder=builder,
+            model="anthropic/claude-sonnet-4-6",
+            state=state,
+        )
+
+        persisted = [m for m in state.session_messages if m.role == "assistant"]
+        assert len(persisted) == 1
+        assert persisted[0].model == "anthropic/claude-sonnet-4-6"
+        assert persisted[0].routing_source == "ld"
+        tool_rows = [m for m in state.session_messages if m.role == "tool"]
+        assert tool_rows and tool_rows[0].model is None
 
         # Transcript: user + assistant(tool_use) + user(tool_result)
         assert builder.entry_count == 3
@@ -2031,9 +2070,22 @@ class TestBaselineReasoningStreaming:
             return_value=_make_stream_mock()
         )
 
-        with patch(
-            "backend.copilot.baseline.service._get_main_client",
-            return_value=mock_client,
+        # Pin the OpenRouter transport so ``extra_body`` is always built:
+        # ``openrouter_active`` needs a non-empty ``api_key``, which on fork-PR
+        # CI is absent (secrets — incl. ``OPENAI_API_KEY`` — aren't exposed),
+        # flipping the transport to ``direct_anthropic`` and dropping
+        # ``extra_body`` entirely. Without this the assertion KeyErrors in CI.
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", True),
+            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2170,6 +2222,10 @@ class TestBaselineReasoningStreaming:
             return_value=_make_stream_mock()
         )
 
+        # Pin the OpenRouter transport so ``extra_body`` is always built (and
+        # the kill switch's suppression is observable on a populated dict) —
+        # fork-PR CI has no LLM creds, which would otherwise drop the transport
+        # to direct_anthropic and omit ``extra_body``, KeyErroring the assert.
         with (
             patch(
                 "backend.copilot.baseline.service._get_main_client",
@@ -2178,6 +2234,12 @@ class TestBaselineReasoningStreaming:
             patch(
                 "backend.copilot.baseline.service.config.claude_agent_max_thinking_tokens",
                 0,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", True),
+            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
             ),
         ):
             await _baseline_llm_caller(
@@ -2574,3 +2636,151 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
 
         # OR mode: no usage.cost in chunk → cost_usd stays None (expected).
         assert state.cost_usd is None
+
+
+class TestSplitUserMessageAfterSkillsBlock:
+    """Per-user cache breakpoint at the ``</available_skills>`` boundary.
+
+    The skill index is stable per-user across turns, so caching its bytes
+    separately from the user's variable typed text lifts cache hit rate
+    on the otherwise-re-tokenised prefix.
+    """
+
+    def test_returns_none_when_no_skills_block(self):
+        assert _split_user_message_after_skills_block("hello world") is None
+
+    def test_splits_at_skills_block_boundary(self):
+        content = (
+            "<available_skills>\n"
+            "- name: foo — bar\n"
+            "</available_skills>\n\n"
+            "actual user typing"
+        )
+        blocks = _split_user_message_after_skills_block(content)
+        assert blocks is not None
+        assert len(blocks) == 2
+        # Prefix carries the cacheable static skill index.
+        assert blocks[0]["type"] == "text"
+        assert "<available_skills>" in blocks[0]["text"]
+        assert blocks[0]["cache_control"]["type"] == "ephemeral"
+        # Suffix is the variable user typing — no cache_control.
+        assert blocks[1] == {"type": "text", "text": "actual user typing"}
+
+    def test_skills_block_with_preceding_blocks_included_in_prefix(self):
+        """When ``<memory_context>`` / ``<env_context>`` etc. precede the
+        skills block, they ride along in the cacheable prefix — they're
+        also stable per-user-per-session and a separate breakpoint would
+        waste one of Anthropic's four available cache slots."""
+        content = (
+            "<memory_context>\nremember\n</memory_context>\n\n"
+            "<available_skills>\n- name: foo — bar\n</available_skills>\n\n"
+            "typing"
+        )
+        blocks = _split_user_message_after_skills_block(content)
+        assert blocks is not None
+        assert "<memory_context>" in blocks[0]["text"]
+        assert "<available_skills>" in blocks[0]["text"]
+        assert blocks[1]["text"] == "typing"
+
+    def test_empty_suffix_drops_trailing_block(self):
+        """Anthropic 400s on zero-length text blocks — when the user
+        typed nothing after the auto-injected skills index, the trailing
+        block must be omitted, not emitted empty."""
+        content = "<available_skills>\nx\n</available_skills>\n\n"
+        blocks = _split_user_message_after_skills_block(content)
+        assert blocks is not None
+        assert len(blocks) == 1
+        assert blocks[0]["cache_control"]["type"] == "ephemeral"
+
+
+class TestApplySkillsCacheBreakpoint:
+    def test_first_user_message_with_skills_block_is_split(self):
+        msgs = [
+            {"role": "system", "content": "sys"},
+            {
+                "role": "user",
+                "content": (
+                    "<available_skills>\n- name: a — b\n</available_skills>\n\nhi"
+                ),
+            },
+            {"role": "assistant", "content": "ok"},
+        ]
+        out = _apply_skills_cache_breakpoint(msgs)
+        # System and assistant pass through untouched.
+        assert out[0] == msgs[0]
+        assert out[2] == msgs[2]
+        # User message becomes a content-block list with the cache marker
+        # on the static prefix.
+        assert isinstance(out[1]["content"], list)
+        assert out[1]["content"][0]["cache_control"]["type"] == "ephemeral"
+
+    def test_no_skills_block_leaves_messages_untouched(self):
+        msgs = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+        ]
+        out = _apply_skills_cache_breakpoint(msgs)
+        # No breakpoint applied — user content stays a plain string.
+        assert out[1]["content"] == "hi"
+
+    def test_only_first_user_message_is_split(self):
+        """Later user turns never carry ``<available_skills>`` (it's
+        only injected on the first turn), and even if a later message
+        did contain it the helper should split the *first* match and
+        stop — Anthropic's cache budget is four breakpoints total."""
+        msgs = [
+            {
+                "role": "user",
+                "content": "<available_skills>\nx\n</available_skills>\n\nhi",
+            },
+            {"role": "assistant", "content": "ok"},
+            {
+                "role": "user",
+                "content": "<available_skills>\ny\n</available_skills>\n\nhi2",
+            },
+        ]
+        out = _apply_skills_cache_breakpoint(msgs)
+        # First user split; later user message left as a plain string.
+        assert isinstance(out[0]["content"], list)
+        assert isinstance(out[2]["content"], str)
+
+    def test_pre_blocked_user_content_is_left_alone(self):
+        """If a caller already converted the user content to a block
+        list, do not double-mark.  Anthropic 400s on the same cache
+        marker twice on adjacent blocks."""
+        msgs = [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "pre-blocked"}],
+            }
+        ]
+        out = _apply_skills_cache_breakpoint(msgs)
+        assert out[0]["content"] == [{"type": "text", "text": "pre-blocked"}]
+
+    def test_no_skills_block_preserves_dict_identity(self):
+        """When no user message carries an ``<available_skills>`` block,
+        every input dict must be returned by-reference so the memoised
+        ``cached_system_message`` reference in ``_baseline_llm_caller``
+        keeps its identity across rounds."""
+        sys_msg = {"role": "system", "content": "sys"}
+        usr_msg = {"role": "user", "content": "hi"}
+        out = _apply_skills_cache_breakpoint([sys_msg, usr_msg])
+        assert out[0] is sys_msg
+        assert out[1] is usr_msg
+
+    def test_skills_block_only_modifies_target_message(self):
+        """Only the one user message that needs the breakpoint is
+        shallow-copied; siblings (system, assistant, later user turns)
+        keep their original dict identity."""
+        sys_msg = {"role": "system", "content": "sys"}
+        usr1 = {
+            "role": "user",
+            "content": "<available_skills>\n- a\n</available_skills>\n\nhi",
+        }
+        ast = {"role": "assistant", "content": "ok"}
+        usr2 = {"role": "user", "content": "follow-up"}
+        out = _apply_skills_cache_breakpoint([sys_msg, usr1, ast, usr2])
+        assert out[0] is sys_msg
+        assert out[1] is not usr1  # target — gets shallow-copied
+        assert out[2] is ast
+        assert out[3] is usr2

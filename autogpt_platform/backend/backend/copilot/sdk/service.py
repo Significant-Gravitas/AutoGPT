@@ -47,7 +47,7 @@ from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotLlmModel, CopilotMode
+from ..config import ChatConfig, CopilotLLMModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -61,7 +61,9 @@ from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
-from ..model_router import resolve_model
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
+
+from ..model_router import ResolvedModel, RoutingSource, resolve_model_route
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
     override_cost_usd as _override_cost_for_moonshot,
@@ -84,7 +86,11 @@ from ..pending_messages import (
     drain_pending_for_persist,
     push_pending_message,
 )
-from ..permissions import apply_tool_permissions
+from ..permissions import (
+    CopilotPermissions,
+    all_known_tool_names,
+    apply_tool_permissions,
+)
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
 from ..rate_limit import (
     get_global_rate_limits,
@@ -97,6 +103,7 @@ from ..response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamModeChanged,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -115,6 +122,7 @@ from ..builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
+from ..expert_context import build_expert_identity_suffix
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -124,9 +132,11 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup
+from ..tools import ToolGroup, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from ..tools.session_context import build_session_context
+from ..tools.skills import build_skills_context
 from ..tracking import track_user_message
 from ..transcript import (
     _run_compression,
@@ -154,6 +164,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    reset_pending_tool_outputs,
     reset_stash_event,
     reset_tool_failure_counters,
     set_execution_context,
@@ -779,22 +790,9 @@ async def _consume_sdk_until_done(
         if not isinstance(sdk_msg, StreamEvent):
             loop_state.msgs_since_flush += 1
         now = time.monotonic()
-        has_pending_tools = (
-            acc.has_appended_assistant
-            and acc.accumulated_tool_calls
-            and not acc.has_tool_results
-        )
-        adapter = state.adapter
-        has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
-            adapter.has_started_reasoning and not adapter.has_ended_reasoning
-        )
-        if (
-            not has_pending_tools
-            and not has_open_block
-            and (
-                loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
-                or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
-            )
+        if not _intermediate_flush_blocked(acc, state.adapter) and (
+            loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
+            or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
         ):
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
@@ -814,9 +812,38 @@ async def _consume_sdk_until_done(
             loop_state.last_flush_time = now
             loop_state.msgs_since_flush = 0
 
+        # --- Building-mode switch (enter_agent_building_mode) ---
+        # Restart the attempt with the guide in the system prompt.
+        if _ready_for_building_mode_restart(ctx.session, state.adapter):
+            logger.info(
+                f"{ctx.log_prefix} Building mode requested — interrupting "
+                f"for prompt upgrade"
+            )
+            try:
+                await client.interrupt()
+            except Exception as exc:
+                # Best-effort: client close in the caller's finally is the
+                # fallback shutdown path (same as transient retries).
+                logger.warning(
+                    f"{ctx.log_prefix} Interrupt for building-mode restart "
+                    f"failed: {exc}"
+                )
+            raise _BuildingModeRestart()
+
         if acc.stream_completed:
             break
 
+
+# Continuation query sent when relaunching an attempt after the
+# building-mode switch — the CLI session already holds the original user
+# message and all partial work, so this only needs to orient the model.
+# Sibling of the baseline engine-switch continuation prompt
+# (engine_switch.CONTINUATION_MESSAGE) — keep the two aligned when rewording.
+_BUILDING_MODE_CONTINUATION = (
+    "Building mode is now active — the complete agent-building guide is in "
+    "your system prompt (<building_guide>) and survives context compaction. "
+    "Continue working on the user's request from where you left off."
+)
 
 # Synthetic message injected when a turn ends with extended thinking but no
 # visible TextBlock. Bounded to one re-prompt per turn — if the model still
@@ -831,6 +858,64 @@ _THINKING_ONLY_REPROMPT = (
 # session-message flush so page reloads show progress on long turns.
 _FLUSH_INTERVAL_SECONDS = 30.0
 _FLUSH_MESSAGE_THRESHOLD = 10
+
+
+def _intermediate_flush_blocked(
+    acc: "_StreamAccumulator", adapter: SDKResponseAdapter
+) -> bool:
+    """Whether the periodic mid-turn session flush must be held off.
+
+    The DB save is append-only (uses ``start_sequence``), so flushing mid-turn
+    locks the trailing rows at their current sequence permanently. Hold the
+    flush while any of these is true:
+
+    - ``has_pending_tools`` — a tool call is dispatched but its result hasn't
+      been recorded yet; the ``assistant(tool_calls)`` and ``tool`` result rows
+      must persist together.
+    - ``has_unsealed_assistant`` — a live assistant row hasn't acquired
+      ``tool_calls`` yet. The model often emits a text preamble, pauses, then
+      calls a tool — text and ``tool_use`` arrive as *separate* AssistantMessage
+      events, and ``StreamToolInputAvailable`` attaches the ``tool_calls`` onto
+      this same ``acc.assistant_response`` object. Flushing now would lock the
+      row without ``tool_calls``; the later attach could never reach the DB,
+      orphaning the ``tool`` result (no call row → the tool card vanishes on
+      reload).
+    - ``has_open_block`` — text/reasoning is still streaming, so the row would
+      be locked at a truncated length.
+
+    The guaranteed turn-end persist (the ``finally`` upsert) always saves the
+    rows, so holding an intermediate flush never loses data.
+    """
+    has_pending_tools = (
+        acc.has_appended_assistant
+        and bool(acc.accumulated_tool_calls)
+        and not acc.has_tool_results
+    )
+    has_unsealed_assistant = (
+        acc.has_appended_assistant and not acc.accumulated_tool_calls
+    )
+    has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
+        adapter.has_started_reasoning and not adapter.has_ended_reasoning
+    )
+    return has_pending_tools or has_unsealed_assistant or has_open_block
+
+
+def _hidden_short_names_for_permissions(
+    permissions: CopilotPermissions | None,
+) -> frozenset[str]:
+    """Short tool names that should not be registered on the MCP server.
+
+    ``allowed_tools``/``disallowed_tools`` only gate execution — denied
+    calls still come back to the model with the CLI's canned "Permission
+    to use ... has been denied" string, which the model then narrates as a
+    Claude-Code-style approval prompt that doesn't exist in copilot.
+    Hiding the tool from the MCP server removes it from the model's tool
+    list entirely so it never reaches for the blocked name.
+    """
+    if permissions is None or permissions.is_empty():
+        return frozenset()
+    all_tools = all_known_tool_names()
+    return all_tools - permissions.effective_allowed_tools(all_tools)
 
 
 def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
@@ -1452,6 +1537,93 @@ class _InterruptedAttempt:
         return events
 
 
+async def _apply_building_mode_restart(
+    *,
+    session: "ChatSession",
+    state: "_RetryState",
+    sdk_options: "ClaudeAgentOptions",
+    base_system_prompt: str,
+    graphiti_supplement: str,
+    use_e2b: bool,
+    session_id: str,
+    message_id: str,
+    log_prefix: str,
+) -> StreamStatus:
+    """Reconfigure *state* to relaunch the attempt with the guide in the
+    system prompt, returning the status event to yield.
+
+    Not an error, not a rollback — everything produced so far stands, so the
+    fresh adapter only carries over the transient-retry flags. Detection
+    cannot re-fire: guide_in_system_prompt flips True on success,
+    building_mode_requested flips False either way.
+    """
+    session.building_mode_requested = False
+    building_suffix = await build_builder_system_prompt_suffix(session)
+    session.guide_in_system_prompt = bool(building_suffix)
+    if not building_suffix:
+        logger.error(
+            f"{log_prefix} Building-mode restart: guide suffix "
+            f"empty — continuing without prompt upgrade"
+        )
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id, session.expert_id
+    )
+    system_prompt = (
+        base_system_prompt
+        + get_sdk_supplement(use_e2b=use_e2b)
+        + graphiti_supplement
+        + building_suffix
+        + expert_session_suffix
+    )
+    sdk_options_restart = copy(sdk_options)
+    sdk_options_restart.system_prompt = _build_system_prompt_value(
+        system_prompt,
+        cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+    )
+    # Resume the CLI session the interrupted run was writing —
+    # spike-verified: --resume accepts a changed append and the
+    # new content is live on the resumed turn.
+    sdk_options_restart.resume = session_id
+    sdk_options_restart.session_id = None
+    state.options = sdk_options_restart
+    state.use_resume = True
+    state.resume_file = session_id
+    state.query_message = _BUILDING_MODE_CONTINUATION
+    # Fresh adapter, same carry-over rules as a transient retry.
+    # NOTE: the transcript builder is NOT restored — its partial
+    # entries are real; the relaunched run's `append_user` adds
+    # the original message once more, which only surfaces in the
+    # rare CLI-file-loss fallback path (cosmetic duplicate).
+    prior_adapter = state.adapter
+    state.adapter = SDKResponseAdapter(
+        message_id=message_id,
+        session_id=session_id,
+        render_reasoning_in_ui=config.render_reasoning_in_ui,
+    )
+    state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
+    if prior_adapter.emitted_real_content_to_wire:
+        state.adapter.prior_attempt_emitted_visible_content = True
+    return StreamStatus(message="Entering building mode — loading the agent guide…")
+
+
+def _ready_for_building_mode_restart(
+    session: "ChatSession",
+    adapter: "SDKResponseAdapter",
+) -> bool:
+    """True when the attempt may restart for the building-mode prompt upgrade.
+
+    Requires a clean message boundary — no unresolved tool calls — so the
+    CLI session file is orphan-free and cleanly resumable; firing mid-tool-
+    call would strand ``tool_use`` blocks without results. No-op once the
+    guide is already in the system prompt (restart already happened).
+    """
+    return (
+        session.building_mode_requested
+        and not session.guide_in_system_prompt
+        and not adapter.has_unresolved_tool_calls
+    )
+
+
 def _flush_orphan_tool_uses_to_session(
     session: "ChatSession | None",
     state: "_RetryState | None",
@@ -1480,9 +1652,44 @@ def _flush_orphan_tool_uses_to_session(
                 else json.dumps(resp.output, ensure_ascii=False)
             )
             session.messages.append(
-                ChatMessage(role="tool", content=content, tool_call_id=resp.toolCallId)
+                ChatMessage(
+                    role="tool",
+                    content=content,
+                    tool_call_id=resp.toolCallId,
+                    name=_resolve_tool_result_name(
+                        session, resp.toolCallId, resp.toolName
+                    ),
+                )
             )
     return safety
+
+
+def _resolve_tool_result_name(
+    session: "ChatSession",
+    tool_call_id: str,
+    tool_name: str | None,
+) -> str | None:
+    """Name for a persisted tool-result row, falling back to the matching
+    assistant ``tool_call`` — a nameless row is unidentifiable in history,
+    which is the exact defect the ``name`` column exists to fix."""
+    if tool_name:
+        return tool_name
+    for msg in reversed(session.messages):
+        for tc in msg.tool_calls or []:
+            if tc.get("id") == tool_call_id:
+                if name := tc.get("function", {}).get("name"):
+                    return name
+                logger.warning(
+                    f"Persisting nameless tool-result row for session "
+                    f"{session.session_id}: matching tool_call "
+                    f"{tool_call_id} has no function name"
+                )
+                return None
+    logger.warning(
+        f"Persisting nameless tool-result row for session {session.session_id}: "
+        f"no name provided and no matching tool_call {tool_call_id} in history"
+    )
+    return None
 
 
 @dataclass(frozen=True)
@@ -1742,15 +1949,17 @@ def _resolve_sdk_model() -> str | None:
 
 
 async def _resolve_thinking_model_for_user(
-    tier: "CopilotLlmModel",
+    tier: "CopilotLLMModel",
     user_id: str | None,
-) -> str:
+) -> ResolvedModel:
     """LD-aware thinking-tier model pick for a specific user.
 
     Consults ``copilot-model-routing[thinking][{tier}]`` and falls back
-    to the ``ChatConfig`` default on missing user / missing flag.
+    to the ``ChatConfig`` default on missing user / missing flag. Returns
+    the model together with which routing layer picked it, so persisted
+    assistant messages can be stamped for product-intelligence.
     """
-    return await resolve_model("thinking", tier, user_id, config=config)
+    return await resolve_model_route("thinking", tier, user_id, config=config)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -1776,11 +1985,11 @@ def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str
 
 
 async def _resolve_sdk_model_for_request(
-    model: "CopilotLlmModel | None",
+    model: "CopilotLLMModel | None",
     session_id: str,
     user_id: str | None = None,
-) -> str | None:
-    """Resolve the SDK model string for a turn.
+) -> tuple[str | None, RoutingSource]:
+    """Resolve the SDK model string for a turn, plus which layer picked it.
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
@@ -1796,9 +2005,9 @@ async def _resolve_sdk_model_for_request(
     4. ``ChatConfig`` static default for the tier.
     """
     if config.claude_agent_model:
-        return config.claude_agent_model
+        return config.claude_agent_model, "env"
 
-    tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
+    tier_name: "CopilotLLMModel" = "advanced" if model == "advanced" else "standard"
     # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
     # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
     # comparison below spuriously diverge — ``resolve_model`` already strips
@@ -1820,7 +2029,7 @@ async def _resolve_sdk_model_for_request(
     # must be honoured.  Without this, a subscription-mode deployment
     # silently ignores the ``copilot-model-routing[thinking][standard]``
     # flag entirely, which defeats the point of cohort-based routing.
-    ld_overrides_default = resolved != tier_default
+    ld_overrides_default = resolved.model != tier_default
     if (
         not ld_overrides_default
         and tier_name == "standard"
@@ -1830,9 +2039,9 @@ async def _resolve_sdk_model_for_request(
             "[SDK] [%s] Subscription default (tier=standard, LD unset)",
             session_id[:12] if session_id else "?",
         )
-        return None
+        return None, "env"
     try:
-        sdk_model = _normalize_model_name(resolved)
+        sdk_model = _normalize_model_name(resolved.model)
     except ValueError as exc:
         # The per-user LD value didn't pass ``_normalize_model_name``'s
         # vendor check (most commonly: a ``moonshotai/kimi-*`` slug on a
@@ -1854,19 +2063,19 @@ async def _resolve_sdk_model_for_request(
             "[SDK] [%s] LD model %r rejected for tier=%s (%s); falling "
             "back to tier default %s",
             session_id[:12] if session_id else "?",
-            resolved,
+            resolved.model,
             tier_name,
             exc,
             sdk_model,
         )
-        return sdk_model
+        return sdk_model, "env"
     logger.info(
         "[SDK] [%s] Resolved model for tier=%s: %s",
         session_id[:12] if session_id else "?",
         tier_name,
         sdk_model,
     )
-    return sdk_model
+    return sdk_model, resolved.source
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -2794,8 +3003,10 @@ async def _prepare_file_attachments(
     Images (PNG/JPEG/GIF/WebP) are embedded directly as vision content blocks
     in the user message so Claude can see them without tool calls.
 
-    Non-image files (PDFs, text, etc.) are saved to *sdk_cwd* so the CLI's
-    built-in Read tool can access them.
+    Non-image files (PDFs, text, etc.) are referenced by ``file_id`` so the
+    model retrieves them with ``read_workspace_file``, which works in every
+    execution mode. A copy is also written to *sdk_cwd* for non-E2B tooling,
+    but the model is never pointed at that host-side path.
 
     Returns a :class:`PreparedAttachments` with a text hint and any image
     content blocks.
@@ -2842,11 +3053,19 @@ async def _prepare_file_attachments(
                     f"{file_info.size_bytes:,} bytes) [embedded as image]"
                 )
             else:
-                # Non-image files: save to sdk_cwd for Read tool access
-                local_path = _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                # Non-image files: surface via read_workspace_file by file_id.
+                # In E2B mode (prod default) the model's file tools operate on
+                # the remote sandbox filesystem, so a host-side sdk_cwd path
+                # is unreadable there — the workspace tool works in both modes.
+                # A local copy is still written for non-E2B tooling, but the
+                # model is never pointed at that path.
+                _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                # ``file_id=<uuid>`` (not ``file_id:``) — chat-share
+                # allowlisting extracts references via _FILE_ID_RE, which
+                # matches exactly this shape (data/sharing/workspace_refs.py).
                 file_descriptions.append(
                     f"- {file_info.name} ({mime}, "
-                    f"{file_info.size_bytes:,} bytes) saved to {local_path}"
+                    f"{file_info.size_bytes:,} bytes) file_id={fid}"
                 )
         except Exception:
             logger.warning("Failed to prepare file %s", fid[:12], exc_info=True)
@@ -2856,7 +3075,12 @@ async def _prepare_file_attachments(
 
     noun = "file" if len(file_descriptions) == 1 else "files"
     has_non_images = len(file_descriptions) > len(image_blocks)
-    read_hint = " Use the Read tool to view non-image files." if has_non_images else ""
+    read_hint = (
+        " Use the read_workspace_file tool with the file_id to view non-image"
+        " files (pass save_to_path to copy one into the working directory)."
+        if has_non_images
+        else ""
+    )
     hint = (
         f"[The user attached {len(file_descriptions)} {noun}.{read_hint}\n"
         + "\n".join(file_descriptions)
@@ -3002,6 +3226,7 @@ def _dispatch_response(
             }
         )
         acc.assistant_response.tool_calls = acc.accumulated_tool_calls
+        acc.assistant_response.mark_tool_calls_pending_save()
         if not acc.has_appended_assistant:
             ctx.session.messages.append(acc.assistant_response)
             acc.has_appended_assistant = True
@@ -3040,6 +3265,9 @@ def _dispatch_response(
                 role="tool",
                 content=content,
                 tool_call_id=response.toolCallId,
+                name=_resolve_tool_result_name(
+                    ctx.session, response.toolCallId, response.toolName
+                ),
             )
         )
         if not entries_replaced:
@@ -3053,6 +3281,17 @@ def _dispatch_response(
         acc.stream_completed = True
 
     return response
+
+
+class _BuildingModeRestart(Exception):
+    """Raised by ``_consume_sdk_until_done`` when ``enter_agent_building_mode``
+    was called: the outer loop relaunches this attempt with the agent-building
+    guide in the system prompt (``--resume`` on the same CLI session).
+
+    NOT an error and NOT a rollback — everything the attempt produced so far
+    (tool calls, results, text) stands, in the client stream, the session
+    history, and the CLI session file.
+    """
 
 
 class _HandledStreamError(Exception):
@@ -3683,8 +3922,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
     mode: CopilotMode | None = None,
-    model: CopilotLlmModel | None = None,
+    model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -3717,6 +3958,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    # Stamping state for THIS turn: messages beyond this index were created
+    # by the current turn and get model/routing_source at persist time.
+    # Pre-feature history rows (NULL model) must never be back-stamped.
+    routing_source: RoutingSource = "env"
+
+    # The session row is the tenancy anchor; the turn entry's org/team only
+    # backfills sessions created before org tagging (pre-migration rows).
+    if session.organization_id is None and organization_id:
+        session.organization_id = organization_id
+        session.team_id = team_id
+
     # Clean up ALL trailing error markers from previous turn before starting
     # a new turn.  Multiple markers can accumulate when a mid-stream error is
     # followed by a cleanup error in __aexit__ (both append a marker).
@@ -3738,6 +3990,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
     prune_orphan_tool_calls(session.messages, log_prefix=f"[SDK] [{session_id[:12]}]")
+
+    # Capture the turn-start boundary AFTER the error-marker and orphan-tool
+    # cleanup above: those pops shrink session.messages, so a count taken
+    # before them would overshoot and leave this turn's first assistant
+    # row(s) below _stamp_turn_messages' start_index — unstamped — exactly
+    # on the error-recovery turns whose routing we most want recorded.
+    pre_turn_message_count = len(session.messages)
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
@@ -3957,11 +4216,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # prompt cache keeps the ~20KB guide warm for the whole session.
         # Empty string for non-builder sessions preserves cross-user caching.
         builder_session_suffix = await build_builder_system_prompt_suffix(session)
+        # Per-turn runtime flag (never persisted): lets the guide gate and
+        # get_agent_building_guide skip redundant guide round-trips when the
+        # guide is already in this turn's cached system prompt.
+        session.sdk_turn_active = True
+        session.guide_in_system_prompt = bool(builder_session_suffix)
+        expert_session_suffix = await build_expert_identity_suffix(
+            session.user_id, session.expert_id
+        )
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + graphiti_supplement
             + builder_session_suffix
+            + expert_session_suffix
         )
 
         transcript_content = _restore.transcript_content
@@ -3972,6 +4240,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         restore_context_messages = _restore.context_messages
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
+
+        if mode == "fast":
+            # The request asked for Fast but this turn runs on the SDK
+            # engine (building-mode pin or engine-switch continuation).
+            # Tell stale pickers — a client that missed the original
+            # data-mode-changed (reload, second tab) re-syncs here.
+            yield StreamModeChanged(mode="extended_thinking")
 
         set_execution_context(
             user_id,
@@ -3989,12 +4264,36 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "Claude Code CLI subscription (requires `claude login`)."
             )
 
-        mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
+        disabled_tool_groups: list[ToolGroup] = []
+        if not graphiti_enabled:
+            disabled_tool_groups.append("graphiti")
+
+        # Hide both permission-denied tools AND group-disabled tools at
+        # registration. ``allowed_tools`` filtering alone routes group-
+        # disabled calls through the same auto-deny path the per-permission
+        # hiding is meant to eliminate (CLI returns "Permission to use ...
+        # has been denied", which the model narrates as a fake Allow/Deny
+        # prompt).
+        # get_agent_building_guide is redundant on the SDK path —
+        # enter_agent_building_mode puts the same guide compaction-proof
+        # into the system prompt. Hiding it removes the tempting-but-worse
+        # fallback; read_skill("agent_building_guide") remains as escape
+        # hatch. The baseline path (no prompt machinery) keeps the tool.
+        hidden_tools = (
+            _hidden_short_names_for_permissions(permissions)
+            | tool_names_in_groups(disabled_tool_groups)
+            | {"get_agent_building_guide"}
+        )
+        mcp_server = create_copilot_mcp_server(
+            use_e2b=use_e2b, hidden_tool_names=hidden_tools
+        )
 
         # Resolve model (request tier → LD per-user override → config default).
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
-        sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
+        sdk_model, routing_source = await _resolve_sdk_model_for_request(
+            model, session_id, user_id
+        )
         fallback_model = _resolve_fallback_model()
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
@@ -4015,10 +4314,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
         )
-
-        disabled_tool_groups: list[ToolGroup] = []
-        if not graphiti_enabled:
-            disabled_tool_groups.append("graphiti")
 
         if permissions is not None:
             allowed, disallowed = apply_tool_permissions(
@@ -4260,6 +4555,28 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             env_ctx_content = ""
             if not use_e2b and sdk_cwd:
                 env_ctx_content = f"working_dir: {sdk_cwd}"
+            # Build the per-session follow-up awareness block so the model
+            # can answer "cancel that" / "what did I schedule" on the very
+            # first turn without round-tripping to ``list_schedules``.
+            # Lands in the per-turn user message (after the last cache
+            # breakpoint) so it does NOT bust the cross-session prefix
+            # cache.  Failure-tolerant — the helper degrades to the bare
+            # session_id line on any scheduler RPC hiccup.
+            session_ctx_content = ""
+            if user_id:
+                session_ctx_content = await build_session_context(
+                    session_id=session_id, user_id=user_id
+                )
+            # Build the per-user skill index so the model sees what's
+            # available without an extra round-trip.  Failures here MUST
+            # NOT block the turn — log and continue with an empty index.
+            skills_ctx_content = ""
+            try:
+                skills_ctx_content = await build_skills_context(user_id)
+            except Exception:
+                logger.exception(
+                    "[skills] failed to build skills_ctx — proceeding without it"
+                )
             # Pass warm_ctx and env_ctx to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -4271,7 +4588,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session.messages,
                 warm_ctx=warm_ctx,
                 env_ctx=env_ctx_content,
+                session_ctx=session_ctx_content,
+                skills_ctx=skills_ctx_content,
                 user_id=user_id,
+                expert_id=session.expert_id,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -4427,6 +4747,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # Clear any stale stash signal from the previous attempt so
             # wait_for_stash() doesn't fire prematurely on a leftover event.
             reset_stash_event()
+            # Drop orphaned tool outputs stashed by a rolled-back attempt —
+            # the name-keyed FIFO would otherwise serve them (off-by-one) to
+            # this attempt's tool calls, corrupting frontend tool payloads.
+            reset_pending_tool_outputs()
             # Reset tool-level circuit breaker so failures from a previous
             # (rolled-back) attempt don't carry over to the fresh attempt.
             reset_tool_failure_counters()
@@ -4568,6 +4892,26 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _MAX_STREAM_ATTEMPTS,
                 )
                 raise
+            except _BuildingModeRestart:
+                # enter_agent_building_mode: relaunch this attempt with the
+                # agent-building guide in the system prompt. Not an error,
+                # not a rollback — everything produced so far stands (client
+                # stream, session history, CLI session file), so no
+                # interrupted.capture / snapshot restore here. Detection
+                # cannot re-fire: guide_in_system_prompt flips True on
+                # success, building_mode_requested flips False either way.
+                yield await _apply_building_mode_restart(
+                    session=session,
+                    state=state,
+                    sdk_options=sdk_options,
+                    base_system_prompt=base_system_prompt,
+                    graphiti_supplement=graphiti_supplement,
+                    use_e2b=use_e2b,
+                    session_id=session_id,
+                    message_id=message_id,
+                    log_prefix=log_prefix,
+                )
+                continue
             except _HandledStreamError as exc:
                 # _run_stream_attempt already yielded a StreamError and
                 # appended an error marker.  We only need to rollback
@@ -4996,6 +5340,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
+            # sdk_model (not effective_model): in subscription mode no
+            # model was requested — the CLI's default must not read as a
+            # fallback divergence against a fabricated "request".
+            _stamp_turn_messages(
+                session.messages,
+                start_index=pre_turn_message_count,
+                requested_model=sdk_model,
+                actual_model=state.observed_model if state is not None else None,
+                routing_source=routing_source,
+            )
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(
@@ -5258,3 +5612,65 @@ async def _fetch_graphiti_context(
 
     ctx = await fetch_warm_context(user_id, message or "") or ""
     return True, ctx
+
+
+def _canonical_model(model: str) -> str:
+    """Spelling-insensitive model identity for fallback detection:
+    vendor prefix stripped, dots→dashes, trailing -YYYYMMDD dropped."""
+    tail = model.lower().split("/")[-1]
+    if tail.startswith("anthropic."):
+        tail = tail[len("anthropic.") :]
+    return MODEL_DATE_SUFFIX_RE.sub("", tail.replace(".", "-"))
+
+
+def _same_model(a: str, b: str | None) -> bool:
+    return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
+def _stamp_turn_messages(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    requested_model: str | None,
+    actual_model: str | None,
+    routing_source: RoutingSource,
+) -> None:
+    """Stamp THIS turn's assistant messages with the serving model and
+    routing layer.
+
+    The SDK adapters build messages far from the resolution context, so
+    the stamp lands at persist time — bounded to ``start_index`` (the
+    session length when the turn began) so pre-feature history rows with
+    NULL model are never back-stamped with today's values, and never
+    overwriting an already-stamped row.
+
+    ``actual_model`` is the model observed on ``AssistantMessage.model``
+    (survives retries). When it names a DIFFERENT MODEL than the requested
+    resolution the CLI's overload fallback served the turn — the stamp
+    records the actual model with ``routing_source="fallback"`` so
+    analytics never attribute a fallback-served turn to the layer that
+    routed a different model. The comparison is canonicalized (vendor
+    prefix, dot/dash, date-suffix spellings) so a spelling difference
+    between the request and the CLI's report never fakes a fallback.
+
+    ``requested_model=None`` means no specific model was requested
+    (subscription mode lets the CLI pick its default) — there is nothing
+    to diverge from, so the observed model stamps with the original
+    routing source, never "fallback".
+    """
+    model = actual_model or requested_model
+    if (
+        actual_model is not None
+        and requested_model is not None
+        and not _same_model(actual_model, requested_model)
+    ):
+        routing_source = "fallback"
+    for msg in messages[start_index:]:
+        if msg.role == "assistant" and msg.model is None:
+            msg.model = model
+            msg.routing_source = routing_source
+            if msg.sequence is not None:
+                # Row already flushed to the DB mid-turn — flag it so the
+                # save path back-fills the columns (insert only covers
+                # unsequenced rows).
+                msg.stamps_pending_save = True

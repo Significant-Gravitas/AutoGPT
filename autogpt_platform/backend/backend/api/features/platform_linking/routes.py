@@ -5,9 +5,13 @@ from typing import Annotated
 
 from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Path, Security
+from pydantic import BaseModel, Field
 
+from backend.copilot.bot.adapters.telegram import config as telegram_config
+from backend.copilot.bot.adapters.telegram.login import verify_login
 from backend.data.db_accessors import platform_linking_db
 from backend.platform_linking.models import (
+    BotPlatformInfo,
     ConfirmLinkResponse,
     ConfirmUserLinkResponse,
     DeleteLinkResponse,
@@ -23,6 +27,8 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
+from . import registry
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -31,6 +37,26 @@ TokenPath = Annotated[
     str,
     Path(max_length=64, pattern=r"^[A-Za-z0-9_-]+$"),
 ]
+
+
+class ConfirmLinkRequest(BaseModel):
+    """Optional confirm payload. ``telegram_auth`` carries the signed identity
+    Telegram appends when the user reached this page via a login_url button —
+    when present it must verify, and the link token must belong to that same
+    Telegram user."""
+
+    telegram_auth: dict[str, str] | None = Field(default=None)
+
+
+def _verified_platform_user(body: ConfirmLinkRequest | None) -> str | None:
+    if body is None or not body.telegram_auth:
+        return None
+    verified = verify_login(body.telegram_auth, telegram_config.get_bot_token())
+    if verified is None:
+        raise HTTPException(
+            status_code=403, detail="Telegram login data failed verification."
+        )
+    return verified
 
 
 def _translate(exc: Exception) -> HTTPException:
@@ -69,11 +95,15 @@ async def get_link_token_info_route(token: TokenPath) -> LinkTokenInfoResponse:
 async def confirm_link_token(
     token: TokenPath,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    body: ConfirmLinkRequest | None = None,
 ) -> ConfirmLinkResponse:
     try:
-        return await platform_linking_db().confirm_server_link(token, user_id)
+        return await platform_linking_db().confirm_server_link(
+            token, user_id, verified_platform_user_id=_verified_platform_user(body)
+        )
     except (
         NotFoundError,
+        NotAuthorizedError,
         LinkFlowMismatchError,
         LinkTokenExpiredError,
         LinkAlreadyExistsError,
@@ -90,11 +120,15 @@ async def confirm_link_token(
 async def confirm_user_link_token(
     token: TokenPath,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    body: ConfirmLinkRequest | None = None,
 ) -> ConfirmUserLinkResponse:
     try:
-        return await platform_linking_db().confirm_user_link(token, user_id)
+        return await platform_linking_db().confirm_user_link(
+            token, user_id, verified_platform_user_id=_verified_platform_user(body)
+        )
     except (
         NotFoundError,
+        NotAuthorizedError,
         LinkFlowMismatchError,
         LinkTokenExpiredError,
         LinkAlreadyExistsError,
@@ -124,6 +158,38 @@ async def list_my_user_links(
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> list[PlatformUserLinkInfo]:
     return await platform_linking_db().list_user_links(user_id)
+
+
+@router.get(
+    "/platforms",
+    response_model=list[BotPlatformInfo],
+    dependencies=[Security(auth.requires_user)],
+    summary="List bot platforms enabled on this deployment plus the caller's links",
+    operation_id="list_bot_platforms",
+)
+async def list_bot_platforms(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> list[BotPlatformInfo]:
+    db = platform_linking_db()
+    user_links = await db.list_user_links(user_id)
+    server_links = await db.list_server_links(user_id)
+    dm_by_platform: dict[str, PlatformUserLinkInfo] = {}
+    for link in user_links:
+        dm_by_platform.setdefault(link.platform, link)
+    servers_by_platform: dict[str, list[PlatformLinkInfo]] = {}
+    for link in server_links:
+        servers_by_platform.setdefault(link.platform, []).append(link)
+    return [
+        BotPlatformInfo(
+            platform=meta.platform,
+            display_name=meta.display_name,
+            icon=meta.icon,
+            add_bot_url=meta.add_bot_url,
+            dm_link=dm_by_platform.get(meta.platform),
+            server_links=servers_by_platform.get(meta.platform, []),
+        )
+        for meta in registry.enabled_platforms()
+    ]
 
 
 @router.delete(

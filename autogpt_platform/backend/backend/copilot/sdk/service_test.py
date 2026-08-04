@@ -10,6 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import config as cfg_mod
+from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.model_router import ResolvedModel
+from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
@@ -17,6 +21,7 @@ from .service import (
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
+    _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
@@ -81,8 +86,11 @@ class TestPrepareFileAttachments:
         assert not os.path.exists(os.path.join(tmp_path, "photo.jpg"))
 
     @pytest.mark.asyncio
-    async def test_pdf_saved_to_disk(self, tmp_path):
-        """PDFs should be saved to disk for Read tool access, not embedded."""
+    async def test_pdf_referenced_by_file_id(self, tmp_path):
+        """Non-images are surfaced via read_workspace_file by file_id — the
+        model's file tools run in the E2B sandbox in prod, where a host-side
+        sdk_cwd path doesn't exist. A local copy is still written for non-E2B
+        tooling, but the model must not be pointed at that path."""
         info = _FakeFileInfo("f1", "doc.pdf", "/doc.pdf", "application/pdf", 50)
         mgr = AsyncMock()
         mgr.get_file_info.return_value = info
@@ -95,7 +103,26 @@ class TestPrepareFileAttachments:
         saved = tmp_path / "doc.pdf"
         assert saved.exists()
         assert saved.read_bytes() == b"%PDF-1.4 fake"
-        assert str(saved) in result.hint
+        # The model is given the workspace identity, not the host path.
+        assert "file_id=f1" in result.hint
+        assert str(saved) not in result.hint
+        assert "read_workspace_file" in result.hint
+
+    @pytest.mark.asyncio
+    async def test_hint_file_ids_extractable_for_chat_sharing(self, tmp_path):
+        """Chat-share allowlisting parses ``file_id=<uuid>`` out of message
+        content with extract_workspace_file_ids; the hint must keep that exact
+        shape or shared chats lose access to their attachments."""
+        fid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+        info = _FakeFileInfo(fid, "doc.pdf", "/doc.pdf", "application/pdf", 50)
+        mgr = AsyncMock()
+        mgr.get_file_info.return_value = info
+        mgr.read_file_by_id.return_value = b"%PDF-1.4 fake"
+
+        with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mgr):
+            result = await _prepare_file_attachments([fid], "u", "s", str(tmp_path))
+
+        assert extract_workspace_file_ids(result.hint) == {fid}
 
     @pytest.mark.asyncio
     async def test_mixed_images_and_files(self, tmp_path):
@@ -124,8 +151,12 @@ class TestPrepareFileAttachments:
         # Non-image files should be on disk
         assert (tmp_path / "b.pdf").exists()
         assert (tmp_path / "c.txt").exists()
-        # Read tool hint should appear (has non-image files)
-        assert "Read tool" in result.hint
+        # Workspace-read hint should appear (has non-image files), and the
+        # model must NOT be told to use the (disallowed) built-in Read tool.
+        assert "read_workspace_file" in result.hint
+        assert "Use the Read tool" not in result.hint
+        assert "file_id=id2" in result.hint
+        assert "file_id=id3" in result.hint
 
     @pytest.mark.asyncio
     async def test_singular_noun(self, tmp_path):
@@ -154,7 +185,7 @@ class TestPrepareFileAttachments:
 
     @pytest.mark.asyncio
     async def test_image_only_no_read_hint(self, tmp_path):
-        """When all files are images, no Read tool hint should appear."""
+        """When all files are images, no read-tool hint should appear."""
         info = _FakeFileInfo("i1", "cat.png", "/cat.png", "image/png", 4)
         mgr = AsyncMock()
         mgr.get_file_info.return_value = info
@@ -163,7 +194,7 @@ class TestPrepareFileAttachments:
         with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mgr):
             result = await _prepare_file_attachments(["i1"], "u", "s", str(tmp_path))
 
-        assert "Read tool" not in result.hint
+        assert "read_workspace_file" not in result.hint
         assert len(result.image_blocks) == 1
 
 
@@ -387,10 +418,7 @@ class TestNormalizeModelName:
             aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert (
-            _normalize_model_name("claude-sonnet-4-20250514")
-            == "claude-sonnet-4-20250514"
-        )
+        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
 
 
 class TestResolveSdkModel:
@@ -545,15 +573,16 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-abc", user_id="user-1"
             )
 
         # Fallback == tier-specific config default (thinking_standard_model
-        # normalised to hyphen-form for direct-Anthropic mode).
-        assert resolved == "claude-sonnet-4-6"
+        # normalised to hyphen-form for direct-Anthropic mode) — an env
+        # fallback, so the routing source must NOT claim "ld".
+        assert resolved == ("claude-sonnet-4-6", "env")
 
     @pytest.mark.asyncio
     async def test_openrouter_mode_accepts_ld_kimi_value(
@@ -573,12 +602,12 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-abc", user_id="user-1"
             )
-        assert resolved == "moonshotai/kimi-k2.6"
+        assert resolved == ("moonshotai/kimi-k2.6", "ld")
 
     @pytest.mark.asyncio
     async def test_advanced_tier_fallback_uses_advanced_default_not_standard(
@@ -603,14 +632,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv", user_id="user-1"
             )
 
         # Direct-Anthropic normalises anthropic/claude-opus-4.7 → claude-opus-4-7
-        assert resolved == "claude-opus-4-7"
+        assert resolved == ("claude-opus-4-7", "env")
 
     @pytest.mark.asyncio
     async def test_standard_ld_override_wins_over_subscription(
@@ -639,14 +668,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std-sub", user_id="user-1"
             )
         # Kimi can't be served by the subscription CLI; fail-soft to
-        # the tier default normalised for the active transport.
-        assert resolved == "claude-sonnet-4-6"
+        # the tier default normalised for the active transport (env source).
+        assert resolved == ("claude-sonnet-4-6", "env")
 
     @pytest.mark.asyncio
     async def test_standard_subscription_survives_trailing_whitespace_in_env(
@@ -671,12 +700,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-ws", user_id="user-1"
             )
-        assert resolved is None, (
+        assert resolved == (None, "env"), (
             "LD value semantically matches the whitespace-padded config "
             "default — subscription mode must still win and return None"
         )
@@ -703,12 +734,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std-nop", user_id="user-1"
             )
-        assert resolved is None
+        assert resolved == (None, "env")
 
     @pytest.mark.asyncio
     async def test_advanced_tier_consults_ld_under_subscription(
@@ -734,12 +767,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-opus-4.7"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv-sub", user_id="user-1"
             )
-        assert resolved == "claude-opus-4-7"
+        assert resolved == ("claude-opus-4-7", "ld")
 
 
 # ---------------------------------------------------------------------------
@@ -2167,3 +2202,56 @@ class TestStreamEndedWithoutResultMessage:
 
         contents = [m.content for m in ctx.session.messages]
         assert STREAM_ERROR_MARKER not in contents, contents
+
+
+class TestHiddenShortNamesForPermissions:
+    """``_hidden_short_names_for_permissions`` is the pure function that
+    decides which MCP tools to skip at registration so the model never sees
+    permission-denied names — direct fix for the production trace where the
+    SDK's auto-deny string was narrated as a fake Allow/Deny UI."""
+
+    def test_none_permissions_hides_nothing(self):
+        assert _hidden_short_names_for_permissions(None) == frozenset()
+
+    def test_empty_permissions_hides_nothing(self):
+        # tools=[] makes is_empty() true regardless of the *_exclude flags.
+        perms = CopilotPermissions(tools=[], blocks=[])
+        assert _hidden_short_names_for_permissions(perms) == frozenset()
+
+    def test_blacklist_hides_listed_tools(self):
+        perms = CopilotPermissions(
+            tools=list(BUILDER_BLOCKED_TOOLS),
+            tools_exclude=True,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        assert set(BUILDER_BLOCKED_TOOLS) <= hidden
+        # Everything else stays visible.
+        assert hidden == all_known_tool_names() - (
+            all_known_tool_names() - set(BUILDER_BLOCKED_TOOLS)
+        )
+
+    def test_whitelist_hides_everything_not_listed(self):
+        all_tools = all_known_tool_names()
+        # Pick one stable, well-known tool as the whitelist.
+        keep = "find_block"
+        assert keep in all_tools, "test relies on find_block being registered"
+        perms = CopilotPermissions(
+            tools=[keep],
+            tools_exclude=False,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        assert keep not in hidden
+        assert hidden == all_tools - {keep}
+
+    def test_unknown_tool_in_blacklist_is_ignored(self):
+        """Typos in the blacklist must not phantom-hide real tools — the
+        function operates on the intersection with the known-tool set."""
+        perms = CopilotPermissions(
+            tools=["this_tool_does_not_exist"],
+            tools_exclude=True,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        # No real tool gets hidden by an unknown name.
+        assert hidden == frozenset()
+        # Sanity: all real tools remain visible.
+        assert all_known_tool_names() - hidden == all_known_tool_names()

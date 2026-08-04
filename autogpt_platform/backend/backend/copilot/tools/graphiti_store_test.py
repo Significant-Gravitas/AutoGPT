@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_store import MemoryStoreTool
 from backend.copilot.tools.models import ErrorResponse, MemoryStoreResponse
@@ -263,7 +264,7 @@ class TestMemoryStoreTool:
         assert envelope["memory_kind"] == "rule"
 
     @pytest.mark.asyncio
-    async def test_store_queue_full_returns_error(self):
+    async def test_store_queue_full_returns_retryable_error(self):
         tool = MemoryStoreTool()
         session = _make_session()
 
@@ -288,6 +289,77 @@ class TestMemoryStoreTool:
 
         assert isinstance(result, ErrorResponse)
         assert "queue" in result.message.lower()
+        assert "try again" in result.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_store_oversized_content_returns_split_guidance_without_enqueueing(
+        self,
+    ):
+        """An envelope over the 64KB ingest cap is a permanent rejection.
+        The tool must tell the LLM to split the content — not surface the
+        retryable queue-full message that invites an identical retry —
+        and must never hand the oversized body to the ingest queue."""
+        tool = MemoryStoreTool()
+        session = _make_session()
+
+        mock_enqueue = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            result = await tool._execute(
+                user_id="user-1",
+                session=session,
+                name="giant_memory",
+                content="x" * (MAX_EPISODE_BODY_BYTES + 1),
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "too large" in result.message.lower()
+        assert "split" in result.message.lower()
+        assert "queue" not in result.message.lower()
+        assert "try again" not in result.message.lower()
+        mock_enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_store_size_check_measures_full_envelope_not_just_content(self):
+        """The cap applies to the serialized MemoryEnvelope (what is
+        actually enqueued), so content just under the cap is still
+        rejected once the envelope's metadata pushes it over."""
+        tool = MemoryStoreTool()
+        session = _make_session()
+
+        mock_enqueue = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            result = await tool._execute(
+                user_id="user-1",
+                session=session,
+                name="barely_oversized_memory",
+                content="x" * (MAX_EPISODE_BODY_BYTES - 10),
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "too large" in result.message.lower()
+        mock_enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_store_with_scope(self):

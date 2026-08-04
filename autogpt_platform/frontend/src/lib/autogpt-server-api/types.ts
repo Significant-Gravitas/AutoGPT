@@ -441,6 +441,12 @@ export type Graph = GraphMeta & {
       }
   );
 
+export type SkippedWebhookPreset = {
+  id: string;
+  name: string;
+  pinned_version: number;
+};
+
 export type GraphUpdateable = Omit<
   Graph,
   | "user_id"
@@ -600,6 +606,7 @@ export type LibraryAgentPresetUpdatable = Partial<
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
+  LAST_RUN = "lastRunAt",
 }
 
 /* *** CREDENTIALS *** */
@@ -831,7 +838,7 @@ export interface CreditTransaction {
   transaction_time: Date;
   transaction_type: CreditTransactionType;
   amount: number;
-  running_balance: number;
+  running_balance?: number;
   current_balance: number;
   description: string;
   usage_graph_id: GraphID;

@@ -6,6 +6,7 @@ import {
 import * as Sentry from "@sentry/nextjs";
 
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 
@@ -72,6 +73,7 @@ export const customMutator = async <
       }
     }
     Object.assign(headers, getSystemHeaders());
+    Object.assign(headers, getDatafastAttribution());
   }
 
   const isFormData = data instanceof FormData;

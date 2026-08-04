@@ -61,7 +61,7 @@ class TestNormalizeModelForTransport:
         )
 
     def test_unprefixed_claude_slug_passes(self):
-        # ``claude-sonnet-4-20250514`` (no vendor prefix) is the
+        # ``claude-sonnet-4-6`` (no vendor prefix) is the
         # Anthropic Messages / OpenAI-compat form — must pass through.
         cfg = _make_cfg(
             use_openrouter=False,
@@ -70,8 +70,8 @@ class TestNormalizeModelForTransport:
             use_claude_code_subscription=False,
         )
         assert (
-            normalize_model_for_transport("claude-sonnet-4-20250514", cfg)
-            == "claude-sonnet-4-20250514"
+            normalize_model_for_transport("claude-sonnet-4-6", cfg)
+            == "claude-sonnet-4-6"
         )
 
     def test_unprefixed_non_anthropic_slug_rejected(self):
@@ -86,3 +86,19 @@ class TestNormalizeModelForTransport:
         )
         with pytest.raises(ValueError, match="Anthropic model slug"):
             normalize_model_for_transport("gpt-4o-mini", cfg)
+
+    def test_local_transport_passes_bare_slug_unchanged(self):
+        # Local backends (Ollama, vLLM, …) use operator-chosen slugs
+        # like ``llama3.1:8b-instruct-q4_K_M`` that don't fit the
+        # ``vendor/model`` convention and must not be rewritten — the
+        # Anthropic-prefix rule applies only to cloud transports.
+        cfg = ChatConfig(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://ollama:11434/v1",
+            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+        )
+        assert (
+            normalize_model_for_transport("llama3.1:8b-instruct-q4_K_M", cfg)
+            == "llama3.1:8b-instruct-q4_K_M"
+        )

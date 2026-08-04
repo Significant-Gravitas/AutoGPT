@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
+  COPILOT_COMPLETION_NOTIFICATION,
   ORIGINAL_TITLE,
   deduplicateMessages,
   extractSendMessageText,
@@ -9,12 +10,13 @@ import {
   getCopilotAuthHeaders,
   getSendSuppressionReason,
   parseSessionIDs,
+  resolveModeChangedMode,
   resolveSessionDryRun,
   shouldDebounceReconnect,
   shouldSuppressDuplicateSend,
 } from "../helpers";
 
-vi.mock("@/lib/supabase/actions", () => ({
+vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(),
 }));
 
@@ -22,7 +24,7 @@ vi.mock("@/lib/impersonation", () => ({
   getSystemHeaders: vi.fn(),
 }));
 
-import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import { getSystemHeaders } from "@/lib/impersonation";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
@@ -51,6 +53,16 @@ describe("formatNotificationTitle", () => {
     expect(formatNotificationTitle(1)).toBe(
       `(1) AutoPilot is ready - ${ORIGINAL_TITLE}`,
     );
+  });
+});
+
+describe("COPILOT_COMPLETION_NOTIFICATION", () => {
+  it("matches the copy hardcoded in public/push-sw.js", () => {
+    expect(COPILOT_COMPLETION_NOTIFICATION).toEqual({
+      title: "AutoGPT",
+      body: "Task completed",
+      icon: "/notification-icon-192.png",
+    });
   });
 });
 
@@ -668,5 +680,41 @@ describe("getCopilotAuthHeaders", () => {
     await expect(getCopilotAuthHeaders()).rejects.toThrow(
       "Authentication failed — please sign in again.",
     );
+  });
+});
+
+describe("resolveModeChangedMode", () => {
+  it("returns the mode for a data-mode-changed part with a known mode", () => {
+    expect(
+      resolveModeChangedMode({
+        type: "data-mode-changed",
+        data: { mode: "extended_thinking" },
+      }),
+    ).toBe("extended_thinking");
+    expect(
+      resolveModeChangedMode({
+        type: "data-mode-changed",
+        data: { mode: "fast" },
+      }),
+    ).toBe("fast");
+  });
+
+  it("returns null for other data part types", () => {
+    expect(
+      resolveModeChangedMode({ type: "data-status", data: { mode: "fast" } }),
+    ).toBeNull();
+  });
+
+  it("returns null for unknown or missing modes", () => {
+    expect(
+      resolveModeChangedMode({
+        type: "data-mode-changed",
+        data: { mode: "turbo" },
+      }),
+    ).toBeNull();
+    expect(resolveModeChangedMode({ type: "data-mode-changed" })).toBeNull();
+    expect(
+      resolveModeChangedMode({ type: "data-mode-changed", data: "fast" }),
+    ).toBeNull();
   });
 });
