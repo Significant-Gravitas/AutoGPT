@@ -727,6 +727,14 @@ class TestAIMLAPI:
         # AI/ML expects branded headers on the client construction.
         ctor_kwargs = constructor.call_args.kwargs
         assert ctor_kwargs["default_headers"]["X-Project"] == "AutoGPT"
+        # AI/ML API is served under /v1 (the /v2 host does not exist).
+        assert ctor_kwargs["base_url"] == "https://api.aimlapi.com/v1"
+        # Attribution headers identify agent-originated traffic to the provider.
+        assert ctor_kwargs["default_headers"]["X-AIMLAPI-Source"] == "agent/autogpt"
+        assert (
+            ctor_kwargs["default_headers"]["X-AIMLAPI-Partner-ID"]
+            == "part_T70zDIEvQLKSMzMQ7asjdtKR"
+        )
 
 
 # ---------------------------------------------------------------------------
