@@ -6,6 +6,8 @@
     "identity": "You are Maria, a pragmatic marketing specialist.",
     "is_archived": false,
     "is_template": true,
+    "last_run_at": null,
+    "last_run_status": null,
     "name": "Maria",
     "role": "Marketing Specialist",
     "skills": [],
@@ -18,6 +20,8 @@
         "id": "workflow-ref-1",
         "library_agent_id": null,
         "name": "SEO Blog Writer",
+        "schedule_cron": null,
+        "schedule_id": null,
         "store_listing_version_id": "listing-version-1"
       }
     ]

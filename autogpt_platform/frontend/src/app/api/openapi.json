@@ -16739,6 +16739,17 @@
             "items": { "$ref": "#/components/schemas/ExpertWorkflowRef" },
             "type": "array",
             "title": "Workflows"
+          },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
+          },
+          "last_run_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Run Status"
           }
         },
         "type": "object",
@@ -16780,6 +16791,14 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Cron"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
           }
         },
         "type": "object",
@@ -17246,6 +17265,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -21424,6 +21447,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Timezone",
             "description": "User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC."
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id",
+            "description": "Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow."
           }
         },
         "type": "object",

@@ -9,6 +9,12 @@ import { Text } from "@/components/atoms/Text/Text";
 import { PlusIcon } from "@phosphor-icons/react";
 import { MouseEvent } from "react";
 
+import {
+  getLastRunLabel,
+  getScheduleSummary,
+  workflowNeedsSetup,
+} from "./helpers";
+
 interface Props {
   expert: Expert;
   onInstallWorkflow: (expertId: string) => void;
@@ -21,6 +27,9 @@ export function ExpertTeamCard({
   onOpenProfile,
 }: Props) {
   const workflowCount = expert.workflows.length;
+  const statusLine = [getScheduleSummary(expert), getLastRunLabel(expert)]
+    .filter(Boolean)
+    .join(" · ");
 
   function handleInstallClick(event: MouseEvent) {
     event.stopPropagation();
@@ -54,6 +63,11 @@ export function ExpertTeamCard({
           </Text>
         </div>
       </div>
+      {statusLine ? (
+        <Text variant="small" className="text-zinc-500">
+          {statusLine}
+        </Text>
+      ) : null}
       {expert.skills && expert.skills.length > 0 ? (
         <div>
           <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
@@ -86,9 +100,14 @@ export function ExpertTeamCard({
               workflow.name ? (
                 <span
                   key={workflow.id}
-                  className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700"
+                  className={
+                    workflowNeedsSetup(workflow)
+                      ? "rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200"
+                      : "rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700"
+                  }
                 >
                   {workflow.name}
+                  {workflowNeedsSetup(workflow) ? " · Needs setup" : null}
                 </span>
               ) : null,
             )}

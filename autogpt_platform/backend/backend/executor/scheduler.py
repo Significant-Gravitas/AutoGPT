@@ -176,6 +176,7 @@ async def _execute_graph(**kwargs):
             graph_credentials_inputs=args.input_credentials,
             organization_id=args.organization_id,
             team_id=args.team_id,
+            expert_id=args.expert_id,
         )
         await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
@@ -1100,6 +1101,11 @@ class GraphExecutionJobArgs(BaseModel):
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
     organization_id: str = ""
     team_id: str | None = None
+    # Expert attribution: set when the schedule belongs to a hired expert
+    # (install-time schedule or manual schedule of an expert-installed
+    # workflow). Stamped onto every execution this schedule fires. Optional
+    # for backward compat with rows persisted before expert attribution.
+    expert_id: str | None = None
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -1613,6 +1619,7 @@ class Scheduler(AppService):
         user_timezone: str | None = None,
         organization_id: Optional[str] = None,
         team_id: Optional[str] = None,
+        expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -1638,6 +1645,7 @@ class Scheduler(AppService):
             input_credentials=input_credentials,
             organization_id=organization_id or "",
             team_id=team_id,
+            expert_id=expert_id,
         )
         job = self._persist_schedule(
             dispatch_func=execute_graph,

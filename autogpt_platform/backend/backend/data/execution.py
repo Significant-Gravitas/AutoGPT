@@ -876,6 +876,7 @@ async def create_graph_execution(
     is_dry_run: bool = False,
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
+    expert_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -913,6 +914,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
+            **({"expertId": expert_id} if expert_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),

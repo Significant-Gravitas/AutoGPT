@@ -5,6 +5,10 @@ import prisma.models
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef, HireResult
 from backend.api.features.library import db as library_db
+from backend.api.features.library.model import LibraryAgent
+from backend.data.user import get_user_by_id
+from backend.util.clients import get_scheduler_client
+from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +38,15 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         graph_id=library_agent.agentGraphId if library_agent else None,
         name=listing.name if listing else None,
         description=listing.description if listing else None,
+        schedule_cron=row.scheduleCron,
+        schedule_id=row.scheduleId,
     )
 
 
-def _to_model(row: prisma.models.Expert) -> Expert:
+def _to_model(
+    row: prisma.models.Expert,
+    latest_run: prisma.models.AgentGraphExecution | None = None,
+) -> Expert:
     return Expert(
         id=row.id,
         name=row.name,
@@ -51,7 +60,23 @@ def _to_model(row: prisma.models.Expert) -> Expert:
         source_template_id=row.sourceTemplateId,
         is_archived=row.isArchived,
         workflows=[_to_workflow_ref(w) for w in row.Workflows or []],
+        last_run_at=latest_run.createdAt if latest_run else None,
+        last_run_status=(str(latest_run.executionStatus) if latest_run else None),
     )
+
+
+async def _latest_runs(
+    expert_ids: list[str],
+) -> dict[str, prisma.models.AgentGraphExecution]:
+    """Latest execution per expert, one indexed query via Prisma distinct."""
+    if not expert_ids:
+        return {}
+    rows = await prisma.models.AgentGraphExecution.prisma().find_many(
+        where={"expertId": {"in": expert_ids}, "isDeleted": False},
+        order=[{"expertId": "asc"}, {"createdAt": "desc"}],
+        distinct=["expertId"],
+    )
+    return {row.expertId: row for row in rows if row.expertId is not None}
 
 
 async def list_templates() -> list[Expert]:
@@ -71,7 +96,8 @@ async def list_experts(user_id: str) -> list[Expert]:
         },
         include=_WORKFLOW_INCLUDE,
     )
-    return [_to_model(row) for row in rows]
+    latest_runs = await _latest_runs([row.id for row in rows])
+    return [_to_model(row, latest_runs.get(row.id)) for row in rows]
 
 
 async def get_expert(
@@ -88,7 +114,10 @@ async def get_expert(
         where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
         include=_WORKFLOW_INCLUDE if include_workflows else None,
     )
-    return _to_model(row) if row is not None else None
+    if row is None:
+        return None
+    latest_runs = await _latest_runs([row.id])
+    return _to_model(row, latest_runs.get(row.id))
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
@@ -166,9 +195,14 @@ async def _install_preloads(
     """Install template preloads into the hiring user's library.
 
     Honest partial hire: a failed preload is logged and reported, never
-    fatal to the hire itself.
+    fatal to the hire itself. Preloads with a roster cadence also get their
+    schedule created here (see ``_schedule_preload``).
     """
     failed: list[str] = []
+    user_timezone: str | None = None
+    if any(p.scheduleCron for p in preloads):
+        user = await get_user_by_id(user_id)
+        user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
     for preload in preloads:
         if preload.storeListingVersionId is None:
             continue
@@ -176,11 +210,12 @@ async def _install_preloads(
             library_agent = await library_db.add_store_agent_to_library(
                 preload.storeListingVersionId, user_id
             )
-            await prisma.models.ExpertWorkflow.prisma().create(
+            row = await prisma.models.ExpertWorkflow.prisma().create(
                 data={
                     "expertId": expert_id,
                     "storeListingVersionId": preload.storeListingVersionId,
                     "libraryAgentId": library_agent.id,
+                    "scheduleCron": preload.scheduleCron,
                 }
             )
         except Exception:
@@ -193,7 +228,59 @@ async def _install_preloads(
                 if preload.StoreListingVersion
                 else preload.storeListingVersionId
             )
+            continue
+        if preload.scheduleCron:
+            await _schedule_preload(
+                workflow_row_id=row.id,
+                expert_id=expert_id,
+                user_id=user_id,
+                preload=preload,
+                library_agent=library_agent,
+                user_timezone=user_timezone or "UTC",
+            )
     return failed
+
+
+async def _schedule_preload(
+    workflow_row_id: str,
+    expert_id: str,
+    user_id: str,
+    preload: prisma.models.ExpertWorkflow,
+    library_agent: LibraryAgent,
+    user_timezone: str,
+) -> None:
+    """Create the install-time schedule for a preload with a roster cadence.
+
+    Failure is non-fatal and expected for agents that need credentials the
+    user hasn't connected yet: the cadence stays on the row with a null
+    ``scheduleId``, which surfaces the workflow as "needs setup" instead of
+    silently dropping the roster's intent.
+    """
+    if not preload.scheduleCron:
+        return
+    listing = preload.StoreListingVersion
+    try:
+        schedule = await get_scheduler_client().add_execution_schedule(
+            user_id=user_id,
+            graph_id=library_agent.graph_id,
+            graph_version=library_agent.graph_version,
+            name=listing.name if listing else "Expert workflow",
+            cron=preload.scheduleCron,
+            input_data={},
+            input_credentials={},
+            user_timezone=user_timezone,
+            expert_id=expert_id,
+        )
+    except Exception as e:
+        logger.warning(
+            f"Install-time schedule for preload {preload.storeListingVersionId} "
+            f"on expert #{expert_id} not created (needs setup): "
+            f"{type(e).__name__}: {e}"
+        )
+        return
+    await prisma.models.ExpertWorkflow.prisma().update(
+        where={"id": workflow_row_id}, data={"scheduleId": schedule.id}
+    )
 
 
 async def install_workflow(
@@ -245,6 +332,38 @@ async def install_workflow(
             raise
         return _to_workflow_ref(raced)
     return _to_workflow_ref(row)
+
+
+async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
+    """Expert attribution for a manually scheduled graph.
+
+    Returns the id of the single active hired expert that has *graph_id*
+    installed as a workflow. Two experts can install the same listing and
+    share one LibraryAgent, which makes the join ambiguous — on anything
+    but a unique match this declines (returns ``None``) rather than guess.
+    """
+    rows = await prisma.models.ExpertWorkflow.prisma().find_many(
+        where={
+            "Expert": {
+                "is": {
+                    "ownerUserId": user_id,
+                    "isTemplate": False,
+                    "isArchived": False,
+                }
+            },
+            "LibraryAgent": {
+                "is": {
+                    "userId": user_id,
+                    "agentGraphId": graph_id,
+                    "isDeleted": False,
+                }
+            },
+        }
+    )
+    expert_ids = {row.expertId for row in rows}
+    if len(expert_ids) != 1:
+        return None
+    return expert_ids.pop()
 
 
 async def archive_expert(user_id: str, expert_id: str) -> None:

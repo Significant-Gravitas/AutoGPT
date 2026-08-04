@@ -801,8 +801,9 @@ model Expert {
 
   isArchived Boolean @default(false)
 
-  Workflows    ExpertWorkflow[]
-  ChatSessions ChatSession[]
+  Workflows       ExpertWorkflow[]
+  ChatSessions    ChatSession[]
+  GraphExecutions AgentGraphExecution[]
 
   // Tenancy
   organizationId String?
@@ -836,6 +837,13 @@ model ExpertWorkflow {
   // the hiring user's LibraryAgent; null on template rows
   libraryAgentId String?
   LibraryAgent   LibraryAgent? @relation(fields: [libraryAgentId], references: [id])
+
+  // Install-time scheduling: template rows carry the roster cadence; hire
+  // copies it and records the created schedule's id. A non-null cron with a
+  // null scheduleId means schedule creation failed at install time (e.g.
+  // missing credentials) — the workflow "needs setup".
+  scheduleCron String?
+  scheduleId   String?
 
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
@@ -950,6 +958,13 @@ model AgentGraphExecution {
   agentPresetId String?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
 
+  // Expert attribution: set when the run was started by/for a hired expert
+  // (install-time schedule, expert trigger, or manual schedule of an
+  // expert-installed workflow). Survives expert archival — archive is a
+  // soft delete, mirroring ChatSession.expertId semantics.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?
@@ -988,6 +1003,7 @@ model AgentGraphExecution {
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
   @@index([agentPresetId])
+  @@index([expertId, createdAt])
   @@index([shareToken])
   @@index([parentGraphExecutionId])
   @@index([teamId, isDeleted, createdAt])
