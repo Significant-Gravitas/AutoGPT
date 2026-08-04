@@ -99,6 +99,19 @@ async def test_a_new_recording_id_always_claims_the_row(
 
 
 @pytest.mark.asyncio
+async def test_a_delayed_typed_finalize_cannot_replace_an_active_take(
+    mocker: MockerFixture, upsert: AsyncMock
+):
+    existing = _row(BrainDumpStatus.completed, "rec-newer")
+    mocker.patch.object(db, "get_dump", AsyncMock(return_value=existing))
+
+    result = await db.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.typed)
+
+    assert result is existing
+    upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_new_recording_id_clears_every_column_the_last_take_owned(
     mocker: MockerFixture, upsert: AsyncMock
 ):

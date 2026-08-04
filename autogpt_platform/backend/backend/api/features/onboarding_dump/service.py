@@ -243,6 +243,12 @@ async def finalize_typed_dump(
             return FinalizeResponse(
                 status=BrainDumpStatus.failed, input_mode=BrainDumpInputMode.typed
             )
+        if current.recordingId != recording_id:
+            return FinalizeResponse(
+                status=BrainDumpStatus.failed,
+                input_mode=BrainDumpInputMode.typed,
+                error_code="superseded",
+            )
         return _pipeline_response(
             current.status, current.transcript, BrainDumpInputMode.typed
         )

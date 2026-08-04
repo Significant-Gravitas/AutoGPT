@@ -73,20 +73,22 @@ async def start_dump(
 ) -> OnboardingBrainDump:
     """Claim the row for ``recording_id``, resetting any prior take's state.
 
-    A take already moving through the pipeline is returned untouched. Two
-    callers reach here after a dump has been finalized — recovery replays
-    every part on disk, part 0 included, and a repeated finalize — and
-    neither should reset an in-flight transcription to
-    ``recording_uploaded``. A *different* recording id is a genuinely new
-    take and always claims the row, taking every take-owned column with
-    it; a retry of the *same* id keeps what that take has produced so
-    far, because it still needs it.
+    A take already moving through the pipeline is returned untouched when
+    recovery replays part 0 or finalize is retried. Typed and skipped
+    finalizes also cannot displace an active take with a different id: unlike
+    part 0 of a voice upload, they carry no earlier server-side event that can
+    establish which tab's request is newer. A different voice recording id is
+    a deliberate new take and claims the row, taking every take-owned column
+    with it.
     """
     existing = await get_dump(user_id)
     if (
         existing
-        and existing.recordingId == recording_id
         and existing.status in _IN_FLIGHT_STATUSES
+        and (
+            existing.recordingId == recording_id
+            or input_mode != BrainDumpInputMode.voice
+        )
     ):
         return existing
 

@@ -63,13 +63,16 @@ class DumpStore:
         # repeated finalize cannot reset it.
         if (
             self.row is not None
-            and self.row.recordingId == recording_id
             and self.row.status
             in (
                 BrainDumpStatus.transcribing,
                 BrainDumpStatus.transcribed,
                 BrainDumpStatus.extracting,
                 BrainDumpStatus.completed,
+            )
+            and (
+                self.row.recordingId == recording_id
+                or input_mode != BrainDumpInputMode.voice
             )
         ):
             return self.row
@@ -323,6 +326,30 @@ async def test_repeating_a_typed_finalize_does_not_restart_the_pipeline(
     # Nothing queued the second time round.
     assert second.tasks == []
     assert extraction["upsert_business_understanding"].await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_stale_typed_finalize_cannot_replace_a_completed_take(
+    dumps: DumpStore,
+):
+    newer_tasks = BackgroundTasks()
+    await service.finalize_typed_dump(
+        USER_ID, "rec-newer", "This is the newer transcript.", newer_tasks
+    )
+    await newer_tasks()
+    assert dumps.row is not None
+    newer_transcript = dumps.row.transcript
+    stale_tasks = BackgroundTasks()
+
+    response = await service.finalize_typed_dump(
+        USER_ID, "rec-stale", "This stale request arrived late.", stale_tasks
+    )
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "superseded"
+    assert dumps.row.recordingId == "rec-newer"
+    assert dumps.row.transcript == newer_transcript
+    assert stale_tasks.tasks == []
 
 
 def release_both_past_the_guard(mocker: MockerFixture, dumps: "DumpStore"):
