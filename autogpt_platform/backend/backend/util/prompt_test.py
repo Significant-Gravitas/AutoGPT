@@ -1126,36 +1126,48 @@ class TestClaude5TokenFactor:
     local tokenizer — estimates get the conservative correction factor."""
 
     def test_sonnet_5_estimate_is_scaled(self):
-        from backend.util.prompt import CLAUDE_5_TOKEN_FACTOR, estimate_token_count_str
+        from backend.util.prompt import estimate_token_count_str
 
         text = "hello world " * 200
         base = estimate_token_count_str(text, model="claude-sonnet-4-6")
         scaled = estimate_token_count_str(text, model="claude-sonnet-5")
-        assert scaled == int(base * CLAUDE_5_TOKEN_FACTOR)
+        # Literal 1.5, not CLAUDE_5_TOKEN_FACTOR: importing the constant
+        # under test would let a wrong magnitude pass unnoticed.
+        assert scaled == int(base * 1.5)
 
-    def test_factor_applies_through_vendor_prefix(self):
+    @pytest.mark.parametrize(
+        "prefixed",
+        [
+            "anthropic/claude-sonnet-5",
+            "anthropic.claude-sonnet-5",
+            "openrouter/anthropic/claude-sonnet-5",
+        ],
+    )
+    def test_factor_applies_through_vendor_prefix(self, prefixed: str):
         from backend.util.prompt import estimate_token_count_str
 
         text = "hello world " * 200
         assert estimate_token_count_str(
-            text, model="anthropic/claude-sonnet-5"
+            text, model=prefixed
         ) == estimate_token_count_str(text, model="claude-sonnet-5")
 
-    def test_claude_4_6_unscaled(self):
+    @pytest.mark.parametrize("model", ["claude-sonnet-4-6", "claude-opus-4-6"])
+    def test_pre_4_7_generation_unscaled(self, model: str):
         from backend.util.prompt import estimate_token_count_str
 
         text = "hello world " * 200
-        assert estimate_token_count_str(
-            text, model="claude-sonnet-4-6"
-        ) == estimate_token_count_str(text, model="gpt-4o")
+        assert estimate_token_count_str(text, model=model) == estimate_token_count_str(
+            text, model="gpt-4o"
+        )
 
-    def test_opus_4_7_shares_the_new_tokenizer(self):
+    @pytest.mark.parametrize("model", ["claude-opus-4-7", "claude-opus-4-8"])
+    def test_opus_4_7_generation_shares_the_new_tokenizer(self, model: str):
         from backend.util.prompt import estimate_token_count_str
 
         text = "hello world " * 200
-        assert estimate_token_count_str(
-            text, model="claude-opus-4-7"
-        ) == estimate_token_count_str(text, model="claude-sonnet-5")
+        assert estimate_token_count_str(text, model=model) == estimate_token_count_str(
+            text, model="claude-sonnet-5"
+        )
 
 
 class TestClaude5FactorOnMessagePaths:

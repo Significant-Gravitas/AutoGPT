@@ -14,11 +14,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import httpx
 import pytest
 
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ProviderResponse,
+    _anthropic_accepts_temperature,
+    _is_temperature_deprecation_error,
     call_provider,
 )
 
@@ -2100,30 +2103,62 @@ class TestClaude5TemperatureRejection:
     list is load-bearing for batch (dream) submissions, which have no
     retry self-heal."""
 
-    def test_sonnet_5_temperature_stripped(self):
-        from backend.util.llm.providers import _anthropic_accepts_temperature
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-mythos-5",
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+        ],
+    )
+    def test_rejecting_family_members_stripped(self, model: str):
+        assert _anthropic_accepts_temperature(model) is False
 
-        assert _anthropic_accepts_temperature("claude-sonnet-5") is False
-        assert _anthropic_accepts_temperature("claude-sonnet-4-6") is True
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "anthropic/claude-sonnet-5",
+            "anthropic.claude-sonnet-5",
+            "openrouter/anthropic/claude-sonnet-5",
+        ],
+    )
+    def test_vendor_prefixed_forms_stripped(self, model: str):
+        assert _anthropic_accepts_temperature(model) is False
 
-    def test_self_heal_matches_unsupported_phrasing(self):
-        import anthropic
-        import httpx
+    @pytest.mark.parametrize("model", ["claude-sonnet-4-6", "claude-opus-4-6"])
+    def test_accepting_models_keep_temperature(self, model: str):
+        assert _anthropic_accepts_temperature(model) is True
 
-        from backend.util.llm.providers import _is_temperature_deprecation_error
-
-        def _err(msg: str) -> anthropic.BadRequestError:
-            resp = httpx.Response(
-                400,
-                request=httpx.Request("POST", "https://api.anthropic.com"),
-                json={"error": {"message": msg}},
-            )
-            return anthropic.BadRequestError(msg, response=resp, body=None)
-
-        assert _is_temperature_deprecation_error(
-            _err("`temperature` is deprecated for this model")
+    @staticmethod
+    def _err(msg: str) -> anthropic.BadRequestError:
+        resp = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.anthropic.com"),
+            json={"error": {"message": msg}},
         )
-        assert _is_temperature_deprecation_error(
-            _err("temperature is not supported by this model")
-        )
-        assert not _is_temperature_deprecation_error(_err("rate limited"))
+        return anthropic.BadRequestError(msg, response=resp, body=None)
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "`temperature` is deprecated for this model",
+            "temperature is not supported by this model",
+            "temperature is unsupported on this model",
+            "the temperature parameter was removed for this model",
+        ],
+    )
+    def test_self_heal_matches_all_rejection_phrasings(self, message: str):
+        assert _is_temperature_deprecation_error(self._err(message))
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "rate limited",
+            # Phrase words without 'temperature' must not match.
+            "this model is deprecated",
+        ],
+    )
+    def test_self_heal_ignores_unrelated_errors(self, message: str):
+        assert not _is_temperature_deprecation_error(self._err(message))

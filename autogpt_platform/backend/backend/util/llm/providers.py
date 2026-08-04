@@ -45,7 +45,10 @@ from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
-from backend.data.llm_registry.llm_models import CLAUDE_5_FAMILY_PREFIXES
+from backend.data.llm_registry.llm_models import (
+    CLAUDE_5_FAMILY_PREFIXES,
+    strip_anthropic_vendor_prefix,
+)
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.conversions import (
     ToolCall,
@@ -112,7 +115,11 @@ _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 # result rows.
 # 4.7/4.8 verified live; the whole Claude 5 family per litellm
 # supports_sampling_params=false. Load-bearing for batch submissions
-# (dream), which have no retry self-heal.
+# (dream), which have no retry self-heal. Membership currently coincides
+# with CLAUDE_5_TOKENIZER_GENERATION_PREFIXES (both traits shipped with
+# the 4.7 generation) but is maintained separately: temperature rejection
+# is verified per-model against the live API, not inferred from the
+# tokenizer lineage.
 _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES = (
     "claude-opus-4-7",
     "claude-opus-4-8",
@@ -120,7 +127,9 @@ _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES = (
 
 
 def _anthropic_accepts_temperature(model: str) -> bool:
-    return not model.startswith(_ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES)
+    return not strip_anthropic_vendor_prefix(model).startswith(
+        _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES
+    )
 
 
 def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:

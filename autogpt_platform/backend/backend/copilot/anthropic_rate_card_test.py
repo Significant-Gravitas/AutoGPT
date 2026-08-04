@@ -178,5 +178,9 @@ class TestSonnet5Rates:
             completion_tokens=1_000_000,
         )
         # Intro rates in litellm today: 1M x $2 + 1M x $10 = $12 — the
-        # Opus fallback would charge $90.
+        # Opus fallback would charge $90. The catalog deliberately bills
+        # sticker ($3/$15); this asserts the vendored litellm value, so
+        # when the intro window ends (2026-08-31) and a rate refresh
+        # brings sticker rates, update this to 18.0 — that change is
+        # expected, not a mispricing.
         assert cost == 12.0

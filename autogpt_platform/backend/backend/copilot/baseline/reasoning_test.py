@@ -6,6 +6,7 @@ Covers the typed OpenRouter delta parser, the stateful emitter, and the
 parser relies on is exercised end-to-end.
 """
 
+import pytest
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
 
 from backend.copilot.baseline.reasoning import (
@@ -580,15 +581,33 @@ class TestClaude5FamilyThinking:
     stay off (the documented adaptive default serves), while 4.x keeps
     its budget-capped fragments."""
 
-    def test_openrouter_fragment_suppressed_for_sonnet_5(self):
+    @pytest.mark.parametrize(
+        "family_member",
+        ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
+    )
+    def test_openrouter_fragment_suppressed_for_5_family(self, family_member: str):
         from backend.copilot.baseline.reasoning import reasoning_extra_body
 
-        assert reasoning_extra_body("anthropic/claude-sonnet-5", 5000) is None
+        assert reasoning_extra_body(f"anthropic/{family_member}", 5000) is None
 
-    def test_anthropic_fragment_suppressed_for_sonnet_5(self):
+    @pytest.mark.parametrize(
+        "family_member",
+        ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
+    )
+    def test_anthropic_fragment_suppressed_for_5_family(self, family_member: str):
         from backend.copilot.baseline.reasoning import anthropic_thinking_extra_body
 
-        assert anthropic_thinking_extra_body("claude-sonnet-5", 5000) is None
+        assert anthropic_thinking_extra_body(family_member, 5000) is None
+
+    @pytest.mark.parametrize("model", ["claude-opus-4-7", "claude-opus-4-8"])
+    def test_opus_4_7_and_4_8_keep_budget_fragments(self, model: str):
+        """4.7/4.8 share the 5-generation tokenizer but NOT the
+        ``budget_tokens`` removal — they must keep the thinking fragment."""
+        from backend.copilot.baseline.reasoning import anthropic_thinking_extra_body
+
+        assert anthropic_thinking_extra_body(model, 5000) == {
+            "thinking": {"type": "enabled", "budget_tokens": 5000}
+        }
 
     def test_sonnet_4_6_keeps_budget_fragments(self):
         from backend.copilot.baseline.reasoning import (

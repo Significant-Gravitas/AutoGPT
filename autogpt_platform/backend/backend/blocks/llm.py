@@ -296,6 +296,9 @@ async def _llm_call(
         result = await compress_context(
             messages=prompt,
             target_tokens=llm_model.context_window // 2,
+            model=llm_model.value,  # Compact in the same corrected token space
+            # as the max_tokens sizing below, or Claude-5 prompts pass
+            # compaction on raw counts and overflow at serve time.
             client=None,  # Truncation-only, no LLM summarization
             reserve=0,  # Caller handles response token budget separately
         )

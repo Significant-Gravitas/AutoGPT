@@ -326,8 +326,9 @@ CLAUDE_5_TOKEN_FACTOR = 1.5
 
 
 def _token_estimate_factor(model: str) -> float:
-    tail = strip_anthropic_vendor_prefix(model).split("/")[-1]
-    if tail.startswith(CLAUDE_5_TOKENIZER_GENERATION_PREFIXES):
+    if strip_anthropic_vendor_prefix(model).startswith(
+        CLAUDE_5_TOKENIZER_GENERATION_PREFIXES
+    ):
         return CLAUDE_5_TOKEN_FACTOR
     return 1.0
 
