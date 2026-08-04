@@ -19,7 +19,6 @@ directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 """
 
 import logging
-from xml.sax.saxutils import escape
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.data.db_accessors import experts_db
@@ -27,8 +26,8 @@ from backend.data.db_accessors import experts_db
 logger = logging.getLogger(__name__)
 
 
-def _escape(value: str) -> str:
-    return escape(value)
+def escape_prompt_xml_tags(value: str) -> str:
+    return value.replace("<", "&lt;").replace(">", "&gt;")
 
 
 async def build_expert_identity_suffix(
@@ -55,14 +54,14 @@ async def build_expert_identity_suffix(
     if expert is None or expert.is_archived:
         return ""
 
-    name = _escape(expert.name)
-    identity = _escape(expert.identity)
-    voice = _escape(expert.voice_preferences) or "Not specified."
-    boundaries = _escape(expert.boundaries) or "Not specified."
+    name = escape_prompt_xml_tags(expert.name)
+    identity = escape_prompt_xml_tags(expert.identity)
+    voice = escape_prompt_xml_tags(expert.voice_preferences) or "Not specified."
+    boundaries = escape_prompt_xml_tags(expert.boundaries) or "Not specified."
     protected_rules = "\n".join(f"- {rule}" for rule in PROTECTED_SOUL_RULES)
     return (
         f"\n\n<expert_identity>\n"
-        f"For this session you are {name} — {_escape(expert.role)}, a hired "
+        f"For this session you are {name} — {escape_prompt_xml_tags(expert.role)}, a hired "
         f"expert on the user's team.\n"
         f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
@@ -103,9 +102,9 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
 
     if expert.workflows:
         workflow_lines = "\n".join(
-            f"- {_escape(w.name or 'Unnamed workflow')} "
+            f"- {escape_prompt_xml_tags(w.name or 'Unnamed workflow')} "
             f"(library_agent_id: {w.library_agent_id}, graph_id: {w.graph_id})"
-            f": {_escape(w.description or 'No description')}"
+            f": {escape_prompt_xml_tags(w.description or 'No description')}"
             for w in expert.workflows
         )
     else:
@@ -140,11 +139,11 @@ async def _team_context(user_id: str) -> str:
 
 def _team_line(expert: Expert) -> str:
     workflow_names = ", ".join(
-        _escape(w.name or "Unnamed workflow") for w in expert.workflows
+        escape_prompt_xml_tags(w.name or "Unnamed workflow") for w in expert.workflows
     )
     if not workflow_names:
         workflow_names = "none installed"
     return (
-        f"- {_escape(expert.name)} — {expert.role} (expert id: {expert.id}); "
+        f"- {escape_prompt_xml_tags(expert.name)} — {expert.role} (expert id: {expert.id}); "
         f"installed workflows: {workflow_names}"
     )
