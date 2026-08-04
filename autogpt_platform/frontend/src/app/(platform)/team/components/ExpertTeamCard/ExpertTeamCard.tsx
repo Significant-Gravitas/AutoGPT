@@ -12,8 +12,10 @@ import { MouseEvent } from "react";
 import {
   getLastRunLabel,
   getScheduleSummary,
+  getSpendLabel,
   workflowNeedsSetup,
 } from "./helpers";
+import { useExpertTeamCard } from "./useExpertTeamCard";
 
 interface Props {
   expert: Expert;
@@ -27,9 +29,15 @@ export function ExpertTeamCard({
   onOpenProfile,
 }: Props) {
   const workflowCount = expert.workflows.length;
-  const statusLine = [getScheduleSummary(expert), getLastRunLabel(expert)]
+  const { handleResume, isResuming } = useExpertTeamCard(expert.id);
+  const statusLine = [
+    getScheduleSummary(expert),
+    getLastRunLabel(expert),
+    getSpendLabel(expert),
+  ]
     .filter(Boolean)
     .join(" · ");
+  const isPaused = Boolean(expert.schedules_paused_at);
 
   function handleInstallClick(event: MouseEvent) {
     event.stopPropagation();
@@ -67,6 +75,24 @@ export function ExpertTeamCard({
         <Text variant="small" className="text-zinc-500">
           {statusLine}
         </Text>
+      ) : null}
+      {isPaused ? (
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
+          <Text variant="small" className="text-amber-700">
+            Schedules paused
+          </Text>
+          <Button
+            variant="secondary"
+            size="small"
+            loading={isResuming}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleResume();
+            }}
+          >
+            Resume schedules
+          </Button>
+        </div>
       ) : null}
       {expert.skills && expert.skills.length > 0 ? (
         <div>

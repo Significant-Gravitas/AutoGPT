@@ -9,6 +9,7 @@ from typing import Literal, Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from backend.api.features.experts import scheduling as experts_scheduling
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
@@ -1232,6 +1233,17 @@ async def add_graph_execution(
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
+    # Weekly credit guardrail: expert-attributed runs (schedules, triggers)
+    # are refused while the expert is paused/archived or over budget. Chat
+    # runs never carry an expert_id, so chat is never gated.
+    if expert_id:
+        if prisma.is_connected():
+            await experts_scheduling.enforce_expert_run_budget(user_id, expert_id)
+        else:
+            await get_database_manager_async_client().enforce_expert_run_budget(
+                user_id, expert_id
+            )
+
     if prisma.is_connected():
         edb = execution_db
         udb = user_db
@@ -1341,6 +1353,9 @@ async def add_graph_execution(
             # doesn't silently fall back to user-only scope.
             organization_id=organization_id or graph_exec.organization_id,
             team_id=team_id or graph_exec.team_id,
+            # Same recovery rule as org/team: explicit param on create,
+            # persisted row on resume/requeue.
+            expert_id=expert_id or graph_exec.expert_id,
         )
     elif execution_context.organization_id is None and graph_exec.organization_id:
         # A caller-supplied context (e.g. review-resume, admin-requeue) may

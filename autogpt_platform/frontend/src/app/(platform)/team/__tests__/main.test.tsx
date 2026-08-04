@@ -1,10 +1,16 @@
 import {
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
+  getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
@@ -166,6 +172,43 @@ describe("TeamPage", () => {
 
     await screen.findByText("Maria");
     expect(screen.getByText(/Needs setup/)).toBeDefined();
+  });
+
+  test("shows weekly spend on the expert card", async () => {
+    const budgetMaria: Expert = {
+      ...hiredMaria,
+      weekly_budget: 50,
+      weekly_spend: 12,
+    };
+    server.use(getListExpertsMockHandler([budgetMaria]));
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    expect(screen.getByText(/12 of 50 credits this week/)).toBeDefined();
+  });
+
+  test("paused expert offers one-click resume", async () => {
+    const pausedMaria: Expert = {
+      ...hiredMaria,
+      schedules_paused_at: new Date("2026-08-03T12:00:00Z"),
+    };
+    const resumeSpy = vi.fn(() => ({
+      ...pausedMaria,
+      schedules_paused_at: null,
+    }));
+    server.use(
+      getListExpertsMockHandler([pausedMaria]),
+      getResumeExpertSchedulesMockHandler(resumeSpy),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    expect(screen.getByText(/Schedules paused/)).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume schedules" }));
+    await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
   });
 
   test("shows empty state linking to the marketplace when no experts are hired", async () => {

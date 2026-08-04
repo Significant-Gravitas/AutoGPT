@@ -23,6 +23,11 @@ export function getLastRunLabel(expert: Expert) {
   return `Last run ${when}`;
 }
 
+export function getSpendLabel(expert: Expert) {
+  if (expert.weekly_budget == null) return null;
+  return `${expert.weekly_spend ?? 0} of ${expert.weekly_budget} credits this week`;
+}
+
 export function workflowNeedsSetup(workflow: ExpertWorkflowRef) {
   return Boolean(workflow.schedule_cron) && !workflow.schedule_id;
 }

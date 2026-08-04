@@ -33,6 +33,19 @@ class Expert(BaseModel):
     # Latest expert-attributed execution, for the /team card's status line.
     last_run_at: datetime | None = None
     last_run_status: str | None = None
+    # Weekly credit guardrail: effective budget (expert's own or the
+    # platform default; None = guardrail disabled), current-week spend,
+    # and the pause flag set on budget breach or archive.
+    weekly_budget: int | None = None
+    weekly_spend: int = 0
+    schedules_paused_at: datetime | None = None
+
+
+class ExpertDetachPreview(BaseModel):
+    """What archiving the expert would pause — drives the confirm dialog."""
+
+    schedule_names: list[str]
+    trigger_names: list[str]
 
 
 class HireResult(BaseModel):

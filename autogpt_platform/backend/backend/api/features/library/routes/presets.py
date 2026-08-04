@@ -4,6 +4,7 @@ from typing import Any, Optional
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
 
+from backend.api.features.experts import experts_db
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
@@ -132,7 +133,13 @@ async def create_preset(
     """
     try:
         if isinstance(preset, models.LibraryAgentPresetCreatable):
-            return await db.create_preset(user_id, preset)
+            return await db.create_preset(
+                user_id,
+                preset,
+                expert_id=await experts_db.resolve_expert_for_graph(
+                    user_id, preset.graph_id
+                ),
+            )
         else:
             return await db.create_preset_from_graph_execution(user_id, preset)
     except NotFoundError as e:
@@ -298,6 +305,7 @@ async def execute_preset(
         graph_id=preset.graph_id,
         graph_version=preset.graph_version,
         preset_id=preset_id,
+        expert_id=preset.expert_id,
         inputs=merged_node_input,
         graph_credentials_inputs=merged_credential_inputs,
         organization_id=exec_org_id,

@@ -50,6 +50,7 @@ from backend.util.clients import (
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    ExpertRunPausedError,
     GraphNotFoundError,
     GraphNotInLibraryError,
     GraphValidationError,
@@ -195,6 +196,10 @@ async def _execute_graph(**kwargs):
         await _handle_graph_not_available(e, args, start_time)
     except GraphValidationError:
         await _handle_graph_validation_error(args)
+    except ExpertRunPausedError as e:
+        # Expected while an expert is paused (budget/archive): skip quietly;
+        # the schedule stays registered for one-click resume.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(

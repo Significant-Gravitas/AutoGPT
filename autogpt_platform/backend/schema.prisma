@@ -603,6 +603,12 @@ model AgentPreset {
   webhookId String?
   Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
 
+  // Expert attribution: set when the preset was created for a hired
+  // expert's installed workflow; every run it fires inherits it.
+  // Survives expert archival (soft delete), like ChatSession.expertId.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
   isDeleted Boolean @default(false)
 
   // Tenancy
@@ -614,6 +620,7 @@ model AgentPreset {
   @@index([userId])
   @@index([agentGraphId, agentGraphVersion])
   @@index([webhookId])
+  @@index([expertId])
   @@index([teamId])
   @@index([organizationId])
 }
@@ -801,9 +808,19 @@ model Expert {
 
   isArchived Boolean @default(false)
 
+  // Weekly credit guardrail: null = platform default from config.
+  // Spend is tracked per ISO week in Redis and reconciled from
+  // CreditTransaction via the execution's expertId.
+  weeklyBudget Int?
+  // Set when a budget breach (or archive) paused this expert's schedules
+  // and triggers. Chat is never paused. Cleared by the resume endpoint.
+  schedulesPausedAt DateTime?
+
   Workflows       ExpertWorkflow[]
   ChatSessions    ChatSession[]
   GraphExecutions AgentGraphExecution[]
+  AgentPresets    AgentPreset[]
+  PauseEvents     ExpertPauseEvent[]
 
   // Tenancy
   organizationId String?
@@ -848,6 +865,21 @@ model ExpertWorkflow {
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
   @@index([expertId])
+}
+
+// Audit log for expert schedule pauses (budget breach, archive). "All
+// pauses logged and reversible": resume stamps clearedAt on the open row.
+model ExpertPauseEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  reason    String
+  clearedAt DateTime?
+
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////

@@ -7,12 +7,13 @@ import prisma.models
 import pytest
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import experts_db, seed
+from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.data.graph import Graph, Node
 from backend.data.user import get_or_create_user
 from backend.usecases.sample import create_test_user
+from backend.util.exceptions import ExpertRunPausedError
 from backend.util.test import SpinTestServer
 
 
@@ -276,7 +277,7 @@ async def test_hire_creates_schedule_from_template_cadence(
     mock_scheduler.add_execution_schedule = AsyncMock(
         return_value=SimpleNamespace(id="sched-1")
     )
-    with patch.object(experts_db, "get_scheduler_client", return_value=mock_scheduler):
+    with patch.object(scheduling, "get_scheduler_client", return_value=mock_scheduler):
         result = await experts_db.hire_expert(test_user.id, template.id, None)
 
     wf = result.expert.workflows[0]
@@ -304,7 +305,7 @@ async def test_hire_schedule_failure_marks_needs_setup(
     mock_scheduler.add_execution_schedule = AsyncMock(
         side_effect=RuntimeError("graph validation failed")
     )
-    with patch.object(experts_db, "get_scheduler_client", return_value=mock_scheduler):
+    with patch.object(scheduling, "get_scheduler_client", return_value=mock_scheduler):
         result = await experts_db.hire_expert(test_user.id, template.id, None)
 
     wf = result.expert.workflows[0]
@@ -312,6 +313,111 @@ async def test_hire_schedule_failure_marks_needs_setup(
     assert wf.schedule_cron == "40 7 * * *"
     assert wf.schedule_id is None
     assert result.failed_preloads == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_archive_pauses_detaches_and_revive_reattaches(
+    server: SpinTestServer, test_user
+):
+    """Archiving must leave no orphaned firing: presets deactivate, schedules
+    delete, and the pause is logged. Re-hiring reverses all of it."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(
+        name="Frankie",
+        preload_listings=[slv_id],
+        preload_crons={slv_id: "40 7 * * *"},
+    )
+    sched = AsyncMock()
+    sched.add_execution_schedule = AsyncMock(return_value=SimpleNamespace(id="sched-1"))
+    sched.delete_schedule = AsyncMock()
+
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+        expert_id = hired.expert.id
+        wf = hired.expert.workflows[0]
+        assert wf.library_agent_id is not None
+        library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+            where={"id": wf.library_agent_id}
+        )
+        assert library_agent is not None
+        preset = await prisma.models.AgentPreset.prisma().create(
+            data={
+                "userId": test_user.id,
+                "name": "Email trigger",
+                "description": "",
+                "agentGraphId": library_agent.agentGraphId,
+                "agentGraphVersion": library_agent.agentGraphVersion,
+                "expertId": expert_id,
+            }
+        )
+        sched.get_execution_schedules = AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    kind="graph", id="sched-1", name="n", expert_id=expert_id
+                )
+            ]
+        )
+        await experts_db.archive_expert(test_user.id, expert_id)
+
+    preset_row = await prisma.models.AgentPreset.prisma().find_unique(
+        where={"id": preset.id}
+    )
+    assert preset_row is not None and preset_row.isActive is False
+    expert_row = await prisma.models.Expert.prisma().find_unique(
+        where={"id": expert_id}
+    )
+    assert expert_row is not None and expert_row.schedulesPausedAt is not None
+    events = await prisma.models.ExpertPauseEvent.prisma().find_many(
+        where={"expertId": expert_id}
+    )
+    assert any(e.clearedAt is None for e in events)
+    sched.delete_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={"expertId": expert_id}
+    )
+    assert wf_row is not None and wf_row.scheduleId is None
+
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        revived = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert revived.expert.schedules_paused_at is None
+    preset_row = await prisma.models.AgentPreset.prisma().find_unique(
+        where={"id": preset.id}
+    )
+    assert preset_row is not None and preset_row.isActive is True
+    wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={"expertId": expert_id}
+    )
+    assert wf_row is not None and wf_row.scheduleId == "sched-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_enforce_budget_pauses_blocks_and_resumes(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Max", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id}, data={"weeklyBudget": 100}
+    )
+
+    with patch.object(scheduling, "get_weekly_spend", new=AsyncMock(return_value=150)):
+        with pytest.raises(ExpertRunPausedError):
+            await scheduling.enforce_expert_run_budget(test_user.id, hired.expert.id)
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": hired.expert.id})
+    assert row is not None and row.schedulesPausedAt is not None
+
+    with pytest.raises(ExpertRunPausedError):
+        await scheduling.enforce_expert_run_budget(test_user.id, hired.expert.id)
+
+    assert await scheduling.resume_expert_schedules(test_user.id, hired.expert.id)
+    events = await prisma.models.ExpertPauseEvent.prisma().find_many(
+        where={"expertId": hired.expert.id}
+    )
+    assert events and all(e.clearedAt is not None for e in events)
+    with patch.object(scheduling, "get_weekly_spend", new=AsyncMock(return_value=10)):
+        await scheduling.enforce_expert_run_budget(test_user.id, hired.expert.id)
 
 
 @pytest.mark.asyncio(loop_scope="session")

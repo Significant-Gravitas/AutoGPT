@@ -786,6 +786,7 @@ async def _execute_webhook_preset_trigger(
             nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
             organization_id=org_id,
             team_id=ws_id,
+            expert_id=preset.expert_id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(

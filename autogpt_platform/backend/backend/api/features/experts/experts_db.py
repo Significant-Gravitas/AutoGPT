@@ -3,11 +3,11 @@ import logging
 import prisma.errors
 import prisma.models
 
+from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef, HireResult
 from backend.api.features.library import db as library_db
-from backend.api.features.library.model import LibraryAgent
+from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
-from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,7 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
 def _to_model(
     row: prisma.models.Expert,
     latest_run: prisma.models.AgentGraphExecution | None = None,
+    weekly_spend: int = 0,
 ) -> Expert:
     return Expert(
         id=row.id,
@@ -62,6 +63,9 @@ def _to_model(
         workflows=[_to_workflow_ref(w) for w in row.Workflows or []],
         last_run_at=latest_run.createdAt if latest_run else None,
         last_run_status=(str(latest_run.executionStatus) if latest_run else None),
+        weekly_budget=scheduling.effective_weekly_budget(row),
+        weekly_spend=weekly_spend,
+        schedules_paused_at=row.schedulesPausedAt,
     )
 
 
@@ -97,7 +101,10 @@ async def list_experts(user_id: str) -> list[Expert]:
         include=_WORKFLOW_INCLUDE,
     )
     latest_runs = await _latest_runs([row.id for row in rows])
-    return [_to_model(row, latest_runs.get(row.id)) for row in rows]
+    return [
+        _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+        for row in rows
+    ]
 
 
 async def get_expert(
@@ -117,7 +124,7 @@ async def get_expert(
     if row is None:
         return None
     latest_runs = await _latest_runs([row.id])
-    return _to_model(row, latest_runs.get(row.id))
+    return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
@@ -186,6 +193,14 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
         )
         if revived is not None:
             row = revived
+        if row.ownerUserId:
+            await scheduling.resume_expert_schedules(row.ownerUserId, row.id)
+            try:
+                await scheduling.reattach_expert_triggers(row.ownerUserId, row.id)
+            except Exception:
+                logger.exception(
+                    f"Failed to reattach triggers while reviving expert #{row.id}"
+                )
     return HireResult(expert=_to_model(row), failed_preloads=[])
 
 
@@ -230,57 +245,18 @@ async def _install_preloads(
             )
             continue
         if preload.scheduleCron:
-            await _schedule_preload(
+            listing = preload.StoreListingVersion
+            await scheduling.create_workflow_schedule(
                 workflow_row_id=row.id,
                 expert_id=expert_id,
                 user_id=user_id,
-                preload=preload,
-                library_agent=library_agent,
+                cron=preload.scheduleCron,
+                graph_id=library_agent.graph_id,
+                graph_version=library_agent.graph_version,
+                name=listing.name if listing else "Expert workflow",
                 user_timezone=user_timezone or "UTC",
             )
     return failed
-
-
-async def _schedule_preload(
-    workflow_row_id: str,
-    expert_id: str,
-    user_id: str,
-    preload: prisma.models.ExpertWorkflow,
-    library_agent: LibraryAgent,
-    user_timezone: str,
-) -> None:
-    """Create the install-time schedule for a preload with a roster cadence.
-
-    Failure is non-fatal and expected for agents that need credentials the
-    user hasn't connected yet: the cadence stays on the row with a null
-    ``scheduleId``, which surfaces the workflow as "needs setup" instead of
-    silently dropping the roster's intent.
-    """
-    if not preload.scheduleCron:
-        return
-    listing = preload.StoreListingVersion
-    try:
-        schedule = await get_scheduler_client().add_execution_schedule(
-            user_id=user_id,
-            graph_id=library_agent.graph_id,
-            graph_version=library_agent.graph_version,
-            name=listing.name if listing else "Expert workflow",
-            cron=preload.scheduleCron,
-            input_data={},
-            input_credentials={},
-            user_timezone=user_timezone,
-            expert_id=expert_id,
-        )
-    except Exception as e:
-        logger.warning(
-            f"Install-time schedule for preload {preload.storeListingVersionId} "
-            f"on expert #{expert_id} not created (needs setup): "
-            f"{type(e).__name__}: {e}"
-        )
-        return
-    await prisma.models.ExpertWorkflow.prisma().update(
-        where={"id": workflow_row_id}, data={"scheduleId": schedule.id}
-    )
 
 
 async def install_workflow(
@@ -373,3 +349,15 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
     )
     if updated == 0:
         raise ExpertNotFoundError(expert_id)
+    await scheduling.pause_expert_schedules(
+        user_id, expert_id, reason="Expert archived"
+    )
+    try:
+        await scheduling.detach_expert_triggers(user_id, expert_id)
+    except Exception:
+        # The archive itself must not fail on a scheduler hiccup: presets
+        # are already deactivated first inside detach, and the run-time
+        # gate refuses archived experts as the backstop.
+        logger.exception(
+            f"Failed to detach triggers while archiving expert #{expert_id}"
+        )

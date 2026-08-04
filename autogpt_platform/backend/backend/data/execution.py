@@ -115,6 +115,10 @@ class ExecutionContext(BaseModel):
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
 
+    # Expert attribution: carried at runtime so billing can meter per-expert
+    # spend and the executor can post run results into the expert's thread.
+    expert_id: Optional[str] = None
+
 
 # -------------------------- Models -------------------------- #
 
@@ -198,6 +202,10 @@ class GraphExecutionMeta(BaseDbModel):
     # paths where the caller doesn't re-supply them.
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
+
+    # Expert attribution, surfaced from the DB row for the same
+    # resume/requeue recovery reason as org/team above.
+    expert_id: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -329,6 +337,7 @@ class GraphExecutionMeta(BaseDbModel):
             is_dry_run=stats.is_dry_run if stats else False,
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
+            expert_id=_graph_exec.expertId,
         )
 
 
