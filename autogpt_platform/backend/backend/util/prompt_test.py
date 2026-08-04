@@ -1083,16 +1083,16 @@ class TestCompressResultDataclass:
 
 class TestGetContextWindow:
     def test_claude_opus(self) -> None:
-        assert get_context_window("claude-opus-4-7") == 200_000
+        assert get_context_window("claude-opus-4-7") == 1_000_000
 
     def test_claude_sonnet(self) -> None:
-        assert get_context_window("claude-sonnet-4-6") == 200_000
+        assert get_context_window("claude-sonnet-4-6") == 1_000_000
 
     def test_openrouter_prefix(self) -> None:
-        assert get_context_window("anthropic/claude-opus-4-6") == 200_000
+        assert get_context_window("anthropic/claude-opus-4-6") == 1_000_000
 
     def test_version_suffix(self) -> None:
-        assert get_context_window("claude-opus-4-6") == 200_000
+        assert get_context_window("claude-opus-4-6") == 1_000_000
 
     def test_gpt4o(self) -> None:
         assert get_context_window("gpt-4o") == 128_000
@@ -1105,9 +1105,9 @@ class TestGetContextWindow:
 
 
 class TestGetCompressionTarget:
-    def test_claude_opus_200k(self) -> None:
+    def test_claude_opus_1m(self) -> None:
         target = get_compression_target("anthropic/claude-opus-4-6")
-        assert target == 140_000  # 200K - 60K overhead
+        assert target == 940_000  # 1M - 60K overhead
 
     def test_gpt4o_128k(self) -> None:
         target = get_compression_target("gpt-4o")
