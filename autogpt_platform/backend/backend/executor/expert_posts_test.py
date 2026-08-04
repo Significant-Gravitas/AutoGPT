@@ -1,5 +1,6 @@
 """Unit tests for expert run-result thread posts — no DB required."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from backend.data.execution import (
@@ -81,7 +82,7 @@ def test_post_skips_dry_runs_and_non_terminal_statuses():
 
 def test_post_uses_deterministic_message_id_for_retries():
     db_client = MagicMock()
-    db_client.get_graph_metadata.return_value = MagicMock(name="Agent")
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Morning Brief")
     db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
     with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
         handle_expert_run_post(
@@ -90,7 +91,9 @@ def test_post_uses_deterministic_message_id_for_retries():
             ExecutionStatus.COMPLETED,
             GraphExecutionStats(),
         )
-        first_id = db_client.append_expert_run_message.call_args.kwargs["message_id"]
+        first_call = db_client.append_expert_run_message.call_args.kwargs
+        assert "Morning Brief" in first_call["content"]
+        first_id = first_call["message_id"]
         handle_expert_run_post(
             db_client,
             _entry(expert_id="expert-1"),
