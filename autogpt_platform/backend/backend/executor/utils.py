@@ -1235,7 +1235,10 @@ async def add_graph_execution(
 
     # Weekly credit guardrail: expert-attributed runs (schedules, triggers)
     # are refused while the expert is paused/archived or over budget. Chat
-    # runs never carry an expert_id, so chat is never gated.
+    # runs never carry an expert_id, so chat is never gated. REQUEUE mode
+    # (graph_exec_id set, expert_id param None) is deliberately exempt:
+    # requeue is an explicit human/admin recovery action on an execution
+    # that already passed the gate when it was created.
     if expert_id:
         if prisma.is_connected():
             await experts_scheduling.enforce_expert_run_budget(user_id, expert_id)

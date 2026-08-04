@@ -25,6 +25,7 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    Expert,
     LibraryAgent,
     SharedExecutionFile,
     UserWorkspace,
@@ -892,6 +893,16 @@ async def create_graph_execution(
     Returns:
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
+    # Defense in depth: attribution must never cross users, even if a
+    # caller forgets its ownership check. Only costs a query on the rare
+    # expert-attributed path.
+    if expert_id:
+        expert = await Expert.prisma().find_first(
+            where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}
+        )
+        if expert is None:
+            raise ValueError(f"Expert #{expert_id} does not belong to user #{user_id}")
+
     result = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph_id,

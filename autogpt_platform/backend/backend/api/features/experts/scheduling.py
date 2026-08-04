@@ -78,9 +78,27 @@ async def create_workflow_schedule(
             f"not created (needs setup): {type(e).__name__}: {e}"
         )
         return False
-    await prisma.models.ExpertWorkflow.prisma().update(
-        where={"id": workflow_row_id}, data={"scheduleId": schedule.id}
-    )
+    try:
+        await prisma.models.ExpertWorkflow.prisma().update(
+            where={"id": workflow_row_id}, data={"scheduleId": schedule.id}
+        )
+    except Exception as e:
+        # Never leave a schedule firing with no row pointing at it: undo the
+        # registration, fall back to needs-setup. A failed cleanup is loud so
+        # operators can delete the orphan by the logged id.
+        logger.warning(
+            f"Failed to record schedule #{schedule.id} on workflow "
+            f"#{workflow_row_id}; deleting it: {type(e).__name__}: {e}"
+        )
+        try:
+            await get_scheduler_client().delete_schedule(schedule.id, user_id=user_id)
+        except Exception as cleanup_error:
+            logger.error(
+                f"Orphaned schedule #{schedule.id} for expert #{expert_id} "
+                f"could not be deleted: {type(cleanup_error).__name__}: "
+                f"{cleanup_error}"
+            )
+        return False
     return True
 
 

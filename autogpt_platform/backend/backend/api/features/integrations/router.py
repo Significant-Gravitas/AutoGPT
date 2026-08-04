@@ -59,6 +59,7 @@ from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util.exceptions import (
+    ExpertRunPausedError,
     GraphNotInLibraryError,
     MissingConfigError,
     NeedConfirmation,
@@ -788,6 +789,10 @@ async def _execute_webhook_preset_trigger(
             team_id=ws_id,
             expert_id=preset.expert_id,
         )
+    except ExpertRunPausedError as e:
+        # Expected steady-state while the expert is paused/over budget —
+        # not an error worth a stack trace on every webhook delivery.
+        logger.info(f"Skipping triggered run for preset #{preset.id}: {e}")
     except GraphNotInLibraryError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "

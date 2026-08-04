@@ -9,7 +9,11 @@ from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution
-from backend.util.exceptions import NotFoundError, WebhookRegistrationError
+from backend.util.exceptions import (
+    ExpertRunPausedError,
+    NotFoundError,
+    WebhookRegistrationError,
+)
 
 from .. import db
 from .. import model as models
@@ -300,14 +304,19 @@ async def execute_preset(
         else (ctx.org_id, ctx.team_id)
     )
 
-    return await add_graph_execution(
-        user_id=user_id,
-        graph_id=preset.graph_id,
-        graph_version=preset.graph_version,
-        preset_id=preset_id,
-        expert_id=preset.expert_id,
-        inputs=merged_node_input,
-        graph_credentials_inputs=merged_credential_inputs,
-        organization_id=exec_org_id,
-        team_id=exec_team_id,
-    )
+    try:
+        return await add_graph_execution(
+            user_id=user_id,
+            graph_id=preset.graph_id,
+            graph_version=preset.graph_version,
+            preset_id=preset_id,
+            expert_id=preset.expert_id,
+            inputs=merged_node_input,
+            graph_credentials_inputs=merged_credential_inputs,
+            organization_id=exec_org_id,
+            team_id=exec_team_id,
+        )
+    except ExpertRunPausedError as e:
+        # A paused/over-budget expert is a user-visible state, not a server
+        # error — tell the user how to unblock instead of 500ing.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
