@@ -18,8 +18,8 @@ vi.mock("../recordingStore", () => ({
 
 import { buildPart, useUploadQueue } from "../useUploadQueue";
 
-function part(index: number): RecordingPart {
-  return buildPart("rec-1", index, new Blob(["x"]) as Blob);
+function part(index: number, recordingId = "rec-1"): RecordingPart {
+  return buildPart(recordingId, index, new Blob(["x"]) as Blob);
 }
 
 // Resolves only when the test says so, standing in for an upload that is
@@ -326,5 +326,73 @@ describe("useUploadQueue", () => {
 
     expect(flushed).toBe(true);
     expect(uploadBrainDumpPart).not.toHaveBeenCalled();
+  });
+
+  // The upload of the old take's last chunk is usually still on the wire
+  // when restart swaps the queue. Removing "the head" once it lands used to
+  // take the new take's part 0 with it — a recording with a hole at its
+  // start, which cannot be decoded at all.
+  it("keeps the restarted take's first part when the discarded take's upload lands late", async () => {
+    const inFlight = deferred();
+    uploadBrainDumpPart.mockReturnValueOnce(inFlight.promise);
+    uploadBrainDumpPart.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => {
+      result.current.enqueue(part(0));
+    });
+
+    act(() => {
+      result.current.reset();
+    });
+
+    act(() => {
+      result.current.enqueue(part(0, "rec-2"));
+    });
+
+    await act(async () => {
+      inFlight.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    let flushed: boolean | undefined;
+    await act(async () => {
+      flushed = await result.current.flush();
+    });
+
+    expect(flushed).toBe(true);
+    expect(uploadBrainDumpPart).toHaveBeenCalledWith(
+      expect.objectContaining({ recording_id: "rec-2", part_index: 0 }),
+    );
+    expect(markPartUploaded).not.toHaveBeenCalledWith("rec-1:0");
+    expect(result.current.pendingCount).toBe(0);
+  });
+
+  it("reports failure when the take it was flushing gets discarded", async () => {
+    const inFlight = deferred();
+    uploadBrainDumpPart.mockReturnValueOnce(inFlight.promise);
+    uploadBrainDumpPart.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useUploadQueue());
+
+    let flushed: boolean | undefined;
+    act(() => {
+      result.current.enqueue(part(0));
+      void result.current.flush().then((value) => {
+        flushed = value;
+      });
+    });
+
+    act(() => {
+      result.current.reset();
+    });
+
+    await act(async () => {
+      inFlight.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(flushed).toBe(false);
   });
 });

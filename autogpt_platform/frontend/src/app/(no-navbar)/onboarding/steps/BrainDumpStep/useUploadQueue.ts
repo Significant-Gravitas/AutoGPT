@@ -23,6 +23,11 @@ const RETRYABLE_CLIENT_STATUSES = [408, 429];
 export function useUploadQueue() {
   const queueRef = useRef<RecordingPart[]>([]);
   const drainRef = useRef<Promise<void> | null>(null);
+  // Bumped by `reset()`. A drain sitting on an upload holds a reference to a
+  // queue that a restart has since replaced, and everything it does when the
+  // upload lands — dropping the head, updating the count, marking the part
+  // uploaded, resolving `flush()` — would land on the new take instead.
+  const takeRef = useRef(0);
   const [pendingCount, setPendingCount] = useState(0);
 
   const [isOffline, setIsOffline] = useState(false);
@@ -50,17 +55,21 @@ export function useUploadQueue() {
   // before "I'm done" runs.
   function drain(): Promise<void> {
     if (drainRef.current) return drainRef.current;
-    const running = drainQueue().finally(() => {
-      drainRef.current = null;
+    const take = takeRef.current;
+    const running = drainQueue(take).finally(() => {
+      // A drain from a discarded take must not clear the handle of the one
+      // now running for the new take.
+      if (takeRef.current === take) drainRef.current = null;
     });
     drainRef.current = running;
     return running;
   }
 
-  async function drainQueue() {
-    while (queueRef.current.length > 0) {
+  async function drainQueue(take: number) {
+    while (takeRef.current === take && queueRef.current.length > 0) {
       const part = queueRef.current[0];
       const uploaded = await uploadWithRetries(part);
+      if (takeRef.current !== take) return;
       if (!uploaded) {
         // Leave it at the head — reconnecting replays from here so
         // parts still reach the server in order.
@@ -90,15 +99,25 @@ export function useUploadQueue() {
   // drain emptying the queue and this check — one extra pass catches the
   // straggler, and the bound stops a pathological ping-pong.
   async function flush() {
+    const take = takeRef.current;
     for (let attempt = 0; attempt < FLUSH_PASSES; attempt++) {
       await drain();
+      // The take this was flushing has been thrown away. An empty queue now
+      // says nothing about it, and answering "all uploaded" would finalize a
+      // recording the server has already been told to discard.
+      if (takeRef.current !== take) return false;
       if (queueRef.current.length === 0) return true;
     }
     return queueRef.current.length === 0;
   }
 
   function reset() {
+    takeRef.current += 1;
     queueRef.current = [];
+    // A drain mid-upload belongs to the take just discarded and will stop on
+    // the bumped counter. Dropping the handle lets the next enqueue start a
+    // drain for the new take instead of waiting behind that one.
+    drainRef.current = null;
     setPendingCount(0);
   }
 
