@@ -61,8 +61,10 @@ async def _setup():
 @pytest.mark.asyncio
 async def test_creates_preset_on_success():
     preset = MagicMock(id="preset-1")
-    p_graph, p_creds, p_webhook, p_create = _patches(graph=_graph(), preset=preset)
-    with p_graph, p_creds, p_webhook, p_create as create_mock:
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset
+    )
+    with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
         result = await _setup()
     assert result is preset
     create_mock.assert_awaited_once()
@@ -70,8 +72,8 @@ async def test_creates_preset_on_success():
 
 @pytest.mark.asyncio
 async def test_graph_not_found_raises():
-    p_graph, p_creds, p_webhook, p_create = _patches(graph=None)
-    with p_graph, p_creds, p_webhook, p_create:
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=None)
+    with p_graph, p_creds, p_webhook, p_create, p_expert:
         with pytest.raises(NotFoundError):
             await _setup()
 
@@ -80,18 +82,18 @@ async def test_graph_not_found_raises():
 async def test_no_webhook_node_raises():
     graph = _graph()
     graph.webhook_input_node = None
-    p_graph, p_creds, p_webhook, p_create = _patches(graph=graph)
-    with p_graph, p_creds, p_webhook, p_create:
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=graph)
+    with p_graph, p_creds, p_webhook, p_create, p_expert:
         with pytest.raises(InvalidInputError):
             await _setup()
 
 
 @pytest.mark.asyncio
 async def test_webhook_setup_rejected_raises():
-    p_graph, p_creds, p_webhook, p_create = _patches(
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
         graph=_graph(), webhook=None, feedback="no enabled events"
     )
-    with p_graph, p_creds, p_webhook, p_create as create_mock:
+    with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
         with pytest.raises(InvalidInputError, match="no enabled events"):
             await _setup()
     create_mock.assert_not_awaited()

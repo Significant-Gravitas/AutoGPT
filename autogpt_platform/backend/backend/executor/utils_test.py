@@ -442,6 +442,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         is_dry_run=False,
         organization_id=None,
         team_id=None,
+        expert_id=None,
     )
 
     # Set up the graph execution mock to have properties we can extract
