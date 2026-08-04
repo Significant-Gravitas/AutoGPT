@@ -285,7 +285,6 @@ async def test_hire_copies_soul_fields_from_template(server: SpinTestServer, tes
             "identity": "You are Otto, a playful writer.",
             "voicePreferences": "Direct, playful, and concise.",
             "boundaries": "Never publish without approval.",
-            "learnedNotes": ["The user prefers short drafts."],
             "isTemplate": True,
         }
     )
@@ -295,7 +294,6 @@ async def test_hire_copies_soul_fields_from_template(server: SpinTestServer, tes
     assert hired.expert.identity == "You are Otto, a playful writer."
     assert hired.expert.voice_preferences == "Direct, playful, and concise."
     assert hired.expert.boundaries == "Never publish without approval."
-    assert hired.expert.learned_notes == ["The user prefers short drafts."]
 
 
 @pytest.mark.asyncio(loop_scope="session")

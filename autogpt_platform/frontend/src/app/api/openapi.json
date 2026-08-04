@@ -17162,11 +17162,6 @@
             "title": "Voice Preferences"
           },
           "boundaries": { "type": "string", "title": "Boundaries" },
-          "learned_notes": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Learned Notes"
-          },
           "protected_soul_rules": {
             "items": { "type": "string" },
             "type": "array",
@@ -17223,7 +17218,6 @@
           "identity",
           "voice_preferences",
           "boundaries",
-          "learned_notes",
           "protected_soul_rules",
           "is_template",
           "source_template_id",

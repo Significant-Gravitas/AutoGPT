@@ -850,7 +850,6 @@ model Expert {
   skills    String[] @default([])
   voicePreferences String @default("")
   boundaries       String @default("")
-  learnedNotes     String[] @default([])
 
   toolProfile Json?
 

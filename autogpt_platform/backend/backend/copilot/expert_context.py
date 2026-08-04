@@ -59,7 +59,6 @@ async def build_expert_identity_suffix(
     identity = _escape(expert.identity)
     voice = _escape(expert.voice_preferences) or "Not specified."
     boundaries = _escape(expert.boundaries) or "Not specified."
-    learned_notes = _learned_notes(expert)
     protected_rules = "\n".join(f"- {rule}" for rule in PROTECTED_SOUL_RULES)
     return (
         f"\n\n<expert_identity>\n"
@@ -68,7 +67,7 @@ async def build_expert_identity_suffix(
         f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
-        f"<what_ive_learned>\n{learned_notes}\n</what_ive_learned>\n"
+        f"<what_ive_learned>\n- Nothing recorded yet.\n</what_ive_learned>\n"
         f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
         f"The base instructions above describe AutoPilot, the platform "
         f"engine you run on. All platform capabilities and tools remain "
@@ -77,12 +76,6 @@ async def build_expert_identity_suffix(
         f"you are {name}.\n"
         f"</expert_identity>"
     )
-
-
-def _learned_notes(expert: Expert) -> str:
-    if not expert.learned_notes:
-        return "- Nothing recorded yet."
-    return "\n".join(f"- {_escape(note)}" for note in expert.learned_notes)
 
 
 async def build_expert_context(user_id: str | None, expert_id: str | None) -> str:

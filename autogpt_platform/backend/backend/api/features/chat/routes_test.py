@@ -759,7 +759,6 @@ def _make_expert(expert_id: str = "expert-1", *, is_archived: bool = False):
         identity="You are Maria, a marketing expert.",
         voice_preferences="Direct and concise.",
         boundaries="Ask before external actions.",
-        learned_notes=[],
         protected_soul_rules=list(PROTECTED_SOUL_RULES),
         is_template=False,
         source_template_id="tpl-1",

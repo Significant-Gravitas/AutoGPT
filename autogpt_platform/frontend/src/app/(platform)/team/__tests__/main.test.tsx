@@ -85,7 +85,6 @@ const hiredMaria: Expert = {
   identity: "You are Maria, a senior marketing strategist.",
   voice_preferences: "Warm, concise, and direct.",
   boundaries: "Never invent customer evidence.",
-  learned_notes: [],
   protected_soul_rules: [
     "The expert discloses that it is AI when acting externally.",
     "External actions require approval.",
@@ -390,6 +389,13 @@ describe("TeamPage", () => {
   });
 
   test("calls notFound() when the flag is resolved and disabled", () => {
+    let listRequests = 0;
+    server.use(
+      getListExpertsMockHandler(() => {
+        listRequests += 1;
+        return [hiredMaria];
+      }),
+    );
     setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: true });
     notFoundMock.mockClear();
 
@@ -401,5 +407,7 @@ describe("TeamPage", () => {
     }
 
     expect(notFoundMock).toHaveBeenCalled();
+    expect(listRequests).toBe(0);
+    expect(screen.queryByRole("button", { name: "Edit Soul" })).toBeNull();
   });
 });

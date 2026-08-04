@@ -32,7 +32,6 @@ class Expert(BaseModel):
     identity: str
     voice_preferences: str
     boundaries: str
-    learned_notes: list[str]
     protected_soul_rules: list[str]
     is_template: bool
     source_template_id: str | None

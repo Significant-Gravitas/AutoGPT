@@ -62,7 +62,7 @@ export function SoulDrawer({ expert, onClose }: Props) {
           <div className="flex-1 overflow-y-auto bg-zinc-50 px-4 py-6 sm:px-8">
             <div className="mx-auto max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-8">
               <SoulFields soul={soul} updateField={updateField} />
-              <LearnedNotes expert={expert} />
+              <LearnedNotes />
               <ProtectedRules rules={expert?.protected_soul_rules ?? []} />
             </div>
           </div>
@@ -153,21 +153,13 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
   );
 }
 
-function LearnedNotes({ expert }: { expert: Expert | null }) {
+function LearnedNotes() {
   return (
     <section className="mb-8">
       <SoulSectionTitle>What I&apos;ve learned</SoulSectionTitle>
-      {expert?.learned_notes.length ? (
-        <ul className="space-y-2 text-sm leading-6 text-zinc-700">
-          {expert.learned_notes.map((note) => (
-            <li key={note}>{note}</li>
-          ))}
-        </ul>
-      ) : (
-        <Text variant="small" className="text-zinc-500">
-          Nothing recorded yet. What this expert learns will appear here.
-        </Text>
-      )}
+      <Text variant="small" className="text-zinc-500">
+        Nothing recorded yet. What this expert learns will appear here.
+      </Text>
     </section>
   );
 }

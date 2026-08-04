@@ -53,7 +53,6 @@ def _make_expert(**overrides) -> Expert:
         "identity": "You are Maria, a pragmatic marketing specialist.",
         "voice_preferences": "Direct and concise.",
         "boundaries": "Ask before external actions.",
-        "learned_notes": [],
         "protected_soul_rules": list(PROTECTED_SOUL_RULES),
         "is_template": False,
         "source_template_id": "template-1",
