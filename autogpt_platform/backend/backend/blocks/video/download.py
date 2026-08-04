@@ -81,7 +81,14 @@ class VideoDownloadBlock(Block):
         )
 
     async def validate_url(self, url: str) -> None:
-        """Validate URL for SSRF protection. Raises ValueError if blocked."""
+        """Validate URL for SSRF protection. Raises ValueError if blocked.
+
+        NOTE: this is best-effort. yt-dlp resolves DNS and follows redirects with
+        its own HTTP client, so a public URL that redirects to a blocked target
+        (or a rebound DNS record) is not caught here. Closing that gap requires
+        pinning connections to the resolved IPs the way `backend.util.request`
+        does, or sandboxing yt-dlp — which is why this block stays `disabled`.
+        """
         await validate_url_host(url)
 
     async def _store_output_video(
@@ -123,6 +130,9 @@ class VideoDownloadBlock(Block):
             "merge_output_format": output_format,
             "quiet": True,
             "no_warnings": True,
+            # Advisory: yt-dlp applies this per-stream and only when the format
+            # advertises a size, so DASH/HLS and merged (video+audio) downloads can
+            # still exceed it. The post-download check below is the real backstop.
             "max_filesize": MAX_FILE_SIZE_BYTES,
             "noplaylist": True,
         }
@@ -134,6 +144,17 @@ class VideoDownloadBlock(Block):
             # Handle format conversion in filename
             if not video_path.endswith(f".{output_format}"):
                 video_path = video_path.rsplit(".", 1)[0] + f".{output_format}"
+
+            # Enforce the size limit on the file actually produced, before it is
+            # read into memory by store_media_file().
+            if os.path.exists(video_path):
+                actual_size = os.path.getsize(video_path)
+                if actual_size > MAX_FILE_SIZE_BYTES:
+                    os.remove(video_path)
+                    raise ValueError(
+                        f"Downloaded video is {actual_size} bytes, "
+                        f"which exceeds the {MAX_FILE_SIZE_BYTES} byte limit"
+                    )
 
             # Return just the filename, not the full path
             filename = os.path.basename(video_path)

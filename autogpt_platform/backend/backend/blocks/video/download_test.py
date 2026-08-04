@@ -2,6 +2,7 @@
 and playlist restriction (SECRT-1898)."""
 
 import os
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -58,7 +59,7 @@ class TestSSRFProtection:
             "ipv6_loopback",
         ],
     )
-    async def test_blocked_urls_rejected(self, url: str, tmp_path: str):
+    async def test_blocked_urls_rejected(self, url: str):
         block = VideoDownloadBlock()
         block.validate_url = AsyncMock(  # type: ignore[method-assign]
             side_effect=ValueError(f"Blocked: {url}")
@@ -70,50 +71,58 @@ class TestSSRFProtection:
                 await _collect_outputs(block, input_data, _make_execution_context())
 
 
+@pytest.fixture
+def ydl_opts(tmp_path: Path):
+    """Run _download_video against a mocked yt-dlp and return the options it used."""
+    with patch("backend.blocks.video.download.yt_dlp.YoutubeDL") as mock_cls:
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl.__exit__ = MagicMock(return_value=False)
+        mock_ydl.extract_info.return_value = {"duration": 10, "title": "t"}
+        mock_ydl.prepare_filename.return_value = os.path.join(str(tmp_path), "test.mp4")
+        mock_cls.return_value = mock_ydl
+
+        VideoDownloadBlock()._download_video(
+            "https://example.com/v.mp4", "720p", "mp4", str(tmp_path), "n1"
+        )
+
+        yield mock_cls.call_args[0][0]
+
+
 class TestDownloadSizeLimit:
     """yt-dlp must enforce max_filesize during download, not just after."""
 
-    async def test_max_filesize_in_ydl_opts(self, tmp_path: str):
+    def test_max_filesize_in_ydl_opts(self, ydl_opts: dict):
+        assert ydl_opts["max_filesize"] == MAX_FILE_SIZE_BYTES
+
+    def test_oversized_download_is_rejected_and_deleted(self, tmp_path: Path):
+        """max_filesize is advisory for DASH/HLS and merged formats, so the
+        produced file is re-checked and discarded when it exceeds the limit."""
+        video_path = tmp_path / "test.mp4"
+        video_path.write_bytes(b"x" * 32)
+
         with patch("backend.blocks.video.download.yt_dlp.YoutubeDL") as mock_cls:
             mock_ydl = MagicMock()
             mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
             mock_ydl.__exit__ = MagicMock(return_value=False)
             mock_ydl.extract_info.return_value = {"duration": 10, "title": "t"}
-            mock_ydl.prepare_filename.return_value = os.path.join(
-                str(tmp_path), "test.mp4"
-            )
+            mock_ydl.prepare_filename.return_value = str(video_path)
             mock_cls.return_value = mock_ydl
 
-            block = VideoDownloadBlock()
-            block._download_video(
-                "https://example.com/v.mp4", "720p", "mp4", str(tmp_path), "n1"
-            )
+            with patch("backend.blocks.video.download.MAX_FILE_SIZE_BYTES", 16):
+                with pytest.raises(ValueError, match="exceeds"):
+                    VideoDownloadBlock()._download_video(
+                        "https://example.com/v.mp4", "720p", "mp4", str(tmp_path), "n1"
+                    )
 
-            opts = mock_cls.call_args[0][0]
-            assert opts["max_filesize"] == MAX_FILE_SIZE_BYTES
+        assert not video_path.exists()
 
 
 class TestPlaylistRestriction:
     """yt-dlp must not download playlists — only the single requested video."""
 
-    async def test_noplaylist_in_ydl_opts(self, tmp_path: str):
-        with patch("backend.blocks.video.download.yt_dlp.YoutubeDL") as mock_cls:
-            mock_ydl = MagicMock()
-            mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
-            mock_ydl.__exit__ = MagicMock(return_value=False)
-            mock_ydl.extract_info.return_value = {"duration": 10, "title": "t"}
-            mock_ydl.prepare_filename.return_value = os.path.join(
-                str(tmp_path), "test.mp4"
-            )
-            mock_cls.return_value = mock_ydl
-
-            block = VideoDownloadBlock()
-            block._download_video(
-                "https://example.com/v.mp4", "720p", "mp4", str(tmp_path), "n1"
-            )
-
-            opts = mock_cls.call_args[0][0]
-            assert opts.get("noplaylist") is True
+    def test_noplaylist_in_ydl_opts(self, ydl_opts: dict):
+        assert ydl_opts.get("noplaylist") is True
 
 
 class TestValidURLAccepted:
