@@ -130,6 +130,10 @@ async def delete_team(
         Security(requires_org_permission(OrgAction.MANAGE_WORKSPACES)),
     ],
 ) -> None:
+    # Deliberate asymmetry with _authorize_team_management: team admins may
+    # rename a team and manage its members, but deletion is destructive and
+    # stays org-admin-only (MANAGE_WORKSPACES).
+    #
     # MANAGE_WORKSPACES only proves the caller administers their *active*
     # org (ctx.org_id); without this guard an admin of org A could delete
     # a workspace in org B (the permission passes, and get_team only checks
