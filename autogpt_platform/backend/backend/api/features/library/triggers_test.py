@@ -39,6 +39,10 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None):
             new=AsyncMock(return_value=(new_webhook, feedback)),
         ),
         patch(f"{_PATH}.db.create_preset", new=AsyncMock(return_value=preset)),
+        patch(
+            f"{_PATH}.experts_db.resolve_expert_for_graph",
+            new=AsyncMock(return_value=None),
+        ),
     )
 
 
