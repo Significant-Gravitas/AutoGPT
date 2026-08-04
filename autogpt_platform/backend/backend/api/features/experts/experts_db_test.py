@@ -215,6 +215,15 @@ async def test_get_expert_scopes_by_owner(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_get_expert_excludes_archived_experts(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    assert await experts_db.get_expert(test_user.id, hired.expert.id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_owner_can_update_expert_soul(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)

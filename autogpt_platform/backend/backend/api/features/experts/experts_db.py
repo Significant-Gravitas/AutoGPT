@@ -127,7 +127,12 @@ async def get_expert(
     list — never use that flag to decide whether workflows are installed.
     """
     row = await prisma.models.Expert.prisma().find_first(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
         include=_WORKFLOW_INCLUDE if include_workflows else None,
     )
     if row is None:
