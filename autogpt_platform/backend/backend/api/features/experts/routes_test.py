@@ -278,6 +278,55 @@ def test_update_expert_soul_validates_field_lengths() -> None:
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize("field", ["name", "identity"])
+def test_update_expert_soul_rejects_blank_required_fields(
+    field: str,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_soul",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    soul = {
+        "name": "Mara",
+        "identity": "You are Mara.",
+        "voice_preferences": "Direct.",
+        "boundaries": "Ask before sending.",
+    }
+    soul[field] = "   "
+
+    response = client.patch("/experts/expert-1/soul", json=soul)
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
+
+
+def test_update_expert_soul_strips_required_fields(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_soul",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+
+    response = client.patch(
+        "/experts/expert-1/soul",
+        json={
+            "name": "  Mara  ",
+            "identity": "  You are Mara.  ",
+            "voice_preferences": "Direct.",
+            "boundaries": "Ask before sending.",
+        },
+    )
+
+    assert response.status_code == 200
+    soul = mock_update.await_args.args[2]
+    assert soul.name == "Mara"
+    assert soul.identity == "You are Mara."
+
+
 # ─── Install workflow ──────────────────────────────────────────────────
 
 

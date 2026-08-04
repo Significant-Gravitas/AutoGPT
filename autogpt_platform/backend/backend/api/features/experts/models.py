@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
@@ -65,3 +65,11 @@ class ExpertSoulUpdate(BaseModel):
     identity: str = Field(min_length=1, max_length=10_000)
     voice_preferences: str = Field(max_length=4_000)
     boundaries: str = Field(max_length=4_000)
+
+    @field_validator("name", "identity")
+    @classmethod
+    def strip_required_fields(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Field must not be blank")
+        return stripped
