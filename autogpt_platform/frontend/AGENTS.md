@@ -87,7 +87,7 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Pattern: `use{Method}{Version}{OperationName}`
 4. **Styling**: Tailwind CSS only, use design tokens, Hugeicons only
    - Import icon data from `@hugeicons/core-free-icons` and render it with the `Icon` atom (`src/components/atoms/Icon/Icon.tsx`), e.g. `<Icon icon={Delete02Icon} size={16} />`.
-   - Never render `HugeiconsIcon` directly — the atom applies the 1.75px design-system stroke width.
+   - Never render `HugeiconsIcon` directly — the atom applies the 2px design-system stroke width.
    - Type icon-carrying props with `IconSvgElement` from `@hugeicons/react`.
 5. **Testing**: Integration tests are the default (~90%). See `TESTING.md` for full details.
    - **New pages/features**: Write integration tests in `__tests__/` next to `page.tsx` using Vitest + RTL + MSW

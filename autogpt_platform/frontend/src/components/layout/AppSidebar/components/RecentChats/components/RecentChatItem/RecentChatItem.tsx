@@ -137,7 +137,10 @@ export function RecentChatItem({
             aria-label="Chat actions"
             className="border border-zinc-200 bg-white"
           >
-            <Icon icon={MoreHorizontalIcon} />
+            <Icon
+              icon={MoreHorizontalIcon}
+              className="text-sidebar-foreground/90"
+            />
           </SidebarMenuAction>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

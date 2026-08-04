@@ -73,7 +73,7 @@ function NavLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-zinc-500"
+      className="ml-auto !size-4 shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:!size-4.5"
     />
   );
 }
@@ -84,10 +84,20 @@ function NewTaskIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
-    return <LoadingSpinner size="small" className="shrink-0" />;
+    return (
+      <LoadingSpinner
+        size="small"
+        className="!size-4 shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:!size-4.5"
+      />
+    );
   }
 
-  return <Icon icon={NoteEditIcon} className="size-5" />;
+  return (
+    <Icon
+      icon={NoteEditIcon}
+      className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+    />
+  );
 }
 
 // New Task shares the nav-item styling with the main links so it sits in the
@@ -101,7 +111,7 @@ function NewTaskItem() {
         asChild
         tooltip="New Task"
         isActive={isLinkActive(pathname, "/copilot")}
-        className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+        className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5"
       >
         <Link href="/copilot">
           <NewTaskIcon />
@@ -131,10 +141,13 @@ function NavMenu({
             asChild
             tooltip={link.name}
             isActive={isLinkActive(pathname, link.href)}
-            className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+            className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5"
           >
             <Link href={link.href}>
-              <Icon icon={link.icon} className="size-5" />
+              <Icon
+                icon={link.icon}
+                className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+              />
               <span className="truncate">{link.name}</span>
               <NavLinkLoader />
             </Link>
@@ -173,7 +186,7 @@ function CollapsibleNavGroup({
             {label}
             <Icon
               icon={ArrowDown01Icon}
-              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
+              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>

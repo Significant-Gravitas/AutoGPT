@@ -3,7 +3,7 @@
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import type { ComponentPropsWithoutRef } from "react";
 
-export const ICON_STROKE_WIDTH = 1.75;
+export const ICON_STROKE_WIDTH = 2;
 
 type IconProps = Omit<ComponentPropsWithoutRef<typeof HugeiconsIcon>, "icon">;
 

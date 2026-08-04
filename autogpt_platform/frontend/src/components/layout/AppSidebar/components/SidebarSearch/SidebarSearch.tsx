@@ -14,9 +14,12 @@ export function SidebarSearch() {
       <SidebarMenuButton
         tooltip="Search"
         onClick={openSearch}
-        className="h-auto rounded-xl p-2 pl-3 font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+        className="h-auto rounded-xl p-2 pl-3 font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5"
       >
-        <Icon icon={Search01Icon} className="size-5" />
+        <Icon
+          icon={Search01Icon}
+          className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+        />
         <span className="truncate">Search</span>
         <ShortcutHint letter="K" />
       </SidebarMenuButton>

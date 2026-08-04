@@ -731,7 +731,7 @@ export function useFeatureX() {
   - Renderer: `src/components/atoms/Icon/Icon.tsx`
   - Site: [`https://hugeicons.com/icons/stroke-rounded`](https://hugeicons.com/icons/stroke-rounded)
 
-The `Icon` atom applies the design-system stroke width (1.75px) and defaults to `1em`
+The `Icon` atom applies the design-system stroke width (2px) and defaults to `1em`
 so icons scale with their surrounding text. Do not render `HugeiconsIcon` directly.
 
 Example usage:

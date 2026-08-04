@@ -48,7 +48,7 @@ export function AppSidebarHeader() {
           >
             <Icon
               icon={SidebarLeftIcon}
-              className="size-5 text-sidebar-foreground"
+              className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
             />
           </button>
         </TooltipTrigger>
