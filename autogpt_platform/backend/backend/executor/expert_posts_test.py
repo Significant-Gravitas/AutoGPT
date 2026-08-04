@@ -128,3 +128,22 @@ def test_post_never_raises_on_client_failure():
             ExecutionStatus.FAILED,
             GraphExecutionStats(),
         )
+
+
+def test_release_uses_admission_key_across_midnight():
+    """The slot released must be the slot reserved: the key is captured once
+    at admission, so a UTC date rollover between reservation and release
+    cannot decrement the new day's counter."""
+    db_client = MagicMock()
+    db_client.get_graph_metadata.side_effect = RuntimeError("rpc down")
+    redis = _redis_allowing_posts()
+    with patch(f"{_MODULE}.get_redis", return_value=redis):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.FAILED,
+            GraphExecutionStats(),
+        )
+    incr_key = redis.incr.call_args.args[0]
+    decr_key = redis.decr.call_args.args[0]
+    assert incr_key == decr_key

@@ -54,7 +54,11 @@ def _post_run_result(
         return
     if status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
         return
-    if not _under_daily_cap(graph_exec.user_id, expert_id):
+    # The key is captured once at admission and reused for release — a UTC
+    # midnight rollover between the two must not decrement the new day's
+    # counter (which would mint extra slots).
+    cap_key = _cap_key(graph_exec.user_id, expert_id)
+    if not _under_daily_cap(cap_key):
         logger.info(
             f"Expert #{expert_id} hit the daily thread-post cap; "
             f"run #{graph_exec.graph_exec_id} stays on the activity feed only"
@@ -86,10 +90,10 @@ def _post_run_result(
             ),
         )
     except Exception:
-        _release_cap_slot(graph_exec.user_id, expert_id)
+        _release_cap_slot(cap_key, expert_id)
         raise
     if posted_session is None:
-        _release_cap_slot(graph_exec.user_id, expert_id)
+        _release_cap_slot(cap_key, expert_id)
 
 
 def build_expert_run_message(
@@ -120,9 +124,9 @@ def _cap_key(user_id: str, expert_id: str) -> str:
     return f"expert-thread-posts:{user_id}:{expert_id}:{today}"
 
 
-def _release_cap_slot(user_id: str, expert_id: str) -> None:
+def _release_cap_slot(key: str, expert_id: str) -> None:
     try:
-        get_redis().decr(_cap_key(user_id, expert_id))
+        get_redis().decr(key)
     except Exception as e:
         logger.warning(
             f"Failed to release post-cap slot for expert #{expert_id}: "
@@ -130,10 +134,9 @@ def _release_cap_slot(user_id: str, expert_id: str) -> None:
         )
 
 
-def _under_daily_cap(user_id: str, expert_id: str) -> bool:
+def _under_daily_cap(key: str) -> bool:
     """INCR-first so concurrent completions can't slip past the cap; errs
     open on Redis failure (a missed cap beats a silent thread)."""
-    key = _cap_key(user_id, expert_id)
     try:
         redis = get_redis()
         # The sync client is typed ResponseT (sync|async union); this call
@@ -143,7 +146,6 @@ def _under_daily_cap(user_id: str, expert_id: str) -> bool:
         return count <= _DAILY_POST_CAP
     except Exception as e:
         logger.warning(
-            f"Daily post cap check failed for expert #{expert_id}: "
-            f"{type(e).__name__}: {e}"
+            f"Daily post cap check failed for {key}: {type(e).__name__}: {e}"
         )
         return True

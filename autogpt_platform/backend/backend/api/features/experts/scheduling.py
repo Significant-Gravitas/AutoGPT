@@ -106,16 +106,22 @@ async def create_workflow_schedule(
 async def _delete_schedule_best_effort(
     schedule_id: str, user_id: str, expert_id: str
 ) -> None:
-    """Never leave a schedule firing with no row pointing at it. A failed
-    cleanup is loud so operators can delete the orphan by the logged id."""
-    try:
-        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
-    except Exception as cleanup_error:
-        logger.error(
-            f"Orphaned schedule #{schedule_id} for expert #{expert_id} "
-            f"could not be deleted: {type(cleanup_error).__name__}: "
-            f"{cleanup_error}"
-        )
+    """Never leave a schedule firing with no row pointing at it. One
+    immediate retry covers transient RPC blips; a persistent failure is
+    logged loudly by id. A surviving orphan is not invisible: it stays
+    expert-attributed, so it shows up in the detach preview and is deleted
+    by the archive detach sweep."""
+    last_error: Exception | None = None
+    for _attempt in range(2):
+        try:
+            await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+            return
+        except Exception as cleanup_error:
+            last_error = cleanup_error
+    logger.error(
+        f"Orphaned schedule #{schedule_id} for expert #{expert_id} "
+        f"could not be deleted: {type(last_error).__name__}: {last_error}"
+    )
 
 
 async def _get_expert_schedules(user_id: str, expert_id: str) -> list:
