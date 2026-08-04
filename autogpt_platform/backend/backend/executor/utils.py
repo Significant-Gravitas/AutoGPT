@@ -1169,6 +1169,15 @@ async def stop_graph_execution(
     )
 
 
+async def _enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
+    if prisma.is_connected():
+        await experts_scheduling.enforce_expert_run_budget(user_id, expert_id)
+    else:
+        await get_database_manager_async_client().enforce_expert_run_budget(
+            user_id, expert_id
+        )
+
+
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
@@ -1236,16 +1245,10 @@ async def add_graph_execution(
     # Weekly credit guardrail: expert-attributed runs (schedules, triggers)
     # are refused while the expert is paused/archived or over budget. Chat
     # runs never carry an expert_id, so chat is never gated. REQUEUE mode
-    # (graph_exec_id set, expert_id param None) is deliberately exempt:
-    # requeue is an explicit human/admin recovery action on an execution
-    # that already passed the gate when it was created.
+    # is gated below once the persisted expert id is loaded — admin
+    # recovery paths signal themselves via bypass_paywall and stay exempt.
     if expert_id:
-        if prisma.is_connected():
-            await experts_scheduling.enforce_expert_run_budget(user_id, expert_id)
-        else:
-            await get_database_manager_async_client().enforce_expert_run_budget(
-                user_id, expert_id
-            )
+        await _enforce_expert_run_budget(user_id, expert_id)
 
     if prisma.is_connected():
         edb = execution_db
@@ -1267,6 +1270,11 @@ async def add_graph_execution(
 
         if not graph_exec:
             raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+
+        # A resumed expert execution respects the pause/budget gate too;
+        # bypass_paywall marks admin recovery, which stays exempt.
+        if graph_exec.expert_id and not bypass_paywall:
+            await _enforce_expert_run_budget(user_id, graph_exec.expert_id)
 
         # Use existing execution's compiled input masks
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}

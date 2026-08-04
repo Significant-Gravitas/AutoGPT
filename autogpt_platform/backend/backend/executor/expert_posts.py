@@ -61,26 +61,35 @@ def _post_run_result(
         )
         return
 
-    metadata = db_client.get_graph_metadata(
-        graph_exec.graph_id, graph_exec.graph_version
-    )
-    content = build_expert_run_message(
-        agent_name=metadata.name if metadata else "your workflow",
-        succeeded=status == ExecutionStatus.COMPLETED,
-        summary=exec_stats.activity_status,
-        error=str(exec_stats.error) if exec_stats.error else None,
-        library_agent_id=db_client.get_library_agent_id_by_graph_id(
-            graph_exec.user_id, graph_exec.graph_id
-        ),
-    )
-    db_client.append_expert_run_message(
-        user_id=graph_exec.user_id,
-        expert_id=expert_id,
-        content=content,
-        message_id=str(
-            uuid.uuid5(_POST_NAMESPACE, f"run-post:{graph_exec.graph_exec_id}")
-        ),
-    )
+    # The cap slot was consumed by the check above; give it back whenever no
+    # message actually lands (failure or retry-dedup), so failed attempts
+    # and re-fired completions can't silently eat the day's budget.
+    try:
+        metadata = db_client.get_graph_metadata(
+            graph_exec.graph_id, graph_exec.graph_version
+        )
+        content = build_expert_run_message(
+            agent_name=metadata.name if metadata else "your workflow",
+            succeeded=status == ExecutionStatus.COMPLETED,
+            summary=exec_stats.activity_status,
+            error=str(exec_stats.error) if exec_stats.error else None,
+            library_agent_id=db_client.get_library_agent_id_by_graph_id(
+                graph_exec.user_id, graph_exec.graph_id
+            ),
+        )
+        posted_session = db_client.append_expert_run_message(
+            user_id=graph_exec.user_id,
+            expert_id=expert_id,
+            content=content,
+            message_id=str(
+                uuid.uuid5(_POST_NAMESPACE, f"run-post:{graph_exec.graph_exec_id}")
+            ),
+        )
+    except Exception:
+        _release_cap_slot(graph_exec.user_id, expert_id)
+        raise
+    if posted_session is None:
+        _release_cap_slot(graph_exec.user_id, expert_id)
 
 
 def build_expert_run_message(
@@ -106,11 +115,25 @@ def build_expert_run_message(
     )
 
 
+def _cap_key(user_id: str, expert_id: str) -> str:
+    today = datetime.now(timezone.utc).date().isoformat()
+    return f"expert-thread-posts:{user_id}:{expert_id}:{today}"
+
+
+def _release_cap_slot(user_id: str, expert_id: str) -> None:
+    try:
+        get_redis().decr(_cap_key(user_id, expert_id))
+    except Exception as e:
+        logger.warning(
+            f"Failed to release post-cap slot for expert #{expert_id}: "
+            f"{type(e).__name__}: {e}"
+        )
+
+
 def _under_daily_cap(user_id: str, expert_id: str) -> bool:
     """INCR-first so concurrent completions can't slip past the cap; errs
     open on Redis failure (a missed cap beats a silent thread)."""
-    today = datetime.now(timezone.utc).date().isoformat()
-    key = f"expert-thread-posts:{user_id}:{expert_id}:{today}"
+    key = _cap_key(user_id, expert_id)
     try:
         redis = get_redis()
         # The sync client is typed ResponseT (sync|async union); this call

@@ -63,11 +63,13 @@ def add_weekly_spend_sync(expert_id: str, amount: int) -> None:
 
 async def get_weekly_spend(expert_id: str) -> int:
     """Current-week spend in credits; 0 on any read failure (errs open —
-    the budget gate must not block runs because Redis hiccuped)."""
+    the budget gate must not block runs because Redis hiccuped). Clamped to
+    non-negative: a refund reconciled in a later ISO week than its charge
+    decrements the new week's counter and could otherwise go below zero."""
     try:
         redis = await get_redis_async()
         value = await redis.get(weekly_spend_key(expert_id))
-        return int(value) if value is not None else 0
+        return max(0, int(value)) if value is not None else 0
     except Exception as e:
         logger.warning(
             f"Failed to read weekly spend for expert #{expert_id}: "

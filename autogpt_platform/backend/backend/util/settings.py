@@ -149,6 +149,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     expert_weekly_credit_budget_default: int = Field(
         default=500,
+        ge=0,
         description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
     )
     refund_notification_email: str = Field(

@@ -79,27 +79,43 @@ async def create_workflow_schedule(
         )
         return False
     try:
-        await prisma.models.ExpertWorkflow.prisma().update(
-            where={"id": workflow_row_id}, data={"scheduleId": schedule.id}
+        # Guarded write makes registration idempotent: only the first
+        # concurrent registration claims the row; any loser's job is a
+        # duplicate that must be deleted, never left firing twice.
+        updated = await prisma.models.ExpertWorkflow.prisma().update_many(
+            where={"id": workflow_row_id, "scheduleId": None},
+            data={"scheduleId": schedule.id},
         )
     except Exception as e:
-        # Never leave a schedule firing with no row pointing at it: undo the
-        # registration, fall back to needs-setup. A failed cleanup is loud so
-        # operators can delete the orphan by the logged id.
         logger.warning(
             f"Failed to record schedule #{schedule.id} on workflow "
             f"#{workflow_row_id}; deleting it: {type(e).__name__}: {e}"
         )
-        try:
-            await get_scheduler_client().delete_schedule(schedule.id, user_id=user_id)
-        except Exception as cleanup_error:
-            logger.error(
-                f"Orphaned schedule #{schedule.id} for expert #{expert_id} "
-                f"could not be deleted: {type(cleanup_error).__name__}: "
-                f"{cleanup_error}"
-            )
+        await _delete_schedule_best_effort(schedule.id, user_id, expert_id)
+        return False
+    if updated == 0:
+        logger.info(
+            f"Workflow #{workflow_row_id} already has a schedule; deleting "
+            f"duplicate registration #{schedule.id}"
+        )
+        await _delete_schedule_best_effort(schedule.id, user_id, expert_id)
         return False
     return True
+
+
+async def _delete_schedule_best_effort(
+    schedule_id: str, user_id: str, expert_id: str
+) -> None:
+    """Never leave a schedule firing with no row pointing at it. A failed
+    cleanup is loud so operators can delete the orphan by the logged id."""
+    try:
+        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+    except Exception as cleanup_error:
+        logger.error(
+            f"Orphaned schedule #{schedule_id} for expert #{expert_id} "
+            f"could not be deleted: {type(cleanup_error).__name__}: "
+            f"{cleanup_error}"
+        )
 
 
 async def _get_expert_schedules(user_id: str, expert_id: str) -> list:
@@ -229,6 +245,13 @@ async def enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
     Raises ExpertRunPausedError when the expert is archived, paused, or has
     hit her weekly credit budget — breaching pauses her and posts an
     in-thread message. Approaching the budget posts a once-per-week warning.
+
+    The spend read is a snapshot, not an atomic reservation: N runs firing
+    in the same instant can each pass the check before any of them meters
+    cost. That overshoot is bounded by per-run cost × concurrent firings,
+    the next gate check pauses her, and the durable wallet (credit system)
+    is charged correctly regardless — this gate is a churn guardrail, not
+    the billing ledger, so the simpler check is the deliberate trade-off.
     """
     expert = await prisma.models.Expert.prisma().find_first(
         where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}

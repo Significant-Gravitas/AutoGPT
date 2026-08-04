@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlusIcon } from "@phosphor-icons/react";
-import { MouseEvent } from "react";
+import { KeyboardEvent, MouseEvent } from "react";
 
 import {
   getLastRunLabel,
@@ -42,6 +42,15 @@ export function ExpertTeamCard({
   function handleInstallClick(event: MouseEvent) {
     event.stopPropagation();
     onInstallWorkflow(expert.id);
+  }
+
+  function handleResumeClick(event: MouseEvent) {
+    event.stopPropagation();
+    handleResume();
+  }
+
+  function handleResumeKeyDown(event: KeyboardEvent) {
+    event.stopPropagation();
   }
 
   return (
@@ -85,10 +94,8 @@ export function ExpertTeamCard({
             variant="secondary"
             size="small"
             loading={isResuming}
-            onClick={(event) => {
-              event.stopPropagation();
-              handleResume();
-            }}
+            onClick={handleResumeClick}
+            onKeyDown={handleResumeKeyDown}
           >
             Resume schedules
           </Button>

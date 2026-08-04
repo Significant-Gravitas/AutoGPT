@@ -201,6 +201,13 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
                 logger.exception(
                     f"Failed to reattach triggers while reviving expert #{row.id}"
                 )
+            # Resume/reattach mutated pause state and workflow scheduleIds
+            # after `row` was read — reload so the result isn't stale.
+            refreshed = await prisma.models.Expert.prisma().find_unique(
+                where={"id": row.id}, include=_WORKFLOW_INCLUDE
+            )
+            if refreshed is not None:
+                row = refreshed
     return HireResult(expert=_to_model(row), failed_preloads=[])
 
 

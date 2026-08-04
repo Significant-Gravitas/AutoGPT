@@ -189,5 +189,11 @@ class ExpertRunPausedError(ValueError):
 
     def __init__(self, message: str, expert_id: str):
         super().__init__(message)
+        # args carries both values so the RPC layer can reconstruct the
+        # exception; __str__ keeps user-facing rendering to the message.
         self.args = (message, expert_id)
+        self.message = message
         self.expert_id = expert_id
+
+    def __str__(self):
+        return self.message
