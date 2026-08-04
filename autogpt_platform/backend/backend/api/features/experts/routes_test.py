@@ -220,7 +220,6 @@ def test_update_expert_soul_returns_updated_expert(
         "backend.api.features.experts.routes.experts_db.update_soul",
         new_callable=AsyncMock,
         return_value=updated,
-        create=True,
     )
     soul = {
         "name": "Mara",
@@ -249,7 +248,6 @@ def test_update_expert_soul_not_found_returns_404(
         "backend.api.features.experts.routes.experts_db.update_soul",
         new_callable=AsyncMock,
         side_effect=experts_db.ExpertNotFoundError("expert-1"),
-        create=True,
     )
 
     response = client.patch(
