@@ -171,3 +171,175 @@ async def test_delete_allowed_for_org_admin(mock_prisma):
         "cred-1", user_id=USER_ID, organization_id=ORG_ID, is_org_admin=True
     )
     mock_prisma.integrationcredential.update.assert_awaited_once()
+
+
+# --------------------- TEAM CREDENTIAL WRITES --------------------- #
+
+
+@pytest.mark.asyncio
+async def test_create_team_credential_writes_expected_row_shape(mock_prisma, mocker):
+    """The written row must match exactly what the read path resolves on:
+    ownerType=TEAM, ownerId=teamId, teamId set, organizationId=team's org."""
+    mocker.patch.object(
+        scoped_credentials,
+        "_cryptor",
+        MagicMock(encrypt=MagicMock(return_value="encrypted-blob")),
+    )
+    created = _cred(owner_type="TEAM", owner_id=TEAM_A)
+    mock_prisma.integrationcredential.create = AsyncMock(return_value=created)
+
+    result = await scoped_credentials.create_credential(
+        organization_id=ORG_ID,
+        owner_type="TEAM",
+        owner_id=TEAM_A,
+        team_id=TEAM_A,
+        provider="github",
+        credential_type="api_key",
+        display_name="Team GitHub",
+        payload={"type": "api_key", "api_key": "secret"},
+        user_id=USER_ID,
+    )
+
+    data = mock_prisma.integrationcredential.create.await_args.kwargs["data"]
+    assert data["ownerType"] == "TEAM"
+    assert data["ownerId"] == TEAM_A
+    assert data["teamId"] == TEAM_A
+    assert data["organizationId"] == ORG_ID
+    assert data["createdByUserId"] == USER_ID
+    assert data["encryptedPayload"] == "encrypted-blob"
+    assert result["scope"] == "TEAM"
+
+
+@pytest.mark.asyncio
+async def test_create_credential_syncs_payload_id_with_row_id(mock_prisma, mocker):
+    """The encrypted payload's id must equal the row's primary key so a
+    decrypted read resolves to the same credential the row represents."""
+    captured: dict = {}
+
+    def _fake_encrypt(payload):
+        captured["payload"] = payload
+        return "encrypted-blob"
+
+    mocker.patch.object(
+        scoped_credentials,
+        "_cryptor",
+        MagicMock(encrypt=MagicMock(side_effect=_fake_encrypt)),
+    )
+    mock_prisma.integrationcredential.create = AsyncMock(
+        return_value=_cred(owner_type="TEAM", owner_id=TEAM_A)
+    )
+
+    await scoped_credentials.create_credential(
+        organization_id=ORG_ID,
+        owner_type="TEAM",
+        owner_id=TEAM_A,
+        team_id=TEAM_A,
+        provider="github",
+        credential_type="api_key",
+        display_name="Team GitHub",
+        payload={"id": "client-supplied-id", "type": "api_key", "api_key": "secret"},
+        user_id=USER_ID,
+    )
+
+    data = mock_prisma.integrationcredential.create.await_args.kwargs["data"]
+    # Row id is server-generated, not the client-supplied one ...
+    assert data["id"] != "client-supplied-id"
+    # ... and the encrypted payload carries that same authoritative id.
+    assert captured["payload"]["id"] == data["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_credential_rejects_team_without_matching_team_id(mock_prisma):
+    """TEAM rows must carry a teamId FK equal to ownerId (cascade + read path)."""
+    mock_prisma.integrationcredential.create = AsyncMock()
+
+    with pytest.raises(ValueError, match="team_id must equal owner_id"):
+        await scoped_credentials.create_credential(
+            organization_id=ORG_ID,
+            owner_type="TEAM",
+            owner_id=TEAM_A,
+            team_id=TEAM_B,
+            provider="github",
+            credential_type="api_key",
+            display_name="Team GitHub",
+            payload={"type": "api_key", "api_key": "secret"},
+            user_id=USER_ID,
+        )
+    mock_prisma.integrationcredential.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_list_team_credentials_scopes_query_to_team(mock_prisma):
+    mock_prisma.integrationcredential.find_many = AsyncMock(
+        return_value=[_cred(owner_type="TEAM", owner_id=TEAM_A)]
+    )
+
+    result = await scoped_credentials.list_team_credentials(ORG_ID, TEAM_A)
+
+    where = mock_prisma.integrationcredential.find_many.await_args.kwargs["where"]
+    assert where["organizationId"] == ORG_ID
+    assert where["ownerType"] == "TEAM"
+    assert where["ownerId"] == TEAM_A
+    assert where["status"] == "active"
+    assert result[0]["scope"] == "TEAM"
+
+
+@pytest.mark.asyncio
+async def test_delete_team_credential_revokes_own_team_cred(mock_prisma):
+    mock_prisma.integrationcredential.find_unique = AsyncMock(
+        return_value=_cred(owner_type="TEAM", owner_id=TEAM_A)
+    )
+    mock_prisma.integrationcredential.update = AsyncMock()
+
+    await scoped_credentials.delete_team_credential(
+        "cred-1", team_id=TEAM_A, organization_id=ORG_ID
+    )
+
+    mock_prisma.integrationcredential.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_team_credential_rejects_other_teams_cred(mock_prisma):
+    """A team admin of TEAM_A must not be able to revoke TEAM_B's credential
+    by ID (cross-team escalation within a shared org)."""
+    mock_prisma.integrationcredential.find_unique = AsyncMock(
+        return_value=_cred(owner_type="TEAM", owner_id=TEAM_B)
+    )
+    mock_prisma.integrationcredential.update = AsyncMock()
+
+    with pytest.raises(ValueError):
+        await scoped_credentials.delete_team_credential(
+            "cred-1", team_id=TEAM_A, organization_id=ORG_ID
+        )
+    mock_prisma.integrationcredential.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_team_credential_rejects_non_team_cred(mock_prisma):
+    """The team-scoped delete must never touch a USER- or ORG-owned row."""
+    mock_prisma.integrationcredential.find_unique = AsyncMock(
+        return_value=_cred(owner_type="USER", owner_id=USER_ID)
+    )
+    mock_prisma.integrationcredential.update = AsyncMock()
+
+    with pytest.raises(ValueError):
+        await scoped_credentials.delete_team_credential(
+            "cred-1", team_id=TEAM_A, organization_id=ORG_ID
+        )
+    mock_prisma.integrationcredential.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_team_credential_rejects_wrong_org(mock_prisma):
+    mock_prisma.integrationcredential.find_unique = AsyncMock(
+        return_value=_cred(
+            owner_type="TEAM", owner_id=TEAM_A, organization_id="org-OTHER"
+        )
+    )
+    mock_prisma.integrationcredential.update = AsyncMock()
+
+    with pytest.raises(ValueError):
+        await scoped_credentials.delete_team_credential(
+            "cred-1", team_id=TEAM_A, organization_id=ORG_ID
+        )
+    mock_prisma.integrationcredential.update.assert_not_called()

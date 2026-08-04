@@ -86,6 +86,7 @@ from backend.data.execution import (
     upsert_execution_output,
 )
 from backend.data.generate_data import get_user_execution_summary_data
+from backend.data.grants import resolve_execution_credentials_owner
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -131,6 +132,7 @@ from backend.data.understanding import (
     upsert_business_understanding,
 )
 from backend.data.user import (
+    get_accessible_credentials,
     get_active_user_ids_in_timerange,
     get_auth_user_flag_fields,
     get_user_by_id,
@@ -313,6 +315,7 @@ class DatabaseManager(AppService):
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
+    get_accessible_credentials = _(get_accessible_credentials)
     set_user_credentials = _(set_user_credentials)
 
     # ============ User Comms ============ #
@@ -354,6 +357,7 @@ class DatabaseManager(AppService):
     update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
+    resolve_execution_credentials_owner = _(resolve_execution_credentials_owner)
     setup_triggered_preset = _(setup_triggered_preset)
     update_triggered_preset = _(update_triggered_preset)
     delete_preset_with_webhook_cleanup = _(delete_preset_with_webhook_cleanup)
@@ -558,6 +562,7 @@ class DatabaseManagerClient(AppServiceClient):
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
     validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
+    resolve_execution_credentials_owner = _(d.resolve_execution_credentials_owner)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -612,6 +617,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_user_credentials = d.get_user_credentials
+    get_accessible_credentials = d.get_accessible_credentials
     set_user_credentials = d.set_user_credentials
 
     # ============ Human In The Loop ============ #
@@ -652,6 +658,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
+    resolve_execution_credentials_owner = d.resolve_execution_credentials_owner
     setup_triggered_preset = d.setup_triggered_preset
     update_triggered_preset = d.update_triggered_preset
     delete_preset_with_webhook_cleanup = d.delete_preset_with_webhook_cleanup

@@ -19,6 +19,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.data.db import prisma
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -38,6 +39,7 @@ from backend.data.model import (
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor.utils import add_graph_execution
+from backend.integrations import scoped_credentials
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.credentials_store import (
     is_system_credential,
@@ -446,12 +448,26 @@ async def create_credentials(
         ProviderName, Path(title="The provider to create credentials for")
     ],
     credentials: Credentials,
+    team_id: Annotated[
+        str | None,
+        Query(
+            title="If set, create a team-owned credential for this team "
+            "(team admins only) instead of a personal one",
+        ),
+    ] = None,
 ) -> CredentialsMetaResponse:
     if is_sdk_default(credentials.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot create credentials with a reserved ID",
         )
+
+    # Team-scoped credential: persisted in the IntegrationCredential table
+    # (owned by the team), gated on team-admin authorization. Personal
+    # credentials keep using the legacy per-user store unchanged.
+    if team_id is not None:
+        return await _create_team_credential(user_id, provider, credentials, team_id)
+
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -477,6 +493,151 @@ class CredentialsDeletionNeedsConfirmationResponse(BaseModel):
     deleted: Literal[False] = False
     need_confirmation: Literal[True] = True
     message: str
+
+
+# ----------------------- TEAM CREDENTIALS ------------------------ #
+
+
+async def _require_team_admin(user_id: str, team_id: str) -> str:
+    """Authorize a team-credential *management* action and return the team's org.
+
+    Enforces ``TeamAction.MANAGE_CREDENTIALS`` ({"team_admin"}) with explicit
+    Prisma checks — the integrations router authenticates with ``get_user_id``
+    only, so there is no RequestContext to lean on. A caller with no membership
+    row for the team (including a team that lives in *another* org, which the
+    caller can't be a member of) gets a 404: cross-org team ids can't even be
+    probed. An active non-admin member gets a 403. The team's ``orgId`` is the
+    authoritative ``organizationId`` for any credential the team owns, so the
+    "credential carries the team's org" invariant holds by construction.
+    """
+    member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": team_id, "userId": user_id}},
+        include={"Team": True},
+    )
+    if member is None or member.Team is None or member.Team.archivedAt is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
+        )
+    if member.status != "ACTIVE" or not member.isAdmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team admin access required to manage team credentials",
+        )
+    return member.Team.orgId
+
+
+async def _require_team_member(user_id: str, team_id: str) -> str:
+    """Authorize a team-credential *read* action and return the team's org.
+
+    Any ACTIVE member of the team may list its credentials (metadata only);
+    mirrors the read half, which surfaces a team's credentials to its members.
+    Non-members (incl. cross-org team ids) get a 404, inactive members a 403.
+    """
+    member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": team_id, "userId": user_id}},
+        include={"Team": True},
+    )
+    if member is None or member.Team is None or member.Team.archivedAt is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
+        )
+    if member.status != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Active team membership required",
+        )
+    return member.Team.orgId
+
+
+def _team_cred_meta_to_response(meta: dict) -> CredentialsMetaResponse:
+    """Map a scoped-store metadata dict to the API credential-meta shape.
+
+    Secrets are never touched — listing works off the non-decrypted row
+    metadata. OAuth-specific fields (scopes/username) aren't stored as
+    columns, so they surface as ``None`` for team creds in v1.
+    """
+    return CredentialsMetaResponse(
+        id=meta["id"],
+        provider=meta["provider"],
+        type=meta["credentialType"],
+        title=meta["displayName"],
+        scopes=None,
+        username=None,
+        host=None,
+        is_managed=False,
+    )
+
+
+async def _create_team_credential(
+    user_id: str,
+    provider: ProviderName,
+    credentials: Credentials,
+    team_id: str,
+) -> CredentialsMetaResponse:
+    org_id = await _require_team_admin(user_id, team_id)
+
+    # Normalize the provider to its plain string value so the encrypted
+    # payload and the row's `provider` column agree with what the read path
+    # queries on (avoids the `ProviderName.X` stringification quirk).
+    credentials.provider = provider.value
+
+    try:
+        created = await scoped_credentials.create_credential(
+            organization_id=org_id,
+            owner_type="TEAM",
+            owner_id=team_id,
+            team_id=team_id,
+            provider=provider.value,
+            credential_type=credentials.type,
+            display_name=credentials.title or provider.value,
+            # `model_dump()` renders SecretStr fields to plaintext (see
+            # `_BaseCredentials.dump_secret_strings`); it round-trips back
+            # through `CREDENTIALS_ADAPTER` on read. Expiry lives in the payload.
+            payload=credentials.model_dump(),
+            user_id=user_id,
+            metadata=credentials.metadata or None,
+        )
+    except Exception:
+        logger.exception("Failed to store team credential")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store credentials",
+        )
+
+    # The table generates its own uuid; reflect the authoritative row id back
+    # rather than the client-supplied one (which is ignored for team creds).
+    credentials.id = created["id"]
+    return to_meta_response(credentials)
+
+
+@router.get("/teams/{team_id}/credentials", summary="List Team Credentials")
+async def list_team_credentials(
+    user_id: Annotated[str, Security(get_user_id)],
+    team_id: Annotated[str, Path(title="The team whose credentials to list")],
+) -> list[CredentialsMetaResponse]:
+    org_id = await _require_team_member(user_id, team_id)
+    metas = await scoped_credentials.list_team_credentials(org_id, team_id)
+    return [_team_cred_meta_to_response(m) for m in metas]
+
+
+@router.delete(
+    "/teams/{team_id}/credentials/{cred_id}", summary="Delete Team Credential"
+)
+async def delete_team_credential(
+    user_id: Annotated[str, Security(get_user_id)],
+    team_id: Annotated[str, Path(title="The team that owns the credential")],
+    cred_id: Annotated[str, Path(title="The ID of the team credential to delete")],
+) -> CredentialsDeletionResponse:
+    org_id = await _require_team_admin(user_id, team_id)
+    try:
+        await scoped_credentials.delete_team_credential(cred_id, team_id, org_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    # Team creds are non-OAuth in v1 (see OAuth follow-up), so there are no
+    # provider tokens to revoke — `revoked=None` matches the API-key case.
+    return CredentialsDeletionResponse(revoked=None)
 
 
 class AyrshareSSOResponse(BaseModel):

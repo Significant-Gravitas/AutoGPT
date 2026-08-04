@@ -19,6 +19,7 @@ import {
 
 import { APIKeyInfoDialog } from "../APIKeyInfoDialog/APIKeyInfoDialog";
 import { formatLastUsed, maskAPIKey } from "../APIKeyList/helpers";
+import { TeamBadge } from "@/components/contextual/TeamBadge/TeamBadge";
 
 interface Props {
   apiKey: APIKeyInfo;
@@ -81,6 +82,7 @@ export function APIKeyRow({
                 <TooltipContent side="top">View key details</TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            <TeamBadge teamId={apiKey.team_id_restriction} />
           </div>
           <div className="flex items-center gap-3 whitespace-nowrap">
             <Text variant="label" as="span" className="text-zinc-700">

@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from backend.copilot.graphiti.client import derive_org_group_id, derive_team_group_id
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES, enqueue_episode
 from backend.copilot.graphiti.memory_model import (
@@ -13,6 +14,13 @@ from backend.copilot.graphiti.memory_model import (
     ProcedureStep,
     RuleMemory,
     SourceKind,
+)
+from backend.copilot.graphiti.tiers import (
+    TierError,
+    hold_buffer_enabled,
+    is_org_admin,
+    is_org_member,
+    resolve_store_team,
 )
 from backend.copilot.model import ChatSession
 
@@ -50,6 +58,23 @@ class MemoryStoreTool(BaseTool):
                 "content": {
                     "type": "string",
                     "description": "The information to remember. Be concise but complete.",
+                },
+                "tier": {
+                    "type": "string",
+                    "enum": ["personal", "team", "org"],
+                    "description": (
+                        "Where to store: 'personal' (default, private), 'team' "
+                        "(shared with a team), or 'org' (org-wide). Non-admin "
+                        "team/org stores may be held for admin review."
+                    ),
+                    "default": "personal",
+                },
+                "team_id": {
+                    "type": "string",
+                    "description": (
+                        "Team id for tier='team' when you're in more than one "
+                        "team; defaults to the session's team."
+                    ),
                 },
                 "source_description": {
                     "type": "string",
@@ -163,6 +188,8 @@ class MemoryStoreTool(BaseTool):
         source_kind: str = "user_asserted",
         scope: str = "real:global",
         memory_kind: str = "fact",
+        tier: str = "personal",
+        team_id: str = "",
         rule: dict | None = None,
         procedure: dict | None = None,
         **kwargs,
@@ -226,16 +253,87 @@ class MemoryStoreTool(BaseTool):
         else:
             provenance = f"session:{session.session_id}"
 
+        # --- Tier routing + write governance ---
+        # Personal (default): private group, always active — unchanged path.
+        # Shared tiers (team/org): governed by membership role + the org's
+        # hold-buffer setting. Non-admin writes land 'tentative' (a review
+        # buffer) when the buffer is on; admins — and everyone when the
+        # buffer is off — land 'active'. The governed status is stamped onto
+        # the edge (edge_metadata) so admin review can query it natively.
+        resolved_tier = tier if tier in ("personal", "team", "org") else "personal"
+        memory_status = MemoryStatus.active
+        target_group_id: str | None = None  # None → personal path in enqueue
+
+        if resolved_tier == "org":
+            org_id = session.organization_id
+            if not org_id:
+                return ErrorResponse(
+                    message=(
+                        "Storing to organization memory requires a session "
+                        "attached to an organization."
+                    ),
+                    session_id=session.session_id,
+                )
+            # Re-verify ACTIVE org membership: session.organization_id is only
+            # checked at session creation, so a revoked/stale membership must
+            # not reach the org write path (mirrors the team tier below).
+            if not await is_org_member(user_id, org_id):
+                return ErrorResponse(
+                    message=(
+                        "You are not an active member of this organization, so "
+                        "you cannot store to its organization memory."
+                    ),
+                    session_id=session.session_id,
+                )
+            admin = await is_org_admin(user_id, org_id)
+            held = (not admin) and await hold_buffer_enabled(org_id)
+            memory_status = MemoryStatus.tentative if held else MemoryStatus.active
+            target_group_id = derive_org_group_id(org_id)
+
+        elif resolved_tier == "team":
+            org_id = session.organization_id
+            if not org_id:
+                return ErrorResponse(
+                    message=(
+                        "Storing to team memory requires a session attached to "
+                        "an organization."
+                    ),
+                    session_id=session.session_id,
+                )
+            try:
+                membership = await resolve_store_team(
+                    user_id, org_id, session.team_id, team_id or None
+                )
+            except TierError as exc:
+                return ErrorResponse(message=exc.message, session_id=session.session_id)
+            admin = bool(membership.isAdmin)
+            held = (not admin) and await hold_buffer_enabled(org_id)
+            memory_status = MemoryStatus.tentative if held else MemoryStatus.active
+            target_group_id = derive_team_group_id(membership.teamId)
+
         envelope = MemoryEnvelope(
             content=content,
             source_kind=resolved_source,
             scope=scope,
             memory_kind=resolved_kind,
-            status=MemoryStatus.active,
+            status=memory_status,
             provenance=provenance,
             rule=rule_model,
             procedure=procedure_model,
         )
+
+        # Shared-tier writes stamp their governed status/provenance onto the
+        # edge so it survives graphiti's text-based extraction (personal
+        # writes keep the existing default-status path untouched).
+        edge_metadata: dict | None = None
+        if resolved_tier != "personal":
+            edge_metadata = {
+                "status": memory_status.value,
+                "source_kind": resolved_source.value,
+                "scope": scope,
+                "confidence": None,
+                "provenance": provenance,
+            }
 
         episode_body = envelope.model_dump_json()
 
@@ -261,6 +359,8 @@ class MemoryStoreTool(BaseTool):
             episode_body=episode_body,
             source_description=source_description,
             is_json=True,
+            group_id=target_group_id,
+            edge_metadata=edge_metadata,
         )
 
         if not queued:
@@ -269,8 +369,18 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
+        if memory_status == MemoryStatus.tentative:
+            message = (
+                f"Memory '{name}' submitted to {resolved_tier} memory and is "
+                f"pending admin review before it becomes active."
+            )
+        elif resolved_tier == "personal":
+            message = f"Memory '{name}' queued for storage."
+        else:
+            message = f"Memory '{name}' queued for storage in {resolved_tier} memory."
+
         return MemoryStoreResponse(
-            message=f"Memory '{name}' queued for storage.",
+            message=message,
             session_id=session.session_id,
             memory_name=name,
         )

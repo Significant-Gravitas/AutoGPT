@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 520" role="img" aria-label="Animation of a team chat recalling memory from three graphs — personal, team, and org — with provenance labels appearing on the shared facts.">
+  <title>Memory recall in a team chat</title>
+  <desc>A chat assembles context by reading from the personal graph, the session's team graph, and the org graph. Facts stream into the context panel; personal facts stay unlabelled while team and org facts arrive tagged with their source. Personal keeps at least half of the budget.</desc>
+
+  <rect x="10" y="10" width="840" height="500" rx="16" fill="#ffffff" stroke="#e5e7eb" stroke-width="1.5"/>
+  <text x="34" y="46" font-family="ui-sans-serif, system-ui, sans-serif" font-size="21" font-weight="700" fill="#1e293b">Memory recall in a team chat</text>
+  <text x="34" y="68" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#64748b">Recall fans out across the tiers the user may read; each shared fact keeps its provenance label</text>
+
+  <!-- ============ SOURCE GRAPHS ============ -->
+  <!-- Personal -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <rect x="40" y="110" width="230" height="76" rx="11" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.4"/>
+    <!-- mini graph glyph -->
+    <circle cx="70" cy="140" r="6" fill="#94a3b8"/>
+    <circle cx="94" cy="128" r="6" fill="#94a3b8"/>
+    <circle cx="92" cy="158" r="6" fill="#94a3b8"/>
+    <line x1="70" y1="140" x2="94" y2="128" stroke="#cbd5e1" stroke-width="2"/>
+    <line x1="70" y1="140" x2="92" y2="158" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="120" y="138" font-size="14" font-weight="700" fill="#334155">Personal memory</text>
+    <text x="120" y="158" font-size="11.5" fill="#94a3b8">user_&lt;id&gt; &#183; private</text>
+    <text x="120" y="174" font-size="11" fill="#94a3b8">facts stay unlabelled</text>
+  </g>
+  <!-- Team -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <rect x="40" y="216" width="230" height="76" rx="11" fill="#ffffff" stroke="#4f46e5" stroke-width="1.6"/>
+    <circle cx="70" cy="246" r="6" fill="#4f46e5"/>
+    <circle cx="94" cy="234" r="6" fill="#4f46e5"/>
+    <circle cx="92" cy="264" r="6" fill="#4f46e5"/>
+    <line x1="70" y1="246" x2="94" y2="234" stroke="#c7d2fe" stroke-width="2"/>
+    <line x1="70" y1="246" x2="92" y2="264" stroke="#c7d2fe" stroke-width="2"/>
+    <text x="120" y="244" font-size="14" font-weight="700" fill="#334155">Team memory</text>
+    <text x="120" y="264" font-size="11.5" fill="#6366f1">team_&lt;id&gt; &#183; session team: Growth</text>
+    <text x="120" y="280" font-size="11" fill="#94a3b8">active members only</text>
+  </g>
+  <!-- Org -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <rect x="40" y="322" width="230" height="76" rx="11" fill="#ffffff" stroke="#4f46e5" stroke-width="1.6"/>
+    <circle cx="70" cy="352" r="6" fill="#4f46e5"/>
+    <circle cx="94" cy="340" r="6" fill="#4f46e5"/>
+    <circle cx="92" cy="370" r="6" fill="#4f46e5"/>
+    <line x1="70" y1="352" x2="94" y2="340" stroke="#c7d2fe" stroke-width="2"/>
+    <line x1="70" y1="352" x2="92" y2="370" stroke="#c7d2fe" stroke-width="2"/>
+    <text x="120" y="350" font-size="14" font-weight="700" fill="#334155">Org memory</text>
+    <text x="120" y="370" font-size="11.5" fill="#6366f1">org_&lt;id&gt; &#183; every member</text>
+    <text x="120" y="386" font-size="11" fill="#94a3b8">shared org knowledge</text>
+  </g>
+
+  <!-- ============ FLOW PATHS (faint guides) ============ -->
+  <g fill="none" stroke="#e2e8f0" stroke-width="1.5">
+    <path d="M270,148 C 400,148 430,262 548,262"/>
+    <path d="M270,254 C 400,254 440,264 548,266"/>
+    <path d="M270,360 C 400,360 430,272 548,270"/>
+  </g>
+
+  <!-- merge label -->
+  <text x="430" y="304" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" font-weight="600" fill="#64748b">budget merge</text>
+  <text x="430" y="320" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10.5" fill="#94a3b8">personal keeps &#8805; &#189;</text>
+
+  <!-- ============ STREAMING PARTICLES ============ -->
+  <!-- Each begins at t=0 sitting on its source box (path start), so no particle
+       ever parks at the origin; different durations desync the flow over time. -->
+  <!-- personal (gray) -->
+  <circle r="4.5" fill="#94a3b8" cx="0" cy="0"><animateMotion dur="2.4s" repeatCount="indefinite" path="M270,148 C 400,148 430,262 548,262"/></circle>
+  <circle r="4.5" fill="#94a3b8" cx="0" cy="0"><animateMotion dur="3.1s" repeatCount="indefinite" path="M270,148 C 400,148 430,262 548,262"/></circle>
+  <!-- team (accent) -->
+  <circle r="4.5" fill="#4f46e5" cx="0" cy="0"><animateMotion dur="2.7s" repeatCount="indefinite" path="M270,254 C 400,254 440,264 548,266"/></circle>
+  <!-- org (accent) -->
+  <circle r="4.5" fill="#4f46e5" cx="0" cy="0"><animateMotion dur="2.9s" repeatCount="indefinite" path="M270,360 C 400,360 430,272 548,270"/></circle>
+
+  <!-- ============ CHAT CONTEXT PANEL ============ -->
+  <rect x="548" y="104" width="278" height="330" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="566" y="130" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700" fill="#475569">Chat context (assembled)</text>
+
+  <!-- chips fade in in render order: personal, personal, team, personal, org -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <!-- chip 1 personal -->
+    <g opacity="0">
+      <rect x="564" y="144" width="246" height="34" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+      <text x="576" y="165" font-size="12" fill="#334155">Prefers concise summaries</text>
+      <animate attributeName="opacity" dur="10s" repeatCount="indefinite" keyTimes="0;0.08;0.11;0.93;0.98" values="0;0;1;1;0"/>
+    </g>
+    <!-- chip 2 personal -->
+    <g opacity="0">
+      <rect x="564" y="184" width="246" height="34" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+      <text x="576" y="205" font-size="12" fill="#334155">Works in Pacific time</text>
+      <animate attributeName="opacity" dur="10s" repeatCount="indefinite" keyTimes="0;0.20;0.23;0.93;0.98" values="0;0;1;1;0"/>
+    </g>
+    <!-- chip 3 team -->
+    <g opacity="0">
+      <rect x="564" y="224" width="246" height="48" rx="8" fill="#ffffff" stroke="#4f46e5" stroke-width="1.3"/>
+      <text x="576" y="244" font-size="12" fill="#334155">Q3 goal: 20% activation</text>
+      <rect x="576" y="250" width="150" height="16" rx="8" fill="#eef2ff"/>
+      <text x="584" y="262" font-size="10" font-weight="600" fill="#4338ca">team memory (Growth)</text>
+      <animate attributeName="opacity" dur="10s" repeatCount="indefinite" keyTimes="0;0.34;0.37;0.93;0.98" values="0;0;1;1;0"/>
+    </g>
+    <!-- chip 4 personal -->
+    <g opacity="0">
+      <rect x="564" y="278" width="246" height="34" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+      <text x="576" y="299" font-size="12" fill="#334155">Owns the onboarding project</text>
+      <animate attributeName="opacity" dur="10s" repeatCount="indefinite" keyTimes="0;0.46;0.49;0.93;0.98" values="0;0;1;1;0"/>
+    </g>
+    <!-- chip 5 org -->
+    <g opacity="0">
+      <rect x="564" y="318" width="246" height="48" rx="8" fill="#ffffff" stroke="#4f46e5" stroke-width="1.3"/>
+      <text x="576" y="338" font-size="12" fill="#334155">Brand voice: friendly, direct</text>
+      <rect x="576" y="344" width="104" height="16" rx="8" fill="#eef2ff"/>
+      <text x="584" y="356" font-size="10" font-weight="600" fill="#4338ca">org memory</text>
+      <animate attributeName="opacity" dur="10s" repeatCount="indefinite" keyTimes="0;0.58;0.61;0.93;0.98" values="0;0;1;1;0"/>
+    </g>
+  </g>
+
+  <!-- provenance caption -->
+  <text x="34" y="470" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#334155">Personal facts stay unlabelled; team and org facts carry a provenance label so the model can weigh them.</text>
+  <text x="826" y="502" text-anchor="end" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#cbd5e1">AutoGPT Platform &#183; org access model</text>
+</svg>

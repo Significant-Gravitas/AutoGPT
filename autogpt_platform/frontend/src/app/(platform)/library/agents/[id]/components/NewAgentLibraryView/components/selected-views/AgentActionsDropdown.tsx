@@ -27,11 +27,14 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { exportAsJSONFile } from "@/lib/utils";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { DotsThreeIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+import { ShareAgentDialog } from "@/app/(platform)/library/components/ShareAgentDialog/ShareAgentDialog";
 
 interface Props {
   agent: LibraryAgent;
@@ -60,6 +63,11 @@ export function AgentActionsDropdown({
   const [isDeletingAgent, setIsDeletingAgent] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteRunDialog, setShowDeleteRunDialog] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+
+  // Share only makes sense once the user has teams; the backend enforces
+  // owner/admin rights and any 400 is surfaced via the dialog's toast.
+  const hasTeams = useOrgTeamStore((s) => s.teams.length > 0);
 
   const { mutateAsync: deleteSchedule } = useDeleteV1DeleteExecutionSchedule();
   const [isDeletingSchedule, setIsDeletingSchedule] = useState(false);
@@ -212,6 +220,15 @@ export function AgentActionsDropdown({
           >
             Export agent to file
           </DropdownMenuItem>
+          {hasTeams ? (
+            <DropdownMenuItem
+              onClick={() => setShowShareDialog(true)}
+              className="flex items-center gap-2"
+              data-testid="agent-actions-share"
+            >
+              Share with a team
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             onClick={() => setShowDeleteDialog(true)}
             className="flex items-center gap-2"
@@ -322,6 +339,14 @@ export function AgentActionsDropdown({
           </div>
         </Dialog.Content>
       </Dialog>
+
+      {hasTeams ? (
+        <ShareAgentDialog
+          agent={agent}
+          isOpen={showShareDialog}
+          setIsOpen={setShowShareDialog}
+        />
+      ) : null}
     </>
   );
 }

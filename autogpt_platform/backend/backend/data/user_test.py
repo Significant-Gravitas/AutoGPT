@@ -263,6 +263,160 @@ class TestTableBackedCredentials:
             await set_user_credentials("u1", [new])
 
 
+class TestAccessibleCredentials:
+    """get_accessible_credentials — the USER→TEAM→ORG resolution that the
+    credential LISTING and execution FETCH paths run on. USER-cred behavior
+    stays identical to get_user_credentials; team/org creds are surfaced
+    only for live (ACTIVE) members and never written back."""
+
+    @staticmethod
+    def _row(cred, owner_type: str):
+        from backend.util.encryption import JSONCryptor
+
+        row = MagicMock()
+        row.id = cred.id
+        row.ownerType = owner_type
+        row.encryptedPayload = JSONCryptor().encrypt(cred.model_dump())
+        return row
+
+    @pytest.mark.asyncio
+    async def test_resolves_user_team_and_org_creds_for_member(self, mocker):
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+        from backend.data.user import get_accessible_credentials
+
+        user_cred = APIKeyCredentials(
+            id="u", provider="github", api_key=SecretStr("s"), title="U"
+        )
+        team_cred = APIKeyCredentials(
+            id="t", provider="notion", api_key=SecretStr("s"), title="T"
+        )
+        org_cred = APIKeyCredentials(
+            id="o", provider="slant3d", api_key=SecretStr("s"), title="O"
+        )
+
+        mock_prisma = MagicMock()
+        mock_prisma.teammember.find_many = AsyncMock(
+            return_value=[MagicMock(teamId="team-a")]
+        )
+        mock_prisma.orgmember.find_many = AsyncMock(
+            return_value=[MagicMock(orgId="org-1")]
+        )
+        mock_prisma.integrationcredential.find_many = AsyncMock(
+            return_value=[
+                self._row(user_cred, "USER"),
+                self._row(team_cred, "TEAM"),
+                self._row(org_cred, "ORG"),
+            ]
+        )
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+
+        result = await get_accessible_credentials("u1")
+
+        assert {c.id for c in result} == {"u", "t", "o"}
+        where = mock_prisma.integrationcredential.find_many.call_args.kwargs["where"]
+        assert where["status"] == "active"
+        assert {"ownerType": "USER", "ownerId": "u1"} in where["OR"]
+        assert {"ownerType": "TEAM", "ownerId": {"in": ["team-a"]}} in where["OR"]
+        assert {"ownerType": "ORG", "ownerId": {"in": ["org-1"]}} in where["OR"]
+
+    @pytest.mark.asyncio
+    async def test_non_member_cannot_query_other_teams(self, mocker):
+        """A user in no teams gets no TEAM clause at all — there is no way
+        for the query to return another team's credentials."""
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+        from backend.data.user import get_accessible_credentials
+
+        user_cred = APIKeyCredentials(
+            id="u", provider="github", api_key=SecretStr("s"), title="U"
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[])
+        mock_prisma.orgmember.find_many = AsyncMock(
+            return_value=[MagicMock(orgId="org-personal")]
+        )
+        mock_prisma.integrationcredential.find_many = AsyncMock(
+            return_value=[self._row(user_cred, "USER")]
+        )
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+
+        result = await get_accessible_credentials("u1")
+
+        assert [c.id for c in result] == ["u"]
+        where = mock_prisma.integrationcredential.find_many.call_args.kwargs["where"]
+        owner_types = {clause.get("ownerType") for clause in where["OR"]}
+        assert "TEAM" not in owner_types
+
+    @pytest.mark.asyncio
+    async def test_left_team_user_loses_team_creds(self, mocker):
+        """Someone who has left a team no longer has an ACTIVE membership, so
+        the membership query (filtered to ACTIVE) returns nothing and the
+        team's credential is never resolved — the check that makes a run
+        scheduled pre-departure stop seeing team creds at execution time."""
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+        from backend.data.user import get_accessible_credentials
+
+        user_cred = APIKeyCredentials(
+            id="u", provider="github", api_key=SecretStr("s"), title="U"
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[])
+        mock_prisma.orgmember.find_many = AsyncMock(return_value=[])
+        mock_prisma.integrationcredential.find_many = AsyncMock(
+            return_value=[self._row(user_cred, "USER")]
+        )
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+
+        result = await get_accessible_credentials("u1")
+
+        assert [c.id for c in result] == ["u"]
+        assert (
+            mock_prisma.teammember.find_many.call_args.kwargs["where"]["status"]
+            == "ACTIVE"
+        )
+        assert (
+            mock_prisma.orgmember.find_many.call_args.kwargs["where"]["status"]
+            == "ACTIVE"
+        )
+
+    @pytest.mark.asyncio
+    async def test_id_collision_prefers_user_over_team(self, mocker):
+        """Defensive precedence: on a (practically impossible) id clash the
+        USER-owned credential wins over TEAM/ORG, regardless of DB row order."""
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+        from backend.data.user import get_accessible_credentials
+
+        user_cred = APIKeyCredentials(
+            id="dup", provider="github", api_key=SecretStr("user"), title="U"
+        )
+        team_cred = APIKeyCredentials(
+            id="dup", provider="notion", api_key=SecretStr("team"), title="T"
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.teammember.find_many = AsyncMock(
+            return_value=[MagicMock(teamId="team-a")]
+        )
+        mock_prisma.orgmember.find_many = AsyncMock(return_value=[])
+        # TEAM row returned first to prove precedence, not input order, decides.
+        mock_prisma.integrationcredential.find_many = AsyncMock(
+            return_value=[self._row(team_cred, "TEAM"), self._row(user_cred, "USER")]
+        )
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+
+        result = await get_accessible_credentials("u1")
+
+        assert len(result) == 1
+        assert result[0].id == "dup"
+        assert result[0].provider == "github"
+
+
 class TestGetOrCreateUserStatus:
     @pytest.fixture(autouse=True)
     def stub_user_provisioning(self):

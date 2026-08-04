@@ -3,10 +3,16 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CopyIcon, XIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useDuplicateGraph } from "../../hooks/useDuplicateGraph";
+import { TeamPicker } from "@/components/contextual/TeamPicker/TeamPicker";
+import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 export function ReadOnlyBanner() {
+  const { teamId, setTeamId } = useCreateTeamSelection(
+    CreateSurface.BuilderDuplicate,
+  );
   const { duplicate, isDuplicating, canDuplicate, isCheckingLibrary } =
-    useDuplicateGraph();
+    useDuplicateGraph(teamId);
   const [isDismissed, setIsDismissed] = useState(false);
 
   if (isDismissed) return null;
@@ -30,16 +36,27 @@ export function ReadOnlyBanner() {
           : "Add it to your library to enable duplication."}
       </Text>
       {showDuplicate && (
-        <Button
-          variant="primary"
-          size="small"
-          onClick={duplicate}
-          loading={isDuplicating}
-          disabled={!canDuplicate}
-          leftIcon={<CopyIcon className="size-4" />}
-        >
-          Duplicate
-        </Button>
+        <div className="flex items-center gap-2">
+          <TeamPicker
+            surfaceKey={CreateSurface.BuilderDuplicate}
+            value={teamId}
+            onChange={setTeamId}
+            hideLabel
+            label="Duplicate into team"
+            className="!h-9 w-40"
+            wrapperClassName="!mb-0"
+          />
+          <Button
+            variant="primary"
+            size="small"
+            onClick={duplicate}
+            loading={isDuplicating}
+            disabled={!canDuplicate}
+            leftIcon={<CopyIcon className="size-4" />}
+          >
+            Duplicate
+          </Button>
+        </div>
       )}
       <Button
         variant="ghost"

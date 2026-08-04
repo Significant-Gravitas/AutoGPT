@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from prisma import Json
 from prisma.errors import UniqueViolationError
 
 from backend.data.db import prisma, transaction
@@ -22,6 +23,26 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
+
+
+def _coerce_settings_dict(settings) -> dict:
+    """Parse an Organization.settings value into a mutable dict.
+
+    The column can hold a parsed dict or the raw JSON-string form; anything
+    unrecognized collapses to an empty dict so a read-modify-write never
+    clobbers on malformed input (it just rebuilds from empty).
+    """
+    if isinstance(settings, str):
+        import json
+
+        try:
+            parsed = json.loads(settings)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    if isinstance(settings, dict):
+        return dict(settings)
+    return {}
 
 
 async def _find_personal_org_member(user_id: str):
@@ -320,6 +341,21 @@ async def update_org(org_id: str, data: UpdateOrgData) -> OrgResponse:
         update_dict["description"] = data.description
     if data.avatar_url is not None:
         update_dict["avatarUrl"] = data.avatar_url
+
+    if data.memory_hold_buffer is not None:
+        # Read-modify-write so sibling settings keys survive. Persist to
+        # settings["memory"]["holdBuffer"] — the exact key that
+        # copilot/graphiti/tiers.hold_buffer_enabled reads at write time.
+        settings_org = await prisma.organization.find_unique(where={"id": org_id})
+        if settings_org is None:
+            raise NotFoundError(f"Organization {org_id} not found")
+        settings = _coerce_settings_dict(settings_org.settings)
+        memory = settings.get("memory")
+        if not isinstance(memory, dict):
+            memory = {}
+        memory["holdBuffer"] = data.memory_hold_buffer
+        settings["memory"] = memory
+        update_dict["settings"] = Json(settings)
 
     if data.slug is not None:
         existing = await prisma.organization.find_unique(where={"slug": data.slug})

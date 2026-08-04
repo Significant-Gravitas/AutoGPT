@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from uuid import uuid4
 
 from autogpt_libs.auth import get_user_id, requires_org_permission, requires_user
 from autogpt_libs.auth.models import RequestContext
@@ -14,7 +15,12 @@ from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
 
 from . import db as org_db
-from .model import CreateInvitationRequest, InvitationCreateResponse, InvitationResponse
+from .model import (
+    CreateInvitationRequest,
+    InvitationCreateResponse,
+    InvitationResponse,
+    UserInvitationResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +137,49 @@ async def revoke_invitation(
         where={"id": invitation_id},
         data={"revokedAt": datetime.now(timezone.utc)},
     )
+
+
+@org_router.post(
+    "/{invitation_id}/resend",
+    summary="Resend invitation",
+    tags=["orgs", "invitations"],
+)
+async def resend_invitation(
+    org_id: str,
+    invitation_id: str,
+    ctx: Annotated[
+        RequestContext,
+        Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
+    ],
+) -> InvitationCreateResponse:
+    """Refresh a pending (possibly expired) invitation: new token, new TTL.
+
+    Rotating the token invalidates any previously sent link, so a resend
+    also acts as a soft revoke of the old email.
+    """
+    _verify_org_path(ctx, org_id)
+    invitation = await prisma.orginvitation.find_unique(where={"id": invitation_id})
+    if invitation is None or invitation.orgId != org_id:
+        raise NotFoundError(f"Invitation {invitation_id} not found")
+    if invitation.acceptedAt is not None:
+        raise HTTPException(400, detail="Invitation already accepted")
+    if invitation.revokedAt is not None:
+        raise HTTPException(400, detail="Invitation was revoked")
+
+    refreshed = await prisma.orginvitation.update(
+        where={"id": invitation_id},
+        data={
+            "token": str(uuid4()),
+            "tokenHash": None,
+            "expiresAt": datetime.now(timezone.utc)
+            + timedelta(days=INVITATION_TTL_DAYS),
+        },
+    )
+    if refreshed is None:
+        raise NotFoundError(f"Invitation {invitation_id} not found")
+
+    # TODO: Send email via Postmark with invitation link (same gap as create)
+    return InvitationCreateResponse.from_db(refreshed)
 
 
 # --- Token-based endpoints (under /api/invitations) ---
@@ -258,7 +307,7 @@ async def decline_invitation(
 )
 async def list_pending_for_user(
     user_id: Annotated[str, Security(get_user_id)],
-) -> list[InvitationResponse]:
+) -> list[UserInvitationResponse]:
     # Get user's email
     user = await prisma.user.find_unique(where={"id": user_id})
     if user is None:
@@ -271,6 +320,7 @@ async def list_pending_for_user(
             "revokedAt": None,
             "expiresAt": {"gt": datetime.now(timezone.utc)},
         },
+        include={"Org": True},
         order={"createdAt": "desc"},
     )
-    return [InvitationResponse.from_db(inv) for inv in invitations]
+    return [UserInvitationResponse.from_db(inv) for inv in invitations]

@@ -7,7 +7,13 @@ import pytest
 from backend.copilot.config import ChatConfig
 
 from . import client as client_mod
-from .client import derive_group_id, evict_client, make_flex_graphiti_client
+from .client import (
+    derive_group_id,
+    derive_org_group_id,
+    derive_team_group_id,
+    evict_client,
+    make_flex_graphiti_client,
+)
 
 
 class TestDeriveGroupId:
@@ -35,6 +41,50 @@ class TestDeriveGroupId:
     def test_hyphens_and_underscores_allowed(self) -> None:
         result = derive_group_id("a-b_c")
         assert result == "user_a-b_c"
+
+
+class TestDeriveTeamGroupId:
+    """Team-tier derivation shares the personal sanitization contract but
+    carries a distinct ``team_`` prefix so team and personal namespaces
+    can never collide."""
+
+    def test_prefixes_with_team(self) -> None:
+        assert derive_team_group_id("team123") == "team_team123"
+
+    def test_uuid_passthrough(self) -> None:
+        tid = "883cc9da-fe37-4863-839b-acba022bf3ef"
+        assert derive_team_group_id(tid) == f"team_{tid}"
+
+    def test_empty_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            derive_team_group_id("")
+
+    def test_invalid_chars_raise(self) -> None:
+        with pytest.raises(ValueError, match="invalid characters"):
+            derive_team_group_id("team.evil")
+
+    def test_distinct_namespace_from_personal(self) -> None:
+        # Same raw id → different group_ids across tiers (no collision).
+        raw = "collide"
+        assert derive_team_group_id(raw) != derive_group_id(raw)
+        assert derive_team_group_id(raw) != derive_org_group_id(raw)
+
+
+class TestDeriveOrgGroupId:
+    def test_prefixes_with_org(self) -> None:
+        assert derive_org_group_id("org123") == "org_org123"
+
+    def test_uuid_passthrough(self) -> None:
+        oid = "883cc9da-fe37-4863-839b-acba022bf3ef"
+        assert derive_org_group_id(oid) == f"org_{oid}"
+
+    def test_empty_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            derive_org_group_id("")
+
+    def test_all_invalid_chars_raise(self) -> None:
+        with pytest.raises(ValueError, match="empty group_id after sanitization"):
+            derive_org_group_id("!!!")
 
 
 class TestEvictClient:

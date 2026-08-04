@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 520" role="img" aria-label="Animation showing how an agent's visibility changes as it moves from org-home to Team A and is then granted to Team B.">
+  <title>Who can see this agent?</title>
+  <desc>An organization contains an org-home area and two teams. A resource starts as an org-home row visible to every member, moves into Team A so only Team A can see it, then a grant opens execute access to Team B while the rest of the org still cannot see it.</desc>
+
+  <!-- self-contained light panel so it reads on any page theme -->
+  <rect x="10" y="10" width="840" height="500" rx="16" fill="#ffffff" stroke="#e5e7eb" stroke-width="1.5"/>
+  <text x="34" y="46" font-family="ui-sans-serif, system-ui, sans-serif" font-size="21" font-weight="700" fill="#1e293b">Who can see this agent?</text>
+  <text x="34" y="68" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#64748b">Visibility follows the row's tenancy: org-home &#8594; Team A &#8594; granted to Team B</text>
+
+  <!-- organization boundary -->
+  <rect x="34" y="86" width="792" height="356" rx="14" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="50" y="108" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600" fill="#475569">Acme Organization</text>
+
+  <!-- org-home band -->
+  <rect x="60" y="118" width="740" height="60" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3" stroke-dasharray="5 4"/>
+  <text x="74" y="142" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.5" font-weight="600" fill="#475569">Org-home</text>
+  <text x="74" y="160" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#94a3b8">teamId = NULL &#183; visible to every org member</text>
+
+  <!-- Team A box -->
+  <rect x="60" y="212" width="330" height="210" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+  <text x="76" y="236" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600" fill="#475569">Team A</text>
+  <text x="76" y="254" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#94a3b8">3 members</text>
+
+  <!-- Team B box -->
+  <rect x="470" y="212" width="330" height="210" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+  <text x="486" y="236" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600" fill="#475569">Team B</text>
+  <text x="486" y="254" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#94a3b8">3 members</text>
+
+  <!-- Team A members (dots + highlight rings) -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <circle cx="130" cy="330" r="12" fill="#cbd5e1"/>
+    <circle cx="185" cy="330" r="12" fill="#cbd5e1"/>
+    <circle cx="240" cy="330" r="12" fill="#cbd5e1"/>
+    <!-- Team A highlight rings: on in org-home phase (via all-ring) AND in team A + grant phases -->
+    <g fill="none" stroke="#4f46e5" stroke-width="3">
+      <circle cx="130" cy="330" r="17"/>
+      <circle cx="185" cy="330" r="17"/>
+      <circle cx="240" cy="330" r="17"/>
+      <animate attributeName="opacity" dur="12s" repeatCount="indefinite"
+               keyTimes="0;0.34;0.36;0.95;1" values="0;0;1;1;0"/>
+    </g>
+  </g>
+
+  <!-- Team B members (dots + highlight rings) -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <circle cx="540" cy="330" r="12" fill="#cbd5e1"/>
+    <circle cx="595" cy="330" r="12" fill="#cbd5e1"/>
+    <circle cx="650" cy="330" r="12" fill="#cbd5e1"/>
+    <!-- Team B highlight rings: on only in grant phase -->
+    <g fill="none" stroke="#4f46e5" stroke-width="3">
+      <circle cx="540" cy="330" r="17"/>
+      <circle cx="595" cy="330" r="17"/>
+      <circle cx="650" cy="330" r="17"/>
+      <animate attributeName="opacity" dur="12s" repeatCount="indefinite"
+               keyTimes="0;0.67;0.69;0.95;1" values="0;0;1;1;0"/>
+    </g>
+  </g>
+
+  <!-- Org-only member (belongs to no team) -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <circle cx="430" cy="392" r="12" fill="#cbd5e1"/>
+    <text x="430" y="422" text-anchor="middle" font-size="10.5" fill="#94a3b8">org member, no team</text>
+    <!-- ring on only in org-home phase -->
+    <circle cx="430" cy="392" r="17" fill="none" stroke="#4f46e5" stroke-width="3">
+      <animate attributeName="opacity" dur="12s" repeatCount="indefinite"
+               keyTimes="0;0.30;0.34;0.95;1" values="1;1;0;0;1"/>
+    </circle>
+  </g>
+
+  <!-- "all org" highlight rings for the six team members during org-home phase -->
+  <g fill="none" stroke="#4f46e5" stroke-width="3">
+    <circle cx="130" cy="330" r="17"/>
+    <circle cx="185" cy="330" r="17"/>
+    <circle cx="240" cy="330" r="17"/>
+    <circle cx="540" cy="330" r="17"/>
+    <circle cx="595" cy="330" r="17"/>
+    <circle cx="650" cy="330" r="17"/>
+    <animate attributeName="opacity" dur="12s" repeatCount="indefinite"
+             keyTimes="0;0.30;0.34;0.95;1" values="1;1;0;0;1"/>
+  </g>
+
+  <!-- grant arrow from Team A to Team B (grant phase only) -->
+  <g opacity="0">
+    <defs>
+      <marker id="arrowhead" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#4f46e5"/>
+      </marker>
+    </defs>
+    <path d="M392,300 C 430,300 430,300 468,300" fill="none" stroke="#4f46e5" stroke-width="2.5"
+          stroke-dasharray="6 4" marker-end="url(#arrowhead)"/>
+    <rect x="393" y="272" width="74" height="22" rx="6" fill="#eef2ff" stroke="#4f46e5" stroke-width="1"/>
+    <text x="430" y="287" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#4338ca">grant: EXECUTE</text>
+    <animate attributeName="opacity" dur="12s" repeatCount="indefinite"
+             keyTimes="0;0.67;0.70;0.95;1" values="0;0;1;1;0"/>
+  </g>
+
+  <!-- the moving agent card -->
+  <g>
+    <animateTransform attributeName="transform" type="translate" dur="12s" repeatCount="indefinite"
+                      keyTimes="0;0.30;0.36;0.95;1"
+                      values="0,0; 0,0; -215,148; -215,148; 0,0"/>
+    <rect x="345" y="120" width="190" height="56" rx="11" fill="#eef2ff" stroke="#4f46e5" stroke-width="2"/>
+    <!-- tiny robot glyph -->
+    <rect x="360" y="136" width="24" height="20" rx="4" fill="#4f46e5"/>
+    <circle cx="367" cy="146" r="2.4" fill="#ffffff"/>
+    <circle cx="377" cy="146" r="2.4" fill="#ffffff"/>
+    <line x1="372" y1="130" x2="372" y2="136" stroke="#4f46e5" stroke-width="2"/>
+    <circle cx="372" cy="129" r="2" fill="#4f46e5"/>
+    <text x="396" y="143" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700" fill="#3730a3">Weekly Report</text>
+    <text x="396" y="160" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#6366f1">agent graph</text>
+  </g>
+
+  <!-- captions (one visible per phase) -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#334155">
+    <text x="34" y="474" opacity="0">
+      Org-home row: every member of Acme can see and run it.
+      <animate attributeName="opacity" dur="12s" repeatCount="indefinite"
+               keyTimes="0;0.30;0.34;0.95;1" values="1;1;0;0;1"/>
+    </text>
+    <text x="34" y="474" opacity="0">
+      Moved into Team A: now only Team A members (and the owner) can see it.
+      <animate attributeName="opacity" dur="12s" repeatCount="indefinite"
+               keyTimes="0;0.36;0.40;0.66;0.70" values="0;0;1;1;0"/>
+    </text>
+    <text x="34" y="474" opacity="0">
+      Granted to Team B (EXECUTE): Team B can run it too &#8212; the rest of the org still cannot.
+      <animate attributeName="opacity" dur="12s" repeatCount="indefinite"
+               keyTimes="0;0.70;0.74;0.94;0.98" values="0;0;1;1;0"/>
+    </text>
+  </g>
+
+  <text x="826" y="502" text-anchor="end" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#cbd5e1">AutoGPT Platform &#183; org access model</text>
+</svg>

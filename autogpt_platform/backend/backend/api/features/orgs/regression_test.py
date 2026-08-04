@@ -201,6 +201,11 @@ class TestGraphCrudUserIdIsolation:
         mock_library_actions = AsyncMock()
         mock_library_actions.find_first = AsyncMock(return_value=None)
 
+        # No team grant: get_graph's grant fallback queries the grants client,
+        # which is otherwise the real, unconnected one in this unit test.
+        mock_grants = MagicMock()
+        mock_grants.agentgraphgrant.find_many = AsyncMock(return_value=[])
+
         with (
             patch(
                 "backend.data.graph.AgentGraph.prisma",
@@ -214,6 +219,7 @@ class TestGraphCrudUserIdIsolation:
                 "backend.data.graph.LibraryAgent.prisma",
                 return_value=mock_library_actions,
             ),
+            patch("backend.data.grants.prisma", mock_grants),
         ):
             from backend.data.graph import get_graph
 
@@ -1067,8 +1073,11 @@ class TestRegressionLibraryAgents:
 
             result = await fork_library_agent(LIBRARY_AGENT_ID, USER_ID)
 
-        # fork_graph must be called with the caller's user_id
-        mock_fork.assert_called_once_with(GRAPH_ID, GRAPH_VERSION, USER_ID)
+        # fork_graph must be called with the caller's user_id. With no active
+        # org/team passed to fork_library_agent, both tenancy kwargs are None.
+        mock_fork.assert_called_once_with(
+            GRAPH_ID, GRAPH_VERSION, USER_ID, organization_id=None, team_id=None
+        )
         # create_library_agent must use the caller's user_id
         assert mock_create_lib.call_args.args[1] == USER_ID
         assert result.id == "lib-forked"
@@ -1221,6 +1230,9 @@ class TestRegressionStore:
         mock_listing_obj = MagicMock()
         mock_listing_obj.id = "listing-1"
         mock_listing_obj.owningUserId = USER_ID
+        # from_listing_version now reads owningOrgId into StoreSubmission.organization_id
+        # (str | None); a bare MagicMock would fail Pydantic validation.
+        mock_listing_obj.owningOrgId = None
         mock_listing_obj.slug = SLUG
 
         mock_submission = MagicMock()
@@ -3383,30 +3395,41 @@ class TestReviewFindings:
         assert exc_info.value.status_code == 403
 
     # ------------------------------------------------------------------
-    # 6. update_team ctx.team_id / ws_id mismatch
+    # 6. update_team authorizes by target team, not active team (SECRT-2453)
     # ------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_update_team_rejects_mismatched_team_id(self):
-        """PATCH /teams/{ws_id} should reject when ctx.team_id != ws_id."""
+    async def test_update_team_authorizes_by_target_not_active_team(self):
+        """PATCH /teams/{ws_id} authorizes against the target team from the
+        URL, independent of the caller's active team. An org admin
+        (MANAGE_WORKSPACES) may update a team even when ctx.team_id differs."""
         from backend.api.features.orgs.team_model import UpdateTeamRequest
         from backend.api.features.orgs.team_routes import update_team
 
+        # Active team is team-1; the target is a different team in the same org.
         ctx = self._owner_ctx(org_id="org-review-1", team_id="team-1")
 
-        # Mock the team_db.get_team call that validates org ownership
-        with patch(
-            "backend.api.features.orgs.team_routes.team_db.get_team",
-            new_callable=AsyncMock,
+        updated = MagicMock()
+        with (
+            patch(
+                "backend.api.features.orgs.team_routes.team_db.get_team",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.api.features.orgs.team_routes.team_db.update_team",
+                new_callable=AsyncMock,
+                return_value=updated,
+            ) as mock_update,
         ):
-            with pytest.raises(HTTPException) as exc_info:
-                await update_team(
-                    org_id="org-review-1",
-                    ws_id="team-2",  # different from ctx.team_id
-                    request=UpdateTeamRequest(name="Hacked"),
-                    ctx=ctx,
-                )
-            assert exc_info.value.status_code == 403
+            result = await update_team(
+                org_id="org-review-1",
+                ws_id="team-2",  # different from ctx.team_id
+                request=UpdateTeamRequest(name="Renamed"),
+                ctx=ctx,
+            )
+
+        assert result is updated
+        mock_update.assert_awaited_once()
 
     # ------------------------------------------------------------------
     # 7. reject_transfer has no org membership check

@@ -34,6 +34,8 @@ import { customMutator } from "../custom-mutator";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { ORG_HEADER_NAME, TEAM_HEADER_NAME } from "@/services/org-team/headers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import * as Sentry from "@sentry/nextjs";
 
 const mockIsClientSide = vi.mocked(environment.isClientSide);
@@ -261,5 +263,68 @@ describe("customMutator — empty body handling", () => {
     }>("/api/foo", { method: "GET" });
 
     expect(result.data).toEqual({ ok: true });
+  });
+});
+
+describe("customMutator — team scoping headers", () => {
+  function sentHeaders() {
+    return vi.mocked(fetch).mock.calls[0][1]?.headers as Record<string, string>;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+    mockGetTraceData.mockReturnValue({});
+    // Simulate a nav context where a team is active (e.g. viewing a team).
+    useOrgTeamStore.setState({
+      activeOrgID: "org-1",
+      activeTeamID: "nav-team",
+      orgs: [],
+      teams: [],
+      isLoaded: true,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve({}),
+      }),
+    );
+  });
+
+  it("stamps the active-team context header when no per-request team is given", async () => {
+    await customMutator("/test", { method: "POST" });
+    expect(sentHeaders()[ORG_HEADER_NAME]).toBe("org-1");
+    expect(sentHeaders()[TEAM_HEADER_NAME]).toBe("nav-team");
+  });
+
+  it("pins an explicit per-request team over the active-team context", async () => {
+    await customMutator("/test", {
+      method: "POST",
+      headers: { [TEAM_HEADER_NAME]: "chosen-team" },
+    });
+    expect(sentHeaders()[TEAM_HEADER_NAME]).toBe("chosen-team");
+  });
+
+  it("drops the active-team header for the org-home sentinel (empty X-Team-Id)", async () => {
+    await customMutator("/test", {
+      method: "POST",
+      headers: { [TEAM_HEADER_NAME]: "" },
+    });
+    // Org context is preserved, but the team header is suppressed → org-home.
+    expect(sentHeaders()[ORG_HEADER_NAME]).toBe("org-1");
+    expect(TEAM_HEADER_NAME in sentHeaders()).toBe(false);
+  });
+
+  it("never forwards the empty org-home sentinel to the backend on the server path", async () => {
+    mockIsClientSide.mockReturnValue(false);
+    await customMutator("/test", {
+      method: "POST",
+      headers: { [TEAM_HEADER_NAME]: "" },
+    });
+    expect(TEAM_HEADER_NAME in sentHeaders()).toBe(false);
   });
 });

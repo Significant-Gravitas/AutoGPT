@@ -216,15 +216,25 @@ async def delete_library_agent(
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
 ) -> library_model.LibraryAgent:
     # `library_db.fork_library_agent` activates the forked graph (validates
     # node credentials) after the fork's own DB write. A GraphActivationError
     # raised by that activation propagates to the app-level handler in
     # rest_api.py and becomes a 400. Making the save itself atomic is a
     # follow-up.
+    #
+    # Stamp the fork with the caller's active tenancy so an explicit X-Team-Id
+    # lands the forked agent in that team. ctx.team_id is already validated as
+    # an active membership by get_request_context (invalid -> None), so a bad
+    # team never lands the fork in someone else's workspace.
     return await library_db.fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )
 
 

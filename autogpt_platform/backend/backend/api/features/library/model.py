@@ -42,6 +42,8 @@ class LibraryFolder(pydantic.BaseModel):
     updated_at: datetime.datetime
     agent_count: int = 0  # Direct agents in folder
     subfolder_count: int = 0  # Direct child folders
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @staticmethod
     def from_db(
@@ -61,6 +63,8 @@ class LibraryFolder(pydantic.BaseModel):
             updated_at=folder.updatedAt,
             agent_count=agent_count,
             subfolder_count=subfolder_count,
+            organization_id=folder.organizationId,
+            team_id=folder.teamId,
         )
 
 
@@ -213,6 +217,9 @@ class LibraryAgent(pydantic.BaseModel):
     is_favorite: bool
     folder_id: str | None = None
     folder_name: str | None = None  # Denormalized for display
+
+    organization_id: str | None = None
+    team_id: str | None = None
 
     is_hidden: bool = False
 
@@ -380,6 +387,8 @@ class LibraryAgent(pydantic.BaseModel):
             is_hidden=agent.isHidden,
             folder_id=agent.folderId,
             folder_name=agent.Folder.name if agent.Folder else None,
+            organization_id=agent.organizationId,
+            team_id=agent.teamId,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
             next_scheduled_run=(

@@ -553,6 +553,7 @@ model AgentGraph {
   Presets              AgentPreset[]
   LibraryAgents        LibraryAgent[]
   StoreListingVersions StoreListingVersion[]
+  Grants               AgentGraphGrant[]
 
   // Tenancy columns (nullable until cutover migration backfills existing data)
   organizationId String?
@@ -1254,6 +1255,26 @@ enum CredentialOwnerType {
   ORG
 }
 
+// Polymorphic on purpose: v1 enforcement accepts TEAM only and raises on
+// anything else; USER (and later PERSONA) are reserved so enabling them is an
+// enum value + code path, not a table migration.
+enum GrantPrincipalType {
+  TEAM
+  USER
+}
+
+// EXECUTE implies VIEW.
+enum GrantCapability {
+  VIEW
+  EXECUTE
+}
+
+// Whose credentials a granted agent runs with; room for a RESTRICTED mode.
+enum GrantCredentialMode {
+  CONSUMER
+  OWNER
+}
+
 model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
@@ -1934,6 +1955,7 @@ model Organization {
   TransfersFrom      TransferRequest[]            @relation("TransferSource")
   TransfersTo        TransferRequest[]            @relation("TransferTarget")
   AuditLogs          AuditLog[]
+  AgentGraphGrants   AgentGraphGrant[]
   // slug already has @unique which creates an index — no separate @@index needed
   // Partial unique index "Organization_one_personal_per_user" on (bootstrapUserId)
   // WHERE isPersonal AND deletedAt IS NULL AND bootstrapUserId IS NOT NULL enforces
@@ -2089,6 +2111,43 @@ model TeamInvite {
   @@index([email])
   @@index([token])
   @@index([teamId])
+}
+
+// A share of an AgentGraph with a principal (v1: teams within the same org).
+// Share = reference pinned to a version — never a copy; followLatest opts a
+// grant into tracking the newest active version instead of the pin.
+// principalId is polymorphic (see GrantPrincipalType) so it carries no FK;
+// integrity is enforced in code, and a deleted team's grants become inert
+// because access resolution joins through TeamMember. Revoke = hard delete
+// (a soft revoke would collide with the unique constraint on re-share).
+model AgentGraphGrant {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Restrict)
+  followLatest      Boolean    @default(false)
+
+  principalType GrantPrincipalType
+  principalId   String
+
+  capability     GrantCapability     @default(EXECUTE)
+  credentialMode GrantCredentialMode @default(CONSUMER)
+
+  // Same org as the graph — asserted at creation; no cross-org sharing in v1.
+  organizationId String
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdByUserId String
+
+  // One grant per (graph, principal) across versions — re-sharing a newer
+  // version updates the pin on the existing row.
+  @@unique([agentGraphId, principalType, principalId])
+  @@index([principalType, principalId])
+  @@index([organizationId])
+  @@index([agentGraphId, agentGraphVersion])
 }
 
 model OrganizationSubscription {

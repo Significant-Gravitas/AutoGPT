@@ -129,6 +129,9 @@ async def get_folder(
 async def create_folder(
     payload: library_model.FolderCreateRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
 ) -> library_model.LibraryFolder:
     """
     Create a new folder.
@@ -140,12 +143,17 @@ async def create_folder(
     Returns:
         The created LibraryFolder.
     """
+    # Stamp the new folder with the caller's active tenancy so an explicit
+    # X-Team-Id lands it in that team. ctx.team_id is already validated as an
+    # active membership by get_request_context (invalid -> None).
     return await library_db.create_folder(
         user_id=user_id,
         name=payload.name,
         parent_id=payload.parent_id,
         icon=payload.icon,
         color=payload.color,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )
 
 

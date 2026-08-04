@@ -61,6 +61,8 @@ async def test_get_library_agents_success(
                 can_access_graph=True,
                 is_latest_version=True,
                 is_favorite=False,
+                organization_id="test-org",
+                team_id="test-team",
                 created_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
@@ -103,6 +105,9 @@ async def test_get_library_agents_success(
     assert len(data.agents) == 2
     assert data.agents[0].graph_id == "test-agent-1"
     assert data.agents[0].can_access_graph is True
+    # Team tenancy surfaced for list badges/filters (SECRT-2488).
+    assert data.agents[0].team_id == "test-team"
+    assert data.agents[0].organization_id == "test-org"
     assert data.agents[1].graph_id == "test-agent-2"
     assert data.agents[1].can_access_graph is False
 
@@ -275,3 +280,81 @@ async def test_list_trigger_agents_route(
         user_id=test_user_id,
         library_agent_id="parent-id",
     )
+
+
+# ---------------------------------------------------------------------------
+# Fork + folder create honor the caller's active team context (SECRT-2488)
+#
+# mock_jwt_user's ctx has org_id="test-org", team_id="test-team". Both create
+# paths must thread that tenancy to the db layer so an explicit X-Team-Id
+# lands the fork / new folder in that team instead of the default team.
+# ---------------------------------------------------------------------------
+def _library_agent(agent_id: str = "forked-1") -> library_model.LibraryAgent:
+    return library_model.LibraryAgent(
+        id=agent_id,
+        graph_id="g-forked",
+        graph_version=1,
+        name="Forked Agent",
+        description="A fork",
+        image_url=None,
+        creator_name="",
+        creator_image_url="",
+        input_schema={"type": "object", "properties": {}},
+        output_schema={"type": "object", "properties": {}},
+        credentials_input_schema={"type": "object", "properties": {}},
+        has_external_trigger=False,
+        has_human_in_the_loop=False,
+        has_sensitive_action=False,
+        status=library_model.LibraryAgentStatus.COMPLETED,
+        new_output=False,
+        can_access_graph=True,
+        is_latest_version=True,
+        is_favorite=False,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+    )
+
+
+@pytest.mark.asyncio
+async def test_fork_library_agent_threads_ctx_tenancy(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Forking passes the caller's active org/team (X-Team-Id) to the db."""
+    fork_mock = mocker.patch(
+        "backend.api.features.library.db.fork_library_agent",
+        new=AsyncMock(return_value=_library_agent()),
+    )
+
+    response = client.post("/agents/lib-agent-1/fork")
+
+    assert response.status_code == 200
+    assert fork_mock.await_args.kwargs["organization_id"] == "test-org"
+    assert fork_mock.await_args.kwargs["team_id"] == "test-team"
+
+
+@pytest.mark.asyncio
+async def test_create_folder_threads_ctx_tenancy(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """Creating a folder passes the caller's active org/team to the db, and
+    the response surfaces the team_id field for badges."""
+    folder = library_model.LibraryFolder(
+        id="folder-1",
+        user_id=test_user_id,
+        name="My Folder",
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+        organization_id="test-org",
+        team_id="test-team",
+    )
+    create_mock = mocker.patch(
+        "backend.api.features.library.db.create_folder",
+        new=AsyncMock(return_value=folder),
+    )
+
+    response = client.post("/folders", json={"name": "My Folder"})
+
+    assert response.status_code == 201
+    assert create_mock.await_args.kwargs["organization_id"] == "test-org"
+    assert create_mock.await_args.kwargs["team_id"] == "test-team"
+    assert response.json()["team_id"] == "test-team"

@@ -335,18 +335,13 @@ async def update_user_integrations(user_id: str, data: UserIntegrations):
     get_user_by_id.cache_delete(user_id)
 
 
-async def get_user_credentials(user_id: str) -> list[Credentials]:
-    """Read the user's credentials from the IntegrationCredential table.
+def _decrypt_credential_rows(rows, user_id: str) -> list[Credentials]:
+    """Decrypt IntegrationCredential rows into ``Credentials``.
 
-    Source of truth post blob→table migration (the UserIntegrations blob
-    is retained only as a rollback artifact). Returns USER-scoped active
-    rows; TEAM/ORG-scoped credentials are resolved separately via
-    ``backend.integrations.scoped_credentials``.
+    A row whose payload fails to decrypt/validate is logged and skipped
+    rather than aborting the whole read — one corrupt row must not lock a
+    user out of the rest of their credentials.
     """
-    rows = await prisma.integrationcredential.find_many(
-        where={"ownerType": "USER", "ownerId": user_id, "status": "active"},
-        order={"createdAt": "asc"},
-    )
     cryptor = JSONCryptor()
     credentials: list[Credentials] = []
     for row in rows:
@@ -362,6 +357,88 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
                 exc_info=True,
             )
     return credentials
+
+
+async def get_user_credentials(user_id: str) -> list[Credentials]:
+    """Read the user's own credentials from the IntegrationCredential table.
+
+    Source of truth post blob→table migration (the UserIntegrations blob
+    is retained only as a rollback artifact). Returns ONLY USER-scoped
+    active rows — this is the seam the credential-store WRITE path builds
+    on (read-modify-write of the user's own set), so it must never widen
+    to team/org rows. Read/execution surfaces that should also see
+    team/org credentials use ``get_accessible_credentials`` instead.
+    """
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "ownerId": user_id, "status": "active"},
+        order={"createdAt": "asc"},
+    )
+    return _decrypt_credential_rows(rows, user_id)
+
+
+async def get_accessible_credentials(user_id: str) -> list[Credentials]:
+    """Read every credential *user_id* may USE, resolved from their own
+    memberships — no request/org context required, so this is safe for the
+    executor which runs detached from any HTTP request.
+
+    Resolution mirrors the USER→TEAM→ORG semantics of
+    ``backend.integrations.scoped_credentials``:
+
+    - USER: the user's own active credentials (identical query to
+      ``get_user_credentials`` — personal use is unchanged).
+    - TEAM: active credentials owned by any team the user is an ACTIVE
+      member of (``TeamAction.USE_CREDENTIALS`` — any active member).
+    - ORG: active credentials owned by any org the user is an ACTIVE
+      member of.
+
+    Access is enforced HERE by re-checking live membership, so a user who
+    has left a team/org stops resolving its credentials on the very next
+    call — including at execution time for a run scheduled while they were
+    still a member. Precedence on id collision is USER > TEAM > ORG; ids
+    are unique across the table in practice, so the dedup is only a
+    defensive tie-break.
+
+    The WRITE path (``set_user_credentials``) stays USER-only, so team/org
+    rows are never mutated through this read path.
+    """
+    team_ids = [
+        m.teamId
+        for m in await prisma.teammember.find_many(
+            where={"userId": user_id, "status": "ACTIVE"}
+        )
+    ]
+    org_ids = [
+        m.orgId
+        for m in await prisma.orgmember.find_many(
+            where={"userId": user_id, "status": "ACTIVE"}
+        )
+    ]
+
+    owner_clauses: list[dict] = [{"ownerType": "USER", "ownerId": user_id}]
+    if team_ids:
+        owner_clauses.append({"ownerType": "TEAM", "ownerId": {"in": team_ids}})
+    if org_ids:
+        owner_clauses.append({"ownerType": "ORG", "ownerId": {"in": org_ids}})
+
+    rows = await prisma.integrationcredential.find_many(
+        where={"status": "active", "OR": owner_clauses},
+        order={"createdAt": "asc"},
+    )
+
+    # Stable-sort by owner precedence so a (practically impossible) id clash
+    # keeps the higher-precedence owner; find_many already ordered by
+    # createdAt asc, which the stable sort preserves within each tier.
+    owner_rank = {"USER": 0, "TEAM": 1, "ORG": 2}
+    rows.sort(key=lambda r: owner_rank.get(r.ownerType, 3))
+    deduped = []
+    seen_ids: set[str] = set()
+    for row in rows:
+        if row.id in seen_ids:
+            continue
+        seen_ids.add(row.id)
+        deduped.append(row)
+
+    return _decrypt_credential_rows(deduped, user_id)
 
 
 async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:

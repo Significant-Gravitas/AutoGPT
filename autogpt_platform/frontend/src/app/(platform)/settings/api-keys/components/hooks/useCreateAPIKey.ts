@@ -6,13 +6,17 @@ import { usePostV1CreateNewApiKey } from "@/app/api/__generated__/endpoints/api-
 import type { CreateAPIKeyRequest } from "@/app/api/__generated__/models/createAPIKeyRequest";
 import type { CreateAPIKeyResponse } from "@/app/api/__generated__/models/createAPIKeyResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { getTeamRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 import { API_KEYS_QUERY_KEY } from "./useAPIKeysList";
 
-export function useCreateAPIKey() {
+// teamId restricts the created key to a team (via X-Team-Id — the backend
+// stamps it onto the key's team_id_restriction). Null = org-home / unrestricted.
+export function useCreateAPIKey(teamId: string | null = null) {
   const queryClient = useQueryClient();
 
   const mutation = usePostV1CreateNewApiKey({
+    request: getTeamRequestInit(teamId),
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY });

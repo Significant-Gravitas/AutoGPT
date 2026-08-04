@@ -41,14 +41,25 @@ def _pyd_message(**overrides) -> PydanticChatMessage:
     return PydanticChatMessage(**base)
 
 
-def _mock_session(session_id: str = "s1", title: str | None = "T") -> MagicMock:
+def _mock_session(
+    session_id: str = "s1",
+    title: str | None = "T",
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> MagicMock:
     """Build a ChatSessionInfo-ish mock for list_chat_sessions_by_status
     return values (the function returns app-model rows, not raw Prisma,
-    so the RPC serializer can pass them through)."""
+    so the RPC serializer can pass them through).
+
+    ``organization_id``/``team_id`` default to None (an untagged legacy
+    session) so the per-turn membership re-check is skipped unless a test
+    opts in by tagging the session."""
     s = MagicMock()
     s.session_id = session_id
     s.title = title
     s.updated_at = datetime.now(timezone.utc)
+    s.organization_id = organization_id
+    s.team_id = team_id
     return s
 
 
@@ -355,3 +366,89 @@ async def test_dispatch_rolls_claim_back_on_dispatch_failure() -> None:
     db.update_chat_session_status.assert_any_await(
         session_id="s1", expect_status="running", status="queued"
     )
+
+
+# ── dispatch_next_for_user: per-turn membership re-check (SECRT-2489) ───
+
+
+@pytest.mark.asyncio
+async def test_dispatch_drops_queued_turn_when_org_membership_revoked() -> None:
+    """A turn queued while the user was a member, promoted after the user was
+    removed/suspended from the session's org, must NOT run under that org.
+    Drop it out of the queue (queued → idle) so it neither runs nor blocks
+    promotion of the user's other queued sessions."""
+    from backend.copilot.session_tenancy import SessionOrgMembershipRevoked
+
+    head = _mock_session(session_id="s1", organization_id="org-1")
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock()
+    dispatch_turn_mock = AsyncMock()
+    invalidate = AsyncMock()
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=AsyncMock(return_value=(100, 1000, None)),
+        ),
+        patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock()),
+        patch(
+            "backend.copilot.turn_queue.verify_session_org_membership",
+            new=AsyncMock(side_effect=SessionOrgMembershipRevoked("org-1")),
+        ),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=invalidate),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    dispatch_turn_mock.assert_not_awaited()
+    # Dropped queued → idle (not claimed to running); cache invalidated.
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="queued", status="idle"
+    )
+    invalidate.assert_awaited_once_with("s1")
+
+
+@pytest.mark.asyncio
+async def test_dispatch_promotes_with_stale_team_stripped_to_org_home() -> None:
+    """Org membership still ACTIVE but the team membership went stale while the
+    turn waited: promote under the org with the team stripped to org-home."""
+    head = _mock_session(session_id="s1", organization_id="org-1", team_id="team-1")
+    pending = _pyd_message(metadata={"mode": "extended_thinking"})
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=AsyncMock(return_value=(100, 1000, None)),
+        ),
+        patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock()),
+        # Org ACTIVE, team stale → helper returns the stripped team (None).
+        patch(
+            "backend.copilot.turn_queue.verify_session_org_membership",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    dispatch_turn_mock.assert_awaited_once()
+    kwargs = dispatch_turn_mock.await_args.kwargs
+    assert kwargs["organization_id"] == "org-1"
+    assert kwargs["team_id"] is None

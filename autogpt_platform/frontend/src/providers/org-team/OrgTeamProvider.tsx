@@ -9,20 +9,46 @@ interface Props {
   children: React.ReactNode;
 }
 
+interface TeamApiShape {
+  id: string;
+  name: string;
+  slug: string | null;
+  is_default: boolean;
+  join_policy: string;
+  org_id: string;
+}
+
+function mapTeam(team: TeamApiShape) {
+  return {
+    id: team.id,
+    name: team.name,
+    slug: team.slug,
+    isDefault: team.is_default,
+    joinPolicy: team.join_policy,
+    orgId: team.org_id,
+  };
+}
+
 /**
  * Initializes org/team context on login and clears it on logout.
  *
  * On mount (when logged in):
  * 1. Fetches the user's org list from GET /api/orgs
  * 2. If no activeOrgID is stored, sets the personal org as default
- * 3. Fetches teams for the active org
+ * 3. Fetches the active org's teams so badges/filters have data
  *
- * On org/team switch: clears React Query cache to force refetch.
+ * On org switch: refetches the org's teams and resets the query cache.
  */
 export default function OrgTeamProvider({ children }: Props) {
   const { isLoggedIn, user, isUserLoading } = useAuth();
-  const { activeOrgID, setActiveOrg, setOrgs, setLoaded, clearContext } =
-    useOrgTeamStore();
+  const {
+    activeOrgID,
+    setActiveOrg,
+    setOrgs,
+    setTeams,
+    setLoaded,
+    clearContext,
+  } = useOrgTeamStore();
 
   const prevOrgID = useRef(activeOrgID);
 
@@ -74,6 +100,41 @@ export default function OrgTeamProvider({ children }: Props) {
 
     loadOrgs();
   }, [isLoggedIn, user, isUserLoading]);
+
+  // Load the active org's teams so filters/badges have data. Teams are
+  // no longer a context switch, so this never selects an active team —
+  // activeTeamID stays null unless a screen sets it explicitly.
+  useEffect(() => {
+    if (isUserLoading || !isLoggedIn || !user || !activeOrgID) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadTeams(orgID: string) {
+      try {
+        const res = await fetch(`/api/proxy/api/orgs/${orgID}/workspaces`, {
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!res.ok) {
+          return;
+        }
+        const data = await res.json();
+        const teams: TeamApiShape[] = data.data || data;
+        if (!cancelled) {
+          setTeams(teams.map(mapTeam));
+        }
+      } catch {
+        // Teams are non-blocking; leave the list empty on failure.
+      }
+    }
+
+    loadTeams(activeOrgID);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, user, isUserLoading, activeOrgID]);
 
   // Drop org-scoped data when the org switches. resetQueries (NOT
   // clear) — clear() removes queries without notifying mounted
