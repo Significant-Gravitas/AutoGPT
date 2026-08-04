@@ -2127,7 +2127,10 @@ class TestClaude5TemperatureRejection:
     def test_vendor_prefixed_forms_stripped(self, model: str):
         assert _anthropic_accepts_temperature(model) is False
 
-    @pytest.mark.parametrize("model", ["claude-sonnet-4-6", "claude-opus-4-6"])
+    @pytest.mark.parametrize(
+        "model",
+        ["claude-sonnet-4-6", "claude-opus-4-6", "anthropic/claude-sonnet-4-6"],
+    )
     def test_accepting_models_keep_temperature(self, model: str):
         assert _anthropic_accepts_temperature(model) is True
 
