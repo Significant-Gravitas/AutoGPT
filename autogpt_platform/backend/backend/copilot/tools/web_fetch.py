@@ -156,7 +156,7 @@ class WebFetchTool(BaseTool):
             content_type=content_type.split(";")[0].strip(),
             content=text,
             title=title,
-            content_length=len(text),
+            content_length=len(response.content),
             truncated=len(response.content) > _MAX_CONTENT_BYTES,
             session_id=session_id,
         )

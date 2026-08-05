@@ -6,12 +6,13 @@ import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
-from backend.blocks._base import AnyBlockSchema
+from backend.blocks._base import AnyBlockSchema, BlockSchemaInput
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
@@ -168,21 +169,31 @@ async def _charge_block_credits(
         # BILLING_LEAK log above is the signal for reconciliation.
 
 
-def get_block_provider(block: AnyBlockSchema) -> str | None:
-    """Sole integration provider slug for a block, or None when the block
-    uses zero or multiple providers."""
+@lru_cache(maxsize=None)
+def _get_input_schema_provider(input_schema: type[BlockSchemaInput]) -> str | None:
     try:
-        infos = block.input_schema.get_credentials_fields_info()
+        infos = input_schema.get_credentials_fields_info()
+        providers = {
+            ProviderName(provider).value
+            for info in infos.values()
+            for provider in info.provider
+        }
     except Exception:
+        logger.debug(
+            "Unable to determine integration provider for block input schema %r",
+            input_schema,
+            exc_info=True,
+        )
         return None
-    providers = {
-        getattr(provider, "value", str(provider))
-        for info in infos.values()
-        for provider in info.provider
-    }
     if len(providers) != 1:
         return None
     return next(iter(providers))
+
+
+def get_block_provider(block: AnyBlockSchema) -> str | None:
+    """Sole integration provider slug for a block, or None when the block
+    uses zero or multiple providers."""
+    return _get_input_schema_provider(block.input_schema)
 
 
 async def execute_block(

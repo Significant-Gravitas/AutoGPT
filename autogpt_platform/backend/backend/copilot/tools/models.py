@@ -713,7 +713,10 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     title: str | None = None
-    content_length: int = 0
+    content_length: int = Field(
+        default=0,
+        description="Original response body size in bytes",
+    )
     truncated: bool = False
 
 

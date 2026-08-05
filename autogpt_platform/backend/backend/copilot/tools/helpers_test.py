@@ -24,7 +24,11 @@ from backend.copilot.tools.models import (
     ReviewRequiredResponse,
     SetupRequirementsResponse,
 )
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import (
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    CredentialsType,
+)
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
@@ -36,8 +40,10 @@ _SESSION = "test-session-helpers"
 class TestGetBlockProvider:
     def test_returns_only_provider(self):
         block = MagicMock()
-        info = MagicMock()
-        info.provider = ["google"]
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"oauth2"}),
+        )
         block.input_schema.get_credentials_fields_info.return_value = {
             "credentials": info
         }
@@ -46,11 +52,25 @@ class TestGetBlockProvider:
 
     def test_returns_none_for_multiple_providers(self):
         block = MagicMock()
-        info = MagicMock()
-        info.provider = ["google", "github"]
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE, ProviderName.GITHUB}),
+            credentials_types=frozenset({"oauth2"}),
+        )
         block.input_schema.get_credentials_fields_info.return_value = {
             "credentials": info
         }
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_without_providers(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = {}
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_for_invalid_schema_info_shape(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = []
 
         assert get_block_provider(block) is None
 
