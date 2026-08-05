@@ -495,8 +495,16 @@ async def test_hit_hook_stamps_recall_on_every_retrieved_edge(mocker):
     assert "COALESCE(e.recall_count, 0) + 1" in query
     # Retracted edges must not be re-stamped as live.
     assert "e.expired_at IS NULL" in query
-    # The timestamp is generated in Python; FalkorDB has no datetime().
+    # Same-conversation re-pulls must collapse into one use: edges
+    # stamped inside the dedupe interval are skipped entirely.
+    assert "e.last_recalled_at < $dedupe_cutoff" in query
+    # The prev-shift is what lets the protection predicate require two
+    # recalls WITHIN the window rather than a lifetime count.
+    assert "e.prev_recalled_at = e.last_recalled_at" in query
+    # Timestamps are generated in Python; FalkorDB has no datetime().
     datetime.fromisoformat(kwargs["now"])
+    datetime.fromisoformat(kwargs["dedupe_cutoff"])
+    assert kwargs["dedupe_cutoff"] < kwargs["now"]
 
 
 @pytest.mark.asyncio

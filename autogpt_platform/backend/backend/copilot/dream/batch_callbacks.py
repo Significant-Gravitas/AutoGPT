@@ -642,6 +642,8 @@ async def _finalize_complete(
         known_fact_uuids=(
             input_bundle.known_fact_uuids if input_bundle is not None else None
         ),
+        facts=input_bundle.facts if input_bundle is not None else None,
+        pass_id=pass_id,
     )
 
     # Batch results can re-dispatch (executor crash between dispatch and

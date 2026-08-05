@@ -32,6 +32,7 @@ from .billing import check_dream_budget, record_phase_cost
 from .fetch import (
     DreamInput,
     EpisodeRow,
+    FactRow,
     gather_dream_input,
     is_dream_authored_episode,
     parse_episode_timestamp,
@@ -71,6 +72,7 @@ from .schemas import (
     ProposedFinding,
     RecombinationOutput,
 )
+from .usage import drop_recently_used_demotions
 
 logger = logging.getLogger(__name__)
 
@@ -451,6 +453,8 @@ def _clamp_operations(
     ops: DreamOperations,
     active_fact_count: int,
     known_fact_uuids: set[str] | None = None,
+    facts: list[FactRow] | None = None,
+    pass_id: str = "?",
 ) -> DreamOperations:
     """Hard-trim oversized phase 3 outputs.
 
@@ -474,7 +478,10 @@ def _clamp_operations(
     slot (the entire budget on a floor-of-1 small graph) and displaces
     a valid demotion that apply.py would have accepted. ``None`` skips
     the pre-filter; apply.py's idempotent known-uuid filter remains the
-    security chokepoint either way.
+    security chokepoint either way. ``facts`` pre-drops usage-protected
+    staleness demotions before the slice for the same slot-displacement
+    reason; apply.py's guard (with its fresh-stamp refresh) remains the
+    enforcement chokepoint.
 
     Entity invalidations are count-capped at
     ``MAX_ENTITY_INVALIDATIONS_PER_PASS``; see the constant's comment
@@ -491,6 +498,10 @@ def _clamp_operations(
                 "outside known_fact_uuids before applying the demotion cap",
                 dropped,
             )
+    # Usage-protected staleness demotions are dead on arrival at apply's
+    # guard — drop them before the slice too, so they can't displace a
+    # demotion that would actually land (cap can floor at 1).
+    demotions = drop_recently_used_demotions(pass_id, demotions, facts)
     demotion_cap = MAX_DEMOTIONS_PER_PASS
     if active_fact_count == 0:
         demotion_cap = 0
@@ -957,6 +968,8 @@ async def _execute_dream_pass_async(
                 sanitized,
                 len(input_bundle.facts),
                 known_fact_uuids=input_bundle.known_fact_uuids,
+                facts=input_bundle.facts,
+                pass_id=pass_id,
             )
             apply_stats = await apply_operations(
                 user_id,

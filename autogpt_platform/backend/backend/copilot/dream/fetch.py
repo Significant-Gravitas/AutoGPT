@@ -54,9 +54,12 @@ class FactRow(BaseModel):
     # Usage signal stamped on the edge by the warm-context hit hook
     # (``ratification.try_ratify_on_hit``). Absent props read as None,
     # which is exactly "never recalled" — edges written before the hook
-    # shipped need no backfill.
+    # shipped need no backfill. ``prev_recalled_at`` is the second-latest
+    # deduped stamp; the protection predicate reads it to require two
+    # recalls WITHIN the window (see ``usage.protected_fact_uuids``).
     recall_count: int | None = None
     last_recalled_at: str | None = None  # ISO timestamp
+    prev_recalled_at: str | None = None  # ISO timestamp
 
 
 class SessionRow(BaseModel):
@@ -228,7 +231,8 @@ async def _fetch_active_facts(
                    e.status AS status,
                    toString(e.created_at) AS created_at,
                    e.recall_count AS recall_count,
-                   toString(e.last_recalled_at) AS last_recalled_at
+                   toString(e.last_recalled_at) AS last_recalled_at,
+                   toString(e.prev_recalled_at) AS prev_recalled_at
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
@@ -256,6 +260,7 @@ async def _fetch_active_facts(
             created_at=r.get("created_at"),
             recall_count=r.get("recall_count"),
             last_recalled_at=r.get("last_recalled_at"),
+            prev_recalled_at=r.get("prev_recalled_at"),
         )
         for r in rows
     ]
@@ -295,7 +300,8 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
             WHERE e.uuid = target_uuid
             RETURN e.uuid AS uuid,
                    e.recall_count AS recall_count,
-                   toString(e.last_recalled_at) AS last_recalled_at
+                   toString(e.last_recalled_at) AS last_recalled_at,
+                   toString(e.prev_recalled_at) AS prev_recalled_at
             """,
             uuids=edge_uuids,
         )
@@ -324,6 +330,7 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
             created_at=None,
             recall_count=r.get("recall_count"),
             last_recalled_at=r.get("last_recalled_at"),
+            prev_recalled_at=r.get("prev_recalled_at"),
         )
         for r in rows
     ]

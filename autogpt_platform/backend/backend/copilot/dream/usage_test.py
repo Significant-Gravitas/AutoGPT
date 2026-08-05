@@ -12,7 +12,6 @@ from datetime import datetime, timedelta, timezone
 from .fetch import FactRow
 from .schemas import DreamDemotion
 from .usage import (
-    MIN_RECALLS_TO_PROTECT,
     RECENT_RECALL_WINDOW,
     drop_recently_used_demotions,
     format_usage,
@@ -25,6 +24,7 @@ def _fact(
     *,
     recall_count: int | None = None,
     last_recalled_at: str | None = None,
+    prev_recalled_at: str | None = None,
 ) -> FactRow:
     return FactRow(
         uuid=uuid,
@@ -38,6 +38,7 @@ def _fact(
         created_at="2026-01-01T00:00:00+00:00",
         recall_count=recall_count,
         last_recalled_at=last_recalled_at,
+        prev_recalled_at=prev_recalled_at,
     )
 
 
@@ -54,9 +55,16 @@ def _demote(uuid: str) -> DreamDemotion:
 # ---------------------------------------------------------------------------
 
 
-def test_recently_and_repeatedly_recalled_fact_is_protected():
+def test_two_recalls_within_the_window_protect():
+    """Both of the two latest (deduped) recalls inside the window —
+    used on two separate days this week."""
     facts = [
-        _fact("hot", recall_count=MIN_RECALLS_TO_PROTECT, last_recalled_at=_ago(days=1))
+        _fact(
+            "hot",
+            recall_count=2,
+            last_recalled_at=_ago(days=1),
+            prev_recalled_at=_ago(days=3),
+        )
     ]
     assert protected_fact_uuids(facts) == {"hot"}
 
@@ -73,6 +81,21 @@ def test_single_recall_is_not_enough_to_protect():
     assert protected_fact_uuids(facts) == set()
 
 
+def test_old_recalls_plus_one_incidental_hit_do_not_protect():
+    """The lifetime counter must not stand in for windowed repetition:
+    two recalls a year ago plus one incidental hit yesterday is exactly
+    the single-hit case the policy refuses to protect."""
+    facts = [
+        _fact(
+            "once-busy",
+            recall_count=3,
+            last_recalled_at=_ago(days=1),
+            prev_recalled_at=_ago(days=365),
+        )
+    ]
+    assert protected_fact_uuids(facts) == set()
+
+
 def test_recalls_outside_the_window_do_not_protect():
     """A once-busy fact that has gone quiet becomes prunable again —
     without this the graph would ossify."""
@@ -81,24 +104,26 @@ def test_recalls_outside_the_window_do_not_protect():
             "gone-quiet",
             recall_count=50,
             last_recalled_at=_ago(days=RECENT_RECALL_WINDOW.days + 1),
+            prev_recalled_at=_ago(days=RECENT_RECALL_WINDOW.days + 2),
         )
     ]
     assert protected_fact_uuids(facts) == set()
 
 
-def test_recall_just_inside_the_window_still_protects():
+def test_second_recall_just_inside_the_window_still_protects():
     facts = [
         _fact(
             "edge-of-window",
-            recall_count=MIN_RECALLS_TO_PROTECT,
-            last_recalled_at=_ago(days=RECENT_RECALL_WINDOW.days, seconds=-60),
+            recall_count=2,
+            last_recalled_at=_ago(days=1),
+            prev_recalled_at=_ago(days=RECENT_RECALL_WINDOW.days, seconds=-60),
         )
     ]
     assert protected_fact_uuids(facts) == {"edge-of-window"}
 
 
-def test_recall_count_without_timestamp_does_not_protect():
-    """A count with no stamp can't be dated, so it can't be shown to be
+def test_recall_count_without_timestamps_does_not_protect():
+    """A count with no stamps can't be dated, so it can't be shown to be
     recent — fail towards allowing the demotion rather than pinning a
     fact forever on an unparseable signal."""
     facts = [_fact("undated", recall_count=99)]
@@ -106,7 +131,14 @@ def test_recall_count_without_timestamp_does_not_protect():
 
 
 def test_unparseable_timestamp_does_not_protect():
-    facts = [_fact("garbled", recall_count=99, last_recalled_at="not-a-date")]
+    facts = [
+        _fact(
+            "garbled",
+            recall_count=99,
+            last_recalled_at=_ago(hours=1),
+            prev_recalled_at="not-a-date",
+        )
+    ]
     assert protected_fact_uuids(facts) == set()
 
 
@@ -116,7 +148,14 @@ def test_trailing_z_timestamp_is_parsed():
     stamp = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
         tzinfo=None
     ).isoformat() + "Z"
-    facts = [_fact("z-stamped", recall_count=3, last_recalled_at=stamp)]
+    facts = [
+        _fact(
+            "z-stamped",
+            recall_count=3,
+            last_recalled_at=_ago(hours=1),
+            prev_recalled_at=stamp,
+        )
+    ]
     assert protected_fact_uuids(facts) == {"z-stamped"}
 
 
@@ -127,7 +166,12 @@ def test_trailing_z_timestamp_is_parsed():
 
 def test_demotion_of_a_protected_fact_is_dropped():
     facts = [
-        _fact("hot", recall_count=5, last_recalled_at=_ago(days=1)),
+        _fact(
+            "hot",
+            recall_count=5,
+            last_recalled_at=_ago(days=1),
+            prev_recalled_at=_ago(days=2),
+        ),
         _fact("cold"),
     ]
     kept = drop_recently_used_demotions("p-1", [_demote("hot"), _demote("cold")], facts)
@@ -149,14 +193,28 @@ def test_guard_is_a_noop_when_nothing_is_protected():
 
 
 def test_empty_demotion_list_is_returned_untouched():
-    facts = [_fact("hot", recall_count=9, last_recalled_at=_ago(hours=2))]
+    facts = [
+        _fact(
+            "hot",
+            recall_count=9,
+            last_recalled_at=_ago(hours=2),
+            prev_recalled_at=_ago(days=1),
+        )
+    ]
     assert drop_recently_used_demotions("p-4", [], facts) == []
 
 
 def test_contradiction_and_retraction_reasons_override_protection():
     """Usage disproves staleness, not wrongness — direct contradictions
     and explicit user retractions demote even heavily-used facts."""
-    facts = [_fact("hot", recall_count=9, last_recalled_at=_ago(hours=2))]
+    facts = [
+        _fact(
+            "hot",
+            recall_count=9,
+            last_recalled_at=_ago(hours=2),
+            prev_recalled_at=_ago(days=1),
+        )
+    ]
     demotions = [
         DreamDemotion(edge_uuid="hot", reason="contradicted_by:abc-123"),
         DreamDemotion(edge_uuid="hot", reason="web_contradicted:https://x.test"),
@@ -169,7 +227,14 @@ def test_unknown_and_staleness_reasons_stay_blocked_for_protected_facts():
     """Only the explicit contradiction/retraction vocabulary overrides —
     ``stale_fact``, ``entity_invalidated:*``, and free-text reasons the
     model invents are all treated as staleness claims."""
-    facts = [_fact("hot", recall_count=9, last_recalled_at=_ago(hours=2))]
+    facts = [
+        _fact(
+            "hot",
+            recall_count=9,
+            last_recalled_at=_ago(hours=2),
+            prev_recalled_at=_ago(days=1),
+        )
+    ]
     demotions = [
         DreamDemotion(edge_uuid="hot", reason="stale_fact"),
         DreamDemotion(edge_uuid="hot", reason="entity_invalidated:abc-123"),

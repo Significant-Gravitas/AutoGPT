@@ -49,6 +49,7 @@ async def test_active_facts_carry_recall_stamps():
     query = driver.execute_query.await_args.args[0]
     assert "e.recall_count AS recall_count" in query
     assert "toString(e.last_recalled_at) AS last_recalled_at" in query
+    assert "toString(e.prev_recalled_at) AS prev_recalled_at" in query
 
 
 @pytest.mark.asyncio

@@ -21,8 +21,9 @@ from .schemas import DreamDemotion
 
 logger = logging.getLogger(__name__)
 
-# A fact recalled at least MIN_RECALLS_TO_PROTECT times within
-# RECENT_RECALL_WINDOW of the pass is protected from demotion.
+# A fact whose two most recent (deduped) recalls both fall inside
+# RECENT_RECALL_WINDOW is protected from staleness demotion — i.e. it
+# was used on at least two separate days in the last week.
 #
 # The window matches the cadence a user is actually observed over: a
 # fact pulled into context inside the last week is demonstrably still
@@ -33,11 +34,17 @@ logger = logging.getLogger(__name__)
 # unprotected.
 RECENT_RECALL_WINDOW = timedelta(days=7)
 
-# Two recalls, not one: a single hit is indistinguishable from an
-# incidental embedding-similarity match on an unrelated turn, so
-# protecting on it would shield facts the user never really used.
-# Two hits inside the window is a repeated, deliberate-looking recall.
-MIN_RECALLS_TO_PROTECT = 2
+# Recall stamps closer together than this collapse into one "use":
+# warm context re-pulls the same edges turn after turn, so raw
+# per-turn increments would clear any repetition bar inside a single
+# conversation. Day-level dedupe makes ``recall_count`` count distinct
+# days of use, and the (last, prev) stamp pair windowed below means
+# "used on two separate days this week" — repetition a single
+# incidental embedding-similarity match (or one long chat) can't fake.
+# Storing only the two latest stamps keeps the windowed predicate
+# exact without a full recall log; a lifetime counter alone cannot
+# express "N recalls WITHIN the window".
+RECALL_DEDUPE_INTERVAL = timedelta(hours=24)
 
 # Demotion reasons that override usage protection. Usage disproves
 # *staleness* — a recently-recalled fact isn't stale — but it can't
@@ -83,10 +90,9 @@ def drop_recently_used_demotions(
     if dropped:
         logger.warning(
             "Dream pass %s: dropped %d staleness demotion(s) targeting facts "
-            "recalled at least %d time(s) in the last %d day(s)",
+            "recalled on two separate occasions in the last %d day(s)",
             pass_id,
             dropped,
-            MIN_RECALLS_TO_PROTECT,
             RECENT_RECALL_WINDOW.days,
         )
     return kept
@@ -95,16 +101,23 @@ def drop_recently_used_demotions(
 def protected_fact_uuids(
     facts: list[FactRow], *, now: datetime | None = None
 ) -> set[str]:
-    """Uuids of facts that are recently-and-repeatedly recalled."""
+    """Uuids of facts recalled on two separate (deduped) occasions
+    within the window.
+
+    The predicate reads ``prev_recalled_at`` — the second-latest
+    deduped stamp — because ``last_recalled_at`` is necessarily no
+    older, so ``prev`` inside the window puts BOTH recalls inside it.
+    A lifetime ``recall_count`` deliberately plays no part: two recalls
+    a year ago plus one incidental hit yesterday must not protect.
+    """
     reference = now or datetime.now(timezone.utc)
     cutoff = reference - RECENT_RECALL_WINDOW
     return {
         fact.uuid
         for fact in facts
-        if (fact.recall_count or 0) >= MIN_RECALLS_TO_PROTECT
-        if fact.last_recalled_at
-        if (recalled := parse_iso_timestamp(fact.last_recalled_at)) is not None
-        if recalled >= cutoff
+        if fact.prev_recalled_at
+        if (prev := parse_iso_timestamp(fact.prev_recalled_at)) is not None
+        if prev >= cutoff
     }
 
 

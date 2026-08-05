@@ -35,6 +35,7 @@ from .ratification_hits import (
     parse_created_at,
     record_memory_hit,
 )
+from .usage import RECALL_DEDUPE_INTERVAL
 
 logger = logging.getLogger(__name__)
 
@@ -345,6 +346,16 @@ async def _stamp_recall(
 ) -> int:
     """Record a recall on every retrieved edge, in one round-trip.
 
+    Stamps are **deduped**: an edge whose ``last_recalled_at`` is
+    younger than ``RECALL_DEDUPE_INTERVAL`` is skipped, so warm context
+    re-pulling the same fact turn after turn inside one conversation
+    counts as a single use. The previous stamp is shifted into
+    ``prev_recalled_at`` on every accepted stamp — the (last, prev)
+    pair is what lets ``usage.protected_fact_uuids`` require two
+    recalls *within* the protection window. The dedupe comparison is
+    plain string ``<``: every stamp is a fixed-format UTC ISO string,
+    for which lexicographic order IS chronological order.
+
     ``recall_count`` is incremented via ``COALESCE(…, 0) + 1`` so an
     edge written before this hook existed starts from zero instead of
     NULL — no backfill migration is needed. ``last_recalled_at`` is
@@ -369,15 +380,19 @@ async def _stamp_recall(
     UNWIND $uuids AS target_uuid
     MATCH ()-[e:RELATES_TO]->()
     WHERE e.uuid = target_uuid AND e.expired_at IS NULL
+      AND (e.last_recalled_at IS NULL OR e.last_recalled_at < $dedupe_cutoff)
     SET e.recall_count = COALESCE(e.recall_count, 0) + 1,
+        e.prev_recalled_at = e.last_recalled_at,
         e.last_recalled_at = $now
     RETURN count(e) AS stamped
     """
+    now = datetime.now(timezone.utc)
     try:
         result = await driver.execute_query(
             query,
             uuids=edge_uuids,
-            now=datetime.now(timezone.utc).isoformat(),
+            now=now.isoformat(),
+            dedupe_cutoff=(now - RECALL_DEDUPE_INTERVAL).isoformat(),
         )
     except Exception:
         logger.debug(

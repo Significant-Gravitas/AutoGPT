@@ -9,7 +9,7 @@ the unit-level safety net for the control-flow.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -650,6 +650,52 @@ def test_hallucinated_uuid_does_not_consume_cap_slot():
     # the raw list and apply.py's filter remains the only defense.
     unfiltered = orchestrator_mod._clamp_operations(ops, 10)
     assert [d.edge_uuid for d in unfiltered.demotions] == ["hallucinated"]
+
+
+def test_usage_protected_demotion_does_not_consume_cap_slot():
+    """Same slot-displacement logic as the hallucinated-uuid pre-filter:
+    a staleness demotion the usage guard will drop at apply anyway must
+    not eat the floor-of-1 cap slot and displace one that would land."""
+    now = datetime.now(timezone.utc)
+
+    def _fact(uuid: str, **usage) -> FactRow:
+        return FactRow(
+            uuid=uuid,
+            source="A",
+            target="B",
+            name="likes",
+            fact="A likes B",
+            scope="real:global",
+            confidence=0.7,
+            status="active",
+            created_at=None,
+            **usage,
+        )
+
+    hot = _fact(
+        "hot",
+        recall_count=2,
+        last_recalled_at=(now - timedelta(days=1)).isoformat(),
+        prev_recalled_at=(now - timedelta(days=2)).isoformat(),
+    )
+    cold = _fact("cold")
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+            DreamDemotion(edge_uuid="cold", reason="stale_fact"),
+        ],
+    )
+    clamped = orchestrator_mod._clamp_operations(
+        ops, 10, known_fact_uuids={"hot", "cold"}, facts=[hot, cold]
+    )
+    assert [d.edge_uuid for d in clamped.demotions] == ["cold"]
+
+    # Without fact rows the clamp can't pre-filter — apply's guard (with
+    # its fresh-stamp refresh) remains the enforcement chokepoint.
+    unfiltered = orchestrator_mod._clamp_operations(
+        ops, 10, known_fact_uuids={"hot", "cold"}
+    )
+    assert [d.edge_uuid for d in unfiltered.demotions] == ["hot"]
 
 
 @pytest.mark.asyncio

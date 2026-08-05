@@ -29,7 +29,6 @@ from .schemas import (
     IngestionDrainStatus,
     ProposedFinding,
 )
-from .usage import MIN_RECALLS_TO_PROTECT
 
 
 def _bundle_with_known_facts(*uuids: str) -> DreamInput:
@@ -58,11 +57,13 @@ def _fact_row(uuid: str, **usage) -> FactRow:
 
 
 def _used_fact(uuid: str) -> FactRow:
-    """A fact warm-context retrieval keeps pulling into live turns."""
+    """A fact recalled on two separate deduped occasions this week."""
+    now = datetime.now(timezone.utc)
     return _fact_row(
         uuid,
-        recall_count=MIN_RECALLS_TO_PROTECT + 1,
-        last_recalled_at=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+        recall_count=3,
+        last_recalled_at=(now - timedelta(days=1)).isoformat(),
+        prev_recalled_at=(now - timedelta(days=3)).isoformat(),
     )
 
 
