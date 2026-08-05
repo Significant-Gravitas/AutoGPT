@@ -34,6 +34,7 @@ export const FeaturedCreators = ({
             <CreatorCard
               key={index}
               creatorName={creator.name || creator.username}
+              creatorUsername={creator.username}
               creatorImage={creator.avatar_url}
               bio={creator.description}
               agentsUploaded={creator.num_agents}

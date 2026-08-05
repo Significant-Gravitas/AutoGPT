@@ -9,6 +9,7 @@ import { backgroundColor } from "./helper";
 
 interface Props {
   creatorName: string;
+  creatorUsername?: string;
   creatorImage: string | null;
   bio: string;
   agentsUploaded: number;
@@ -18,6 +19,7 @@ interface Props {
 
 export function CreatorCard({
   creatorName,
+  creatorUsername,
   creatorImage,
   bio,
   agentsUploaded,
@@ -36,7 +38,9 @@ export function CreatorCard({
         {creatorImage && (
           <AvatarImage src={creatorImage} alt={`${creatorName} avatar`} />
         )}
-        <AvatarFallback size={56}>{creatorName}</AvatarFallback>
+        <AvatarFallback size={56}>
+          {creatorUsername || creatorName}
+        </AvatarFallback>
       </Avatar>
 
       <div className="mt-3 flex w-full flex-1 flex-col">

@@ -2,7 +2,13 @@ import { IconType } from "@/components/__legacy__/ui/icons";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
+import { InitialAvatar } from "../components/InitialAvatar";
 import { MenuItemGroup } from "../../../helpers";
+
+function getFallbackSvg(root: HTMLElement) {
+  const svg = root.querySelector("svg");
+  return svg?.innerHTML.replace(/:r[0-9a-z]+:/g, "id") ?? null;
+}
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -134,18 +140,21 @@ describe("AccountMenu", () => {
     expect(helpLink?.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
-  test("renders profile trigger with avatar fallback", () => {
-    const { container } = render(
+  test("renders profile trigger with avatar fallback seeded by the user", () => {
+    render(
       <AccountMenu
         userName="Ada"
+        userHandle="ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
       />,
     );
+    const reference = render(<InitialAvatar name="ada" />);
 
-    expect(screen.getByTestId("profile-popout-menu-trigger")).toBeDefined();
-    // InitialAvatar uses a marble SVG fallback (not a letter initial).
-    expect(container.querySelector("svg")).not.toBeNull();
+    const trigger = screen.getByTestId("profile-popout-menu-trigger");
+    expect(getFallbackSvg(trigger)).not.toBeNull();
+    // The marble gradient must be seeded by the user's handle, not a constant.
+    expect(getFallbackSvg(trigger)).toBe(getFallbackSvg(reference.container));
   });
 
   test("new layout renders the organization switcher header trigger", () => {
