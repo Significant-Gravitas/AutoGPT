@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
@@ -62,6 +63,13 @@ CONSUMER_RETRY_BACKOFF_SECONDS = 2
 # forward progress so its supervisor sees a clean exit. Mirrors the
 # timeout=10 drain in GraphExecutorManager.cleanup.
 SHUTDOWN_TIMEOUT_SECONDS = 10
+
+# Outer deadline for cleanup()'s cross-thread wait on the _shutdown_service
+# barrier. Each barrier stage is individually bounded by
+# SHUTDOWN_TIMEOUT_SECONDS, so this only fires when the event loop stops
+# before ever servicing the barrier — without it, Future.result() would block
+# process exit indefinitely.
+CLEANUP_TIMEOUT_SECONDS = SHUTDOWN_TIMEOUT_SECONDS * 2 + 5
 
 
 NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
@@ -1266,8 +1274,33 @@ class NotificationManager(AppService):
             # concurrent Future marks that proxy done before the underlying
             # asyncio task and its consumer children have finished unwinding.
             shutdown = self._shutdown_service()
-            if self.shared_event_loop.is_running():
-                self.run_and_wait(shutdown)
+            if self.shared_event_loop.is_closed():
+                # The loop thread already stopped and closed the loop (loop
+                # crash or repeated cleanup): every task on it is gone, and
+                # both scheduling paths below would raise "Event loop is
+                # closed" instead of shutting down.
+                shutdown.close()
+                logger.warning(
+                    "Event loop is already closed; "
+                    "skipping notification service shutdown"
+                )
+            elif self.shared_event_loop.is_running():
+                try:
+                    # Each stage of _shutdown_service is already bounded by
+                    # SHUTDOWN_TIMEOUT_SECONDS; this outer deadline only fires
+                    # when the loop stops before ever servicing the barrier,
+                    # which would otherwise block .result() forever.
+                    self.run_and_wait(shutdown, timeout=CLEANUP_TIMEOUT_SECONDS)
+                except FutureTimeoutError:
+                    logger.warning(
+                        "Notification service shutdown did not run within "
+                        f"{CLEANUP_TIMEOUT_SECONDS}s; continuing cleanup"
+                    )
+                except RuntimeError as e:
+                    # The loop closed between the is_closed() check above and
+                    # the scheduling call; nothing is left to shut down.
+                    shutdown.close()
+                    logger.warning(f"Could not run notification service shutdown: {e}")
             else:
                 self.shared_event_loop.run_until_complete(shutdown)
         finally:
