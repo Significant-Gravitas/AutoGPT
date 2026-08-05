@@ -139,7 +139,7 @@ async def test_a_new_recording_id_clears_every_column_the_last_take_owned(
     assert update["transcript"] is None
     assert update["transcriptLang"] is None
     assert update["greeting"] is None
-    assert update["recommendedProviders"] is None
+    assert update["recommendedProviders"] == Json(None)
     # Non-nullable with a ``[]`` default, so it is emptied, not nulled.
     assert update["suggestedPrompts"] == Json([])
 
@@ -161,7 +161,7 @@ async def test_retrying_the_same_take_keeps_what_that_take_produced(
 
     create = upsert.await_args.kwargs["data"]["create"]
     update = upsert.await_args.kwargs["data"]["update"]
-    assert create["recommendedProviders"] is None
+    assert create["recommendedProviders"] == Json(None)
     assert set(update) == {"recordingId", "status", "inputMode", "errorCode"}
 
 
@@ -172,7 +172,7 @@ async def test_greeting_only_create_sets_recommended_providers(
     await db.mark_greeting_seen(USER_ID)
 
     create = upsert.await_args.kwargs["data"]["create"]
-    assert create["recommendedProviders"] is None
+    assert create["recommendedProviders"] == Json(None)
     assert create["greetingSeen"] is True
 
 

@@ -31,12 +31,16 @@ PART_BUFFER_TTL_SECONDS = 6 * 60 * 60
 AUDIO_EXPIRATION_HOURS = 48
 
 
+def _buffer_key(user_id: str, recording_id: str, suffix: str) -> str:
+    return f"onboarding:braindump:{{{user_id}:{recording_id}}}:{suffix}"
+
+
 def _parts_key(user_id: str, recording_id: str) -> str:
-    return f"onboarding:braindump:parts:{user_id}:{recording_id}"
+    return _buffer_key(user_id, recording_id, "parts")
 
 
 def _sizes_key(user_id: str, recording_id: str) -> str:
-    return f"onboarding:braindump:sizes:{user_id}:{recording_id}"
+    return _buffer_key(user_id, recording_id, "sizes")
 
 
 async def _read_parts(user_id: str, recording_id: str) -> dict[str, str]:

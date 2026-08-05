@@ -61,7 +61,7 @@ _TAKE_OWNED_RESET: dict[str, Any] = {
     "transcriptLang": None,
     "greeting": None,
     "suggestedPrompts": Json([]),
-    "recommendedProviders": None,
+    "recommendedProviders": Json(None),
     "greetingSeen": False,
 }
 

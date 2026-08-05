@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 from pytest_mock import MockerFixture
+from redis.cluster import key_slot
 
 from backend.api.features.onboarding_dump import storage
 
@@ -87,6 +88,17 @@ def redis(mocker: MockerFixture) -> FakeRedis:
 
 async def _append(redis: FakeRedis, part_index: int, content: bytes) -> int:
     return await storage.append_part(USER_ID, RECORDING_ID, part_index, content)
+
+
+def test_buffer_keys_share_a_redis_cluster_slot():
+    for user_id, recording_id in [
+        (USER_ID, RECORDING_ID),
+        ("c0933014-3c5a-499a-91db-10e020d527b1", "recording_42"),
+    ]:
+        parts_key = storage._parts_key(user_id, recording_id)
+        sizes_key = storage._sizes_key(user_id, recording_id)
+
+        assert key_slot(parts_key.encode()) == key_slot(sizes_key.encode())
 
 
 @pytest.mark.asyncio
