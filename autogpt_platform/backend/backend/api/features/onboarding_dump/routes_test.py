@@ -61,13 +61,17 @@ class DumpStore:
         # repeated finalize cannot reset it.
         if (
             self.row is not None
-            and self.row.recordingId == recording_id
             and self.row.status
             in (
+                BrainDumpStatus.recording_uploaded,
                 BrainDumpStatus.transcribing,
                 BrainDumpStatus.transcribed,
                 BrainDumpStatus.extracting,
                 BrainDumpStatus.completed,
+            )
+            and (
+                self.row.recordingId == recording_id
+                or input_mode != BrainDumpInputMode.voice
             )
         ):
             return self.row

@@ -33,6 +33,7 @@ async def owns_dump(user_id: str, recording_id: str) -> bool:
 # ``failed`` is deliberately absent: retrying a failed take must reset it.
 _IN_FLIGHT_STATUSES = frozenset(
     {
+        BrainDumpStatus.recording_uploaded,
         BrainDumpStatus.transcribing,
         BrainDumpStatus.transcribed,
         BrainDumpStatus.extracting,

@@ -65,6 +65,7 @@ class DumpStore:
             self.row is not None
             and self.row.status
             in (
+                BrainDumpStatus.recording_uploaded,
                 BrainDumpStatus.transcribing,
                 BrainDumpStatus.transcribed,
                 BrainDumpStatus.extracting,
@@ -350,6 +351,26 @@ async def test_a_stale_typed_finalize_cannot_replace_a_completed_take(
     assert dumps.row.recordingId == "rec-newer"
     assert dumps.row.transcript == newer_transcript
     assert stale_tasks.tasks == []
+
+
+@pytest.mark.asyncio
+async def test_typed_finalize_cannot_replace_an_uploaded_voice_take(
+    dumps: DumpStore,
+):
+    await start_voice_take(dumps)
+    tasks = BackgroundTasks()
+
+    response = await service.finalize_typed_dump(
+        USER_ID, "rec-typed", "Typed text arrived from another tab.", tasks
+    )
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "superseded"
+    assert dumps.row is not None
+    assert dumps.row.recordingId == RECORDING_ID
+    assert dumps.row.status == BrainDumpStatus.recording_uploaded
+    assert dumps.row.inputMode == BrainDumpInputMode.voice
+    assert tasks.tasks == []
 
 
 @pytest.mark.asyncio
