@@ -12,7 +12,13 @@ import {
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CARD, HALF } from "./ResultCards";
-import { formatBytes, formatWhen, inline, str } from "./resultHelpers";
+import {
+  formatBytes,
+  formatWhen,
+  inline,
+  resultItemKey,
+  str,
+} from "./resultHelpers";
 
 interface SchedulesProps {
   schedules: Record<string, unknown>[];
@@ -34,6 +40,35 @@ interface ResultsProps {
   results: Record<string, unknown>[];
 }
 
+export function FeatureRequestList({ results }: ResultsProps) {
+  return (
+    <div className="grid gap-1.5 sm:grid-cols-2">
+      {results.map((request, i) => (
+        <div
+          key={resultItemKey(request, i)}
+          className={CARD + " flex items-start gap-2.5 p-2.5"}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-medium text-zinc-800">
+              {str(request, "title") ?? inline(request)}
+            </p>
+            {str(request, "description") && (
+              <p className="truncate text-xs text-zinc-500">
+                {str(request, "description")}
+              </p>
+            )}
+          </div>
+          {str(request, "identifier") && (
+            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+              {str(request, "identifier")}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ScheduleList({ schedules }: SchedulesProps) {
   return (
     <div className="grid gap-1.5 sm:grid-cols-2">
@@ -41,7 +76,10 @@ export function ScheduleList({ schedules }: SchedulesProps) {
         const next = str(schedule, "next_run_time");
         const recurring = !!str(schedule, "cron");
         return (
-          <div key={i} className={CARD + " flex items-center gap-2.5 p-2.5"}>
+          <div
+            key={resultItemKey(schedule, i)}
+            className={CARD + " flex items-center gap-2.5 p-2.5"}
+          >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
               <Icon icon={ClockIcon} size={15} className="text-zinc-600" />
             </div>
@@ -99,7 +137,10 @@ export function FolderList({ folders }: FoldersProps) {
         const count =
           typeof folder.agent_count === "number" ? folder.agent_count : null;
         return (
-          <div key={i} className={CARD + " flex items-center gap-2.5 p-2.5"}>
+          <div
+            key={resultItemKey(folder, i)}
+            className={CARD + " flex items-center gap-2.5 p-2.5"}
+          >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
               <Icon icon={FolderIcon} size={15} className="text-zinc-600" />
             </div>
@@ -127,7 +168,10 @@ export function FileList({ files }: FilesProps) {
           typeof file.size_bytes === "number" ? file.size_bytes : null;
         const fileIcon = mime.startsWith("image/") ? ImageIcon : FileIcon;
         return (
-          <div key={i} className="flex items-center gap-2.5 px-2.5 py-2">
+          <div
+            key={resultItemKey(file, i)}
+            className="flex items-center gap-2.5 px-2.5 py-2"
+          >
             <Icon
               icon={fileIcon}
               size={14}
@@ -155,7 +199,10 @@ export function DocsList({ results }: ResultsProps) {
         const docUrl = str(doc, "doc_url");
         const section = str(doc, "section");
         return (
-          <div key={i} className={CARD + " flex items-start gap-2.5 p-2.5"}>
+          <div
+            key={resultItemKey(doc, i)}
+            className={CARD + " flex items-start gap-2.5 p-2.5"}
+          >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
               <Icon icon={BookOpenIcon} size={15} className="text-zinc-600" />
             </div>

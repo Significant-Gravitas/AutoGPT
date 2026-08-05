@@ -100,9 +100,9 @@ export function ChipList({ label, items }: ChipListProps) {
         {label}
       </p>
       <div className="flex flex-wrap gap-1">
-        {items.map((item, i) => (
+        {Array.from(new Set(items)).map((item) => (
           <span
-            key={i}
+            key={item}
             className="max-w-full truncate rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
           >
             {item}

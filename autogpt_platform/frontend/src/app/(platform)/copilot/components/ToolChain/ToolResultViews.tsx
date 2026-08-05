@@ -16,6 +16,7 @@ import {
   formatBytes,
   humanizeKey,
   inline,
+  resultItemKey,
   safeHostname,
   str,
 } from "./resultHelpers";
@@ -50,7 +51,10 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
         const domain = url ? safeHostname(url) : null;
         const title = str(item, "title", "snippet") ?? inline(item);
         return (
-          <div key={i} className="flex items-center gap-2.5 px-3 py-2">
+          <div
+            key={resultItemKey(item, i)}
+            className="flex items-center gap-2.5 px-3 py-2"
+          >
             <Icon
               icon={GlobeIcon}
               size={14}
@@ -118,7 +122,10 @@ export function TodoList({ row }: RowProps) {
         const done = todo.status === "completed";
         const active = todo.status === "in_progress";
         return (
-          <div key={i} className="flex items-center gap-2 text-[13px]">
+          <div
+            key={resultItemKey(todo, i)}
+            className="flex items-center gap-2 text-[13px]"
+          >
             {done ? (
               <Icon
                 icon={CheckmarkCircle02Icon}
@@ -191,7 +198,7 @@ export function OutputList({ items }: ItemsProps) {
   return (
     <div className={`${CARD} ${HALF} divide-y divide-zinc-100`}>
       {items.map((item, i) => (
-        <div key={i} className="p-2.5">
+        <div key={resultItemKey(item, i)} className="p-2.5">
           <p className="text-[11px] uppercase tracking-wide text-zinc-400">
             {str(item, "name", "key", "label") ?? `Output ${i + 1}`}
           </p>

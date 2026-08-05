@@ -10,7 +10,7 @@ import {
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CARD, HALF, StatusPill } from "./ResultCards";
-import { inline, str } from "./resultHelpers";
+import { inline, resultItemKey, str } from "./resultHelpers";
 
 function agentHref(agent: Record<string, unknown>): string | null {
   const id = str(agent, "id");
@@ -56,7 +56,10 @@ export function AgentListCard({ agents }: AgentListCardProps) {
         const rating = typeof agent.rating === "number" ? agent.rating : null;
         const subtitle = str(agent, "description");
         return (
-          <div key={i} className={CARD + " flex items-start gap-2.5 p-2.5"}>
+          <div
+            key={resultItemKey(agent, i)}
+            className={CARD + " flex items-start gap-2.5 p-2.5"}
+          >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
               <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
             </div>
@@ -135,6 +138,32 @@ export function AgentSavedCard({ output }: OutputCardProps) {
         </Link>
       )}
       {libraryLink && <CardLink href={libraryLink} label="Open in library" />}
+    </div>
+  );
+}
+
+export function AgentPreviewCard({ output }: OutputCardProps) {
+  const name = str(output, "agent_name", "name") ?? "Agent preview";
+  const count =
+    typeof output.node_count === "number" ? output.node_count : null;
+  return (
+    <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+        <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>
+        {str(output, "description", "message") && (
+          <p className="truncate text-xs text-zinc-500">
+            {str(output, "description", "message")}
+          </p>
+        )}
+      </div>
+      {count !== null && (
+        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+          {count} block{count === 1 ? "" : "s"}
+        </span>
+      )}
     </div>
   );
 }

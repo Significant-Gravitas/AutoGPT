@@ -92,19 +92,45 @@ export function inline(value: unknown): string {
   return json && json.length > 120 ? json.slice(0, 120) + "…" : (json ?? "");
 }
 
+export function resultItemKey(
+  item: Record<string, unknown>,
+  fallbackIndex: number,
+): string {
+  for (const field of [
+    "id",
+    "step_id",
+    "keyword",
+    "execution_id",
+    "identifier",
+    "path",
+    "url",
+    "name",
+    "title",
+    "content",
+  ]) {
+    const value = item[field];
+    if (typeof value === "string" || typeof value === "number") {
+      return `${field}:${value}`;
+    }
+  }
+  return `item:${fallbackIndex}:${inline(item)}`;
+}
+
 export function humanizeKey(key: string): string {
   return key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
 export function formatWhen(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return DATE_TIME_FORMATTER.format(date);
 }
 
 export function formatBytes(bytes: number): string {

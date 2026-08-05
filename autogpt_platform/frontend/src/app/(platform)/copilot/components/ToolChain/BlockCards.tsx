@@ -9,7 +9,12 @@ import Image from "next/image";
 import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CARD, HALF } from "./ResultCards";
-import { inline, integrationIconSrc, str } from "./resultHelpers";
+import {
+  inline,
+  integrationIconSrc,
+  resultItemKey,
+  str,
+} from "./resultHelpers";
 
 interface CardProviderIconProps {
   provider: string | null;
@@ -60,7 +65,10 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
             )
           : [];
         return (
-          <div key={i} className={CARD + " flex items-start gap-2.5 p-2.5"}>
+          <div
+            key={resultItemKey(block, i)}
+            className={CARD + " flex items-start gap-2.5 p-2.5"}
+          >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
               <CardProviderIcon
                 provider={str(block, "provider")}

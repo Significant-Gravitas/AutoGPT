@@ -27,9 +27,9 @@ export function FileDiff({ file, diff }: Props) {
         </span>
       </div>
       <div className="relative max-h-64 overflow-y-auto py-1 text-[12.5px] leading-5 scrollbar-none before:absolute before:bottom-0 before:left-16 before:top-0 before:z-10 before:w-px before:bg-zinc-200 before:content-['']">
-        {rows.map((row, i) => (
+        {rows.map((row) => (
           <div
-            key={i}
+            key={`${row.type}:${row.old ?? ""}:${row.cur ?? ""}`}
             className={
               "relative grid grid-cols-[32px_32px_18px_1fr] items-stretch " +
               (row.type === "add"

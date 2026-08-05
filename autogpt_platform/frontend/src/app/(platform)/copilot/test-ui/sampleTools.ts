@@ -1013,8 +1013,8 @@ const ASK_QUESTION_SAMPLE: SampleTool = {
   },
 };
 
-// Interactive tools stay OUTSIDE the chain (CUSTOM_TOOL_TYPES) and render
-// their real components — credential pickers, input forms, answer chips.
+// Interactive tools render inside expanded new-UI rows so credential pickers,
+// input forms, review state, and answer fields never fall back to legacy UI.
 export const INTERACTIVE_SAMPLES: { label: string; sample: SampleTool }[] = [
   { label: "ask_question — user answers inline", sample: ASK_QUESTION_SAMPLE },
   {
@@ -1112,9 +1112,8 @@ export const INTERACTIVE_SAMPLES: { label: string; sample: SampleTool }[] = [
   },
 ];
 
-// A chain interrupted by a question: the chain splits, the interactive card
-// renders full-width between the two chain halves (same behavior as
-// ChatMessagesContainer's isChainableToolPart segmentation).
+// A chain containing a question stays pinned open so the inline form remains
+// actionable while the surrounding tool timeline keeps one stable identity.
 export const INTERRUPT_DEMO: SampleTool[] = [
   {
     reasoning:

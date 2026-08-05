@@ -45,16 +45,43 @@ describe("buildChainSegments", () => {
     ]);
   });
 
-  it("keeps custom-card tools outside chains with the UI predicate", () => {
-    const customTool = toolPart("decompose_goal");
+  it("keeps every tool family in the new chain UI", () => {
+    const specializedTool = toolPart("decompose_goal");
     const genericTool = toolPart("web_search");
 
     expect(
-      buildChainSegments([customTool, genericTool], isChainableToolPart),
+      buildChainSegments([specializedTool, genericTool], isChainableToolPart),
     ).toEqual([
-      { kind: "part", part: customTool, index: 0 },
-      { kind: "chain", parts: [genericTool], index: 1 },
+      {
+        kind: "chain",
+        parts: [specializedTool, genericTool],
+        index: 0,
+      },
     ]);
+  });
+
+  it.each([
+    "ask_question",
+    "find_block",
+    "find_agent",
+    "find_library_agent",
+    "search_docs",
+    "get_doc_page",
+    "connect_integration",
+    "run_block",
+    "continue_run_block",
+    "run_mcp_tool",
+    "run_agent",
+    "schedule_agent",
+    "setup_agent_webhook_trigger",
+    "decompose_goal",
+    "create_agent",
+    "edit_agent",
+    "view_agent_output",
+    "search_feature_requests",
+    "create_feature_request",
+  ])("routes legacy %s cards through ToolChain", (toolName) => {
+    expect(isChainableToolPart(toolPart(toolName))).toBe(true);
   });
 });
 
@@ -75,6 +102,23 @@ describe("toChainRow", () => {
     );
 
     expect(row?.providerIconSrc).toBe("/integrations/googlescript.png");
+  });
+
+  it("pins setup requirements open with an action-oriented label", () => {
+    const setupRow = toChainRow(
+      toolPart(
+        "connect_integration",
+        { provider: "github" },
+        JSON.stringify({
+          type: "setup_requirements",
+          setup_info: { agent_name: "GitHub" },
+        }),
+      ),
+      0,
+    );
+
+    expect(setupRow?.requiresAction).toBe(true);
+    expect(setupRow?.text).toBe("Connect GitHub to continue");
   });
 });
 
@@ -116,5 +160,20 @@ describe("getChainHeading", () => {
     ];
 
     expect(getChainHeading(rows, false)).toBe("Permission denied");
+  });
+
+  it("surfaces required actions ahead of a settled summary", () => {
+    const rows: ChainRow[] = [
+      { key: "1", category: "web", text: "Searched", state: "done" },
+      {
+        key: "2",
+        category: "integration",
+        text: "Connect GitHub to continue",
+        state: "done",
+        requiresAction: true,
+      },
+    ];
+
+    expect(getChainHeading(rows, false)).toBe("Connect GitHub to continue");
   });
 });

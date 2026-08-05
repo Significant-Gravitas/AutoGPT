@@ -1,6 +1,14 @@
 "use client";
 
-import { AgentListCard, AgentSavedCard, SubSessionCard } from "./AgentCards";
+import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
+import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
+import {
+  AgentListCard,
+  AgentPreviewCard,
+  AgentSavedCard,
+  SubSessionCard,
+} from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
@@ -9,13 +17,15 @@ import type { ChainRow } from "./helpers";
 import {
   FixResultCard,
   PlanSteps,
-  SetupCard,
   SkillCard,
+  SuggestedGoalCard,
+  TriggerSetupCard,
   ValidationCard,
 } from "./InfoCards";
 import { QuestionRowForm } from "./QuestionRowForm";
 import {
   DocsList,
+  FeatureRequestList,
   FileList,
   FolderList,
   ScheduleCreatedCard,
@@ -132,11 +142,62 @@ function chipStrings(value: unknown, key: string): string[] | null {
   return labels.length > 0 ? labels : null;
 }
 
+function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
+  if (!asObject(output.setup_info)) return null;
+  const setupOutput = output as unknown as SetupRequirementsResponse;
+
+  if (row.tool === "run_mcp_tool") {
+    return (
+      <MCPSetupCard
+        output={setupOutput}
+        retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server URL and arguments."
+      />
+    );
+  }
+
+  if (row.tool === "setup_agent_webhook_trigger") {
+    return (
+      <SetupRequirementsCard
+        output={setupOutput}
+        inputsMode="trigger"
+        credentialsLabel="Account"
+      />
+    );
+  }
+
+  if (row.tool === "run_agent" || row.tool === "schedule_agent") {
+    return <SetupRequirementsCard output={setupOutput} inputsMode="preview" />;
+  }
+
+  return (
+    <SetupRequirementsCard
+      output={setupOutput}
+      credentialsLabel={
+        row.tool === "connect_integration"
+          ? `${setupOutput.setup_info.agent_name} credentials`
+          : undefined
+      }
+      retryInstruction={
+        row.tool === "connect_integration"
+          ? "I've connected my account. Please continue."
+          : undefined
+      }
+    />
+  );
+}
+
 function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
   const input = asObject(row.input);
 
+  if (output) {
+    const setupCard = setupRequirementsCard(row, output);
+    if (setupCard) return setupCard;
+    if (asItems(output.questions)) return <QuestionRowForm row={row} />;
+  }
+
   switch (row.tool) {
-    case "run_agent": {
+    case "run_agent":
+    case "schedule_agent": {
       const name =
         (output && str(output, "graph_name", "agent_name")) ??
         (input ? str(input, "username_agent_slug", "agent_name") : null);
@@ -156,6 +217,8 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
           />
         );
       }
+      const agent = output && asObject(output.agent);
+      if (agent) return <AgentListCard agents={[agent]} />;
       const execution = output && asObject(output.execution);
       const items = execution && dictToOutputItems(execution.outputs);
       return items ? <OutputList items={items} /> : null;
@@ -170,8 +233,16 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     case "create_agent":
     case "customize_agent":
     case "edit_agent": {
+      if (output && str(output, "suggested_goal")) {
+        return <SuggestedGoalCard output={output} />;
+      }
       const name = output && str(output, "agent_name", "name", "graph_name");
-      return output && name ? <AgentSavedCard output={output} /> : null;
+      if (!output || !name) return null;
+      return str(output, "library_agent_link", "agent_page_link") ? (
+        <AgentSavedCard output={output} />
+      ) : (
+        <AgentPreviewCard output={output} />
+      );
     }
     case "run_sub_session":
     case "get_sub_session_result":
@@ -190,8 +261,6 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     case "run_block":
     case "continue_run_block": {
       if (!output) return null;
-      if (str(output, "type") === "setup_requirements")
-        return <SetupCard output={output} provider={null} />;
       const block = asObject(output.block);
       if (block) return <BlockListCard blocks={[block]} />;
       if (str(output, "block_name", "block_id"))
@@ -199,12 +268,7 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       return null;
     }
     case "connect_integration":
-      return output && str(output, "type") === "setup_requirements" ? (
-        <SetupCard
-          output={output}
-          provider={input ? str(input, "provider") : null}
-        />
-      ) : null;
+      return null;
     case "decompose_goal": {
       const steps = output && asItems(output.steps);
       return steps ? <PlanSteps steps={steps} /> : null;
@@ -244,6 +308,24 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     case "get_doc_page":
       return output && str(output, "title") ? (
         <DocsList results={[output]} />
+      ) : null;
+    case "setup_agent_webhook_trigger":
+      return output &&
+        (str(output, "webhook_url", "ingress_url") ||
+          output.manual_setup_required === true) ? (
+        <TriggerSetupCard output={output} />
+      ) : null;
+    case "search_feature_requests": {
+      const results = output && asItems(output.results);
+      return results ? <FeatureRequestList results={results} /> : null;
+    }
+    case "create_feature_request":
+      return output
+        ? (linkCard(output, input) ?? <KeyValueList value={output} />)
+        : null;
+    case "run_mcp_tool":
+      return output && "result" in output ? (
+        <KeyValueList value={output.result} />
       ) : null;
     case "store_skill":
     case "read_skill":

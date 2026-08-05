@@ -1,14 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { isChainableToolPart } from "../components/ChatMessagesContainer/helpers";
-import { MessagePartRenderer } from "../components/ChatMessagesContainer/components/MessagePartRenderer";
 import { CopilotChatActionsProvider } from "../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { ChainRowView } from "../components/ToolChain/ChainRowView";
-import {
-  buildChainSegments,
-  toChainRow,
-} from "../components/ToolChain/helpers";
+import { toChainRow } from "../components/ToolChain/helpers";
 import { ToolChain } from "../components/ToolChain/ToolChain";
 import {
   CATALOG_SECTIONS,
@@ -46,6 +41,10 @@ function RawData({ sample }: { sample: SampleTool }) {
   );
 }
 
+function sampleKey(sample: SampleTool): string {
+  return JSON.stringify(sample);
+}
+
 function RowDemo({
   sample,
   index,
@@ -67,27 +66,7 @@ function RowDemo({
 
 function MixedSegments({ samples }: { samples: SampleTool[] }) {
   const parts = samples.map(toPart);
-  const segments = buildChainSegments(parts, isChainableToolPart);
-  return (
-    <div className="flex flex-col gap-2">
-      {segments.map((segment) =>
-        segment.kind === "chain" ? (
-          <ToolChain
-            key={`chain-${segment.index}`}
-            parts={segment.parts}
-            isStreaming={false}
-          />
-        ) : (
-          <MessagePartRenderer
-            key={`part-${segment.index}`}
-            part={segment.part}
-            messageID="interrupt-demo"
-            partIndex={segment.index}
-          />
-        ),
-      )}
-    </div>
-  );
+  return <ToolChain parts={parts} isStreaming={false} />;
 }
 
 export function TestUiPage() {
@@ -124,15 +103,15 @@ export function TestUiPage() {
                     isStreaming={demo.streaming}
                   />
                   {showRaw &&
-                    demo.tools.map((sample, i) => (
-                      <RawData key={i} sample={sample} />
+                    demo.tools.map((sample) => (
+                      <RawData key={sampleKey(sample)} sample={sample} />
                     ))}
                 </div>
               ))}
             </div>
           </Section>
 
-          <Section title="Interactive — needs user action (renders outside the chain)">
+          <Section title="Interactive — needs user action (pinned inside the chain)">
             {sentMessage && (
               <pre className="mb-3 whitespace-pre-wrap rounded-xl bg-zinc-900 p-3 font-mono text-[11px] leading-4 text-green-300">
                 onSend → {sentMessage}
@@ -142,10 +121,9 @@ export function TestUiPage() {
               {INTERACTIVE_SAMPLES.map((entry, i) => (
                 <div key={entry.label}>
                   <p className="mb-1 text-xs text-zinc-400">{entry.label}</p>
-                  <MessagePartRenderer
-                    part={toPart(entry.sample, i)}
-                    messageID={`interactive-${i}`}
-                    partIndex={i}
+                  <ToolChain
+                    parts={[toPart(entry.sample, i)]}
+                    isStreaming={false}
                   />
                   {showRaw && <RawData sample={entry.sample} />}
                 </div>
@@ -153,19 +131,29 @@ export function TestUiPage() {
             </div>
           </Section>
 
-          <Section title="Interactive mid-chain — chain splits around the card">
+          <Section title="Interactive mid-chain — one continuous timeline">
             <MixedSegments samples={INTERRUPT_DEMO} />
           </Section>
 
           <Section title="States (streaming input → running → done → error)">
             {STATE_SAMPLES.map((sample, i) => (
-              <RowDemo key={i} sample={sample} index={i} showRaw={showRaw} />
+              <RowDemo
+                key={sampleKey(sample)}
+                sample={sample}
+                index={i}
+                showRaw={showRaw}
+              />
             ))}
           </Section>
 
           <Section title="Thinking (live stream + collapsed 'Thought')">
             {THINKING_SAMPLES.map((sample, i) => (
-              <RowDemo key={i} sample={sample} index={i} showRaw={showRaw} />
+              <RowDemo
+                key={sampleKey(sample)}
+                sample={sample}
+                index={i}
+                showRaw={showRaw}
+              />
             ))}
           </Section>
 
@@ -173,7 +161,7 @@ export function TestUiPage() {
             <Section key={section.title} title={section.title}>
               {section.tools.map((sample, i) => (
                 <RowDemo
-                  key={`${sample.tool}-${i}`}
+                  key={sampleKey(sample)}
                   sample={sample}
                   index={i}
                   showRaw={showRaw}

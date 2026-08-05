@@ -32,7 +32,7 @@ export type RenderSegment =
   | { kind: "collapsed-group"; parts: ToolUIPart[] }
   | { kind: "reasoning-group"; parts: MessagePart[]; index: number };
 
-const CUSTOM_TOOL_TYPES = new Set([
+const LEGACY_CUSTOM_TOOL_TYPES = new Set([
   "tool-ask_question",
   "tool-find_block",
   "tool-find_agent",
@@ -69,16 +69,11 @@ export function isReasoningToolPart(part: MessagePart): boolean {
   return REASONING_TOOL_TYPES.has(part.type);
 }
 
-// New tool UI: reasoning + non-custom tools fold into a ToolChain;
-// custom-card tools keep their interactive components. ask_question is the
-// exception — it renders as an interactive chain row (QuestionRowForm) and
-// the chain pins itself open while it awaits an answer.
+// Every assistant tool belongs to the new ToolChain. ToolResult supplies a
+// compact result view for known backend tools and a structured fallback for
+// SDK or future tools, so no tool can fall back to the legacy top-level UI.
 export function isChainableToolPart(part: MessagePart): boolean {
-  return (
-    part.type === "reasoning" ||
-    part.type === "tool-ask_question" ||
-    (part.type.startsWith("tool-") && !CUSTOM_TOOL_TYPES.has(part.type))
-  );
+  return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
 // Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
@@ -192,7 +187,7 @@ export function buildRenderSegments(
     if (part.type === "step-start") return;
 
     const isGenericCompletedTool =
-      isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
+      isCompletedToolPart(part) && !LEGACY_CUSTOM_TOOL_TYPES.has(part.type);
 
     if (isGenericCompletedTool) {
       flushReasoning();

@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
-import { SwapIcon, SwapText } from "./SwapText";
+import { SwapText } from "./SwapText";
 import { ToolResult } from "./ToolResult";
+import { ToolStatusBadge } from "./ToolStatusBadge";
 
 interface ReasoningStreamProps {
   text: string;
@@ -46,7 +47,9 @@ interface Props {
 
 export function ChainRowView({ row, isLast }: Props) {
   // Question rows start open — they need the user's answer to proceed.
-  const [open, setOpen] = useState(row.category === "question");
+  const [open, setOpen] = useState(
+    row.category === "question" || row.requiresAction === true,
+  );
   const isReasoning = row.category === "reasoning";
   const liveReasoning =
     isReasoning && row.state === "running" && !!row.reasoningText;
@@ -78,20 +81,17 @@ export function ChainRowView({ row, isLast }: Props) {
                 : "bg-zinc-100",
           )}
         >
-          {row.state === "running" && (
-            <span className="absolute inset-0 animate-[spin_0.6s_linear_infinite] rounded-full border border-purple-200 border-t-purple-600 motion-reduce:animate-none" />
-          )}
-          <SwapIcon
-            swapKey={
-              row.state === "error" ? "error" : (row.providerIconSrc ?? "icon")
-            }
+          <ToolStatusBadge
+            state={row.state}
+            label={row.text}
+            morphToCheck={!isReasoning && !row.requiresAction}
           >
             {row.state !== "error" && row.providerIconSrc ? (
               <ProviderIcon src={row.providerIconSrc} row={row} />
             ) : (
               <RowIcon row={row} />
             )}
-          </SwapIcon>
+          </ToolStatusBadge>
         </div>
         {!isLast && <div className="w-px flex-1 bg-zinc-200" />}
       </div>
@@ -119,14 +119,14 @@ export function ChainRowView({ row, isLast }: Props) {
           <div className="flex h-7 items-center gap-1.5">{rowText}</div>
         )}
         {row.detail && (
-          <p className="truncate text-xs text-red-400 duration-200 animate-in fade-in motion-reduce:animate-none">
+          <p className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none">
             {row.detail}
           </p>
         )}
         <div className={ACCORDION_PANEL + " " + accordionState(showContent)}>
           <div
             aria-hidden={!showContent}
-            inert={!showContent}
+            inert={showContent ? undefined : ("" as unknown as boolean)}
             className="min-h-0 overflow-hidden"
           >
             <div

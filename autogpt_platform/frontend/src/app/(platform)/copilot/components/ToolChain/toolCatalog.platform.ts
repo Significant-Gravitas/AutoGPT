@@ -6,6 +6,71 @@ import {
 } from "./toolCatalog.shared";
 
 export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
+  TodoWrite: {
+    category: "todo",
+    running: "Updating tasks",
+    done: "Updated tasks",
+  },
+  web_search: {
+    category: "web",
+    running: "Searching the web for",
+    done: "Searched the web for",
+    subject: (input) => quoted(input, "query"),
+  },
+  web_fetch: {
+    category: "web",
+    running: "Fetching",
+    done: "Fetched",
+    subject: (input) => quoted(input, "url", 60),
+  },
+  browser_navigate: {
+    category: "browser",
+    running: "Opening",
+    done: "Opened",
+    subject: (input) => quoted(input, "url", 60),
+  },
+  browser_act: {
+    category: "browser",
+    running: "Using the browser",
+    done: "Used the browser",
+  },
+  browser_screenshot: {
+    category: "browser",
+    running: "Taking a screenshot",
+    done: "Took a screenshot",
+  },
+  bash_exec: {
+    category: "bash",
+    running: "Running command",
+    done: "Ran command",
+    subject: (input) => quoted(input, "command", 60),
+  },
+  list_workspace_files: {
+    category: "file-list",
+    running: "Listing workspace files",
+    done: "Listed workspace files",
+  },
+  read_workspace_file: {
+    category: "file-read",
+    running: "Reading",
+    done: "Read",
+    subject: (input) =>
+      quoted(input, "path", 60) ?? quoted(input, "filename", 60),
+  },
+  write_workspace_file: {
+    category: "file-write",
+    running: "Writing",
+    done: "Wrote",
+    subject: (input) =>
+      quoted(input, "path", 60) ?? quoted(input, "filename", 60),
+  },
+  delete_workspace_file: {
+    category: "file-delete",
+    running: "Deleting",
+    done: "Deleted",
+    subject: (input) =>
+      quoted(input, "path", 60) ?? quoted(input, "filename", 60),
+  },
   list_schedules: {
     category: "schedule",
     running: "Listing schedules",
@@ -63,6 +128,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Ran block",
     subject: (input) =>
       quoted(input, "block_name") ?? quoted(input, "block_id", 20),
+  },
+  schedule_agent: {
+    category: "agent",
+    running: "Scheduling agent",
+    done: "Scheduled agent",
   },
   continue_run_block: {
     category: "block",

@@ -9,9 +9,11 @@ import {
   MessageQuestionIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useContext } from "react";
+import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { CardProviderIcon } from "./BlockCards";
 import { CARD, HALF, StatusCard } from "./ResultCards";
-import { asObject, inline, str } from "./resultHelpers";
+import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 
 interface ItemsProps {
   steps: Record<string, unknown>[];
@@ -42,7 +44,10 @@ export function PlanSteps({ steps }: ItemsProps) {
         const active = status === "in_progress";
         const blockName = str(step, "block_name");
         return (
-          <div key={i} className="flex items-center gap-2 text-[13px]">
+          <div
+            key={resultItemKey(step, i)}
+            className="flex items-center gap-2 text-[13px]"
+          >
             {done ? (
               <Icon
                 icon={CheckmarkCircle02Icon}
@@ -85,8 +90,11 @@ export function PlanSteps({ steps }: ItemsProps) {
 function ErrorList({ errors }: ErrorListProps) {
   return (
     <div className={CARD + " flex flex-col gap-1.5 p-2.5"}>
-      {errors.map((error, i) => (
-        <div key={i} className="flex items-start gap-2 text-xs text-zinc-600">
+      {errors.map((error) => (
+        <div
+          key={error}
+          className="flex items-start gap-2 text-xs text-zinc-600"
+        >
           <Icon
             icon={AlertCircleIcon}
             size={14}
@@ -134,7 +142,7 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-2.5`}>
       {questions.map((entry, i) => (
-        <div key={i} className="flex items-start gap-2">
+        <div key={resultItemKey(entry, i)} className="flex items-start gap-2">
           <Icon
             icon={MessageQuestionIcon}
             size={14}
@@ -199,6 +207,67 @@ export function SkillCard({ output }: OutputProps) {
         <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
           {triggers[0]}
         </span>
+      )}
+    </div>
+  );
+}
+
+export function SuggestedGoalCard({ output }: OutputProps) {
+  const actions = useContext(CopilotChatActionsContext);
+  const goal = str(output, "suggested_goal");
+  if (!goal) return null;
+
+  return (
+    <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
+      <p className="text-[13px] font-medium text-zinc-800">{goal}</p>
+      {str(output, "reason") && (
+        <p className="text-xs text-zinc-500">{str(output, "reason")}</p>
+      )}
+      {actions && (
+        <button
+          type="button"
+          className="w-fit rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-zinc-700"
+          onClick={() =>
+            actions.onSend(`Please create an agent with this goal: ${goal}`)
+          }
+        >
+          Use this goal
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function TriggerSetupCard({ output }: OutputProps) {
+  const url = str(output, "webhook_url", "ingress_url");
+
+  async function handleCopy() {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      return;
+    }
+  }
+
+  return (
+    <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
+      <p className="text-[13px] text-zinc-700">
+        {str(output, "message", "name") ?? "Trigger is ready"}
+      </p>
+      {url && (
+        <div className="flex items-center gap-2 rounded-lg bg-zinc-50 p-2 ring-1 ring-zinc-200/70">
+          <code className="min-w-0 flex-1 break-all text-xs text-zinc-600">
+            {url}
+          </code>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-200"
+          >
+            Copy
+          </button>
+        </div>
       )}
     </div>
   );

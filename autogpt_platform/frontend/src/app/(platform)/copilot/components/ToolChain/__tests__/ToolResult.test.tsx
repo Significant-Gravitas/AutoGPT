@@ -54,6 +54,17 @@ describe("ToolResult", () => {
       { questions: [{ question: "Which region?", keyword: "region" }] },
       "Which region?",
     ],
+    [
+      "search_feature_requests",
+      { results: [{ identifier: "FR-101", title: "Dark mode" }] },
+      "Dark mode",
+    ],
+    [
+      "create_agent",
+      { agent_name: "Draft agent", node_count: 3 },
+      "Draft agent",
+    ],
+    ["run_mcp_tool", { result: { identifier: "OPEN-3211" } }, "OPEN-3211"],
   ])("dispatches %s to its specialized card", (tool, output, expected) => {
     render(<ToolResult row={row(output, tool)} />);
 
