@@ -1,13 +1,14 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Brain, Lightning, Lock } from "@phosphor-icons/react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { CopilotMode } from "../../../store";
+import { BrainIcon, FlashIcon, LockIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   mode: CopilotMode;
@@ -47,17 +48,17 @@ export function ModeToggleButton({ mode, onToggle, pinned = false }: Props) {
         >
           {pinned ? (
             <>
-              <Lock size={14} />
+              <Icon icon={LockIcon} size={14} />
               Thinking
             </>
           ) : isExtended ? (
             <>
-              <Brain size={14} />
+              <Icon icon={BrainIcon} size={14} />
               Thinking
             </>
           ) : (
             <>
-              <Lightning size={14} />
+              <Icon icon={FlashIcon} size={14} />
               Fast
             </>
           )}

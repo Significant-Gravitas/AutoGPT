@@ -4,7 +4,6 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { List, type RowComponentProps } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
@@ -13,6 +12,12 @@ import {
   EXECUTION_DISPLAY_WITH_SEARCH,
   useActivityDropdown,
 } from "./useActivityDropdown";
+import {
+  BellIcon,
+  Cancel01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   activeExecutions: AgentExecutionWithInfo[];
@@ -107,7 +112,11 @@ export function ActivityDropdown({
                   className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
                   aria-label="Clear search"
                 >
-                  <X size={16} className="text-gray-500" />
+                  <Icon
+                    icon={Cancel01Icon}
+                    size={16}
+                    className="text-gray-500"
+                  />
                 </button>
               </div>
             </div>
@@ -135,7 +144,8 @@ export function ActivityDropdown({
                       : "relative left-3",
                   )}
                 >
-                  <MagnifyingGlass
+                  <Icon
+                    icon={Search01Icon}
                     size={16}
                     className="h-4 w-4 text-gray-600"
                   />
@@ -163,7 +173,7 @@ export function ActivityDropdown({
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
             <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
-              <Bell className="h-6 w-6 text-zinc-300" />
+              <Icon icon={BellIcon} className="h-6 w-6 text-zinc-300" />
             </div>
             <div className="flex flex-col items-center justify-center">
               <Text variant="body-medium" className="!text-black">

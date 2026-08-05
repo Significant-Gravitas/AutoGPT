@@ -1,40 +1,38 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
 import {
-  ChartLineUpIcon,
+  ChartIncreaseIcon,
   CreditCardIcon,
-  GearIcon,
-  NewspaperIcon,
+  Logout03Icon,
+  NewsIcon,
   QuestionIcon,
-  SignOutIcon,
+  Settings01Icon,
   SlidersHorizontalIcon,
-  UploadSimpleIcon,
+  Upload03Icon,
   UserIcon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function getAccountMenuPhosphorIcon(
-  icon: IconType,
-  weight: "bold" | "regular" = "bold",
-) {
+export function getAccountMenuIcon(icon: IconType) {
   const className = "h-[18px] w-[18px] shrink-0";
   switch (icon) {
     case IconType.Edit:
-      return <UserIcon className={className} weight={weight} />;
+      return <Icon icon={UserIcon} className={className} />;
     case IconType.LayoutDashboard:
-      return <ChartLineUpIcon className={className} weight={weight} />;
+      return <Icon icon={ChartIncreaseIcon} className={className} />;
     case IconType.UploadCloud:
-      return <UploadSimpleIcon className={className} weight={weight} />;
+      return <Icon icon={Upload03Icon} className={className} />;
     case IconType.Sliders:
-      return <SlidersHorizontalIcon className={className} weight={weight} />;
+      return <Icon icon={SlidersHorizontalIcon} className={className} />;
     case IconType.Settings:
-      return <GearIcon className={className} weight={weight} />;
+      return <Icon icon={Settings01Icon} className={className} />;
     case IconType.Billing:
-      return <CreditCardIcon className={className} weight={weight} />;
+      return <Icon icon={CreditCardIcon} className={className} />;
     case IconType.Help:
-      return <QuestionIcon className={className} weight={weight} />;
+      return <Icon icon={QuestionIcon} className={className} />;
     case IconType.WhatsNew:
-      return <NewspaperIcon className={className} weight={weight} />;
+      return <Icon icon={NewsIcon} className={className} />;
     case IconType.LogOut:
-      return <SignOutIcon className={className} weight={weight} />;
+      return <Icon icon={Logout03Icon} className={className} />;
     default:
       return null;
   }

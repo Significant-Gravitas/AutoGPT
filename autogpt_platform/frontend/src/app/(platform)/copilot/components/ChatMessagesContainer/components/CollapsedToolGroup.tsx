@@ -1,22 +1,6 @@
 "use client";
 
 import { useId, useState } from "react";
-import {
-  ArrowsClockwiseIcon,
-  CaretRightIcon,
-  CheckCircleIcon,
-  FileIcon,
-  FilesIcon,
-  GearIcon,
-  GlobeIcon,
-  ListChecksIcon,
-  MagnifyingGlassIcon,
-  MonitorIcon,
-  PencilSimpleIcon,
-  TerminalIcon,
-  TrashIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import {
   type ToolCategory,
@@ -24,6 +8,23 @@ import {
   getAnimationText,
   getToolCategory,
 } from "../../../tools/GenericTool/helpers";
+import {
+  AlertDiamondIcon,
+  ArrowRight01Icon,
+  CheckListIcon,
+  CheckmarkCircle02Icon,
+  ComputerIcon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Files01Icon,
+  Globe02Icon,
+  PencilIcon,
+  ReloadIcon,
+  Search01Icon,
+  Settings01Icon,
+  TerminalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   parts: ToolUIPart[];
@@ -38,44 +39,34 @@ function EntryIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
 
   const iconClass = "text-green-500";
   switch (category) {
     case "bash":
-      return <TerminalIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={TerminalIcon} size={14} className={iconClass} />;
     case "web":
-      return <GlobeIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Globe02Icon} size={14} className={iconClass} />;
     case "browser":
-      return <MonitorIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={ComputerIcon} size={14} className={iconClass} />;
     case "file-read":
     case "file-write":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
     case "file-delete":
-      return <TrashIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Delete02Icon} size={14} className={iconClass} />;
     case "file-list":
-      return <FilesIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Files01Icon} size={14} className={iconClass} />;
     case "search":
-      return (
-        <MagnifyingGlassIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={Search01Icon} size={14} className={iconClass} />;
     case "edit":
-      return (
-        <PencilSimpleIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={PencilIcon} size={14} className={iconClass} />;
     case "todo":
-      return (
-        <ListChecksIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={CheckListIcon} size={14} className={iconClass} />;
     case "compaction":
-      return (
-        <ArrowsClockwiseIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={ReloadIcon} size={14} className={iconClass} />;
     default:
-      return <GearIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Settings01Icon} size={14} className={iconClass} />;
   }
 }
 
@@ -98,23 +89,19 @@ export function CollapsedToolGroup({ parts }: Props) {
         aria-controls={panelId}
         className="flex items-center gap-1.5 !text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
-        <CaretRightIcon
+        <Icon
+          icon={ArrowRight01Icon}
           size={12}
-          weight="bold"
           className={
             "transition-transform duration-150 " + (expanded ? "rotate-90" : "")
           }
         />
         {errorCount > 0 ? (
-          <WarningDiamondIcon
-            size={14}
-            weight="regular"
-            className="text-red-500"
-          />
+          <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />
         ) : (
-          <CheckCircleIcon
+          <Icon
+            icon={CheckmarkCircle02Icon}
             size={14}
-            weight="regular"
             className="text-green-500"
           />
         )}

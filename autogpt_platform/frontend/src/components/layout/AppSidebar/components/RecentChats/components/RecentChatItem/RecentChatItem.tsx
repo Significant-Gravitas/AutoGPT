@@ -14,16 +14,17 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import {
-  CircleNotchIcon,
-  DotsThreeIcon,
-  DownloadSimpleIcon,
-  PencilSimpleIcon,
-  ShareNetworkIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRef } from "react";
+import {
+  Delete02Icon,
+  Download04Icon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  Share03Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Session {
   id: string;
@@ -136,12 +137,15 @@ export function RecentChatItem({
             aria-label="Chat actions"
             className="border border-zinc-200 bg-white"
           >
-            <DotsThreeIcon weight="bold" />
+            <Icon
+              icon={MoreHorizontalIcon}
+              className="text-sidebar-foreground/90"
+            />
           </SidebarMenuAction>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => onRename(session.id, session.title)}>
-            <PencilSimpleIcon className="mr-2 h-4 w-4" />
+            <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
             Rename
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -152,15 +156,18 @@ export function RecentChatItem({
             disabled={isExporting}
           >
             {isExporting ? (
-              <CircleNotchIcon className="mr-2 h-4 w-4 animate-spin" />
+              <Icon
+                icon={Loading03Icon}
+                className="mr-2 h-4 w-4 animate-spin"
+              />
             ) : (
-              <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+              <Icon icon={Download04Icon} className="mr-2 h-4 w-4" />
             )}
             {isExporting ? "Exporting…" : "Export chat"}
           </DropdownMenuItem>
           {chatSharingEnabled && (
             <DropdownMenuItem onClick={() => onShare(session.id)}>
-              <ShareNetworkIcon className="mr-2 h-4 w-4" />
+              <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
               Share chat
             </DropdownMenuItem>
           )}
@@ -169,7 +176,7 @@ export function RecentChatItem({
             disabled={isDeleting}
             className="text-red-600 focus:bg-red-50 focus:text-red-600"
           >
-            <TrashIcon className="mr-2 h-4 w-4" />
+            <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat
           </DropdownMenuItem>
         </DropdownMenuContent>

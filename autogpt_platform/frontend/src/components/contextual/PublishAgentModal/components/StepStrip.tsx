@@ -1,8 +1,9 @@
 import { Fragment } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   currentStep: "select" | "info" | "review";
@@ -83,7 +84,7 @@ export function StepStrip({ currentStep }: Props) {
                         transition={{ duration: 0.2, ease: "easeOut" }}
                         className="flex items-center justify-center"
                       >
-                        <CheckIcon size={12} weight="bold" />
+                        <Icon icon={Tick02Icon} size={12} />
                       </motion.span>
                     ) : (
                       <motion.span
