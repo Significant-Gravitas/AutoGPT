@@ -1,7 +1,8 @@
 "use client";
 
-import { CaretDownIcon } from "@phosphor-icons/react";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import type { ChainRow } from "./helpers";
@@ -104,9 +105,9 @@ export function ChainRowView({ row, isLast }: Props) {
           >
             {rowText}
             {!liveReasoning && (
-              <CaretDownIcon
+              <Icon
+                icon={ArrowDown01Icon}
                 size={10}
-                weight="bold"
                 className={cn(
                   "shrink-0 text-zinc-300 transition-transform duration-300 ease-out-quint group-hover/row:text-zinc-500",
                   open && "rotate-180",

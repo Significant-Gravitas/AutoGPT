@@ -1,7 +1,8 @@
 "use client";
 
-import { CheckCircleIcon } from "@phosphor-icons/react";
+import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useContext, useRef, useState } from "react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
   type ClarifyingQuestion,
@@ -62,9 +63,9 @@ export function QuestionRowForm({ row }: Props) {
       <div className={CARD + " flex flex-col gap-1.5 p-2.5"}>
         {questions.map((q) => (
           <div key={q.keyword} className="flex items-start gap-2 text-[13px]">
-            <CheckCircleIcon
+            <Icon
+              icon={CheckmarkCircle02Icon}
               size={15}
-              weight="fill"
               className="mt-0.5 shrink-0 text-green-500"
             />
             <div className="min-w-0">

@@ -1,7 +1,8 @@
 "use client";
 
+import { PlayIcon, RefreshIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
-import { PlayIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { NewChatView } from "./components/NewChatView";
@@ -63,7 +64,7 @@ export function ToolUiDebugPage() {
               size="small"
               onClick={play}
               loading={isPlaying}
-              leftIcon={<PlayIcon size={14} weight="fill" />}
+              leftIcon={<Icon icon={PlayIcon} size={14} />}
             >
               Run sample message
             </Button>
@@ -71,7 +72,7 @@ export function ToolUiDebugPage() {
               variant="ghost"
               size="small"
               onClick={reset}
-              leftIcon={<ArrowCounterClockwiseIcon size={14} />}
+              leftIcon={<Icon icon={RefreshIcon} size={14} />}
             >
               Reset
             </Button>

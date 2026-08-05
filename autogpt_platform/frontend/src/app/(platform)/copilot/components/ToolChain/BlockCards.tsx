@@ -1,12 +1,13 @@
 "use client";
 
 import {
-  CheckCircleIcon,
-  PuzzlePieceIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+  PuzzleIcon,
+} from "@hugeicons/core-free-icons";
 import Image from "next/image";
 import { useState } from "react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { CARD, HALF } from "./ResultCards";
 import { inline, integrationIconSrc, str } from "./resultHelpers";
 
@@ -45,7 +46,9 @@ export function CardProviderIcon({
   );
 }
 
-const BLOCK_ICON = <PuzzlePieceIcon size={15} className="text-zinc-600" />;
+const BLOCK_ICON = (
+  <Icon icon={PuzzleIcon} size={15} className="text-zinc-600" />
+);
 
 export function BlockListCard({ blocks }: BlockListCardProps) {
   return (
@@ -107,15 +110,15 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
           {name}
         </p>
         {ok ? (
-          <CheckCircleIcon
+          <Icon
+            icon={CheckmarkCircle02Icon}
             size={16}
-            weight="fill"
             className="shrink-0 text-green-500"
           />
         ) : (
-          <XCircleIcon
+          <Icon
+            icon={CancelCircleIcon}
             size={16}
-            weight="fill"
             className="shrink-0 text-red-400"
           />
         )}

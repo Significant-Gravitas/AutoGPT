@@ -1,15 +1,16 @@
 "use client";
 
 import {
-  ArrowSquareOutIcon,
   BookOpenIcon,
   ClockIcon,
   FileIcon,
   FolderIcon,
   ImageIcon,
+  LinkSquare01Icon,
   RepeatIcon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
 import Link from "next/link";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { CARD, HALF } from "./ResultCards";
 import { formatBytes, formatWhen, inline, str } from "./resultHelpers";
 
@@ -42,7 +43,7 @@ export function ScheduleList({ schedules }: SchedulesProps) {
         return (
           <div key={i} className={CARD + " flex items-center gap-2.5 p-2.5"}>
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-              <ClockIcon size={15} className="text-zinc-600" />
+              <Icon icon={ClockIcon} size={15} className="text-zinc-600" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-medium text-zinc-800">
@@ -50,7 +51,7 @@ export function ScheduleList({ schedules }: SchedulesProps) {
               </p>
               {next && (
                 <p className="flex items-center gap-1 text-xs text-zinc-500">
-                  {recurring && <RepeatIcon size={11} />}
+                  {recurring && <Icon icon={RepeatIcon} size={11} />}
                   {formatWhen(next)}
                 </p>
               )}
@@ -72,7 +73,7 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <ClockIcon size={15} className="text-zinc-600" />
+        <Icon icon={ClockIcon} size={15} className="text-zinc-600" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium text-zinc-800">
@@ -80,7 +81,9 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
         </p>
         {next && (
           <p className="flex items-center gap-1 text-xs text-zinc-500">
-            {output.is_recurring === true && <RepeatIcon size={11} />}
+            {output.is_recurring === true && (
+              <Icon icon={RepeatIcon} size={11} />
+            )}
             {formatWhen(next)}
           </p>
         )}
@@ -98,7 +101,7 @@ export function FolderList({ folders }: FoldersProps) {
         return (
           <div key={i} className={CARD + " flex items-center gap-2.5 p-2.5"}>
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-              <FolderIcon size={15} className="text-zinc-600" />
+              <Icon icon={FolderIcon} size={15} className="text-zinc-600" />
             </div>
             <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
               {str(folder, "name") ?? inline(folder)}
@@ -122,10 +125,14 @@ export function FileList({ files }: FilesProps) {
         const mime = str(file, "mime_type") ?? "";
         const size =
           typeof file.size_bytes === "number" ? file.size_bytes : null;
-        const Icon = mime.startsWith("image/") ? ImageIcon : FileIcon;
+        const fileIcon = mime.startsWith("image/") ? ImageIcon : FileIcon;
         return (
           <div key={i} className="flex items-center gap-2.5 px-2.5 py-2">
-            <Icon size={14} className="shrink-0 text-zinc-400" />
+            <Icon
+              icon={fileIcon}
+              size={14}
+              className="shrink-0 text-zinc-400"
+            />
             <p className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-700">
               {str(file, "path", "name") ?? inline(file)}
             </p>
@@ -150,7 +157,7 @@ export function DocsList({ results }: ResultsProps) {
         return (
           <div key={i} className={CARD + " flex items-start gap-2.5 p-2.5"}>
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-              <BookOpenIcon size={15} className="text-zinc-600" />
+              <Icon icon={BookOpenIcon} size={15} className="text-zinc-600" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
@@ -177,7 +184,7 @@ export function DocsList({ results }: ResultsProps) {
                 aria-label="Open doc"
                 className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
               >
-                <ArrowSquareOutIcon size={14} />
+                <Icon icon={LinkSquare01Icon} size={14} />
               </Link>
             )}
           </div>

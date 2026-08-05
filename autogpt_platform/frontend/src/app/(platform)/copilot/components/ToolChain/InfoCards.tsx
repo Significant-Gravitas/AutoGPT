@@ -1,13 +1,14 @@
 "use client";
 
 import {
+  AlertCircleIcon,
   BookBookmarkIcon,
-  ChatCenteredDotsIcon,
-  CheckCircleIcon,
+  CheckmarkCircle02Icon,
   CircleIcon,
-  PlugsConnectedIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
+  ConnectIcon,
+  MessageQuestionIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { CardProviderIcon } from "./BlockCards";
 import { CARD, HALF, StatusCard } from "./ResultCards";
 import { asObject, inline, str } from "./resultHelpers";
@@ -43,13 +44,14 @@ export function PlanSteps({ steps }: ItemsProps) {
         return (
           <div key={i} className="flex items-center gap-2 text-[13px]">
             {done ? (
-              <CheckCircleIcon
+              <Icon
+                icon={CheckmarkCircle02Icon}
                 size={15}
-                weight="fill"
                 className="shrink-0 text-green-500"
               />
             ) : (
-              <CircleIcon
+              <Icon
+                icon={CircleIcon}
                 size={15}
                 className={
                   "shrink-0 " + (active ? "text-purple-500" : "text-zinc-300")
@@ -85,9 +87,9 @@ function ErrorList({ errors }: ErrorListProps) {
     <div className={CARD + " flex flex-col gap-1.5 p-2.5"}>
       {errors.map((error, i) => (
         <div key={i} className="flex items-start gap-2 text-xs text-zinc-600">
-          <WarningCircleIcon
+          <Icon
+            icon={AlertCircleIcon}
             size={14}
-            weight="fill"
             className="mt-px shrink-0 text-red-400"
           />
           <span className="min-w-0 break-words">{error}</span>
@@ -133,7 +135,8 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-2.5`}>
       {questions.map((entry, i) => (
         <div key={i} className="flex items-start gap-2">
-          <ChatCenteredDotsIcon
+          <Icon
+            icon={MessageQuestionIcon}
             size={14}
             className="mt-0.5 shrink-0 text-zinc-400"
           />
@@ -162,7 +165,9 @@ export function SetupCard({ output, provider }: SetupCardProps) {
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
         <CardProviderIcon
           provider={provider}
-          fallback={<PlugsConnectedIcon size={15} className="text-zinc-600" />}
+          fallback={
+            <Icon icon={ConnectIcon} size={15} className="text-zinc-600" />
+          }
         />
       </div>
       <div className="min-w-0 flex-1">
@@ -180,7 +185,7 @@ export function SkillCard({ output }: OutputProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <BookBookmarkIcon size={15} className="text-zinc-600" />
+        <Icon icon={BookBookmarkIcon} size={15} className="text-zinc-600" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>

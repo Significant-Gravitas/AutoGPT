@@ -1,12 +1,13 @@
 "use client";
 
 import {
-  CheckCircleIcon,
+  CheckmarkCircle02Icon,
   CircleIcon,
   FileIcon,
   GlobeIcon,
   ImageIcon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import type { ChainRow } from "./helpers";
 import { CARD, HALF } from "./ResultCards";
 import {
@@ -50,7 +51,11 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
         const title = str(item, "title", "snippet") ?? inline(item);
         return (
           <div key={i} className="flex items-center gap-2.5 px-3 py-2">
-            <GlobeIcon size={14} className="shrink-0 text-zinc-400" />
+            <Icon
+              icon={GlobeIcon}
+              size={14}
+              className="shrink-0 text-zinc-400"
+            />
             {url ? (
               <a
                 href={url}
@@ -115,13 +120,14 @@ export function TodoList({ row }: RowProps) {
         return (
           <div key={i} className="flex items-center gap-2 text-[13px]">
             {done ? (
-              <CheckCircleIcon
+              <Icon
+                icon={CheckmarkCircle02Icon}
                 size={15}
-                weight="fill"
                 className="shrink-0 text-green-500"
               />
             ) : (
-              <CircleIcon
+              <Icon
+                icon={CircleIcon}
                 size={15}
                 className={
                   "shrink-0 " + (active ? "text-purple-500" : "text-zinc-300")
@@ -156,12 +162,12 @@ export function FileCard({ row }: RowProps) {
   const size = output?.size ?? output?.size_bytes;
   const mime = output ? (str(output, "mime_type") ?? "") : "";
   const preview = output ? str(output, "preview", "content_preview") : null;
-  const Icon = mime.startsWith("image/") ? ImageIcon : FileIcon;
+  const fileIcon = mime.startsWith("image/") ? ImageIcon : FileIcon;
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
       <div className="flex items-center gap-2.5">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-          <Icon size={15} className="text-zinc-600" />
+          <Icon icon={fileIcon} size={15} className="text-zinc-600" />
         </div>
         <p className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-700">
           {path}

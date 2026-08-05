@@ -1,6 +1,7 @@
 "use client";
 
-import { CodeIcon } from "@phosphor-icons/react";
+import { CodeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { MAX_RENDERED_DIFF_ROWS, parseUnifiedDiff } from "./fileDiffHelpers";
 
 interface Props {
@@ -17,7 +18,7 @@ export function FileDiff({ file, diff }: Props) {
     <div className="overflow-hidden rounded-xl bg-white font-mono shadow-sm ring-1 ring-zinc-200/70">
       <div className="flex items-center gap-2 border-b border-zinc-200 py-2.5 pl-4 pr-3 text-[12.5px]">
         <span className="inline-flex items-center gap-[7px]">
-          <CodeIcon size={15} className="shrink-0 text-zinc-400" />
+          <Icon icon={CodeIcon} size={15} className="shrink-0 text-zinc-400" />
           <span className="leading-none text-zinc-900">{file ?? "file"}</span>
         </span>
         <span className="ml-auto inline-flex items-center gap-2 text-xs leading-none">

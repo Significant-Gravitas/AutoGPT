@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  ArrowSquareOutIcon,
+  LinkSquare01Icon,
   PlayIcon,
-  RobotIcon,
+  Robot01Icon,
   StarIcon,
   WrenchIcon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
 import Link from "next/link";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { CARD, HALF, StatusPill } from "./ResultCards";
 import { inline, str } from "./resultHelpers";
 
@@ -41,7 +42,7 @@ function CardLink({ href, label }: CardLinkProps) {
       aria-label={label}
       className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
     >
-      <ArrowSquareOutIcon size={14} />
+      <Icon icon={LinkSquare01Icon} size={14} />
     </Link>
   );
 }
@@ -57,7 +58,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
         return (
           <div key={i} className={CARD + " flex items-start gap-2.5 p-2.5"}>
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-              <RobotIcon size={15} className="text-zinc-600" />
+              <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
@@ -77,15 +78,15 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                 <div className="mt-1 flex items-center gap-2.5 text-[11px] text-zinc-400">
                   {runs !== null && (
                     <span className="flex items-center gap-1">
-                      <PlayIcon size={10} weight="fill" />
+                      <Icon icon={PlayIcon} size={10} />
                       {runs.toLocaleString()} runs
                     </span>
                   )}
                   {rating !== null && (
                     <span className="flex items-center gap-1">
-                      <StarIcon
+                      <Icon
+                        icon={StarIcon}
                         size={10}
-                        weight="fill"
                         className="text-amber-400"
                       />
                       {rating.toFixed(1)}
@@ -114,7 +115,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <RobotIcon size={15} className="text-zinc-600" />
+        <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
       </div>
       <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
         {name}
@@ -130,7 +131,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
           aria-label="Open in builder"
           className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
         >
-          <WrenchIcon size={14} />
+          <Icon icon={WrenchIcon} size={14} />
         </Link>
       )}
       {libraryLink && <CardLink href={libraryLink} label="Open in library" />}
@@ -148,7 +149,7 @@ export function SubSessionCard({ output }: OutputCardProps) {
     <div className={`${CARD} ${HALF} p-2.5`}>
       <div className="flex items-center gap-2.5">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-          <RobotIcon size={15} className="text-zinc-600" />
+          <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
         </div>
         <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
           Sub-AutoPilot

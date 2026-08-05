@@ -1,8 +1,9 @@
 "use client";
 
-import { CaretRightIcon } from "@phosphor-icons/react";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useId, useMemo, useState } from "react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import {
   ACCORDION_PANEL,
@@ -57,9 +58,9 @@ export function ToolChain({ parts, isStreaming }: Props) {
         aria-controls={panelId}
         className="group/chain flex w-full items-center gap-1.5 text-left"
       >
-        <CaretRightIcon
+        <Icon
+          icon={ArrowRight01Icon}
           size={12}
-          weight="bold"
           className={
             "shrink-0 text-zinc-400 transition-transform duration-300 ease-out-quint " +
             (open ? "rotate-90" : "")
