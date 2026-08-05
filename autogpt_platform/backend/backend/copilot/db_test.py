@@ -659,15 +659,18 @@ async def test_update_chat_session_pinned_not_found():
 
 @pytest.mark.asyncio
 async def test_get_user_chat_sessions_orders_pinned_first():
-    """Pinned sessions must be ordered ahead of unpinned, then by recency."""
-    find_many = AsyncMock(return_value=[])
-    with patch.object(
-        PrismaChatSession, "prisma", return_value=AsyncMock(find_many=find_many)
-    ):
+    """Pinned sessions must be ordered ahead of unpinned, then by recency.
+
+    The list uses raw SQL (Prisma's ``JsonFilter`` can't express the dream
+    ``metadata->>'kind'`` exclusion), so the ordering lives in the ``ORDER
+    BY`` clause rather than a Prisma ``order`` argument.
+    """
+    raw = AsyncMock(return_value=[])
+    with patch("backend.copilot.db.db.query_raw_with_schema", raw):
         await get_user_chat_sessions("user-abc", limit=10, offset=0)
 
-    order = find_many.call_args.kwargs["order"]
-    assert order == [{"isPinned": "desc"}, {"updatedAt": "desc"}]
+    query = raw.call_args.args[0]
+    assert 'ORDER BY "isPinned" DESC, "updatedAt" DESC' in query
 
 
 # NOTE: previously this file had a separate suite for ``db.get_chat_session``
