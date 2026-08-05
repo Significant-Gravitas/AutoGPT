@@ -23,7 +23,13 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
+from .model import (
+    ChatMessage,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    _get_session_lock,
+    cache_chat_session,
+)
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
@@ -1000,24 +1006,30 @@ async def append_expert_run_message(
         )
         session_id = created.session_id
 
-    try:
-        await add_chat_message(
-            session_id=session_id,
-            role="assistant",
-            sequence=await get_next_sequence(session_id),
-            content=content,
-            message_id=message_id,
-        )
-    except UniqueViolationError as e:
-        if is_duplicate_chat_message_id_error(e):
-            return None
-        # (sessionId, sequence) collision with a concurrent turn — one retry
-        # with a fresh sequence is enough at this write volume.
-        await add_chat_message(
-            session_id=session_id,
-            role="assistant",
-            sequence=await get_next_sequence(session_id),
-            content=content,
-            message_id=message_id,
-        )
+    # Same Redis NX lock as turn_queue.append_and_save_message: the
+    # sequence read + insert must not interleave with a concurrent turn
+    # writer picking the same sequence and PK-colliding on
+    # (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
     return session_id

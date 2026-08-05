@@ -20,8 +20,10 @@ CREATE TABLE "ExpertPauseEvent" (
 CREATE INDEX "ExpertPauseEvent_expertId_createdAt_idx" ON "ExpertPauseEvent"("expertId", "createdAt");
 
 -- CreateIndex
--- AgentPreset is modest-sized but write-visible; IF NOT EXISTS allows an
--- out-of-band CONCURRENTLY build first (same pattern as prior migrations).
+-- AgentPreset is modest-sized: the plain build's SHARE lock window is
+-- short, so the index ships inline with the column it indexes. (No
+-- out-of-band escape hatch — expertId only exists once this migration
+-- runs; IF NOT EXISTS just keeps a rerun idempotent.)
 CREATE INDEX IF NOT EXISTS "AgentPreset_expertId_idx" ON "AgentPreset"("expertId");
 
 -- AddForeignKey

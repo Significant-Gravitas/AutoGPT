@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _POST_NAMESPACE = uuid.UUID("0b7c8a52-3d1e-4f6a-9c0d-7e5b2a91c4d8")
 _DAILY_POST_CAP = 10
 _CAP_KEY_TTL_SECONDS = 2 * 24 * 3600
+_MAX_ERROR_LENGTH = 500
 
 
 def handle_expert_run_post(
@@ -51,6 +52,11 @@ def _post_run_result(
     context = graph_exec.execution_context
     expert_id = context.expert_id if context else None
     if not expert_id or (context and context.dry_run):
+        return
+    # Sub-graph executions (AgentExecutorBlock) inherit expert_id from the
+    # parent context; only the top-level run may post, or one logical run
+    # would produce a message (and burn a cap slot) per nested sub-agent.
+    if context and context.parent_execution_id is not None:
         return
     if status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
         return
@@ -103,20 +109,43 @@ def build_expert_run_message(
     error: str | None = None,
     library_agent_id: str | None = None,
 ) -> str:
+    """The summary and error both derive from workflow output — untrusted
+    text that this message replays into the thread's conversation history.
+    Both are blockquoted with explicit provenance instead of being emitted
+    in the expert's own voice, so scraped "ignore previous instructions"
+    content stays attributed to the run rather than reading as assistant
+    speech; errors are also capped so one failed run can't persist a
+    multi-MB message that reloads on every later turn."""
     link = (
         f"\n\n[View the run](/library/agents/{library_agent_id})"
         if library_agent_id
         else ""
     )
     if succeeded:
-        body = summary or "It completed successfully."
-        return f"I just finished a run of **{agent_name}**. {body}{link}"
-    reason = error or "it hit an error partway through"
+        body = (
+            f"\n\nThe run's generated summary:\n\n{_quote(summary)}"
+            if summary
+            else " It completed successfully."
+        )
+        return f"I just finished a run of **{agent_name}**.{body}{link}"
+    detail = (
+        f"\n\nThe reported error:\n\n{_quote(_truncate(error, _MAX_ERROR_LENGTH))}"
+        if error
+        else ""
+    )
     return (
-        f"My run of **{agent_name}** didn't finish: {reason}. "
+        f"My run of **{agent_name}** didn't finish.{detail}\n\n"
         f"I'll try again on the next schedule — if this keeps happening, "
         f"check the workflow's setup in your library.{link}"
     )
+
+
+def _quote(text: str) -> str:
+    return "\n".join(f"> {line}" for line in text.splitlines() or [""])
+
+
+def _truncate(text: str, limit: int) -> str:
+    return text if len(text) <= limit else f"{text[:limit]}… (truncated)"
 
 
 def _cap_key(user_id: str, expert_id: str) -> str:

@@ -350,6 +350,17 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
                 "expertId": expert_id,
             }
         )
+        disabled_preset = await prisma.models.AgentPreset.prisma().create(
+            data={
+                "userId": test_user.id,
+                "name": "Manually disabled trigger",
+                "description": "",
+                "agentGraphId": library_agent.agentGraphId,
+                "agentGraphVersion": library_agent.agentGraphVersion,
+                "expertId": expert_id,
+                "isActive": False,
+            }
+        )
         sched.get_execution_schedules = AsyncMock(
             return_value=[
                 SimpleNamespace(
@@ -359,10 +370,21 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         )
         await experts_db.archive_expert(test_user.id, expert_id)
 
+    # Keyword args matter: passed positionally, user_id binds to graph_id
+    # and the filter silently matches nothing.
+    sched.get_execution_schedules.assert_awaited_with(
+        user_id=test_user.id, kind="graph"
+    )
     preset_row = await prisma.models.AgentPreset.prisma().find_unique(
         where={"id": preset.id}
     )
     assert preset_row is not None and preset_row.isActive is False
+    assert preset_row.deactivatedByExpertArchive is True
+    disabled_row = await prisma.models.AgentPreset.prisma().find_unique(
+        where={"id": disabled_preset.id}
+    )
+    assert disabled_row is not None and disabled_row.isActive is False
+    assert disabled_row.deactivatedByExpertArchive is False
     expert_row = await prisma.models.Expert.prisma().find_unique(
         where={"id": expert_id}
     )
@@ -385,6 +407,47 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         where={"id": preset.id}
     )
     assert preset_row is not None and preset_row.isActive is True
+    assert preset_row.deactivatedByExpertArchive is False
+    # The preset the user disabled before archiving must not come back on.
+    disabled_row = await prisma.models.AgentPreset.prisma().find_unique(
+        where={"id": disabled_preset.id}
+    )
+    assert disabled_row is not None and disabled_row.isActive is False
+    wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={"expertId": expert_id}
+    )
+    assert wf_row is not None and wf_row.scheduleId == "sched-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_detach_keeps_pointer_when_schedule_delete_fails(
+    server: SpinTestServer, test_user
+):
+    """A schedule that can't be deleted keeps its scheduleId pointer:
+    wiping it would make re-hire create a second schedule while the
+    orphaned original keeps firing."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(
+        name="Frankie",
+        preload_listings=[slv_id],
+        preload_crons={slv_id: "40 7 * * *"},
+    )
+    sched = AsyncMock()
+    sched.add_execution_schedule = AsyncMock(return_value=SimpleNamespace(id="sched-1"))
+    sched.delete_schedule = AsyncMock(side_effect=RuntimeError("scheduler down"))
+
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+        expert_id = hired.expert.id
+        sched.get_execution_schedules = AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    kind="graph", id="sched-1", name="n", expert_id=expert_id
+                )
+            ]
+        )
+        await scheduling.detach_expert_triggers(test_user.id, expert_id)
+
     wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
         where={"expertId": expert_id}
     )
@@ -411,7 +474,12 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
     with pytest.raises(ExpertRunPausedError):
         await scheduling.enforce_expert_run_budget(test_user.id, hired.expert.id)
 
-    assert await scheduling.resume_expert_schedules(test_user.id, hired.expert.id)
+    # Resume must forgive the week's tracked spend, or the still-breached
+    # counter re-pauses her on the very next fire and Resume is a no-op
+    # until the ISO week rolls over.
+    with patch.object(scheduling, "reset_weekly_spend", new=AsyncMock()) as reset_spend:
+        assert await scheduling.resume_expert_schedules(test_user.id, hired.expert.id)
+    reset_spend.assert_awaited_once_with(hired.expert.id)
     events = await prisma.models.ExpertPauseEvent.prisma().find_many(
         where={"expertId": hired.expert.id}
     )

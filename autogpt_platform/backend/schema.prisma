@@ -618,6 +618,11 @@ model AgentPreset {
   expertId String?
   Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
 
+  // Set when detach-on-archive deactivated this preset, so re-hire
+  // reactivates only what archiving turned off — a preset the user had
+  // deliberately disabled beforehand stays off.
+  deactivatedByExpertArchive Boolean @default(false)
+
   isDeleted Boolean @default(false)
 
   // Tenancy

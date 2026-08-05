@@ -61,6 +61,22 @@ def add_weekly_spend_sync(expert_id: str, amount: int) -> None:
         )
 
 
+async def reset_weekly_spend(expert_id: str) -> None:
+    """Zero the current-week counter. Called when the user resumes a paused
+    expert: keeping the count would re-pause her on the next gate check,
+    making Resume a no-op until the ISO week rolls over. Billing is
+    unaffected — only the guardrail's counter restarts. Never raises; on
+    failure the user can simply resume again."""
+    try:
+        redis = await get_redis_async()
+        await redis.delete(weekly_spend_key(expert_id))
+    except Exception as e:
+        logger.warning(
+            f"Failed to reset weekly spend for expert #{expert_id}: "
+            f"{type(e).__name__}: {e}"
+        )
+
+
 async def get_weekly_spend(expert_id: str) -> int:
     """Current-week spend in credits; 0 on any read failure (errs open —
     the budget gate must not block runs because Redis hiccuped). Clamped to

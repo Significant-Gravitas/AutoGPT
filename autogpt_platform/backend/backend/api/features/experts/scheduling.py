@@ -15,7 +15,7 @@ import prisma.models
 
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
-from backend.data.expert_spend import get_weekly_spend
+from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ExpertRunPausedError
@@ -125,7 +125,9 @@ async def _delete_schedule_best_effort(
 
 
 async def _get_expert_schedules(user_id: str, expert_id: str) -> list:
-    schedules = await get_scheduler_client().get_execution_schedules(user_id)
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, kind="graph"
+    )
     return [s for s in schedules if s.kind == "graph" and s.expert_id == expert_id]
 
 
@@ -154,31 +156,52 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
     orphaned webhook firing; the run-time gate (``enforce_expert_run_budget``
     refusing archived/paused experts) is the backstop for anything missed.
     """
+    # Only presets this flow turns off are marked, so re-hire restores
+    # exactly them — one the user had deliberately disabled before archiving
+    # must not come back firing on its own.
     await prisma.models.AgentPreset.prisma().update_many(
-        where={"expertId": expert_id, "userId": user_id, "isDeleted": False},
-        data={"isActive": False},
+        where={
+            "expertId": expert_id,
+            "userId": user_id,
+            "isDeleted": False,
+            "isActive": True,
+        },
+        data={"isActive": False, "deactivatedByExpertArchive": True},
     )
     scheduler = get_scheduler_client()
+    deleted_ids: list[str] = []
     for schedule in await _get_expert_schedules(user_id, expert_id):
         try:
             await scheduler.delete_schedule(schedule.id, user_id=user_id)
+            deleted_ids.append(schedule.id)
         except Exception as e:
             logger.warning(
                 f"Failed to delete schedule #{schedule.id} while detaching "
                 f"expert #{expert_id}: {type(e).__name__}: {e}"
             )
-    await prisma.models.ExpertWorkflow.prisma().update_many(
-        where={"expertId": expert_id},
-        data={"scheduleId": None},
-    )
+    # Only pointers to schedules that are actually gone are cleared. A
+    # failed deletion keeps its scheduleId, so the job stays visible and a
+    # later detach can retry it — wiping it would make re-hire create a
+    # second schedule while the orphaned original keeps firing.
+    if deleted_ids:
+        await prisma.models.ExpertWorkflow.prisma().update_many(
+            where={"expertId": expert_id, "scheduleId": {"in": deleted_ids}},
+            data={"scheduleId": None},
+        )
 
 
 async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     """Reverse of ``detach_expert_triggers``, for re-hire revival:
-    reactivate presets and recreate schedules from the stored cadence."""
+    reactivate the presets archiving deactivated (never ones the user had
+    turned off themselves) and recreate schedules from the stored cadence."""
     await prisma.models.AgentPreset.prisma().update_many(
-        where={"expertId": expert_id, "userId": user_id, "isDeleted": False},
-        data={"isActive": True},
+        where={
+            "expertId": expert_id,
+            "userId": user_id,
+            "isDeleted": False,
+            "deactivatedByExpertArchive": True,
+        },
+        data={"isActive": True, "deactivatedByExpertArchive": False},
     )
     workflows = await prisma.models.ExpertWorkflow.prisma().find_many(
         where={
@@ -230,13 +253,21 @@ async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> b
 
 
 async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
-    """One-click reversal of a pause; stamps the open pause event."""
+    """One-click reversal of a pause; stamps the open pause event.
+
+    Also forgives the week's tracked spend: after a budget pause the
+    counter still reads >= budget, so without the reset the very next fire
+    would re-pause her and Resume would be a no-op until the ISO week rolls
+    over. Resuming is the user explicitly accepting more spend this week —
+    the durable billing ledger is untouched, only the guardrail's counter
+    restarts."""
     updated = await prisma.models.Expert.prisma().update_many(
         where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
         data={"schedulesPausedAt": None},
     )
     if updated == 0:
         return False
+    await reset_weekly_spend(expert_id)
     await prisma.models.ExpertPauseEvent.prisma().update_many(
         where={"expertId": expert_id, "clearedAt": None},
         data={"clearedAt": datetime.now(timezone.utc)},
