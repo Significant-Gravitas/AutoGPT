@@ -47,6 +47,21 @@ describe("InitialAvatar", () => {
     );
   });
 
+  test("prefers username over display name as the gradient seed", () => {
+    const withUsername = render(
+      <InitialAvatar name="Ada Lovelace" username="ada" />,
+    );
+    const usernameOnly = render(<InitialAvatar name="ada" />);
+    const nameOnly = render(<InitialAvatar name="Ada Lovelace" />);
+
+    expect(getFallbackSvg(withUsername.container)).toBe(
+      getFallbackSvg(usernameOnly.container),
+    );
+    expect(getFallbackSvg(withUsername.container)).not.toBe(
+      getFallbackSvg(nameOnly.container),
+    );
+  });
+
   test("merges className prop into the avatar root", () => {
     const { container } = render(
       <InitialAvatar name="ada" className="size-12" />,
@@ -55,11 +70,16 @@ describe("InitialAvatar", () => {
     expect(root.className).toContain("size-12");
   });
 
-  test("shows image when src is provided", async () => {
-    render(<InitialAvatar name="ada" src="https://example.com/avatar.png" />);
+  test("shows a decorative image when src is provided", async () => {
+    const { container } = render(
+      <InitialAvatar name="ada" src="https://example.com/avatar.png" />,
+    );
 
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "ada's avatar" })).toBeDefined();
+      const image = container.querySelector("img");
+      expect(image).not.toBeNull();
+      expect(image?.getAttribute("aria-hidden")).toBe("true");
     });
+    expect(screen.queryByRole("img")).toBeNull();
   });
 });

@@ -7,21 +7,15 @@ import { cn } from "@/lib/utils";
 interface Props {
   src?: string;
   name?: string;
+  username?: string;
   className?: string;
 }
 
-export function InitialAvatar({ src, name, className }: Props) {
-  const normalizedName = name?.trim();
-
+export function InitialAvatar({ src, name, username, className }: Props) {
   return (
     <Avatar className={cn("h-10 w-10", className)}>
-      <AvatarImage
-        src={src}
-        alt={normalizedName ? `${normalizedName}'s avatar` : "User avatar"}
-      />
-      <AvatarFallback className={cn("h-10 w-10", className)}>
-        {normalizedName || "User"}
-      </AvatarFallback>
+      <AvatarImage src={src} alt="" aria-hidden="true" />
+      <AvatarFallback aria-hidden="true">{username || name}</AvatarFallback>
     </Avatar>
   );
 }
