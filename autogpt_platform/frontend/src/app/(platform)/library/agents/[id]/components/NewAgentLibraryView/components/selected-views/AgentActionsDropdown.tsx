@@ -27,11 +27,12 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { exportAsJSONFile } from "@/lib/utils";
-import { DotsThreeIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -182,7 +183,7 @@ export function AgentActionsDropdown({
             aria-label="More actions"
             className="min-w-fit"
           >
-            <DotsThreeIcon size={18} />
+            <Icon icon={MoreHorizontalIcon} size={18} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

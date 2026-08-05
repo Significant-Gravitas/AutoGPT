@@ -93,6 +93,16 @@ export function useOnboardingPage() {
     paymentEnabledSnapshot.current = livePaymentEnabled;
   }
 
+  // Snapshotted for the same reason as the paywall flag: the brain dump
+  // and the pillboxes occupy the same step, and swapping them under a
+  // user who is already recording would drop the take.
+  const liveBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const brainDumpEnabledSnapshot = useRef<boolean | null>(null);
+  if (brainDumpEnabledSnapshot.current === null && areFlagsReady) {
+    brainDumpEnabledSnapshot.current = liveBrainDumpEnabled;
+  }
+  const isBrainDumpEnabled = brainDumpEnabledSnapshot.current ?? false;
+
   // Skip the paywall for users already on a paid tier (admin grants or
   // pre-ONBOARDING_COMPLETE accounts) so they aren't asked to pay again to escape.
   const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
@@ -250,6 +260,7 @@ export function useOnboardingPage() {
     isLoading: isOnboardingStateLoading || !isReady,
     handlePreparingComplete,
     isPaymentEnabled,
+    isBrainDumpEnabled,
     steps,
     preparingStep,
     totalSteps,

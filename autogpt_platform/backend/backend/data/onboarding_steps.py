@@ -55,6 +55,9 @@ class OnboardingStep(StrEnum):
     # No longer rewarded but exist for analytical purposes
     BUILDER_OPEN = "BUILDER_OPEN"
     BUILDER_RUN_AGENT = "BUILDER_RUN_AGENT"
+    # Copilot home first-run: the capability-cards modal was completed or
+    # skipped. Unrewarded; recorded so it shows only once per user.
+    CAPABILITY_CARDS = "CAPABILITY_CARDS"
 
 
 FrontendOnboardingStep = Literal[
@@ -67,4 +70,5 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.CONGRATS,
     OnboardingStep.ONBOARDING_COMPLETE,
     OnboardingStep.BUILDER_OPEN,
+    OnboardingStep.CAPABILITY_CARDS,
 ]

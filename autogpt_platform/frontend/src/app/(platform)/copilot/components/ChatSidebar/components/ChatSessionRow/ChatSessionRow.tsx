@@ -8,19 +8,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import {
-  CircleNotch,
-  DotsThree,
-  DownloadSimpleIcon,
-  PencilSimpleIcon,
-  PushPinIcon,
-  PushPinSlashIcon,
-  ShareNetworkIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { MouseEvent, RefObject } from "react";
 import { ChatSessionBlock } from "../../../ChatSessionBlock/ChatSessionBlock";
+import {
+  Delete02Icon,
+  Download04Icon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PinIcon,
+  PinOffIcon,
+  Share03Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   session: SessionSummaryResponse;
@@ -143,7 +144,10 @@ export function ChatSessionRow({
         >
           <div className="relative h-7 w-7">
             <div className="absolute inset-0 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-700" />
-            <DownloadSimpleIcon className="absolute inset-0 m-auto h-3.5 w-3.5" />
+            <Icon
+              icon={Download04Icon}
+              className="absolute inset-0 m-auto h-3.5 w-3.5"
+            />
           </div>
         </div>
       )}
@@ -155,7 +159,7 @@ export function ChatSessionRow({
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
               aria-label="More actions"
             >
-              <DotsThree className="h-4 w-4" />
+              <Icon icon={MoreHorizontalIcon} className="h-4 w-4" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -163,19 +167,19 @@ export function ChatSessionRow({
               <DropdownMenuItem onClick={onPin}>
                 {session.is_pinned ? (
                   <>
-                    <PushPinSlashIcon className="mr-2 h-4 w-4" />
+                    <Icon icon={PinOffIcon} className="mr-2 h-4 w-4" />
                     Unpin chat
                   </>
                 ) : (
                   <>
-                    <PushPinIcon className="mr-2 h-4 w-4" />
+                    <Icon icon={PinIcon} className="mr-2 h-4 w-4" />
                     Pin chat
                   </>
                 )}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onClick={onRename}>
-              <PencilSimpleIcon className="mr-2 h-4 w-4" />
+              <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
               Rename
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -186,18 +190,18 @@ export function ChatSessionRow({
               disabled={isExporting}
             >
               {isExporting ? (
-                <CircleNotch
+                <Icon
+                  icon={Loading03Icon}
                   className="mr-2 h-4 w-4 animate-spin"
-                  weight="bold"
                 />
               ) : (
-                <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+                <Icon icon={Download04Icon} className="mr-2 h-4 w-4" />
               )}
               {isExporting ? "Exporting…" : "Export chat"}
             </DropdownMenuItem>
             {isSharingEnabled && (
               <DropdownMenuItem onClick={onShare}>
-                <ShareNetworkIcon className="mr-2 h-4 w-4" />
+                <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
                 Share chat
               </DropdownMenuItem>
             )}
@@ -206,7 +210,7 @@ export function ChatSessionRow({
               disabled={isDeleting}
               className="text-red-600 focus:bg-red-50 focus:text-red-600"
             >
-              <TrashIcon className="mr-2 h-4 w-4" />
+              <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
               Delete chat
             </DropdownMenuItem>
           </DropdownMenuContent>

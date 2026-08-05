@@ -896,7 +896,9 @@ export type OnboardingStep =
   | "RUN_AGENTS_100"
   // No longer used but tracked
   | "BUILDER_OPEN"
-  | "BUILDER_RUN_AGENT";
+  | "BUILDER_RUN_AGENT"
+  // Copilot home first-run: capability-cards modal completed or skipped
+  | "CAPABILITY_CARDS";
 
 export interface UserOnboarding {
   // Plain string[] so legacy step names from existing rows pass through.
