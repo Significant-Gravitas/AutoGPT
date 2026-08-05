@@ -1,9 +1,12 @@
 "use server";
 
+import { auth } from "@/lib/auth/auth";
+import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
+import { APIError } from "better-auth/api";
+import { headers } from "next/headers";
 import { getOnboardingStatus } from "../../api/helpers";
 
 export async function login(email: string, password: string) {
@@ -17,24 +20,33 @@ export async function login(email: string, password: string) {
       };
     }
 
-    const supabase = await getServerSupabase();
-    if (!supabase) {
-      return {
-        success: false,
-        error: "Authentication service unavailable",
-      };
+    try {
+      await auth.api.signInEmail({
+        body: {
+          email: parsed.data.email,
+          password: parsed.data.password,
+        },
+        headers: await headers(),
+      });
+    } catch (error) {
+      if (error instanceof APIError) {
+        return {
+          success: false,
+          error: error.body?.message || "Invalid email or password",
+        };
+      }
+      throw error;
     }
 
-    const { error } = await supabase.auth.signInWithPassword(parsed.data);
-    if (error) {
-      return {
-        success: false,
-        error: error.message,
-      };
+    try {
+      const api = new BackendAPI();
+      await api.createUser();
+    } catch (createUserError) {
+      // The session cookie is already set; revoke it so the browser's auth
+      // state matches the failure the UI is about to show.
+      await rollbackSession();
+      throw createUserError;
     }
-
-    const api = new BackendAPI();
-    await api.createUser();
 
     const { shouldShowOnboarding } = await getOnboardingStatus();
 

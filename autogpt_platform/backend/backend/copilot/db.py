@@ -267,6 +267,7 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     metadata: ChatSessionMetadata | None = None,
+    expert_id: str | None = None,
 ) -> ChatSessionInfo:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(
@@ -278,6 +279,7 @@ async def create_chat_session(
         # Tenancy dual-write fields
         **({"organizationId": organization_id} if organization_id else {}),
         **({"teamId": team_id} if team_id else {}),
+        **({"expertId": expert_id} if expert_id else {}),
         metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)
@@ -525,6 +527,11 @@ async def add_chat_messages_batch(
                     if msg.get("duration_ms") is not None:
                         data["durationMs"] = msg["duration_ms"]
 
+                    if msg.get("model") is not None:
+                        data["model"] = msg["model"]
+                    if msg.get("routing_source") is not None:
+                        data["routingSource"] = msg["routing_source"]
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
@@ -575,18 +582,23 @@ async def get_user_chat_sessions(
     offset: int = 0,
     organization_id: str | None = None,
     title_contains: str | None = None,
+    expert_id: str | None = None,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
     ``title_contains`` is a case-insensitive substring filter used by
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
+
+    ``expert_id`` restricts the listing to sessions scoped to that expert.
     """
     where: ChatSessionWhereInput = {"userId": user_id}
     if org_scope := _own_org_scope(organization_id):
         where["AND"] = org_scope
     if title_contains:
         where["title"] = {"contains": title_contains, "mode": "insensitive"}
+    if expert_id:
+        where["expertId"] = expert_id
     prisma_sessions = await PrismaChatSession.prisma().find_many(
         where=where,
         order=[{"isPinned": "desc"}, {"updatedAt": "desc"}],
@@ -599,11 +611,14 @@ async def get_user_chat_sessions(
 async def get_user_session_count(
     user_id: str,
     organization_id: str | None = None,
+    expert_id: str | None = None,
 ) -> int:
     """Get the total number of chat sessions for a user."""
     where: ChatSessionWhereInput = {"userId": user_id}
     if org_scope := _own_org_scope(organization_id):
         where["AND"] = org_scope
+    if expert_id:
+        where["expertId"] = expert_id
     return await PrismaChatSession.prisma().count(where=where)
 
 
@@ -785,6 +800,32 @@ async def update_message_content_by_sequence(
             f"Failed to update message for session {session_id}, sequence {sequence}: {e}"
         )
         return False
+
+
+async def update_chat_message_stamps(
+    session_id: str,
+    sequence: int,
+    model: str | None,
+    routing_source: str | None,
+) -> bool:
+    """Back-fill model/routingSource on an already-persisted message row.
+
+    Mid-turn flushes persist assistant rows (assigning sequences) BEFORE
+    the end-of-turn stamping runs; this repairs those rows so the
+    analytics columns survive in the DB. Same mechanism and authorization
+    reasoning as ``update_chat_message_tool_calls``.
+    """
+    result = await PrismaChatMessage.prisma().update(
+        where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
+        data={"model": model, "routingSource": routing_source},
+    )
+    if not result:
+        logger.warning(
+            f"No message found to update stamps for session "
+            f"{session_id}, sequence {sequence}"
+        )
+        return False
+    return True
 
 
 async def update_chat_message_tool_calls(

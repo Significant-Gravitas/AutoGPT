@@ -85,7 +85,7 @@ class TestLLMStatsTracking:
 
             response = await llm.llm_call(
                 credentials=anthropic_creds,
-                llm_model=llm.LlmModel.CLAUDE_4_5_HAIKU,
+                llm_model=llm.LLMModel.CLAUDE_4_5_HAIKU,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
             )
@@ -1143,33 +1143,33 @@ class TestUserErrorStatusCodeHandling:
         mock_exception.assert_not_called()
 
 
-class TestLlmModelMissing:
-    """Test that LlmModel handles provider-prefixed model names."""
+class TestLLMModelMissing:
+    """Test that LLMModel handles provider-prefixed model names."""
 
     def test_provider_prefixed_model_resolves(self):
         """Provider-prefixed model string should resolve to the correct enum member."""
         assert (
-            llm.LlmModel("anthropic/claude-sonnet-4-6")
-            == llm.LlmModel.CLAUDE_4_6_SONNET
+            llm.LLMModel("anthropic/claude-sonnet-4-6")
+            == llm.LLMModel.CLAUDE_4_6_SONNET
         )
 
     def test_bare_model_still_works(self):
         """Bare (non-prefixed) model string should still resolve correctly."""
-        assert llm.LlmModel("claude-sonnet-4-6") == llm.LlmModel.CLAUDE_4_6_SONNET
+        assert llm.LLMModel("claude-sonnet-4-6") == llm.LLMModel.CLAUDE_4_6_SONNET
 
     def test_invalid_prefixed_model_raises(self):
         """Unknown provider-prefixed model string should raise ValueError."""
         with pytest.raises(ValueError):
-            llm.LlmModel("invalid/nonexistent-model")
+            llm.LLMModel("invalid/nonexistent-model")
 
     def test_slash_containing_value_direct_lookup(self):
         """Enum values with '/' (e.g., OpenRouter models) should resolve via direct lookup, not _missing_."""
-        assert llm.LlmModel("google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
+        assert llm.LLMModel("google/gemini-2.5-pro") == llm.LLMModel.GEMINI_2_5_PRO
 
     def test_double_prefixed_slash_model(self):
         """Double-prefixed value should still resolve by stripping first prefix."""
         assert (
-            llm.LlmModel("extra/google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
+            llm.LLMModel("extra/google/gemini-2.5-pro") == llm.LLMModel.GEMINI_2_5_PRO
         )
 
 
@@ -1278,7 +1278,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[
                     {"role": "system", "content": "You are an assistant."},
                     {"role": "user", "content": "Hello"},
@@ -1333,7 +1333,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[
                     {"role": "system", "content": "System."},
                     {"role": "user", "content": "Do something"},
@@ -1371,7 +1371,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[
                     {"role": "system", "content": "System."},
                     {"role": "user", "content": "Hello"},
@@ -1412,7 +1412,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[{"role": "user", "content": "Hi"}],
                 max_tokens=50,
             )
@@ -1447,7 +1447,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[
                     {"role": "system", "content": "   \n\t  "},
                     {"role": "user", "content": "Hi"},
@@ -1551,37 +1551,37 @@ class TestLLMRequestTimeout:
         ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
 
 
-class TestLlmModelMissingHandler:
-    """``LlmModel._missing_`` resolves provider-prefixed slugs back to enum
+class TestLLMModelMissingHandler:
+    """``LLMModel._missing_`` resolves provider-prefixed slugs back to enum
     members.  Used by the dry-run simulator to send an OpenRouter slug
     (``anthropic/claude-haiku-4-5``) that OpenRouter's OpenAI-compat endpoint
     accepts, while still validating through ``OrchestratorBlock.Input.model``
-    which is typed as ``LlmModel``."""
+    which is typed as ``LLMModel``."""
 
     def test_openrouter_alias_maps_to_canonical(self) -> None:
         # The OpenRouter slug for Haiku 4.5 drops the snapshot suffix that
         # Anthropic's direct API uses — pure prefix strip wouldn't find it,
         # so the alias map is required.
         assert (
-            llm.LlmModel("anthropic/claude-haiku-4-5") is llm.LlmModel.CLAUDE_4_5_HAIKU
+            llm.LLMModel("anthropic/claude-haiku-4-5") is llm.LLMModel.CLAUDE_4_5_HAIKU
         )
-        assert llm.LlmModel("anthropic/claude-opus-4-5") is llm.LlmModel.CLAUDE_4_5_OPUS
+        assert llm.LLMModel("anthropic/claude-opus-4-5") is llm.LLMModel.CLAUDE_4_5_OPUS
         assert (
-            llm.LlmModel("anthropic/claude-sonnet-4-5")
-            is llm.LlmModel.CLAUDE_4_5_SONNET
+            llm.LLMModel("anthropic/claude-sonnet-4-5")
+            is llm.LLMModel.CLAUDE_4_5_SONNET
         )
 
     def test_prefix_strip_still_works(self) -> None:
         # 4.6/4.7 enum values already match OpenRouter's slug after prefix
         # strip — no alias-map entry needed.
-        assert llm.LlmModel("anthropic/claude-opus-4-7") is llm.LlmModel.CLAUDE_4_7_OPUS
-        assert llm.LlmModel("anthropic/claude-opus-4-6") is llm.LlmModel.CLAUDE_4_6_OPUS
+        assert llm.LLMModel("anthropic/claude-opus-4-7") is llm.LLMModel.CLAUDE_4_7_OPUS
+        assert llm.LLMModel("anthropic/claude-opus-4-6") is llm.LLMModel.CLAUDE_4_6_OPUS
 
     def test_unknown_slug_raises(self) -> None:
         # Bare unknown strings still fail loudly — the alias map is an
         # additive shortcut, not a silent catch-all.
         with pytest.raises(ValueError):
-            llm.LlmModel("anthropic/claude-haiku-999")
+            llm.LLMModel("anthropic/claude-haiku-999")
 
     def test_all_claude_snapshots_reachable_via_openrouter_slug(self) -> None:
         """Every Claude enum value whose canonical form carries a trailing
@@ -1596,12 +1596,12 @@ class TestLlmModelMissingHandler:
         # constructed correctly: ``claude-haiku-4-5-20251001`` →
         # ``anthropic/claude-haiku-4-5`` (NOT ``anthropic/haiku-4-5``).
         snapshot_re = re.compile(r"^(claude-.+)-\d{8}$")
-        for member in llm.LlmModel:
+        for member in llm.LLMModel:
             match = snapshot_re.match(member.value)
             if match is None:
                 continue
             slug = f"anthropic/{match.group(1)}"
-            assert llm.LlmModel(slug) is member, (
+            assert llm.LLMModel(slug) is member, (
                 f"OpenRouter alias missing for {member.value} — expected slug "
                 f"{slug!r} to resolve back to {member.name}"
             )

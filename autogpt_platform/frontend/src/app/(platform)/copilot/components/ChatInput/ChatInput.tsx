@@ -21,6 +21,7 @@ import {
   ChangeEvent,
   ClipboardEvent,
   KeyboardEvent,
+  ReactNode,
   useEffect,
   useState,
 } from "react";
@@ -67,6 +68,8 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  /** Recipient picker chip rendered before the mode chips (new-task state). */
+  recipientPicker?: ReactNode;
 }
 
 export function ChatInput({
@@ -82,6 +85,7 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  recipientPicker,
 }: Props) {
   const {
     copilotChatMode,
@@ -335,6 +339,7 @@ export function ChatInput({
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
             />
+            {recipientPicker}
             {/* Mode and model are per-message settings sent with each stream request,
                 so they can be freely changed between turns in an existing session.
                 Hide only while actively streaming (too late to change for that turn). */}
