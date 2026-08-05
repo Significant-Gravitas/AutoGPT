@@ -56,6 +56,13 @@ settings = Settings()
 MAX_CONSUMER_RETRY_ATTEMPTS = 3
 CONSUMER_RETRY_BACKOFF_SECONDS = 2
 
+# Upper bound for each stage of _shutdown_service (consumer-task cancellation
+# and RabbitMQ disconnect). A consumer stuck unwinding on a dead broker
+# connection must not hang cleanup forever — the process has to keep making
+# forward progress so its supervisor sees a clean exit. Mirrors the
+# timeout=10 drain in GraphExecutorManager.cleanup.
+SHUTDOWN_TIMEOUT_SECONDS = 10
+
 
 NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
 DEAD_LETTER_EXCHANGE = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
@@ -219,6 +226,7 @@ class NotificationManager(AppService):
     def __init__(self):
         super().__init__()
         self.rabbitmq_config = create_notification_config()
+        self.rabbitmq_service: rabbitmq.AsyncRabbitMQ | None = None
         self.running = True
         self.email_sender = EmailSender()
         self._run_service_future: Future[None] | None = None
@@ -1205,8 +1213,8 @@ class NotificationManager(AppService):
 
     async def _shutdown_service(self) -> None:
         """Stop consumers completely before closing their RabbitMQ connection."""
-        service_future = getattr(self, "_run_service_future", None)
-        service_task = getattr(self, "_run_service_task", None)
+        service_future = self._run_service_future
+        service_task = self._run_service_task
         # Cleanup can race the tracked coroutine's first loop turn. Yield until
         # it records the actual asyncio task or its scheduling proxy completes.
         while (
@@ -1215,16 +1223,34 @@ class NotificationManager(AppService):
             and not service_future.done()
         ):
             await asyncio.sleep(0)
-            service_task = getattr(self, "_run_service_task", None)
+            service_task = self._run_service_task
 
         if service_task is not None and service_task is not asyncio.current_task():
             if not service_task.done():
                 service_task.cancel()
-            await asyncio.gather(service_task, return_exceptions=True)
+            # Bounded wait: a consumer stuck unwinding (e.g. awaiting a broker
+            # reply on a dead connection) must not hang shutdown forever.
+            _, pending = await asyncio.wait(
+                [service_task], timeout=SHUTDOWN_TIMEOUT_SECONDS
+            )
+            if pending:
+                logger.warning(
+                    "Notification service task did not finish cancelling within "
+                    f"{SHUTDOWN_TIMEOUT_SECONDS}s; continuing shutdown"
+                )
 
-        if rabbitmq_service := getattr(self, "rabbitmq_service", None):
+        if self.rabbitmq_service is not None:
             logger.info("⏳ Disconnecting RabbitMQ...")
-            await rabbitmq_service.disconnect()
+            try:
+                await asyncio.wait_for(
+                    self.rabbitmq_service.disconnect(),
+                    timeout=SHUTDOWN_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "RabbitMQ disconnect did not complete within "
+                    f"{SHUTDOWN_TIMEOUT_SECONDS}s; continuing shutdown"
+                )
 
     def cleanup(self):
         """Cleanup service resources."""
@@ -1240,6 +1266,7 @@ class NotificationManager(AppService):
                 self.shared_event_loop.run_until_complete(shutdown)
         finally:
             self._run_service_future = None
+            self._run_service_task = None
             super().cleanup()
 
 

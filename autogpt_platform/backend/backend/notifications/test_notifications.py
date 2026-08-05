@@ -611,6 +611,9 @@ def test_cleanup_awaits_background_task_before_disconnect():
     manager.running = True
     events = []
     manager._run_service_future = MagicMock()
+    # Explicitly mark the scheduling proxy done so the wait loop in
+    # _shutdown_service is skipped intentionally, not via a truthy MagicMock.
+    manager._run_service_future.done.return_value = True
     manager._run_service_task = None
     manager.shared_event_loop = MagicMock()
     manager.shared_event_loop.is_running.return_value = True
@@ -636,6 +639,7 @@ def test_cleanup_awaits_background_task_before_disconnect():
 def test_cleanup_handles_shutdown_before_rabbitmq_startup():
     manager = NotificationManager.__new__(NotificationManager)
     manager.running = True
+    manager.rabbitmq_service = None
     manager._run_service_future = None
     manager._run_service_task = None
     manager.shared_event_loop = MagicMock()
@@ -715,9 +719,67 @@ def test_cleanup_waits_for_consumer_task_cancellation_to_finish():
         manager.shared_event_loop.close()
 
 
+def test_cleanup_gives_up_on_service_task_that_ignores_cancellation():
+    """A consumer stuck unwinding must not hang cleanup past the timeout."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager.rabbitmq_service = None
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.shared_event_loop = asyncio.new_event_loop()
+    service_started = threading.Event()
+
+    async def uncancellable_service():
+        service_started.set()
+        while True:
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                # Model a task wedged in unwinding (e.g. awaiting a broker
+                # reply on a dead connection) that never finishes cancelling.
+                continue
+
+    manager._run_service = uncancellable_service
+    loop_thread = threading.Thread(
+        target=manager.shared_event_loop.run_forever,
+        daemon=True,
+    )
+    loop_thread.start()
+    scheduled_future = asyncio.run_coroutine_threadsafe(
+        manager._run_service_with_task_reference(), manager.shared_event_loop
+    )
+    manager._run_service_future = scheduled_future
+    assert service_started.wait(timeout=2)
+
+    def stop_parent_loop():
+        manager.shared_event_loop.call_soon_threadsafe(manager.shared_event_loop.stop)
+
+    try:
+        with patch(
+            "backend.notifications.notifications.SHUTDOWN_TIMEOUT_SECONDS", 0.1
+        ), patch(
+            "backend.notifications.notifications.AppService.cleanup",
+            side_effect=stop_parent_loop,
+        ):
+            manager.cleanup()
+        loop_thread.join(timeout=2)
+
+        assert not loop_thread.is_alive()
+        assert manager._run_service_future is None
+        assert manager._run_service_task is None
+    finally:
+        if loop_thread.is_alive():
+            manager.shared_event_loop.call_soon_threadsafe(
+                manager.shared_event_loop.stop
+            )
+            loop_thread.join(timeout=2)
+        manager.shared_event_loop.close()
+
+
 def test_cleanup_handles_shutdown_before_service_task_first_loop_turn():
     manager = NotificationManager.__new__(NotificationManager)
     manager.running = True
+    manager.rabbitmq_service = None
     manager._run_service_task = None
     manager.shared_event_loop = asyncio.new_event_loop()
     service_finished = threading.Event()
