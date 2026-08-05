@@ -1,7 +1,7 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 
-interface Org {
+export interface Org {
   id: string;
   name: string;
   slug: string;
