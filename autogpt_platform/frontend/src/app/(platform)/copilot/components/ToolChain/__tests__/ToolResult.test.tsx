@@ -1,7 +1,15 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChainRow } from "../helpers";
 import { ToolResult } from "../ToolResult";
+
+vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", () => ({
+  SetupRequirementsCard: ({
+    credentialsLabel,
+  }: {
+    credentialsLabel?: string;
+  }) => <div>{credentialsLabel}</div>,
+}));
 
 function row(output: unknown, tool?: string): ChainRow {
   return {
@@ -35,6 +43,23 @@ describe("ToolResult", () => {
 
     expect(screen.getByText("Patch")).toBeDefined();
     expect(screen.queryByText("+1")).toBeNull();
+  });
+
+  it("uses a fallback credentials label when an integration name is missing", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            message: "Connect an account",
+            setup_info: { agent_id: "agent-1" },
+          },
+          "connect_integration",
+        )}
+      />,
+    );
+
+    expect(screen.getByText("Integration credentials")).toBeDefined();
+    expect(screen.queryByText("undefined credentials")).toBeNull();
   });
 
   it.each([

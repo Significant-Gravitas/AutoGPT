@@ -143,7 +143,8 @@ function chipStrings(value: unknown, key: string): string[] | null {
 }
 
 function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
-  if (!asObject(output.setup_info)) return null;
+  const setupInfo = asObject(output.setup_info);
+  if (!setupInfo) return null;
   const setupOutput = output as unknown as SetupRequirementsResponse;
 
   if (row.tool === "run_mcp_tool") {
@@ -174,7 +175,7 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
       output={setupOutput}
       credentialsLabel={
         row.tool === "connect_integration"
-          ? `${setupOutput.setup_info.agent_name} credentials`
+          ? `${str(setupInfo, "agent_name") ?? "Integration"} credentials`
           : undefined
       }
       retryInstruction={
