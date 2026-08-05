@@ -11,6 +11,7 @@ import logging
 import os
 import random
 import re
+import secrets
 import shutil
 import sys
 import time
@@ -19,7 +20,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
@@ -39,8 +40,9 @@ from claude_agent_sdk.types import SystemPromptPreset
 from langfuse import get_client, propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
 
+from backend.copilot.graphiti import context as graphiti_context
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -966,13 +968,24 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
     )
 
 
-# Sentinel attribute stamped onto the server-injected follow-up warm-context
-# block (see ``_append_follow_up_warm_context``). Only blocks carrying it are
-# scrubbed from the persisted transcript — a ``<temporal_context>`` tag a USER
-# happens to type has no sentinel and is left untouched. Internal format: the
-# model still reads a ``<temporal_context ...>`` tag; the attribute is inert.
-_INJECTED_MEMORY_MARKER = 'data-agpt-injected="1"'
-# Matches ONLY a sentinel-stamped block, so user-authored tags are never hit.
+# Provenance nonce stamped onto the server-injected follow-up warm-context
+# block (see ``_append_follow_up_warm_context``). Only blocks carrying THIS
+# process's nonce are scrubbed from the persisted transcript. The nonce is
+# unguessable, so a user who types (or pastes) a ``<temporal_context
+# data-agpt-injected="1">`` tag cannot get their own text deleted on upload.
+#
+# Per-process scope is sufficient: a block is injected and scrubbed inside a
+# single ``stream_chat_completion_sdk`` call — the CLI session file is
+# downloaded, appended to, read back, scrubbed and re-uploaded within one turn
+# in one process — so no cross-process handoff carries a stamped block. If a
+# turn dies before upload, nothing is persisted at all. A restart therefore
+# only ever fails "safe" (a block survives), never by eating user text.
+#
+# Internal format: the model still reads a ``<temporal_context ...>`` tag; the
+# attribute is inert.
+_INJECTED_MEMORY_NONCE = secrets.token_hex(16)
+_INJECTED_MEMORY_MARKER = f'data-agpt-injected="{_INJECTED_MEMORY_NONCE}"'
+# Matches ONLY a nonce-stamped block, so user-authored tags are never hit.
 # The optional leading ``\n\n`` is the exact separator that
 # ``_append_follow_up_warm_context`` inserts before the block — removing it
 # together with the block leaves the user's own text (its leading/trailing
@@ -986,7 +999,7 @@ _INJECTED_MEMORY_BLOCK_RE = re.compile(
 
 
 def _mark_injected_memory_block(block: str) -> str:
-    """Stamp the sentinel onto a ``<temporal_context>`` block for later strip."""
+    """Stamp the provenance nonce onto a ``<temporal_context>`` block."""
     return block.replace(
         "<temporal_context>",
         f"<temporal_context {_INJECTED_MEMORY_MARKER}>",
@@ -995,7 +1008,7 @@ def _mark_injected_memory_block(block: str) -> str:
 
 
 def _strip_injected_memory_text(text: str) -> str:
-    """Remove sentinel-marked ``<temporal_context>`` blocks (plus the injected
+    """Remove nonce-marked ``<temporal_context>`` blocks (plus the injected
     ``\\n\\n`` separator) from *text*, leaving all other content untouched.
 
     Removes ONLY what the injector added — no global ``.strip()`` or blank-line
@@ -1013,8 +1026,9 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
     uploaded JSONL these accumulate across turns and replay stale facts on
     ``--resume`` (a fact the user later retracted keeps re-appearing). The
     block is keyed on a single turn's message, so strip it here; the next turn
-    re-injects a fresh one. Only sentinel-marked blocks are removed — a
-    ``<temporal_context>`` tag the user typed is left intact.
+    re-injects a fresh one. Only blocks carrying this process's provenance
+    nonce are removed — a ``<temporal_context>`` tag the user typed (even one
+    carrying a forged marker attribute) is left intact.
     """
     if not content:
         return content
@@ -1043,53 +1057,101 @@ def _rewrite_user_entry_memory(entry: object) -> dict | None:
 
     None means "no change" — the caller keeps the original line byte-for-byte,
     so only user messages that actually carried a marked block are re-serialised
-    (untouched entries are never reformatted). Now-empty text blocks are dropped
-    rather than emitted empty, since Anthropic rejects empty text blocks / empty
-    content on ``--resume``; if that would empty the message entirely, the
-    original is kept intact instead.
+    (untouched entries are never reformatted). Entries that aren't user messages
+    (or don't match the CLI's user-entry shape at all) fail validation and are
+    likewise left alone.
     """
-    if not isinstance(entry, dict) or entry.get("type") != "user":
+    try:
+        parsed = _CLIUserEntry.model_validate(entry)
+    except ValidationError:
         return None
-    msg = entry.get("message")
-    if not isinstance(msg, dict) or msg.get("role") != "user":
+    rewritten = parsed.message.without_injected_memory()
+    if rewritten is None:
         return None
-    content = msg.get("content")
-    if isinstance(content, str):
-        cleaned = _strip_injected_memory_text(content)
-        if cleaned == content:
-            return None
+    return parsed.model_copy(update={"message": rewritten}).model_dump()
+
+
+class _CLITextBlock(BaseModel):
+    """A ``text`` content block of a CLI JSONL user message."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["text"]
+    text: str
+
+    def without_injected_memory(self) -> "_CLITextBlock | None":
+        """Return the cleaned block, or None when it must be dropped entirely.
+
+        A block that empties out is dropped rather than emitted empty, since
+        Anthropic rejects empty text blocks on ``--resume``.
+        """
+        cleaned = _strip_injected_memory_text(self.text)
         if not cleaned:
-            # Whole message was the injected block — keep the original rather
-            # than emit an empty content string that --resume would reject.
             return None
-        msg["content"] = cleaned
-        return entry
-    if isinstance(content, list):
-        new_blocks: list = []
-        changed = False
-        for block in content:
-            if not isinstance(block, dict) or block.get("type") != "text":
-                new_blocks.append(block)
-                continue
-            text = block.get("text")
-            if not isinstance(text, str):
-                new_blocks.append(block)
-                continue
-            cleaned = _strip_injected_memory_text(text)
-            if cleaned == text:
-                new_blocks.append(block)
-                continue
-            changed = True
-            if cleaned:
-                block["text"] = cleaned
-                new_blocks.append(block)
-            # else: drop the now-empty text block entirely.
-        if not changed or not new_blocks:
-            # Nothing changed, or every block emptied out — keep the original.
+        return self.model_copy(update={"text": cleaned})
+
+
+class _CLIOpaqueBlock(RootModel[object]):
+    """Any other content block (image, tool_result, …) — passed through as-is."""
+
+    def without_injected_memory(self) -> "_CLIOpaqueBlock | None":
+        return self
+
+
+# Left-to-right so a well-formed text block never falls through to the opaque
+# passthrough (which validates anything).
+_CLIContentBlock = Annotated[
+    _CLITextBlock | _CLIOpaqueBlock, Field(union_mode="left_to_right")
+]
+
+
+class _CLIUserTextMessage(BaseModel):
+    """User message whose content is a bare string."""
+
+    model_config = ConfigDict(extra="allow")
+
+    role: Literal["user"]
+    content: str
+
+    def without_injected_memory(self) -> "_CLIUserTextMessage | None":
+        """Return the rewritten message, or None to keep the original as-is."""
+        cleaned = _strip_injected_memory_text(self.content)
+        if cleaned == self.content or not cleaned:
+            # Unchanged, or the whole message was the injected block — keep the
+            # original rather than emit empty content that --resume rejects.
             return None
-        msg["content"] = new_blocks
-        return entry
-    return None
+        return self.model_copy(update={"content": cleaned})
+
+
+class _CLIUserBlocksMessage(BaseModel):
+    """User message whose content is a list of content blocks."""
+
+    model_config = ConfigDict(extra="allow")
+
+    role: Literal["user"]
+    content: list[_CLIContentBlock]
+
+    def without_injected_memory(self) -> "_CLIUserBlocksMessage | None":
+        """Return the rewritten message, or None to keep the original as-is."""
+        kept = [
+            cleaned
+            for cleaned in (block.without_injected_memory() for block in self.content)
+            if cleaned is not None
+        ]
+        if not kept:
+            # Every block emptied out — keep the original intact.
+            return None
+        rewritten = self.model_copy(update={"content": kept})
+        return None if rewritten == self else rewritten
+
+
+class _CLIUserEntry(BaseModel):
+    """A ``{"type": "user", ...}`` line of the CLI's native session JSONL."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["user"]
+    message: _CLIUserTextMessage | _CLIUserBlocksMessage
 
 
 def _is_synthetic_reprompt_user_entry(entry: dict | None) -> bool:
@@ -4062,14 +4124,12 @@ async def _append_follow_up_warm_context(
     """
     if not (graphiti_enabled and has_history and is_user_message and user_id):
         return query_message
-    from ..graphiti.context import refresh_warm_context
-
-    refreshed = await refresh_warm_context(
+    refreshed = await graphiti_context.refresh_warm_context(
         user_id, current_message, force=was_compacted
     )
     if refreshed:
-        # Stamp the sentinel so ``_strip_ephemeral_memory_from_cli_jsonl`` can
-        # scrub THIS block from the persisted transcript without touching a
+        # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
+        # can scrub THIS block from the persisted transcript without touching a
         # ``<temporal_context>`` tag the user may have typed.
         return f"{query_message}\n\n{_mark_injected_memory_block(refreshed)}"
     return query_message

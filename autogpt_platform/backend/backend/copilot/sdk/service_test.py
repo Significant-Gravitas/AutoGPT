@@ -20,6 +20,7 @@ from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
     _INJECTED_MEMORY_MARKER,
+    _INJECTED_MEMORY_NONCE,
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _append_follow_up_warm_context,
@@ -2283,11 +2284,36 @@ class TestStripEphemeralMemoryFromCliJsonl:
         assert b"deploy staging now" in result
 
     def test_preserves_user_typed_unmarked_tags(self):
-        # A <temporal_context> tag the USER typed carries no sentinel — leave it.
+        # A <temporal_context> tag the USER typed carries no nonce — leave it.
         line = self._user_line(
             "how do I use <temporal_context>? <memory_context>x</memory_context>"
         )
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_user_block_with_forged_marker(self):
+        # A user can type the marker attribute, but not the unguessable nonce,
+        # so their own text must survive the upload scrub verbatim.
+        forged = (
+            '<temporal_context data-agpt-injected="1">my own notes'
+            "</temporal_context>"
+        )
+        line = self._user_line(f"remember this\n\n{forged}")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_block_marked_with_a_foreign_nonce(self):
+        # Only THIS process's nonce is scrubbed — a stamp from anywhere else
+        # (another process, a replayed transcript) is treated as user content.
+        foreign = _INJECTED_MEMORY_MARKER.replace(_INJECTED_MEMORY_NONCE, "deadbeef")
+        block = f"<temporal_context {foreign}>stale</temporal_context>"
+        line = self._user_line(f"the user turn\n\n{block}")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_marker_carries_an_unguessable_nonce(self):
+        assert _INJECTED_MEMORY_NONCE not in ("", "1")
+        assert len(_INJECTED_MEMORY_NONCE) >= 16
+        assert _INJECTED_MEMORY_MARKER == (
+            f'data-agpt-injected="{_INJECTED_MEMORY_NONCE}"'
+        )
 
     def test_untouched_entry_is_byte_identical(self):
         # No injected block: the line must come back byte-for-byte, even with
@@ -2345,6 +2371,43 @@ class TestStripEphemeralMemoryFromCliJsonl:
         result = _strip_ephemeral_memory_from_cli_jsonl(line)
         assert b"temporal_context" not in result
         assert b"the user turn" in result
+
+    def test_rewrite_preserves_every_other_field(self):
+        # Rewritten lines are re-serialised through typed models, so unknown
+        # CLI fields (entry-, message- and block-level) must survive.
+        block = _mark_injected_memory_block("<temporal_context>x</temporal_context>")
+        entry = {
+            "parentUuid": "p1",
+            "type": "user",
+            "uuid": "u1",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "id": "m1",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"keep me\n\n{block}",
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {"type": "image", "source": {"data": "AAA"}},
+                ],
+            },
+        }
+        result = json.loads(
+            _strip_ephemeral_memory_from_cli_jsonl(json.dumps(entry).encode() + b"\n")
+        )
+        assert result["parentUuid"] == "p1"
+        assert result["uuid"] == "u1"
+        assert result["timestamp"] == "2026-01-01T00:00:00Z"
+        assert result["message"]["id"] == "m1"
+        blocks = result["message"]["content"]
+        assert blocks[0] == {
+            "type": "text",
+            "text": "keep me",
+            "cache_control": {"type": "ephemeral"},
+        }
+        assert blocks[1] == {"type": "image", "source": {"data": "AAA"}}
 
     def test_preserves_non_text_blocks_and_malformed_lines(self):
         image = (
