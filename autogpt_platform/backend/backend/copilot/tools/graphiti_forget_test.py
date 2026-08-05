@@ -1,16 +1,34 @@
 """Tests for graphiti_forget delete helpers."""
 
-from unittest.mock import AsyncMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
+    MemoryForgetConfirmTool,
+    MemoryForgetSearchTool,
     _hard_delete_edges,
     _retract_edges,
     _soft_delete_edges,
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
+from backend.copilot.tools.models import ErrorResponse
+
+
+def _session() -> ChatSession:
+    return ChatSession(
+        session_id="s",
+        user_id="user-1",
+        title=None,
+        messages=[],
+        usage=[],
+        credentials={},
+        started_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
 
 
 class TestSoftDeleteOverReportsSuccess:
@@ -265,3 +283,74 @@ class TestInvalidateEntityDirectNeighbors:
             driver, group_id="user_x", entity_uuid="entity-1", reason="x"
         )
         assert result == []
+
+
+class TestForgetRefusesSharedTiers:
+    """Forget is personal-only in v1. Pointed at a shared tier it must
+    refuse EXPLICITLY (polite error) rather than silently searching the
+    personal graph and reporting a misleading no-op."""
+
+    @pytest.mark.asyncio
+    async def test_forget_search_org_tier_refused(self) -> None:
+        tool = MemoryForgetSearchTool()
+        with patch(
+            "backend.copilot.tools.graphiti_forget.is_enabled_for_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            result = await tool._execute(
+                user_id="user-1", session=_session(), query="the budget", tier="org"
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "only available for your personal memory" in result.message
+
+    @pytest.mark.asyncio
+    async def test_forget_confirm_team_tier_refused(self) -> None:
+        tool = MemoryForgetConfirmTool()
+        with patch(
+            "backend.copilot.tools.graphiti_forget.is_enabled_for_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            result = await tool._execute(
+                user_id="user-1",
+                session=_session(),
+                uuids=["edge-1"],
+                tier="team",
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "only available for your personal memory" in result.message
+
+    @pytest.mark.asyncio
+    async def test_forget_search_personal_default_not_refused(self) -> None:
+        """Default (personal) must fall through to the normal search path,
+        not the shared-tier refusal."""
+        tool = MemoryForgetSearchTool()
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_forget.is_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_forget.derive_group_id",
+                return_value="user_user-1",
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_forget.get_graphiti_client",
+                new_callable=AsyncMock,
+            ) as get_client,
+        ):
+            client = AsyncMock()
+            client.search.return_value = []
+            get_client.return_value = client
+            result = await tool._execute(
+                user_id="user-1", session=_session(), query="the budget"
+            )
+
+        # Reached the real search path (no shared-tier refusal message).
+        assert "only available for your personal memory" not in getattr(
+            result, "message", ""
+        )
