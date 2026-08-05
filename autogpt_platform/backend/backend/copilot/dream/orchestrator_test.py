@@ -14,15 +14,21 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+from backend.util.llm.providers import DEFAULT_REQUEST_TIMEOUT_SECONDS
+
 from . import orchestrator as orchestrator_mod
+from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .fetch import DreamInput, EpisodeRow, FactRow
 from .llm import CompletionUsage, DreamLLMError, StructuredCompletion
+from .locks import DEFAULT_LOCK_TTL_SECONDS
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
     DreamDemotion,
     DreamOperations,
     EntityInvalidation,
+    IngestionDrainStatus,
     ProposedFinding,
     RecombinationOutput,
 )
@@ -226,6 +232,9 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
                 "demotion_count": 0,
                 "demotion_failed_count": 0,
                 "entity_invalidation_count": 0,
+                # Non-default value so the assertion below proves the status
+                # is threaded from apply_stats, not left at the schema default.
+                "ingestion_drain_status": IngestionDrainStatus.timed_out,
             }
         ),
     )
@@ -238,7 +247,188 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
     assert result.proposal_count == 1
     assert result.summary_for_user == "Dream consolidated 1 fact."
     assert result.dream_session_id == "s1"
+    assert result.ingestion_drain_status is IngestionDrainStatus.timed_out
     apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_held_dream_lock_handle_is_threaded_into_apply(mocker):
+    """apply renews the dream lock before the drain + demotions, which it can
+    only do with the handle the orchestrator holds. Dropping that kwarg would
+    silently reinstate the lock-expiry-during-drain window, so pin it."""
+    sentinel_handle = object()
+
+    @asynccontextmanager
+    async def _handle_lock(*args, **kwargs):
+        yield sentinel_handle
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", _handle_lock)
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[
+                _wrap(consolidated),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(DreamOperations(writes=consolidated.facts)),
+            ]
+        ),
+    )
+    apply_mock = mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "session_id": "s1",
+                "consolidated_count": 1,
+                "ingestion_drain_status": IngestionDrainStatus.drained,
+            }
+        ),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+    assert apply_mock.await_args.kwargs["lock_handle"] is sentinel_handle
+
+
+@pytest.mark.asyncio
+async def test_missing_drain_key_folds_to_fail_closed_timed_out(mocker):
+    """When apply_stats omits the drain key entirely (e.g. an upstream bug),
+    the result must fail closed to ``timed_out`` — writes potentially at
+    risk — never silently read as a confirmed ``drained`` success."""
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    recombined = RecombinationOutput(proposals=[])
+    sanitized = DreamOperations(summary_for_user="quiet night")
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        # No ``ingestion_drain_status`` key at all.
+        AsyncMock(return_value={"session_id": "s1", "consolidated_count": 1}),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert result.ingestion_drain_status is IngestionDrainStatus.timed_out
+
+
+@pytest.mark.asyncio
+async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion(
+    mocker,
+):
+    """Recombine/sanitize got 16384-token output budgets because real
+    responses exceed 8192 tokens; at real decode speeds those responses
+    outlive the shared 120s ``call_provider`` default, so each phase
+    must hand ``structured_completion`` its own wall-clock budget —
+    otherwise the timeout kills exactly the responses the token-cap
+    raise was meant to save."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    recombined = RecombinationOutput(proposals=[])
+    sanitized = DreamOperations(
+        writes=[],
+        proposals=[],
+        demotions=[],
+        entity_invalidations=[],
+        summary_for_user="quiet night",
+    )
+    llm_mock = mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(return_value={"session_id": "s1"}),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    timeouts = [call.kwargs["timeout_seconds"] for call in llm_mock.call_args_list]
+    assert timeouts == [
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS,
+        orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS,
+        orchestrator_mod.SANITIZE_TIMEOUT_SECONDS,
+    ]
+
+
+def test_long_output_phase_timeouts_exceed_the_shared_request_default():
+    """Regression pin: every phase used to run on the shared 120s
+    ``DEFAULT_REQUEST_TIMEOUT_SECONDS``, which cannot decode the 16384
+    output tokens recombine/sanitize are budgeted for. If these ever
+    drop back to (or below) the default, the token-cap raise becomes
+    dead letter again."""
+    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
+    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
+    assert (
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= DEFAULT_REQUEST_TIMEOUT_SECONDS
+    )
+
+
+def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
+    """Budget-math invariant with the drain budgeted as its OWN line item.
+
+    The scheduler abandons the whole pass at
+    ``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` (1800s), so the full pass
+    — LLM phases + the ingestion drain + the remaining non-LLM headroom —
+    must fit inside it with slack. The dream lock (``DEFAULT_LOCK_TTL_SECONDS``,
+    1800s) is a separate, data-integrity boundary: apply RENEWS the lock to
+    a fresh budget right before the drain (``LOCK_DRAIN_RENEWAL_SECONDS``),
+    so the drain no longer counts against the original lock TTL — only the
+    LLM phases + non-drain headroom do, and those must clear a 90%-of-TTL
+    bar so a near-worst-case pass never reaches the lock expiry while writes
+    are landing. A future bump to any phase timeout (or a cut to either
+    envelope) fails here loudly."""
+    llm = (
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS
+        + orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS
+        + orchestrator_mod.SANITIZE_TIMEOUT_SECONDS
+    )
+    non_drain_headroom = orchestrator_mod.DREAM_NON_LLM_HEADROOM_SECONDS
+    drain = INGESTION_DRAIN_TIMEOUT_SECONDS
+
+    # Whole pass (including the drain) must fit the scheduler abandonment
+    # boundary with real margin.
+    worst_case = llm + drain + non_drain_headroom
+    assert worst_case < SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+
+    # The lock only has to cover everything UP TO the drain, because the
+    # drain runs under a freshly renewed lock. Require 10% slack so the lock
+    # never expires mid-write.
+    assert llm + non_drain_headroom <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+
+    # The renewal must comfortably outlast the drain cap it protects.
+    assert LOCK_DRAIN_RENEWAL_SECONDS > drain
 
 
 @pytest.mark.asyncio
@@ -304,7 +494,9 @@ async def test_clamps_oversized_sanitizer_output(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -365,7 +557,9 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -475,7 +669,9 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -990,3 +1186,50 @@ class TestNearDuplicateWriteDedup:
         assert len(contents) == 2
         assert any("Revenue grew" in c for c in contents)
         assert sum("churn rate rose" in c.lower() for c in contents) == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
+    """If the dream lock cannot be extended to the batch window, the
+    just-submitted batch must never be applied: the pending entry is
+    removed (poller never dispatches callbacks), the input bundle is
+    dropped, the lock is NOT disowned, and the pass reports failure."""
+    submission = mocker.MagicMock(provider_batch_id="batch-xyz")
+    mocker.patch("backend.copilot.dream.batch_submit.persist_input_bundle", AsyncMock())
+    mocker.patch(
+        "backend.copilot.dream.batch_submit.phase_models_for_config",
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_submit.submit_phase",
+        AsyncMock(return_value=submission),
+    )
+    remove_pending = mocker.patch(
+        "backend.executor.batch_executor.remove_pending", AsyncMock()
+    )
+    delete_bundle = mocker.patch(
+        "backend.copilot.dream.batch_submit.delete_input_bundle", AsyncMock()
+    )
+    handle = mocker.MagicMock()
+    handle.extend = AsyncMock(return_value=False)
+    handle.token = "tok"
+
+    config = mocker.MagicMock()
+    config.direct_anthropic_api_key = "key"
+
+    result = await orchestrator_mod._submit_dream_pass_batch(
+        user_id="u-lock-lost",
+        pass_id="p-lock-lost",
+        started_at=datetime.now(timezone.utc),
+        monotonic_start=0.0,
+        execution_path="anthropic_batch",
+        config=config,
+        input_bundle=_build_input(),
+        status_id=None,
+        dream_lock_handle=handle,
+    )
+
+    remove_pending.assert_awaited_once_with("batch-xyz")
+    delete_bundle.assert_awaited_once_with("p-lock-lost")
+    handle.disown.assert_not_called()
+    assert result.error and "lock lost" in result.error

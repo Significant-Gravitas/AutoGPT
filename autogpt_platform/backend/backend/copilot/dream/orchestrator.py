@@ -27,7 +27,7 @@ from typing import TypeVar
 from backend.copilot.config import ChatConfig
 from backend.util.feature_flag import Flag, is_feature_enabled
 
-from .apply import apply_operations
+from .apply import apply_operations, drain_status_from_stats
 from .billing import check_dream_budget, record_phase_cost
 from .fetch import DreamInput, gather_dream_input
 from .llm import (
@@ -84,6 +84,49 @@ CONSOLIDATE_MAX_TOKENS = 4096
 # headroom; cost impact is bounded by the per-phase caps anyway.
 RECOMBINE_MAX_TOKENS = 16384
 SANITIZE_MAX_TOKENS = 16384
+
+# Per-phase LLM wall-clock ceilings, passed through structured_completion
+# → call_provider. The shared DEFAULT_REQUEST_TIMEOUT_SECONDS (120s) is
+# sized for short chat completions; recombine/sanitize carry 16384-token
+# output budgets precisely because real responses exceed 8192 tokens, and
+# at real decode speeds (Opus-class ~40-60 tok/s via OpenRouter) an 8-16K
+# response takes 150-400s — the 120s wall killed exactly the responses
+# the token-cap raise above was meant to save.
+#
+# A conservative ~20 tok/s decode floor would ask for max_output_tokens/20
+# ≈ 205s / 819s / 819s per phase, but that sums to 1843s of LLM budget
+# alone — past both SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS (1800s,
+# scheduler.py) and DEFAULT_LOCK_TTL_SECONDS (1800s, locks.py) before
+# fetch/apply even run. So the phases get values that fit the envelope
+# instead. Budget math (three explicit line items, with real slack):
+#
+#   consolidate 240s + recombine 600s + sanitize 480s   = 1320s LLM ceiling
+#   + apply.INGESTION_DRAIN_TIMEOUT_SECONDS 300s          drain cap
+#   + DREAM_NON_LLM_HEADROOM_SECONDS 120s (budget check + fetch + enqueue
+#     + demotions + summary + cost logging, EXCLUDING the drain)
+#   = 1740s <= 1800s SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS  (60s slack)
+#
+# The drain no longer counts against the lock TTL: apply renews the dream
+# lock to a fresh budget right before the drain (see
+# apply.LOCK_DRAIN_RENEWAL_SECONDS), so the lock only has to cover
+# LLM + non-drain headroom = 1440s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS (1620s)
+# with genuine margin, and the drain itself runs under the renewed lock.
+# Both invariants are pinned by
+# test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
+# bumping any value here fails that test until the budget is re-balanced.
+#
+# Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
+# the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
+# on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
+# Consolidate's 4096-token budget fits 240s at ~17 tok/s.
+CONSOLIDATE_TIMEOUT_SECONDS = 240
+RECOMBINE_TIMEOUT_SECONDS = 600
+SANITIZE_TIMEOUT_SECONDS = 480
+# Reserved for the non-LLM segments of the pass OTHER than the ingestion
+# drain (budget check, fetch, enqueue, demotions, summary write, cost
+# logging). The drain is budgeted separately as
+# apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
+DREAM_NON_LLM_HEADROOM_SECONDS = 120
 
 # Entity invalidation is the most destructive op the sanitizer can emit:
 # each one single-hop demotes EVERY :RELATES_TO edge on the entity, so a
@@ -480,6 +523,7 @@ async def _run_consolidate(
         response_model=ConsolidationOutput,
         temperature=CONSOLIDATE_TEMP,
         max_output_tokens=CONSOLIDATE_MAX_TOKENS,
+        timeout_seconds=CONSOLIDATE_TIMEOUT_SECONDS,
     )
 
 
@@ -496,6 +540,7 @@ async def _run_recombine(
         response_model=RecombinationOutput,
         temperature=RECOMBINE_TEMP,
         max_output_tokens=RECOMBINE_MAX_TOKENS,
+        timeout_seconds=RECOMBINE_TIMEOUT_SECONDS,
     )
 
 
@@ -517,6 +562,7 @@ async def _run_sanitize(
         response_model=DreamOperations,
         temperature=SANITIZE_TEMP,
         max_output_tokens=SANITIZE_MAX_TOKENS,
+        timeout_seconds=SANITIZE_TIMEOUT_SECONDS,
     )
 
 
@@ -772,6 +818,7 @@ async def _execute_dream_pass_async(
                 pass_id,
                 ops,
                 known_fact_uuids=input_bundle.known_fact_uuids,
+                lock_handle=dream_lock_handle,
             )
 
             completed_at = datetime.now(timezone.utc)
@@ -780,6 +827,10 @@ async def _execute_dream_pass_async(
             def _as_int(key: str) -> int:
                 v = apply_stats.get(key, 0)
                 return int(v) if isinstance(v, (int, str)) and v else 0
+
+            # Fail-closed: a missing/malformed drain flag reads as
+            # ``timed_out`` (writes at risk), never a confirmed drain.
+            ingestion_drain_status = drain_status_from_stats(apply_stats)
 
             return DreamPassResult(
                 user_id=user_id,
@@ -793,6 +844,7 @@ async def _execute_dream_pass_async(
                 demotion_count=_as_int("demotion_count"),
                 entity_invalidation_count=_as_int("entity_invalidation_count"),
                 summary_for_user=ops.summary_for_user,
+                ingestion_drain_status=ingestion_drain_status,
                 dream_session_id=str(apply_stats.get("session_id") or ""),
                 operations=(
                     snapshot if isinstance(snapshot, DreamOperationsSnapshot) else None
@@ -955,7 +1007,27 @@ async def _submit_dream_pass_batch(
     # Phase 1 is enqueued — hand the dream lock to the batch callback so it
     # spans the full async lifetime (apply runs hours later). Extend the TTL
     # to the batch window first; the callback releases it on terminal/failure.
-    await dream_lock_handle.extend(BATCH_LOCK_TTL_SECONDS)
+    # A failed extend means the lock expired before the handoff — a newer
+    # pass may already own the graph, so the just-submitted batch must never
+    # be applied: revoke the pending entry (the poller then never dispatches
+    # the callback chain) and drop the input bundle. The provider batch is
+    # orphaned; its results are discarded. The lock is NOT disowned, so the
+    # context manager's compare-and-delete release stays a safe no-op.
+    if not await dream_lock_handle.extend(BATCH_LOCK_TTL_SECONDS):
+        from backend.executor.batch_executor import remove_pending
+
+        from .batch_submit import delete_input_bundle
+
+        await remove_pending(submission.provider_batch_id)
+        await delete_input_bundle(pass_id)
+        return _failure_result(
+            user_id,
+            pass_id,
+            started_at,
+            monotonic_start,
+            execution_path,
+            "anthropic_batch: dream lock lost before handoff — batch revoked",
+        )
     dream_lock_handle.disown()
     return DreamPassResult(
         user_id=user_id,
