@@ -8,11 +8,12 @@ import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBann
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
+import { OrgTeamSwitcher } from "./components/OrgTeamSwitcher/OrgTeamSwitcher";
 import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
@@ -33,7 +34,7 @@ function pickMobileNavIcon(href: string): IconType {
 }
 
 export function Navbar() {
-  const { user, isLoggedIn, isUserLoading } = useSupabase();
+  const { user, isLoggedIn, isUserLoading } = useAuth();
   const breakpoint = useBreakpoint();
   const isSmallScreen = breakpoint === "sm" || breakpoint === "base";
   const dynamicMenuItems = getAccountMenuItems(user?.role);
@@ -112,6 +113,7 @@ export function Navbar() {
           {isLoggedIn && !isSmallScreen ? (
             <div className="flex flex-1 items-center justify-end gap-4">
               <div className="flex items-center gap-4">
+                <OrgTeamSwitcher />
                 <FeedbackButton />
                 <AgentActivityDropdown />
                 {profile && <Wallet key={profile.username} />}

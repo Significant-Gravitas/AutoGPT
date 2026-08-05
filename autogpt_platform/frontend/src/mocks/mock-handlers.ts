@@ -8,6 +8,7 @@ import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credit
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getExecutionsMock } from "@/app/api/__generated__/endpoints/executions/executions.msw";
+import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getHealthMock } from "@/app/api/__generated__/endpoints/health/health.msw";
@@ -21,6 +22,7 @@ import { getPresetsMock } from "@/app/api/__generated__/endpoints/presets/preset
 import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getSearchMock } from "@/app/api/__generated__/endpoints/search/search.msw";
 import { getStoreMock } from "@/app/api/__generated__/endpoints/store/store.msw";
+import { getWorkspaceMock } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 
 // Pass hard-coded data to individual handler functions to override faker-generated data.
 export const mockHandlers = [
@@ -34,6 +36,7 @@ export const mockHandlers = [
   ...getDefaultMock(),
   ...getEmailMock(),
   ...getExecutionsMock(),
+  ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),
   ...getHealthMock(),
@@ -47,4 +50,5 @@ export const mockHandlers = [
   ...getSchedulesMock(),
   ...getSearchMock(),
   ...getStoreMock(),
+  ...getWorkspaceMock(),
 ];

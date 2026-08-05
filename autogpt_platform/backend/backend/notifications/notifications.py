@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from concurrent.futures import Future
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
@@ -220,6 +221,8 @@ class NotificationManager(AppService):
         self.rabbitmq_config = create_notification_config()
         self.running = True
         self.email_sender = EmailSender()
+        self._run_service_future: Future[None] | None = None
+        self._run_service_task: asyncio.Task[None] | None = None
 
     @property
     def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
@@ -439,6 +442,19 @@ class NotificationManager(AppService):
             await discord_send_alert(content, channel)
         except Exception as e:
             logger.warning(f"Failed to send Discord system alert: {e}")
+
+    @expose
+    async def send_email_or_raise(self, to: str, subject: str, body: str):
+        """Send a one-off transactional email (e.g. Better Auth password-reset
+        links forwarded by the REST API) through this service's Postmark
+        credential. Deliberately not wrapped in try/except: a delivery failure
+        must propagate to the RPC caller so it can surface the error instead
+        of reporting "email sent" for an undeliverable message."""
+        # send_email_or_raise wraps a blocking Postmark HTTP call; run it off
+        # the event loop so it can't stall the notification service.
+        await asyncio.to_thread(
+            self.email_sender.send_email_or_raise, to, subject, body
+        )
 
     async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""
@@ -1102,10 +1118,27 @@ class NotificationManager(AppService):
 
     def run_service(self):
         # Queue the main _run_service task
-        asyncio.run_coroutine_threadsafe(self._run_service(), self.shared_event_loop)
+        # Keep the concurrent Future alive for as long as the manager. asyncio's
+        # event loop only keeps weak references to tasks, so discarding this
+        # handle can garbage-collect the pending RabbitMQ connection task.
+        self._run_service_future = asyncio.run_coroutine_threadsafe(
+            self._run_service_with_task_reference(), self.shared_event_loop
+        )
 
         # Start the main event loop
         super().run_service()
+
+    async def _run_service_with_task_reference(self) -> None:
+        """Retain the asyncio task so cleanup can await its full cancellation."""
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("Notification service did not start in an asyncio task")
+        self._run_service_task = task
+        try:
+            await self._run_service()
+        finally:
+            if self._run_service_task is task:
+                self._run_service_task = None
 
     @continuous_retry()
     async def _run_service(self):
@@ -1170,13 +1203,44 @@ class NotificationManager(AppService):
             await asyncio.gather(*consumer_tasks, return_exceptions=True)
             raise
 
-    def cleanup(self):
-        """Cleanup service resources"""
-        self.running = False
-        logger.info("⏳ Disconnecting RabbitMQ...")
-        self.run_and_wait(self.rabbitmq_service.disconnect())
+    async def _shutdown_service(self) -> None:
+        """Stop consumers completely before closing their RabbitMQ connection."""
+        service_future = getattr(self, "_run_service_future", None)
+        service_task = getattr(self, "_run_service_task", None)
+        # Cleanup can race the tracked coroutine's first loop turn. Yield until
+        # it records the actual asyncio task or its scheduling proxy completes.
+        while (
+            service_task is None
+            and service_future is not None
+            and not service_future.done()
+        ):
+            await asyncio.sleep(0)
+            service_task = getattr(self, "_run_service_task", None)
 
-        super().cleanup()
+        if service_task is not None and service_task is not asyncio.current_task():
+            if not service_task.done():
+                service_task.cancel()
+            await asyncio.gather(service_task, return_exceptions=True)
+
+        if rabbitmq_service := getattr(self, "rabbitmq_service", None):
+            logger.info("⏳ Disconnecting RabbitMQ...")
+            await rabbitmq_service.disconnect()
+
+    def cleanup(self):
+        """Cleanup service resources."""
+        self.running = False
+        try:
+            # Use one coroutine as a shutdown barrier. Cancelling only the
+            # concurrent Future marks that proxy done before the underlying
+            # asyncio task and its consumer children have finished unwinding.
+            shutdown = self._shutdown_service()
+            if self.shared_event_loop.is_running():
+                self.run_and_wait(shutdown)
+            else:
+                self.shared_event_loop.run_until_complete(shutdown)
+        finally:
+            self._run_service_future = None
+            super().cleanup()
 
 
 class NotificationManagerClient(AppServiceClient):
@@ -1189,3 +1253,4 @@ class NotificationManagerClient(AppServiceClient):
     )
     queue_weekly_summary = endpoint_to_sync(NotificationManager.queue_weekly_summary)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
+    send_email_or_raise = endpoint_to_sync(NotificationManager.send_email_or_raise)

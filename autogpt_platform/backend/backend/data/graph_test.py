@@ -2254,3 +2254,122 @@ async def test_migrate_llm_models_covers_preset_overrides():
         "migrate_llm_models must run UPDATEs against AgentNodeExecutionInputOutput "
         "for preset rows, not just AgentNode.constantInput."
     )
+
+
+def test_graph_meta_from_db_carries_org_team():
+    """Graph-bound resources (webhooks, presets) inherit the GRAPH's tenant,
+    so from_db must surface the row's organizationId/teamId — and exports
+    must strip them like user_id."""
+    from datetime import datetime
+
+    import prisma.enums
+    import prisma.models
+
+    from backend.data.graph import GraphMeta
+
+    row = prisma.models.AgentGraph(
+        id="g-org",
+        version=1,
+        name="Org Graph",
+        description="",
+        userId="u1",
+        isActive=True,
+        createdAt=datetime.now(),
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        organizationId="org-1",
+        teamId="team-1",
+    )
+
+    meta = GraphMeta.from_db(row)
+    assert meta.organization_id == "org-1"
+    assert meta.team_id == "team-1"
+
+    model = GraphModel.from_db(row)
+    assert model.organization_id == "org-1"
+    assert model.team_id == "team-1"
+
+    exported = GraphModel.from_db(row, for_export=True)
+    assert exported.organization_id is None
+    assert exported.team_id is None
+
+
+@pytest.mark.asyncio
+async def test_delete_graph_scopes_to_active_org(mocker):
+    """Regression: ``delete_graph`` accepted ``organization_id`` but silently
+    dropped it from the where clause — an org-scoped delete request executed
+    tenant-blind. Tenant-less (pre-backfill) rows must remain deletable."""
+    from backend.data.graph import delete_graph
+
+    mock_client = AsyncMock()
+    mock_client.delete_many.return_value = 1
+    mocker.patch.object(prisma.models.AgentGraph, "prisma", return_value=mock_client)
+
+    await delete_graph("g-1", user_id="u-1", organization_id="org-A")
+    where = mock_client.delete_many.call_args.kwargs["where"]
+    assert where["id"] == "g-1"
+    assert where["userId"] == "u-1"
+    assert where["OR"] == [{"organizationId": "org-A"}, {"organizationId": None}]
+
+    await delete_graph("g-1", user_id="u-1")
+    where = mock_client.delete_many.call_args.kwargs["where"]
+    assert "OR" not in where
+
+
+@pytest.mark.asyncio
+async def test_get_graph_org_visibility_where_clause(mocker):
+    """With an active org, get_graph must use the membership predicate —
+    a member can open any graph the list endpoints show them — instead of
+    strict userId ownership."""
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = None
+    store_client = AsyncMock()
+    store_client.find_first.return_value = None
+    lib_client = AsyncMock()
+    lib_client.find_first.return_value = None
+    mocker.patch.object(prisma.models.AgentGraph, "prisma", return_value=mock_client)
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=store_client
+    )
+    mocker.patch.object(prisma.models.LibraryAgent, "prisma", return_value=lib_client)
+    mocker.patch(
+        "backend.data.graph.get_user_team_ids",
+        AsyncMock(return_value=["team-a"]),
+    )
+
+    await get_graph("g-1", None, user_id="u-1", organization_id="org-1")
+
+    where = mock_client.find_first.call_args.kwargs["where"]
+    assert "userId" not in where
+    assert where["AND"] == [
+        {
+            "OR": [
+                {
+                    "userId": "u-1",
+                    "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
+                },
+                {"organizationId": "org-1", "teamId": None},
+                {"organizationId": "org-1", "teamId": {"in": ["team-a"]}},
+            ]
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_graph_without_org_keeps_strict_ownership(mocker):
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = None
+    store_client = AsyncMock()
+    store_client.find_first.return_value = None
+    lib_client = AsyncMock()
+    lib_client.find_first.return_value = None
+    mocker.patch.object(prisma.models.AgentGraph, "prisma", return_value=mock_client)
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=store_client
+    )
+    mocker.patch.object(prisma.models.LibraryAgent, "prisma", return_value=lib_client)
+
+    await get_graph("g-1", None, user_id="u-1")
+
+    where = mock_client.find_first.call_args.kwargs["where"]
+    assert where["userId"] == "u-1"
+    assert "AND" not in where

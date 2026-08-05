@@ -179,7 +179,7 @@ def test_description_length_cap_enforced_by_validate_path():
     """The cap is enforced inside ``StoreSkillTool._execute`` (not by
     the dataclass), so this test just locks in the constant — bumping
     it requires conscious thought about per-turn token cost."""
-    assert MAX_DESCRIPTION_CHARS == 200
+    assert MAX_DESCRIPTION_CHARS == 250
 
 
 def test_trigger_caps_are_bounded():

@@ -1,5 +1,7 @@
 """Tests for notification error handling in NotificationManager."""
 
+import asyncio
+import threading
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -582,6 +584,168 @@ class TestNotificationErrorHandling:
             # Info message about successful sends should be logged
             info_calls = [call[0][0] for call in mock_logger.info.call_args_list]
             assert any("sent and removed" in call.lower() for call in info_calls)
+
+
+def test_run_service_retains_background_future():
+    """The RabbitMQ task must remain strongly referenced while it is pending."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.shared_event_loop = MagicMock()
+    scheduled_future = MagicMock()
+
+    with patch(
+        "backend.notifications.notifications.asyncio.run_coroutine_threadsafe",
+        return_value=scheduled_future,
+    ) as run_coroutine_threadsafe, patch(
+        "backend.notifications.notifications.AppService.run_service"
+    ) as parent_run_service:
+        manager.run_service()
+
+    wrapper_coroutine = run_coroutine_threadsafe.call_args.args[0]
+    wrapper_coroutine.close()
+    assert manager._run_service_future is scheduled_future
+    parent_run_service.assert_called_once_with()
+
+
+def test_cleanup_awaits_background_task_before_disconnect():
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    events = []
+    manager._run_service_future = MagicMock()
+    manager._run_service_task = None
+    manager.shared_event_loop = MagicMock()
+    manager.shared_event_loop.is_running.return_value = True
+    manager.rabbitmq_service = MagicMock()
+    manager.rabbitmq_service.disconnect = AsyncMock(
+        side_effect=lambda: events.append("disconnect")
+    )
+    manager.run_and_wait = MagicMock(side_effect=asyncio.run)
+
+    with patch(
+        "backend.notifications.notifications.AppService.cleanup",
+        side_effect=lambda: events.append("parent"),
+    ):
+        manager.cleanup()
+
+    assert manager.running is False
+    assert events == ["disconnect", "parent"]
+    manager.rabbitmq_service.disconnect.assert_awaited_once_with()
+    manager.run_and_wait.assert_called_once()
+    assert manager._run_service_future is None
+
+
+def test_cleanup_handles_shutdown_before_rabbitmq_startup():
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.shared_event_loop = MagicMock()
+    manager.shared_event_loop.is_running.return_value = True
+    manager.run_and_wait = MagicMock(side_effect=asyncio.run)
+
+    with patch(
+        "backend.notifications.notifications.AppService.cleanup"
+    ) as parent_cleanup:
+        manager.cleanup()
+
+    assert manager.running is False
+    manager.run_and_wait.assert_called_once()
+    parent_cleanup.assert_called_once_with()
+
+
+def test_cleanup_waits_for_consumer_task_cancellation_to_finish():
+    """The event loop must not close while notification tasks are still pending."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.shared_event_loop = asyncio.new_event_loop()
+    service_started = threading.Event()
+    service_finished = threading.Event()
+    events = []
+
+    async def slow_to_cancel_service():
+        service_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            # Model async context-manager cleanup that needs several loop turns.
+            for _ in range(5):
+                await asyncio.sleep(0)
+            service_finished.set()
+            events.append("service-finished")
+
+    manager._run_service = slow_to_cancel_service
+    manager.rabbitmq_service = MagicMock()
+    manager.rabbitmq_service.disconnect = AsyncMock(
+        side_effect=lambda: events.append("disconnect")
+    )
+    loop_thread = threading.Thread(
+        target=manager.shared_event_loop.run_forever,
+        daemon=True,
+    )
+    loop_thread.start()
+    scheduled_future = asyncio.run_coroutine_threadsafe(
+        manager._run_service_with_task_reference(), manager.shared_event_loop
+    )
+    manager._run_service_future = scheduled_future
+    assert service_started.wait(timeout=2)
+
+    def stop_parent_loop():
+        manager.shared_event_loop.call_soon_threadsafe(manager.shared_event_loop.stop)
+
+    try:
+        with patch(
+            "backend.notifications.notifications.AppService.cleanup",
+            side_effect=stop_parent_loop,
+        ):
+            manager.cleanup()
+        loop_thread.join(timeout=2)
+
+        assert service_finished.is_set()
+        assert events == ["service-finished", "disconnect"]
+        assert not loop_thread.is_alive()
+        assert scheduled_future.done()
+        assert not asyncio.all_tasks(manager.shared_event_loop)
+    finally:
+        if loop_thread.is_alive():
+            manager.shared_event_loop.call_soon_threadsafe(
+                manager.shared_event_loop.stop
+            )
+            loop_thread.join(timeout=2)
+        manager.shared_event_loop.close()
+
+
+def test_cleanup_handles_shutdown_before_service_task_first_loop_turn():
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager._run_service_task = None
+    manager.shared_event_loop = asyncio.new_event_loop()
+    service_finished = threading.Event()
+
+    async def slow_to_cancel_service():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            for _ in range(3):
+                await asyncio.sleep(0)
+            service_finished.set()
+
+    manager._run_service = slow_to_cancel_service
+    scheduled_future = asyncio.run_coroutine_threadsafe(
+        manager._run_service_with_task_reference(), manager.shared_event_loop
+    )
+    manager._run_service_future = scheduled_future
+
+    try:
+        with patch("backend.notifications.notifications.AppService.cleanup"):
+            manager.cleanup()
+        manager.shared_event_loop.run_until_complete(asyncio.sleep(0))
+
+        assert service_finished.is_set()
+        assert scheduled_future.done()
+        assert not asyncio.all_tasks(manager.shared_event_loop)
+    finally:
+        manager.shared_event_loop.close()
 
 
 class TestConsumerRetryWithBackoff:

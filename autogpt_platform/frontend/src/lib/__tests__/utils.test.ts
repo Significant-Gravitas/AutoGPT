@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { setNestedProperty } from "../utils";
+import { agentGraphExportFilename, setNestedProperty } from "../utils";
 
 const testCases = [
   {
@@ -93,5 +93,41 @@ describe("setNestedProperty", () => {
     }).toThrow("Invalid property name: __proto__");
 
     expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+  });
+});
+
+describe("agentGraphExportFilename", () => {
+  test("uses the graph's name and version", () => {
+    const graph = { name: "Email Digest", version: 3 };
+    expect(agentGraphExportFilename(graph)).toBe("Email Digest_v3.json");
+  });
+
+  test("omits the version suffix when the graph has no version", () => {
+    expect(agentGraphExportFilename({ name: "Email Digest" })).toBe(
+      "Email Digest.json",
+    );
+  });
+
+  test("falls back to the given name when the graph has none", () => {
+    expect(agentGraphExportFilename({ version: 2 }, "Store Agent")).toBe(
+      "Store Agent_v2.json",
+    );
+  });
+
+  test("replaces filesystem-hostile characters in the name", () => {
+    expect(
+      agentGraphExportFilename({ name: 'A/B: "test" <agent>?', version: 1 }),
+    ).toBe("A_B_ _test_ _agent_v1.json");
+  });
+
+  test('falls back to "agent" for non-object graphs without a fallback name', () => {
+    expect(agentGraphExportFilename(null)).toBe("agent.json");
+    expect(agentGraphExportFilename("nope")).toBe("agent.json");
+  });
+
+  test("ignores blank names", () => {
+    expect(agentGraphExportFilename({ name: "   ", version: 1 }, "  ")).toBe(
+      "agent_v1.json",
+    );
   });
 });

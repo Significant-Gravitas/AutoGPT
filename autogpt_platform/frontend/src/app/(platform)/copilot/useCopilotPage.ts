@@ -1,10 +1,12 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
+import { parseAsString, useQueryState } from "nuqs";
 import { useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./helpers";
+import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
@@ -13,6 +15,7 @@ import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
@@ -36,13 +39,19 @@ function hasAssistantTail(messages: UIMessage[]) {
 }
 
 export function useCopilotPage() {
-  const { isUserLoading, isLoggedIn } = useSupabase();
+  const { isUserLoading, isLoggedIn } = useAuth();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const expertId = isExpertsEnabled ? expertIdParam : null;
+  const { expertsById } = useExpertMap();
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
 
   const {
     sessionId,
+    sessionExpertId,
+    isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
@@ -57,7 +66,16 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
-  } = useChatSession({ dryRun: isDryRun });
+  } = useChatSession({ dryRun: isDryRun, expertId });
+
+  // An open session owns its identity: the URL param only describes who the
+  // NEXT session will address, and it is absent whenever a thread is reached
+  // from global search, a bookmark or a shared link.
+  const activeExpertId = sessionId ? sessionExpertId : expertId;
+  const expertIdentity =
+    isExpertsEnabled && activeExpertId
+      ? (expertsById.get(activeExpertId) ?? null)
+      : null;
 
   const {
     messages: currentMessages,
@@ -171,12 +189,18 @@ export function useCopilotPage() {
   // Wrap sendNewMessage with queue-in-flight routing: if a session is active
   // and a turn is already running, POST the follow-up text to the pending
   // endpoint so the backend buffers it; otherwise fall through to normal send.
-  async function onSend(message: string, files?: File[]) {
+  async function onSend(
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) {
     const trimmed = message.trim();
-    if (!trimmed && (!files || files.length === 0)) return;
+    const hasAttachments =
+      (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
+    if (!trimmed && !hasAttachments) return;
 
     if (sessionId && isInflightRef.current) {
-      if (files && files.length > 0) {
+      if (hasAttachments) {
         toast({
           title: "Please wait to attach files",
           description:
@@ -194,7 +218,7 @@ export function useCopilotPage() {
           err instanceof Error &&
           err.name === "QueueFollowUpNotActiveError"
         ) {
-          await sendNewMessage(message, files);
+          await sendNewMessage(message, files, workspaceFiles);
           return;
         }
         toast({
@@ -213,7 +237,7 @@ export function useCopilotPage() {
     if (sessionId) {
       isInflightRef.current = true;
     }
-    await sendNewMessage(message, files);
+    await sendNewMessage(message, files, workspaceFiles);
   }
 
   useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
@@ -254,5 +278,7 @@ export function useCopilotPage() {
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
     sessionChatStatus,
+    expertIdentity,
+    isAdoptingExpertSession,
   };
 }

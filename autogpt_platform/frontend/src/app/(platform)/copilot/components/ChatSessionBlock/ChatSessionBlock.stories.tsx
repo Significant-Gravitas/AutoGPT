@@ -91,6 +91,14 @@ export const LinearCompleted: Story = {
   },
 };
 
+export const Pinned: Story = {
+  args: {
+    title: "Pinned project plan",
+    updatedAt: daysAgo(2),
+    showPinned: true,
+  },
+};
+
 export const PlatformMatrix: Story = {
   render: () => (
     <div className="space-y-1">

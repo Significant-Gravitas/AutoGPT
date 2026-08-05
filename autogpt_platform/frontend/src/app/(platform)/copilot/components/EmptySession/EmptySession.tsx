@@ -4,9 +4,9 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
@@ -18,16 +18,24 @@ import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes
 import { PulseChips } from "../PulseChips/PulseChips";
 import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EditNameDialog } from "./components/EditNameDialog/EditNameDialog";
+import { RecipientChip } from "../ChatInput/components/RecipientChip";
+import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
   inputLayoutId: string;
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
+  isAdoptingExpertSession?: boolean;
 }
 
 export function EmptySession({
@@ -37,11 +45,16 @@ export function EmptySession({
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
+  isAdoptingExpertSession,
 }: Props) {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const pulseChips = usePulseChips();
+  const { options, recipient, isLoadingRecipient, selectRecipient } =
+    useRecipientPicker();
+  const isComposerDisabled = isCreatingSession || !!isAdoptingExpertSession;
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -112,12 +125,22 @@ export function EmptySession({
               <ChatInput
                 inputId="chat-input-empty"
                 onSend={onSend}
-                disabled={isCreatingSession}
+                disabled={isComposerDisabled}
                 isUploadingFiles={isUploadingFiles}
                 placeholder={inputPlaceholder}
                 className="w-full"
                 droppedFiles={droppedFiles}
                 onDroppedFilesConsumed={onDroppedFilesConsumed}
+                recipientPicker={
+                  isExpertsEnabled ? (
+                    <RecipientChip
+                      recipient={recipient}
+                      options={options}
+                      isLoading={isLoadingRecipient}
+                      onSelect={selectRecipient}
+                    />
+                  ) : undefined
+                }
               />
             </motion.div>
           </div>
@@ -133,7 +156,7 @@ export function EmptySession({
           <SuggestionThemes
             themes={themes}
             onSend={onSend}
-            disabled={isCreatingSession}
+            disabled={isComposerDisabled}
           />
         )}
       </motion.div>

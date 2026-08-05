@@ -1,9 +1,9 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
-import { getCurrentUser } from "@/lib/supabase/actions";
+import { getCurrentUser } from "@/lib/auth/actions";
 
-export function useTallyPopup() {
+export function useTallyPopup(enabled = true) {
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [sentryReplayId, setSentryReplayId] = useState("");
   const [replayUrl, setReplayUrl] = useState("");
@@ -14,6 +14,7 @@ export function useTallyPopup() {
   const pathname = usePathname();
 
   useEffect(() => {
+    if (!enabled) return;
     // Set client-side values
     if (typeof window !== "undefined") {
       setPageUrl(window.location.href);
@@ -31,17 +32,19 @@ export function useTallyPopup() {
         }
       }
     }
-  }, [pathname]);
+  }, [enabled, pathname]);
 
   useEffect(() => {
+    if (!enabled) return;
     // Check authentication status using server action (works with httpOnly cookies)
     getCurrentUser().then(({ user }) => {
       setIsAuthenticated(user != null);
       setUserEmail(user?.email || "");
     });
-  }, [pathname]);
+  }, [enabled, pathname]);
 
   useEffect(() => {
+    if (!enabled) return;
     // Load Tally script
     const script = document.createElement("script");
     script.src = "https://tally.so/widgets/embed.js";
@@ -95,7 +98,7 @@ export function useTallyPopup() {
       document.head.removeChild(script);
       window.removeEventListener("message", handleTallyMessage);
     };
-  }, []);
+  }, [enabled]);
 
   return {
     state: {

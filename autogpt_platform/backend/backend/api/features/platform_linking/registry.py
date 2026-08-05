@@ -10,6 +10,14 @@ from urllib.parse import urlencode
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.bot.adapters.discord import config as discord_config
+from backend.copilot.bot.adapters.slack import config as slack_config
+from backend.copilot.bot.adapters.telegram import config as telegram_config
+from backend.util.settings import Settings
+
+# Backend route that starts the Slack "Add to Slack" OAuth install (kept in sync
+# with slack.oauth.INSTALL_PATH; hardcoded here to avoid importing the heavier
+# oauth module — which pulls in the Slack SDK + Prisma — into this metadata file).
+_SLACK_INSTALL_PATH = "/api/copilot-webhooks/slack/install"
 
 
 class PlatformMeta(BaseModel):
@@ -30,7 +38,7 @@ def enabled_platforms() -> list[PlatformMeta]:
     Platforms whose adapter isn't configured (missing credentials) are
     omitted entirely so the Bots page hides them.
     """
-    all_platforms = [_discord_meta()]
+    all_platforms = [_discord_meta(), _slack_meta(), _telegram_meta()]
     return [platform for platform in all_platforms if platform.enabled]
 
 
@@ -43,6 +51,53 @@ def _discord_meta() -> PlatformMeta:
         enabled=enabled,
         add_bot_url=_discord_invite_url() if enabled else None,
     )
+
+
+def _slack_meta() -> PlatformMeta:
+    # Enabled once the signing secret plus credentials are set — the same gate
+    # the webhook adapter mounts on. "Add to Slack" needs the OAuth app creds
+    # (multi-workspace install); with only a static token there's no install URL
+    # (single-workspace mode), so the button is hidden.
+    oauth_ready = bool(
+        slack_config.get_client_id() and slack_config.get_client_secret()
+    )
+    has_credentials = oauth_ready or bool(slack_config.get_bot_token())
+    enabled = bool(slack_config.get_signing_secret() and has_credentials)
+    return PlatformMeta(
+        platform="SLACK",
+        display_name="Slack",
+        icon="slack.png",
+        enabled=enabled,
+        add_bot_url=_slack_install_url() if (enabled and oauth_ready) else None,
+    )
+
+
+def _telegram_meta() -> PlatformMeta:
+    # Enabled on the same gate the webhook adapter mounts on. The t.me
+    # startgroup deep link opens Telegram's own "add to group" picker, so the
+    # button only renders when the bot's public username is configured.
+    enabled = bool(
+        telegram_config.get_bot_token() and telegram_config.get_webhook_secret()
+    )
+    username = telegram_config.get_bot_username().lstrip("@")
+    return PlatformMeta(
+        platform="TELEGRAM",
+        display_name="Telegram",
+        icon="telegram.png",
+        enabled=enabled,
+        add_bot_url=(
+            f"https://t.me/{username}?startgroup=true"
+            if (enabled and username)
+            else None
+        ),
+    )
+
+
+def _slack_install_url() -> str | None:
+    base = Settings().config.platform_base_url.rstrip("/")
+    if not base:
+        return None
+    return f"{base}{_SLACK_INSTALL_PATH}"
 
 
 def _discord_invite_url() -> str | None:

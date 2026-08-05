@@ -2569,6 +2569,45 @@
         }
       }
     },
+    "/api/auth/email/send": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Send a Better Auth transactional email via the backend mailer",
+        "operationId": "sendAuthTransactionalEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AuthEmailRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "400": {
+            "description": "url does not point at a trusted frontend origin"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -2577,6 +2616,12 @@
         "responses": {
           "200": {
             "description": "Successful Response",
+            "headers": {
+              "X-AutoGPT-User-Created": {
+                "description": "Whether this request created a new user",
+                "schema": { "type": "string", "enum": ["true", "false"] }
+              }
+            },
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
@@ -3294,7 +3339,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nordered by most recently updated.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3319,6 +3364,18 @@
               "minimum": 0,
               "default": 0,
               "title": "Offset"
+            }
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Expert Id"
             }
           }
         ],
@@ -3349,7 +3406,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run`` and/or\n        ``builder_graph_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
+        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -3659,6 +3716,59 @@
           "429": { "description": "Call-frequency cap exceeded" },
           "503": {
             "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/pinned": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update session pinned",
+        "description": "Pin or unpin a chat session.\n\nPinned sessions surface at the top of the user's sidebar list ahead of\nunpinned ones, regardless of recency.\n\nArgs:\n    session_id: The session ID to update.\n    request: Request body containing the new pin state.\n    user_id: The authenticated user's ID.\n\nReturns:\n    dict: Status of the update.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "patchV2Update session pinned",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionPinnedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Update Session Pinned"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -5291,6 +5401,207 @@
         }
       }
     },
+    "/api/experts": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Experts",
+        "operationId": "list_experts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/Expert" },
+                  "type": "array",
+                  "title": "Response List Experts"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Hire Expert",
+        "operationId": "hire_expert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/HireRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HireResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert template not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/templates": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Templates",
+        "operationId": "list_expert_templates",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/Expert" },
+                  "type": "array",
+                  "title": "Response List Expert Templates"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/{expert_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Archive Expert",
+        "operationId": "archive_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert",
+        "operationId": "get_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/workflows": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Install Expert Workflow",
+        "operationId": "install_expert_workflow",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallWorkflowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertWorkflowRef" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/files/upload": {
       "post": {
         "tags": ["v1", "files"],
@@ -5521,7 +5832,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphModel" }
+                "schema": { "$ref": "#/components/schemas/UpdateGraphResponse" }
               }
             }
           },
@@ -6069,7 +6380,13 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetActiveGraphVersionResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -6749,6 +7066,104 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invitations/pending": {
+      "get": {
+        "tags": ["v2", "invitations", "invitations"],
+        "summary": "List pending invitations for current user",
+        "operationId": "getV2List pending invitations for current user",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InvitationResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Getv2List Pending Invitations For Current User"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/invitations/{token}/accept": {
+      "post": {
+        "tags": ["v2", "invitations", "invitations"],
+        "summary": "Accept invitation",
+        "operationId": "postV2Accept invitation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Token" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Accept Invitation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invitations/{token}/decline": {
+      "post": {
+        "tags": ["v2", "invitations", "invitations"],
+        "summary": "Decline invitation",
+        "operationId": "postV2Decline invitation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Token" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "422": {
             "description": "Validation Error",
@@ -8640,6 +9055,1119 @@
         }
       }
     },
+    "/api/orgs": {
+      "get": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "List user organizations",
+        "operationId": "getV2List user organizations",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/OrgResponse" },
+                  "type": "array",
+                  "title": "Response Getv2List User Organizations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Create organization",
+        "operationId": "postV2Create organization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateOrgRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/orgs/{org_id}": {
+      "delete": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Delete organization",
+        "operationId": "deleteV2Delete organization",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Get organization details",
+        "operationId": "getV2Get organization details",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Update organization",
+        "operationId": "patchV2Update organization",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateOrgRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/aliases": {
+      "get": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "List organization aliases",
+        "operationId": "getV2List organization aliases",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgAliasResponse" },
+                  "title": "Response Getv2List Organization Aliases"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Create organization alias",
+        "operationId": "postV2Create organization alias",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateAliasRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgAliasResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/convert": {
+      "post": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Convert personal org to team org",
+        "operationId": "postV2Convert personal org to team org",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/invitations": {
+      "get": {
+        "tags": ["v2", "orgs", "invitations", "orgs", "invitations"],
+        "summary": "List pending invitations",
+        "operationId": "getV2List pending invitations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InvitationResponse"
+                  },
+                  "title": "Response Getv2List Pending Invitations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "orgs", "invitations", "orgs", "invitations"],
+        "summary": "Create invitation",
+        "operationId": "postV2Create invitation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationCreateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/invitations/{invitation_id}": {
+      "delete": {
+        "tags": ["v2", "orgs", "invitations", "orgs", "invitations"],
+        "summary": "Revoke invitation",
+        "operationId": "deleteV2Revoke invitation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Invitation Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/members": {
+      "get": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "List organization members",
+        "operationId": "getV2List organization members",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgMemberResponse" },
+                  "title": "Response Getv2List Organization Members"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Add member to organization",
+        "operationId": "postV2Add member to organization",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AddMemberRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgMemberResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/members/{uid}": {
+      "delete": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Remove member from organization",
+        "operationId": "deleteV2Remove member from organization",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Uid" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Update member role",
+        "operationId": "patchV2Update member role",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Uid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateMemberRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgMemberResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/transfer-ownership": {
+      "post": {
+        "tags": ["v2", "orgs", "orgs"],
+        "summary": "Transfer organization ownership",
+        "operationId": "postV2Transfer organization ownership",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferOwnershipRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/workspaces": {
+      "get": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "List workspaces",
+        "operationId": "getV2List workspaces",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TeamResponse" },
+                  "title": "Response Getv2List Workspaces"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Create workspace",
+        "operationId": "postV2Create workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTeamRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TeamResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/workspaces/{ws_id}": {
+      "delete": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Delete workspace",
+        "operationId": "deleteV2Delete workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Get workspace details",
+        "operationId": "getV2Get workspace details",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TeamResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Update workspace",
+        "operationId": "patchV2Update workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateTeamRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TeamResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/workspaces/{ws_id}/join": {
+      "post": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Self-join open workspace",
+        "operationId": "postV2Self-join open workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TeamResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/workspaces/{ws_id}/leave": {
+      "post": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Leave workspace",
+        "operationId": "postV2Leave workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/workspaces/{ws_id}/members": {
+      "get": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "List workspace members",
+        "operationId": "getV2List workspace members",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TeamMemberResponse"
+                  },
+                  "title": "Response Getv2List Workspace Members"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Add member to workspace",
+        "operationId": "postV2Add member to workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AddTeamMemberRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TeamMemberResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/workspaces/{ws_id}/members/{uid}": {
+      "delete": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Remove member from workspace",
+        "operationId": "deleteV2Remove member from workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          },
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Uid" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "orgs", "workspaces", "orgs", "workspaces"],
+        "summary": "Update workspace member role",
+        "operationId": "patchV2Update workspace member role",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Ws Id" }
+          },
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Uid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTeamMemberRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TeamMemberResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/otto/ask": {
       "post": {
         "tags": ["v2", "otto"],
@@ -8784,6 +10312,19 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ConfirmLinkRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8934,6 +10475,19 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ConfirmLinkRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -10939,11 +12493,182 @@
         }
       }
     },
+    "/api/transfers": {
+      "get": {
+        "tags": ["v2", "transfers", "transfers"],
+        "summary": "List transfers for active organization",
+        "operationId": "getV2List transfers for active organization",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/TransferResponse" },
+                  "type": "array",
+                  "title": "Response Getv2List Transfers For Active Organization"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "transfers", "transfers"],
+        "summary": "Create transfer request",
+        "operationId": "postV2Create transfer request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTransferRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/transfers/{transfer_id}/approve": {
+      "post": {
+        "tags": ["v2", "transfers", "transfers"],
+        "summary": "Approve transfer request",
+        "operationId": "postV2Approve transfer request",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "transfer_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Transfer Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transfers/{transfer_id}/execute": {
+      "post": {
+        "tags": ["v2", "transfers", "transfers"],
+        "summary": "Execute approved transfer",
+        "operationId": "postV2Execute approved transfer",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "transfer_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Transfer Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transfers/{transfer_id}/reject": {
+      "post": {
+        "tags": ["v2", "transfers", "transfers"],
+        "summary": "Reject transfer request",
+        "operationId": "postV2Reject transfer request",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "transfer_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Transfer Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files": {
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -11003,6 +12728,32 @@
               "title": "Origin"
             },
             "description": "Filter by file origin. ``uploaded`` matches files the user uploaded (``metadata.origin == 'user-upload'``, set by the upload endpoint for both Builder and CoPilot uploads); ``generated`` matches everything else (agent/block output). Ignored when ``session_id`` is set."
+          },
+          {
+            "name": "folder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ],
+              "description": "Only return files in this folder.",
+              "title": "Folder Id"
+            },
+            "description": "Only return files in this folder."
+          },
+          {
+            "name": "root_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only return root-level files (not in any folder).",
+              "default": false,
+              "title": "Root Only"
+            },
+            "description": "Only return root-level files (not in any folder)."
           }
         ],
         "responses": {
@@ -11221,6 +12972,186 @@
         }
       }
     },
+    "/api/workspace/folders": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "List workspace folders",
+        "operationId": "listWorkspaceFolders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFolderListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Create workspace folder",
+        "operationId": "createWorkspaceFolder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFolderCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFolder" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "A folder with this name already exists" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/workspace/folders/files/bulk-move": {
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Move workspace files to a folder",
+        "operationId": "bulkMoveWorkspaceFiles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BulkMoveFilesRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/WorkspaceFile" },
+                  "type": "array",
+                  "title": "Response Bulkmoveworkspacefiles"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/workspace/folders/{folder_id}": {
+      "delete": {
+        "tags": ["workspace"],
+        "summary": "Delete workspace folder",
+        "operationId": "deleteWorkspaceFolder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["workspace"],
+        "summary": "Update workspace folder",
+        "operationId": "updateWorkspaceFolder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFolderUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFolder" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "409": { "description": "A folder with this name already exists" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/storage/usage": {
       "get": {
         "tags": ["workspace"],
@@ -11341,6 +13272,14 @@
             ],
             "title": "Revoked At"
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id_restriction": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id Restriction"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "head": {
@@ -11357,6 +13296,10 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "owner_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Type"
           }
         },
         "type": "object",
@@ -11492,6 +13435,42 @@
         "required": ["turn_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
+      },
+      "AddMemberRequest": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin",
+            "default": false
+          },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "AddMemberRequest"
+      },
+      "AddTeamMemberRequest": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin",
+            "default": false
+          },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "AddTeamMemberRequest"
       },
       "AddUserCreditsResponse": {
         "properties": {
@@ -11871,6 +13850,20 @@
         "type": "object",
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
+      },
+      "AuthEmailRequest": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["reset_password", "verify_email", "change_email"],
+            "title": "Type"
+          },
+          "to": { "type": "string", "format": "email", "title": "To" },
+          "url": { "type": "string", "title": "Url" }
+        },
+        "type": "object",
+        "required": ["type", "to", "url"],
+        "title": "AuthEmailRequest"
       },
       "AuthorizeRequest": {
         "properties": {
@@ -12686,11 +14679,12 @@
       },
       "BotCommandUsage": {
         "properties": {
+          "platform": { "type": "string", "title": "Platform" },
           "command": { "type": "string", "title": "Command" },
           "uses": { "type": "integer", "title": "Uses" }
         },
         "type": "object",
-        "required": ["command", "uses"],
+        "required": ["platform", "command", "uses"],
         "title": "BotCommandUsage"
       },
       "BotGuildInfo": {
@@ -12754,6 +14748,7 @@
       },
       "BotServerActivity": {
         "properties": {
+          "platform": { "type": "string", "title": "Platform" },
           "server_id": { "type": "string", "title": "Server Id" },
           "name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -12763,7 +14758,7 @@
           "commands": { "type": "integer", "title": "Commands" }
         },
         "type": "object",
-        "required": ["server_id", "name", "messages", "commands"],
+        "required": ["platform", "server_id", "name", "messages", "commands"],
         "title": "BotServerActivity"
       },
       "BotServerCountPoint": {
@@ -12802,6 +14797,22 @@
         "required": ["agent_ids"],
         "title": "BulkMoveAgentsRequest",
         "description": "Request model for moving multiple agents to a folder."
+      },
+      "BulkMoveFilesRequest": {
+        "properties": {
+          "file_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "File Ids"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Folder Id"
+          }
+        },
+        "type": "object",
+        "required": ["file_ids"],
+        "title": "BulkMoveFilesRequest"
       },
       "CancelSessionResponse": {
         "properties": {
@@ -13074,6 +15085,23 @@
         "required": ["uuid"],
         "title": "CommunitySummary"
       },
+      "ConfirmLinkRequest": {
+        "properties": {
+          "telegram_auth": {
+            "anyOf": [
+              {
+                "additionalProperties": { "type": "string" },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Telegram Auth"
+          }
+        },
+        "type": "object",
+        "title": "ConfirmLinkRequest",
+        "description": "Optional confirm payload. ``telegram_auth`` carries the signed identity\nTelegram appends when the user reached this page via a login_url button —\nwhen present it must verify, and the link token must belong to that same\nTelegram user."
+      },
       "ConfirmLinkResponse": {
         "properties": {
           "success": { "type": "boolean", "title": "Success" },
@@ -13212,6 +15240,14 @@
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -13413,6 +15449,20 @@
         "required": ["api_key", "plain_text_key"],
         "title": "CreateAPIKeyResponse"
       },
+      "CreateAliasRequest": {
+        "properties": {
+          "alias_slug": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Alias Slug"
+          }
+        },
+        "type": "object",
+        "required": ["alias_slug"],
+        "title": "CreateAliasRequest"
+      },
       "CreateGraph": {
         "properties": {
           "graph": { "$ref": "#/components/schemas/Graph" },
@@ -13428,6 +15478,53 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateInvitationRequest": {
+        "properties": {
+          "email": { "type": "string", "title": "Email" },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin",
+            "default": false
+          },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager",
+            "default": false
+          },
+          "team_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Team Ids"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "CreateInvitationRequest"
+      },
+      "CreateOrgRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Slug"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": ["name", "slug"],
+        "title": "CreateOrgRequest"
+      },
       "CreateSessionRequest": {
         "properties": {
           "dry_run": {
@@ -13441,12 +15538,19 @@
               { "type": "null" }
             ],
             "title": "Builder Graph Id"
+          },
+          "expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Expert Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -13459,12 +15563,55 @@
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
             "default": { "dry_run": false, "kind": "normal" }
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
         "required": ["id", "created_at", "user_id"],
         "title": "CreateSessionResponse",
         "description": "Response model containing information on a newly created chat session."
+      },
+      "CreateTeamRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "join_policy": {
+            "type": "string",
+            "title": "Join Policy",
+            "default": "OPEN"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "CreateTeamRequest"
+      },
+      "CreateTransferRequest": {
+        "properties": {
+          "resource_type": { "type": "string", "title": "Resource Type" },
+          "resource_id": { "type": "string", "title": "Resource Id" },
+          "target_organization_id": {
+            "type": "string",
+            "title": "Target Organization Id"
+          },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["resource_type", "resource_id", "target_organization_id"],
+        "title": "CreateTransferRequest"
       },
       "CreatorDetails": {
         "properties": {
@@ -14505,6 +16652,16 @@
               { "type": "null" }
             ],
             "title": "Node Executions"
+          },
+          "nodes_failed": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/NodeFailureSummary" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Failed"
           }
         },
         "type": "object",
@@ -14548,6 +16705,93 @@
         "required": ["message", "execution_id", "graph_id", "graph_name"],
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
+      },
+      "Expert": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "role": { "type": "string", "title": "Role" },
+          "tagline": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tagline"
+          },
+          "bio": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Bio"
+          },
+          "skills": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Skills"
+          },
+          "identity": { "type": "string", "title": "Identity" },
+          "is_template": { "type": "boolean", "title": "Is Template" },
+          "source_template_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Template Id"
+          },
+          "is_archived": { "type": "boolean", "title": "Is Archived" },
+          "workflows": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkflowRef" },
+            "type": "array",
+            "title": "Workflows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "avatar_url",
+          "role",
+          "tagline",
+          "bio",
+          "skills",
+          "identity",
+          "is_template",
+          "source_template_id",
+          "is_archived",
+          "workflows"
+        ],
+        "title": "Expert"
+      },
+      "ExpertWorkflowRef": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "store_listing_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Store Listing Version Id"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "store_listing_version_id",
+          "library_agent_id",
+          "graph_id",
+          "name",
+          "description"
+        ],
+        "title": "ExpertWorkflowRef"
       },
       "FactListResponse": {
         "properties": {
@@ -14926,6 +17170,14 @@
             "title": "Is Dry Run",
             "default": false
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -14985,6 +17237,15 @@
             },
             "type": "object",
             "title": "Input Credentials"
+          },
+          "organization_id": {
+            "type": "string",
+            "title": "Organization Id",
+            "default": ""
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -15082,6 +17343,14 @@
             "title": "Is Dry Run",
             "default": false
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -15175,6 +17444,14 @@
             "title": "Is Dry Run",
             "default": false
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -15255,6 +17532,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -15301,6 +17586,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "nodes": {
             "items": { "$ref": "#/components/schemas/NodeModel" },
@@ -15407,6 +17700,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "input_schema": {
             "additionalProperties": true,
@@ -15566,6 +17867,34 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HireRequest": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["template_id"],
+        "title": "HireRequest"
+      },
+      "HireResult": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "failed_preloads": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Failed Preloads"
+          }
+        },
+        "type": "object",
+        "required": ["expert", "failed_preloads"],
+        "title": "HireResult"
+      },
       "HostScopedCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -15654,6 +17983,94 @@
         "required": ["message", "unrecognized_fields", "inputs"],
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
+      },
+      "InstallWorkflowRequest": {
+        "properties": {
+          "store_listing_version_id": {
+            "type": "string",
+            "title": "Store Listing Version Id"
+          }
+        },
+        "type": "object",
+        "required": ["store_listing_version_id"],
+        "title": "InstallWorkflowRequest"
+      },
+      "InvitationCreateResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "is_admin": { "type": "boolean", "title": "Is Admin" },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "team_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Team Ids"
+          },
+          "token": { "type": "string", "title": "Token" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "is_admin",
+          "is_billing_manager",
+          "expires_at",
+          "created_at",
+          "team_ids",
+          "token"
+        ],
+        "title": "InvitationCreateResponse",
+        "description": "Extended response returned only from POST /invitations -- includes the token."
+      },
+      "InvitationResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "is_admin": { "type": "boolean", "title": "Is Admin" },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "team_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Team Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "is_admin",
+          "is_billing_manager",
+          "expires_at",
+          "created_at",
+          "team_ids"
+        ],
+        "title": "InvitationResponse"
       },
       "InvoiceListItem": {
         "properties": {
@@ -15751,6 +18168,13 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
@@ -15913,10 +18337,6 @@
             "title": "Is Active",
             "default": true
           },
-          "webhook_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Webhook Id"
-          },
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
           "created_at": {
@@ -15928,6 +18348,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
           },
           "webhook": {
             "anyOf": [
@@ -15975,10 +18407,6 @@
             "type": "boolean",
             "title": "Is Active",
             "default": true
-          },
-          "webhook_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Webhook Id"
           }
         },
         "type": "object",
@@ -15991,7 +18419,7 @@
           "description"
         ],
         "title": "LibraryAgentPresetCreatable",
-        "description": "Request model used when creating a new preset for a library agent."
+        "description": "Request model used when creating a new preset for a library agent.\n\nA preset's webhook is never caller-specified here; webhook-triggered presets\nare created through ``POST /presets/setup-trigger``, which provisions a\nwebhook owned by the caller server-side."
       },
       "LibraryAgentPresetCreatableFromGraphExecution": {
         "properties": {
@@ -16080,7 +18508,7 @@
       },
       "LibraryAgentSort": {
         "type": "string",
-        "enum": ["createdAt", "updatedAt"],
+        "enum": ["createdAt", "updatedAt", "lastRunAt"],
         "title": "LibraryAgentSort",
         "description": "Possible sort options for sorting library agents."
       },
@@ -16385,14 +18813,22 @@
         "properties": {
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "params": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Params",
+            "description": "Compact argument summary: top-level input field names, required ones marked with *."
+          },
           "input_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Input Schema"
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Input Schema",
+            "description": "Full input schema. Omitted in discovery responses to keep them small; the execution error path returns the failed tool's full schema on demand."
           }
         },
         "type": "object",
-        "required": ["name", "description", "input_schema"],
+        "required": ["name", "description"],
         "title": "MCPToolInfo",
         "description": "Information about a single MCP tool discovered from a server."
       },
@@ -16936,6 +19372,19 @@
         ],
         "title": "NodeExecutionResult"
       },
+      "NodeFailureSummary": {
+        "properties": {
+          "node_id": { "type": "string", "title": "Node Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["node_id", "block_name", "error"],
+        "title": "NodeFailureSummary"
+      },
       "NodeModel": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -17249,6 +19698,89 @@
           "BUILDER_RUN_AGENT"
         ],
         "title": "OnboardingStep"
+      },
+      "OrgAliasResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "alias_slug": { "type": "string", "title": "Alias Slug" },
+          "alias_type": { "type": "string", "title": "Alias Type" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "alias_slug", "alias_type", "created_at"],
+        "title": "OrgAliasResponse"
+      },
+      "OrgMemberResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "email": { "type": "string", "title": "Email" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "is_owner": { "type": "boolean", "title": "Is Owner" },
+          "is_admin": { "type": "boolean", "title": "Is Admin" },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "email",
+          "name",
+          "is_owner",
+          "is_admin",
+          "is_billing_manager",
+          "joined_at"
+        ],
+        "title": "OrgMemberResponse"
+      },
+      "OrgResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "slug": { "type": "string", "title": "Slug" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "is_personal": { "type": "boolean", "title": "Is Personal" },
+          "member_count": { "type": "integer", "title": "Member Count" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "avatar_url",
+          "description",
+          "is_personal",
+          "member_count",
+          "created_at"
+        ],
+        "title": "OrgResponse"
       },
       "OrphanedScheduleDetail": {
         "properties": {
@@ -19259,6 +21791,10 @@
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
             "default": { "dry_run": false, "kind": "normal" }
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
@@ -19284,12 +21820,33 @@
           "source_platform": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source Platform"
+          },
+          "is_pinned": {
+            "type": "boolean",
+            "title": "Is Pinned",
+            "default": false
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
         "required": ["id", "created_at", "updated_at", "is_processing"],
         "title": "SessionSummaryResponse",
         "description": "Response model for a session summary (without messages)."
+      },
+      "SetActiveGraphVersionResponse": {
+        "properties": {
+          "skipped_webhook_presets": {
+            "items": { "$ref": "#/components/schemas/SkippedWebhookPreset" },
+            "type": "array",
+            "title": "Skipped Webhook Presets"
+          }
+        },
+        "type": "object",
+        "title": "SetActiveGraphVersionResponse",
+        "description": "Response for activating an existing graph version.\n\nCarries any webhook presets that were left pinned to their old version\nbecause the newly activated version's trigger block is incompatible and\nneeds to be reconfigured."
       },
       "SetGraphActiveVersion": {
         "properties": {
@@ -19526,6 +22083,17 @@
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
       },
+      "SkippedWebhookPreset": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "pinned_version": { "type": "integer", "title": "Pinned Version" }
+        },
+        "type": "object",
+        "required": ["id", "name", "pinned_version"],
+        "title": "SkippedWebhookPreset",
+        "description": "A webhook preset that was left pinned to its old version because the\nnewly activated version swaps or reconfigures the trigger block. The user\nneeds to reconfigure the trigger on the new version for it to fire."
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -19718,6 +22286,10 @@
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
+          },
+          "owning_org_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owning Org Id"
           },
           "active_version_id": {
             "type": "string",
@@ -20547,6 +23119,74 @@
         "required": ["message", "goal", "steps"],
         "title": "TaskDecompositionResponse",
         "description": "Response for decompose_goal tool — shows the plan to the user."
+      },
+      "TeamMemberResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "email": { "type": "string", "title": "Email" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "is_admin": { "type": "boolean", "title": "Is Admin" },
+          "is_billing_manager": {
+            "type": "boolean",
+            "title": "Is Billing Manager"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "email",
+          "name",
+          "is_admin",
+          "is_billing_manager",
+          "joined_at"
+        ],
+        "title": "TeamMemberResponse"
+      },
+      "TeamResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Slug"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "is_default": { "type": "boolean", "title": "Is Default" },
+          "join_policy": { "type": "string", "title": "Join Policy" },
+          "org_id": { "type": "string", "title": "Org Id" },
+          "member_count": { "type": "integer", "title": "Member Count" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "description",
+          "is_default",
+          "join_policy",
+          "org_id",
+          "member_count",
+          "created_at"
+        ],
+        "title": "TeamResponse"
       },
       "TimezoneResponse": {
         "properties": {
@@ -21383,6 +24023,74 @@
         "required": ["transactions", "next_transaction_time"],
         "title": "TransactionHistory"
       },
+      "TransferOwnershipRequest": {
+        "properties": {
+          "new_owner_id": { "type": "string", "title": "New Owner Id" }
+        },
+        "type": "object",
+        "required": ["new_owner_id"],
+        "title": "TransferOwnershipRequest"
+      },
+      "TransferResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "resource_type": { "type": "string", "title": "Resource Type" },
+          "resource_id": { "type": "string", "title": "Resource Id" },
+          "source_organization_id": {
+            "type": "string",
+            "title": "Source Organization Id"
+          },
+          "target_organization_id": {
+            "type": "string",
+            "title": "Target Organization Id"
+          },
+          "initiated_by_user_id": {
+            "type": "string",
+            "title": "Initiated By User Id"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "source_approved_by_user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Approved By User Id"
+          },
+          "target_approved_by_user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Target Approved By User Id"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "resource_type",
+          "resource_id",
+          "source_organization_id",
+          "target_organization_id",
+          "initiated_by_user_id",
+          "status",
+          "source_approved_by_user_id",
+          "target_approved_by_user_id",
+          "completed_at",
+          "reason",
+          "created_at"
+        ],
+        "title": "TransferResponse"
+      },
       "TriggeredPresetSetupRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -21500,6 +24208,59 @@
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
       },
+      "UpdateGraphResponse": {
+        "properties": {
+          "graph": { "$ref": "#/components/schemas/GraphModel" },
+          "skipped_webhook_presets": {
+            "items": { "$ref": "#/components/schemas/SkippedWebhookPreset" },
+            "type": "array",
+            "title": "Skipped Webhook Presets"
+          }
+        },
+        "type": "object",
+        "required": ["graph"],
+        "title": "UpdateGraphResponse",
+        "description": "Response for creating/activating a new graph version.\n\nCarries the new graph version plus any webhook presets that were left\npinned to their old version because the new version's trigger block is\nincompatible and needs to be reconfigured."
+      },
+      "UpdateMemberRequest": {
+        "properties": {
+          "is_admin": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Admin"
+          },
+          "is_billing_manager": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Billing Manager"
+          }
+        },
+        "type": "object",
+        "title": "UpdateMemberRequest"
+      },
+      "UpdateOrgRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "slug": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+              { "type": "null" }
+            ],
+            "title": "Slug"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          }
+        },
+        "type": "object",
+        "title": "UpdateOrgRequest"
+      },
       "UpdatePermissionsRequest": {
         "properties": {
           "permissions": {
@@ -21512,12 +24273,53 @@
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
       },
+      "UpdateSessionPinnedRequest": {
+        "properties": {
+          "is_pinned": { "type": "boolean", "title": "Is Pinned" }
+        },
+        "type": "object",
+        "required": ["is_pinned"],
+        "title": "UpdateSessionPinnedRequest",
+        "description": "Request model for pinning/unpinning a session."
+      },
       "UpdateSessionTitleRequest": {
         "properties": { "title": { "type": "string", "title": "Title" } },
         "type": "object",
         "required": ["title"],
         "title": "UpdateSessionTitleRequest",
         "description": "Request model for updating a session's title."
+      },
+      "UpdateTeamMemberRequest": {
+        "properties": {
+          "is_admin": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Admin"
+          },
+          "is_billing_manager": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Billing Manager"
+          }
+        },
+        "type": "object",
+        "title": "UpdateTeamMemberRequest"
+      },
+      "UpdateTeamRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "join_policy": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Join Policy"
+          }
+        },
+        "type": "object",
+        "title": "UpdateTeamRequest"
       },
       "UpdateTimezoneRequest": {
         "properties": {
@@ -22681,6 +25483,14 @@
             "title": "Config"
           },
           "secret": { "type": "string", "title": "Secret" },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "provider_webhook_id": {
             "type": "string",
             "title": "Provider Webhook Id"
@@ -22701,6 +25511,66 @@
         ],
         "title": "Webhook"
       },
+      "WorkspaceFile": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "workspace_id": { "type": "string", "title": "Workspace Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "storage_path": { "type": "string", "title": "Storage Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "checksum": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Checksum"
+          },
+          "is_deleted": {
+            "type": "boolean",
+            "title": "Is Deleted",
+            "default": false
+          },
+          "deleted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Deleted At"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "created_at",
+          "updated_at",
+          "name",
+          "path",
+          "storage_path",
+          "mime_type",
+          "size_bytes"
+        ],
+        "title": "WorkspaceFile",
+        "description": "Pydantic model for UserWorkspaceFile, safe for RPC transport."
+      },
       "WorkspaceFileItem": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -22708,6 +25578,10 @@
           "path": { "type": "string", "title": "Path" },
           "mime_type": { "type": "string", "title": "Mime Type" },
           "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
@@ -22731,6 +25605,82 @@
           "created_at"
         ],
         "title": "WorkspaceFileItem"
+      },
+      "WorkspaceFolder": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "workspace_id": { "type": "string", "title": "Workspace Id" },
+          "name": { "type": "string", "title": "Name" },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["id", "workspace_id", "name", "created_at", "updated_at"],
+        "title": "WorkspaceFolder",
+        "description": "Pydantic model for UserWorkspaceFolder, safe for RPC transport."
+      },
+      "WorkspaceFolderCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "WorkspaceFolderCreateRequest"
+      },
+      "WorkspaceFolderListResponse": {
+        "properties": {
+          "folders": {
+            "items": { "$ref": "#/components/schemas/WorkspaceFolder" },
+            "type": "array",
+            "title": "Folders"
+          }
+        },
+        "type": "object",
+        "required": ["folders"],
+        "title": "WorkspaceFolderListResponse"
+      },
+      "WorkspaceFolderUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          }
+        },
+        "type": "object",
+        "title": "WorkspaceFolderUpdateRequest"
       },
       "WriteSummary": {
         "properties": {

@@ -87,7 +87,17 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
 # tools (post_to_chat_platform + list_chat_platform_channels, ~1.4k chars) on top
 # of the trigger/preset tools above, so the merged registry needs both deltas.
-_CHAR_BUDGET = 47_000
+# Bumped 47000 -> 47800 on the post-#13601 dev merge: the registry now carries
+# the full merged tool set (webhook-trigger + preset lifecycle + docs/building
+# tools) at 47461 chars; ~340 headroom so routine wording tweaks don't trip it.
+# Bumped 47800 -> 51500 for OPEN-3188: the five agent-graph tools (create/edit/
+# customize/validate/fix) replaced their bare ``{"type": "object"}`` agent_json
+# with a structured schema (nodes/links/...) and gained an agent_json_ref string
+# param. The structure is what stops constrained decoders collapsing the graph to
+# ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
+# Merged registry measures 50915 chars (incl. find_library_agent's
+# write_graph_to); ~580 headroom for wording tweaks.
+_CHAR_BUDGET = 51_500
 
 
 @pytest.fixture(scope="module")

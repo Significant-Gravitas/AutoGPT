@@ -6,6 +6,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import {
@@ -16,21 +17,42 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ArrowUpIcon } from "@phosphor-icons/react";
-import { ChangeEvent, useEffect, useState } from "react";
-import { AttachmentMenu } from "./components/AttachmentMenu";
-import { BlockCaret } from "./components/BlockCaret";
+import {
+  ChangeEvent,
+  ClipboardEvent,
+  KeyboardEvent,
+  ReactNode,
+  useEffect,
+  useState,
+} from "react";
+import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import {
+  type Attachment,
+  type WorkspaceAttachment,
+  partitionAttachments,
+  workspaceItemToAttachment,
+} from "../../helpers/workspaceAttachments";
+import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
+import { MentionDropdown } from "./components/MentionDropdown";
 import { ModelToggleButton } from "./components/ModelToggleButton";
 import { ModeToggleButton } from "./components/ModeToggleButton";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
+import { getFilesFromClipboard } from "./helpers";
 import { useChatInput } from "./useChatInput";
+import { useChatMentions } from "./useChatMentions";
 import { useVoiceRecording } from "./useVoiceRecording";
 
 interface Props {
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
   isUploadingFiles?: boolean;
@@ -46,6 +68,8 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  /** Recipient picker chip rendered before the mode chips (new-task state). */
+  recipientPicker?: ReactNode;
 }
 
 export function ChatInput({
@@ -61,9 +85,11 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  recipientPicker,
 }: Props) {
   const {
     copilotChatMode,
+    copilotModePinned,
     setCopilotChatMode,
     copilotLlmModel,
     setCopilotLlmModel,
@@ -72,9 +98,19 @@ export function ChatInput({
   } = useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showDryRunToggle = showModeToggle;
-  const [files, setFiles] = useState<File[]>([]);
+  const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   function handleToggleMode() {
+    if (copilotModePinned) {
+      toast({
+        title: "Mode is locked while building an agent",
+        description:
+          "This session switched to Extended Thinking for agent building — building sessions stay on that engine.",
+      });
+      return;
+    }
     const next =
       copilotChatMode === "extended_thinking" ? "fast" : "extended_thinking";
     setCopilotChatMode(next);
@@ -119,12 +155,15 @@ export function ChatInput({
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
     if (droppedFiles && droppedFiles.length > 0) {
-      setFiles((prev) => [...prev, ...droppedFiles]);
+      setAttachments((prev) => [
+        ...prev,
+        ...droppedFiles.map((file) => ({ kind: "local" as const, file })),
+      ]);
       onDroppedFilesConsumed?.();
     }
   }, [droppedFiles, onDroppedFilesConsumed]);
 
-  const hasFiles = files.length > 0;
+  const hasAttachments = attachments.length > 0;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
@@ -139,13 +178,25 @@ export function ChatInput({
     handleChange: baseHandleChange,
   } = useChatInput({
     onSend: async (message: string) => {
-      await onSend(message, hasFiles ? files : undefined);
-      // Only clear files after successful send (onSend throws on failure)
-      setFiles([]);
+      const { localFiles, workspaceFiles } = partitionAttachments(attachments);
+      await onSend(
+        message,
+        localFiles.length > 0 ? localFiles : undefined,
+        workspaceFiles.length > 0 ? workspaceFiles : undefined,
+      );
+      // Only clear after successful send (onSend throws on failure)
+      setAttachments([]);
     },
     disabled: isTextareaDisabled,
-    canSendEmpty: hasFiles,
+    canSendEmpty: hasAttachments,
     inputId,
+  });
+
+  const mentions = useChatMentions({
+    enabled: showWorkspaceFiles && !isBusy,
+    value,
+    setValue,
+    addWorkspaceFile: handleWorkspaceFileSelected,
   });
 
   const [isEnqueueing, setIsEnqueueing] = useState(false);
@@ -155,7 +206,7 @@ export function ChatInput({
     isTranscribing,
     elapsedTime,
     toggleRecording,
-    handleKeyDown,
+    handleKeyDown: voiceHandleKeyDown,
     showMicButton,
     isInputDisabled,
     audioStream,
@@ -170,6 +221,20 @@ export function ChatInput({
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     if (isRecording) return;
     baseHandleChange(e);
+    mentions.detect(e.currentTarget);
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentions.onKeyDown(e)) return;
+    voiceHandleKeyDown(e);
+  }
+
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    if (isBusy) return;
+    const files = getFilesFromClipboard(e.clipboardData);
+    if (files.length === 0) return;
+    e.preventDefault();
+    handleFilesSelected(files);
   }
 
   const resolvedPlaceholder = isRecording
@@ -180,30 +245,64 @@ export function ChatInput({
 
   const canSend =
     !disabled &&
-    (!!value.trim() || hasFiles) &&
+    (!!value.trim() || hasAttachments) &&
     !isRecording &&
     !isTranscribing;
 
-  function handleFilesSelected(newFiles: File[]) {
-    setFiles((prev) => [...prev, ...newFiles]);
+  function handleClearGuidedPrompt() {
+    // Only discard untouched guided prompts — never a draft the user typed
+    // or edited themselves.
+    if (isGuidedPrompt(value)) setValue("");
   }
 
-  function handleRemoveFile(index: number) {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  function handleFilesSelected(newFiles: File[]) {
+    setAttachments((prev) => [
+      ...prev,
+      ...newFiles.map((file) => ({ kind: "local" as const, file })),
+    ]);
+  }
+
+  function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
+    setAttachments((prev) => {
+      if (prev.some((a) => a.kind === "workspace" && a.fileId === item.id)) {
+        return prev;
+      }
+      return [...prev, workspaceItemToAttachment(item)];
+    });
+  }
+
+  function handleWorkspaceFilesConfirmed(items: WorkspaceFileItem[]) {
+    items.forEach(handleWorkspaceFileSelected);
+  }
+
+  function handleRemoveAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   }
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
+      {mentions.isOpen && (
+        <MentionDropdown
+          files={mentions.files}
+          isLoading={mentions.isLoading}
+          isError={mentions.isError}
+          highlightedIndex={mentions.highlightedIndex}
+          highlightedRef={mentions.highlightedRef}
+          onSelect={mentions.accept}
+          onHighlight={mentions.setHighlightedIndex}
+        />
+      )}
       <InputGroup
         className={cn(
-          "overflow-hidden has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_36px_-4px_rgba(99,102,241,0.45)]",
           isRecording &&
-            "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
+            "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
         <FileChips
-          files={files}
-          onRemove={handleRemoveFile}
+          attachments={attachments}
+          onRemove={handleRemoveAttachment}
           isUploading={isUploadingFiles}
         />
         <PromptInputBody className="relative block w-full">
@@ -213,11 +312,11 @@ export function ChatInput({
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            onBlur={mentions.close}
             disabled={isInputDisabled}
             placeholder={resolvedPlaceholder}
-            className="caret-transparent placeholder:indent-3"
           />
-          <BlockCaret textareaId={inputId} />
           {isRecording && !value && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <RecordingIndicator
@@ -234,10 +333,13 @@ export function ChatInput({
 
         <PromptInputFooter>
           <PromptInputTools>
-            <AttachmentMenu
+            <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
+              onUseWorkspaceFile={() => setIsPickerOpen(true)}
+              onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
             />
+            {recipientPicker}
             {/* Mode and model are per-message settings sent with each stream request,
                 so they can be freely changed between turns in an existing session.
                 Hide only while actively streaming (too late to change for that turn). */}
@@ -245,6 +347,7 @@ export function ChatInput({
               <ModeToggleButton
                 mode={copilotChatMode}
                 onToggle={handleToggleMode}
+                pinned={copilotModePinned}
               />
             )}
             {showModeToggle && !isStreaming && (
@@ -312,6 +415,14 @@ export function ChatInput({
           </div>
         </PromptInputFooter>
       </InputGroup>
+
+      {showWorkspaceFiles && (
+        <WorkspaceFilePicker
+          isOpen={isPickerOpen}
+          onClose={() => setIsPickerOpen(false)}
+          onConfirm={handleWorkspaceFilesConfirmed}
+        />
+      )}
     </form>
   );
 }

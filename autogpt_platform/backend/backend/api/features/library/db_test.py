@@ -29,6 +29,7 @@ async def test_get_library_agents(mocker):
             userId="test-user",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         )
     ]
 
@@ -47,6 +48,7 @@ async def test_get_library_agents(mocker):
             updatedAt=datetime.now(),
             isFavorite=False,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent2",
                 version=1,
@@ -55,6 +57,7 @@ async def test_get_library_agents(mocker):
                 userId="other-user",
                 isActive=True,
                 createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
             ),
         )
     ]
@@ -130,8 +133,52 @@ async def test_list_library_agents_is_hidden_filter(
         assert where["isHidden"] is expected_in_where
 
 
+@pytest.mark.asyncio
+async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
+    """Search must match the snapshotted LibraryAgent name/description (shown on
+    the card for downloaded agents) as well as the underlying graph's values."""
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", search_term="Published Title")
+
+    where = mock_find_many.call_args.kwargs["where"]
+    assert {"name": {"contains": "Published Title", "mode": "insensitive"}} in where[
+        "OR"
+    ]
+    assert {
+        "description": {"contains": "Published Title", "mode": "insensitive"}
+    } in where["OR"]
+    assert {
+        "AgentGraph": {
+            "is": {"name": {"contains": "Published Title", "mode": "insensitive"}}
+        }
+    } in where["OR"]
+    assert {
+        "AgentGraph": {
+            "is": {
+                "description": {"contains": "Published Title", "mode": "insensitive"}
+            }
+        }
+    } in where["OR"]
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-fallback", "team-fallback")),
+    )
     await connect()
 
     # Mock data
@@ -160,6 +207,7 @@ async def test_add_agent_to_library(mocker):
             userId="creator",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         ),
     )
 
@@ -177,6 +225,7 @@ async def test_add_agent_to_library(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=mock_store_listing_data.AgentGraph,
     )
 
@@ -246,6 +295,10 @@ async def test_add_agent_to_library(mocker):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library_not_found(mocker):
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-fallback", "team-fallback")),
+    )
     await connect()
     # Mock prisma calls
     mock_store_listing_version = mocker.patch(
@@ -309,6 +362,10 @@ async def test_get_library_agent_by_graph_id_can_include_archived(mocker):
 
 @pytest.mark.asyncio
 async def test_update_graph_in_library_allows_archived_library_agent(mocker):
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-fallback", "team-fallback")),
+    )
     graph = mocker.Mock(id="graph-id")
     existing_version = mocker.Mock(version=1, is_active=True)
     graph_model = mocker.Mock(is_active=False)
@@ -383,6 +440,10 @@ async def test_create_library_agent_uses_upsert():
             "backend.api.features.library.model.LibraryAgent.from_db",
             return_value=MagicMock(),
         ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=AsyncMock(return_value=("org-personal", "team-default")),
+        ),
     ):
         mock_prisma.return_value.upsert = AsyncMock(return_value=mock_upserted)
 
@@ -432,6 +493,10 @@ async def test_create_library_agent_preserves_is_hidden_in_upsert(is_hidden):
             "backend.api.features.library.model.LibraryAgent.from_db",
             return_value=MagicMock(),
         ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=AsyncMock(return_value=("org-personal", "team-default")),
+        ),
     ):
         mock_prisma.return_value.upsert = AsyncMock(return_value=MagicMock())
         await db.create_library_agent(mock_graph, "user-1", is_hidden=is_hidden)
@@ -458,6 +523,7 @@ async def test_list_favorite_library_agents(mocker):
             updatedAt=datetime.now(),
             isFavorite=True,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent-fav",
                 version=1,
@@ -466,6 +532,7 @@ async def test_list_favorite_library_agents(mocker):
                 userId="other-user",
                 isActive=True,
                 createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
             ),
         )
     ]
@@ -511,6 +578,7 @@ async def test_list_library_agents_skips_failed_agent(mocker):
             updatedAt=datetime.now(),
             isFavorite=False,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent-bad",
                 version=1,
@@ -519,6 +587,7 @@ async def test_list_library_agents_skips_failed_agent(mocker):
                 userId="other-user",
                 isActive=True,
                 createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
             ),
         )
     ]
@@ -594,6 +663,7 @@ async def test_list_trigger_agents_filters_by_parent_graph_id(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id="trig-graph-id",
             version=1,
@@ -602,6 +672,7 @@ async def test_list_trigger_agents_filters_by_parent_graph_id(mocker):
             userId="test-user",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         ),
     )
 
@@ -714,6 +785,7 @@ async def test_list_trigger_agents_propagates_schedule_info(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id="trig-graph-id",
             version=1,
@@ -722,6 +794,7 @@ async def test_list_trigger_agents_propagates_schedule_info(mocker):
             userId="test-user",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         ),
     )
     mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
@@ -817,6 +890,330 @@ async def test_fetch_execution_counts_uses_group_by(mocker):
     )
 
 
+@pytest.mark.asyncio
+async def test_create_preset_inherits_graph_org(mocker):
+    """A preset lives in the same org/team as the graph it runs
+    (resource-follows-parent), regardless of the caller's active org."""
+    created_row = prisma.models.AgentPreset(
+        id="preset-1",
+        userId="test-user",
+        name="My Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=2,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(
+            return_value=MagicMock(
+                organization_id="org-of-graph", team_id="team-of-graph"
+            )
+        ),
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    result = await db.create_preset(
+        user_id="test-user",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=2,
+            name="My Preset",
+            description="",
+            is_active=True,
+        ),
+    )
+
+    assert result.id == "preset-1"
+    create_data = mock_preset_client.create.call_args.kwargs["data"]
+    assert create_data["organizationId"] == "org-of-graph"
+    assert create_data["teamId"] == "team-of-graph"
+
+
+@pytest.mark.asyncio
+async def test_create_preset_tenantless_graph_creates_untagged(mocker):
+    """Graphs predating org tagging have no org — the preset create must
+    not write organizationId/teamId keys at all (backfill sweep owns them)."""
+    created_row = prisma.models.AgentPreset(
+        id="preset-2",
+        userId="test-user",
+        name="My Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=2,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(return_value=MagicMock(organization_id=None, team_id=None)),
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    await db.create_preset(
+        user_id="test-user",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=2,
+            name="My Preset",
+            description="",
+            is_active=True,
+        ),
+    )
+
+    create_data = mock_preset_client.create.call_args.kwargs["data"]
+    assert "organizationId" not in create_data
+    assert "teamId" not in create_data
+
+
+@pytest.mark.asyncio
+async def test_create_preset_rejects_inaccessible_graph(mocker):
+    """A caller can't create a preset bound to a graph they can't access:
+    get_graph() returns None → NotFoundError, no row written (GHSA-4m2w-qfr5-9f3v)."""
+    mocker.patch.object(db.graph_db, "get_graph", new=AsyncMock(return_value=None))
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.create_preset(
+            user_id="attacker",
+            preset=library_model.LibraryAgentPresetCreatable(
+                inputs={},
+                credentials={},
+                graph_id="victim-graph",
+                graph_version=1,
+                name="x",
+                description="",
+                is_active=True,
+            ),
+        )
+
+    mock_preset_client.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_preset_rejects_foreign_webhook(mocker):
+    """A caller can't bind another user's webhook to their preset:
+    NotFoundError, no row written (GHSA-4m2w-qfr5-9f3v)."""
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(return_value=MagicMock(organization_id=None, team_id=None)),
+    )
+    get_webhook_mock = AsyncMock(return_value=MagicMock(user_id="victim"))
+    mocker.patch.object(db.integrations_db, "get_webhook", new=get_webhook_mock)
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.create_preset(
+            user_id="attacker",
+            preset=library_model.LibraryAgentPresetCreatable(
+                inputs={},
+                credentials={},
+                graph_id="graph-1",
+                graph_version=1,
+                name="x",
+                description="",
+                is_active=True,
+            ),
+            webhook_id="victim-webhook",
+        )
+
+    get_webhook_mock.assert_awaited_once_with("victim-webhook")
+    mock_preset_client.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_preset_accepts_own_webhook(mocker):
+    """Binding the caller's OWN webhook is allowed and persisted."""
+    created_row = prisma.models.AgentPreset(
+        id="preset-own-wh",
+        userId="owner",
+        name="My Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(return_value=MagicMock(organization_id=None, team_id=None)),
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(return_value=MagicMock(user_id="owner")),
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    await db.create_preset(
+        user_id="owner",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=1,
+            name="My Preset",
+            description="",
+            is_active=True,
+        ),
+        webhook_id="own-webhook",
+    )
+
+    create_data = mock_preset_client.create.call_args.kwargs["data"]
+    assert create_data["webhookId"] == "own-webhook"
+
+
+@pytest.mark.asyncio
+async def test_creatable_preset_model_has_no_webhook_id_field():
+    """The public create request model must not expose `webhook_id`; a
+    webhook-triggered preset may only be made via setup-trigger
+    (GHSA-4m2w-qfr5-9f3v)."""
+    assert "webhook_id" not in library_model.LibraryAgentPresetCreatable.model_fields
+
+    # A client that smuggles `webhook_id` into the JSON body has it ignored,
+    # not persisted onto the preset.
+    parsed = library_model.LibraryAgentPresetCreatable.model_validate(
+        {
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "inputs": {},
+            "credentials": {},
+            "name": "x",
+            "description": "",
+            "webhook_id": "victim-webhook",
+        }
+    )
+    assert not hasattr(parsed, "webhook_id")
+
+
+@pytest.mark.asyncio
+async def test_set_preset_webhook_rejects_foreign_webhook(mocker):
+    """set_preset_webhook must reject a webhook owned by another user
+    (GHSA-4m2w-qfr5-9f3v)."""
+    existing = prisma.models.AgentPreset(
+        id="preset-1",
+        userId="owner",
+        name="p",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.find_unique.return_value = existing
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(return_value=MagicMock(user_id="attacker")),
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.set_preset_webhook("owner", "preset-1", "foreign-webhook")
+
+    mock_preset_client.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_library_agent_tags_adders_org():
+    """Library entries are the ADDING user's bookmarks: explicit org/team
+    params are written to the row; with none supplied, the user's personal
+    org (default team) is resolved — matching the migration invariant."""
+    mock_graph = MagicMock()
+    mock_graph.id = "graph-1"
+    mock_graph.version = 1
+    mock_graph.user_id = "user-1"
+    mock_graph.nodes = []
+    mock_graph.sub_graphs = []
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    default_team = AsyncMock(return_value=("org-personal", "team-default"))
+    with (
+        patch("backend.api.features.library.db.transaction", fake_tx),
+        patch("prisma.models.LibraryAgent.prisma") as mock_prisma,
+        patch(
+            "backend.api.features.library.db.add_generated_agent_image",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.library.model.LibraryAgent.from_db",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=default_team,
+        ),
+    ):
+        mock_prisma.return_value.upsert = AsyncMock(return_value=MagicMock())
+
+        # Explicit org context (e.g. graph-create route passing ctx)
+        await db.create_library_agent(
+            mock_graph, "user-1", organization_id="org-ctx", team_id="team-ctx"
+        )
+        create = mock_prisma.return_value.upsert.call_args.kwargs["data"]["create"]
+        assert create["organizationId"] == "org-ctx"
+        assert create["Team"] == {"connect": {"id": "team-ctx"}}
+        default_team.assert_not_called()
+
+        # No org context → personal-org fallback
+        await db.create_library_agent(mock_graph, "user-1")
+        create = mock_prisma.return_value.upsert.call_args.kwargs["data"]["create"]
+        assert create["organizationId"] == "org-personal"
+        assert create["Team"] == {"connect": {"id": "team-default"}}
+        default_team.assert_awaited_once()
+
+
 def _library_agent_prisma(
     *,
     id: str,
@@ -839,6 +1236,7 @@ def _library_agent_prisma(
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id=graph_id,
             version=1,
@@ -847,6 +1245,7 @@ def _library_agent_prisma(
             userId=user_id,
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         ),
     )
 

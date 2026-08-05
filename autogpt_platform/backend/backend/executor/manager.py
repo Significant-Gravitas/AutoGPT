@@ -1420,7 +1420,10 @@ class ExecutionManager(AppProcess):
 
         pool_size_gauge.set(self.pool_size)
         self._update_prompt_metrics()
-        start_http_server(settings.config.execution_manager_port)
+        start_http_server(
+            settings.config.execution_manager_port,
+            addr=settings.config.pyro_host,
+        )
 
         self.cancel_thread.start()
         self.run_thread.start()
