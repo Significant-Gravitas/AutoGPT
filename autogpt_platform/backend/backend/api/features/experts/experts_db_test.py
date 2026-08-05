@@ -5,7 +5,7 @@ import prisma.models
 import pytest
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import experts_db
+from backend.api.features.experts import experts_db, seed
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.data.graph import Graph, Node
@@ -220,8 +220,6 @@ async def test_install_workflow_duplicate_returns_existing(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_round_trip(server: SpinTestServer):
-    from backend.api.features.experts import seed
-
     first_ids = await seed.seed_roster()
     assert len(first_ids) == 3
 
@@ -240,3 +238,40 @@ async def test_seed_roster_round_trip(server: SpinTestServer):
     templates_after = await experts_db.list_templates()
     seeded_after = [t for t in templates_after if t.id in second_ids]
     assert len(seeded_after) == 3
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_backfills_presentation_fields_onto_hired_copies(
+    server: SpinTestServer, test_user
+):
+    """A re-seed must reach experts hired before the roster changed."""
+    # Unique name so _upsert_template resolves to this template and not to a
+    # same-named one left behind by another test in the shared session DB.
+    template = await _seed_template(
+        name=f"Maria {uuid.uuid4().hex[:8]}", preload_listings=[]
+    )
+    hired = await experts_db.hire_expert(test_user.id, template.id, "My Maria")
+    assert hired.expert.avatar_url is None
+    assert hired.expert.bio is None
+    assert hired.expert.skills == []
+
+    entry: seed.RosterEntry = {
+        "name": template.name,
+        "role": template.role,
+        "tagline": "Refreshed tagline",
+        "avatar_url": "/experts/maria.svg",
+        "bio": "Maria is a senior marketing strategist.",
+        "skills": ["Content strategy", "SEO writing"],
+        "identity": template.identity,
+        "preload_slugs": [],
+    }
+    refreshed_template = await seed._upsert_template(entry)
+    assert await seed._backfill_hired_copies(refreshed_template) == 1
+
+    refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert refreshed is not None
+    assert refreshed.avatar_url == "/experts/maria.svg"
+    assert refreshed.bio == "Maria is a senior marketing strategist."
+    assert refreshed.skills == ["Content strategy", "SEO writing"]
+    # A user's rename of their own hire survives the refresh.
+    assert refreshed.name == "My Maria"

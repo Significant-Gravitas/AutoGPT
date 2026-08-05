@@ -25,6 +25,7 @@ import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -53,6 +54,7 @@ import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
@@ -158,6 +160,9 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
+
+    # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
+    backend.data.llm_registry.load_catalog()
 
     with launch_darkly_context():
         yield
@@ -345,6 +350,11 @@ app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    auth_email_routes.auth_email_router,
+    prefix="/api/auth/email",
+    tags=["auth-email"],
+)
 app.include_router(
     integrations_router,
     prefix="/api/integrations",

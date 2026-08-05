@@ -47,7 +47,7 @@ export function TourChatHeader({
         }
         className="shrink-0"
       >
-        {isCopied ? "Link copied" : "Share this demo"}
+        <span>{isCopied ? "Link copied" : "Share this demo"}</span>
       </Button>
     </header>
   );
