@@ -41,19 +41,19 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/onboarding",
 }));
 
-let mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
+let mockAuthState = { isLoggedIn: true, isUserLoading: false };
 const mockRefreshSession = vi.fn(() => Promise.resolve({ user: null }));
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({
-    ...mockSupabaseState,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    ...mockAuthState,
     user: null,
     refreshSession: mockRefreshSession,
   }),
 }));
 
-// The onboarding page writes preferred_name through the server route (the
-// browser Supabase client has no session — persistSession: false — so
-// client-side auth.updateUser silently fails; regression caught in manual QA).
+// The onboarding page writes preferred_name through the server route,
+// which is the only holder of the Better Auth session cookie context
+// (client-side updateUser was a silent no-op; regression caught in manual QA).
 const authUserPutBodies: unknown[] = [];
 function mockAuthUserRoute() {
   server.use(
@@ -116,7 +116,7 @@ beforeEach(() => {
   currentSearchParams = new URLSearchParams();
   mockFlagValue = false;
   mockSubscriptionTier = "NO_TIER";
-  mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
+  mockAuthState = { isLoggedIn: true, isUserLoading: false };
   authUserPutBodies.length = 0;
   mockAuthUserRoute();
   mockRefreshSession.mockClear();
@@ -276,7 +276,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     expect(screen.queryByTestId("step-preparing")).toBeNull();
   });
 
-  it("waits for Supabase auth before initialising (no premature step lock)", async () => {
+  it("waits for auth before initialising (no premature step lock)", async () => {
     // Regression: LD can resolve while auth is still loading. Without
     // gating on isUserLoading, isReady flips true (the !isLoggedIn branch
     // short-circuits), init runs against the pre-tier preparingStep (5)
@@ -286,7 +286,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     // no matching step guard (blank page).
     mockFlagValue = true;
     mockSubscriptionTier = "PRO";
-    mockSupabaseState = { isLoggedIn: false, isUserLoading: true };
+    mockAuthState = { isLoggedIn: false, isUserLoading: true };
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
     render(<OnboardingPage />);
     // Nothing should render while auth is still loading.

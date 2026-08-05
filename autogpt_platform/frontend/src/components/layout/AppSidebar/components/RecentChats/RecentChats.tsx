@@ -2,15 +2,26 @@
 
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialog";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
+import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
+import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { cn } from "@/lib/utils";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
 import { groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const { expertsById } = useExpertMap();
   const {
     sessions,
     isLoading,
@@ -71,15 +82,72 @@ export function RecentChats() {
     );
   }
 
+  const groups = isExpertsEnabled
+    ? groupSessionsByExpert(sessions).map((group) => ({
+        key: group.expertId ?? "autopilot",
+        label: group.expertId
+          ? (expertsById.get(group.expertId)?.name ?? "Expert")
+          : "Autopilot",
+        avatarUrl: group.expertId
+          ? (expertsById.get(group.expertId)?.avatarUrl ?? null)
+          : null,
+        role: group.expertId
+          ? (expertsById.get(group.expertId)?.role ?? null)
+          : null,
+        showAvatar: true,
+        sessions: group.sessions,
+      }))
+    : groupSessionsByDate(sessions).map((group) => ({
+        key: group.label,
+        label: group.label,
+        avatarUrl: null,
+        role: null,
+        showAvatar: false,
+        sessions: group.sessions,
+      }));
+
   return (
     <>
       <div className="mt-2 flex flex-col gap-4">
-        {groupSessionsByDate(sessions).map((group) => (
-          <div key={group.label}>
-            <div className="px-2 pb-1 text-xs font-medium text-zinc-500">
-              {group.label}
+        {groups.map((group) => (
+          <div key={group.key}>
+            <div
+              className={cn(
+                "flex items-center px-2 pb-1.5",
+                group.showAvatar
+                  ? "gap-2 text-[13px] font-medium text-zinc-900"
+                  : "gap-1.5 text-xs font-medium text-zinc-500",
+              )}
+            >
+              {group.showAvatar && (
+                <Avatar className="h-5 w-5">
+                  {group.avatarUrl ? (
+                    <AvatarImage src={group.avatarUrl} alt={group.label} />
+                  ) : null}
+                  <AvatarFallback className="text-[9px]">
+                    {group.label}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+              <span className="truncate">{group.label}</span>
+              {group.role ? (
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium",
+                    getExpertAccent(group.role).pill,
+                  )}
+                >
+                  {group.role}
+                </span>
+              ) : null}
             </div>
-            <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
+            {group.showAvatar ? (
+              <div className="ml-[17px] border-l border-zinc-200 pl-1.5">
+                <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
+              </div>
+            ) : (
+              <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
+            )}
           </div>
         ))}
       </div>

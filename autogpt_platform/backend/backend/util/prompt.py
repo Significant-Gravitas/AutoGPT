@@ -259,22 +259,22 @@ _CONTEXT_OVERHEAD_RESERVE = 60_000
 def get_context_window(model: str) -> int | None:
     """Return the context window size for a model, or None if unknown.
 
-    Looks up the model in the :class:`LlmModel` enum (which already
+    Looks up the model in the :class:`LLMModel` enum (which already
     carries ``context_window`` via ``MODEL_METADATA``).  Handles
     provider-prefixed names (``anthropic/claude-opus-4-6``) and
     case-insensitive input automatically.
     """
-    from backend.blocks.llm import LlmModel  # lazy to avoid circular import
+    from backend.blocks.llm import LLMModel  # lazy to avoid circular import
 
     try:
-        llm_model = LlmModel(model)
+        llm_model = LLMModel(model)
         return llm_model.context_window
     except (ValueError, KeyError):
         pass
 
     # Retry with lowercase for case-insensitive lookup
     try:
-        llm_model = LlmModel(model.lower())
+        llm_model = LLMModel(model.lower())
         return llm_model.context_window
     except (ValueError, KeyError):
         return None

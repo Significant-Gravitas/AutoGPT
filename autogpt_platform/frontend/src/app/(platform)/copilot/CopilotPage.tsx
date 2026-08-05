@@ -3,8 +3,8 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
 import dynamic from "next/dynamic";
@@ -47,7 +47,7 @@ export function CopilotPage() {
   // hidden in lockstep with the layout swap — avoids a one-frame flash where
   // the classic shell renders without its sidebar before the new layout mounts.
   const { showNewLayout } = usePlatformChrome();
-  const { isUserLoading, isLoggedIn } = useSupabase();
+  const { isUserLoading, isLoggedIn } = useAuth();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
   // lives in a per-session registry so live streams can continue in
