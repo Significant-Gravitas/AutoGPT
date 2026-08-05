@@ -510,7 +510,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        user_id, pass_id, ops, *, known_fact_uuids=None, facts=None, lock_handle=None
     ):
         captured["ops"] = ops
         return {
@@ -573,7 +573,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        user_id, pass_id, ops, *, known_fact_uuids=None, facts=None, lock_handle=None
     ):
         captured["ops"] = ops
         return {
@@ -685,7 +685,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        user_id, pass_id, ops, *, known_fact_uuids=None, facts=None, lock_handle=None
     ):
         captured["ops"] = ops
         return {
@@ -770,6 +770,9 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
         apply_mock.await_args.kwargs["known_fact_uuids"]
         == input_bundle.known_fact_uuids
     )
+    # Same thread-through for the fact rows: they carry the recall stamps
+    # apply's usage guard needs to protect facts still in active use.
+    assert apply_mock.await_args.kwargs["facts"] == input_bundle.facts
 
 
 @pytest.mark.asyncio

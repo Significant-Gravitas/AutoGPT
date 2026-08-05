@@ -963,6 +963,9 @@ async def _execute_dream_pass_async(
                 pass_id,
                 ops,
                 known_fact_uuids=input_bundle.known_fact_uuids,
+                # Carries the per-edge recall stamps so apply can protect
+                # facts the user demonstrably still uses from demotion.
+                facts=input_bundle.facts,
                 lock_handle=dream_lock_handle,
             )
             # Apply succeeded (even as a no-op) — stamp the marker so the

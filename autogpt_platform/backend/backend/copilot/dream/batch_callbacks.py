@@ -704,6 +704,9 @@ async def _finalize_complete(
             known_fact_uuids=(
                 input_bundle.known_fact_uuids if input_bundle is not None else None
             ),
+            # Same bundle, read once: carries the per-edge recall stamps so
+            # apply can protect facts the user still uses from demotion.
+            facts=input_bundle.facts if input_bundle is not None else None,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
     except Exception as exc:

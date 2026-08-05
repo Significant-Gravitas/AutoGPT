@@ -262,7 +262,12 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
       1. Bump the ``mem:hits:{user_id}:{edge_uuid}`` Redis counter
          (so the nightly ratification sweep also sees the hit and
          agrees on promotion if Cypher fails here).
-      2. Issue a targeted Cypher ``SET status='active'`` filtered by
+      2. Stamp ``recall_count`` / ``last_recalled_at`` on EVERY
+         retrieved edge (see ``_stamp_recall``). The Redis counter
+         above expires with the ratification grace period; these
+         graph props are the durable usage signal the nightly dream
+         pass reads to avoid demoting facts the user actually uses.
+      3. Issue a targeted Cypher ``SET status='active'`` filtered by
          ``status='tentative' AND expired_at IS NULL`` — already-active
          and already-retracted edges are no-ops via the WHERE clause.
 
@@ -309,6 +314,7 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
         build_indices=False,
     )
     try:
+        await _stamp_recall(driver, edge_uuids, user_id)
         for uuid in edge_uuids:
             try:
                 if await _promote_if_tentative(driver, uuid):
@@ -332,6 +338,60 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
             user_id[:12],
         )
     return promoted_count
+
+
+async def _stamp_recall(
+    driver: AutoGPTFalkorDriver, edge_uuids: list[str], user_id: str
+) -> int:
+    """Record a recall on every retrieved edge, in one round-trip.
+
+    ``recall_count`` is incremented via ``COALESCE(…, 0) + 1`` so an
+    edge written before this hook existed starts from zero instead of
+    NULL — no backfill migration is needed. ``last_recalled_at`` is
+    generated in Python because FalkorDB does not implement Cypher's
+    no-arg ``datetime()``.
+
+    Unlike promotion, this applies to edges of ANY status (a long-lived
+    active fact is exactly the kind of memory whose usage we want to
+    know about); only retracted edges (``expired_at IS NOT NULL``) are
+    skipped, since re-stamping a superseded edge would misrepresent it
+    as live.
+
+    Batched with ``UNWIND`` rather than looped per uuid: this runs on
+    the fire-and-forget retrieval path once per chat turn, and one
+    query for the whole retrieved set keeps that cost flat. Failures
+    are swallowed — the usage signal is an optimization, never a
+    reason to disturb the chat turn.
+
+    Returns the number of edges stamped (0 on failure).
+    """
+    query = """
+    UNWIND $uuids AS target_uuid
+    MATCH ()-[e:RELATES_TO]->()
+    WHERE e.uuid = target_uuid AND e.expired_at IS NULL
+    SET e.recall_count = COALESCE(e.recall_count, 0) + 1,
+        e.last_recalled_at = $now
+    RETURN count(e) AS stamped
+    """
+    try:
+        result = await driver.execute_query(
+            query,
+            uuids=edge_uuids,
+            now=datetime.now(timezone.utc).isoformat(),
+        )
+    except Exception:
+        logger.debug(
+            "try_ratify_on_hit: recall stamping failed for user %s (%d edge(s))",
+            user_id[:12],
+            len(edge_uuids),
+            exc_info=True,
+        )
+        return 0
+    records = result[0] if result else []
+    if not records:
+        return 0
+    stamped = records[0].get("stamped")
+    return stamped if isinstance(stamped, int) else 0
 
 
 async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:

@@ -51,6 +51,12 @@ class FactRow(BaseModel):
     confidence: float | None
     status: str | None
     created_at: str | None
+    # Usage signal stamped on the edge by the warm-context hit hook
+    # (``ratification.try_ratify_on_hit``). Absent props read as None,
+    # which is exactly "never recalled" — edges written before the hook
+    # shipped need no backfill.
+    recall_count: int | None = None
+    last_recalled_at: str | None = None  # ISO timestamp
 
 
 class SessionRow(BaseModel):
@@ -100,7 +106,7 @@ def parse_episode_timestamp(episode: EpisodeRow) -> datetime | None:
         ts
         for raw in (episode.valid_at, episode.created_at)
         if raw
-        if (ts := _parse_iso_timestamp(raw)) is not None
+        if (ts := parse_iso_timestamp(raw)) is not None
     ]
     return max(parsed) if parsed else None
 
@@ -123,7 +129,7 @@ def is_dream_authored_episode(episode: EpisodeRow) -> bool:
     return description is not None and description.startswith("dream-pass")
 
 
-def _parse_iso_timestamp(raw: str) -> datetime | None:
+def parse_iso_timestamp(raw: str) -> datetime | None:
     """ISO 8601 parse tolerating Cypher's ``toString(datetime)`` output
     (trailing ``Z``); naive values are assumed UTC so the result always
     compares safely against tz-aware datetimes."""
@@ -220,7 +226,9 @@ async def _fetch_active_facts(
                    e.scope AS scope,
                    e.confidence AS confidence,
                    e.status AS status,
-                   toString(e.created_at) AS created_at
+                   toString(e.created_at) AS created_at,
+                   e.recall_count AS recall_count,
+                   e.last_recalled_at AS last_recalled_at
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
@@ -246,6 +254,8 @@ async def _fetch_active_facts(
             confidence=r.get("confidence"),
             status=r.get("status"),
             created_at=r.get("created_at"),
+            recall_count=r.get("recall_count"),
+            last_recalled_at=r.get("last_recalled_at"),
         )
         for r in rows
     ]

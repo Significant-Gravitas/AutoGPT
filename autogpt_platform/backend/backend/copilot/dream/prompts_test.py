@@ -18,6 +18,7 @@ from .prompts import (
     build_recombine_prompt,
     build_sanitize_prompt,
 )
+from .usage import MIN_RECALLS_TO_PROTECT, RECENT_RECALL_WINDOW
 
 
 def _build_bundle() -> DreamInput:
@@ -211,6 +212,31 @@ def test_sanitize_prompt_emits_no_stale_candidates_placeholder_when_clean():
     )
     msgs = build_sanitize_prompt(bundle, "{}", "{}")
     assert "(no stale-fact candidates flagged this pass)" in msgs[1]["content"]
+
+
+def test_fact_listing_surfaces_per_fact_recall_usage():
+    """The LLM can only prioritize never-recalled facts for pruning if
+    the fact listing shows usage. Rendered for every fact, including the
+    never-recalled ones, so absence is an explicit signal."""
+    bundle = _build_bundle()
+    bundle.facts[0].recall_count = 6
+    bundle.facts[0].last_recalled_at = "2026-08-01T00:00:00+00:00"
+
+    user_body = build_sanitize_prompt(bundle, "{}", "{}")[1]["content"]
+
+    assert "recalls=6 last_recall=2026-08-01T00:00:00+00:00" in user_body
+    # f-2 was never recalled — shown as an explicit zero, not omitted.
+    assert "recalls=0(never)" in user_body
+
+
+def test_sanitize_prompt_teaches_the_usage_signal():
+    """Regression guard: without this rule the model has the recall
+    numbers in front of it but no instruction on how to weigh them."""
+    sys = build_sanitize_prompt(_build_bundle(), "{}", "{}")[0]["content"]
+
+    assert "recalls=" in sys
+    assert str(MIN_RECALLS_TO_PROTECT) in sys
+    assert str(RECENT_RECALL_WINDOW.days) in sys
 
 
 def test_sanitize_empty_result_example_models_non_empty_summary():

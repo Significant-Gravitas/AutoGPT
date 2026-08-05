@@ -20,6 +20,7 @@ import json
 
 from .fetch import DreamInput
 from .staleness import identify_stale_candidates
+from .usage import MIN_RECALLS_TO_PROTECT, RECENT_RECALL_WINDOW, format_usage
 
 # Hard cap shared across phases — phase 3 must reject demotion lists
 # longer than this regardless of what phase 1/2 produced. Mirrors the
@@ -47,7 +48,7 @@ def _format_facts(input_bundle: DreamInput) -> str:
         scope = f.scope or "real:global"
         bucket = by_scope.setdefault(scope, [])
         bucket.append(
-            f"  - uuid={f.uuid} confidence={f.confidence} "
+            f"  - uuid={f.uuid} confidence={f.confidence} {format_usage(f)} "
             f"{(f.source or '?')} —[{f.name or '?'}]→ {(f.target or '?')}: "
             f"{(f.fact or '').strip()}"
         )
@@ -223,6 +224,17 @@ SANITIZE_SYSTEM = (
     "stale). For each candidate, demote only when general knowledge or "
     "a phase-1 consolidated fact contradicts it. When in doubt, "
     "preserve.\n"
+    " * USAGE SIGNAL: every active fact carries a `recalls=` count — "
+    "how many times warm-context retrieval has pulled it into a live "
+    "conversation — and, when non-zero, the timestamp of the last "
+    "recall. Prefer demoting facts with `recalls=0(never)`: nothing "
+    "has ever needed them, so a stale one costs nothing to drop. "
+    f"Conversely, a fact recalled {MIN_RECALLS_TO_PROTECT}+ times "
+    f"within the last {RECENT_RECALL_WINDOW.days} days is in active "
+    "use — do not demote it on staleness grounds alone (a direct "
+    "contradiction or an explicit user retraction still wins). Those "
+    "demotions are dropped by a code-level guard anyway, wasting a "
+    "slot against the per-pass cap.\n"
     " * Demotion edge_uuids MUST exist in the provided list of known "
     "fact uuids. Do not invent uuids.\n"
     " * Entity invalidations require an entity_uuid present in the "

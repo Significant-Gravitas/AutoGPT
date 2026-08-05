@@ -11,7 +11,7 @@ to ``enqueue_episode`` / ``mark_edges_superseded`` /
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,7 +19,7 @@ import pytest
 from backend.copilot.graphiti.ingest import IngestionCompletion
 
 from . import apply as apply_mod
-from .fetch import DreamInput
+from .fetch import DreamInput, FactRow
 from .locks import DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
@@ -29,6 +29,7 @@ from .schemas import (
     IngestionDrainStatus,
     ProposedFinding,
 )
+from .usage import MIN_RECALLS_TO_PROTECT
 
 
 def _bundle_with_known_facts(*uuids: str) -> DreamInput:
@@ -39,6 +40,35 @@ def _bundle_with_known_facts(*uuids: str) -> DreamInput:
         window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
         known_fact_uuids=set(uuids),
     )
+
+
+def _fact_row(uuid: str, **usage) -> FactRow:
+    return FactRow(
+        uuid=uuid,
+        source="a",
+        target="b",
+        name="rel",
+        fact="a relates to b",
+        scope="real:global",
+        confidence=0.8,
+        status="active",
+        created_at="2026-01-01T00:00:00+00:00",
+        **usage,
+    )
+
+
+def _used_fact(uuid: str) -> FactRow:
+    """A fact warm-context retrieval keeps pulling into live turns."""
+    return _fact_row(
+        uuid,
+        recall_count=MIN_RECALLS_TO_PROTECT + 1,
+        last_recalled_at=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+    )
+
+
+def _unused_fact(uuid: str) -> FactRow:
+    """Never recalled — the absent-props default for pre-hook edges."""
+    return _fact_row(uuid)
 
 
 @pytest.fixture(autouse=True)
@@ -294,6 +324,71 @@ async def test_redis_blip_on_bundle_fallback_fails_open(mocker, caplog):
         for record in caplog.records
         if record.levelno == logging.WARNING
     )
+
+
+@pytest.mark.asyncio
+async def test_demotions_targeting_recently_used_facts_are_dropped():
+    """Usage guard: the sanitize prompt asks the model to leave actively
+    recalled facts alone, but prompt text isn't enforcement — a demotion
+    against a fact warm-context keeps pulling into live conversations
+    must never reach Cypher."""
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+            DreamDemotion(edge_uuid="cold", reason="stale_fact"),
+        ],
+    )
+    stats = await apply_mod.apply_operations(
+        user_id="u-usage",
+        pass_id="p-usage",
+        ops=ops,
+        known_fact_uuids={"hot", "cold"},
+        facts=[_used_fact("hot"), _unused_fact("cold")],
+    )
+
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["cold"]
+    assert [d.edge_uuid for d in stats["snapshot"].demotions] == ["cold"]
+
+
+@pytest.mark.asyncio
+async def test_usage_guard_fails_open_without_fact_rows():
+    """No usage data (bundle expired, or a caller that has none) keeps
+    the demotions — missing observability must not zero a pass."""
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="hot", reason="stale_fact")],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-usage-open",
+        pass_id="p-usage-open",
+        ops=ops,
+        known_fact_uuids={"hot"},
+    )
+
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["hot"]
+
+
+@pytest.mark.asyncio
+async def test_batch_path_usage_guard_reads_facts_from_persisted_bundle(mocker):
+    """Batch path with neither argument supplied: the single bundle read
+    must feed BOTH the known-fact allowlist and the usage guard."""
+    bundle = _bundle_with_known_facts("hot", "cold")
+    bundle.facts = [_used_fact("hot"), _unused_fact("cold")]
+    mocker.patch.object(apply_mod, "read_input_bundle", AsyncMock(return_value=bundle))
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+            DreamDemotion(edge_uuid="cold", reason="stale_fact"),
+        ],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-usage-batch", pass_id="p-usage-batch", ops=ops
+    )
+
+    apply_mod.read_input_bundle.assert_awaited_once_with("p-usage-batch")
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["cold"]
 
 
 @pytest.mark.asyncio
@@ -618,9 +713,7 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
     ownership. The orchestrator's catch-all turns the raise into an errored
     ``DreamPassResult``."""
     drain = mocker.patch.object(apply_mod, "_drain_ingestion", AsyncMock())
-    demote = mocker.patch.object(
-        apply_mod, "_filter_demotions_to_known_facts", AsyncMock()
-    )
+    demote = mocker.patch.object(apply_mod, "_filter_demotions", AsyncMock())
     lock_handle = mocker.MagicMock()
     lock_handle.extend = AsyncMock(return_value=False)
     ops = DreamOperations(

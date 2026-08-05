@@ -409,6 +409,8 @@ async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker
     driver.close = AsyncMock(return_value=None)
 
     async def fake_execute(query: str, **kwargs):
+        if "recall_count" in query:
+            return ([{"stamped": 3}], None, None)
         return (list(next(promote_results)), None, None)
 
     driver.execute_query = AsyncMock(side_effect=fake_execute)
@@ -446,7 +448,76 @@ async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
 
     # The poison edge errored; the others promoted.
     assert promoted == 2
-    assert calls["n"] == 3  # all three attempted; one raised
+    # One batched recall stamp + three per-edge promotion attempts, one
+    # of which raised.
+    assert calls["n"] == 4
+
+
+# ---------------------------------------------------------------------------
+# Recall stamping — the durable usage signal the nightly dream pass reads
+# ---------------------------------------------------------------------------
+
+
+def _capture_driver(mocker):
+    """Driver that records every (query, kwargs) pair it is handed."""
+    calls: list[tuple[str, dict]] = []
+
+    async def fake_execute(query: str, **kwargs):
+        calls.append((query, kwargs))
+        if "recall_count" in query:
+            return ([{"stamped": len(kwargs.get("uuids") or [])}], None, None)
+        return ([], None, None)
+
+    driver = MagicMock()
+    driver.close = AsyncMock(return_value=None)
+    driver.execute_query = AsyncMock(side_effect=fake_execute)
+    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", return_value=driver)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_hit_hook_stamps_recall_on_every_retrieved_edge(mocker):
+    """The usage signal covers ALL retrieved edges, not just tentative
+    ones — a long-lived active fact is exactly the memory whose usage
+    the dream pass needs to know about before demoting it."""
+    mocker.patch.object(ratification_mod, "record_memory_hit", new=AsyncMock())
+    calls = _capture_driver(mocker)
+
+    await ratification_mod.try_ratify_on_hit("u1", ["edge-a", "edge-b"])
+
+    stamps = [(q, kw) for q, kw in calls if "recall_count" in q]
+    # One batched round-trip for the whole retrieved set.
+    assert len(stamps) == 1
+    query, kwargs = stamps[0]
+    assert kwargs["uuids"] == ["edge-a", "edge-b"]
+    # COALESCE is what makes edges written before this hook shipped start
+    # from 0 instead of NULL — no backfill migration needed.
+    assert "COALESCE(e.recall_count, 0) + 1" in query
+    # Retracted edges must not be re-stamped as live.
+    assert "e.expired_at IS NULL" in query
+    # The timestamp is generated in Python; FalkorDB has no datetime().
+    datetime.fromisoformat(kwargs["now"])
+
+
+@pytest.mark.asyncio
+async def test_hit_hook_still_promotes_when_recall_stamping_fails(mocker):
+    """Stamping is an optimization; a failure there must not cost the
+    user a ratification (or raise into the chat turn)."""
+    mocker.patch.object(ratification_mod, "record_memory_hit", new=AsyncMock())
+
+    async def fake_execute(query: str, **kwargs):
+        if "recall_count" in query:
+            raise RuntimeError("simulated stamping explosion")
+        return ([{"uuid": kwargs.get("uuid")}], None, None)
+
+    driver = MagicMock()
+    driver.close = AsyncMock(return_value=None)
+    driver.execute_query = AsyncMock(side_effect=fake_execute)
+    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", return_value=driver)
+
+    promoted = await ratification_mod.try_ratify_on_hit("u1", ["edge-a"])
+
+    assert promoted == 1
 
 
 @pytest.mark.asyncio

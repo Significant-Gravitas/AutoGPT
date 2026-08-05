@@ -412,6 +412,8 @@ def _input_bundle_to_dict(input_bundle: DreamInput) -> dict:
                 "confidence": f.confidence,
                 "status": f.status,
                 "created_at": f.created_at,
+                "recall_count": f.recall_count,
+                "last_recalled_at": f.last_recalled_at,
             }
             for f in input_bundle.facts
         ],
