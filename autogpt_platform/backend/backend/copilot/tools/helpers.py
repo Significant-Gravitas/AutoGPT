@@ -171,20 +171,12 @@ async def _charge_block_credits(
 
 @lru_cache(maxsize=None)
 def _get_input_schema_provider(input_schema: type[BlockSchemaInput]) -> str | None:
-    try:
-        infos = input_schema.get_credentials_fields_info()
-        providers = {
-            ProviderName(provider).value
-            for info in infos.values()
-            for provider in info.provider
-        }
-    except Exception:
-        logger.debug(
-            "Unable to determine integration provider for block input schema %r",
-            input_schema,
-            exc_info=True,
-        )
-        return None
+    infos = input_schema.get_credentials_fields_info()
+    providers = {
+        ProviderName(provider).value
+        for info in infos.values()
+        for provider in info.provider
+    }
     if len(providers) != 1:
         return None
     return next(iter(providers))
@@ -193,7 +185,15 @@ def _get_input_schema_provider(input_schema: type[BlockSchemaInput]) -> str | No
 def get_block_provider(block: AnyBlockSchema) -> str | None:
     """Sole integration provider slug for a block, or None when the block
     uses zero or multiple providers."""
-    return _get_input_schema_provider(block.input_schema)
+    try:
+        return _get_input_schema_provider(block.input_schema)
+    except Exception:
+        logger.debug(
+            "Unable to determine integration provider for block input schema %r",
+            block.input_schema,
+            exc_info=True,
+        )
+        return None
 
 
 async def execute_block(

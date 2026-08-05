@@ -80,6 +80,20 @@ class TestGetBlockProvider:
 
         assert get_block_provider(block) is None
 
+    def test_retries_schema_introspection_after_transient_failure(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.side_effect = [
+            RuntimeError,
+            {"credentials": info},
+        ]
+
+        assert get_block_provider(block) is None
+        assert get_block_provider(block) == "google"
+
 
 def _make_block(
     block_id: str = "block-1",
