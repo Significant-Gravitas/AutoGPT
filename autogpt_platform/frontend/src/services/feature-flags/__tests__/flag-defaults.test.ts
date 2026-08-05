@@ -77,3 +77,25 @@ describe("onboarding flag defaults fail closed", () => {
     expect(result.current).toBe(true);
   });
 });
+
+// The LaunchDarkly key does not exist yet, so the "LD never answers" path
+// below is the *only* path in production today — it must resolve false, or
+// merging this ships the half-built org management UI to everyone.
+describe("org settings flag default fails closed", () => {
+  beforeEach(() => {
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
+      .forEach((k) => delete process.env[k]);
+  });
+
+  it("resolves SHOW_ORG_SETTINGS to false when LaunchDarkly has not answered", () => {
+    const { result } = renderHook(() => useGetFlag(Flag.SHOW_ORG_SETTINGS));
+    expect(result.current).toBe(false);
+  });
+
+  it("lets local dev / Playwright force the org UI on via the env override", () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
+    const { result } = renderHook(() => useGetFlag(Flag.SHOW_ORG_SETTINGS));
+    expect(result.current).toBe(true);
+  });
+});
