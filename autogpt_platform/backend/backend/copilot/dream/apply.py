@@ -611,7 +611,7 @@ async def apply_operations(
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
             # Vacuously drained — the pass enqueued nothing.
-            "ingestion_drained": True,
+            "ingestion_drain_status": IngestionDrainStatus.drained,
             "snapshot": DreamOperationsSnapshot(),
         }
 
