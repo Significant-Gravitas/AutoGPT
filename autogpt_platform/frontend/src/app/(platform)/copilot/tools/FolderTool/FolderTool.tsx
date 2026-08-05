@@ -39,6 +39,7 @@ import {
   Folder01Icon,
   FolderAddIcon,
   FolderLibraryIcon,
+  FolderOpenIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -146,7 +147,7 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
       initialExpandedItems={allIDs}
       elements={elements}
       openIcon={
-        <Icon icon={Folder01Icon} size={16} className="text-neutral-600" />
+        <Icon icon={FolderOpenIcon} size={16} className="text-neutral-600" />
       }
       closeIcon={
         <Icon icon={Folder01Icon} size={16} className="text-neutral-600" />

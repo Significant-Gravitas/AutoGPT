@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ToolUIPart } from "ai";
 import { FolderTool } from "../FolderTool";
 
@@ -139,5 +139,34 @@ describe("FolderTool accordion icon", () => {
     });
 
     expect(updated).toBe(moved);
+  });
+});
+
+describe("FolderTool tree icons", () => {
+  it("uses different glyphs for expanded and collapsed folders", () => {
+    renderTool({
+      type: "folder_list",
+      message: "Listed",
+      folders: [],
+      tree: [
+        {
+          ...FOLDER,
+          children: [],
+          agents: [{ id: "a1", name: "Agent" }],
+        },
+      ],
+      count: 1,
+    });
+    const folderButton = screen.getByRole("button", {
+      name: /Research \(2 agents\)/,
+    });
+    const expandedGlyph = glyphs(folderButton)[0];
+
+    fireEvent.click(folderButton);
+
+    const collapsedGlyph = glyphs(folderButton)[0];
+    expect(expandedGlyph).toBeTruthy();
+    expect(collapsedGlyph).toBeTruthy();
+    expect(collapsedGlyph).not.toBe(expandedGlyph);
   });
 });
