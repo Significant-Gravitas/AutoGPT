@@ -20,6 +20,7 @@ function VariantToggle({
         <button
           key={option}
           type="button"
+          aria-pressed={variant === option}
           onClick={() => onChange(option)}
           className={
             "rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors " +

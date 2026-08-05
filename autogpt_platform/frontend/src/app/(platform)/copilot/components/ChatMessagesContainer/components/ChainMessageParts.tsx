@@ -23,6 +23,9 @@ export function ChainMessageParts({
   readOnly,
 }: Props) {
   const segments = buildChainSegments(parts, isChainableToolPart);
+  const lastChainSegmentIndex = segments.findLastIndex(
+    (segment) => segment.kind === "chain",
+  );
 
   return segments.map((segment, segmentIndex) => {
     if (segment.kind === "chain") {
@@ -31,7 +34,7 @@ export function ChainMessageParts({
           key={`${messageID}-chain-${segment.index}`}
           parts={segment.parts}
           isStreaming={
-            isCurrentlyStreaming && segmentIndex === segments.length - 1
+            isCurrentlyStreaming && segmentIndex === lastChainSegmentIndex
           }
         />
       );
