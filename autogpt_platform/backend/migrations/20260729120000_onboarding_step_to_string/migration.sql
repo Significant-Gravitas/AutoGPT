@@ -27,25 +27,18 @@ ALTER TABLE "UserOnboarding" ALTER COLUMN "completedSteps" SET DEFAULT '{}';
 ALTER TABLE "UserOnboarding" ALTER COLUMN "notified"       SET DEFAULT '{}';
 ALTER TABLE "UserOnboarding" ALTER COLUMN "rewardedFor"    SET DEFAULT '{}';
 
--- Rename VISIT_COPILOT -> ONBOARDING_COMPLETE in existing rows. array_replace
--- is a no-op when the value isn't present, so this is safe on every row.
+-- Rename retired step names in existing rows so users keep their progress:
+-- VISIT_COPILOT -> ONBOARDING_COMPLETE and MARKETPLACE_RUN_AGENT ->
+-- LIBRARY_RUN_AGENT. Both renames are chained into a single pass so the table
+-- is rewritten once. array_replace is a no-op when the value isn't present, so
+-- applying both to every matched row is safe.
 UPDATE "UserOnboarding"
-SET    "completedSteps" = array_replace("completedSteps", 'VISIT_COPILOT', 'ONBOARDING_COMPLETE'),
-       "notified"       = array_replace("notified",       'VISIT_COPILOT', 'ONBOARDING_COMPLETE'),
-       "rewardedFor"    = array_replace("rewardedFor",    'VISIT_COPILOT', 'ONBOARDING_COMPLETE')
-WHERE  'VISIT_COPILOT' = ANY("completedSteps")
-   OR  'VISIT_COPILOT' = ANY("notified")
-   OR  'VISIT_COPILOT' = ANY("rewardedFor");
-
--- Rename MARKETPLACE_RUN_AGENT -> LIBRARY_RUN_AGENT in existing rows. array_replace
--- is a no-op when the value isn't present, so this is safe on every row.
-UPDATE "UserOnboarding"
-SET    "completedSteps" = array_replace("completedSteps", 'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT'),
-       "notified"       = array_replace("notified",       'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT'),
-       "rewardedFor"    = array_replace("rewardedFor",    'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT')
-WHERE  'MARKETPLACE_RUN_AGENT' = ANY("completedSteps")
-   OR  'MARKETPLACE_RUN_AGENT' = ANY("notified")
-   OR  'MARKETPLACE_RUN_AGENT' = ANY("rewardedFor");
+SET    "completedSteps" = array_replace(array_replace("completedSteps", 'VISIT_COPILOT', 'ONBOARDING_COMPLETE'), 'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT'),
+       "notified"       = array_replace(array_replace("notified",       'VISIT_COPILOT', 'ONBOARDING_COMPLETE'), 'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT'),
+       "rewardedFor"    = array_replace(array_replace("rewardedFor",    'VISIT_COPILOT', 'ONBOARDING_COMPLETE'), 'MARKETPLACE_RUN_AGENT', 'LIBRARY_RUN_AGENT')
+WHERE  "completedSteps" && ARRAY['VISIT_COPILOT', 'MARKETPLACE_RUN_AGENT']
+   OR  "notified"       && ARRAY['VISIT_COPILOT', 'MARKETPLACE_RUN_AGENT']
+   OR  "rewardedFor"    && ARRAY['VISIT_COPILOT', 'MARKETPLACE_RUN_AGENT'];
 
 -- Drop the now-unused enum type.
 DROP TYPE "OnboardingStep";
