@@ -1241,16 +1241,22 @@ class NotificationManager(AppService):
 
         if self.rabbitmq_service is not None:
             logger.info("⏳ Disconnecting RabbitMQ...")
-            try:
-                await asyncio.wait_for(
-                    self.rabbitmq_service.disconnect(),
-                    timeout=SHUTDOWN_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
+            # asyncio.wait (not wait_for): on timeout, wait_for would cancel
+            # the disconnect and then await that cancellation, so a
+            # cancellation-resistant disconnect could still hang shutdown.
+            # wait() returns at the deadline and abandons the task instead.
+            disconnect_task = asyncio.ensure_future(self.rabbitmq_service.disconnect())
+            _, pending = await asyncio.wait(
+                [disconnect_task], timeout=SHUTDOWN_TIMEOUT_SECONDS
+            )
+            if pending:
+                disconnect_task.cancel()
                 logger.warning(
                     "RabbitMQ disconnect did not complete within "
                     f"{SHUTDOWN_TIMEOUT_SECONDS}s; continuing shutdown"
                 )
+            elif (exc := disconnect_task.exception()) is not None:
+                logger.warning(f"RabbitMQ disconnect failed during shutdown: {exc}")
 
     def cleanup(self):
         """Cleanup service resources."""
