@@ -129,6 +129,10 @@ def _stub_boundaries(mocker):
     # fails open (keeps all demotions) so tests that don't care about uuid
     # validation behave as before. Filter tests re-patch with a bundle.
     mocker.patch.object(apply_mod, "read_input_bundle", AsyncMock(return_value=None))
+    # The apply-time usage refresh opens its own FalkorDB driver inside
+    # fetch.py — stub it to "no fresh data" so the guard reads only the
+    # facts each test supplies. Refresh-behavior tests re-patch this.
+    mocker.patch.object(apply_mod, "fetch_usage_rows", AsyncMock(return_value=None))
     # derive_group_id is deterministic; let it run.
 
 
@@ -389,6 +393,55 @@ async def test_batch_path_usage_guard_reads_facts_from_persisted_bundle(mocker):
     apply_mod.read_input_bundle.assert_awaited_once_with("p-usage-batch")
     apply_mod.mark_edges_superseded.assert_awaited_once()
     assert apply_mod.mark_edges_superseded.await_args.args[1] == ["cold"]
+
+
+@pytest.mark.asyncio
+async def test_usage_refresh_protects_fact_recalled_after_submission(mocker):
+    """Batch-path staleness: the bundle snapshot says a fact was never
+    recalled, but the user has been using it in the hours between
+    submit and apply. The apply-time refresh must win."""
+    mocker.patch.object(
+        apply_mod, "fetch_usage_rows", AsyncMock(return_value=[_used_fact("hot")])
+    )
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="hot", reason="stale_fact")],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-refresh",
+        pass_id="p-refresh",
+        ops=ops,
+        known_fact_uuids={"hot"},
+        facts=[_unused_fact("hot")],
+    )
+
+    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-refresh", ["hot"])
+    apply_mod.mark_edges_superseded.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_contradiction_demotion_overrides_usage_protection():
+    """Usage disproves staleness, not wrongness: a contradicted or
+    user-retracted fact must stay demotable however often it's
+    recalled — a frequently-used WRONG fact is exactly the memory
+    most worth correcting."""
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="contradicted_by:other-edge"),
+            DreamDemotion(edge_uuid="hot2", reason="user_signal"),
+            DreamDemotion(edge_uuid="hot3", reason="stale_fact"),
+        ],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-override",
+        pass_id="p-override",
+        ops=ops,
+        known_fact_uuids={"hot", "hot2", "hot3"},
+        facts=[_used_fact("hot"), _used_fact("hot2"), _used_fact("hot3")],
+    )
+
+    calls = apply_mod.mark_edges_superseded.await_args_list
+    demoted = sorted(uuid for call in calls for uuid in call.args[1])
+    assert demoted == ["hot", "hot2"]
 
 
 @pytest.mark.asyncio

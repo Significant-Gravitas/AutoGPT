@@ -39,6 +39,20 @@ RECENT_RECALL_WINDOW = timedelta(days=7)
 # Two hits inside the window is a repeated, deliberate-looking recall.
 MIN_RECALLS_TO_PROTECT = 2
 
+# Demotion reasons that override usage protection. Usage disproves
+# *staleness* — a recently-recalled fact isn't stale — but it can't
+# disprove a contradiction or an explicit user retraction; a
+# frequently-recalled WRONG fact is exactly the memory most worth
+# correcting. Anything else (``stale_fact``, ``entity_invalidated:*``,
+# free-text reasons the model invents) stays blocked for protected
+# facts: fail conservative in the destructive direction.
+OVERRIDE_REASONS = frozenset({"user_signal"})
+OVERRIDE_REASON_PREFIXES = ("contradicted_by:", "web_contradicted:")
+
+
+def _reason_overrides_protection(reason: str) -> bool:
+    return reason in OVERRIDE_REASONS or reason.startswith(OVERRIDE_REASON_PREFIXES)
+
 
 def drop_recently_used_demotions(
     pass_id: str,
@@ -60,12 +74,16 @@ def drop_recently_used_demotions(
     if not protected:
         return demotions
 
-    kept = [d for d in demotions if d.edge_uuid not in protected]
+    kept = [
+        d
+        for d in demotions
+        if d.edge_uuid not in protected or _reason_overrides_protection(d.reason)
+    ]
     dropped = len(demotions) - len(kept)
     if dropped:
         logger.warning(
-            "Dream pass %s: dropped %d demotion(s) targeting facts recalled "
-            "at least %d time(s) in the last %d day(s)",
+            "Dream pass %s: dropped %d staleness demotion(s) targeting facts "
+            "recalled at least %d time(s) in the last %d day(s)",
             pass_id,
             dropped,
             MIN_RECALLS_TO_PROTECT,

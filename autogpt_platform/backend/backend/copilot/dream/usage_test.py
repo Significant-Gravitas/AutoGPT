@@ -153,6 +153,31 @@ def test_empty_demotion_list_is_returned_untouched():
     assert drop_recently_used_demotions("p-4", [], facts) == []
 
 
+def test_contradiction_and_retraction_reasons_override_protection():
+    """Usage disproves staleness, not wrongness — direct contradictions
+    and explicit user retractions demote even heavily-used facts."""
+    facts = [_fact("hot", recall_count=9, last_recalled_at=_ago(hours=2))]
+    demotions = [
+        DreamDemotion(edge_uuid="hot", reason="contradicted_by:abc-123"),
+        DreamDemotion(edge_uuid="hot", reason="web_contradicted:https://x.test"),
+        DreamDemotion(edge_uuid="hot", reason="user_signal"),
+    ]
+    assert drop_recently_used_demotions("p-5", demotions, facts) == demotions
+
+
+def test_unknown_and_staleness_reasons_stay_blocked_for_protected_facts():
+    """Only the explicit contradiction/retraction vocabulary overrides —
+    ``stale_fact``, ``entity_invalidated:*``, and free-text reasons the
+    model invents are all treated as staleness claims."""
+    facts = [_fact("hot", recall_count=9, last_recalled_at=_ago(hours=2))]
+    demotions = [
+        DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+        DreamDemotion(edge_uuid="hot", reason="entity_invalidated:abc-123"),
+        DreamDemotion(edge_uuid="hot", reason="no longer seems relevant"),
+    ]
+    assert drop_recently_used_demotions("p-6", demotions, facts) == []
+
+
 # ---------------------------------------------------------------------------
 # format_usage — what the dream prompt shows the model
 # ---------------------------------------------------------------------------

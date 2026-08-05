@@ -228,7 +228,7 @@ async def _fetch_active_facts(
                    e.status AS status,
                    toString(e.created_at) AS created_at,
                    e.recall_count AS recall_count,
-                   e.last_recalled_at AS last_recalled_at
+                   toString(e.last_recalled_at) AS last_recalled_at
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
@@ -254,6 +254,74 @@ async def _fetch_active_facts(
             confidence=r.get("confidence"),
             status=r.get("status"),
             created_at=r.get("created_at"),
+            recall_count=r.get("recall_count"),
+            last_recalled_at=r.get("last_recalled_at"),
+        )
+        for r in rows
+    ]
+
+
+async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow] | None:
+    """Current usage stamps for the given edges, fetched at call time.
+
+    The demotion guard's usage data otherwise comes from the pass's
+    input bundle, which the batch path persisted hours before apply —
+    a fact recalled since submission would look unprotected. This
+    re-reads ``recall_count`` / ``last_recalled_at`` for just the
+    demotion targets right before the guard runs.
+
+    Returns ``None`` on any failure (guard falls back to bundle data);
+    rows for edges never stamped carry ``None`` props, which the guard
+    already reads as "never recalled".
+    """
+    if not edge_uuids:
+        return []
+    try:
+        group_id = derive_group_id(user_id)
+    except ValueError:
+        return None
+    driver = AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=group_id,
+        build_indices=False,
+    )
+    try:
+        result = await driver.execute_query(
+            """
+            UNWIND $uuids AS target_uuid
+            MATCH ()-[e:RELATES_TO]->()
+            WHERE e.uuid = target_uuid
+            RETURN e.uuid AS uuid,
+                   e.recall_count AS recall_count,
+                   toString(e.last_recalled_at) AS last_recalled_at
+            """,
+            uuids=edge_uuids,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to refresh usage stamps for %d edge(s) of user %s — "
+            "demotion guard falls back to bundle usage data",
+            len(edge_uuids),
+            user_id[:12],
+            exc_info=True,
+        )
+        return None
+    finally:
+        await driver.close()
+    rows = result[0] if result else []
+    return [
+        FactRow(
+            uuid=str(r.get("uuid", "")),
+            source=None,
+            target=None,
+            name=None,
+            fact=None,
+            scope=None,
+            confidence=None,
+            status=None,
+            created_at=None,
             recall_count=r.get("recall_count"),
             last_recalled_at=r.get("last_recalled_at"),
         )

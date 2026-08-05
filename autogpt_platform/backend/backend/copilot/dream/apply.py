@@ -45,7 +45,7 @@ from backend.copilot.tools.graphiti_forget import (
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .batch_submit import read_input_bundle
-from .fetch import DREAM_EPISODE_NAME_PREFIX, DreamInput, FactRow
+from .fetch import DREAM_EPISODE_NAME_PREFIX, DreamInput, FactRow, fetch_usage_rows
 from .locks import DreamLockHandle, DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
@@ -226,6 +226,7 @@ async def _write_proposed_finding(
 
 
 async def _filter_demotions(
+    user_id: str,
     pass_id: str,
     demotions: list[DreamDemotion],
     known_fact_uuids: set[str] | None,
@@ -244,6 +245,12 @@ async def _filter_demotions(
         ``recall_count`` / ``last_recalled_at`` stamped by warm-context
         retrieval; demotions targeting facts the user demonstrably still
         uses are dropped (see ``usage.drop_recently_used_demotions``).
+        Because those rows are a snapshot from gather time — hours old
+        on the batch path — the guard also re-reads the stamps for just
+        the surviving demotion targets (``fetch_usage_rows``); a fact
+        recalled after submission is still protected. The refresh is
+        additive: protection from either source wins, and a failed
+        refresh falls back to the snapshot alone.
 
     Both the sync orchestrator and the batch callback converge on
     ``apply_operations``, so this is the one chokepoint covering both
@@ -281,7 +288,11 @@ async def _filter_demotions(
                 pass_id,
                 dropped,
             )
-    return drop_recently_used_demotions(pass_id, kept, facts)
+    if not kept:
+        return kept
+    fresh = await fetch_usage_rows(user_id, [d.edge_uuid for d in kept])
+    combined = (facts or []) + (fresh or [])
+    return drop_recently_used_demotions(pass_id, kept, combined or None)
 
 
 async def _read_bundle_for_filter(
@@ -738,7 +749,9 @@ async def apply_operations(
         pass_id, completion, ingestion_drain_timeout
     )
 
-    demotions = await _filter_demotions(pass_id, ops.demotions, known_fact_uuids, facts)
+    demotions = await _filter_demotions(
+        user_id, pass_id, ops.demotions, known_fact_uuids, facts
+    )
     demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
         user_id, group_id, demotions
     )

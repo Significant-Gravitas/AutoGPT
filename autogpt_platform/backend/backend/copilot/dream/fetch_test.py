@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from .fetch import _fetch_active_facts
+from . import fetch as fetch_mod
+from .fetch import _fetch_active_facts, fetch_usage_rows
 
 
 def _driver_returning(rows: list[dict]) -> MagicMock:
@@ -47,7 +48,7 @@ async def test_active_facts_carry_recall_stamps():
     assert facts[0].last_recalled_at == "2026-08-01T00:00:00+00:00"
     query = driver.execute_query.await_args.args[0]
     assert "e.recall_count AS recall_count" in query
-    assert "e.last_recalled_at AS last_recalled_at" in query
+    assert "toString(e.last_recalled_at) AS last_recalled_at" in query
 
 
 @pytest.mark.asyncio
@@ -59,3 +60,58 @@ async def test_facts_without_recall_props_read_as_never_recalled():
 
     assert facts[0].recall_count is None
     assert facts[0].last_recalled_at is None
+
+
+# ---------------------------------------------------------------------------
+# fetch_usage_rows — the apply-time usage refresh
+# ---------------------------------------------------------------------------
+
+
+def _patch_driver(mocker, driver) -> None:
+    driver.close = AsyncMock(return_value=None)
+    mocker.patch.object(
+        fetch_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_usage_rows_returns_current_stamps(mocker):
+    """The apply-time refresh reads only usage props, keyed by uuid."""
+    driver = _driver_returning(
+        [
+            {
+                "uuid": "hot",
+                "recall_count": 3,
+                "last_recalled_at": "2026-08-05T00:00:00+00:00",
+            },
+            {"uuid": "cold", "recall_count": None, "last_recalled_at": None},
+        ]
+    )
+    _patch_driver(mocker, driver)
+
+    rows = await fetch_usage_rows("u-1234567890ab", ["hot", "cold"])
+
+    assert rows is not None
+    assert {(r.uuid, r.recall_count) for r in rows} == {("hot", 3), ("cold", None)}
+    driver.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fetch_usage_rows_returns_none_on_query_failure(mocker):
+    """A failed refresh means "no fresh data", never an exception — the
+    demotion guard falls back to the bundle snapshot."""
+    driver = MagicMock()
+    driver.execute_query = AsyncMock(side_effect=RuntimeError("boom"))
+    _patch_driver(mocker, driver)
+
+    assert await fetch_usage_rows("u-1234567890ab", ["hot"]) is None
+    driver.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fetch_usage_rows_skips_the_driver_for_no_uuids(mocker):
+    ctor = MagicMock()
+    mocker.patch.object(fetch_mod, "AutoGPTFalkorDriver", ctor)
+
+    assert await fetch_usage_rows("u-1234567890ab", []) == []
+    ctor.assert_not_called()
