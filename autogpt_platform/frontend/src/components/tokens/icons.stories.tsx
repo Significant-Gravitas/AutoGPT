@@ -239,7 +239,7 @@ export function AllVariants() {
                   override it per call site
                 </Text>
                 <div className="space-y-1 font-mono text-sm text-zinc-800">
-                  <div>1.75px</div>
+                  <div>2px</div>
                 </div>
               </div>
             </div>
