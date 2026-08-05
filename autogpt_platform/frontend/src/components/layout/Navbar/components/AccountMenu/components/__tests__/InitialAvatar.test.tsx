@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { describe, expect, test } from "vitest";
 import { InitialAvatar } from "../InitialAvatar";
 
-function getFallbackSvg(container: HTMLElement) {
+function getFallbackSVG(container: HTMLElement) {
   const svg = container.querySelector("svg");
   return svg?.innerHTML.replace(/:r[0-9a-z]+:/g, "id") ?? null;
 }
@@ -10,7 +10,7 @@ function getFallbackSvg(container: HTMLElement) {
 describe("InitialAvatar", () => {
   test("renders marble gradient fallback when no image is provided", () => {
     const { container } = render(<InitialAvatar name="abhimanyu" />);
-    expect(getFallbackSvg(container)).not.toBeNull();
+    expect(getFallbackSVG(container)).not.toBeNull();
   });
 
   test("seeds the gradient deterministically by name", () => {
@@ -18,19 +18,19 @@ describe("InitialAvatar", () => {
     const second = render(<InitialAvatar name="ada" />);
     const other = render(<InitialAvatar name="beth" />);
 
-    expect(getFallbackSvg(first.container)).toBe(
-      getFallbackSvg(second.container),
+    expect(getFallbackSVG(first.container)).toBe(
+      getFallbackSVG(second.container),
     );
-    expect(getFallbackSvg(first.container)).not.toBe(
-      getFallbackSvg(other.container),
+    expect(getFallbackSVG(first.container)).not.toBe(
+      getFallbackSVG(other.container),
     );
   });
 
   test("trims the name before seeding the gradient", () => {
     const padded = render(<InitialAvatar name="   beth" />);
     const plain = render(<InitialAvatar name="beth" />);
-    expect(getFallbackSvg(padded.container)).toBe(
-      getFallbackSvg(plain.container),
+    expect(getFallbackSVG(padded.container)).toBe(
+      getFallbackSVG(plain.container),
     );
   });
 
@@ -39,11 +39,11 @@ describe("InitialAvatar", () => {
     const empty = render(<InitialAvatar name="" />);
     const user = render(<InitialAvatar name="User" />);
 
-    expect(getFallbackSvg(missing.container)).toBe(
-      getFallbackSvg(user.container),
+    expect(getFallbackSVG(missing.container)).toBe(
+      getFallbackSVG(user.container),
     );
-    expect(getFallbackSvg(empty.container)).toBe(
-      getFallbackSvg(user.container),
+    expect(getFallbackSVG(empty.container)).toBe(
+      getFallbackSVG(user.container),
     );
   });
 
@@ -54,11 +54,11 @@ describe("InitialAvatar", () => {
     const usernameOnly = render(<InitialAvatar name="ada" />);
     const nameOnly = render(<InitialAvatar name="Ada Lovelace" />);
 
-    expect(getFallbackSvg(withUsername.container)).toBe(
-      getFallbackSvg(usernameOnly.container),
+    expect(getFallbackSVG(withUsername.container)).toBe(
+      getFallbackSVG(usernameOnly.container),
     );
-    expect(getFallbackSvg(withUsername.container)).not.toBe(
-      getFallbackSvg(nameOnly.container),
+    expect(getFallbackSVG(withUsername.container)).not.toBe(
+      getFallbackSVG(nameOnly.container),
     );
   });
 

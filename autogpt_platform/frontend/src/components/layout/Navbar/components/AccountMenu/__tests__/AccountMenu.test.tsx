@@ -5,7 +5,7 @@ import { AccountMenu } from "../AccountMenu";
 import { InitialAvatar } from "../components/InitialAvatar";
 import { MenuItemGroup } from "../../../helpers";
 
-function getFallbackSvg(root: HTMLElement) {
+function getFallbackSVG(root: HTMLElement) {
   const svg = root.querySelector("svg");
   return svg?.innerHTML.replace(/:r[0-9a-z]+:/g, "id") ?? null;
 }
@@ -152,9 +152,9 @@ describe("AccountMenu", () => {
     const reference = render(<InitialAvatar name="ada" />);
 
     const trigger = screen.getByTestId("profile-popout-menu-trigger");
-    expect(getFallbackSvg(trigger)).not.toBeNull();
+    expect(getFallbackSVG(trigger)).not.toBeNull();
     // The marble gradient must be seeded by the user's handle, not a constant.
-    expect(getFallbackSvg(trigger)).toBe(getFallbackSvg(reference.container));
+    expect(getFallbackSVG(trigger)).toBe(getFallbackSVG(reference.container));
   });
 
   test("new layout renders the organization switcher header trigger", () => {
