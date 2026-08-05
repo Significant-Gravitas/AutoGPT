@@ -165,7 +165,7 @@
     "@types/react-window": "2.0.0",
     "@types/twemoji": "13.1.2",
     "@vitejs/plugin-react": "5.1.2",
-    "@vitest/coverage-v8": "4.0.17",
+    "@vitest/coverage-v8": "4.1.0",
     "agentation": "3.0.2",
     "axe-playwright": "2.2.2",
     "chromatic": "13.3.3",
@@ -174,7 +174,7 @@
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.7",
     "eslint-plugin-storybook": "9.1.5",
-    "happy-dom": "20.3.4",
+    "happy-dom": "20.8.9",
     "import-in-the-middle": "2.0.2",
     "monocart-reporter": "2.10.0",
     "msw": "2.11.6",
@@ -189,7 +189,7 @@
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "6.0.4",
-    "vitest": "4.0.17"
+    "vitest": "4.1.0"
   },
   "msw": {
     "workerDirectory": [
@@ -201,7 +201,8 @@
     "overrides": {
       "@opentelemetry/instrumentation": "0.209.0",
       "lodash-es": "4.17.23",
-      "kysely": "0.28.17"
+      "kysely": "0.28.17",
+      "shell-quote": "1.9.0"
     }
   },
   "packageManager": "pnpm@10.20.0+sha512.cf9998222162dd85864d0a8102e7892e7ba4ceadebbf5a31f9c2fce48dfce317a9c53b9f6464d1ef9042cba2e02ae02a9f7c143a2b438cd93c91840f0192b9dd"
