@@ -8,13 +8,14 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import {
-  CaretDownIcon,
-  CheckCircleIcon,
-  LightningIcon,
-} from "@phosphor-icons/react";
 import { useState } from "react";
 import { ExpertAccent } from "../../helpers";
+import {
+  ArrowDown01Icon,
+  CheckmarkCircle02Icon,
+  FlashIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   expert: Expert;
@@ -56,7 +57,7 @@ export function ExpertProfileContent({
                 accent.pill,
               )}
             >
-              <accent.roleIcon size={14} weight="bold" />
+              <Icon icon={accent.roleIcon} size={14} />
               {expert.role}
             </span>
           </div>
@@ -100,9 +101,9 @@ export function ExpertProfileContent({
                 key={workflow.id}
                 className="flex items-center gap-3 px-4 py-3"
               >
-                <LightningIcon
+                <Icon
+                  icon={FlashIcon}
                   size={18}
-                  weight="fill"
                   className={cn("shrink-0", accent.icon)}
                 />
                 <div className="min-w-0">
@@ -124,7 +125,7 @@ export function ExpertProfileContent({
       <div className="relative mt-8">
         {isHired ? (
           <div className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 text-base font-medium text-emerald-700">
-            <CheckCircleIcon size={20} weight="fill" />
+            <Icon icon={CheckmarkCircle02Icon} size={20} />
             On your team
           </div>
         ) : (
@@ -169,9 +170,9 @@ function PersonalitySection({ text }: { text: string }) {
           className="mt-2 flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
         >
           {isExpanded ? "Show less" : "Read more"}
-          <CaretDownIcon
+          <Icon
+            icon={ArrowDown01Icon}
             size={14}
-            weight="bold"
             className={cn(
               "transition-transform duration-200",
               isExpanded && "rotate-180",

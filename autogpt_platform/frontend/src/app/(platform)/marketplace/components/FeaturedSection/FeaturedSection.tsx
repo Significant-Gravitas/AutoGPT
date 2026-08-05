@@ -8,9 +8,10 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/__legacy__/ui/carousel";
-import { SparkleIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { FeaturedAgentCard } from "../FeaturedAgentCard/FeaturedAgentCard";
+import { SparklesIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const FEATURED_COLORS = [
   "bg-violet-50 border-violet-100/70",
@@ -33,7 +34,7 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
       >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600">
-            <SparkleIcon size={16} weight="bold" />
+            <Icon icon={SparklesIcon} size={16} />
             Hand-picked
           </div>
           <div className="flex items-center gap-2">

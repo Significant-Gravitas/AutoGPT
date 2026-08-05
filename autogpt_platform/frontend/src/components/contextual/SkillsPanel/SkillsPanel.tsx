@@ -9,12 +9,13 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { PlusIcon } from "@phosphor-icons/react";
 import { NEW_SKILL_PROMPT } from "../guidedPrompts";
 import { EmptySkills } from "./components/EmptySkills/EmptySkills";
 import { SkillListItem } from "./components/SkillListItem/SkillListItem";
 import { UploadSkillButton } from "./components/UploadSkillButton/UploadSkillButton";
 import { useSkillsPanel } from "./useSkillsPanel";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onGuidedPrompt: (prompt: string) => void;
@@ -46,7 +47,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
                 onClick={() => onGuidedPrompt(NEW_SKILL_PROMPT)}
                 data-testid="skill-new-button"
               >
-                <PlusIcon className="mr-1 h-4 w-4" />
+                <Icon icon={PlusSignIcon} className="mr-1 h-4 w-4" />
                 New skill
               </Button>
             </TooltipTrigger>

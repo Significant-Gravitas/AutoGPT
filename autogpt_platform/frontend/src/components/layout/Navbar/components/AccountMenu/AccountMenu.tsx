@@ -10,7 +10,7 @@ import { AccountMenuNewLayout } from "./AccountMenuNewLayout";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
 import { AccountMenuRow } from "./components/AccountMenuRow";
 import { InitialAvatar } from "./components/InitialAvatar";
-import { getAccountMenuPhosphorIcon } from "./helpers";
+import { getAccountMenuIcon } from "./helpers";
 
 interface Props {
   userName?: string;
@@ -104,7 +104,7 @@ export function AccountMenu({
             {menuItemGroups.map((group, groupIndex) =>
               group.items.map((item, itemIndex) => {
                 const key = `${groupIndex}-${itemIndex}-${item.text}`;
-                const icon = getAccountMenuPhosphorIcon(item.icon);
+                const icon = getAccountMenuIcon(item.icon);
 
                 if (item.text === "Log out") {
                   return (

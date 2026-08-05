@@ -1,11 +1,15 @@
 "use client";
-
-import { CheckIcon, CopyIcon, ShareNetworkIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useShareChatDialog } from "./useShareChatDialog";
+import {
+  Copy01Icon,
+  Share03Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   sessionId: string;
@@ -104,9 +108,9 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
                   onClick={state.copyShareUrl}
                   leftIcon={
                     state.copied ? (
-                      <CheckIcon size={14} weight="bold" />
+                      <Icon icon={Tick02Icon} size={14} />
                     ) : (
-                      <CopyIcon size={14} />
+                      <Icon icon={Copy01Icon} size={14} />
                     )
                   }
                 >
@@ -142,7 +146,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               onClick={state.enable}
               loading={state.isEnabling}
               disabled={state.isLoadingState}
-              leftIcon={<ShareNetworkIcon size={14} />}
+              leftIcon={<Icon icon={Share03Icon} size={14} />}
             >
               Enable sharing
             </Button>

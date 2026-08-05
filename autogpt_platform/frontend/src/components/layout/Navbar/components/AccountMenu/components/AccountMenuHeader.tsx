@@ -6,10 +6,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { CaretRightIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { AccountMenuOrgList } from "./AccountMenuOrgList";
 import { InitialAvatar } from "./InitialAvatar";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   userName?: string;
@@ -57,10 +58,10 @@ export function AccountMenuHeader({
               </>
             )}
           </div>
-          <CaretRightIcon
+          <Icon
+            icon={ArrowRight01Icon}
             className="shrink-0 text-neutral-700"
             size={16}
-            weight="regular"
             aria-hidden="true"
           />
         </button>

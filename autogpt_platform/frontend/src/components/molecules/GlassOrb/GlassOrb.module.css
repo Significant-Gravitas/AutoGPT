@@ -1,0 +1,137 @@
+.blob {
+  position: absolute;
+  opacity: 0.5;
+  filter: blur(8px);
+}
+
+.spinner {
+  position: absolute;
+  inset: 0;
+  animation: spin 14s linear infinite;
+}
+
+.spinner1 {
+  animation-duration: 12s;
+}
+
+.spinner2 {
+  animation-duration: 19s;
+  animation-direction: reverse;
+}
+
+.spinner3 {
+  animation-duration: 15s;
+}
+
+.spinner4 {
+  animation-duration: 24s;
+  animation-direction: reverse;
+}
+
+.spinner5 {
+  animation-duration: 9s;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.blob1 {
+  width: 78%;
+  height: 46%;
+  left: 6%;
+  top: 10%;
+  background: linear-gradient(120deg, #9c43fe, #5b8cff);
+  border-radius: 78% 22% 58% 42% / 30% 72% 28% 70%;
+  animation: drift1 9s ease-in-out infinite alternate;
+}
+
+.blob2 {
+  width: 55%;
+  height: 70%;
+  left: 34%;
+  top: 18%;
+  background: linear-gradient(200deg, #7c5bff, #4062ff);
+  border-radius: 30% 70% 25% 75% / 65% 28% 72% 35%;
+  animation: drift2 11s ease-in-out infinite alternate;
+}
+
+.blob3 {
+  width: 68%;
+  height: 38%;
+  left: 12%;
+  top: 46%;
+  background: linear-gradient(90deg, #b06bff, #6d7dff);
+  border-radius: 85% 15% 70% 30% / 20% 80% 25% 75%;
+  animation: drift3 7.5s ease-in-out infinite alternate;
+}
+
+.blob4 {
+  width: 44%;
+  height: 58%;
+  left: 8%;
+  top: 30%;
+  background: linear-gradient(160deg, #8a4dff, #4d8bff);
+  border-radius: 45% 55% 80% 20% / 75% 30% 70% 25%;
+  animation: drift4 13s ease-in-out infinite alternate;
+}
+
+.blob5 {
+  width: 60%;
+  height: 34%;
+  left: 26%;
+  top: 58%;
+  background: linear-gradient(45deg, #a35bff, #5470ff);
+  border-radius: 20% 80% 35% 65% / 80% 25% 75% 20%;
+  animation: drift5 8.5s ease-in-out infinite alternate;
+}
+
+@keyframes drift1 {
+  from {
+    transform: rotate(-10deg) translate(0%, 0%) scale(1);
+  }
+  to {
+    transform: rotate(32deg) translate(8%, 12%) scale(1.12);
+  }
+}
+
+@keyframes drift2 {
+  from {
+    transform: rotate(14deg) translate(0%, 0%) scale(1.05);
+  }
+  to {
+    transform: rotate(-24deg) translate(-10%, 6%) scale(0.92);
+  }
+}
+
+@keyframes drift3 {
+  from {
+    transform: rotate(4deg) translate(-4%, 0%) scale(0.95);
+  }
+  to {
+    transform: rotate(-30deg) translate(10%, -12%) scale(1.15);
+  }
+}
+
+@keyframes drift4 {
+  from {
+    transform: rotate(-22deg) translate(6%, -6%) scale(1.1);
+  }
+  to {
+    transform: rotate(18deg) translate(-6%, 10%) scale(0.9);
+  }
+}
+
+@keyframes drift5 {
+  from {
+    transform: rotate(26deg) translate(-8%, 4%) scale(1);
+  }
+  to {
+    transform: rotate(-14deg) translate(6%, -8%) scale(1.18);
+  }
+}
