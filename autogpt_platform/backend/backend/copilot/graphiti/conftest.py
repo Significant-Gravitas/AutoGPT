@@ -13,6 +13,11 @@ Two responsibilities:
    gracefully when FalkorDB is not reachable, so local unit-test runs
    stay fast.
 
+3. **Stub the LLM boundary.** ``stub_graphiti_client`` builds a real
+   ``Graphiti`` over a live FalkorDB driver with canned LLM responses,
+   so a test can drive the genuine ``add_episode`` pipeline — entity /
+   edge extraction, resolution, persistence — without an API key.
+
 Run integration tests with the platform docker-compose stack up::
 
     cd autogpt_platform
@@ -32,9 +37,81 @@ from typing import AsyncIterator
 
 import pytest
 import pytest_asyncio
+from graphiti_core import Graphiti
+from graphiti_core.cross_encoder.client import CrossEncoderClient
+from graphiti_core.embedder.client import EMBEDDING_DIM, EmbedderClient
+from graphiti_core.llm_client.client import LLMClient
+from graphiti_core.llm_client.config import ModelSize
+from graphiti_core.prompts.models import Message
 
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
+
+
+class ScriptedLLMClient(LLMClient):
+    """Real ``LLMClient`` whose responses are canned per response model.
+
+    Keyed by ``response_model.__name__`` so one instance can serve every
+    prompt ``add_episode`` issues. Unlisted models get ``{}`` — graphiti's
+    per-entity-type attribute models are all-optional, so an empty payload
+    validates into defaults. ``prompts_requested`` records the call order
+    for tests that assert which code path ran.
+    """
+
+    def __init__(self, responses: dict[str, dict] | None = None) -> None:
+        super().__init__(config=None, cache=False)
+        self.responses = responses or {}
+        self.prompts_requested: list[str] = []
+
+    async def _generate_response(
+        self,
+        messages: list[Message],
+        response_model=None,
+        max_tokens: int = 16384,
+        model_size: ModelSize = ModelSize.medium,
+    ) -> dict:
+        name = response_model.__name__ if response_model else "raw"
+        self.prompts_requested.append(name)
+        return self.responses.get(name, {})
+
+
+class StubEmbedder(EmbedderClient):
+    """Constant vectors — no integration test ranks by similarity."""
+
+    async def create(self, input_data) -> list[float]:
+        return [0.1] * EMBEDDING_DIM
+
+    async def create_batch(self, input_data_list: list[str]) -> list[list[float]]:
+        return [[0.1] * EMBEDDING_DIM for _ in input_data_list]
+
+
+class StubCrossEncoder(CrossEncoderClient):
+    """Reranking is a search-path concern; ingestion never calls it."""
+
+    async def rank(self, query: str, passages: list[str]) -> list[tuple[str, float]]:
+        return [(passage, 1.0) for passage in passages]
+
+
+@pytest.fixture
+def stub_graphiti_client():
+    """Factory building a ``Graphiti`` with only the LLM boundary stubbed.
+
+    Call as ``stub_graphiti_client(driver, responses)``. Mirrors
+    ``client._build_graphiti`` (same driver, same coroutine limit) so the
+    ingestion pipeline under test behaves as it does in production, minus
+    the API calls.
+    """
+
+    def _build(driver: AutoGPTFalkorDriver, responses: dict[str, dict]) -> Graphiti:
+        return Graphiti(
+            llm_client=ScriptedLLMClient(responses),
+            embedder=StubEmbedder(),
+            cross_encoder=StubCrossEncoder(),
+            graph_driver=driver,
+            max_coroutines=graphiti_config.semaphore_limit,
+        )
+
+    return _build
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
