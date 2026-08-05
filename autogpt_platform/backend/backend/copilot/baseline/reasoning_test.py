@@ -586,8 +586,6 @@ class TestClaude5FamilyThinking:
         ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
     )
     def test_openrouter_fragment_suppressed_for_5_family(self, family_member: str):
-        from backend.copilot.baseline.reasoning import reasoning_extra_body
-
         assert reasoning_extra_body(f"anthropic/{family_member}", 5000) is None
 
     @pytest.mark.parametrize(
@@ -595,26 +593,31 @@ class TestClaude5FamilyThinking:
         ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
     )
     def test_anthropic_fragment_suppressed_for_5_family(self, family_member: str):
-        from backend.copilot.baseline.reasoning import anthropic_thinking_extra_body
-
         assert anthropic_thinking_extra_body(family_member, 5000) is None
 
     @pytest.mark.parametrize("model", ["claude-opus-4-7", "claude-opus-4-8"])
     def test_opus_4_7_and_4_8_keep_budget_fragments(self, model: str):
         """4.7/4.8 share the 5-generation tokenizer but NOT the
         ``budget_tokens`` removal — they must keep the thinking fragment."""
-        from backend.copilot.baseline.reasoning import anthropic_thinking_extra_body
-
         assert anthropic_thinking_extra_body(model, 5000) == {
             "thinking": {"type": "enabled", "budget_tokens": 5000}
         }
 
-    def test_sonnet_4_6_keeps_budget_fragments(self):
-        from backend.copilot.baseline.reasoning import (
-            anthropic_thinking_extra_body,
-            reasoning_extra_body,
-        )
+    def test_explicit_guard_wins_even_when_allowlisted(self, monkeypatch):
+        """The explicit ``_is_claude_5_family`` guard must suppress the
+        fragment even if a 5-family slug is (mistakenly) added to
+        ``_THINKING_CAPABLE_PREFIXES`` — otherwise the guard is dead code
+        and this suppression only holds by allowlist omission."""
+        from backend.copilot.baseline import reasoning
 
+        monkeypatch.setattr(
+            reasoning,
+            "_THINKING_CAPABLE_PREFIXES",
+            reasoning._THINKING_CAPABLE_PREFIXES + ("claude-sonnet-5",),
+        )
+        assert anthropic_thinking_extra_body("claude-sonnet-5", 5000) is None
+
+    def test_sonnet_4_6_keeps_budget_fragments(self):
         assert reasoning_extra_body("anthropic/claude-sonnet-4.6", 5000) == {
             "reasoning": {"max_tokens": 5000}
         }

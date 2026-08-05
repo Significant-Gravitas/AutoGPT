@@ -42,16 +42,19 @@ CLAUDE_5_TOKENIZER_GENERATION_PREFIXES: tuple[str, ...] = CLAUDE_5_FAMILY_PREFIX
 
 
 def strip_anthropic_vendor_prefix(model: str) -> str:
-    """``anthropic/claude-x``, ``openrouter/anthropic/claude-x`` and
-    ``anthropic.claude-x`` → ``claude-x``.
+    """``anthropic/claude-x``, ``openrouter/anthropic/claude-x``,
+    ``anthropic.claude-x`` and ``us.anthropic.claude-x`` → ``claude-x``.
 
     The single normalization used by every family-prefix check, so no
-    vendor-prefixed form (slash-routed or dotted Bedrock-style) can slip
-    past one consumer while matching another.
+    vendor-prefixed form (slash-routed or dotted Bedrock-style, with or
+    without a region prefix) can slip past one consumer while matching
+    another.
     """
     lowered = model.lower().split("/")[-1]
-    if lowered.startswith("anthropic."):
-        return lowered[len("anthropic.") :]
+    marker = "anthropic."
+    idx = lowered.find(marker)
+    if idx != -1:
+        return lowered[idx + len(marker) :]
     return lowered
 
 

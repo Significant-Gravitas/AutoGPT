@@ -2122,6 +2122,7 @@ class TestClaude5TemperatureRejection:
             "anthropic/claude-sonnet-5",
             "anthropic.claude-sonnet-5",
             "openrouter/anthropic/claude-sonnet-5",
+            "us.anthropic.claude-sonnet-5",
         ],
     )
     def test_vendor_prefixed_forms_stripped(self, model: str):
