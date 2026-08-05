@@ -1,11 +1,6 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  CaretDownIcon,
-  ListChecksIcon,
-  SealCheckIcon,
-} from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { EASE_OUT } from "./animations";
@@ -18,6 +13,12 @@ import {
   toDisplayStatus,
   type TodoItem,
 } from "./helpers";
+import {
+  ArrowDown01Icon,
+  CheckListIcon,
+  CheckmarkBadge01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // BlurText-style swap for the collapsed header's cycling current task only.
 const BLUR_SWAP = {
@@ -77,9 +78,9 @@ export function TaskProgressBar({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {allDone ? (
             <>
-              <SealCheckIcon
+              <Icon
+                icon={CheckmarkBadge01Icon}
                 size={22}
-                weight="fill"
                 className="flex-shrink-0 text-[#00a656]"
               />
               <Text
@@ -111,9 +112,9 @@ export function TaskProgressBar({
             </AnimatePresence>
           ) : (
             <>
-              <ListChecksIcon
+              <Icon
+                icon={CheckListIcon}
                 size={16}
-                weight="bold"
                 className="flex-shrink-0 text-zinc-500"
               />
               <Text
@@ -136,7 +137,7 @@ export function TaskProgressBar({
           }
           className="flex-shrink-0 text-zinc-400"
         >
-          <CaretDownIcon size={14} weight="bold" />
+          <Icon icon={ArrowDown01Icon} size={14} />
         </motion.span>
       </button>
 

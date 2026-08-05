@@ -700,6 +700,151 @@ async def test_partial_failure_still_charges_completed_phases(mocker):
 _ = MagicMock  # keep import for editor convenience; not directly used
 
 
+class TestTransientIntentFilter:
+    """#13388: transient-intent 'facts' (questions captured as memory) are
+    dropped deterministically; durable facts and goals are kept; generic
+    world-knowledge is intentionally NOT handled here (prompt's job)."""
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "User is asking how Kubernetes works",
+            # 'asking' is transient only for interrogative questions, not
+            # durable 'asking FOR/TO' requests (#3622917532).
+            "User is asking how to deploy",
+            "User is interested in knowing which Pull Requests they currently have open",
+            "The user is wondering about the deploy timeline",
+            "user wants to know the markup on credits",
+            "User asked whether the migration is risky",
+            "User is curious about lighthouse restorations",
+            "User is trying to understand the auth flow",
+            # 'learn'/'understand'/'find out'/'interested in learning' ARE
+            # transient when followed by an interrogative (a question, not a
+            # durable skill goal / aspiration).
+            "User wants to learn how Kubernetes networking works",
+            "User is interested in learning what the credit markup is",
+            "User wants to understand how the auth flow works",
+            "User wants to find out what the credit markup is",
+            # 'confused about' / 'unsure about' require the 'about' complement
+            # and drop the transient question form (#3623648910 / #3623648918).
+            "User is confused about the auth flow",
+            "User is unsure about the migration risk",
+            # 'asking' interrogatives beyond 'how' — 'which' / 'about' branches
+            # must fire too (#3623648935).
+            "User is asking which regions are cheapest",
+            "User asked about the credit markup",
+            # Perfect-progressive auxiliary ('has been asking') must be caught
+            # by the widened leading-auxiliary group (#3623648975).
+            "User has been asking how the auth flow works",
+        ],
+    )
+    def test_flags_transient_intent(self, content):
+        assert orchestrator_mod._is_transient_intent(content) is True
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            # Durable goals — NOT transient, must be kept.
+            "User wants to create Bluesky blocks",
+            "User is migrating auth to Better Auth",
+            "User is building a leaf-blower-simulator game",
+            # Durable SKILL goals / aspirations — 'learn/understand/find out
+            # <thing>' with no interrogative is an aspiration, not a question
+            # (review FP fixes #3622917532 / #3622917546).
+            "User wants to learn Spanish",
+            "User is interested in learning Rust as their next language",
+            "User wants to understand distributed systems",
+            "User wants to find out about new markets to expand into",
+            # Durable REQUESTS — 'asking for/to' is semantically 'wants X',
+            # not a knowledge-seeking question (#3622917532).
+            "User is asking for weekly reports",
+            "User is asking the agent to monitor open PRs",
+            # Durable personality trait — 'curious by nature' needs no
+            # 'about' complement, so it must survive (#3622917543).
+            "User is curious by nature",
+            # 'confused'/'unsure' without the 'about' complement are durable
+            # traits, not questions — keep-pins the complement guard so a
+            # future broadening fails loudly (#3623648910).
+            "User is confused by nature",
+            # Name-subject scope guard: the deterministic gate only covers the
+            # generic 'user' subject; name-phrased transient intent is left to
+            # the sanitize prompt, so it must NOT be dropped here
+            # (#3623649071 / #3623649079).
+            "Nick is asking how to scale the cluster",
+            # Bare 'interested in <noun>' must never match — pins the carve-out
+            # so a future broadening of the regex fails loudly here.
+            "User is interested in lighthouses",
+            "User is interested in knowledge graphs",
+            # Durable facts about the user.
+            "Nick's favorite deployment region is us-east1",
+            "Nick prefers Python for backend services",
+            # Generic world-knowledge — left to the sanitize PROMPT, the
+            # code filter must NOT drop these (would risk false positives).
+            "Kubernetes uses pods as the smallest unit",
+            "Better Auth supports dual JWT validation",
+        ],
+    )
+    def test_keeps_durable_facts_goals_and_generic_knowledge(self, content):
+        assert orchestrator_mod._is_transient_intent(content) is False
+
+    def test_clamp_drops_transient_writes_and_proposals(self):
+        ops = DreamOperations(
+            writes=[
+                ConsolidatedFact(
+                    content="User is asking how K8s works", confidence=0.5
+                ),
+                ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+            ],
+            proposals=[
+                ProposedFinding(
+                    content="User wants to know the credit markup",
+                    confidence=0.5,
+                    rationale="x",
+                    source_fact_uuids=["f1"],
+                ),
+                ProposedFinding(
+                    content="Nick and Sarah both work on auth",
+                    confidence=0.6,
+                    rationale="y",
+                    source_fact_uuids=["f2"],
+                ),
+            ],
+            summary_for_user="ok",
+        )
+        clamped = orchestrator_mod._clamp_operations(ops, active_fact_count=50)
+        assert [w.content for w in clamped.writes] == ["Nick prefers Python"]
+        assert [p.content for p in clamped.proposals] == [
+            "Nick and Sarah both work on auth"
+        ]
+
+    def test_drop_transient_intent_returns_kept_and_count(self):
+        """Directly pins both outputs of _drop_transient_intent so an
+        off-by-one in the dropped_count feeding logger.info is caught."""
+        items = [
+            ConsolidatedFact(content="User is asking how K8s works", confidence=0.5),
+            ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+            ConsolidatedFact(
+                content="User wants to know the credit markup", confidence=0.4
+            ),
+            ConsolidatedFact(content="Nick deploys to us-east1", confidence=0.8),
+        ]
+        kept, dropped_count = orchestrator_mod._drop_transient_intent(items)
+        assert [k.content for k in kept] == [
+            "Nick prefers Python",
+            "Nick deploys to us-east1",
+        ]
+        assert dropped_count == 2
+
+    def test_drop_transient_intent_empty_and_none_dropped(self):
+        """No transient items → all kept, zero dropped."""
+        items = [
+            ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+        ]
+        kept, dropped_count = orchestrator_mod._drop_transient_intent(items)
+        assert [k.content for k in kept] == ["Nick prefers Python"]
+        assert dropped_count == 0
+
+
 class TestNearDuplicateWriteDedup:
     """#13387: a single pass that emits the same fact phrased multiple ways
     is collapsed to the longest (canonical) phrasing; genuinely distinct

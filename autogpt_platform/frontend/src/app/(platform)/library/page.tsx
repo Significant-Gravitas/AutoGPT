@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { HeartIcon, ListIcon } from "@phosphor-icons/react";
 import { LibraryActionHeader } from "./components/LibraryActionHeader/LibraryActionHeader";
 import { LibraryAgentList } from "./components/LibraryAgentList/LibraryAgentList";
 import { useLibraryListPage } from "./components/useLibraryListPage";
@@ -10,10 +9,11 @@ import type { LibraryTab, AgentStatusFilter } from "./types";
 import { useLibraryFleetSummary } from "./hooks/useLibraryFleetSummary";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
+import { FavouriteIcon, Menu01Icon } from "@hugeicons/core-free-icons";
 
 const LIBRARY_TABS: LibraryTab[] = [
-  { id: "all", title: "All", icon: ListIcon },
-  { id: "favorites", title: "Favorites", icon: HeartIcon },
+  { id: "all", title: "All", icon: Menu01Icon },
+  { id: "favorites", title: "Favorites", icon: FavouriteIcon },
 ];
 
 export default function LibraryPage() {
