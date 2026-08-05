@@ -165,11 +165,12 @@ async def dream_graph(
     try:
         yield driver, user_id
     finally:
+        # Let a failed cleanup surface as a test error rather than pass
+        # silently; the driver still closes either way.
         try:
             await driver.execute_query("MATCH (n) DETACH DELETE n")
-        except Exception:
-            pass
-        await driver.close()
+        finally:
+            await driver.close()
 
 
 @pytest.fixture(autouse=True)
