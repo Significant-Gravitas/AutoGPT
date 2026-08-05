@@ -430,7 +430,6 @@ describe("useBrainDumpStep — restart", () => {
   it("throws away the old take locally and on the server before listening again", async () => {
     recorderState.recordingId = "rec-old";
     const { result } = await renderStep();
-    const keyBefore = result.current.captionsKey;
 
     await act(async () => {
       await result.current.handleRestart();
@@ -445,8 +444,6 @@ describe("useBrainDumpStep — restart", () => {
       recording_id: "rec-old",
     });
     expect(recorderState.start).toHaveBeenCalled();
-    // The captions remount so the discarded transcript leaves the screen.
-    expect(result.current.captionsKey).toBe(keyBefore + 1);
     expect(events()).toContain("brain_dump_restarted");
   });
 

@@ -39,10 +39,6 @@ export function useBrainDumpStep() {
     setStepBusy(screen === "processing");
     return () => setStepBusy(false);
   }, [screen, setStepBusy]);
-  // Bumped on restart so the live captions remount and drop the words from
-  // the discarded take — the screen stays on "recording" throughout, so the
-  // caption box would otherwise keep the old transcript on screen.
-  const [captionsKey, setCaptionsKey] = useState(0);
   const [recoverable, setRecoverable] = useState<{
     recordingId: string;
     mimeType: string;
@@ -184,7 +180,6 @@ export function useBrainDumpStep() {
   // orb starts listening again under a new recording id.
   async function handleRestart() {
     trackBrainDump("brain_dump_restarted");
-    setCaptionsKey((key) => key + 1);
     const previousId = recorder.recordingId;
     await recorder.stop();
     recorder.resetQueue();
@@ -376,7 +371,6 @@ export function useBrainDumpStep() {
     isOffline: recorder.isOffline,
     isSavedLocally: recorder.isSavedLocally,
     audioStream: recorder.audioStream,
-    captionsKey,
     showSilenceNudge,
     reachedTimeLimit,
     recoverable,

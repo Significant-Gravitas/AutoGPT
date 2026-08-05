@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { ElapsedTime } from "./components/ElapsedTime";
 import { FailureState } from "./components/FailureState";
 import { DEFAULT_GLASS_PARAMS } from "@/components/molecules/GlassOrb/GlassSurface";
-import { LiveCaptions } from "./components/LiveCaptions";
 import { MicButton, OrbScreen } from "./components/MicButton";
 import { PrivacyNote } from "./components/PrivacyNote";
 import { RecordingStatus } from "./components/RecordingStatus";
@@ -117,8 +116,6 @@ export function BrainDumpStep() {
                   >
                     <OrbCaption
                       screen={orbScreen}
-                      audioStream={dump.audioStream}
-                      captionsKey={dump.captionsKey}
                       reachedTimeLimit={dump.reachedTimeLimit}
                     />
                   </SwapFade>
@@ -233,13 +230,9 @@ function toOrbScreen(screen: ScreenState): OrbScreen | null {
 
 function OrbCaption({
   screen,
-  audioStream,
-  captionsKey,
   reachedTimeLimit,
 }: {
   screen: OrbScreen;
-  audioStream: MediaStream | null;
-  captionsKey: number;
   reachedTimeLimit: boolean;
 }) {
   if (screen === "processing") {
@@ -254,11 +247,7 @@ function OrbCaption({
   // held back by the swap's exit animation.
   if (screen === "failed") return null;
 
-  if (screen === "recording") {
-    return (
-      <LiveCaptions key={captionsKey} isRecording audioStream={audioStream} />
-    );
-  }
+  if (screen === "recording") return null;
 
   return <TapHint caption={MIC_CAPTION} />;
 }

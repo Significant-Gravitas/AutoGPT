@@ -195,15 +195,6 @@ class FakeMediaRecorder {
   }
 }
 
-class FakeSpeechRecognition {
-  continuous = false;
-  interimResults = false;
-  onresult: unknown = null;
-  onerror: unknown = null;
-  start() {}
-  stop() {}
-}
-
 const getUserMedia = vi.fn();
 
 function installBrowserRecordingAPIs() {
@@ -216,13 +207,6 @@ function installBrowserRecordingAPIs() {
     configurable: true,
     writable: true,
     value: { getUserMedia },
-  });
-  // Without a SpeechRecognition implementation LiveCaptions falls back to
-  // an AudioContext level meter, which happy-dom does not provide.
-  Object.defineProperty(window, "SpeechRecognition", {
-    configurable: true,
-    writable: true,
-    value: FakeSpeechRecognition,
   });
 }
 
