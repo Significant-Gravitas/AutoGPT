@@ -5,16 +5,19 @@ import { ShimmerText } from "./ShimmerText";
 
 const EASE_OUT_CUBIC = [0.33, 1, 0.68, 1] as const;
 
-// Old label slides up + fades out, new one slides in from below.
-export function SwapText({
-  text,
-  className,
-  shimmer = false,
-}: {
+interface SwapTextProps {
   text: string;
   className?: string;
   shimmer?: boolean;
-}) {
+}
+
+interface SwapIconProps {
+  swapKey: string;
+  children: React.ReactNode;
+}
+
+// Old label slides up + fades out, new one slides in from below.
+export function SwapText({ text, className, shimmer = false }: SwapTextProps) {
   const reducedMotion = useReducedMotion();
   return (
     <span className={"inline-grid overflow-hidden " + (className ?? "")}>
@@ -34,13 +37,7 @@ export function SwapText({
   );
 }
 
-export function SwapIcon({
-  swapKey,
-  children,
-}: {
-  swapKey: string;
-  children: React.ReactNode;
-}) {
+export function SwapIcon({ swapKey, children }: SwapIconProps) {
   const reducedMotion = useReducedMotion();
   return (
     <AnimatePresence mode="popLayout" initial={false}>

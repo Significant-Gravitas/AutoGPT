@@ -4,17 +4,14 @@ import { ArrowSquareOutIcon, PlayIcon, RobotIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { CARD, HALF, StatusPill } from "./ResultCards";
 
-export function ExecutionCard({
-  name,
-  status,
-  href,
-  variant = "run",
-}: {
+interface Props {
   name: string;
   status?: string;
   href?: string;
   variant?: "run" | "agent";
-}) {
+}
+
+export function ExecutionCard({ name, status, href, variant = "run" }: Props) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">

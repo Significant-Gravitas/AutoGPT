@@ -28,11 +28,16 @@ export function ThinkingIndicator({
   const showTime = active && elapsedSeconds >= showTimeAfterSeconds;
 
   return (
-    <span className="inline-flex w-fit items-center gap-2.5 text-sm text-zinc-600">
+    <span
+      role="status"
+      aria-live="polite"
+      className="inline-flex w-fit items-center gap-2.5 text-sm text-zinc-600"
+    >
       <PixelGridLoader className="text-zinc-600" />
       {statusMessage && (
         <SwapText text={statusMessage} shimmer className="text-sm" />
       )}
+      {!statusMessage && <span className="sr-only">Thinking…</span>}
       {showTime && (
         <span className="font-mono text-xs tabular-nums text-zinc-400">
           {formatElapsed(elapsedSeconds)}

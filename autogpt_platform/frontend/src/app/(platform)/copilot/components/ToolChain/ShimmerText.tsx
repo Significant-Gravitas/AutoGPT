@@ -2,13 +2,12 @@
 
 // Transitions.dev shimmer-text: ::before duplicates the string via
 // content:attr(data-text) and sweeps a highlight band clipped to the glyphs.
-export function ShimmerText({
-  text,
-  className,
-}: {
+interface Props {
   text: string;
   className?: string;
-}) {
+}
+
+export function ShimmerText({ text, className }: Props) {
   return (
     <span
       data-text={text}

@@ -3,7 +3,8 @@
 import { AgentListCard, AgentSavedCard, SubSessionCard } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { ExecutionCard } from "./ExecutionCard";
-import { FileDiff, isDiffText } from "./FileDiff";
+import { FileDiff } from "./FileDiff";
+import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
 import {
   FixResultCard,
@@ -279,8 +280,14 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
   return null;
 }
 
-export function ToolResult({ row }: { row: ChainRow }) {
-  if (isDiffText(row.output)) {
+interface Props {
+  row: ChainRow;
+}
+
+export function ToolResult({ row }: Props) {
+  const output = asObject(row.output);
+
+  if (!output && isDiffText(row.output)) {
     const input = asObject(row.input);
     return (
       <FileDiff
@@ -291,8 +298,6 @@ export function ToolResult({ row }: { row: ChainRow }) {
       />
     );
   }
-
-  const output = asObject(row.output);
 
   const card = toolCard(row, output);
   if (card) return card;

@@ -24,20 +24,18 @@ import { stripKickoffMessages } from "../../expertKickoff";
 import {
   buildRenderSegments,
   getTurnMessages,
-  isChainableToolPart,
   type MessagePart,
   type RenderSegment,
   parseSpecialMarkers,
   shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "./helpers";
-import { ToolChain } from "../ToolChain/ToolChain";
-import { buildChainSegments } from "../ToolChain/helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
+import { ChainMessageParts } from "./components/ChainMessageParts";
 import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { ExpertAvatar } from "./components/ExpertAvatar/ExpertAvatar";
@@ -108,40 +106,6 @@ interface RenderSegmentOptions {
   fileUrlBuilder?: (fileId: string) => string;
   forceArtifacts?: boolean;
   readOnly?: boolean;
-}
-
-function renderChainSegments(
-  parts: MessagePart[],
-  messageID: string,
-  isCurrentlyStreaming: boolean,
-  options: RenderSegmentOptions = {},
-): React.ReactNode[] {
-  const segments = buildChainSegments(parts, isChainableToolPart);
-  return segments.map((segment, segmentIndex) => {
-    if (segment.kind === "chain") {
-      return (
-        <ToolChain
-          key={`${messageID}-chain-${segment.index}`}
-          parts={segment.parts}
-          isStreaming={
-            isCurrentlyStreaming && segmentIndex === segments.length - 1
-          }
-        />
-      );
-    }
-    return (
-      <MessagePartRenderer
-        key={`${messageID}-${segment.index}`}
-        part={segment.part}
-        messageID={messageID}
-        partIndex={segment.index}
-        onRetry={options.onRetry}
-        fileUrlBuilder={options.fileUrlBuilder}
-        forceArtifacts={options.forceArtifacts}
-        readOnly={options.readOnly}
-      />
-    );
-  });
 }
 
 function renderSegments(
@@ -722,37 +686,37 @@ export function ChatMessagesContainer({
                     })}
                   </StepsCollapse>
                 )}
-                {isAssistant && isNewToolUI
-                  ? renderChainSegments(
-                      renderableParts,
-                      message.id,
-                      isCurrentlyStreaming,
-                      {
-                        onRetry: isLastAssistant ? onRetry : undefined,
-                        fileUrlBuilder,
-                        forceArtifacts: readOnly,
-                        readOnly,
-                      },
-                    )
-                  : responseSegments
-                    ? renderSegments(responseSegments, message.id, {
-                        onRetry: isLastAssistant ? onRetry : undefined,
-                        fileUrlBuilder,
-                        forceArtifacts: readOnly,
-                        readOnly,
-                      })
-                    : renderableParts.map((part, i) => (
-                        <MessagePartRenderer
-                          key={`${message.id}-${i}`}
-                          part={part}
-                          messageID={message.id}
-                          partIndex={i}
-                          onRetry={isLastAssistant ? onRetry : undefined}
-                          fileUrlBuilder={fileUrlBuilder}
-                          forceArtifacts={readOnly}
-                          readOnly={readOnly}
-                        />
-                      ))}
+                {isAssistant && isNewToolUI ? (
+                  <ChainMessageParts
+                    parts={renderableParts}
+                    messageID={message.id}
+                    isCurrentlyStreaming={isCurrentlyStreaming}
+                    onRetry={isLastAssistant ? onRetry : undefined}
+                    fileUrlBuilder={fileUrlBuilder}
+                    forceArtifacts={readOnly}
+                    readOnly={readOnly}
+                  />
+                ) : responseSegments ? (
+                  renderSegments(responseSegments, message.id, {
+                    onRetry: isLastAssistant ? onRetry : undefined,
+                    fileUrlBuilder,
+                    forceArtifacts: readOnly,
+                    readOnly,
+                  })
+                ) : (
+                  renderableParts.map((part, i) => (
+                    <MessagePartRenderer
+                      key={`${message.id}-${i}`}
+                      part={part}
+                      messageID={message.id}
+                      partIndex={i}
+                      onRetry={isLastAssistant ? onRetry : undefined}
+                      fileUrlBuilder={fileUrlBuilder}
+                      forceArtifacts={readOnly}
+                      readOnly={readOnly}
+                    />
+                  ))
+                )}
                 {isLastInTurn && !isCurrentlyStreaming && (
                   <TurnStatsBar
                     turnMessages={getTurnMessages(messages, messageIndex)}

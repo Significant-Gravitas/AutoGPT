@@ -36,7 +36,15 @@ import {
 import Image from "next/image";
 import type { ChainRow } from "./helpers";
 
-export function RowIcon({ row }: { row: ChainRow }) {
+interface RowIconProps {
+  row: ChainRow;
+}
+
+interface ProviderIconProps extends RowIconProps {
+  src: string;
+}
+
+export function RowIcon({ row }: RowIconProps) {
   if (row.state === "error") {
     return <WarningDiamondIcon size={16} className="text-red-500" />;
   }
@@ -104,7 +112,7 @@ export function RowIcon({ row }: { row: ChainRow }) {
   }
 }
 
-export function ProviderIcon({ src, row }: { src: string; row: ChainRow }) {
+export function ProviderIcon({ src, row }: ProviderIconProps) {
   const [failed, setFailed] = useState(false);
   if (failed) return <RowIcon row={row} />;
   return (

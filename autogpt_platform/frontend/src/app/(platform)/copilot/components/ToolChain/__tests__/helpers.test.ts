@@ -67,12 +67,26 @@ describe("toChainRow", () => {
 
     expect(row?.providerIconSrc).toBe("/integrations/google_maps.png");
   });
+
+  it("removes unsafe characters from provider icon paths", () => {
+    const row = toChainRow(
+      toolPart("run_block", {}, { provider: "../../Google?<script>" }),
+      0,
+    );
+
+    expect(row?.providerIconSrc).toBe("/integrations/googlescript.png");
+  });
 });
 
 describe("getChainHeading", () => {
   it("uses the last running row while streaming", () => {
     const rows: ChainRow[] = [
-      { key: "1", category: "reasoning", text: "Thought", state: "done" },
+      {
+        key: "1",
+        category: "reasoning",
+        text: "Earlier failure",
+        state: "error",
+      },
       { key: "2", category: "web", text: "Searching docs", state: "running" },
     ];
 
@@ -87,5 +101,20 @@ describe("getChainHeading", () => {
     ];
 
     expect(getChainHeading(rows, false)).toBe("Searched the web, ran commands");
+  });
+
+  it("surfaces the latest error detail", () => {
+    const rows: ChainRow[] = [
+      { key: "1", category: "web", text: "Search", state: "done" },
+      {
+        key: "2",
+        category: "bash",
+        text: "Failed while running command",
+        detail: "Permission denied",
+        state: "error",
+      },
+    ];
+
+    expect(getChainHeading(rows, false)).toBe("Permission denied");
   });
 });

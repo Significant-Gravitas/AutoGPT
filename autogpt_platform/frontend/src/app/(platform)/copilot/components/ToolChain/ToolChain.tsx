@@ -2,7 +2,7 @@
 
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import {
   ACCORDION_PANEL,
@@ -29,9 +29,13 @@ export function ToolChain({ parts, isStreaming }: Props) {
   const panelId = useId();
   const reducedMotion = useReducedMotion();
 
-  const rows = parts
-    .map((part, i) => toChainRow(part, i))
-    .filter((row): row is ChainRow => row !== null);
+  const rows = useMemo(
+    () =>
+      parts
+        .map((part, i) => toChainRow(part, i))
+        .filter((row): row is ChainRow => row !== null),
+    [parts],
+  );
   if (rows.length === 0) return null;
 
   const heading = getChainHeading(rows, isStreaming && !expanded);
@@ -49,7 +53,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        aria-expanded={expanded}
+        aria-expanded={open}
         aria-controls={panelId}
         className="group/chain flex w-full items-center gap-1.5 text-left"
       >
@@ -58,7 +62,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
           weight="bold"
           className={
             "shrink-0 text-zinc-400 transition-transform duration-300 ease-out-quint " +
-            (expanded ? "rotate-90" : "")
+            (open ? "rotate-90" : "")
           }
         />
         <SwapText
@@ -74,7 +78,12 @@ export function ToolChain({ parts, isStreaming }: Props) {
         </span>
       </button>
       <div className={ACCORDION_PANEL + " " + accordionState(open)}>
-        <div id={panelId} className="min-h-0 overflow-hidden">
+        <div
+          id={panelId}
+          aria-hidden={!open}
+          inert={!open}
+          className="min-h-0 overflow-hidden"
+        >
           <div className="flex flex-col pl-0.5 pt-2.5">
             {windowMode ? (
               <AnimatePresence initial={false} mode="popLayout">

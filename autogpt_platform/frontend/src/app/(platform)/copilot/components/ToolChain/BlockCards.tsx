@@ -8,26 +8,34 @@ import {
 import Image from "next/image";
 import { useState } from "react";
 import { CARD, HALF } from "./ResultCards";
-import { inline, str } from "./resultHelpers";
+import { inline, integrationIconSrc, str } from "./resultHelpers";
+
+interface CardProviderIconProps {
+  provider: string | null;
+  fallback: React.ReactNode;
+  size?: number;
+}
+
+interface BlockListCardProps {
+  blocks: Record<string, unknown>[];
+}
+
+interface BlockOutputCardProps {
+  output: Record<string, unknown>;
+}
 
 export function CardProviderIcon({
   provider,
   fallback,
   size = 15,
-}: {
-  provider: string | null;
-  fallback: React.ReactNode;
-  size?: number;
-}) {
+}: CardProviderIconProps) {
   const [failed, setFailed] = useState(false);
   if (!provider || failed) return <>{fallback}</>;
-  const slug = provider
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
+  const src = integrationIconSrc(provider);
+  if (!src) return <>{fallback}</>;
   return (
     <Image
-      src={`/integrations/${slug}.png`}
+      src={src}
       alt={provider}
       width={size}
       height={size}
@@ -39,11 +47,7 @@ export function CardProviderIcon({
 
 const BLOCK_ICON = <PuzzlePieceIcon size={15} className="text-zinc-600" />;
 
-export function BlockListCard({
-  blocks,
-}: {
-  blocks: Record<string, unknown>[];
-}) {
+export function BlockListCard({ blocks }: BlockListCardProps) {
   return (
     <div className="grid gap-1.5 sm:grid-cols-2">
       {blocks.map((block, i) => {
@@ -82,11 +86,7 @@ export function BlockListCard({
   );
 }
 
-export function BlockOutputCard({
-  output,
-}: {
-  output: Record<string, unknown>;
-}) {
+export function BlockOutputCard({ output }: BlockOutputCardProps) {
   const name = str(output, "block_name", "block_id") ?? "Block";
   const ok = output.success !== false;
   const entries = Object.entries(

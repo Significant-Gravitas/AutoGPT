@@ -12,7 +12,27 @@ import { CardProviderIcon } from "./BlockCards";
 import { CARD, HALF, StatusCard } from "./ResultCards";
 import { asObject, inline, str } from "./resultHelpers";
 
-export function PlanSteps({ steps }: { steps: Record<string, unknown>[] }) {
+interface ItemsProps {
+  steps: Record<string, unknown>[];
+}
+
+interface OutputProps {
+  output: Record<string, unknown>;
+}
+
+interface ErrorListProps {
+  errors: string[];
+}
+
+interface QuestionsCardProps {
+  questions: Record<string, unknown>[];
+}
+
+interface SetupCardProps extends OutputProps {
+  provider: string | null;
+}
+
+export function PlanSteps({ steps }: ItemsProps) {
   return (
     <div className={CARD + " flex flex-col gap-1.5 p-3"}>
       {steps.map((step, i) => {
@@ -60,7 +80,7 @@ export function PlanSteps({ steps }: { steps: Record<string, unknown>[] }) {
   );
 }
 
-function ErrorList({ errors }: { errors: string[] }) {
+function ErrorList({ errors }: ErrorListProps) {
   return (
     <div className={CARD + " flex flex-col gap-1.5 p-2.5"}>
       {errors.map((error, i) => (
@@ -83,18 +103,14 @@ function strList(value: unknown): string[] {
     : [];
 }
 
-export function ValidationCard({
-  output,
-}: {
-  output: Record<string, unknown>;
-}) {
+export function ValidationCard({ output }: OutputProps) {
   const errors = strList(output.errors);
   if (output.valid === true) return <StatusCard ok label="Graph is valid" />;
   if (errors.length > 0) return <ErrorList errors={errors} />;
   return <StatusCard ok={false} label="Graph has errors" />;
 }
 
-export function FixResultCard({ output }: { output: Record<string, unknown> }) {
+export function FixResultCard({ output }: OutputProps) {
   const fixes = strList(output.fixes_applied);
   const remaining = strList(output.remaining_errors);
   return (
@@ -112,11 +128,7 @@ export function FixResultCard({ output }: { output: Record<string, unknown> }) {
   );
 }
 
-export function QuestionsCard({
-  questions,
-}: {
-  questions: Record<string, unknown>[];
-}) {
+export function QuestionsCard({ questions }: QuestionsCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-2.5`}>
       {questions.map((entry, i) => (
@@ -141,13 +153,7 @@ export function QuestionsCard({
   );
 }
 
-export function SetupCard({
-  output,
-  provider,
-}: {
-  output: Record<string, unknown>;
-  provider: string | null;
-}) {
+export function SetupCard({ output, provider }: SetupCardProps) {
   const setupInfo = asObject(output.setup_info);
   const name = setupInfo ? str(setupInfo, "agent_name") : null;
   if (!name) return null;
@@ -167,7 +173,7 @@ export function SetupCard({
   );
 }
 
-export function SkillCard({ output }: { output: Record<string, unknown> }) {
+export function SkillCard({ output }: OutputProps) {
   const name = str(output, "name");
   if (!name) return null;
   const triggers = strList(output.triggers);

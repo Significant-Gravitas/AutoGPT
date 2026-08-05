@@ -13,11 +13,27 @@ import Link from "next/link";
 import { CARD, HALF } from "./ResultCards";
 import { formatBytes, formatWhen, inline, str } from "./resultHelpers";
 
-export function ScheduleList({
-  schedules,
-}: {
+interface SchedulesProps {
   schedules: Record<string, unknown>[];
-}) {
+}
+
+interface OutputProps {
+  output: Record<string, unknown>;
+}
+
+interface FoldersProps {
+  folders: Record<string, unknown>[];
+}
+
+interface FilesProps {
+  files: Record<string, unknown>[];
+}
+
+interface ResultsProps {
+  results: Record<string, unknown>[];
+}
+
+export function ScheduleList({ schedules }: SchedulesProps) {
   return (
     <div className="grid gap-1.5 sm:grid-cols-2">
       {schedules.map((schedule, i) => {
@@ -51,11 +67,7 @@ export function ScheduleList({
   );
 }
 
-export function ScheduleCreatedCard({
-  output,
-}: {
-  output: Record<string, unknown>;
-}) {
+export function ScheduleCreatedCard({ output }: OutputProps) {
   const next = str(output, "next_run_time");
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
@@ -77,11 +89,7 @@ export function ScheduleCreatedCard({
   );
 }
 
-export function FolderList({
-  folders,
-}: {
-  folders: Record<string, unknown>[];
-}) {
+export function FolderList({ folders }: FoldersProps) {
   return (
     <div className="grid gap-1.5 sm:grid-cols-2">
       {folders.map((folder, i) => {
@@ -107,7 +115,7 @@ export function FolderList({
   );
 }
 
-export function FileList({ files }: { files: Record<string, unknown>[] }) {
+export function FileList({ files }: FilesProps) {
   return (
     <div className={`${CARD} ${HALF} divide-y divide-zinc-100`}>
       {files.map((file, i) => {
@@ -133,7 +141,7 @@ export function FileList({ files }: { files: Record<string, unknown>[] }) {
   );
 }
 
-export function DocsList({ results }: { results: Record<string, unknown>[] }) {
+export function DocsList({ results }: ResultsProps) {
   return (
     <div className="grid gap-1.5 sm:grid-cols-2">
       {results.map((doc, i) => {

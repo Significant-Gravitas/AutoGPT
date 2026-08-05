@@ -80,12 +80,6 @@ const nextConfig = {
         hostname: "lh3.googleusercontent.com",
         pathname: "/**",
       },
-      // Site favicons shown on copilot web-search / link result cards.
-      {
-        protocol: "https",
-        hostname: "www.google.com",
-        pathname: "/s2/favicons",
-      },
     ],
   },
   // Vercel has its own deployment mechanism and doesn't need standalone mode

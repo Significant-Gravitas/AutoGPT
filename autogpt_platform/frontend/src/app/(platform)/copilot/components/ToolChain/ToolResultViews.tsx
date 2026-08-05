@@ -8,23 +8,35 @@ import {
   ImageIcon,
 } from "@phosphor-icons/react";
 import type { ChainRow } from "./helpers";
-import { CARD, Favicon, HALF } from "./ResultCards";
+import { CARD, HALF } from "./ResultCards";
 import {
   asItems,
   asObject,
   formatBytes,
   humanizeKey,
   inline,
+  safeHostname,
   str,
 } from "./resultHelpers";
 
-export function SearchResults({
-  items,
-  answer,
-}: {
+interface SearchResultsProps {
   items: Record<string, unknown>[];
   answer?: string | null;
-}) {
+}
+
+interface RowProps {
+  row: ChainRow;
+}
+
+interface ItemsProps {
+  items: Record<string, unknown>[];
+}
+
+interface ValueProps {
+  value: unknown;
+}
+
+export function SearchResults({ items, answer }: SearchResultsProps) {
   return (
     <div className={CARD + " divide-y divide-zinc-100"}>
       {answer && (
@@ -34,20 +46,11 @@ export function SearchResults({
       )}
       {items.map((item, i) => {
         const url = str(item, "url", "link");
-        let domain: string | null = null;
-        if (url) {
-          try {
-            domain = new URL(url).hostname.replace(/^www\./, "");
-          } catch {}
-        }
+        const domain = url ? safeHostname(url) : null;
         const title = str(item, "title", "snippet") ?? inline(item);
         return (
           <div key={i} className="flex items-center gap-2.5 px-3 py-2">
-            {url ? (
-              <Favicon url={url} />
-            ) : (
-              <GlobeIcon size={14} className="shrink-0 text-zinc-400" />
-            )}
+            <GlobeIcon size={14} className="shrink-0 text-zinc-400" />
             {url ? (
               <a
                 href={url}
@@ -74,7 +77,7 @@ export function SearchResults({
   );
 }
 
-export function Terminal({ row }: { row: ChainRow }) {
+export function Terminal({ row }: RowProps) {
   const input = asObject(row.input);
   const output = asObject(row.output);
   const command = input ? str(input, "command") : null;
@@ -100,7 +103,7 @@ export function Terminal({ row }: { row: ChainRow }) {
   );
 }
 
-export function TodoList({ row }: { row: ChainRow }) {
+export function TodoList({ row }: RowProps) {
   const input = asObject(row.input);
   const todos = input ? asItems(input.todos) : null;
   if (!todos) return <KeyValueList value={row.output} />;
@@ -143,7 +146,7 @@ export function TodoList({ row }: { row: ChainRow }) {
   );
 }
 
-export function FileCard({ row }: { row: ChainRow }) {
+export function FileCard({ row }: RowProps) {
   const input = asObject(row.input);
   const output = asObject(row.output);
   const path =
@@ -178,7 +181,7 @@ export function FileCard({ row }: { row: ChainRow }) {
   );
 }
 
-export function OutputList({ items }: { items: Record<string, unknown>[] }) {
+export function OutputList({ items }: ItemsProps) {
   return (
     <div className={`${CARD} ${HALF} divide-y divide-zinc-100`}>
       {items.map((item, i) => (
@@ -195,7 +198,7 @@ export function OutputList({ items }: { items: Record<string, unknown>[] }) {
   );
 }
 
-export function KeyValueList({ value }: { value: unknown }) {
+export function KeyValueList({ value }: ValueProps) {
   const obj = asObject(value);
   if (!obj || Object.keys(obj).length === 0) {
     if (typeof value !== "string" || !value.trim()) return null;

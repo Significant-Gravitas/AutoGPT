@@ -21,7 +21,20 @@ function agentHref(agent: Record<string, unknown>): string | null {
   return `/marketplace/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`;
 }
 
-function CardLink({ href, label }: { href: string; label: string }) {
+interface CardLinkProps {
+  href: string;
+  label: string;
+}
+
+interface AgentListCardProps {
+  agents: Record<string, unknown>[];
+}
+
+interface OutputCardProps {
+  output: Record<string, unknown>;
+}
+
+function CardLink({ href, label }: CardLinkProps) {
   return (
     <Link
       href={href}
@@ -33,11 +46,7 @@ function CardLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-export function AgentListCard({
-  agents,
-}: {
-  agents: Record<string, unknown>[];
-}) {
+export function AgentListCard({ agents }: AgentListCardProps) {
   return (
     <div className="grid gap-1.5 sm:grid-cols-2">
       {agents.map((agent, i) => {
@@ -93,11 +102,7 @@ export function AgentListCard({
   );
 }
 
-export function AgentSavedCard({
-  output,
-}: {
-  output: Record<string, unknown>;
-}) {
+export function AgentSavedCard({ output }: OutputCardProps) {
   const name = str(output, "agent_name", "name", "graph_name") ?? "Agent";
   const version = output.graph_version;
   const libraryLink =
@@ -133,11 +138,7 @@ export function AgentSavedCard({
   );
 }
 
-export function SubSessionCard({
-  output,
-}: {
-  output: Record<string, unknown>;
-}) {
+export function SubSessionCard({ output }: OutputCardProps) {
   const status = str(output, "status");
   const response = str(output, "response");
   const link = str(output, "sub_autopilot_session_link");

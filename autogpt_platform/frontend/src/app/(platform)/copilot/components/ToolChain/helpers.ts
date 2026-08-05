@@ -6,6 +6,7 @@ import {
   getToolCategory,
 } from "../../tools/GenericTool/helpers";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
+import { integrationIconSrc } from "./resultHelpers";
 
 export type ChainRowState = "running" | "done" | "error";
 
@@ -27,10 +28,7 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
     if (source && typeof source === "object" && "provider" in source) {
       const provider = (source as { provider: unknown }).provider;
       if (typeof provider === "string" && provider.trim()) {
-        return `/integrations/${provider
-          .trim()
-          .toLowerCase()
-          .replace(/[\s-]+/g, "_")}.png`;
+        return integrationIconSrc(provider) ?? undefined;
       }
     }
   }
@@ -151,6 +149,9 @@ export function getChainHeading(
     const running = rows.findLast((r) => r.state === "running");
     if (running) return running.text;
   }
+  const error = rows.findLast((row) => row.state === "error");
+  if (error) return error.detail ?? error.text;
+
   const phrases: string[] = [];
   for (const row of rows) {
     const phrase = CATEGORY_SUMMARY[row.category];

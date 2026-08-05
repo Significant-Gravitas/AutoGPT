@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircleIcon } from "@phosphor-icons/react";
-import { useContext, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
   type ClarifyingQuestion,
@@ -19,15 +19,34 @@ function getQuestions(row: ChainRow): ClarifyingQuestion[] {
     (output && asItems(output.questions)) ??
     (input && asItems(input.questions)) ??
     [];
-  return normalizeClarifyingQuestions(
-    raw as Array<{ question: string; keyword: string; example?: unknown }>,
-  );
+  const validQuestions = raw.flatMap((item) => {
+    if (
+      typeof item.question !== "string" ||
+      !item.question.trim() ||
+      typeof item.keyword !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        question: item.question.trim(),
+        keyword: item.keyword,
+        example: item.example,
+      },
+    ];
+  });
+  return normalizeClarifyingQuestions(validQuestions);
 }
 
-export function QuestionRowForm({ row }: { row: ChainRow }) {
+interface Props {
+  row: ChainRow;
+}
+
+export function QuestionRowForm({ row }: Props) {
   const actions = useContext(CopilotChatActionsContext);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [sent, setSent] = useState(false);
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const questions = getQuestions(row);
 
   if (questions.length === 0) return null;
@@ -63,7 +82,11 @@ export function QuestionRowForm({ row }: { row: ChainRow }) {
   const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
 
   function handleSubmit() {
-    if (!allAnswered || !actions) return;
+    if (!allAnswered || !actions) {
+      const unanswered = questions.find((q) => !answers[q.keyword]?.trim());
+      if (unanswered) inputRefs.current[unanswered.keyword]?.focus();
+      return;
+    }
     const message = questions
       .map((q) => `> ${q.question}\n\n${answers[q.keyword].trim()}`)
       .join("\n\n");
@@ -77,7 +100,11 @@ export function QuestionRowForm({ row }: { row: ChainRow }) {
         <label key={q.keyword} className="flex flex-col gap-1">
           <span className="text-[13px] text-zinc-700">{q.question}</span>
           <input
+            ref={(element) => {
+              inputRefs.current[q.keyword] = element;
+            }}
             type="text"
+            required
             value={answers[q.keyword] ?? ""}
             onChange={(e) =>
               setAnswers((prev) => ({ ...prev, [q.keyword]: e.target.value }))
@@ -93,8 +120,8 @@ export function QuestionRowForm({ row }: { row: ChainRow }) {
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={!allAnswered}
-        className="self-end rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-medium text-white transition-opacity hover:bg-zinc-700 disabled:opacity-40"
+        aria-disabled={!allAnswered}
+        className="self-end rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-medium text-white transition-opacity aria-disabled:opacity-40 hover:bg-zinc-700"
       >
         Proceed
       </button>

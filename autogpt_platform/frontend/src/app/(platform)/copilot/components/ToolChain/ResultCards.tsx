@@ -6,28 +6,32 @@ import {
   GlobeIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
-import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { safeHostname } from "./resultHelpers";
 
-export function Favicon({ url, size = 14 }: { url: string; size?: number }) {
-  const [failed, setFailed] = useState(false);
-  let domain: string | null = null;
-  try {
-    domain = new URL(url).hostname;
-  } catch {}
-  if (!domain || failed)
-    return <GlobeIcon size={size} className="shrink-0 text-zinc-400" />;
-  return (
-    <Image
-      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
-      alt=""
-      width={size}
-      height={size}
-      className="shrink-0 rounded-sm object-contain"
-      onError={() => setFailed(true)}
-    />
-  );
+interface StatusPillProps {
+  status: string;
+}
+
+interface StatusCardProps {
+  label: string;
+  ok: boolean;
+}
+
+interface StatCardProps {
+  value: number;
+  label: string;
+}
+
+interface ChipListProps {
+  label: string;
+  items: string[];
+}
+
+interface LinkCardProps {
+  url: string;
+  title?: string;
+  meta?: string;
 }
 
 export const CARD = "rounded-xl bg-white ring-1 ring-zinc-200/70";
@@ -40,7 +44,7 @@ const STATUS_STYLES: Record<string, string> = {
   QUEUED: "bg-amber-50 text-amber-600",
 };
 
-export function StatusPill({ status }: { status: string }) {
+export function StatusPill({ status }: StatusPillProps) {
   const normalized = status.toUpperCase();
   return (
     <span
@@ -54,7 +58,7 @@ export function StatusPill({ status }: { status: string }) {
   );
 }
 
-export function StatusCard({ label, ok }: { label: string; ok: boolean }) {
+export function StatusCard({ label, ok }: StatusCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2 p-2.5`}>
       {ok ? (
@@ -77,7 +81,7 @@ export function StatusCard({ label, ok }: { label: string; ok: boolean }) {
   );
 }
 
-export function StatCard({ value, label }: { value: number; label: string }) {
+export function StatCard({ value, label }: StatCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-baseline gap-2 p-2.5`}>
       <span className="text-lg font-semibold leading-none text-zinc-800">
@@ -88,7 +92,7 @@ export function StatCard({ value, label }: { value: number; label: string }) {
   );
 }
 
-export function ChipList({ label, items }: { label: string; items: string[] }) {
+export function ChipList({ label, items }: ChipListProps) {
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
       <p className="mb-1.5 text-[11px] uppercase tracking-wide text-zinc-400">
@@ -108,24 +112,13 @@ export function ChipList({ label, items }: { label: string; items: string[] }) {
   );
 }
 
-export function LinkCard({
-  url,
-  title,
-  meta,
-}: {
-  url: string;
-  title?: string;
-  meta?: string;
-}) {
-  let domain = url;
-  try {
-    domain = new URL(url).hostname.replace(/^www\./, "");
-  } catch {}
+export function LinkCard({ url, title, meta }: LinkCardProps) {
+  const domain = safeHostname(url) ?? url;
 
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <Favicon url={url} size={15} />
+        <GlobeIcon size={15} className="shrink-0 text-zinc-400" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium text-zinc-800">

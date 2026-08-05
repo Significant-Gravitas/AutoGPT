@@ -1,0 +1,62 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import type { ChainRow } from "../helpers";
+import { ToolResult } from "../ToolResult";
+
+function row(output: unknown, tool?: string): ChainRow {
+  return {
+    key: "tool",
+    category: "other",
+    text: "Tool",
+    state: "done",
+    output,
+    tool,
+  };
+}
+
+describe("ToolResult", () => {
+  afterEach(cleanup);
+
+  it("renders a real unified diff", () => {
+    render(<ToolResult row={row("@@ -1 +1 @@\n-old\n+new")} />);
+
+    expect(screen.getByText("+1")).toBeDefined();
+    expect(screen.getByText("-1")).toBeDefined();
+    expect(screen.getByText("old")).toBeDefined();
+    expect(screen.getByText("new")).toBeDefined();
+  });
+
+  it("renders JSON containing diff-like text as structured output", () => {
+    render(
+      <ToolResult
+        row={row(JSON.stringify({ patch: "@@ -1 +1 @@\n-old\n+new" }))}
+      />,
+    );
+
+    expect(screen.getByText("Patch")).toBeDefined();
+    expect(screen.queryByText("+1")).toBeNull();
+  });
+
+  it.each([
+    [
+      "run_agent",
+      { graph_name: "Research Agent", execution_id: "exec-1" },
+      "Research Agent",
+    ],
+    ["find_block", { blocks: [{ name: "Web Search" }] }, "Web Search"],
+    [
+      "web_search",
+      { results: [{ title: "Example result", url: "https://example.com" }] },
+      "Example result",
+    ],
+    [
+      "ask_question",
+      { questions: [{ question: "Which region?", keyword: "region" }] },
+      "Which region?",
+    ],
+  ])("dispatches %s to its specialized card", (tool, output, expected) => {
+    render(<ToolResult row={row(output, tool)} />);
+
+    expect(screen.getByText(expected)).toBeDefined();
+  });
+});
