@@ -4,19 +4,20 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTimeAgo } from "@/lib/utils/time";
-import {
-  ArrowUpRightIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  StopCircleIcon,
-  WarningIcon,
-  SpinnerIcon,
-  MinusCircleIcon,
-} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import Link, { useLinkStatus } from "next/link";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
+import {
+  Alert01Icon,
+  ArrowUpRight01Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  Loading03Icon,
+  MinusSignCircleIcon,
+  StopCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function ActivityNavIndicator() {
   const { pending } = useLinkStatus();
@@ -30,7 +31,8 @@ function ActivityNavIndicator() {
     );
   }
   return (
-    <ArrowUpRightIcon
+    <Icon
+      icon={ArrowUpRight01Icon}
       size={16}
       className="shrink-0 text-neutral-400"
       aria-hidden="true"
@@ -48,21 +50,45 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
-        return <ClockIcon size={18} className="text-purple-500" />;
+        return (
+          <Icon icon={Clock01Icon} size={18} className="text-purple-500" />
+        );
       case AgentExecutionStatus.RUNNING:
         return (
-          <SpinnerIcon size={18} className="animate-spin text-purple-500" />
+          <Icon
+            icon={Loading03Icon}
+            size={18}
+            className="animate-spin text-purple-500"
+          />
         );
       case AgentExecutionStatus.COMPLETED:
-        return <CheckCircleIcon size={18} className="text-purple-500" />;
+        return (
+          <Icon
+            icon={CheckmarkCircle02Icon}
+            size={18}
+            className="text-purple-500"
+          />
+        );
       case AgentExecutionStatus.FAILED:
-        return <WarningIcon size={18} className="text-purple-500" />;
+        return (
+          <Icon icon={Alert01Icon} size={18} className="text-purple-500" />
+        );
       case AgentExecutionStatus.TERMINATED:
-        return <StopCircleIcon size={18} className="text-purple-500" />;
+        return (
+          <Icon icon={StopCircleIcon} size={18} className="text-purple-500" />
+        );
       case AgentExecutionStatus.INCOMPLETE:
-        return <MinusCircleIcon size={18} className="text-purple-500" />;
+        return (
+          <Icon
+            icon={MinusSignCircleIcon}
+            size={18}
+            className="text-purple-500"
+          />
+        );
       case AgentExecutionStatus.REVIEW:
-        return <WarningIcon size={18} className="text-yellow-600" />;
+        return (
+          <Icon icon={Alert01Icon} size={18} className="text-yellow-600" />
+        );
       default:
         return null;
     }

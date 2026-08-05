@@ -11,12 +11,13 @@ import {
   IconUploadCloud,
 } from "@/components/__legacy__/ui/icons";
 import {
-  ChatsIcon,
   CreditCardIcon,
-  NewspaperIcon,
+  MessageMultiple02Icon,
+  NewsIcon,
   QuestionIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Link = {
   name: string;
@@ -222,7 +223,7 @@ export function getAccountMenuOptionIcon(icon: IconType) {
   const iconClass = "size-4";
   switch (icon) {
     case IconType.LayoutDashboard:
-      return <StorefrontIcon className={iconClass} />;
+      return <Icon icon={Store01Icon} className={iconClass} />;
     case IconType.UploadCloud:
       return <IconUploadCloud className={iconClass} />;
     case IconType.Edit:
@@ -240,13 +241,13 @@ export function getAccountMenuOptionIcon(icon: IconType) {
     case IconType.Sliders:
       return <IconSliders className={iconClass} />;
     case IconType.Chat:
-      return <ChatsIcon className={iconClass} />;
+      return <Icon icon={MessageMultiple02Icon} className={iconClass} />;
     case IconType.Billing:
-      return <CreditCardIcon className={iconClass} />;
+      return <Icon icon={CreditCardIcon} className={iconClass} />;
     case IconType.Help:
-      return <QuestionIcon className={iconClass} />;
+      return <Icon icon={QuestionIcon} className={iconClass} />;
     case IconType.WhatsNew:
-      return <NewspaperIcon className={iconClass} />;
+      return <Icon icon={NewsIcon} className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }

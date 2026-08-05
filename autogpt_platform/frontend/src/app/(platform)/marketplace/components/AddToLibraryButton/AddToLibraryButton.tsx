@@ -13,10 +13,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { analytics } from "@/services/analytics";
-import { PlusIcon } from "@phosphor-icons/react";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function UndoActions({
   libraryAgentID,
@@ -186,7 +187,7 @@ export function AddToLibraryButton({
       variant="secondary"
       size="small"
       loading={isPending}
-      leftIcon={<PlusIcon size={14} weight="bold" />}
+      leftIcon={<Icon icon={PlusSignIcon} size={14} />}
       onClick={handleClick}
       className={`z-10 ${className ?? ""}`}
       aria-label={`Add ${agentName} to library`}

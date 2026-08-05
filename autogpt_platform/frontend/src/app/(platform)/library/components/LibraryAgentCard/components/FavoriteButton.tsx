@@ -1,10 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { HeartIcon } from "@phosphor-icons/react";
 import type { MouseEvent } from "react";
 import { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { FavouriteIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface FavoriteButtonProps {
   isFavorite: boolean;
@@ -53,9 +54,9 @@ export function FavoriteButton({
           exit={{ scale: 0.5, opacity: 0 }}
           transition={{ type: "spring", damping: 15, stiffness: 300 }}
         >
-          <HeartIcon
+          <Icon
+            icon={FavouriteIcon}
             size={20}
-            weight={isFavorite ? "fill" : "regular"}
             className={cn(
               "transition-colors duration-200",
               isFavorite ? "text-red-500" : "text-gray-600 hover:text-red-500",

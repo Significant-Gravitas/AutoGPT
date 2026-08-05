@@ -1,18 +1,18 @@
 import {
-  ChartLineUpIcon,
-  ChatsCircleIcon,
+  ChartIncreaseIcon,
   CreditCardIcon,
-  KeyIcon,
-  PlugsConnectedIcon,
+  Key01Icon,
+  MessageMultiple01Icon,
+  PlugSocketIcon,
   SlidersHorizontalIcon,
   UserIcon,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export interface SettingsNavItem {
   label: string;
   href: string;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
 }
 
 export const settingsNavItems: SettingsNavItem[] = [
@@ -26,13 +26,13 @@ export const settingsNavItems: SettingsNavItem[] = [
   {
     label: "Integrations",
     href: "/settings/integrations",
-    Icon: PlugsConnectedIcon,
+    Icon: PlugSocketIcon,
   },
-  { label: "Bots", href: "/settings/bots", Icon: ChatsCircleIcon },
-  { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: KeyIcon },
+  { label: "Bots", href: "/settings/bots", Icon: MessageMultiple01Icon },
+  { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: Key01Icon },
   {
     label: "Creator Dashboard",
     href: "/settings/creator-dashboard",
-    Icon: ChartLineUpIcon,
+    Icon: ChartIncreaseIcon,
   },
 ];

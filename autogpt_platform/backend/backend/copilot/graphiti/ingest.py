@@ -51,6 +51,64 @@ def _get_loop_state() -> _LoopIngestState:
 # Idle workers are cleaned up after this many seconds of inactivity.
 _WORKER_IDLE_TIMEOUT = 60
 
+
+class IngestionCompletion:
+    """Tracks completion of a specific set of enqueued episodes.
+
+    The per-user ingestion queue is SHARED between live-chat ingestion and
+    dream-pass writes. A caller that must wait for only its own episodes to
+    land (dream-pass apply) creates one of these, passes it to each
+    ``enqueue_episode`` it makes, and awaits it. Unrelated activity on the
+    same queue — chat episodes enqueued before, during, or after — never
+    registers on this tracker, so it cannot extend the wait.
+
+    Single-loop discipline: ``register`` (caller side) and ``complete_one``
+    (worker side) both run on the one event loop the queue is bound to, so
+    the counters need no locking. Counts are monotonic (registered /
+    completed) rather than a single decrementing balance, so a transient
+    interleave can never drive the outstanding count negative.
+    """
+
+    __slots__ = ("_registered", "_completed", "_event")
+
+    def __init__(self) -> None:
+        self._registered = 0
+        self._completed = 0
+        self._event = asyncio.Event()
+        self._event.set()  # nothing outstanding yet
+
+    @property
+    def registered(self) -> int:
+        return self._registered
+
+    def register(self) -> None:
+        """Record one more episode this tracker is waiting on."""
+        self._registered += 1
+        self._event.clear()
+
+    def complete_one(self) -> None:
+        """Called by the worker once an episode has been fully processed."""
+        self._completed += 1
+        if self._completed >= self._registered:
+            self._event.set()
+
+    async def wait(self, timeout_seconds: float) -> bool:
+        """Block until every registered episode is processed, or timeout.
+
+        Returns ``True`` when all registered episodes completed (or none
+        were registered), ``False`` on timeout. On timeout nothing is
+        cancelled — the outstanding episodes keep processing
+        fire-and-forget.
+        """
+        if self._completed >= self._registered:
+            return True
+        try:
+            await asyncio.wait_for(self._event.wait(), timeout_seconds)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+
 # Hard cap on a single episode body accepted by ``enqueue_episode``.
 # Dream-pass writers queue ``MemoryEnvelope.model_dump_json()`` built from
 # unvalidated LLM output, so the only other bound is the indirect
@@ -193,6 +251,11 @@ async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
             except asyncio.TimeoutError:
                 break  # idle — clean up below
 
+            # Sidecar completion tracker — present only when the enqueuer
+            # (dream-pass apply) needs to await this specific episode. Popped
+            # up front so it is signalled in the finally below even if the
+            # graph write raises. See ``IngestionCompletion``.
+            completion: IngestionCompletion | None = payload.pop("_completion", None)
             try:
                 group_id = derive_group_id(user_id)
                 client = await get_graphiti_client(group_id)
@@ -228,6 +291,11 @@ async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
                 )
             finally:
                 queue.task_done()
+                # Signal completion for the enqueuer's drain barrier even on
+                # failure — a failed write is still "no longer pending", and
+                # leaving it outstanding would hang the caller's wait.
+                if completion is not None:
+                    completion.complete_one()
     except asyncio.CancelledError:
         logger.debug("Ingestion worker cancelled for user %s", user_id[:12])
         raise
@@ -332,6 +400,7 @@ async def enqueue_episode(
     source_description: str = "Conversation memory",
     is_json: bool = False,
     edge_metadata: dict | None = None,
+    completion: IngestionCompletion | None = None,
 ) -> bool:
     """Enqueue an arbitrary episode for background ingestion.
 
@@ -349,8 +418,16 @@ async def enqueue_episode(
             deterministically (graphiti's extractor can't recover it from
             the episode text). ``None`` (conversation turns / memory-store)
             leaves edges at MemoryFact defaults — no behavior change.
+        completion: Optional ``IngestionCompletion`` the worker signals once
+            this episode is processed. Dream-pass apply passes one so it can
+            await ONLY its own episodes (scoped drain), not everything on the
+            shared per-user queue. ``None`` for chat / memory-store writes
+            that are pure fire-and-forget.
 
     Returns ``True`` if the episode was queued, ``False`` if it was dropped.
+    The caller registers the episode on ``completion`` iff this returns
+    ``True`` — a dropped episode is never enqueued and the worker never
+    completes it.
     """
     if not user_id:
         return False
@@ -387,6 +464,9 @@ async def enqueue_episode(
                 # Sidecar — popped by the worker before the add_episode
                 # spread; carries dream metadata for post-write stamping.
                 "_edge_metadata": edge_metadata,
+                # Sidecar — the worker calls ``complete_one`` on it after
+                # processing so a scoped-drain caller can await this episode.
+                "_completion": completion,
             }
         )
         return True
@@ -396,6 +476,31 @@ async def enqueue_episode(
             user_id[:12],
         )
         return False
+
+
+async def wait_for_ingestion(
+    completion: IngestionCompletion, timeout_seconds: float
+) -> bool:
+    """Block until a specific set of enqueued episodes have all landed.
+
+    ``enqueue_episode`` returning ``True`` only proves the episode reached
+    the in-process queue; the real graph write (LLM extraction + embedding
+    inside ``_ingestion_worker``) happens later. Callers that must not
+    report success while their own writes are still pending (dream-pass
+    apply) register each episode on ``completion`` and await this.
+
+    Scoped to exactly the episodes registered on ``completion`` — the
+    per-user queue is shared with live-chat ingestion, so waiting on the
+    whole queue would let unrelated chat activity extend (or never resolve)
+    the wait. ``IngestionCompletion`` decouples the barrier from queue
+    ordering: it resolves as soon as the caller's own episodes are done,
+    even while other items remain queued.
+
+    Returns ``True`` when the caller's episodes drained (or none were
+    registered — vacuously drained), ``False`` on timeout. On timeout
+    nothing is cancelled: pending items keep processing fire-and-forget.
+    """
+    return await completion.wait(timeout_seconds)
 
 
 async def _ensure_worker(user_id: str) -> asyncio.Queue:

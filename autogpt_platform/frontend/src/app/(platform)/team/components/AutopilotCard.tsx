@@ -1,7 +1,8 @@
 import { Avatar, AvatarFallback } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { RobotIcon } from "@phosphor-icons/react";
+import { Robot01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function AutopilotCard() {
   return (
@@ -9,7 +10,7 @@ export function AutopilotCard() {
       <div className="flex items-center gap-3">
         <Avatar className="h-12 w-12">
           <AvatarFallback>
-            <RobotIcon size={24} />
+            <Icon icon={Robot01Icon} size={24} />
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">

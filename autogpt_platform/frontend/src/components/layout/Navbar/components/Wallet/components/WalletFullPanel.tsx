@@ -2,12 +2,13 @@
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { XIcon } from "@phosphor-icons/react";
 import { PopoverClose } from "@radix-ui/react-popover";
 
 import { TaskGroup } from "../helpers";
 import { WalletRefill } from "./WalletRefill";
 import { TaskGroups } from "./WalletTaskGroups";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   groups: TaskGroup[];
@@ -36,7 +37,10 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
             <span className="font-semibold">{formattedCredits}</span>
           </div>
           <PopoverClose aria-label="Close wallet">
-            <XIcon className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground" />
+            <Icon
+              icon={Cancel01Icon}
+              className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground"
+            />
           </PopoverClose>
         </div>
       </div>
