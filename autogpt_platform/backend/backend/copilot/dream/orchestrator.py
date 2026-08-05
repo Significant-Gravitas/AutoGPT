@@ -916,7 +916,27 @@ async def _submit_dream_pass_batch(
     # Phase 1 is enqueued — hand the dream lock to the batch callback so it
     # spans the full async lifetime (apply runs hours later). Extend the TTL
     # to the batch window first; the callback releases it on terminal/failure.
-    await dream_lock_handle.extend(BATCH_LOCK_TTL_SECONDS)
+    # A failed extend means the lock expired before the handoff — a newer
+    # pass may already own the graph, so the just-submitted batch must never
+    # be applied: revoke the pending entry (the poller then never dispatches
+    # the callback chain) and drop the input bundle. The provider batch is
+    # orphaned; its results are discarded. The lock is NOT disowned, so the
+    # context manager's compare-and-delete release stays a safe no-op.
+    if not await dream_lock_handle.extend(BATCH_LOCK_TTL_SECONDS):
+        from backend.executor.batch_executor import remove_pending
+
+        from .batch_submit import delete_input_bundle
+
+        await remove_pending(submission.provider_batch_id)
+        await delete_input_bundle(pass_id)
+        return _failure_result(
+            user_id,
+            pass_id,
+            started_at,
+            monotonic_start,
+            execution_path,
+            "anthropic_batch: dream lock lost before handoff — batch revoked",
+        )
     dream_lock_handle.disown()
     return DreamPassResult(
         user_id=user_id,

@@ -1041,3 +1041,50 @@ class TestNearDuplicateWriteDedup:
         assert len(contents) == 2
         assert any("Revenue grew" in c for c in contents)
         assert sum("churn rate rose" in c.lower() for c in contents) == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
+    """If the dream lock cannot be extended to the batch window, the
+    just-submitted batch must never be applied: the pending entry is
+    removed (poller never dispatches callbacks), the input bundle is
+    dropped, the lock is NOT disowned, and the pass reports failure."""
+    submission = mocker.MagicMock(provider_batch_id="batch-xyz")
+    mocker.patch("backend.copilot.dream.batch_submit.persist_input_bundle", AsyncMock())
+    mocker.patch(
+        "backend.copilot.dream.batch_submit.phase_models_for_config",
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_submit.submit_phase",
+        AsyncMock(return_value=submission),
+    )
+    remove_pending = mocker.patch(
+        "backend.executor.batch_executor.remove_pending", AsyncMock()
+    )
+    delete_bundle = mocker.patch(
+        "backend.copilot.dream.batch_submit.delete_input_bundle", AsyncMock()
+    )
+    handle = mocker.MagicMock()
+    handle.extend = AsyncMock(return_value=False)
+    handle.token = "tok"
+
+    config = mocker.MagicMock()
+    config.direct_anthropic_api_key = "key"
+
+    result = await orchestrator_mod._submit_dream_pass_batch(
+        user_id="u-lock-lost",
+        pass_id="p-lock-lost",
+        started_at=datetime.now(timezone.utc),
+        monotonic_start=0.0,
+        execution_path="anthropic_batch",
+        config=config,
+        input_bundle=_build_input(),
+        status_id=None,
+        dream_lock_handle=handle,
+    )
+
+    remove_pending.assert_awaited_once_with("batch-xyz")
+    delete_bundle.assert_awaited_once_with("p-lock-lost")
+    handle.disown.assert_not_called()
+    assert result.error and "lock lost" in result.error
