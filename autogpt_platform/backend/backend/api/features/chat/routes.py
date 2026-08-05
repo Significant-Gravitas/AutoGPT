@@ -124,7 +124,7 @@ from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
-from backend.util.settings import Settings
+from backend.util.settings import BehaveAs, Settings
 
 settings = Settings()
 
@@ -316,6 +316,18 @@ class CreateSessionResponse(BaseModel):
     expert_id: str | None = None
 
 
+class ChatTransportResponse(BaseModel):
+    auth_provider: CopilotLlmAuthProvider
+    credential_id: str | None
+    label: str
+    available: bool
+    default: bool
+
+
+class ChatTransportsResponse(BaseModel):
+    transports: list[ChatTransportResponse]
+
+
 class ActiveStreamInfo(BaseModel):
     """Information about an active stream for reconnection."""
 
@@ -471,29 +483,6 @@ async def list_sessions(
     )
 
 
-async def _validate_llm_credentials(
-    user_id: str,
-    auth_provider: CopilotLlmAuthProvider,
-    credential_id: str | None,
-) -> None:
-    if auth_provider == "platform":
-        if credential_id is not None:
-            raise HTTPException(
-                status_code=422,
-                detail="codex_credential_not_allowed",
-            )
-        return
-
-    if credential_id is None:
-        raise HTTPException(
-            status_code=422,
-            detail="codex_credential_required",
-        )
-    credentials = await credentials_manager.get(user_id, credential_id)
-    if not _is_valid_codex_credentials(credentials):
-        raise HTTPException(status_code=404, detail="codex_credential_not_found")
-
-
 def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
     if credentials is None or credentials.type != "oauth2":
         return False
@@ -504,37 +493,121 @@ def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
     return True
 
 
+def _is_deployment_chat_available() -> bool:
+    if settings.config.behave_as == BehaveAs.CLOUD:
+        return True
+    api_key, _ = config.main_client_credentials
+    return bool(config.test_mode or config.use_claude_code_subscription or api_key)
+
+
+async def _get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
+    deployment_available = _is_deployment_chat_available()
+    transports = [
+        ChatTransportResponse(
+            auth_provider="platform",
+            credential_id=None,
+            label=(
+                "AutoGPT Platform"
+                if settings.config.behave_as == BehaveAs.CLOUD
+                else "Self-hosted chat"
+            ),
+            available=deployment_available,
+            default=deployment_available,
+        )
+    ]
+
+    codex_credentials = await credentials_manager.store.get_creds_by_provider(
+        user_id, "codex"
+    )
+    valid_codex_credentials = [
+        credentials
+        for credentials in codex_credentials
+        if _is_valid_codex_credentials(credentials)
+    ]
+    codex_is_default = not deployment_available and len(valid_codex_credentials) == 1
+    transports.extend(
+        ChatTransportResponse(
+            auth_provider="codex",
+            credential_id=credentials.id,
+            label="ChatGPT/Codex",
+            available=True,
+            default=codex_is_default,
+        )
+        for credentials in valid_codex_credentials
+    )
+    return transports
+
+
+@router.get(
+    "/transports",
+    dependencies=[Security(auth.requires_user)],
+)
+async def list_chat_transports(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ChatTransportsResponse:
+    return ChatTransportsResponse(transports=await _get_chat_transports(user_id))
+
+
 async def _resolve_new_session_llm_route(
     user_id: str,
     request: CreateSessionRequest | None,
 ) -> tuple[CopilotLlmAuthProvider, str | None]:
     auth_provider = request.llm_auth_provider if request else "platform"
     credential_id = request.llm_credential_id if request else None
+    transports = await _get_chat_transports(user_id)
 
     if request is not None:
         route_was_explicit = bool(
             {"llm_auth_provider", "llm_credential_id"} & request.model_fields_set
         )
         if request.builder_graph_id is not None or route_was_explicit:
+            if auth_provider == "platform" and credential_id is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="codex_credential_not_allowed",
+                )
+            if auth_provider == "codex" and credential_id is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="codex_credential_required",
+                )
+            selected_route = next(
+                (
+                    transport
+                    for transport in transports
+                    if transport.auth_provider == auth_provider
+                    and transport.credential_id == credential_id
+                    and transport.available
+                ),
+                None,
+            )
+            if selected_route is None:
+                if auth_provider == "codex":
+                    raise HTTPException(
+                        status_code=404,
+                        detail="codex_credential_not_found",
+                    )
+                raise HTTPException(
+                    status_code=503,
+                    detail="chat_transport_not_configured",
+                )
             return auth_provider, credential_id
 
-    codex_credentials = await credentials_manager.store.get_creds_by_provider(
-        user_id, "codex"
+    default_route = next(
+        (transport for transport in transports if transport.default),
+        None,
     )
-    if not codex_credentials:
-        return "platform", None
-    if len(codex_credentials) != 1:
+    if default_route is not None:
+        return default_route.auth_provider, default_route.credential_id
+    if any(transport.available for transport in transports):
         raise HTTPException(
             status_code=409,
-            detail="codex_default_route_ambiguous",
+            detail="chat_transport_selection_required",
         )
-    credentials = codex_credentials[0]
-    if not _is_valid_codex_credentials(credentials):
-        raise HTTPException(
-            status_code=409,
-            detail="codex_default_route_invalid",
-        )
-    return "codex", credentials.id
+    raise HTTPException(
+        status_code=503,
+        detail="chat_transport_not_configured",
+    )
 
 
 @router.post("/sessions")
@@ -587,11 +660,6 @@ async def create_session(
         user_id, request
     )
 
-    await _validate_llm_credentials(
-        user_id,
-        llm_auth_provider,
-        llm_credential_id,
-    )
     if llm_auth_provider == "platform":
         await enforce_payment_paywall(user_id)
 

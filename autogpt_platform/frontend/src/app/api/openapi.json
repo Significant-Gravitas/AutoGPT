@@ -4081,6 +4081,29 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/chat/transports": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Chat Transports",
+        "operationId": "getV2ListChatTransports",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTransportsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/usage": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -15288,6 +15311,54 @@
         "type": "object",
         "title": "ChatShareStateResponse",
         "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state — sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
+      },
+      "ChatTransportResponse": {
+        "properties": {
+          "auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Auth Provider"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_provider",
+          "credential_id",
+          "label",
+          "available",
+          "default"
+        ],
+        "title": "ChatTransportResponse"
+      },
+      "ChatTransportsResponse": {
+        "properties": {
+          "transports": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTransportResponse"
+            },
+            "type": "array",
+            "title": "Transports"
+          }
+        },
+        "type": "object",
+        "required": ["transports"],
+        "title": "ChatTransportsResponse"
       },
       "ClarificationNeededResponse": {
         "properties": {

@@ -1,3 +1,4 @@
+import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
 import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
 import {
   CredentialsProvidersContext,
@@ -14,30 +15,41 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "../../../../store";
 import { LlmRouteSelector } from "../LlmRouteSelector";
 
-const mockToast = vi.fn();
-const transportTestState = vi.hoisted(() => ({
-  transports: null as unknown[] | null,
+const testState = vi.hoisted(() => ({
+  transports: [] as ChatTransportResponse[] | null,
+  isError: false,
+  queryOptions: vi.fn(),
+  toast: vi.fn(),
 }));
+
+vi.mock(
+  "@/app/api/__generated__/endpoints/chat/chat",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/app/api/__generated__/endpoints/chat/chat")
+      >();
+    return {
+      ...actual,
+      useGetV2ListChatTransports: (options: unknown) => {
+        testState.queryOptions(options);
+        return {
+          data:
+            testState.transports === null
+              ? undefined
+              : { status: 200, data: { transports: testState.transports } },
+          isPending: testState.transports === null && !testState.isError,
+          isError: testState.isError,
+        };
+      },
+    };
+  },
+);
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
-  toast: (...args: unknown[]) => mockToast(...args),
-  useToast: () => ({ toast: mockToast, dismiss: vi.fn() }),
+  toast: (...args: unknown[]) => testState.toast(...args),
+  useToast: () => ({ toast: testState.toast, dismiss: vi.fn() }),
 }));
-
-vi.mock("../../../../helpers/copilotLlmAuth", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../../helpers/copilotLlmAuth")>();
-  return {
-    ...actual,
-    getConnectedSubsidizedLlmTransports: (
-      providers: Parameters<
-        typeof actual.getConnectedSubsidizedLlmTransports
-      >[0],
-    ) =>
-      transportTestState.transports ??
-      actual.getConnectedSubsidizedLlmTransports(providers),
-  };
-});
 
 const codexCredential: CredentialsMetaResponse = {
   id: "codex-credential-1",
@@ -48,13 +60,41 @@ const codexCredential: CredentialsMetaResponse = {
   scopes: [],
 };
 
-function makeCodexProvider(
-  savedCredentials: CredentialsMetaResponse[],
-): CredentialsProviderData {
+const hostedPlatform: ChatTransportResponse = {
+  auth_provider: "platform",
+  credential_id: null,
+  label: "AutoGPT Platform",
+  available: true,
+  default: true,
+};
+
+const configuredSelfHosted: ChatTransportResponse = {
+  auth_provider: "platform",
+  credential_id: null,
+  label: "Self-hosted chat",
+  available: true,
+  default: true,
+};
+
+const unconfiguredSelfHosted: ChatTransportResponse = {
+  ...configuredSelfHosted,
+  available: false,
+  default: false,
+};
+
+const codexTransport: ChatTransportResponse = {
+  auth_provider: "codex",
+  credential_id: codexCredential.id,
+  label: "ChatGPT/Codex",
+  available: true,
+  default: false,
+};
+
+function makeCodexProvider(): CredentialsProviderData {
   return {
     provider: "codex",
     providerName: "Codex",
-    savedCredentials,
+    savedCredentials: [codexCredential],
     isSystemProvider: false,
     oAuthCallback: async () => codexCredential,
     mcpOAuthCallback: async () => codexCredential,
@@ -65,14 +105,10 @@ function makeCodexProvider(
   };
 }
 
-function SelectorHarness({
-  credentials,
-}: {
-  credentials: CredentialsMetaResponse[];
-}) {
+function SelectorHarness() {
   return (
     <CredentialsProvidersContext.Provider
-      value={{ codex: makeCodexProvider(credentials) }}
+      value={{ codex: makeCodexProvider() }}
     >
       <LlmRouteSelector />
     </CredentialsProvidersContext.Provider>
@@ -81,8 +117,10 @@ function SelectorHarness({
 
 afterEach(() => {
   cleanup();
-  mockToast.mockClear();
-  transportTestState.transports = null;
+  testState.transports = [];
+  testState.isError = false;
+  testState.queryOptions.mockClear();
+  testState.toast.mockClear();
   useCopilotUIStore.getState().setCopilotLlmAuth({
     authProvider: "platform",
     credentialId: null,
@@ -90,8 +128,10 @@ afterEach(() => {
 });
 
 describe("LlmRouteSelector", () => {
-  it("keeps platform selected when no subsidized transport is connected", () => {
-    render(<SelectorHarness credentials={[]} />);
+  it("hides when the hosted platform is the only available route", () => {
+    testState.transports = [hostedPlatform];
+
+    render(<SelectorHarness />);
 
     expect(screen.queryByLabelText(/AI connection/i)).toBeNull();
     expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
@@ -100,84 +140,100 @@ describe("LlmRouteSelector", () => {
     });
   });
 
-  it("automatically selects the sole subsidized transport without showing a selector", async () => {
-    render(<SelectorHarness credentials={[codexCredential]} />);
+  it("offers hosted platform and Codex while defaulting to hosted", async () => {
+    testState.transports = [hostedPlatform, codexTransport];
+    const user = userEvent.setup();
+
+    render(<SelectorHarness />);
+
+    await user.click(screen.getByLabelText(/AI connection: AutoGPT Platform/i));
+    expect(screen.getAllByText("AutoGPT Platform").length).toBeGreaterThan(0);
+    expect(screen.getByText("ChatGPT/Codex")).toBeTruthy();
+    expect(screen.getByText(/Personal ChatGPT/)).toBeTruthy();
+
+    await user.click(screen.getByText("ChatGPT/Codex"));
+    expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+      authProvider: "codex",
+      credentialId: codexCredential.id,
+    });
+  });
+
+  it("refreshes a changed transport inventory immediately after pairing", () => {
+    testState.transports = [hostedPlatform];
+    const { rerender } = render(<SelectorHarness />);
+
+    expect(screen.queryByLabelText(/AI connection/i)).toBeNull();
+    expect(testState.queryOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: expect.objectContaining({
+          refetchOnWindowFocus: true,
+          staleTime: 0,
+        }),
+      }),
+    );
+
+    testState.transports = [hostedPlatform, codexTransport];
+    rerender(<SelectorHarness />);
+    expect(
+      screen.getByLabelText(/AI connection: AutoGPT Platform/i),
+    ).toBeTruthy();
+
+    testState.transports = [hostedPlatform];
+    rerender(<SelectorHarness />);
+    expect(screen.queryByLabelText(/AI connection/i)).toBeNull();
+  });
+
+  it("hides when configured self-hosted chat is the only route", () => {
+    testState.transports = [configuredSelfHosted];
+
+    render(<SelectorHarness />);
+
+    expect(screen.queryByLabelText(/AI connection/i)).toBeNull();
+  });
+
+  it("offers configured self-hosted chat alongside Codex", async () => {
+    testState.transports = [configuredSelfHosted, codexTransport];
+    const user = userEvent.setup();
+
+    render(<SelectorHarness />);
+
+    await user.click(screen.getByLabelText(/AI connection: Self-hosted chat/i));
+    expect(screen.getAllByText("Self-hosted chat").length).toBeGreaterThan(0);
+    expect(screen.getByText("ChatGPT/Codex")).toBeTruthy();
+  });
+
+  it("automatically selects sole Codex on a keyless self-host", async () => {
+    testState.transports = [
+      unconfiguredSelfHosted,
+      { ...codexTransport, default: true },
+    ];
+
+    render(<SelectorHarness />);
 
     await waitFor(() => {
       expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
         authProvider: "codex",
-        credentialId: "codex-credential-1",
+        credentialId: codexCredential.id,
       });
     });
     expect(screen.queryByLabelText(/AI connection/i)).toBeNull();
   });
 
-  it("returns a disconnected next-session selection to platform visibly", async () => {
-    useCopilotUIStore.getState().setCopilotLlmAuth({
-      authProvider: "codex",
-      credentialId: "codex-credential-1",
-    });
-    const { rerender } = render(
-      <SelectorHarness credentials={[codexCredential]} />,
-    );
+  it("links a keyless self-host with no Codex connection to setup", () => {
+    testState.transports = [unconfiguredSelfHosted];
 
-    rerender(<SelectorHarness credentials={[]} />);
+    render(<SelectorHarness />);
 
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "AI connections changed",
-        }),
-      );
-    });
-    expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
-      authProvider: "platform",
-      credentialId: null,
-    });
-    expect(screen.queryByLabelText(/AI connection/i)).toBeNull();
+    const setupLink = screen.getByLabelText("Set up an AI connection");
+    expect(setupLink.getAttribute("href")).toBe("/settings/integrations");
   });
 
-  it("offers only connected subsidized transports when more than one is available", async () => {
-    const user = userEvent.setup();
-    transportTestState.transports = [
-      {
-        authProvider: "codex",
-        provider: "codex",
-        credentialType: "oauth2",
-        label: "ChatGPT/Codex",
-        description: "Uses your ChatGPT plan",
-        credentials: [codexCredential],
-      },
-      {
-        authProvider: "grok",
-        provider: "grok",
-        credentialType: "oauth2",
-        label: "Grok",
-        description: "Uses your Grok plan",
-        credentials: [
-          {
-            ...codexCredential,
-            id: "grok-credential-1",
-            provider: "grok",
-            title: "Personal Grok",
-          },
-        ],
-      },
-    ];
+  it("shows inventory failures without inventing a route", () => {
+    testState.transports = null;
+    testState.isError = true;
 
-    render(<SelectorHarness credentials={[codexCredential]} />);
+    render(<SelectorHarness />);
 
-    await user.click(
-      screen.getByLabelText(/AI connection: Choose connection/i),
-    );
-    expect(screen.queryByText("AutoGPT platform")).toBeNull();
-    expect(screen.getByText("ChatGPT/Codex")).toBeTruthy();
-    expect(screen.getByText("Grok")).toBeTruthy();
-
-    await user.click(screen.getByText("ChatGPT/Codex"));
-    expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
-      authProvider: "codex",
-      credentialId: "codex-credential-1",
-    });
+    expect(screen.getByLabelText("AI connections unavailable")).toBeTruthy();
   });
 });

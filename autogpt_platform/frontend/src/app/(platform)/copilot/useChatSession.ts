@@ -1,5 +1,6 @@
 import {
   getGetV2GetSessionQueryKey,
+  useGetV2ListChatTransports,
   useGetV2GetSession,
   useGetV2ListSessions,
   usePostV2CreateSession,
@@ -8,18 +9,17 @@ import type { CreateSessionRequest } from "@/app/api/__generated__/models/create
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
-import { useContext, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
 import {
-  getConnectedSubsidizedLlmTransports,
+  getAvailableLlmTransports,
   resolveCopilotLlmAuthSelection,
 } from "./helpers/copilotLlmAuth";
 
@@ -34,8 +34,19 @@ export function useChatSession({
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
-  const credentialProviders = useContext(CredentialsProvidersContext);
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
+
+  const transportQuery = useGetV2ListChatTransports({
+    query: {
+      enabled: !sessionId,
+      refetchOnWindowFocus: true,
+      staleTime: 0,
+    },
+  });
+  const chatTransports =
+    transportQuery.data?.status === 200
+      ? transportQuery.data.data.transports
+      : undefined;
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
@@ -213,26 +224,42 @@ export function useChatSession({
     // never the right recovery.
     sendStartedRef.current = true;
     const resolvedLlmAuth = resolveCopilotLlmAuthSelection(
-      credentialProviders,
+      chatTransports,
       copilotLlmAuth,
     );
-    const connectedSubsidizedTransports =
-      getConnectedSubsidizedLlmTransports(credentialProviders);
-    if (!resolvedLlmAuth) {
-      const credentialsAreLoading = credentialProviders === null;
+    const availableTransports = getAvailableLlmTransports(chatTransports);
+    if (transportQuery.isError && chatTransports === undefined) {
       toast({
         variant: "destructive",
-        title: credentialsAreLoading
+        title: "Could not check AI connections",
+        description: "Refresh the page and try again.",
+      });
+      throw new Error("Could not load AI connections");
+    }
+    if (chatTransports !== undefined && availableTransports.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "AutoPilot needs an AI connection",
+        description:
+          "Connect ChatGPT/Codex in Settings → Integrations, or configure a chat API or local model on this server.",
+      });
+      throw new Error("chat_transport_not_configured");
+    }
+    if (!resolvedLlmAuth) {
+      const connectionsAreLoading = chatTransports === undefined;
+      toast({
+        variant: "destructive",
+        title: connectionsAreLoading
           ? "AI connections are still loading"
-          : "AI connection unavailable",
-        description: credentialsAreLoading
+          : "Choose an AI connection",
+        description: connectionsAreLoading
           ? "Wait a moment and try again."
-          : "Reconnect the selected account or choose another connected subscription.",
+          : "Select the connection AutoPilot should use before starting a new task.",
       });
       throw new Error(
-        credentialsAreLoading
+        connectionsAreLoading
           ? "AI connections are still loading"
-          : "Selected AI connection is unavailable",
+          : "AI connection selection required",
       );
     }
     if (
@@ -247,12 +274,11 @@ export function useChatSession({
     }
 
     try {
-      const sessionData: CreateSessionRequest = {};
-      if (connectedSubsidizedTransports.length > 1) {
-        sessionData.llm_auth_provider = resolvedLlmAuth.authProvider;
-        if (resolvedLlmAuth.authProvider === "codex") {
-          sessionData.llm_credential_id = resolvedLlmAuth.credentialId;
-        }
+      const sessionData: CreateSessionRequest = {
+        llm_auth_provider: resolvedLlmAuth.authProvider,
+      };
+      if (resolvedLlmAuth.authProvider === "codex") {
+        sessionData.llm_credential_id = resolvedLlmAuth.credentialId;
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;

@@ -220,6 +220,7 @@ const NuqsWrapper = withNuqsTestingAdapter({
 describe("useChatSession — expert sessions", () => {
   it("creates a session with expert_id when visiting /copilot?expertId=expert-maria", async () => {
     let createBody: unknown = null;
+    let transportInventoryLoaded = false;
     server.use(
       http.post("*/api/chat/sessions", async ({ request }) => {
         createBody = await request.json();
@@ -239,6 +240,20 @@ describe("useChatSession — expert sessions", () => {
           messages: [],
         }),
       ),
+      http.get("*/api/chat/transports", () => {
+        transportInventoryLoaded = true;
+        return HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        });
+      }),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
     );
 
@@ -249,11 +264,13 @@ describe("useChatSession — expert sessions", () => {
         </NuqsWrapper>
       </CredentialsProvidersContext.Provider>,
     );
+    await waitFor(() => expect(transportInventoryLoaded).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     await waitFor(() => {
       expect(createBody).toEqual({
         expert_id: "expert-maria",
+        llm_auth_provider: "platform",
       });
     });
   });

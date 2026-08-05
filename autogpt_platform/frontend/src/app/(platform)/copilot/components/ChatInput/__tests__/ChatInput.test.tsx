@@ -25,6 +25,24 @@ const mockCancel =
   vi.fn<(sessionId: string) => Promise<{ status: number; data: unknown }>>();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   postV2CancelSessionTask: (sessionId: string) => mockCancel(sessionId),
+  useGetV2ListChatTransports: () => ({
+    data: {
+      status: 200,
+      data: {
+        transports: [
+          {
+            auth_provider: "platform",
+            credential_id: null,
+            label: "AutoGPT Platform",
+            available: true,
+            default: true,
+          },
+        ],
+      },
+    },
+    isPending: false,
+    isError: false,
+  }),
 }));
 
 let mockCopilotMode = "extended_thinking";

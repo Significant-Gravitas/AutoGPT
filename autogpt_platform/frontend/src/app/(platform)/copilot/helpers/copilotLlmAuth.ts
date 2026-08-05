@@ -1,92 +1,62 @@
-import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
-import type { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
+import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
 import type { CopilotLlmAuthSelection } from "../store";
 
-type SubsidizedLlmAuthProvider = Exclude<
-  CopilotLlmAuthSelection["authProvider"],
-  "platform"
->;
-
-interface SubsidizedLlmTransportDefinition {
-  authProvider: SubsidizedLlmAuthProvider;
-  provider: string;
-  credentialType: CredentialsMetaResponse["type"];
-  label: string;
-  description: string;
+export function getAvailableLlmTransports(
+  transports: ChatTransportResponse[] | null | undefined,
+): ChatTransportResponse[] {
+  return (transports ?? []).filter(
+    (transport) =>
+      transport.available &&
+      (transport.auth_provider === "platform" ||
+        transport.credential_id !== null),
+  );
 }
 
-export interface ConnectedSubsidizedLlmTransport
-  extends SubsidizedLlmTransportDefinition {
-  credentials: CredentialsMetaResponse[];
-}
-
-const SUBSIDIZED_LLM_TRANSPORTS: SubsidizedLlmTransportDefinition[] = [
-  {
-    authProvider: "codex",
-    provider: "codex",
-    credentialType: "oauth2",
-    label: "ChatGPT/Codex",
-    description: "Uses your ChatGPT plan",
-  },
-];
-
-export function getConnectedSubsidizedLlmTransports(
-  providers: CredentialsProvidersContextType | null,
-): ConnectedSubsidizedLlmTransport[] {
-  if (!providers) return [];
-
-  return SUBSIDIZED_LLM_TRANSPORTS.flatMap((transport) => {
-    const credentials =
-      providers[transport.provider]?.savedCredentials.filter(
-        (credential) =>
-          credential.provider === transport.provider &&
-          credential.type === transport.credentialType,
-      ) ?? [];
-
-    return credentials.length > 0 ? [{ ...transport, credentials }] : [];
-  });
-}
-
-export function getSubsidizedTransportSelection(
-  transport: ConnectedSubsidizedLlmTransport,
-  currentSelection: CopilotLlmAuthSelection,
-): CopilotLlmAuthSelection {
-  const credential =
-    currentSelection.authProvider === transport.authProvider
-      ? (transport.credentials.find(
-          (candidate) => candidate.id === currentSelection.credentialId,
-        ) ?? transport.credentials[0])
-      : transport.credentials[0];
-
+export function getChatTransportSelection(
+  transport: ChatTransportResponse,
+): CopilotLlmAuthSelection | null {
+  if (transport.auth_provider === "platform") {
+    return { authProvider: "platform", credentialId: null };
+  }
+  if (transport.credential_id === null) return null;
   return {
-    authProvider: transport.authProvider,
-    credentialId: credential.id,
+    authProvider: "codex",
+    credentialId: transport.credential_id,
   };
 }
 
+export function findSelectedLlmTransport(
+  transports: ChatTransportResponse[] | null | undefined,
+  selection: CopilotLlmAuthSelection,
+): ChatTransportResponse | undefined {
+  return getAvailableLlmTransports(transports).find(
+    (transport) =>
+      transport.auth_provider === selection.authProvider &&
+      (transport.auth_provider === "platform" ||
+        transport.credential_id === selection.credentialId),
+  );
+}
+
 export function resolveCopilotLlmAuthSelection(
-  providers: CredentialsProvidersContextType | null,
+  transports: ChatTransportResponse[] | null | undefined,
   currentSelection: CopilotLlmAuthSelection,
 ): CopilotLlmAuthSelection | null {
-  if (providers === null) return null;
+  if (transports == null) return null;
 
-  const transports = getConnectedSubsidizedLlmTransports(providers);
-  if (currentSelection.authProvider !== "platform") {
-    const currentTransport = transports.find(
-      (transport) => transport.authProvider === currentSelection.authProvider,
-    );
-    const credentialStillExists = currentTransport?.credentials.some(
-      (credential) => credential.id === currentSelection.credentialId,
-    );
-    if (credentialStillExists) return currentSelection;
-  }
+  const availableTransports = getAvailableLlmTransports(transports);
+  const selectedTransport = findSelectedLlmTransport(
+    availableTransports,
+    currentSelection,
+  );
+  if (selectedTransport) return currentSelection;
 
-  if (transports.length === 1) {
-    return getSubsidizedTransportSelection(transports[0], currentSelection);
-  }
+  const defaultTransport = availableTransports.find(
+    (transport) => transport.default,
+  );
+  if (defaultTransport) return getChatTransportSelection(defaultTransport);
 
-  if (transports.length === 0) {
-    return { authProvider: "platform", credentialId: null };
+  if (availableTransports.length === 1) {
+    return getChatTransportSelection(availableTransports[0]);
   }
 
   return null;
