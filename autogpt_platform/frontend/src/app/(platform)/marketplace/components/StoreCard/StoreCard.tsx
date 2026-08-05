@@ -5,9 +5,7 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
 import { useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
@@ -50,20 +48,19 @@ export function StoreCard({
 
   return (
     <div
-      className="relative flex h-[26.5rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-border/50 bg-background p-4 shadow-md transition-all duration-300 hover:shadow-lg"
+      className="group relative flex h-[26rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
       tabIndex={0}
-      aria-label={`${agentName} agent card`}
+      aria-label={`${agentName} workflow card`}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           handleClick();
         }
       }}
     >
-      {/* First Section: Image */}
-      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl md:aspect-[2.17/1]">
+      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-black/5 md:aspect-[2.17/1]">
         {agentImage && !imageError ? (
           <>
             {!imageLoaded && (
@@ -79,69 +76,57 @@ export function StoreCard({
             />
           </>
         ) : (
-          <div
-            className="absolute inset-0 rounded-xl"
-            style={{ backgroundColor: "rgb(216, 208, 255)" }}
-          />
+          <div className="absolute inset-0 rounded-xl bg-violet-100" />
         )}
       </div>
 
-      <div className="mt-3 flex w-full flex-1 flex-col">
-        {/* Second Section: Agent Name and Creator Name */}
-        <div className="flex w-full min-w-0 flex-col gap-1">
-          <OverflowText
-            value={agentName}
-            variant="h4"
-            className="text-xl leading-tight"
-          />
-          {!hideAvatar && creatorName && (
-            <div className="mb-2 mt-2 flex items-center gap-2">
-              <Avatar className="h-6 w-6 shrink-0">
-                {avatarSrc && (
-                  <AvatarImage
-                    src={avatarSrc}
-                    alt={`${creatorName} creator avatar`}
-                  />
-                )}
-                <AvatarFallback size={32}>
-                  {creatorName.charAt(0)}
-                </AvatarFallback>
-              </Avatar>
-              <Text variant="body-medium" className="truncate">
-                by {creatorName}
-              </Text>
-            </div>
-          )}
-        </div>
-
-        {/* Third Section: Description */}
-        <div className="mt-2.5 flex w-full flex-col">
-          <Text variant="body" className="line-clamp-3 leading-normal">
-            {description}
-          </Text>
-        </div>
+      <div className="mt-4 flex w-full flex-1 flex-col">
+        <h3
+          className="line-clamp-1 font-sans text-lg font-semibold tracking-[-0.01em] text-zinc-900"
+          title={agentName}
+        >
+          {agentName}
+        </h3>
+        {!hideAvatar && creatorName && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <Avatar className="h-5 w-5 shrink-0">
+              {avatarSrc && (
+                <AvatarImage
+                  src={avatarSrc}
+                  alt={`${creatorName} creator avatar`}
+                />
+              )}
+              <AvatarFallback size={20}>{creatorName.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <span className="truncate text-[13px] text-zinc-500">
+              by {creatorName}
+            </span>
+          </div>
+        )}
+        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+          {description}
+        </p>
       </div>
 
-      {/* Stats */}
-      <Text variant="body" className="absolute bottom-4 left-4 text-zinc-500">
-        {runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
-      </Text>
-      {rating >= 1 && (
-        <div className="absolute bottom-4 right-4 flex items-center gap-2">
-          <span className="text-lg font-semibold text-neutral-800">
-            {rating.toFixed(1)}
-          </span>
-          <div
-            className="inline-flex items-center"
-            role="img"
-            aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
-          >
-            {StarRatingIcons(rating)}
-          </div>
-        </div>
-      )}
+      <div className="mt-auto flex w-full items-center pt-3">
+        <span className="flex items-center gap-2 text-xs text-zinc-500">
+          {runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
+          {rating >= 1 && (
+            <span
+              className="inline-flex items-center gap-1"
+              role="img"
+              aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
+            >
+              <span className="font-medium text-zinc-700">
+                {rating.toFixed(1)}
+              </span>
+              {StarRatingIcons(rating)}
+            </span>
+          )}
+        </span>
+      </div>
       {creatorSlug && agentSlug && agentGraphID && (
-        <div className="absolute bottom-2 right-0">
+        <div className="absolute bottom-4 right-4">
           <AddToLibraryButton
             creatorSlug={creatorSlug}
             agentSlug={agentSlug}

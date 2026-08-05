@@ -16,7 +16,7 @@ import {
   uploadSubmissionMediaDirect,
 } from "@/lib/direct-upload";
 import { ApiError, isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 import {
   isFormDirty,
@@ -36,7 +36,7 @@ const EMPTY_FORM: ProfileFormState = {
 };
 
 export function useProfilePage() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const logoutInProgress = isLogoutInProgress();
 

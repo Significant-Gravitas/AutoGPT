@@ -26,6 +26,7 @@ type MenuView = "creator" | "model" | "provider";
 
 type Props = {
   models: LlmModelMetadata[];
+  selectedName?: string;
   selectedModel?: LlmModelMetadata;
   recommendedModel?: LlmModelMetadata;
   onSelect: (value: string) => void;
@@ -34,6 +35,7 @@ type Props = {
 
 export function LlmModelPicker({
   models,
+  selectedName,
   selectedModel,
   recommendedModel,
   onSelect,
@@ -116,10 +118,19 @@ export function LlmModelPicker({
     [onSelect],
   );
 
-  const triggerModel = selectedModel ?? recommendedModel ?? models[0];
-  const triggerTitle = triggerModel
-    ? getModelDisplayName(triggerModel)
-    : "Select model";
+  // A stored slug missing from the metadata map means the model was hidden
+  // or kill-switched after this node was configured. Show the truth (the
+  // raw stored slug) rather than silently displaying the recommended model
+  // while the stored one still executes.
+  const isUnavailableSelection = Boolean(selectedName) && !selectedModel;
+  const triggerModel = isUnavailableSelection
+    ? undefined
+    : (selectedModel ?? recommendedModel ?? models[0]);
+  const triggerTitle = isUnavailableSelection
+    ? `${selectedName} (unavailable)`
+    : triggerModel
+      ? getModelDisplayName(triggerModel)
+      : "Select model";
   const triggerCreator = triggerModel?.creator ?? "";
 
   return (

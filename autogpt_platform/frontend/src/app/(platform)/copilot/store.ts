@@ -124,6 +124,16 @@ interface CopilotUIState {
   initialPrompt: string | null;
   setInitialPrompt: (prompt: string | null) => void;
 
+  /**
+   * Expert ids whose latest thread was already adopted via a
+   * /copilot?expertId= deep link this page load. Lives here — not in
+   * useChatSession refs — because the chat host remounts on every sessionId
+   * change (CopilotPage keys the subtree), wiping hook refs; a wiped latch
+   * made "New Chat" bounce straight back into the adopted thread.
+   */
+  adoptedExpertThreads: Set<string>;
+  markExpertThreadAdopted: (expertId: string) => void;
+
   contextPanelWidth: number;
   artifactPanelWidth: number;
   setContextPanelWidth: (width: number) => void;
@@ -205,6 +215,14 @@ let _autoOpenUserClosed = false;
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+
+  adoptedExpertThreads: new Set<string>(),
+  markExpertThreadAdopted: (expertId) =>
+    set((state) => {
+      const next = new Set(state.adoptedExpertThreads);
+      next.add(expertId);
+      return { adoptedExpertThreads: next };
+    }),
 
   contextPanelWidth: getPersistedContextWidth(),
   artifactPanelWidth: getPersistedArtifactWidth(),
