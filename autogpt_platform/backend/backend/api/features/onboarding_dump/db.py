@@ -103,7 +103,7 @@ async def start_dump(
     return await OnboardingBrainDump.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {"userId": user_id, **fields},
+            "create": {"userId": user_id, **_TAKE_OWNED_RESET, **fields},
             "update": fields,
         },
     )
@@ -176,6 +176,7 @@ async def mark_greeting_seen(user_id: str) -> None:
         data={
             "create": {
                 "userId": user_id,
+                **_TAKE_OWNED_RESET,
                 "recordingId": "greeting-only",
                 "status": BrainDumpStatus.completed,
                 "inputMode": BrainDumpInputMode.skipped,

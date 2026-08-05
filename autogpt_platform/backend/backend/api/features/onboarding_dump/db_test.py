@@ -159,8 +159,21 @@ async def test_retrying_the_same_take_keeps_what_that_take_produced(
 
     await db.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
 
+    create = upsert.await_args.kwargs["data"]["create"]
     update = upsert.await_args.kwargs["data"]["update"]
+    assert create["recommendedProviders"] is None
     assert set(update) == {"recordingId", "status", "inputMode", "errorCode"}
+
+
+@pytest.mark.asyncio
+async def test_greeting_only_create_sets_recommended_providers(
+    upsert: AsyncMock,
+):
+    await db.mark_greeting_seen(USER_ID)
+
+    create = upsert.await_args.kwargs["data"]["create"]
+    assert create["recommendedProviders"] is None
+    assert create["greetingSeen"] is True
 
 
 @pytest.mark.asyncio
