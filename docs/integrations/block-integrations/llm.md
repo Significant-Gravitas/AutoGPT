@@ -582,7 +582,7 @@ The block supports conversation continuation through three mechanisms:
 ## Code Generation
 
 ### What it is
-Generate or refactor code using OpenAI's Codex (Responses API).
+Generate or refactor code using an OpenAI API key or a connected ChatGPT plan through Codex App Server.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -597,9 +597,10 @@ Configure reasoning_effort to control how much the model "thinks" before respond
 |-------|-------------|------|----------|
 | prompt | Primary coding request passed to the Codex model. | str | Yes |
 | system_prompt | Optional instructions injected via the Responses API instructions field. | str | No |
-| model | Codex-optimized model served via the Responses API. | "gpt-5.3-codex" \| "gpt-5.1-codex" | No |
-| reasoning_effort | Controls the Responses API reasoning budget. Select 'none' to skip reasoning configs. | "none" \| "low" \| "medium" \| "high" | No |
-| max_output_tokens | Upper bound for generated tokens (hard limit 128,000). Leave blank to let OpenAI decide. | int | No |
+| transport | Use an OpenAI API key or your connected ChatGPT plan through Codex App Server. | "openai_api" \| "codex_app_server" | No |
+| model | OpenAI API transport only. Codex App Server selects the current subscription model from its live model catalog. | "gpt-5.6-sol" \| "gpt-5.6-terra" \| "gpt-5.6-luna" \| "gpt-5.3-codex" \| "gpt-5.1-codex" | No |
+| reasoning_effort | Controls the Responses API reasoning budget. Select 'none' to skip reasoning configs. | "none" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" \| "ultra" | No |
+| max_output_tokens | OpenAI API transport only: upper bound for generated tokens (hard limit 128,000). Codex App Server uses its model and plan limits. | int | No |
 
 ### Outputs
 
