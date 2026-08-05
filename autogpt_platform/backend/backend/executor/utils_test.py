@@ -617,6 +617,9 @@ async def test_validate_node_input_credentials_returns_nodes_to_skip(
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
     }
+    mock_block.input_schema.get_credentials_fields_info.return_value = {
+        "credentials": mocker.Mock(credential_reference_only=False)
+    }
     mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
 
@@ -660,6 +663,9 @@ async def test_validate_node_input_credentials_required_missing_creds_error(
     mock_credentials_field_type = mocker.MagicMock()
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
+    }
+    mock_block.input_schema.get_credentials_fields_info.return_value = {
+        "credentials": mocker.Mock(credential_reference_only=False)
     }
     mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block

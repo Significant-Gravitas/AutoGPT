@@ -90,6 +90,7 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
     assert metadata["file_ids"] == ["f1", "f2"]
     assert metadata["mode"] == "extended_thinking"
     assert metadata["model"] == "advanced"
+    assert metadata["llm_auth_provider"] == "platform"
     assert metadata["permissions"] == {"tool_filter": "allow"}
     assert metadata["request_arrival_at"] == 123.45
     # Session is flipped idle → queued.
@@ -99,9 +100,10 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enqueue_turn_omits_null_fields_from_metadata() -> None:
-    """A turn with no extra params leaves ``metadata`` NULL on the row
-    instead of an empty object."""
+async def test_enqueue_turn_only_includes_default_transport_without_extra_params() -> (
+    None
+):
+    """A turn with no extra params only persists its default LLM transport."""
     db = MagicMock()
     db.get_next_sequence = AsyncMock(return_value=1)
     db.add_chat_message = AsyncMock(return_value=_pyd_message())
@@ -112,7 +114,9 @@ async def test_enqueue_turn_omits_null_fields_from_metadata() -> None:
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
     ):
         await turn_queue.enqueue_turn(user_id="u1", session_id="s1", message="hello")
-    assert db.add_chat_message.call_args.kwargs["metadata"] is None
+    assert db.add_chat_message.call_args.kwargs["metadata"] == {
+        "llm_auth_provider": "platform"
+    }
 
 
 # ── cancel_queued_turn ─────────────────────────────────────────────────

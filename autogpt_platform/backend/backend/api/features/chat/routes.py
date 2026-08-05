@@ -554,13 +554,26 @@ async def _resolve_new_session_llm_route(
 ) -> tuple[CopilotLlmAuthProvider, str | None]:
     auth_provider = request.llm_auth_provider if request else "platform"
     credential_id = request.llm_credential_id if request else None
-    transports = await _get_chat_transports(user_id)
 
+    if request is not None and request.builder_graph_id is not None:
+        if auth_provider == "codex" or credential_id is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="codex_builder_session_unsupported",
+            )
+        if not _is_deployment_chat_available():
+            raise HTTPException(
+                status_code=503,
+                detail="chat_transport_not_configured",
+            )
+        return "platform", None
+
+    transports = await _get_chat_transports(user_id)
     if request is not None:
         route_was_explicit = bool(
             {"llm_auth_provider", "llm_credential_id"} & request.model_fields_set
         )
-        if request.builder_graph_id is not None or route_was_explicit:
+        if route_was_explicit:
             if auth_provider == "platform" and credential_id is not None:
                 raise HTTPException(
                     status_code=422,

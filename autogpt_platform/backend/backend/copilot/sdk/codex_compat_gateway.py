@@ -8,13 +8,13 @@ import re
 import secrets
 from collections.abc import Iterable
 from contextlib import AbstractAsyncContextManager, suppress
-from dataclasses import dataclass, field
 from typing import Protocol, cast
 from uuid import uuid4
 
 from aiohttp import web
 from openai_codex.generated.v2_all import AgentMessageDeltaNotification
 from openai_codex.models import Notification
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
@@ -62,43 +62,41 @@ class _AgentTransport(Protocol):
     ) -> AbstractAsyncContextManager[CodexAgentSession]: ...
 
 
-@dataclass(slots=True)
-class _TextDelta:
+class _GatewayState(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class _TextDelta(_GatewayState):
     text: str
 
 
-@dataclass(slots=True)
-class _ToolUse:
+class _ToolUse(_GatewayState):
     call_id: str
     name: str
     arguments: object
 
 
-@dataclass(slots=True)
-class _Completed:
+class _Completed(_GatewayState):
     result: CodexInvocationResult
 
 
-@dataclass(slots=True)
-class _Failed:
+class _Failed(_GatewayState):
     error: BaseException
 
 
 _ConversationEvent = _TextDelta | _ToolUse | _Completed | _Failed
 
 
-@dataclass(slots=True)
-class _Conversation:
+class _Conversation(_GatewayState):
     id: str
-    queue: asyncio.Queue[_ConversationEvent] = field(default_factory=asyncio.Queue)
-    pending: dict[str, _ToolCallRecord] = field(default_factory=dict)
-    response_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    queue: asyncio.Queue[_ConversationEvent] = Field(default_factory=asyncio.Queue)
+    pending: dict[str, _ToolCallRecord] = Field(default_factory=dict)
+    response_lock: asyncio.Lock = Field(default_factory=asyncio.Lock)
     task: asyncio.Task[None] | None = None
     result: CodexInvocationResult | None = None
 
 
-@dataclass(slots=True)
-class _ToolCallRecord:
+class _ToolCallRecord(_GatewayState):
     gateway_call_id: str
     raw_call_id: str
     conversation: _Conversation
@@ -106,6 +104,10 @@ class _ToolCallRecord:
     result: CodexDynamicToolResult | None = None
     claim_fingerprint: str | None = None
     closed: bool = False
+
+
+_Conversation.model_rebuild()
+_ToolCallRecord.model_rebuild()
 
 
 class _DuplicateToolResultError(ValueError):
@@ -227,7 +229,7 @@ class CodexAnthropicGateway:
             self._tool_calls.clear()
             for conversation in self._conversations.values():
                 conversation.queue.put_nowait(
-                    _Failed(RuntimeError("Codex Anthropic gateway is closing"))
+                    _Failed(error=RuntimeError("Codex Anthropic gateway is closing"))
                 )
             tasks = [
                 conversation.task
@@ -405,7 +407,7 @@ class CodexAnthropicGateway:
         async def handle_event(notification: Notification) -> None:
             payload = notification.payload
             if isinstance(payload, AgentMessageDeltaNotification) and payload.delta:
-                await conversation.queue.put(_TextDelta(payload.delta))
+                await conversation.queue.put(_TextDelta(text=payload.delta))
 
         async def handle_tool(call: CodexDynamicToolCall) -> CodexDynamicToolResult:
             future: asyncio.Future[CodexDynamicToolResult] = (
@@ -442,7 +444,7 @@ class CodexAnthropicGateway:
             )
             conversation.result = result
             self._results.append(result)
-            await conversation.queue.put(_Completed(result))
+            await conversation.queue.put(_Completed(result=result))
         except asyncio.CancelledError:
             raise
         except BaseException as exc:
@@ -451,7 +453,7 @@ class CodexAnthropicGateway:
                 type(exc).__name__,
                 _safe_exception_message(exc, secrets_to_redact=(self._auth_token,)),
             )
-            await conversation.queue.put(_Failed(exc))
+            await conversation.queue.put(_Failed(error=exc))
 
     async def _streaming_response(
         self,

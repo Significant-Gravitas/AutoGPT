@@ -2,12 +2,12 @@ import asyncio
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 from typing import Any, Protocol, TypeVar, cast
 
 from openai_codex.models import Notification
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import (
@@ -533,11 +533,12 @@ def _resolve_invocation_model(
     return selected.model
 
 
-@dataclass
-class _AuthCheckpointState:
+class _AuthCheckpointState(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     credentials: OAuth2Credentials
     bundle: CodexAuthBundleV1
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    lock: asyncio.Lock = Field(default_factory=asyncio.Lock)
 
 
 class _LeasedRuntime:
