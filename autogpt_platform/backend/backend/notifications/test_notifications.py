@@ -639,6 +639,26 @@ def test_cleanup_awaits_background_task_before_disconnect():
     assert manager._run_service_future is None
 
 
+def test_shutdown_tolerates_cancelled_disconnect_task():
+    """A disconnect that ends up cancelled must not crash _shutdown_service.
+
+    Task.exception() raises CancelledError (rather than returning it) on a
+    cancelled task, so the error-logging branch must skip cancelled tasks.
+    """
+    manager = NotificationManager.__new__(NotificationManager)
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.rabbitmq_service = MagicMock()
+
+    async def cancelled_disconnect():
+        raise asyncio.CancelledError()
+
+    manager.rabbitmq_service.disconnect = cancelled_disconnect
+
+    # Must complete without propagating CancelledError.
+    asyncio.run(manager._shutdown_service())
+
+
 def test_cleanup_handles_shutdown_before_rabbitmq_startup():
     manager = NotificationManager.__new__(NotificationManager)
     manager.running = True

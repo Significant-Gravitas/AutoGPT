@@ -1263,7 +1263,10 @@ class NotificationManager(AppService):
                     "RabbitMQ disconnect did not complete within "
                     f"{SHUTDOWN_TIMEOUT_SECONDS}s; continuing shutdown"
                 )
-            elif (exc := disconnect_task.exception()) is not None:
+            elif (
+                not disconnect_task.cancelled()
+                and (exc := disconnect_task.exception()) is not None
+            ):
                 logger.warning(f"RabbitMQ disconnect failed during shutdown: {exc}")
 
     def cleanup(self):
