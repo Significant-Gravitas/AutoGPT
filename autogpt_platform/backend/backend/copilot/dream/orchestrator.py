@@ -20,7 +20,9 @@ import asyncio
 import logging
 import re
 import uuid as uuidlib
+from collections.abc import Sequence
 from datetime import datetime, timezone
+from typing import TypeVar
 
 from backend.copilot.config import ChatConfig
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -60,6 +62,7 @@ from .schemas import (
     DreamPassResult,
     DreamPassUsage,
     PhaseUsage,
+    ProposedFinding,
     RecombinationOutput,
 )
 
@@ -96,6 +99,83 @@ MAX_ENTITY_INVALIDATIONS_PER_PASS = 2
 
 def _resolve_lock_ttl(transport_is_local: bool) -> int:
     return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
+
+
+# High-precision filter for "transient intent" facts — content that
+# records what the user is ASKING/wants to KNOW rather than a durable
+# fact about them. The sanitize prompt is told to drop these, but
+# prompt-only sanitization leaks them (#13388: "User is asking how
+# Kubernetes works", "User is interested in knowing which PRs are open"),
+# so this is a deterministic belt-and-suspenders gate.
+#
+# Deliberately NARROW to knowledge-seeking intent. We do NOT match goals
+# like "user wants to create/build X" — those are legitimate durable
+# memories. Generic world-knowledge pollution ("Kubernetes uses pods…")
+# is left to the sanitize prompt: it needs LLM judgment (is the subject
+# the user?) that a regex can't do without false-positives.
+#
+# Interrogative complements are the sharp edge — several verbs are durable
+# aspirations on their own but transient questions once they take a
+# question word:
+#   * ``asking`` — "asking FOR weekly reports" / "asking the agent TO
+#     monitor PRs" are durable requests (semantically like "wants X"), so
+#     only interrogative ``asking HOW/WHAT/…`` counts as transient.
+#   * ``learn``/``understand``/``find out`` — "wants to learn Spanish",
+#     "wants to understand distributed systems", "wants to find out about
+#     new markets" are durable skill/aspiration GOALS; they only read as
+#     transient with an interrogative ("wants to learn HOW X works").
+#   * ``curious`` — "curious ABOUT X" is transient, but "curious by nature"
+#     is a durable personality trait, so a ``curious about`` complement is
+#     required (mirroring ``confused about``/``unsure about``).
+# ``know`` stays complement-free: "wants to know X" is transient curiosity
+# regardless of phrasing (there is no durable "wants to know" aspiration —
+# that role is served by ``learn``).
+# Known limitation (nice-to-have, low frequency): a standing notification
+# preference phrased "wants to know when X happens" is dropped; separating
+# it from a one-off "wants to know when the deploy is" isn't reliably
+# regex-able, so it's left to the sanitize prompt + human review.
+#
+# Subject scope: the gate deliberately anchors on the generic ``user``
+# subject only. Name-phrased transient intent ("Nick is asking how the
+# auth flow works") is intentionally NOT matched here — broadening the
+# subject to arbitrary proper nouns would risk false-positives on
+# non-user entities ("Kubernetes is asking for more nodes"), so
+# name-first phrasing is left to the sanitize prompt's LLM judgment. The
+# leading auxiliary allows perfect-progressive forms ("has been asking").
+_TRANSIENT_INTENT_RE = re.compile(
+    r"^(the\s+)?user\s+(?:(?:is|has|was)\s+(?:been\s+)?)?"
+    r"(asking\s+(how|what|why|whether|if|when|where|who|which|about)\b"
+    r"|wondering\b"
+    r"|curious\s+about\b"
+    r"|confused\s+about\b"
+    r"|unsure\s+about\b"
+    r"|trying\s+to\s+understand\b"
+    r"|interested\s+in\s+(knowing|understanding)\b"
+    r"|interested\s+in\s+learning\s+(how|what|why|whether|if|when|where)\b"
+    r"|wants?\s+to\s+know\b"
+    r"|wants?\s+to\s+(understand|find\s+out)\s+(how|what|why|whether|if|when|where)\b"
+    r"|wants?\s+to\s+learn\s+(how|what|why|whether|if|when|where)\b"
+    r"|asked\s+(how|what|why|whether|if|when|where|about)\b)",
+    re.IGNORECASE,
+)
+
+
+def _is_transient_intent(content: str) -> bool:
+    """True when ``content`` reads as a question/knowledge-seeking intent
+    rather than a durable fact about the user."""
+    return bool(_TRANSIENT_INTENT_RE.match(content.strip()))
+
+
+_ContentItem = TypeVar("_ContentItem", ConsolidatedFact, ProposedFinding)
+
+
+def _drop_transient_intent(
+    items: Sequence[_ContentItem],
+) -> tuple[list[_ContentItem], int]:
+    """Filter ConsolidatedFact / ProposedFinding items whose ``.content``
+    is a transient intent. Returns (kept, dropped_count)."""
+    kept = [it for it in items if not _is_transient_intent(it.content)]
+    return kept, len(items) - len(kept)
 
 
 # Intra-pass near-duplicate write rejection (#13387). The consolidate
@@ -358,18 +438,29 @@ def _clamp_operations(
     elif active_fact_count > 0:
         demotion_cap = min(MAX_DEMOTIONS_PER_PASS, max(1, active_fact_count * 5 // 100))
 
+    # Drop transient-intent pollution ("user is asking…") before the cap
+    # slice so a leaked question never displaces a real fact (#13388).
+    writes, w_intent_dropped = _drop_transient_intent(ops.writes)
+    proposals, p_intent_dropped = _drop_transient_intent(ops.proposals)
+    if w_intent_dropped or p_intent_dropped:
+        logger.info(
+            "Dream clamp: dropped %d transient-intent write(s) and %d "
+            "proposal(s) (questions captured as facts)",
+            w_intent_dropped,
+            p_intent_dropped,
+        )
     # Collapse intra-pass near-duplicate writes before the cap slice so the
     # cap counts distinct facts, not paraphrases of one (#13387).
-    writes, w_dropped = _dedupe_near_duplicate_writes(ops.writes)
-    if w_dropped:
+    writes, w_dup_dropped = _dedupe_near_duplicate_writes(writes)
+    if w_dup_dropped:
         logger.info(
             "Dream clamp: collapsed %d near-duplicate write(s) into their "
             "canonical (longest) phrasing",
-            w_dropped,
+            w_dup_dropped,
         )
     return DreamOperations(
         writes=writes[:MAX_WRITES_PER_PASS],
-        proposals=ops.proposals[:MAX_PROPOSALS_PER_PASS],
+        proposals=proposals[:MAX_PROPOSALS_PER_PASS],
         demotions=demotions[:demotion_cap],
         entity_invalidations=ops.entity_invalidations[
             :MAX_ENTITY_INVALIDATIONS_PER_PASS
