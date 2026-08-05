@@ -683,7 +683,7 @@ async def _finalize_complete(
         return
 
     apply_stats: dict[
-        str, int | str | bool | IngestionDrainStatus | DreamOperationsSnapshot
+        str, int | str | IngestionDrainStatus | DreamOperationsSnapshot
     ] = {}
     try:
         # Thread the demotion allowlist from the bundle already in memory —

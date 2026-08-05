@@ -252,6 +252,54 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
 
 
 @pytest.mark.asyncio
+async def test_held_dream_lock_handle_is_threaded_into_apply(mocker):
+    """apply renews the dream lock before the drain + demotions, which it can
+    only do with the handle the orchestrator holds. Dropping that kwarg would
+    silently reinstate the lock-expiry-during-drain window, so pin it."""
+    sentinel_handle = object()
+
+    @asynccontextmanager
+    async def _handle_lock(*args, **kwargs):
+        yield sentinel_handle
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", _handle_lock)
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[
+                _wrap(consolidated),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(DreamOperations(writes=consolidated.facts)),
+            ]
+        ),
+    )
+    apply_mock = mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "session_id": "s1",
+                "consolidated_count": 1,
+                "ingestion_drain_status": IngestionDrainStatus.drained,
+            }
+        ),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+    assert apply_mock.await_args.kwargs["lock_handle"] is sentinel_handle
+
+
+@pytest.mark.asyncio
 async def test_missing_drain_key_folds_to_fail_closed_timed_out(mocker):
     """When apply_stats omits the drain key entirely (e.g. an upstream bug),
     the result must fail closed to ``timed_out`` — writes potentially at

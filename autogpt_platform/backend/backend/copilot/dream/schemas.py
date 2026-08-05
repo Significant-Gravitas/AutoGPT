@@ -26,10 +26,8 @@ class IngestionDrainStatus(str, Enum):
     """Fate of a dream pass's enqueued graph writes at the moment the pass
     was reported complete.
 
-    A plain boolean conflated two opposite states, so consumers (and a
-    future Memory Visualizer) could not tell a healthy by-design skip from
-    a real failure. The tri-state makes the distinction explicit in the API
-    contract:
+    Three distinct states, so consumers (and a future Memory Visualizer)
+    can tell a healthy by-design skip from a real failure:
 
       * ``drained`` — the pass's own episodes were confirmed landed in the
         graph before the pass returned (sync path), or the pass enqueued
@@ -342,8 +340,13 @@ class DreamPassResult(BaseModel):
     # (or nothing-to-drain) pass, ``skipped`` is the by-design batch skip
     # (healthy), ``timed_out`` is a sync-path drain that overran its budget
     # with writes still queued in-process (at risk on pod restart). Defaults
-    # to ``drained`` so results serialized before this field existed still
-    # validate as the old ``True`` did.
+    # to ``drained`` so a payload that omits the field still validates as a
+    # fully-landed pass. Note this default is deliberately the opposite of
+    # ``apply.drain_status_from_stats``, which fails closed to ``timed_out``
+    # for a missing LIVE stats key: an absent key on a fresh pass means lost
+    # observability, while an absent field on a stored record predates the
+    # field. Consumers reading legacy records should treat ``drained`` as
+    # "unknown", not a confirmed durability guarantee.
     ingestion_drain_status: IngestionDrainStatus = IngestionDrainStatus.drained
 
     # Detailed per-operation rollup. ``None`` when the pass was skipped

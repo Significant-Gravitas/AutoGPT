@@ -135,6 +135,30 @@ class TestIngestionCompletion:
         c.complete_one()  # only 1 of 2 landed
         assert await c.wait(0.02) is False
 
+    @pytest.mark.asyncio
+    async def test_over_completion_never_hangs_the_wait(self) -> None:
+        """Counters are monotonic rather than a decrementing balance, so more
+        completions than registrations cannot drive the outstanding count
+        negative and strand the waiter."""
+        c = ingest.IngestionCompletion()
+        c.register()
+        c.complete_one()
+        c.complete_one()  # spurious extra completion
+        assert await c.wait(0.01) is True
+
+    @pytest.mark.asyncio
+    async def test_registration_after_a_completion_still_resolves(self) -> None:
+        """The worker can complete an early episode while the caller is still
+        enqueueing later ones; the barrier must resolve once the counts meet
+        again, not stay latched on the interleave."""
+        c = ingest.IngestionCompletion()
+        c.register()
+        c.complete_one()
+        c.register()  # enqueued after the first landed
+        assert await c.wait(0.02) is False
+        c.complete_one()
+        assert await c.wait(0.01) is True
+
 
 class TestWaitForIngestion:
     """``wait_for_ingestion`` — the drain barrier dream-pass apply uses so

@@ -561,8 +561,29 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
 
 
 @pytest.mark.asyncio
+async def test_demotions_only_pass_renews_lock_before_destructive_tail(mocker):
+    """Demotions and entity invalidations are the most destructive ops in a
+    pass, and a sanitizer output can contain them with zero writes. Such a
+    pass registers no episodes, so the renewal must not be gated on the
+    ingestion tracker alone or it would run under a near-exhausted TTL."""
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = AsyncMock(return_value=True)
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="a", reason="stale")],
+        entity_invalidations=[EntityInvalidation(entity_uuid="ent-x", reason="gone")],
+        summary_for_user="tidied up",
+    )
+    await apply_mod.apply_operations(
+        user_id="u-demote", pass_id="p-demote", ops=ops, lock_handle=lock_handle
+    )
+
+    lock_handle.extend.assert_awaited_once_with(apply_mod.LOCK_DRAIN_RENEWAL_SECONDS)
+
+
+@pytest.mark.asyncio
 async def test_empty_pass_does_not_renew_lock(mocker):
-    """A pass with nothing to drain needn't touch the lock TTL."""
+    """A pass with nothing to drain and nothing to demote needn't touch the
+    lock TTL."""
     mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
     lock_handle = mocker.MagicMock()
     lock_handle.extend = AsyncMock(return_value=None)
@@ -572,6 +593,47 @@ async def test_empty_pass_does_not_renew_lock(mocker):
     )
 
     lock_handle.extend.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# drain_status_from_stats — the single read point for the drain outcome,
+# shared by the sync orchestrator and the batch callback. Deserialized or
+# partial stats must never read as a confirmed drain.
+# ---------------------------------------------------------------------------
+
+
+def test_drain_status_from_stats_passes_through_enum():
+    assert (
+        apply_mod.drain_status_from_stats(
+            {"ingestion_drain_status": IngestionDrainStatus.skipped}
+        )
+        is IngestionDrainStatus.skipped
+    )
+
+
+def test_drain_status_from_stats_coerces_valid_string():
+    """Stats that round-tripped through JSON carry the enum's string value."""
+    assert (
+        apply_mod.drain_status_from_stats({"ingestion_drain_status": "drained"})
+        is IngestionDrainStatus.drained
+    )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["", "DRAINED", "nonsense", 1, True, None, ["drained"]],
+)
+def test_drain_status_from_stats_fails_closed(raw):
+    """Malformed, wrong-typed and missing values all read as ``timed_out`` —
+    lost observability must not present as a confirmed drain."""
+    assert (
+        apply_mod.drain_status_from_stats({"ingestion_drain_status": raw})
+        is IngestionDrainStatus.timed_out
+    )
+
+
+def test_drain_status_from_stats_missing_key_fails_closed():
+    assert apply_mod.drain_status_from_stats({}) is IngestionDrainStatus.timed_out
 
 
 # ---------------------------------------------------------------------------

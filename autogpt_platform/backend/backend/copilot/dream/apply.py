@@ -65,8 +65,9 @@ logger = logging.getLogger(__name__)
 # any defensible in-lock wait. The caller holds the dream lock until apply
 # returns (locks.DEFAULT_LOCK_TTL_SECONDS=1800, shared with the three LLM
 # phases budgeted at ~1320s), so 300s keeps the whole pass inside the lock
-# TTL envelope. Past the cap we simply revert to the pre-drain
-# fire-and-forget behavior: warn + report ``timed_out``.
+# TTL envelope. Past the cap the enqueued episodes keep processing
+# fire-and-forget in this process: apply warns and reports ``timed_out``
+# rather than failing the pass.
 INGESTION_DRAIN_TIMEOUT_SECONDS = 300
 
 # Fresh dream-lock TTL granted right before the ingestion drain on the sync
@@ -480,8 +481,8 @@ async def _drain_ingestion(
         (see ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``). The episodes still
         process fire-and-forget in the executor process.
       * ``timed_out`` — the episodes did not all land within the timeout.
-        Reverts to fire-and-forget (warn) rather than failing the pass —
-        partial visibility beats a failed pass.
+        They keep processing fire-and-forget; apply warns rather than
+        failing the pass — partial visibility beats a failed pass.
     """
     if not completion.registered:
         return IngestionDrainStatus.drained
@@ -514,7 +515,7 @@ async def apply_operations(
     known_fact_uuids: set[str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
-) -> dict[str, int | str | bool | IngestionDrainStatus | DreamOperationsSnapshot]:
+) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
     Returns a small stats dict the orchestrator can fold into
@@ -610,20 +611,35 @@ async def apply_operations(
 
     # One episode was registered per successful enqueue, so the tracker's
     # count is exactly the writes + proposals we report — the drain waits on
-    # precisely those and nothing else.
-    assert completion.registered == written + proposed
+    # precisely those and nothing else. A mismatch does not endanger the
+    # writes (the drain would just resolve early or wait out its cap), so
+    # log loudly instead of failing a pass that has already written.
+    if completion.registered != written + proposed:
+        logger.error(
+            "Dream pass %s: ingestion tracker registered %d episode(s) but "
+            "reported %d write(s) + %d proposal(s) — drain barrier is not "
+            "scoped to exactly the reported writes",
+            pass_id,
+            completion.registered,
+            written,
+            proposed,
+        )
 
     # Renew the dream lock right before the longest non-LLM tail (the
     # ingestion drain plus the demotions / summary write that follow) so the
     # lock cannot expire mid-write and let a second pass touch the same
-    # graph. Only when there is something to drain; the batch path passes no
-    # handle (it disowned the lock to its callback). A failed renewal means
-    # the lock already expired — a newer pass may own the graph — so abort
-    # before the drain and the destructive demotions/summary writes below.
-    # The write/proposal episodes already enqueued above keep processing
-    # fire-and-forget (they cannot be recalled), but the pass is reported
-    # errored instead of pretending exclusive ownership.
-    if lock_handle is not None and completion.registered:
+    # graph. Gated on there being any mutating work left — enqueued episodes
+    # to drain OR demotions / entity invalidations to apply, the most
+    # destructive ops in the pass, which a writes-free pass would otherwise
+    # run under a near-exhausted TTL. The batch path passes no handle (it
+    # disowned the lock to its callback). A failed renewal means the lock
+    # already expired — a newer pass may own the graph — so abort before the
+    # drain and the destructive writes below. The episodes already enqueued
+    # above keep processing fire-and-forget (they cannot be recalled), but
+    # the pass is reported errored instead of pretending exclusive ownership.
+    if lock_handle is not None and (
+        completion.registered or ops.demotions or ops.entity_invalidations
+    ):
         if not await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS):
             raise DreamLockLostError(user_id)
 
