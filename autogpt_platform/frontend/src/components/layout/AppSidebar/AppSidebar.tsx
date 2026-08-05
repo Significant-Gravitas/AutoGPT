@@ -24,7 +24,9 @@ import {
   NotePencilIcon,
   SquaresFourIcon,
   StorefrontIcon,
+  UsersThreeIcon,
 } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
@@ -201,6 +203,16 @@ export function AppSidebar(props: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
+  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const mainLinks = isHireExpertsEnabled
+    ? MAIN_LINKS.filter((link) => link.href !== "/library")
+    : MAIN_LINKS;
+  const workspaceLinks = isHireExpertsEnabled
+    ? [
+        { name: "Team", href: "/team", icon: UsersThreeIcon },
+        ...WORKSPACE_LINKS,
+      ]
+    : WORKSPACE_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
@@ -237,7 +249,7 @@ export function AppSidebar(props: Props) {
             <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
                 <NavMenu
-                  links={MAIN_LINKS}
+                  links={mainLinks}
                   leading={
                     <>
                       <NewTaskItem />
@@ -251,7 +263,7 @@ export function AppSidebar(props: Props) {
 
           <motion.div variants={itemVariants}>
             <CollapsibleNavGroup label="Workspace">
-              <NavMenu links={WORKSPACE_LINKS} />
+              <NavMenu links={workspaceLinks} />
             </CollapsibleNavGroup>
           </motion.div>
 

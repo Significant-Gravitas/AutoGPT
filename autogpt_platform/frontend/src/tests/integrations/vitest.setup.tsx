@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, afterEach, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
-import { mockSupabaseRequest } from "./mock-supabase-request";
+import { mockAuthRequest } from "./mock-auth-request";
 import { cleanup } from "@testing-library/react";
 
 // React 18.3 only ships `cache` under the `react-server` export condition.
@@ -43,7 +43,7 @@ vi.mock("@number-flow/react", () => ({
 
 beforeAll(() => {
   mockNextjsModules();
-  mockSupabaseRequest(); // If you need user's data - please mock supabase actions in your specific test - it sends null user [It's only to avoid cookies() call]
+  mockAuthRequest(); // If you need user's data - please mock auth actions in your specific test - it sends null user [It's only to avoid cookies() call]
   return server.listen({ onUnhandledRequest: "error" });
 });
 afterEach(() => {

@@ -13,6 +13,91 @@ generator client {
   partial_type_generator = "backend/data/partial_types.py"
 }
 
+// ============ Auth service (Better Auth) tables ============ //
+// Owned by Prisma migrations, but read/written at runtime by the Better Auth
+// service embedded in the frontend (via its pg adapter). Table and column
+// names must match Better Auth's expected model/field names exactly.
+
+model AuthUser {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          String?
+  banned        Boolean?
+  banReason     String?
+  banExpires    DateTime?
+  preferredName String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  sessions AuthSession[]
+  accounts AuthAccount[]
+
+  @@map("UserAuthIdentity")
+}
+
+model AuthSession {
+  id             String   @id
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  userId         String
+  user           AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("UserAuthSession")
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now()) @updatedAt
+  user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("UserAuthAccount")
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([identifier])
+  @@map("UserAuthVerification")
+}
+
+model AuthJwks {
+  id         String    @id
+  publicKey  String
+  privateKey String
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+
+  @@map("UserAuthJwks")
+}
+
+// ============ End auth service (Better Auth) tables ============ //
+
 // User model to mirror Auth provider users
 model User {
   id               String   @id // This should match the Supabase user ID
@@ -427,6 +512,15 @@ model ChatMessage {
   sequence   Int
   durationMs Int? // Wall-clock milliseconds for this assistant turn
 
+  // Which LLM served this assistant turn, and which routing layer picked it
+  // ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+  // overload fallback served a different model than the routed one).
+  // Product-intelligence mirrors these columns to
+  // segment quality judgments by model — model experiments are unmeasurable
+  // without them. Null on user/tool rows and rows predating this column.
+  model         String?
+  routingSource String?
+
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
   // request_arrival_at) on the user row that triggered a queued turn,
@@ -704,6 +798,8 @@ model Expert {
   role      String
   tagline   String?
   identity  String
+  bio       String?
+  skills    String[] @default([])
 
   toolProfile Json?
 
@@ -2280,4 +2376,31 @@ model BotInstall {
 
   @@unique([platform, platformServerId])
   @@index([platform, revokedAt])
+}
+
+// Retirement records: which AgentNodes were rewritten when a model was
+// retired via the retirement CLI (backend.data.llm_registry.retire), so the
+// operation is observable and revertable. Slugs are plain strings validated
+// against the catalog file at write time — the catalog is not a DB table.
+// Per-install runtime state, unlike the catalog itself (catalog-as-code).
+model LlmModelMigration {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceModelSlug String // The retired model
+  targetModelSlug String // The model workflows were migrated to
+  reason          String?
+
+  // JSON array of rewritten AgentNode ids, for revert
+  migratedNodeIds Json @default("[]")
+  nodeCount       Int // DB constraint: >= 0
+
+  isReverted Boolean   @default(false)
+  revertedAt DateTime?
+
+  // Note: Partial unique index in migration SQL prevents multiple active
+  // migrations per source: UNIQUE (sourceModelSlug) WHERE isReverted = false
+  @@index([targetModelSlug])
+  @@index([sourceModelSlug, isReverted])
 }

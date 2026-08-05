@@ -10,7 +10,7 @@ import {
 } from "../direct-upload";
 
 const getTokenMock = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/supabase/actions", () => ({
+vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: getTokenMock,
 }));
 

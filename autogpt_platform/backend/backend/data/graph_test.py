@@ -14,7 +14,7 @@ from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.graph import (
     Graph,
     GraphModel,
@@ -2184,7 +2184,7 @@ async def test_migrate_llm_models_uses_schema_prefix_placeholder():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     for call in mock_execute.await_args_list:
         query_template = call.args[0]
@@ -2202,7 +2202,7 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
     values (e.g. ``anthropic/claude-sonnet-4-20250514``) to the family-aware
     replacement, not let them fall through to the global ``fallback`` model.
 
-    ``LlmModel._missing_`` accepts prefixed inputs at write time, so historical
+    ``LLMModel._missing_`` accepts prefixed inputs at write time, so historical
     rows may carry either the bare or prefixed form."""
     bare_legacy_value = "claude-sonnet-4-20250514"
     expected_replacement = LEGACY_MODEL_MAPPINGS[bare_legacy_value].value
@@ -2212,7 +2212,7 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     # Targeted query has 5 SQL params ($1..$5), so its call has 6 positional
     # args: (query, [path], replacement, block_id, path, stored_value).
@@ -2244,7 +2244,7 @@ async def test_migrate_llm_models_covers_preset_overrides():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     queries = [call.args[0] for call in mock_execute.await_args_list]
     assert any(

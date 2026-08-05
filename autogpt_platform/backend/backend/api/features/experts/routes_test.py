@@ -42,6 +42,8 @@ def _make_expert(**overrides) -> Expert:
         "avatar_url": None,
         "role": "Marketing Specialist",
         "tagline": "Grows your audience",
+        "bio": None,
+        "skills": [],
         "identity": "You are Maria, a pragmatic marketing specialist.",
         "is_template": False,
         "source_template_id": "template-1",
