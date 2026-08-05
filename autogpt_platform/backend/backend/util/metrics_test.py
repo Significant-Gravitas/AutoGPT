@@ -14,6 +14,7 @@ import sys
 
 from sentry_sdk.consts import DEFAULT_OPTIONS
 from sentry_sdk.utils import event_from_exception
+
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
     _FALKORDB_TEARDOWN_SIGNATURES,

@@ -25,6 +25,9 @@ from backend.integrations.codex.models import (
     CodexInvocationRequest,
     CodexInvocationResult,
 )
+from backend.integrations.codex.models import (
+    CodexReasoningEffort as CodexRuntimeReasoningEffort,
+)
 from backend.integrations.codex.transport import get_codex_transport
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.providers import ProviderName
@@ -66,8 +69,24 @@ class CodexExecutionTransport(str, Enum):
     CODEX_APP_SERVER = "codex_app_server"
 
 
-def _app_server_effort(effort: CodexReasoningEffort) -> str | None:
-    return None if effort == CodexReasoningEffort.NONE else effort.value
+_APP_SERVER_EFFORT: dict[
+    CodexReasoningEffort,
+    CodexRuntimeReasoningEffort | None,
+] = {
+    CodexReasoningEffort.NONE: None,
+    CodexReasoningEffort.LOW: "low",
+    CodexReasoningEffort.MEDIUM: "medium",
+    CodexReasoningEffort.HIGH: "high",
+    CodexReasoningEffort.XHIGH: "xhigh",
+    CodexReasoningEffort.MAX: "max",
+    CodexReasoningEffort.ULTRA: "ultra",
+}
+
+
+def _app_server_effort(
+    effort: CodexReasoningEffort,
+) -> CodexRuntimeReasoningEffort | None:
+    return _APP_SERVER_EFFORT[effort]
 
 
 CodexCredentials = CredentialsMetaInput[

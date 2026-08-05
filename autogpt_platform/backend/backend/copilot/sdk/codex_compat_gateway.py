@@ -123,7 +123,7 @@ class CodexAnthropicGateway:
     ) -> None:
         self._credential_lease = credential_lease
         self.model = model
-        self.effort = effort
+        self.effort: CodexReasoningEffort | None = effort
         self._transport = cast(
             _AgentTransport,
             transport if transport is not None else get_codex_transport(),
@@ -190,15 +190,17 @@ class CodexAnthropicGateway:
                 self._handle_count_tokens,
             )
             application.router.add_get("/healthz", self._handle_health)
-            self._runner = web.AppRunner(
+            runner = web.AppRunner(
                 application,
                 access_log=None,
                 shutdown_timeout=2,
             )
-            await self._runner.setup()
-            self._site = web.TCPSite(self._runner, "127.0.0.1", 0)
-            await self._site.start()
-            server = self._site._server
+            self._runner = runner
+            await runner.setup()
+            site = web.TCPSite(runner, "127.0.0.1", 0)
+            self._site = site
+            await site.start()
+            server = cast(asyncio.Server | None, site._server)
             if server is None or not server.sockets:
                 raise RuntimeError("Codex Anthropic gateway failed to bind")
             port = int(server.sockets[0].getsockname()[1])

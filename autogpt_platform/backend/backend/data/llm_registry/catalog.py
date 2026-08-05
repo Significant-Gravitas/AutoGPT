@@ -1412,9 +1412,9 @@ def _build_catalog() -> CatalogPayload:
                 cost=CatalogModelCost(run_credits=1),
             ),
         ],
-        # Platform-funded Copilot cells remain env-controlled. Codex has no
-        # deployment-wide model env: its separate surface is resolved against
-        # the models advertised by each connected ChatGPT account.
+        # Platform-funded Copilot cells deliberately remain env-controlled.
+        # Codex has no deployment-wide model env: its separate surface is
+        # resolved against the models advertised by each connected account.
         routing={
             "copilot_codex": {
                 "fast": {

@@ -15,7 +15,6 @@ from backend.data.model import (
 from backend.executor.manager import execute_node
 from backend.integrations.providers import ProviderName
 
-
 CodexCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.CODEX], Literal["oauth2"]
 ]

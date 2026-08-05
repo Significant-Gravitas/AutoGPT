@@ -10,10 +10,11 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import {
-  CaretDownIcon,
-  TerminalIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
+  Alert01Icon,
+  ArrowDown01Icon,
+  Key01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useContext, useEffect } from "react";
 import {
   getConnectedSubsidizedLlmTransports,
@@ -94,18 +95,18 @@ export function LlmRouteSelector() {
           )}
         >
           {selectedConnectionMissing ? (
-            <WarningCircleIcon size={14} />
+            <Icon icon={Alert01Icon} size={14} />
           ) : (
-            <TerminalIcon size={14} />
+            <Icon icon={Key01Icon} size={14} />
           )}
           <span className="hidden sm:inline">{selectionLabel}</span>
-          <CaretDownIcon className="size-3 text-zinc-400" weight="bold" />
+          <Icon icon={ArrowDown01Icon} size={12} className="text-zinc-400" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         {selectedConnectionMissing && (
           <DropdownMenuItem disabled className="gap-2 text-red-600">
-            <WarningCircleIcon size={16} />
+            <Icon icon={Alert01Icon} size={16} />
             Selected connection is unavailable
           </DropdownMenuItem>
         )}
@@ -128,7 +129,7 @@ export function LlmRouteSelector() {
                   "bg-zinc-100",
               )}
             >
-              <TerminalIcon size={16} />
+              <Icon icon={Key01Icon} size={16} />
               <div className="min-w-0">
                 <div>{transport.label}</div>
                 <div className="truncate text-xs text-zinc-500">

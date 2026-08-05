@@ -1,10 +1,11 @@
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
-import { ClockClockwiseIcon, FlaskIcon } from "@phosphor-icons/react";
 import { formatDistanceToNow, formatDistanceStrict } from "date-fns";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
+import { FlaskConicalIcon, TimeScheduleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   agent: LibraryAgent;
@@ -26,10 +27,10 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   <RunStatusBadge status={run.status} />
                   {run.is_dry_run && (
                     <div className="inline-flex items-center gap-1 rounded-md bg-amber-50 p-1">
-                      <FlaskIcon
+                      <Icon
+                        icon={FlaskConicalIcon}
                         size={16}
                         className="text-amber-700"
-                        weight="fill"
                       />
                       <Text variant="small-medium" className="!text-amber-700">
                         Simulated
@@ -39,10 +40,10 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                 </div>
               ) : scheduleRecurrence ? (
                 <div className="inline-flex items-center gap-1 rounded-md bg-yellow-50 p-1">
-                  <ClockClockwiseIcon
+                  <Icon
+                    icon={TimeScheduleIcon}
                     size={16}
                     className="text-yellow-700"
-                    weight="bold"
                   />
                   <Text variant="small-medium" className="text-yellow-700">
                     Scheduled

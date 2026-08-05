@@ -10,11 +10,11 @@ from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.data.model import Credentials, OAuth2Credentials
+from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import (
     IntegrationCredentialsStore,
     provider_matches,
 )
-from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError

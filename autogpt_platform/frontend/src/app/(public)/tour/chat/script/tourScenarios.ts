@@ -1,9 +1,3 @@
-import {
-  HeadsetIcon,
-  MagnifyingGlassIcon,
-  PhoneCallIcon,
-  SunIcon,
-} from "@phosphor-icons/react";
 import { callPrepScript } from "./callPrepScript";
 import {
   callPrepArtifact,
@@ -15,26 +9,32 @@ import { competitorWatchScript } from "./competitorWatchScript";
 import { dailyBriefScript } from "./dailyBriefScript";
 import { supportQueueScript } from "./supportQueueScript";
 import type { TourScenario } from "./types";
+import {
+  CallRinging01Icon,
+  HeadsetIcon,
+  Search01Icon,
+  Sun01Icon,
+} from "@hugeicons/core-free-icons";
 
 export const tourScenarios: TourScenario[] = [
   {
     id: "daily-brief",
     label: "Daily brief",
-    icon: SunIcon,
+    icon: Sun01Icon,
     script: dailyBriefScript,
     completionArtifact: dailyBriefArtifact,
   },
   {
     id: "call-prep",
     label: "Call prep",
-    icon: PhoneCallIcon,
+    icon: CallRinging01Icon,
     script: callPrepScript,
     completionArtifact: callPrepArtifact,
   },
   {
     id: "competitor-watch",
     label: "Competitor watch",
-    icon: MagnifyingGlassIcon,
+    icon: Search01Icon,
     script: competitorWatchScript,
     completionArtifact: competitorWatchArtifact,
   },

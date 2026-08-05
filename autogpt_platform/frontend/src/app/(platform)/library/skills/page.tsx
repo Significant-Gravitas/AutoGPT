@@ -3,8 +3,9 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { SkillsPanel } from "@/components/contextual/SkillsPanel/SkillsPanel";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function SkillsPage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function SkillsPage() {
         className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
         data-testid="skills-back-to-library"
       >
-        <ArrowLeftIcon size={14} weight="bold" />
+        <Icon icon={ArrowLeft02Icon} size={14} />
         Back to Library
       </Link>
       <SkillsPanel onGuidedPrompt={handleGuidedPrompt} />

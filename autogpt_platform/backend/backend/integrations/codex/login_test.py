@@ -10,13 +10,10 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.codex.auth_bundle import (
-    CodexAuthBundleV1,
-    CodexAuthTokensV1,
-)
+from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
 from backend.integrations.codex.login import (
-    CodexLoginCoordinator,
     CodexDeviceLoginState,
+    CodexLoginCoordinator,
     CodexLoginPendingError,
     CodexLoginStatus,
     CodexLoginTransport,

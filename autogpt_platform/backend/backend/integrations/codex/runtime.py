@@ -177,7 +177,7 @@ class CodexRuntime:
             ],
         ] = {}
         self._dynamic_tool_futures: dict[
-            str, set[concurrent.futures.Future[object]]
+            str, set[concurrent.futures.Future[CodexDynamicToolResult]]
         ] = {}
         self._dynamic_tool_futures_lock = threading.Lock()
 
@@ -429,7 +429,7 @@ class CodexRuntime:
                     "type": "function",
                     "name": tool.name,
                     "description": tool.description,
-                    "inputSchema": tool.input_schema,
+                    "inputSchema": cast(JsonObject, tool.input_schema),
                 }
                 for tool in dynamic_tools
             ],
@@ -526,7 +526,7 @@ class CodexRuntime:
         if getattr(sync_client, "_autogpt_dynamic_tool_dispatcher", False):
             return
         sync_client._approval_handler = handle
-        sync_client._autogpt_dynamic_tool_dispatcher = True
+        setattr(sync_client, "_autogpt_dynamic_tool_dispatcher", True)
 
     def _cancel_dynamic_tool_futures(self, thread_id: str | None = None) -> None:
         with self._dynamic_tool_futures_lock:
@@ -586,7 +586,7 @@ def _install_concurrent_server_request_dispatcher(client: AsyncCodex) -> None:
         sync_client,
         max_concurrency=_SERVER_REQUEST_MAX_CONCURRENCY,
     )
-    sync_client._autogpt_server_request_dispatcher = dispatcher
+    setattr(sync_client, "_autogpt_server_request_dispatcher", dispatcher)
 
     def reader_loop(instance: Any) -> None:
         try:
@@ -617,7 +617,10 @@ def _shutdown_concurrent_server_request_dispatcher(
     timeout_seconds: float,
 ) -> bool:
     try:
-        dispatcher = client._client._sync._autogpt_server_request_dispatcher
+        dispatcher = getattr(
+            client._client._sync,
+            "_autogpt_server_request_dispatcher",
+        )
     except AttributeError:
         return True
     return dispatcher.close(timeout_seconds)

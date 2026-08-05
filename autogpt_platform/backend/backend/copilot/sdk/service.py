@@ -41,11 +41,18 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.copilot.model_router import (
+    ResolvedModel,
+    RoutingSource,
+    resolve_codex_model_route,
+    resolve_model_route,
+)
+from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
+from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
@@ -65,12 +72,6 @@ from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
-from ..model_router import (
-    CodexRoutingSource,
-    ResolvedModel,
-    RoutingSource,
-    resolve_model_route,
-)
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
     override_cost_usd as _override_cost_for_moonshot,
@@ -2085,14 +2086,12 @@ async def _resolve_sdk_model_for_request(
     return sdk_model, resolved.source
 
 
-def _codex_gateway_usage(gateway: Any) -> CodexTokenUsage | None:
+def _codex_gateway_usage(
+    gateway: CodexAnthropicGateway,
+) -> CodexTokenUsage | None:
     """Read authoritative aggregate usage from a completed Codex gateway."""
-    usage = getattr(gateway, "usage", None)
-    if isinstance(usage, CodexTokenUsage):
-        return usage
-    result = getattr(gateway, "result", None)
-    result_usage = getattr(result, "usage", None)
-    return result_usage if isinstance(result_usage, CodexTokenUsage) else None
+    result = gateway.result
+    return result.usage if result is not None else None
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -4027,7 +4026,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Stamping state for THIS turn: messages beyond this index were created
     # by the current turn and get model/routing_source at persist time.
     # Pre-feature history rows (NULL model) must never be back-stamped.
-    routing_source: RoutingSource | CodexRoutingSource = "env"
+    routing_source: "RoutingSource" = "env"
 
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
@@ -4187,8 +4186,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
-    codex_effort: CodexReasoningEffort | None = None
-    codex_gateway: Any = None
+    codex_effort: "CodexReasoningEffort | None" = None
+    codex_gateway: CodexAnthropicGateway | None = None
     deferred_codex_cleanup_error: BaseException | None = None
     is_codex_transport = credential_lease is not None
     # Wall-clock timestamp captured before the CLI runs so the
@@ -4366,10 +4365,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
         if credential_lease is not None:
-            from ..model_router import resolve_codex_model_route
-            from .codex_compat_gateway import CodexAnthropicGateway
-
-            tier_name: CopilotLLMModel = (
+            tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
             route_mode = "fast" if mode == "fast" else "thinking"
@@ -5768,7 +5764,7 @@ def _stamp_turn_messages(
     start_index: int,
     requested_model: str | None,
     actual_model: str | None,
-    routing_source: RoutingSource | CodexRoutingSource,
+    routing_source: "RoutingSource",
 ) -> None:
     """Stamp THIS turn's assistant messages with the serving model and
     routing layer.

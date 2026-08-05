@@ -881,6 +881,7 @@ export type OnboardingStep =
   | "CONGRATS"
   // First Wins
   | "VISIT_COPILOT"
+  | "CAPABILITY_CARDS"
   | "GET_RESULTS"
   | "MARKETPLACE_VISIT"
   | "MARKETPLACE_ADD_AGENT"

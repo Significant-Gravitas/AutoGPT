@@ -19,8 +19,9 @@ import {
   determineDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
-import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useRunAgentInputs } from "./useRunAgentInputs";
+import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -328,7 +329,7 @@ export function RunAgentInputs({
                         onClick={() => removeRow(rowIndex)}
                         className="h-8 w-8 p-0"
                       >
-                        <XIcon className="h-4 w-4" weight="bold" />
+                        <Icon icon={Cancel01Icon} className="h-4 w-4" />
                       </Button>
                     </td>
                   </tr>
@@ -343,7 +344,7 @@ export function RunAgentInputs({
             onClick={addRow}
             className="w-full"
           >
-            <PlusIcon className="mr-2 h-4 w-4" weight="bold" />
+            <Icon icon={PlusSignIcon} className="mr-2 h-4 w-4" />
             Add Row
           </Button>
         </div>

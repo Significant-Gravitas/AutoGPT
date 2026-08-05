@@ -152,8 +152,7 @@ class RunSubSessionTool(BaseTool):
                     session_id=session.session_id,
                 )
             if (
-                owned.metadata.llm_auth_provider
-                != session.metadata.llm_auth_provider
+                owned.metadata.llm_auth_provider != session.metadata.llm_auth_provider
                 or owned.metadata.llm_credential_id
                 != session.metadata.llm_credential_id
             ):

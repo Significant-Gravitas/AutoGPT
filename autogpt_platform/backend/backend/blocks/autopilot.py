@@ -28,11 +28,7 @@ from backend.copilot.permissions import (
     all_known_tool_names,
     validate_block_identifiers,
 )
-from backend.data.model import (
-    CredentialsField,
-    CredentialsMetaInput,
-    SchemaField,
-)
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
 

@@ -13,6 +13,12 @@ from codex_cli_bin import bundled_codex_path
 from openai_codex import AsyncCodex
 
 import backend.integrations.codex.runtime as runtime_module
+from backend.integrations.codex.models import (
+    CodexDynamicToolResult,
+    CodexDynamicToolSpec,
+    CodexInvocationRequest,
+    CodexModelInfo,
+)
 from backend.integrations.codex.runtime import (
     CODEX_RUNTIME_VERSION,
     OPENAI_CODEX_VERSION,
@@ -23,12 +29,6 @@ from backend.integrations.codex.runtime import (
     _install_fail_closed_approval_handler,
     assert_pinned_versions,
     build_runtime_config,
-)
-from backend.integrations.codex.models import (
-    CodexDynamicToolResult,
-    CodexDynamicToolSpec,
-    CodexInvocationRequest,
-    CodexModelInfo,
 )
 from backend.integrations.codex.temporary_home import TemporaryCodexHome
 

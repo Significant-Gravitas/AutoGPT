@@ -2,9 +2,9 @@ import asyncio
 import hashlib
 import logging
 import secrets
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
-from typing import Literal, Protocol, TypeGuard
+from typing import Literal, Protocol, TypeGuard, TypeVar
 
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import BaseModel, ConfigDict
@@ -35,6 +35,14 @@ if redis.call('get', KEYS[1]) == ARGV[1] then
 end
 return 0
 """
+
+_T = TypeVar("_T")
+
+
+async def _await_redis_result(result: Awaitable[_T] | _T) -> _T:
+    if isinstance(result, Awaitable):
+        return await result
+    return result
 
 
 class CodexDeviceLoginSession(Protocol):
@@ -113,11 +121,13 @@ class RedisCodexLoginStateStore:
         try:
             await self.write(state, login_id)
         except Exception:
-            await redis.eval(
-                _COMPARE_DELETE_SCRIPT,
-                1,
-                _active_key(state.user_id),
-                login_id,
+            await _await_redis_result(
+                redis.eval(
+                    _COMPARE_DELETE_SCRIPT,
+                    1,
+                    _active_key(state.user_id),
+                    login_id,
+                )
             )
             raise
         return True
@@ -140,22 +150,26 @@ class RedisCodexLoginStateStore:
 
     async def release_active(self, user_id: str, login_id: str) -> None:
         redis = await get_redis_async()
-        await redis.eval(
-            _COMPARE_DELETE_SCRIPT,
-            1,
-            _active_key(user_id),
-            login_id,
+        await _await_redis_result(
+            redis.eval(
+                _COMPARE_DELETE_SCRIPT,
+                1,
+                _active_key(user_id),
+                login_id,
+            )
         )
 
     async def refresh_active(self, user_id: str, login_id: str) -> bool:
         redis = await get_redis_async()
         return bool(
-            await redis.eval(
-                _COMPARE_EXPIRE_SCRIPT,
-                1,
-                _active_key(user_id),
-                login_id,
-                self._owner_lease_seconds,
+            await _await_redis_result(
+                redis.eval(
+                    _COMPARE_EXPIRE_SCRIPT,
+                    1,
+                    _active_key(user_id),
+                    login_id,
+                    str(self._owner_lease_seconds),
+                )
             )
         )
 
