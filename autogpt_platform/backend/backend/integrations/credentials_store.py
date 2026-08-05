@@ -55,6 +55,14 @@ ollama_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+minimax_credentials = APIKeyCredentials(
+    id="5fdb5b21-1db7-4f2e-bf40-4f5fddc5a0b7",
+    provider="minimax",
+    api_key=SecretStr("FAKE_API_KEY"),
+    title="Use Credits for MiniMax",
+    expires_at=None,
+)
+
 ideogram_credentials = APIKeyCredentials(
     id="760f84fc-b270-42de-91f6-08efe1b512d0",
     provider="ideogram",

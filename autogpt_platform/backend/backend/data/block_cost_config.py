@@ -86,6 +86,7 @@ from backend.integrations.credentials_store import (
     jina_credentials,
     llama_api_credentials,
     mem0_credentials,
+    minimax_credentials,
     nvidia_credentials,
     ollama_credentials,
     open_router_credentials,
@@ -480,6 +481,12 @@ LLM_COST = (
         _tokens_llm_cost(model, llama_api_credentials)
         for model in MODEL_COST
         if MODEL_METADATA[model].provider == "llama_api"
+    ]
+    # MiniMax Models
+    + [
+        _tokens_llm_cost(model, minimax_credentials)
+        for model in MODEL_COST
+        if MODEL_METADATA[model].provider == "minimax"
     ]
     # v0 by Vercel Models
     + [

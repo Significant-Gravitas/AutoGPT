@@ -20,9 +20,10 @@ from backend.blocks.code_executor import (
     InstantiateCodeSandboxBlock,
 )
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
+from backend.blocks.llm import LlmModel
 from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.youtube import TranscribeYoutubeVideoBlock
-from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.block_cost_config import BLOCK_COSTS, LLM_COST
 from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
@@ -184,3 +185,12 @@ def test_transcribe_youtube_has_one_credit_tooling_floor():
         },
     )
     assert cost == 1
+
+
+def test_minimax_models_are_registered_under_llm_cost():
+    models = {
+        entry.cost_filter["model"]
+        for entry in LLM_COST
+        if entry.cost_filter["credentials"]["provider"] == "minimax"
+    }
+    assert models == {LlmModel.MINIMAX_M3, LlmModel.MINIMAX_M2_7}
