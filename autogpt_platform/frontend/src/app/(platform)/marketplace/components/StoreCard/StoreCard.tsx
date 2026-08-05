@@ -96,7 +96,7 @@ export function StoreCard({
                   alt={`${creatorName} creator avatar`}
                 />
               )}
-              <AvatarFallback size={20}>{creatorName.charAt(0)}</AvatarFallback>
+              <AvatarFallback size={20}>{creatorName}</AvatarFallback>
             </Avatar>
             <span className="truncate text-[13px] text-zinc-500">
               by {creatorName}

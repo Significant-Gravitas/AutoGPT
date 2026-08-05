@@ -36,7 +36,7 @@ export function CreatorCard({
         {creatorImage && (
           <AvatarImage src={creatorImage} alt={`${creatorName} avatar`} />
         )}
-        <AvatarFallback size={56}>{creatorName.charAt(0)}</AvatarFallback>
+        <AvatarFallback size={56}>{creatorName}</AvatarFallback>
       </Avatar>
 
       <div className="mt-3 flex w-full flex-1 flex-col">

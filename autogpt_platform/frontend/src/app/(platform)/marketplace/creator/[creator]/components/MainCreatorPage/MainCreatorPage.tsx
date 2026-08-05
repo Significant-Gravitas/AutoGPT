@@ -85,9 +85,7 @@ export function MainCreatorPage({ params }: Props) {
                         alt={`${creator.name} avatar`}
                       />
                     )}
-                    <AvatarFallback size={96}>
-                      {creator.name.charAt(0)}
-                    </AvatarFallback>
+                    <AvatarFallback size={96}>{creator.name}</AvatarFallback>
                   </Avatar>
 
                   {/* Name */}
