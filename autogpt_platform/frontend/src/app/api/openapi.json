@@ -15323,18 +15323,9 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Credential Id"
           },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "available": {
-            "type": "boolean",
-            "title": "Available"
-          },
-          "default": {
-            "type": "boolean",
-            "title": "Default"
-          }
+          "label": { "type": "string", "title": "Label" },
+          "available": { "type": "boolean", "title": "Available" },
+          "default": { "type": "boolean", "title": "Default" }
         },
         "type": "object",
         "required": [
@@ -15349,9 +15340,7 @@
       "ChatTransportsResponse": {
         "properties": {
           "transports": {
-            "items": {
-              "$ref": "#/components/schemas/ChatTransportResponse"
-            },
+            "items": { "$ref": "#/components/schemas/ChatTransportResponse" },
             "type": "array",
             "title": "Transports"
           }
