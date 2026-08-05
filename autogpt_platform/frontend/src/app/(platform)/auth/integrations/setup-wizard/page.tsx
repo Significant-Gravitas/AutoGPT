@@ -12,11 +12,12 @@ import type {
   CredentialsMetaInput,
   CredentialsType,
 } from "@/lib/autogpt-server-api";
-import { CheckIcon, CircleIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
+import { CircleIcon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // All credential types - we accept any type of credential
 const ALL_CREDENTIAL_TYPES: CredentialsType[] = [
@@ -257,16 +258,16 @@ export default function IntegrationSetupWizardPage() {
                     </Text>
                     <div className="grow"></div>
                     {isSelected ? (
-                      <CheckIcon
+                      <Icon
+                        icon={Tick02Icon}
                         size={20}
                         className="text-green-500"
-                        weight="bold"
                       />
                     ) : (
-                      <CircleIcon
+                      <Icon
+                        icon={CircleIcon}
                         size={20}
                         className="text-slate-300"
-                        weight="bold"
                       />
                     )}
                     {isSelected && (

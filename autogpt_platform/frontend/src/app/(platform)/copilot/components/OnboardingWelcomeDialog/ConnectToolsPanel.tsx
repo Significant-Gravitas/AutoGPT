@@ -1,12 +1,13 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ConnectMethodView } from "./ConnectMethodView";
 import { ConnectProviderRow } from "./ConnectProviderRow";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { MagnifyingGlassIcon, PlugIcon } from "@phosphor-icons/react";
+import { Plug01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect } from "react";
 import { useConnectToolsPanel } from "./useConnectToolsPanel";
@@ -131,7 +132,8 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
               ) : (
                 <div className="flex flex-col gap-4">
                   <div className="relative w-full">
-                    <MagnifyingGlassIcon
+                    <Icon
+                      icon={Search01Icon}
                       size={20}
                       className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#83838C]"
                     />
@@ -148,7 +150,11 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                   {query.trim() ? (
                     providers.length === 0 ? (
                       <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-8 text-center">
-                        <PlugIcon size={24} className="text-[#83838C]" />
+                        <Icon
+                          icon={Plug01Icon}
+                          size={24}
+                          className="text-[#83838C]"
+                        />
                         <Text variant="body" className="text-[#505057]">
                           {`No services match "${query.trim()}"`}
                         </Text>

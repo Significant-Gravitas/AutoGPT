@@ -55,6 +55,7 @@ import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
@@ -160,6 +161,9 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
+
+    # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
+    backend.data.llm_registry.load_catalog()
 
     with launch_darkly_context():
         yield

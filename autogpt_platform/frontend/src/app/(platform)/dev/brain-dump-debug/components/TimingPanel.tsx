@@ -1,6 +1,6 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
-import { TimerIcon } from "@phosphor-icons/react";
+import { Timer01Icon } from "@hugeicons/core-free-icons";
 import {
   BUDGET_DUMP_LENGTH,
   EXTRACT_BUDGET_MS,
@@ -20,7 +20,7 @@ export function TimingPanel({ stages, finalizeRoundTripMs }: Props) {
     <DebugPanel
       title="Timing waterfall"
       description={`Budget for a ${BUDGET_DUMP_LENGTH}: transcription within ${formatMs(TRANSCRIBE_BUDGET_MS)} of pressing Done, extraction within ${formatMs(EXTRACT_BUDGET_MS)} after that.`}
-      icon={TimerIcon}
+      icon={Timer01Icon}
       action={
         finalizeRoundTripMs !== null ? (
           <Badge variant="info">

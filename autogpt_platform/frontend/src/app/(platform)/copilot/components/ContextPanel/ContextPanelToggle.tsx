@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { FolderIcon } from "@phosphor-icons/react";
 import { useCopilotUIStore } from "../../store";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function ContextPanelToggle() {
   const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
@@ -23,7 +24,7 @@ export function ContextPanelToggle() {
         aria-label="Open workspace panel"
         aria-pressed={false}
       >
-        <FolderIcon className="!size-5" />
+        <Icon icon={Folder01Icon} className="!size-5" />
       </Button>
     </div>
   );

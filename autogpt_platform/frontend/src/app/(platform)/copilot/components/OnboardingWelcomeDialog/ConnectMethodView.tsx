@@ -1,6 +1,7 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ProviderAvatar";
 import type { ApiKeyConnectFormValues } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
@@ -14,11 +15,11 @@ import type { UseFormReturn } from "react-hook-form";
 import { InlineApiKeyForm } from "./InlineApiKeyForm";
 import {
   GlobeIcon,
-  KeyIcon,
-  ShieldCheckIcon,
+  Key01Icon,
+  SecurityCheckIcon,
   UserIcon,
-  type Icon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, motion } from "framer-motion";
 
 interface Props {
@@ -38,18 +39,23 @@ const METHOD_ORDER: AuthMethod[] = [
 
 const METHOD_COPY: Record<
   AuthMethod,
-  { label: string; description: string; icon: Icon; recommended?: boolean }
+  {
+    label: string;
+    description: string;
+    icon: IconSvgElement;
+    recommended?: boolean;
+  }
 > = {
   [AuthType.oauth2]: {
     label: "OAuth",
     description: "One-click secure access.",
-    icon: ShieldCheckIcon,
+    icon: SecurityCheckIcon,
     recommended: true,
   },
   [AuthType.api_key]: {
     label: "API Key",
     description: "Paste your token for a custom setup.",
-    icon: KeyIcon,
+    icon: Key01Icon,
   },
   [AuthType.user_password]: {
     label: "Username & password",
@@ -125,11 +131,7 @@ export function ConnectMethodView({
                 }
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
-                  <copy.icon
-                    size={22}
-                    weight="duotone"
-                    className="text-zinc-700"
-                  />
+                  <Icon icon={copy.icon} size={22} className="text-zinc-700" />
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex items-center gap-2">

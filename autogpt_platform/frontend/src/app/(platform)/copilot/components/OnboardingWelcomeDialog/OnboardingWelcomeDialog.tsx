@@ -2,17 +2,18 @@
 
 import { usePostV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
+  ArrowLeft01Icon,
   BrainIcon,
-  CaretLeftIcon,
+  ElectricPlugsIcon,
   GraduationCapIcon,
-  PlugsConnectedIcon,
-  SparkleIcon,
-  type Icon,
-} from "@phosphor-icons/react";
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
@@ -29,7 +30,7 @@ interface CapabilityCard {
   // Capped at 20 words — an icon, short title, one sentence.
   body: string;
   /** Stage art: big duotone-violet icon in a white tile. */
-  icon?: Icon;
+  icon?: IconSvgElement;
   /** Expands the dialog into the embedded provider picker. */
   cta?: { label: string };
 }
@@ -38,12 +39,12 @@ const CARDS: CapabilityCard[] = [
   {
     title: "Meet AutoPilot.",
     body: "It does the work. Ask once, or put it on a schedule. It delivers while you do something else.",
-    icon: SparkleIcon,
+    icon: SparklesIcon,
   },
   {
     title: "It works inside your tools.",
     body: "Slack, Gmail, Notion, GitHub and 40+ more. 500+ blocks under the hood.",
-    icon: PlugsConnectedIcon,
+    icon: ElectricPlugsIcon,
     cta: { label: "Connect your tools" },
   },
   {
@@ -191,7 +192,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                               onClick={() => setCardIndex(cardIndex - 1)}
                               className="-ml-1 flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-white/50"
                             >
-                              <CaretLeftIcon size={13} weight="bold" />
+                              <Icon icon={ArrowLeft01Icon} size={13} />
                             </button>
                           )}
                           {cardIndex + 1} of {CARDS.length}
@@ -209,9 +210,9 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                             {card.icon && (
                               <div className="flex h-full items-center justify-center">
                                 <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-lg">
-                                  <card.icon
+                                  <Icon
+                                    icon={card.icon}
                                     size={40}
-                                    weight="duotone"
                                     className="text-violet-600"
                                   />
                                 </div>

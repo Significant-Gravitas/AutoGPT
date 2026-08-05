@@ -5,9 +5,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import { FlaskIcon } from "@phosphor-icons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ToggleChip } from "@/components/atoms/ToggleChip/ToggleChip";
+import { cn } from "@/lib/utils";
+import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
 
 // This button is only rendered on NEW chats (no active session).
 // Once a session exists, it is hidden — the session's dry_run flag is
@@ -44,7 +45,7 @@ export function DryRunToggleButton({
             )}
             aria-label={ariaLabel}
           >
-            <FlaskIcon size={14} />
+            <Icon icon={FlaskConicalIcon} size={14} />
             <span className="hidden sm:inline">
               {isDryRun ? "Test mode enabled" : "Enable test mode"}
             </span>
@@ -57,7 +58,7 @@ export function DryRunToggleButton({
 
   return (
     <ToggleChip
-      icon={<FlaskIcon size={14} />}
+      icon={<Icon icon={FlaskConicalIcon} size={14} />}
       label={isDryRun ? "Test mode enabled" : "Enable test mode"}
       tooltip={tooltip}
       ariaLabel={ariaLabel}

@@ -2,8 +2,9 @@ import type { DumpStatusResponse } from "@/app/api/__generated__/models/dumpStat
 import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Link } from "@/components/atoms/Link/Link";
-import { DownloadSimpleIcon, WaveformIcon } from "@phosphor-icons/react";
+import { AudioWaveformIcon, Download01Icon } from "@hugeicons/core-free-icons";
 import {
   formatMs,
   formatValue,
@@ -39,11 +40,11 @@ export function ServerStatusPanel({
     <DebugPanel
       title="Server status"
       description={`GET /onboarding/brain-dump/status, polled every ${STATUS_POLL_MS}ms.`}
-      icon={WaveformIcon}
+      icon={AudioWaveformIcon}
       action={
         <Link href={recordingDownloadHref()} isExternal variant="secondary">
           <span className="inline-flex items-center gap-2">
-            <DownloadSimpleIcon size={16} />
+            <Icon icon={Download01Icon} size={16} />
             Download server-side recording
           </span>
         </Link>

@@ -5,10 +5,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import { BrainIcon, LightningIcon, LockIcon } from "@phosphor-icons/react";
-import type { CopilotMode } from "../../../store";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ToggleChip } from "@/components/atoms/ToggleChip/ToggleChip";
+import { cn } from "@/lib/utils";
+import { BrainIcon, FlashIcon, LockIcon } from "@hugeicons/core-free-icons";
+import type { CopilotMode } from "../../../store";
 
 interface Props {
   mode: CopilotMode;
@@ -39,8 +40,12 @@ export function ModeToggleButton({
       : "Switch to Extended Thinking mode";
 
   function getIcon() {
-    if (pinned) return <LockIcon size={14} />;
-    return isExtended ? <BrainIcon size={14} /> : <LightningIcon size={14} />;
+    if (pinned) return <Icon icon={LockIcon} size={14} />;
+    return isExtended ? (
+      <Icon icon={BrainIcon} size={14} />
+    ) : (
+      <Icon icon={FlashIcon} size={14} />
+    );
   }
 
   if (variant === "pill") {

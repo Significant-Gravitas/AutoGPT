@@ -10,7 +10,7 @@ import { AccountMenuActivityRow } from "./components/AccountMenuActivityRow";
 import { AccountMenuHeader } from "./components/AccountMenuHeader";
 import { AccountMenuRow } from "./components/AccountMenuRow";
 import { InitialAvatar } from "./components/InitialAvatar";
-import { getAccountMenuPhosphorIcon } from "./helpers";
+import { getAccountMenuIcon } from "./helpers";
 
 interface Props {
   userName?: string;
@@ -78,10 +78,7 @@ export function AccountMenuNewLayout({
                 <ul className="flex flex-col gap-0.5">
                   {group.items.map((item, itemIndex) => {
                     const key = `${groupIndex}-${itemIndex}-${item.text}`;
-                    const icon = getAccountMenuPhosphorIcon(
-                      item.icon,
-                      "regular",
-                    );
+                    const icon = getAccountMenuIcon(item.icon);
 
                     if (item.text === "Log out") {
                       return (

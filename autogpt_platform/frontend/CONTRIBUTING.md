@@ -91,7 +91,7 @@ See [Data fetching patterns](#-data-fetching-patterns) for more examples.
 4. If logic exists, create `useComponentName.ts`
 5. Create `ComponentName.stories.tsx` for Storybook
 6. Use Tailwind + design tokens (avoid hardcoded values)
-7. Only use Phosphor icons
+7. Only use Hugeicons via the `Icon` atom
 8. Test in Storybook: `pnpm storybook`
 9. Verify in Chromatic after PR
 
@@ -726,22 +726,37 @@ export function useFeatureX() {
 
 ## 🖼 Icons
 
-- Only use Phosphor Icons. Treat all other icon libraries as deprecated for new code.
-  - Package: `@phosphor-icons/react`
-  - Site: [`https://phosphoricons.com/`](https://phosphoricons.com/)
+- Only use Hugeicons, always through the `Icon` atom. Treat all other icon libraries as deprecated for new code.
+  - Icon data: `@hugeicons/core-free-icons` (stroke-rounded variants)
+  - Renderer: `src/components/atoms/Icon/Icon.tsx`
+  - Site: [`https://hugeicons.com/icons/stroke-rounded`](https://hugeicons.com/icons/stroke-rounded)
+
+The `Icon` atom applies the design-system stroke width (2px) and defaults to `1em`
+so icons scale with their surrounding text. Do not render `HugeiconsIcon` directly.
 
 Example usage:
 
 ```tsx
-import { Plus } from "@phosphor-icons/react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function CreateButton() {
   return (
     <button type="button" className="inline-flex items-center gap-2">
-      <Plus size={16} />
+      <Icon icon={PlusSignIcon} size={16} />
       Create
     </button>
   );
+}
+```
+
+To type a prop or config entry that carries an icon, use `IconSvgElement`:
+
+```tsx
+import type { IconSvgElement } from "@hugeicons/react";
+
+interface Props {
+  icon: IconSvgElement;
 }
 ```
 

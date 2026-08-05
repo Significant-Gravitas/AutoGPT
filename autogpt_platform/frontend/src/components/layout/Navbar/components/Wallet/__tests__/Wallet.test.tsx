@@ -191,6 +191,11 @@ describe("Wallet", () => {
 });
 
 describe("Wallet onboarding notifications", () => {
+  // Mounting <Wallet /> also mounts <TaskGroups />, whose celebration effect
+  // schedules its own confetti burst on a 300ms timer. That timer outlives the
+  // test that armed it and lands in a later one, so every assertion on
+  // confettiMock has to start from a clean slate after the render — otherwise
+  // the count depends on how fast the machine runs the suite.
   function emit(notification: WebSocketNotification) {
     const handler = onWebSocketMessageMock.mock.calls.at(-1)?.[1] as (
       n: WebSocketNotification,
@@ -220,6 +225,7 @@ describe("Wallet onboarding notifications", () => {
   it("refreshes credits and fires confetti when a tracked step completes", () => {
     render(<Wallet />);
     fetchCreditsMock.mockClear();
+    confettiMock.mockClear();
 
     emit({ type: "onboarding", event: "step_completed", step: "RUN_3_DAYS" });
 
@@ -230,6 +236,7 @@ describe("Wallet onboarding notifications", () => {
   it("ignores notifications that are not completed onboarding steps", () => {
     render(<Wallet />);
     fetchCreditsMock.mockClear();
+    confettiMock.mockClear();
 
     emit({ type: "onboarding", event: "increment_runs", step: null });
     emit({ type: "execution", event: "step_completed" });
@@ -241,6 +248,7 @@ describe("Wallet onboarding notifications", () => {
   it("refreshes credits without confetti for steps outside the task groups", () => {
     render(<Wallet />);
     fetchCreditsMock.mockClear();
+    confettiMock.mockClear();
 
     emit({
       type: "onboarding",

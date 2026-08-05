@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Clock } from "@phosphor-icons/react";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
@@ -44,6 +43,8 @@ import { StepsCollapse } from "./components/StepsCollapse";
 import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -792,7 +793,7 @@ export function ChatMessagesContainer({
               >
                 <span>{msg}</span>
                 <span className="flex items-center gap-1 text-xs text-slate-500">
-                  <Clock className="size-3" weight="bold" />
+                  <Icon icon={Clock01Icon} className="size-3" />
                   Queued
                 </span>
               </MessageContent>

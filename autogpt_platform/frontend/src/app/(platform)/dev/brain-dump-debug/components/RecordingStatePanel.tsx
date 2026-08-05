@@ -1,7 +1,11 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowClockwiseIcon, DatabaseIcon } from "@phosphor-icons/react";
+import {
+  ArrowReloadHorizontalIcon,
+  DatabaseIcon,
+} from "@hugeicons/core-free-icons";
 import {
   formatBytes,
   formatClock,
@@ -29,7 +33,7 @@ export function RecordingStatePanel({ snapshot, onRefresh }: Props) {
           variant="outline"
           size="small"
           onClick={onRefresh}
-          leftIcon={<ArrowClockwiseIcon size={16} />}
+          leftIcon={<Icon icon={ArrowReloadHorizontalIcon} size={16} />}
         >
           Refresh
         </Button>

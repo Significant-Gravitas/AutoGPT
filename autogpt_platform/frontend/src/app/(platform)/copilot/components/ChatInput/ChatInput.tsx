@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ArrowUpIcon } from "@phosphor-icons/react";
 import {
   ChangeEvent,
   ClipboardEvent,
@@ -48,6 +47,8 @@ import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
 import { useVoiceRecording } from "./useVoiceRecording";
+import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onSend: (
@@ -422,7 +423,7 @@ export function ChatInput({
                 }}
                 className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
               >
-                <ArrowUpIcon className="size-4" weight="bold" />
+                <Icon icon={ArrowUp02Icon} className="size-4" />
               </PromptInputButton>
             )}
             {isStreaming ? (

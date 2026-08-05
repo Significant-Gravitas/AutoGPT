@@ -5,10 +5,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import { CpuIcon } from "@phosphor-icons/react";
-import type { CopilotLlmModel } from "../../../store";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ToggleChip } from "@/components/atoms/ToggleChip/ToggleChip";
+import { cn } from "@/lib/utils";
+import { CpuIcon } from "@hugeicons/core-free-icons";
+import type { CopilotLlmModel } from "../../../store";
 
 interface Props {
   model: CopilotLlmModel;
@@ -46,7 +47,7 @@ export function ModelToggleButton({
             )}
             aria-label={ariaLabel}
           >
-            <CpuIcon size={14} />
+            <Icon icon={CpuIcon} size={14} />
             <span className="hidden sm:inline">
               {isAdvanced ? "Advanced" : "Balanced"}
             </span>
@@ -59,7 +60,7 @@ export function ModelToggleButton({
 
   return (
     <ToggleChip
-      icon={<CpuIcon size={14} />}
+      icon={<Icon icon={CpuIcon} size={14} />}
       label={isAdvanced ? "Advanced" : "Balanced"}
       tooltip={tooltip}
       ariaLabel={ariaLabel}

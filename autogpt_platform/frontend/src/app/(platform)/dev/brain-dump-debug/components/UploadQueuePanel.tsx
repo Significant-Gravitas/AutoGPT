@@ -1,5 +1,5 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { CloudArrowUpIcon } from "@phosphor-icons/react";
+import { CloudUploadIcon } from "@hugeicons/core-free-icons";
 import { formatBytes, type RecordingSnapshot } from "../helpers";
 import { DebugField, DebugNote, DebugPanel } from "./DebugPanel";
 
@@ -17,7 +17,7 @@ export function UploadQueuePanel({ snapshot }: Props) {
     <DebugPanel
       title="Upload queue"
       description="Derived from the parts table — a part is pending until markPartUploaded flips its flag."
-      icon={CloudArrowUpIcon}
+      icon={CloudUploadIcon}
       action={
         <Badge variant={pending === 0 ? "success" : "error"}>
           {pending === 0 ? "drained" : `${pending} pending`}

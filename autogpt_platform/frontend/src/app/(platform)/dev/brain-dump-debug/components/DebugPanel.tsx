@@ -1,11 +1,12 @@
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import type { Icon } from "@phosphor-icons/react";
+import type { IconSvgElement } from "@hugeicons/react";
 import type { ReactNode } from "react";
 
 interface Props {
   title: string;
   description?: string;
-  icon: Icon;
+  icon: IconSvgElement;
   action?: ReactNode;
   children: ReactNode;
 }
@@ -13,7 +14,7 @@ interface Props {
 export function DebugPanel({
   title,
   description,
-  icon: PanelIcon,
+  icon,
   action,
   children,
 }: Props) {
@@ -21,7 +22,11 @@ export function DebugPanel({
     <section className="rounded-2xlarge border border-zinc-200 bg-white p-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <PanelIcon size={22} className="mt-0.5 shrink-0 text-zinc-500" />
+          <Icon
+            icon={icon}
+            size={22}
+            className="mt-0.5 shrink-0 text-zinc-500"
+          />
           <div className="flex flex-col gap-1">
             <Text variant="h5">{title}</Text>
             {description ? (

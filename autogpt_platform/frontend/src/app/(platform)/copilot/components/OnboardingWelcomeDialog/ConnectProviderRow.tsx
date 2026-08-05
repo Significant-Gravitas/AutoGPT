@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckCircleIcon, PlusIcon } from "@phosphor-icons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Add01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
 import { useState } from "react";
 
@@ -59,9 +60,9 @@ export function ConnectProviderRow({
           {/* Connected mark beside the title — the + stays because a
               provider can hold multiple credentials. */}
           {isConnected && (
-            <CheckCircleIcon
+            <Icon
+              icon={CheckmarkCircle02Icon}
               size={18}
-              weight="fill"
               className="shrink-0 text-emerald-500"
             />
           )}
@@ -76,7 +77,7 @@ export function ConnectProviderRow({
         aria-hidden
         className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-zinc-700 text-white transition-transform group-hover:bg-zinc-800 group-active:scale-[0.96]"
       >
-        <PlusIcon size={14} weight="bold" />
+        <Icon icon={Add01Icon} size={14} />
       </span>
     </button>
   );

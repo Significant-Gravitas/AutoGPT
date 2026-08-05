@@ -527,6 +527,11 @@ async def add_chat_messages_batch(
                     if msg.get("duration_ms") is not None:
                         data["durationMs"] = msg["duration_ms"]
 
+                    if msg.get("model") is not None:
+                        data["model"] = msg["model"]
+                    if msg.get("routing_source") is not None:
+                        data["routingSource"] = msg["routing_source"]
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
@@ -795,6 +800,32 @@ async def update_message_content_by_sequence(
             f"Failed to update message for session {session_id}, sequence {sequence}: {e}"
         )
         return False
+
+
+async def update_chat_message_stamps(
+    session_id: str,
+    sequence: int,
+    model: str | None,
+    routing_source: str | None,
+) -> bool:
+    """Back-fill model/routingSource on an already-persisted message row.
+
+    Mid-turn flushes persist assistant rows (assigning sequences) BEFORE
+    the end-of-turn stamping runs; this repairs those rows so the
+    analytics columns survive in the DB. Same mechanism and authorization
+    reasoning as ``update_chat_message_tool_calls``.
+    """
+    result = await PrismaChatMessage.prisma().update(
+        where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
+        data={"model": model, "routingSource": routing_source},
+    )
+    if not result:
+        logger.warning(
+            f"No message found to update stamps for session "
+            f"{session_id}, sequence {sequence}"
+        )
+        return False
+    return True
 
 
 async def update_chat_message_tool_calls(

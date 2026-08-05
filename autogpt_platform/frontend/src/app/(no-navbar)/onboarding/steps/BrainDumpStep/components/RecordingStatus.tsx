@@ -1,8 +1,9 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { CloudSlashIcon } from "@phosphor-icons/react";
+import { CloudOffIcon } from "@hugeicons/core-free-icons";
 import { encouragementAt, SILENCE_NUDGE_COPY } from "../helpers";
 
 interface Props {
@@ -45,7 +46,11 @@ export function RecordingStatus({
           whole point of writing every chunk to the device first. */}
       {isOffline && (
         <div className="flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1">
-          <CloudSlashIcon size={14} className="shrink-0 text-zinc-500" />
+          <Icon
+            icon={CloudOffIcon}
+            size={14}
+            className="shrink-0 text-zinc-500"
+          />
           <Text variant="small" className="!text-zinc-500">
             {OFFLINE_COPY}
           </Text>

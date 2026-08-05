@@ -1,12 +1,13 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { ArrowsDownUpIcon } from "@phosphor-icons/react";
+import { ArrowDataTransferVerticalIcon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
 
@@ -61,7 +62,8 @@ export function ToggleChip({
               {icon}
             </span>
             {!locked && (
-              <ArrowsDownUpIcon
+              <Icon
+                icon={ArrowDataTransferVerticalIcon}
                 size={14}
                 className="absolute opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100"
               />

@@ -1,10 +1,11 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
-import { Check } from "@phosphor-icons/react";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { usePreparingStep } from "./usePreparingStep";
 
 interface Props {
@@ -56,7 +57,7 @@ export function PreparingStep({
                   : "bg-gray-200 text-gray-400",
               )}
             >
-              <Check size={14} weight="bold" />
+              <Icon icon={Tick02Icon} size={14} />
             </div>
             <Text
               variant="body"

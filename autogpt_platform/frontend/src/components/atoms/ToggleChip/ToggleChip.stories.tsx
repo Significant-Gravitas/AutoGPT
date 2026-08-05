@@ -1,6 +1,7 @@
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { BrainIcon } from "@hugeicons/core-free-icons";
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { BrainIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { ToggleChip } from "./ToggleChip";
 
@@ -34,7 +35,7 @@ const meta: Meta<typeof ToggleChip> = {
     onToggle: { action: "toggle", description: "Toggle handler." },
   },
   args: {
-    icon: <BrainIcon size={14} />,
+    icon: <Icon icon={BrainIcon} size={14} />,
     label: "Extended Thinking",
     tooltip: "Switch copilot mode",
     ariaLabel: "Toggle Extended Thinking",

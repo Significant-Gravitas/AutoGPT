@@ -1,6 +1,4 @@
 "use client";
-
-import { CaretLeftIcon, SignOutIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
@@ -12,6 +10,8 @@ import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
 import { WelcomeStep } from "./steps/WelcomeStep";
 import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
+import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function OnboardingPage() {
   const {
@@ -54,7 +54,7 @@ export default function OnboardingPage() {
           onClick={prevStep}
           className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
         >
-          <CaretLeftIcon size={16} />
+          <Icon icon={ArrowLeft01Icon} size={16} />
           Back
         </button>
       )}
@@ -87,7 +87,7 @@ export default function OnboardingPage() {
           href="/logout"
           className="text-md absolute bottom-6 left-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
         >
-          <SignOutIcon size={16} />
+          <Icon icon={Logout03Icon} size={16} />
           Log out
         </Link>
       )}

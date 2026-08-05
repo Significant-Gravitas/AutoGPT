@@ -14,11 +14,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { formatTimeAgo } from "@/lib/utils/time";
-import { PlusIcon } from "@phosphor-icons/react";
 import type { User } from "@/lib/auth/types";
 import Link from "next/link";
 import { InstallOnExpertButton } from "../InstallOnExpertButton/InstallOnExpertButton";
 import { useAgentInfo } from "./useAgentInfo";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface AgentInfoProps {
   user: User | null;
@@ -192,9 +193,9 @@ export const AgentInfo = ({
                 loading={isAddingAgentToLibrary}
                 leftIcon={
                   !isAddingAgentToLibrary && !isAgentAddedToLibrary ? (
-                    <PlusIcon
+                    <Icon
+                      icon={PlusSignIcon}
                       size={16}
-                      weight="bold"
                       className="transition-transform duration-300 group-hover/add:rotate-90 group-hover/add:scale-125"
                     />
                   ) : undefined

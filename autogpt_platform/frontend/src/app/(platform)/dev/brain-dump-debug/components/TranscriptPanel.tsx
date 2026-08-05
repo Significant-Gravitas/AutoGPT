@@ -5,7 +5,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/molecules/Alert/Alert";
-import { FileTextIcon } from "@phosphor-icons/react";
+import { File02Icon } from "@hugeicons/core-free-icons";
 import { TRANSCRIPT_PREVIEW_CHARS } from "../helpers";
 import { DebugNote, DebugPanel } from "./DebugPanel";
 
@@ -20,7 +20,7 @@ export function TranscriptPanel({ finalizeResponse }: Props) {
     <DebugPanel
       title="Transcript & extraction JSON"
       description="What the pipeline produced from the dump."
-      icon={FileTextIcon}
+      icon={File02Icon}
     >
       <Alert variant="warning">
         <AlertTitle>Not exposed by any current endpoint</AlertTitle>

@@ -1,9 +1,10 @@
-import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
 import { cn } from "@/lib/utils";
 import { useNodeStore } from "../../../stores/nodeStore";
+import { CircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const InputNodeHandle = ({
   handleId,
@@ -29,9 +30,10 @@ const InputNodeHandle = ({
       data-tutorial-id={`input-handler-${nodeId}-${cleanedHandleId}`}
     >
       <div className="pointer-events-none">
-        <CircleIcon
+        <Icon
+          icon={CircleIcon}
           size={16}
-          weight={isInputConnected ? "fill" : "duotone"}
+          fill={isInputConnected ? "currentColor" : "none"}
           className={cn(
             "text-gray-400 opacity-100",
             isInputBroken && "text-red-500",
@@ -66,9 +68,9 @@ const OutputNodeHandle = ({
       data-tutorial-id={`output-handler-${nodeId}-${field_name}`}
     >
       <div className="pointer-events-none">
-        <CircleIcon
+        <Icon
+          icon={CircleIcon}
           size={16}
-          weight={"duotone"}
           color={isOutputConnected ? hexColor : "gray"}
           className={cn(
             "text-gray-400 opacity-100",

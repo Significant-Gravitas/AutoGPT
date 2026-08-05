@@ -1,10 +1,11 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
-  ArrowClockwiseIcon,
-  HandPalmIcon,
-  MicrophoneIcon,
-} from "@phosphor-icons/react";
+  ArrowReloadHorizontalIcon,
+  HandIcon,
+  Mic01Icon,
+} from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AudioWaveform } from "@/app/(platform)/copilot/components/ChatInput/components/AudioWaveform";
 import { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
@@ -85,12 +86,16 @@ function OrbGlyph({
   audioStream: MediaStream | null;
 }) {
   if (screen === "processing") {
-    return <HandPalmIcon size={56} weight="fill" className={GLYPH_CLASS} />;
+    return <Icon icon={HandIcon} size={56} className={GLYPH_CLASS} />;
   }
 
   if (screen === "failed") {
     return (
-      <ArrowClockwiseIcon size={56} weight="fill" className={GLYPH_CLASS} />
+      <Icon
+        icon={ArrowReloadHorizontalIcon}
+        size={56}
+        className={GLYPH_CLASS}
+      />
     );
   }
 
@@ -108,5 +113,5 @@ function OrbGlyph({
     );
   }
 
-  return <MicrophoneIcon size={56} weight="fill" className={GLYPH_CLASS} />;
+  return <Icon icon={Mic01Icon} size={56} className={GLYPH_CLASS} />;
 }
