@@ -147,6 +147,7 @@ test = "scripts.run_tests:test"
 load-store-agents = "test.load_store_agents:run"
 export-api-schema = "backend.cli.generate_openapi_json:main"
 gen-prisma-stub = "scripts.gen_prisma_types_stub:main"
+brain-dump-eval = "backend.api.features.onboarding_dump.brain_dump_eval:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
 
 [tool.isort]

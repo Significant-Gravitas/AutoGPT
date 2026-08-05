@@ -8929,6 +8929,238 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump": {
+      "delete": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Discard Brain Dump",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
+        "operationId": "discard_brain_dump",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "recording_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+                { "type": "null" }
+              ],
+              "title": "Recording Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onboarding/brain-dump/finalize": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Finalize Brain Dump",
+        "description": "Close out a take: assemble, scan, store, transcribe.\n\nExtraction and greeting generation continue in the background after\nthis responds — the preparing step polls ``/status`` until\n``greeting_ready``. Idempotent per ``recording_id`` — a client that\nretries after a timeout gets the stored result rather than a second\ntranscription.",
+        "operationId": "finalize_brain_dump",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FinalizeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FinalizeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Intro",
+        "description": "Content for the copilot home's onboarding greeting.\n\nPre-generated during finalize, so this is a plain row read — the\ncopilot home never waits on a model to render its first screen.\n``greeting_done=true`` means the client should show nothing and cache\nthat locally.",
+        "operationId": "get_brain_dump_intro",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IntroCardResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro/complete": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Complete Brain Dump Greeting",
+        "description": "Mark the greeting as done — called when the first message is sent.\n\nPermanent and content-preserving: the flag flips, the stored greeting\nstays in the row.",
+        "operationId": "complete_brain_dump_greeting",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreetingDoneResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/parts": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Upload Brain Dump Part",
+        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.",
+        "operationId": "upload_brain_dump_part",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_brain_dump_part"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadPartResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recommended-providers": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Recommended Providers",
+        "description": "Provider picks for the welcome dialog's \"Connect your tools\" panel.\n\nWritten by a background job that runs beside the greeting one; a plain\nrow read here. ``ready=false`` means keep polling.",
+        "operationId": "get_brain_dump_recommended_providers",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recording": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Download Brain Dump Recording",
+        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "operationId": "download_brain_dump_recording",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/status": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Status",
+        "description": "Polled by the loading screen while the pipeline runs.",
+        "operationId": "get_brain_dump_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
@@ -9029,7 +9261,8 @@
                 "AGENT_INPUT",
                 "CONGRATS",
                 "VISIT_COPILOT",
-                "BUILDER_OPEN"
+                "BUILDER_OPEN",
+                "CAPABILITY_CARDS"
               ],
               "type": "string",
               "title": "Step"
@@ -14638,6 +14871,24 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "Body_upload_brain_dump_part": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" },
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
+          "part_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Part Index"
+          }
+        },
+        "type": "object",
+        "required": ["file", "recording_id", "part_index"],
+        "title": "Body_upload_brain_dump_part"
+      },
       "BotAnalyticsSummary": {
         "properties": {
           "platform": {
@@ -14780,6 +15031,23 @@
         "type": "object",
         "required": ["date", "messages", "replies", "errors"],
         "title": "BotTimeseriesPoint"
+      },
+      "BrainDumpInputMode": {
+        "type": "string",
+        "enum": ["voice", "typed", "skipped"],
+        "title": "BrainDumpInputMode"
+      },
+      "BrainDumpStatus": {
+        "type": "string",
+        "enum": [
+          "recording_uploaded",
+          "transcribing",
+          "transcribed",
+          "extracting",
+          "completed",
+          "failed"
+        ],
+        "title": "BrainDumpStatus"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -16254,6 +16522,38 @@
         "title": "DreamPassUsage",
         "description": "Aggregate usage across all phases of one dream pass.\n\nSurfaced on ``DreamPassResult.usage`` so eval / admin UI / billing\ncan read tokens + cost without recomputing. Written to\n``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;\ncharged against the user's rate-limit window via\n``persist_and_record_usage`` so dream-pass spend rolls into the\nsame daily/weekly subscription tier budget as chat-execution\noverage."
       },
+      "DumpStatusResponse": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpStatus" },
+              { "type": "null" }
+            ]
+          },
+          "input_mode": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpInputMode" },
+              { "type": "null" }
+            ]
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          },
+          "has_audio": {
+            "type": "boolean",
+            "title": "Has Audio",
+            "default": false
+          },
+          "greeting_ready": {
+            "type": "boolean",
+            "title": "Greeting Ready",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "DumpStatusResponse"
+      },
       "EnableShareRequest": {
         "properties": {
           "auto_share_executions": {
@@ -16914,6 +17214,58 @@
         "required": ["executions", "total"],
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
+      },
+      "FinalizeRequest": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
+          "input_mode": {
+            "$ref": "#/components/schemas/BrainDumpInputMode",
+            "default": "voice"
+          },
+          "duration_secs": {
+            "anyOf": [
+              { "type": "number", "maximum": 14400.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Duration Secs"
+          },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "text": {
+            "anyOf": [
+              { "type": "string", "maxLength": 20000 },
+              { "type": "null" }
+            ],
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "FinalizeRequest",
+        "description": "Finalize one take.\n\n``text`` is the typed fallback: when set, no audio is expected and the\ndump is stored with ``input_mode=typed``. ``input_mode=skipped``\nrecords the deliberate skip so Path B can be chosen server-side."
+      },
+      "FinalizeResponse": {
+        "properties": {
+          "status": { "$ref": "#/components/schemas/BrainDumpStatus" },
+          "input_mode": { "$ref": "#/components/schemas/BrainDumpInputMode" },
+          "transcript_preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript Preview"
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": ["status", "input_mode"],
+        "title": "FinalizeResponse"
       },
       "FolderCreateRequest": {
         "properties": {
@@ -17860,6 +18212,14 @@
         "required": ["provider", "config_schema", "credentials_input_name"],
         "title": "GraphTriggerInfo"
       },
+      "GreetingDoneResponse": {
+        "properties": {
+          "greeting_done": { "type": "boolean", "title": "Greeting Done" }
+        },
+        "type": "object",
+        "required": ["greeting_done"],
+        "title": "GreetingDoneResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -18004,6 +18364,31 @@
         "type": "object",
         "required": ["store_listing_version_id"],
         "title": "InstallWorkflowRequest"
+      },
+      "IntroCardResponse": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "greeting": { "type": "string", "title": "Greeting" },
+          "prompts": {
+            "items": { "$ref": "#/components/schemas/SuggestedPrompt" },
+            "type": "array",
+            "title": "Prompts",
+            "default": []
+          },
+          "greeting_done": {
+            "type": "boolean",
+            "title": "Greeting Done",
+            "default": false
+          },
+          "transcript": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript"
+          }
+        },
+        "type": "object",
+        "required": ["path", "greeting"],
+        "title": "IntroCardResponse",
+        "description": "Content for the copilot home's onboarding greeting.\n\n``path`` is \"A\" when we have something to reflect back and \"B\" when\nthe greeting's job is to invite a recording instead. ``greeting_done``\nis the server-side \"already seen it\" flag — when true the client\nshows nothing and caches the fact locally."
       },
       "InvitationCreateResponse": {
         "properties": {
@@ -19705,7 +20090,8 @@
           "RUN_14_DAYS",
           "RUN_AGENTS_100",
           "BUILDER_OPEN",
-          "BUILDER_RUN_AGENT"
+          "BUILDER_RUN_AGENT",
+          "CAPABILITY_CARDS"
         ],
         "title": "OnboardingStep"
       },
@@ -21081,6 +21467,31 @@
         "required": ["status"],
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
+      },
+      "RecommendedProvider": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
+        },
+        "type": "object",
+        "required": ["provider"],
+        "title": "RecommendedProvider",
+        "description": "One provider Claude picked from the transcript.\n\n``provider`` is a registry id (validated against the live provider\nlist before storage); ``reason`` is the one-liner shown under it in\nthe welcome dialog's Recommended section."
+      },
+      "RecommendedProvidersResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "providers": {
+            "items": { "$ref": "#/components/schemas/RecommendedProvider" },
+            "type": "array",
+            "title": "Providers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["ready"],
+        "title": "RecommendedProvidersResponse",
+        "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
       },
       "RefundRequest": {
         "properties": {
@@ -23045,6 +23456,17 @@
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
       },
+      "SuggestedPrompt": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "prompt": { "type": "string", "title": "Prompt" },
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" }
+        },
+        "type": "object",
+        "required": ["title", "prompt"],
+        "title": "SuggestedPrompt",
+        "description": "One pickable prompt under the greeting.\n\n``title`` is the short line the user sees; ``prompt`` is the full\nmessage that gets sent when they pick it. ``icon`` is a Phosphor icon\nslug from ``intro.PROMPT_ICONS`` — the frontend maps it to the actual\nicon component and falls back to a sparkle for anything unknown."
+      },
       "SuggestedPromptsResponse": {
         "properties": {
           "themes": {
@@ -24948,6 +25370,22 @@
         "required": ["content"],
         "title": "UploadCopilotSkillRequest",
         "description": "Body for the library UI's \"upload skill\" action.\n\nCarries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the\nuser picked from disk; the server parses + validates it so the upload and\nthe copilot's ``store_skill`` tool share one source of truth."
+      },
+      "UploadPartResponse": {
+        "properties": {
+          "recording_id": { "type": "string", "title": "Recording Id" },
+          "part_index": { "type": "integer", "title": "Part Index" },
+          "received_bytes": { "type": "integer", "title": "Received Bytes" },
+          "total_bytes": { "type": "integer", "title": "Total Bytes" }
+        },
+        "type": "object",
+        "required": [
+          "recording_id",
+          "part_index",
+          "received_bytes",
+          "total_bytes"
+        ],
+        "title": "UploadPartResponse"
       },
       "UsageWindowPublic": {
         "properties": {
