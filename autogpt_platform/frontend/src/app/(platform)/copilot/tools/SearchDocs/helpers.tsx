@@ -3,12 +3,13 @@ import type { DocSearchResultsResponse } from "@/app/api/__generated__/models/do
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import {
-  ArticleIcon,
-  FileMagnifyingGlassIcon,
-  FileTextIcon,
-} from "@phosphor-icons/react";
 import { ToolUIPart } from "ai";
+import {
+  File02Icon,
+  FileSearchIcon,
+  NewsIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface SearchDocsInput {
   query: string;
@@ -183,13 +184,10 @@ export function ToolIcon({
   isStreaming?: boolean;
   isError?: boolean;
 }) {
-  const IconComponent =
-    toolType === "tool-get_doc_page" ? FileTextIcon : FileMagnifyingGlassIcon;
-
   return (
-    <IconComponent
+    <Icon
+      icon={toolType === "tool-get_doc_page" ? File02Icon : FileSearchIcon}
       size={14}
-      weight="regular"
       className={
         isError
           ? "text-red-500"
@@ -202,9 +200,12 @@ export function ToolIcon({
 }
 
 export function AccordionIcon({ toolType }: { toolType: DocsToolType }) {
-  const IconComponent =
-    toolType === "tool-get_doc_page" ? ArticleIcon : FileTextIcon;
-  return <IconComponent size={32} weight="light" />;
+  return (
+    <Icon
+      icon={toolType === "tool-get_doc_page" ? NewsIcon : File02Icon}
+      size={32}
+    />
+  );
 }
 
 export function toDocsUrl(path: string): string {

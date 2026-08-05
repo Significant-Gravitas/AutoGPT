@@ -1,12 +1,13 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Flask } from "@phosphor-icons/react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // This button is only rendered on NEW chats (no active session).
 // Once a session exists, it is hidden — the session's dry_run flag is
@@ -31,7 +32,7 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
           )}
           aria-label={isDryRun ? "Test mode active" : "Enable Test mode"}
         >
-          <Flask size={14} />
+          <Icon icon={FlaskConicalIcon} size={14} />
           <span className="hidden sm:inline">
             {isDryRun ? "Test mode enabled" : "Enable test mode"}
           </span>

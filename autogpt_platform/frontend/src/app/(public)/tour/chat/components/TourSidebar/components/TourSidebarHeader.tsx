@@ -3,8 +3,9 @@
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
 import Link from "next/link";
+import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Mirror of AppSidebarHeader, with the logo pointing back at the tour
 // instead of the (auth-gated) copilot home.
@@ -40,7 +41,10 @@ export function TourSidebarHeader() {
             : "flex",
         )}
       >
-        <SidebarSimpleIcon className="size-5 text-sidebar-foreground" />
+        <Icon
+          icon={SidebarLeftIcon}
+          className="size-5 text-sidebar-foreground"
+        />
       </button>
     </SidebarHeader>
   );

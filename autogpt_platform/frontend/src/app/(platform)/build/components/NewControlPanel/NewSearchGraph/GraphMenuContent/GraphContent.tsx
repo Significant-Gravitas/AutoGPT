@@ -3,10 +3,11 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { beautifyString, cn } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
-import { ArrowBendUpRight } from "@phosphor-icons/react";
 import { GraphMenuSearchBar } from "../GraphMenuSearchBar/GraphMenuSearchBar";
 import { getNodeInputOutputSummary } from "./helpers";
 import { useGraphContent } from "./useGraphContent";
+import { CornerUpRightIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   searchQuery: string;
@@ -108,7 +109,10 @@ export function GraphSearchContent({
                       )}
                     </div>
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.5rem] bg-zinc-700">
-                      <ArrowBendUpRight className="h-4 w-4 text-zinc-50" />
+                      <Icon
+                        icon={CornerUpRightIcon}
+                        className="h-4 w-4 text-zinc-50"
+                      />
                     </div>
                   </div>
                 );

@@ -1,16 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
-
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Confetti } from "@/components/molecules/Confetti/Confetti";
 import { cn } from "@/lib/utils";
+import type { IconSvgElement } from "@hugeicons/react";
 
 interface Hero {
   title: string;
   description: string;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
   pulse: string;
   gradient: string;
 }
@@ -28,8 +28,6 @@ export function ReviewHero({
   showConfetti,
   shouldReduceMotion,
 }: Props) {
-  const HeroIcon = hero.Icon;
-
   return (
     <>
       {showConfetti && !shouldReduceMotion ? (
@@ -116,7 +114,7 @@ export function ReviewHero({
             }
             className="text-white"
           >
-            <HeroIcon size={36} weight="bold" />
+            <Icon icon={hero.Icon} size={36} />
           </motion.span>
         </motion.div>
       </div>

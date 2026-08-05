@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon, MicrophoneIcon } from "@phosphor-icons/react";
+import { Loading03Icon, Mic01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   isRecording: boolean;
@@ -36,9 +37,9 @@ export function RecordingButton({
       )}
     >
       {isTranscribing ? (
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
       ) : (
-        <MicrophoneIcon className="h-4 w-4" weight="bold" />
+        <Icon icon={Mic01Icon} className="h-4 w-4" />
       )}
     </Button>
   );

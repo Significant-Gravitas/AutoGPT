@@ -4,13 +4,14 @@ import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { beautifyString } from "@/lib/utils";
-import {
-  PlayCircleIcon,
-  PlayIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import {
+  AlertDiamondIcon,
+  PlayCircleIcon,
+  PlayIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /** Block details returned on first run_block attempt (before input_data provided). */
 export interface BlockDetailsResponse {
@@ -226,18 +227,16 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
+  return <Icon icon={PlayIcon} size={14} className="text-neutral-400" />;
 }
 
 export function AccordionIcon() {
-  return <PlayCircleIcon size={32} weight="light" />;
+  return <Icon icon={PlayCircleIcon} size={32} />;
 }
 
 export function formatMaybeJson(value: unknown): string {
@@ -313,9 +312,7 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   }
 
   return {
-    icon: (
-      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
-    ),
+    icon: <Icon icon={AlertDiamondIcon} size={32} className="text-red-500" />,
     title: "Error",
     titleClassName: "text-red-500",
   };

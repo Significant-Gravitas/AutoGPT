@@ -4,8 +4,9 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Text } from "@/components/atoms/Text/Text";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
-import { Check } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const CHECKLIST = [
   "Personalizing your experience",
@@ -92,7 +93,7 @@ export function PreparingStep({ onComplete }: Props) {
                   : "bg-gray-200 text-gray-400",
               )}
             >
-              <Check size={14} weight="bold" />
+              <Icon icon={Tick02Icon} size={14} />
             </div>
             <Text
               variant="body"

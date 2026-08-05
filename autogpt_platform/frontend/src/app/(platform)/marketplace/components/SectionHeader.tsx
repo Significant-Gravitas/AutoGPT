@@ -1,6 +1,7 @@
-import { ArrowRightIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { ReactNode } from "react";
+import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   eyebrow?: string;
@@ -42,9 +43,9 @@ export function SectionHeader({
           className="group hidden shrink-0 items-center gap-1 pb-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 sm:flex"
         >
           {action.label}
-          <ArrowRightIcon
+          <Icon
+            icon={ArrowRight02Icon}
             size={14}
-            weight="bold"
             className="transition-transform duration-200 group-hover:translate-x-0.5"
           />
         </Link>

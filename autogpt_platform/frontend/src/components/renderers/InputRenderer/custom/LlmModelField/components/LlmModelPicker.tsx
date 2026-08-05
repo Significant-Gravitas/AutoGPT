@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CaretDownIcon } from "@phosphor-icons/react";
 import {
   Popover,
   PopoverContent,
@@ -21,6 +20,8 @@ import { LlmIcon } from "./LlmIcon";
 import { LlmMenuHeader } from "./LlmMenuHeader";
 import { LlmMenuItem } from "./LlmMenuItem";
 import { LlmPriceTier } from "./LlmPriceTier";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type MenuView = "creator" | "model" | "provider";
 
@@ -149,7 +150,7 @@ export function LlmModelPicker({
           <Text variant="body" className="ml-1 flex-1 text-zinc-900">
             {triggerTitle}
           </Text>
-          <CaretDownIcon className="h-3 w-3 text-zinc-900" weight="bold" />
+          <Icon icon={ArrowDown01Icon} className="h-3 w-3 text-zinc-900" />
         </button>
       </PopoverTrigger>
       <PopoverContent

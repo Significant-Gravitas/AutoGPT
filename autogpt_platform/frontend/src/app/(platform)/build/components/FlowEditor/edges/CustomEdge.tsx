@@ -9,10 +9,11 @@ import {
 } from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 import { JSBeads } from "./components/JSBeads";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type CustomEdgeData = {
   isStatic?: boolean;
@@ -113,7 +114,7 @@ const CustomEdge = ({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          <XIcon className="h-3 w-3" weight="bold" />
+          <Icon icon={Cancel01Icon} className="h-3 w-3" />
         </Button>
       </EdgeLabelRenderer>
     </>
