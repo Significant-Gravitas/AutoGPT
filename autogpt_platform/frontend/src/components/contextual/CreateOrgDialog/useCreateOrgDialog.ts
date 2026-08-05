@@ -7,6 +7,7 @@ import { usePostV2CreateOrganization } from "@/app/api/__generated__/endpoints/o
 import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { normalizeOrg } from "@/services/org-team/normalize";
 import { useOrgTeamStore } from "@/services/org-team/store";
 
 import { createOrgSchema, slugify, type CreateOrgFormValues } from "./schema";
@@ -53,17 +54,7 @@ export function useCreateOrgDialog({ onClose }: Args) {
       },
     });
     const org = response.data as OrgResponse;
-    setOrgs([
-      ...orgs,
-      {
-        id: org.id,
-        name: org.name,
-        slug: org.slug,
-        avatarUrl: org.avatar_url ?? null,
-        isPersonal: org.is_personal,
-        memberCount: org.member_count,
-      },
-    ]);
+    setOrgs([...orgs, normalizeOrg(org)]);
     setActiveOrg(org.id);
     getQueryClient().resetQueries();
     toast({ title: `Organization "${org.name}" created`, variant: "success" });
