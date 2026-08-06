@@ -9589,6 +9589,18 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "include_expired",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also return invitations whose expiresAt has passed. These are still resendable, so admins need them to recover a lapsed invite.",
+              "default": false,
+              "title": "Include Expired"
+            },
+            "description": "Also return invitations whose expiresAt has passed. These are still resendable, so admins need them to recover a lapsed invite."
           }
         ],
         "responses": {
@@ -9689,6 +9701,52 @@
         ],
         "responses": {
           "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "tags": ["v2", "orgs", "invitations", "orgs", "invitations"],
+        "summary": "Resend invitation",
+        "description": "Refresh a pending (possibly expired) invitation: new token, new TTL.\n\nRotating the token invalidates any previously sent link, so a resend\nalso acts as a soft revoke of the old email.",
+        "operationId": "postV2Resend invitation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Invitation Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationCreateResponse"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
