@@ -21,7 +21,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.response_model import StreamError
+from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
@@ -562,6 +562,18 @@ class CoPilotProcessor:
 
         try:
             from backend.copilot.model import get_chat_session
+
+            # Executor picked the turn up — replace the route's "Message
+            # received…" status while feature-flag resolution and service
+            # setup run.
+            try:
+                await stream_registry.publish_chunk(
+                    entry.turn_id,
+                    StreamStatus(message="Setting up your environment…"),
+                    session_id=entry.session_id,
+                )
+            except Exception:
+                log.warning("Failed to publish setup status chunk")
 
             session = await get_chat_session(entry.session_id, entry.user_id)
             if session is None:

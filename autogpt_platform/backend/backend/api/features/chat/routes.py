@@ -83,6 +83,7 @@ from backend.copilot.response_model import (
     StreamHeartbeat,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
@@ -1695,6 +1696,20 @@ async def stream_chat_post(
         )
     else:
         log_meta["turn_id"] = turn_id
+        # First chunk on the turn stream: gives the SSE subscriber an
+        # immediate status to render while the turn waits for an executor
+        # pickup — otherwise the user stares at a bare loader until setup
+        # completes.
+        try:
+            await stream_registry.publish_chunk(
+                turn_id,
+                StreamStatus(message="Message received…"),
+                session_id=session_id,
+            )
+        except Exception:
+            logger.warning(
+                "[STREAM] Failed to publish initial status chunk", exc_info=True
+            )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
