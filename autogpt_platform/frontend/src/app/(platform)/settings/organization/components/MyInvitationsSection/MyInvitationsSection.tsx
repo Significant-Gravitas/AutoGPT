@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { useMyInvitationsSection } from "./useMyInvitationsSection";
 
 export function MyInvitationsSection() {
-  const { invitations, isAccepting, isDeclining, handleAccept, handleDecline } =
+  const { invitations, acceptingId, decliningId, handleAccept, handleDecline } =
     useMyInvitationsSection();
 
   if (invitations.length === 0) {
@@ -40,7 +40,7 @@ export function MyInvitationsSection() {
             {invitation.is_admin ? <Badge variant="info">Admin</Badge> : null}
             <Button
               size="small"
-              loading={isAccepting}
+              loading={acceptingId === invitation.id}
               onClick={() => handleAccept(invitation)}
             >
               Accept
@@ -48,7 +48,7 @@ export function MyInvitationsSection() {
             <Button
               variant="secondary"
               size="small"
-              loading={isDeclining}
+              loading={decliningId === invitation.id}
               onClick={() => handleDecline(invitation)}
             >
               Decline

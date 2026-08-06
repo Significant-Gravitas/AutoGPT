@@ -47,11 +47,17 @@ export function useMembersSection({ orgId, onChanged }: Args) {
     });
 
   async function handleRoleChange(member: OrgMemberResponse, role: string) {
-    await updateRole({
-      orgId,
-      uid: member.user_id,
-      data: { is_admin: role === "admin" },
-    });
+    try {
+      await updateRole({
+        orgId,
+        uid: member.user_id,
+        data: { is_admin: role === "admin" },
+      });
+    } catch {
+      // onError already surfaced the failure toast; swallow the rejection so
+      // it doesn't escape the event handler unhandled.
+      return;
+    }
     toast({
       title: `${member.name || member.email} is now ${role === "admin" ? "an admin" : "a member"}`,
       variant: "success",
@@ -61,7 +67,12 @@ export function useMembersSection({ orgId, onChanged }: Args) {
 
   async function handleRemoveConfirmed() {
     if (!memberToRemove) return;
-    await removeMember({ orgId, uid: memberToRemove.user_id });
+    try {
+      await removeMember({ orgId, uid: memberToRemove.user_id });
+    } catch {
+      // onError already surfaced the failure toast.
+      return;
+    }
     toast({
       title: `Removed ${memberToRemove.name || memberToRemove.email}`,
       variant: "success",

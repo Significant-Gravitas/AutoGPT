@@ -19,7 +19,7 @@ interface Props {
 
 export function DangerZoneSection({ org, currentMember }: Props) {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const { orgs, setOrgs, setActiveOrg } = useOrgTeamStore();
+  const { setOrgs, setActiveOrg } = useOrgTeamStore();
 
   const { mutateAsync: deleteOrg, isPending } = useDeleteV2DeleteOrganization({
     mutation: {
@@ -39,8 +39,18 @@ export function DangerZoneSection({ org, currentMember }: Props) {
   }
 
   async function handleDeleteConfirmed() {
-    await deleteOrg({ orgId: org.id });
-    const remaining = orgs.filter((o) => o.id !== org.id);
+    try {
+      await deleteOrg({ orgId: org.id });
+    } catch {
+      // onError already surfaced the failure toast; swallow the rejection so
+      // it doesn't escape the click handler unhandled.
+      return;
+    }
+    // Read the list at write time — a snapshot taken at render can be stale
+    // by the time the request resolves.
+    const remaining = useOrgTeamStore
+      .getState()
+      .orgs.filter((o) => o.id !== org.id);
     setOrgs(remaining);
     const personal = remaining.find((o) => o.isPersonal) ?? remaining[0];
     if (personal) {

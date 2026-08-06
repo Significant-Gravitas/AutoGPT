@@ -1,6 +1,11 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,9 +13,12 @@ import {
   getDeleteV2RemoveMemberFromOrganizationMockHandler,
   getGetV2GetOrganizationDetailsMockHandler,
   getGetV2ListOrganizationMembersMockHandler,
+  getGetV2ListOrganizationMembersMockHandler401,
+  getGetV2ListUserOrganizationsMockHandler,
   getPatchV2UpdateOrganizationMockHandler,
 } from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
 import {
+  getDeleteV2RevokeInvitationMockHandler,
   getGetV2ListPendingInvitationsForCurrentUserMockHandler,
   getGetV2ListPendingInvitationsMockHandler,
   getPostV2AcceptInvitationMockHandler,
@@ -50,6 +58,13 @@ const PERSONAL_ORG = {
   slug: "jane",
   is_personal: true,
   member_count: 1,
+};
+
+const OTHER_ORG = {
+  ...TEAM_ORG,
+  id: "org-other",
+  name: "Other Corp",
+  slug: "other-corp",
 };
 
 const OWNER_MEMBER = {
@@ -215,6 +230,7 @@ describe("OrganizationSettingsPage", () => {
         acceptSpy();
         return { orgId: "org-other", message: "Invitation accepted" };
       }),
+      getGetV2ListUserOrganizationsMockHandler([TEAM_ORG, OTHER_ORG]),
     );
     render(<OrganizationSettingsPage />);
 
@@ -225,6 +241,121 @@ describe("OrganizationSettingsPage", () => {
       expect(acceptSpy).toHaveBeenCalledTimes(1);
       expect(useOrgTeamStore.getState().activeOrgID).toBe("org-other");
     });
+
+    // The joined org must land in the store too — an activeOrgID that isn't in
+    // `orgs` leaves the switcher with a null active org until a page reload.
+    await waitFor(() => {
+      expect(useOrgTeamStore.getState().orgs.map((org) => org.id)).toContain(
+        "org-other",
+      );
+    });
+  });
+
+  it("keeps the joined org in the store when the org list refresh fails", async () => {
+    mockTeamOrg({
+      myInvitations: [
+        {
+          id: "inv-9",
+          token: "tok-9",
+          org_id: "org-other",
+          org_name: "Other Corp",
+          org_slug: "other-corp",
+          is_admin: false,
+          is_billing_manager: false,
+          expires_at: new Date("2026-08-01T00:00:00Z"),
+          created_at: new Date("2026-07-01T00:00:00Z"),
+        },
+      ],
+    });
+    server.use(
+      getPostV2AcceptInvitationMockHandler(() => ({
+        orgId: "org-other",
+        message: "Invitation accepted",
+      })),
+      getGetV2ListUserOrganizationsMockHandler(() => {
+        throw new Error("network down");
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    expect(await screen.findByText("Other Corp")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() => {
+      const state = useOrgTeamStore.getState();
+      expect(state.activeOrgID).toBe("org-other");
+      expect(state.orgs.map((org) => org.id)).toContain("org-other");
+    });
+  });
+
+  it("shows an error when the members query fails", async () => {
+    server.use(
+      getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
+      getGetV2ListOrganizationMembersMockHandler401(),
+      getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    expect(
+      await screen.findByText(/Failed to load organization/i),
+    ).toBeDefined();
+    expect(screen.queryByTestId("org-members-section")).toBeNull();
+  });
+
+  it("only shows a loading state on the invitation being revoked", async () => {
+    let releaseRevoke = () => {};
+    const revokeInFlight = new Promise<void>((resolve) => {
+      releaseRevoke = resolve;
+    });
+    mockTeamOrg({
+      orgInvitations: [
+        {
+          id: "inv-1",
+          email: "first@acme.test",
+          is_admin: false,
+          is_billing_manager: false,
+          expires_at: new Date("2026-08-01T00:00:00Z"),
+          created_at: new Date("2026-07-01T00:00:00Z"),
+          team_ids: [],
+        },
+        {
+          id: "inv-2",
+          email: "second@acme.test",
+          is_admin: false,
+          is_billing_manager: false,
+          expires_at: new Date("2026-08-01T00:00:00Z"),
+          created_at: new Date("2026-07-01T00:00:00Z"),
+          team_ids: [],
+        },
+      ],
+    });
+    server.use(
+      getDeleteV2RevokeInvitationMockHandler(async () => {
+        await revokeInFlight;
+        return undefined;
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    const rows = await screen.findAllByTestId("org-invitation-row");
+    expect(rows).toHaveLength(2);
+
+    await userEvent.click(
+      within(rows[0]).getByRole("button", { name: "Revoke" }),
+    );
+
+    await waitFor(() => {
+      const revoking = within(rows[0]).getByRole("button", {
+        name: "Revoke",
+      }) as HTMLButtonElement;
+      expect(revoking.disabled).toBe(true);
+    });
+    const untouched = within(rows[1]).getByRole("button", {
+      name: "Revoke",
+    }) as HTMLButtonElement;
+    expect(untouched.disabled).toBe(false);
+
+    releaseRevoke();
   });
 
   it("removes a member after confirmation", async () => {
