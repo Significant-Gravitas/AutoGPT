@@ -1,9 +1,10 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useClampOverflow } from "./useClampOverflow";
 
 interface Props {
   text: string;
@@ -49,29 +50,4 @@ export function ExpertAboutSection({ text }: Props) {
       ) : null}
     </section>
   );
-}
-
-/** Measures whether the clamped paragraph actually overflows, instead of
- *  guessing from character count — a short bio can still clamp on narrow or
- *  zoomed layouts. Re-measures on element resize. */
-function useClampOverflow() {
-  const [isOverflowing, setIsOverflowing] = useState(false);
-  const observerRef = useRef<ResizeObserver | null>(null);
-
-  function measureRef(node: HTMLParagraphElement | null) {
-    observerRef.current?.disconnect();
-    observerRef.current = null;
-    if (!node) return;
-    function measure() {
-      if (!node) return;
-      setIsOverflowing(node.scrollHeight > node.clientHeight + 1);
-    }
-    if (typeof ResizeObserver !== "undefined") {
-      observerRef.current = new ResizeObserver(measure);
-      observerRef.current.observe(node);
-    }
-    measure();
-  }
-
-  return { isOverflowing, measureRef };
 }
