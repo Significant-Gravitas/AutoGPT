@@ -19,7 +19,7 @@ from backend.blocks._base import (
     BlockSchema,
     BlockType,
 )
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
@@ -37,7 +37,7 @@ from .model import (
 )
 
 logger = logging.getLogger(__name__)
-llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
+llm_models = [name.name.lower().replace("_", " ") for name in LLMModel]
 
 MAX_LIBRARY_AGENT_RESULTS = 100
 MAX_MARKETPLACE_AGENT_RESULTS = 100
@@ -46,13 +46,21 @@ MIN_SCORE_FOR_FILTERED_RESULTS = 10.0
 # Boost blocks over marketplace agents in search results
 BLOCK_SCORE_BOOST = 50.0
 
-# Bonus when a block exposes an LlmModel field and the query names an LLM model
+# Bonus when a block exposes an LLMModel field and the query names an LLM model
 LLM_MODEL_MATCH_BONUS = 20.0
 
 # Block IDs to exclude from search results
 EXCLUDED_BLOCK_IDS = frozenset(
     {
         "e189baac-8c20-45a1-94a7-55177ea42565",  # AgentExecutorBlock
+    }
+)
+
+INPUT_BLOCK_TYPES = frozenset(
+    {
+        BlockType.INPUT,
+        BlockType.WEBHOOK,
+        BlockType.WEBHOOK_MANUAL,
     }
 )
 
@@ -152,9 +160,12 @@ def get_blocks(
             continue
         # Skip blocks that don't match the type
         if (
-            (type == "input" and block.block_type.value != "Input")
-            or (type == "output" and block.block_type.value != "Output")
-            or (type == "action" and block.block_type.value in ("Input", "Output"))
+            (type == "input" and block.block_type not in INPUT_BLOCK_TYPES)
+            or (type == "output" and block.block_type != BlockType.OUTPUT)
+            or (
+                type == "action"
+                and block.block_type in (*INPUT_BLOCK_TYPES, BlockType.OUTPUT)
+            )
         ):
             continue
         # Skip blocks that don't match the provider
@@ -439,7 +450,7 @@ def _text_search_blocks(
     Scoring:
         - Base: text relevance via _score_primary_fields, plus BLOCK_SCORE_BOOST
           to prioritize blocks over marketplace agents in combined results
-        - +20 if the block has an LlmModel field and the query matches an LLM model name
+        - +20 if the block has an LLMModel field and the query matches an LLM model name
     """
     if not include_blocks and not include_integrations:
         return [], 0, 0
@@ -655,9 +666,9 @@ async def _get_static_counts():
 
         all_blocks += 1
 
-        if block.block_type.value == "Input":
+        if block.block_type in INPUT_BLOCK_TYPES:
             input_blocks += 1
-        elif block.block_type.value == "Output":
+        elif block.block_type == BlockType.OUTPUT:
             output_blocks += 1
         else:
             action_blocks += 1
@@ -690,7 +701,7 @@ def _contains_type(annotation: Any, target: type) -> bool:
 
 def _schema_has_llm_model(schema_cls: type[BlockSchema]) -> bool:
     return any(
-        _contains_type(field.annotation, LlmModel)
+        _contains_type(field.annotation, LLMModel)
         for field in schema_cls.model_fields.values()
     )
 

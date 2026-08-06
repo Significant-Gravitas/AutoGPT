@@ -61,7 +61,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - **Component Structure**: Separate render logic (`.tsx`) from business logic (`use*.ts` hooks)
 - **Workflow Builder**: Visual graph editor using @xyflow/react
 - **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
-- **Icons**: Phosphor Icons only
+- **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
 - **Feature Flags**: LaunchDarkly integration
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
 - **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
@@ -85,8 +85,10 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
 3. **Data fetching**: Use generated API hooks from `@/app/api/__generated__/endpoints/`
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
-4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
-   - Always import the `-Icon`-suffixed alias from `@phosphor-icons/react` (e.g. `TrashIcon`, `PlusIcon`, `SquareIcon`) — bare exports like `Trash`/`Plus` are deprecated.
+4. **Styling**: Tailwind CSS only, use design tokens, Hugeicons only
+   - Import icon data from `@hugeicons/core-free-icons` and render it with the `Icon` atom (`src/components/atoms/Icon/Icon.tsx`), e.g. `<Icon icon={Delete02Icon} size={16} />`.
+   - Never render `HugeiconsIcon` directly — the atom applies the 2px design-system stroke width.
+   - Type icon-carrying props with `IconSvgElement` from `@hugeicons/react`.
 5. **Testing**: Integration tests are the default (~90%). See `TESTING.md` for full details.
    - **New pages/features**: Write integration tests in `__tests__/` next to `page.tsx` using Vitest + RTL + MSW
    - **API mocking**: Use Orval-generated MSW handlers from `@/app/api/__generated__/endpoints/{tag}/{tag}.msw.ts`

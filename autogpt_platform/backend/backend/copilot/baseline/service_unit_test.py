@@ -149,6 +149,43 @@ class TestBaselineConversationUpdater:
         assert messages[1]["tool_call_id"] == "tc_1"
         assert messages[1]["content"] == "Found result"
 
+    def test_stamps_model_and_routing_source_on_persisted_assistant(self):
+        """The persisted assistant ChatMessage (state.session_messages) must
+        carry the turn's model and routing_source so product-intelligence can
+        segment quality by model/layer — stamped from the stream state. Tool
+        rows stay unstamped (model is None)."""
+        messages: list = []
+        builder = self._make_transcript_builder()
+        state = _BaselineStreamState(
+            model="anthropic/claude-sonnet-4-6", routing_source="ld"
+        )
+        response = LLMLoopResponse(
+            response_text="searching",
+            tool_calls=[LLMToolCall(id="tc_1", name="search", arguments="{}")],
+            raw_response=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+        )
+        tool_results = [
+            ToolCallResult(tool_call_id="tc_1", tool_name="search", content="ok"),
+        ]
+
+        _baseline_conversation_updater(
+            messages,
+            response,
+            tool_results=tool_results,
+            transcript_builder=builder,
+            model="anthropic/claude-sonnet-4-6",
+            state=state,
+        )
+
+        persisted = [m for m in state.session_messages if m.role == "assistant"]
+        assert len(persisted) == 1
+        assert persisted[0].model == "anthropic/claude-sonnet-4-6"
+        assert persisted[0].routing_source == "ld"
+        tool_rows = [m for m in state.session_messages if m.role == "tool"]
+        assert tool_rows and tool_rows[0].model is None
+
         # Transcript: user + assistant(tool_use) + user(tool_result)
         assert builder.entry_count == 3
 

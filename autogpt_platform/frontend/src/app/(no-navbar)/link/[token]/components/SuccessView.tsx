@@ -1,8 +1,9 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { LinkType } from "@/app/api/__generated__/models/linkType";
-import { CheckCircle } from "@phosphor-icons/react";
 import { isUserLink } from "../helpers";
+import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   linkType: LinkType;
@@ -15,14 +16,18 @@ export function SuccessView({ linkType, platform, serverName }: Props) {
   const label =
     forUser || !serverName ? `your ${platform} account` : serverName;
   const detail = forUser
-    ? `You can now chat with AutoPilot in your ${platform} DMs.`
-    : `Everyone in the server can start using AutoPilot right away.`;
+    ? `You can now chat with AutoGPT in your ${platform} DMs.`
+    : `Everyone in the server can start using AutoGPT right away.`;
 
   return (
-    <AuthCard title="AutoPilot is ready!">
+    <AuthCard title="AutoGPT is ready!">
       <div className="flex w-full flex-col items-center gap-6">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-          <CheckCircle size={40} weight="fill" className="text-green-600" />
+          <Icon
+            icon={CheckmarkCircle02Icon}
+            size={40}
+            className="text-green-600"
+          />
         </div>
         <Text
           variant="body-medium"

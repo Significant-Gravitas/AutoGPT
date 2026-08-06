@@ -157,7 +157,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 - [**Tailwind CSS**](https://tailwindcss.com/) - Utility-first CSS framework
 - [**shadcn/ui**](https://ui.shadcn.com/) - Re-usable components built with Radix UI and Tailwind CSS
 - [**Radix UI**](https://www.radix-ui.com/) - Headless UI components for accessibility
-- [**Phosphor Icons**](https://phosphoricons.com/) - Icon set used across the app
+- [**Hugeicons**](https://hugeicons.com/icons/stroke-rounded) - Icon set used across the app (stroke-rounded)
 - [**Framer Motion**](https://motion.dev/) - Animation library for React
 
 ### Development & Testing
@@ -169,7 +169,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 
 ### Backend & Services
 
-- [**Supabase**](https://supabase.com/) - Backend-as-a-Service (database, auth, storage)
+- [**Better Auth**](https://www.better-auth.com/) - Authentication (sessions, OAuth, JWTs) served from `/api/auth/*`
 - [**Sentry**](https://sentry.io/) - Error monitoring and performance tracking
 
 ### Package Management

@@ -558,7 +558,23 @@ async def webhook_ingress_generic(
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
-        user_id = webhook.user_id
+        # Sanity check: `provider` from URL and fetched webhook must match.
+        # Otherwise the URL provider's verifier runs instead of the webhook's
+        # own (a no-op for unsigned providers like Compass), bypassing it.
+        if webhook.provider.value.lower() != provider.value.lower():
+            logger.warning(
+                f"Webhook #{webhook_id} provider mismatch: "
+                f"registered as {webhook.provider.value}, ingress via {provider.value}"
+            )
+            # Same as the actual "webhook not found" response to conceal existence
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    logger.debug(f"Webhook #{webhook_id}: {webhook}")
+
+    user_id = webhook.user_id
+    try:
         credentials = (
             await creds_manager.get(user_id, webhook.credentials_id)
             if webhook.credentials_id
@@ -567,7 +583,6 @@ async def webhook_ingress_generic(
     except NotFoundError as e:
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    logger.debug(f"Webhook #{webhook_id}: {webhook}")
 
     # Run provider signature verification (no-op for providers whose protocol
     # has no signing scheme). 403 on failure; not 404 — that would leak
@@ -715,6 +730,14 @@ async def _execute_webhook_preset_trigger(
     logger.debug(f"Webhook-attached preset: {preset}")
     if not preset.is_active:
         logger.debug(f"Preset #{preset.id} is inactive")
+        return
+
+    # A webhook only ever runs triggers owned by the webhook owner
+    if preset.user_id != webhook.user_id:
+        logger.warning(
+            f"Refusing to trigger preset #{preset.id} (owner #{preset.user_id}) "
+            f"from webhook #{webhook.id} owned by user #{webhook.user_id}"
+        )
         return
 
     graph = await get_graph(

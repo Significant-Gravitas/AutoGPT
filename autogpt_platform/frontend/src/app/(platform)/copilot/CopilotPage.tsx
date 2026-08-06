@@ -3,8 +3,8 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { INSET_HEADER_HEIGHT_PX, NAVBAR_HEIGHT_PX } from "@/lib/constants";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
 import dynamic from "next/dynamic";
@@ -14,6 +14,7 @@ import { CopilotChatHost } from "./CopilotChatHost";
 import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
 import { ContextPanelToggle } from "./components/ContextPanel/ContextPanelToggle";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
+import { CopilotModals } from "./components/CopilotModals/CopilotModals";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
@@ -42,11 +43,14 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  // The brain-dump experience swaps the dotted backdrop + notification
+  // opt-in dialog for the quieter greeting surface (banner to follow).
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   // Use the same mount-gated decision as PlatformChrome so the ChatSidebar is
   // hidden in lockstep with the layout swap — avoids a one-frame flash where
   // the classic shell renders without its sidebar before the new layout mounts.
   const { showNewLayout } = usePlatformChrome();
-  const { isUserLoading, isLoggedIn } = useSupabase();
+  const { isUserLoading, isLoggedIn } = useAuth();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
   // lives in a per-session registry so live streams can continue in
@@ -71,12 +75,13 @@ export function CopilotPage() {
       // (SidebarProvider `min-h-svh` → SidebarInset `flex-1` → `section flex-1`)
       // only set a *minimum* height, so `height: 100%` there resolves to
       // content height and the accordion pushes the input below the fold.
-      // Subtract the inset header in the new layout; the navbar + preview
-      // banner in the classic one. `svh` keeps the input visible when mobile
-      // browser chrome is shown.
+      // The new layout gets the full viewport — its inset header overlays the
+      // chat (see PlatformChrome) instead of stacking above it. The classic
+      // layout subtracts the navbar + preview banner. `svh` keeps the input
+      // visible when mobile browser chrome is shown.
       style={
         showNewLayout
-          ? { height: `calc(100svh - ${INSET_HEADER_HEIGHT_PX}px)` }
+          ? { height: "100svh" }
           : {
               height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
             }
@@ -87,6 +92,7 @@ export function CopilotPage() {
       <MainArea
         isMobile={isMobile}
         isArtifactsEnabled={isArtifactsEnabled}
+        isBrainDumpEnabled={Boolean(isBrainDumpEnabled)}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
@@ -96,7 +102,8 @@ export function CopilotPage() {
       )}
       {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && !showNewLayout && <MobileDrawer />}
-      <NotificationDialog />
+      {!isBrainDumpEnabled && <NotificationDialog />}
+      <CopilotModals />
     </SidebarProvider>
   );
 }
@@ -104,6 +111,7 @@ export function CopilotPage() {
 interface MainAreaProps {
   isMobile: boolean;
   isArtifactsEnabled: boolean;
+  isBrainDumpEnabled: boolean;
   sessionId: string | null;
   droppedFiles: File[];
   setDroppedFiles: (files: File[]) => void;
@@ -112,6 +120,7 @@ interface MainAreaProps {
 function MainArea({
   isMobile,
   isArtifactsEnabled,
+  isBrainDumpEnabled,
   sessionId,
   droppedFiles,
   setDroppedFiles,
@@ -120,7 +129,7 @@ function MainArea({
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
       <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa]">
-        {hasSession && (
+        {!isBrainDumpEnabled && hasSession && (
           <DotDistortionShader
             dotGap={14}
             dotSize={1}

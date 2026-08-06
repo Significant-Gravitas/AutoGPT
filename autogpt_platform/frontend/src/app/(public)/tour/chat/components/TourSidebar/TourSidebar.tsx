@@ -1,6 +1,5 @@
 "use client";
 
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import {
   getSidebarItemVariants,
   sidebarContainerVariants,
@@ -13,6 +12,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -21,21 +21,27 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import {
-  CaretDownIcon,
-  FlowArrowIcon,
-  FolderIcon,
-  type Icon,
-  MagnifyingGlassIcon,
-  SparkleIcon,
-  SquaresFourIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import { tourScenarios } from "../../script/tourScenarios";
+import { useRouter } from "next/navigation";
+import { getNextTourScenario, tourScenarios } from "../../script/tourScenarios";
 import { useTourStore } from "../../tourStore";
+import { useTourScenarioSelection } from "../../useTourScenarioSelection";
 import { TourSidebarHeader } from "./components/TourSidebarHeader";
+import { TourUpsellCard } from "./components/TourUpsellCard";
+import {
+  ArrowDown01Icon,
+  FlowIcon,
+  Folder01Icon,
+  GridViewIcon,
+  Search01Icon,
+  SparklesIcon,
+  Store01Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Visual clone of the logged-in AppSidebar for the public tour demo. Only
 // Marketplace navigates; every other destination needs an account, so those
@@ -43,10 +49,10 @@ import { TourSidebarHeader } from "./components/TourSidebarHeader";
 // as if they were chat sessions.
 
 function DisabledMenuItem({
-  icon: ItemIcon,
+  icon,
   label,
 }: {
-  icon: Icon;
+  icon: IconSvgElement;
   label: string;
 }) {
   return (
@@ -56,21 +62,32 @@ function DisabledMenuItem({
         tooltip={label}
         className="cursor-not-allowed font-normal opacity-50 group-data-[collapsible=icon]:!p-1.5 hover:!bg-transparent [&>svg]:size-5"
       >
-        <ItemIcon className="size-5" />
+        <Icon icon={icon} className="size-5" />
         <span className="truncate">{label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
 }
 
-function TourSessionsMenu() {
+function TourSessionsMenu({ variant }: { variant: TourSidebarVariant }) {
+  const router = useRouter();
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
-  const setActiveScenario = useTourStore((s) => s.setActiveScenario);
-  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
+  const watchedScenarioIds = useTourStore((s) => s.watchedScenarioIds);
+  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
+  const isNudgeVisible = useTourStore((s) => s.isNudgeVisible);
+  const selectTourScenario = useTourScenarioSelection();
+
+  // While the visitor idles on a finished demo, the scenario the nudge chip
+  // points at pulses in the sidebar too.
+  const nudgeScenarioId =
+    variant === "tour" && isDemoComplete && isNudgeVisible
+      ? getNextTourScenario(activeScenarioId, watchedScenarioIds).id
+      : null;
 
   function selectScenario(id: string) {
-    clearArtifactPreview();
-    setActiveScenario(id);
+    selectTourScenario(id);
+    if (variant === "marketplace")
+      router.push("/tour/chat?utm_source=platform_marketplace");
   }
 
   return (
@@ -78,13 +95,23 @@ function TourSessionsMenu() {
       {tourScenarios.map((scenario) => (
         <SidebarMenuItem key={scenario.id}>
           <SidebarMenuButton
-            isActive={scenario.id === activeScenarioId}
+            isActive={variant === "tour" && scenario.id === activeScenarioId}
             tooltip={scenario.label}
             onClick={() => selectScenario(scenario.id)}
-            className="font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal hover:!bg-zinc-200"
+            className={cn(
+              "font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal hover:!bg-zinc-200",
+              scenario.id === nudgeScenarioId &&
+                "animate-pulse bg-violet-50 outline-dashed outline-1 outline-violet-400",
+            )}
           >
-            <scenario.icon className="size-4 shrink-0" />
+            <Icon icon={scenario.icon} className="size-4 shrink-0" />
             <span className="truncate">{scenario.label}</span>
+            {variant === "tour" && watchedScenarioIds.includes(scenario.id) && (
+              <span className="ml-auto flex shrink-0 items-center gap-0.5 text-xs text-emerald-600">
+                <Icon icon={Tick02Icon} className="size-3" />
+                watched
+              </span>
+            )}
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}
@@ -92,9 +119,21 @@ function TourSessionsMenu() {
   );
 }
 
-export function TourSidebar() {
+type TourSidebarVariant = "tour" | "marketplace";
+
+interface Props {
+  /** "marketplace" renders the sidebar as a logged-out upsell shell: the
+   * sessions group is honestly labelled a demo and clicking one navigates
+   * into /tour/chat instead of switching in place. */
+  variant?: TourSidebarVariant;
+}
+
+export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
+  // Once the demo finishes, the end card in the chat carries the upsell —
+  // the sidebar card hides until a new scenario resets the demo.
+  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
 
   return (
     <Sidebar
@@ -120,7 +159,7 @@ export function TourSidebar() {
                       tooltip="New Task"
                       className="cursor-not-allowed justify-center rounded-lg bg-zinc-800 font-medium text-white opacity-50 group-data-[collapsible=icon]:justify-start hover:!bg-zinc-800 hover:!text-white"
                     >
-                      <SparkleIcon className="size-4" />
+                      <Icon icon={SparklesIcon} className="size-4" />
                       <span className="truncate">New Task</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -133,8 +172,8 @@ export function TourSidebar() {
             <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
               <SidebarGroupContent>
                 <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
-                  <DisabledMenuItem icon={MagnifyingGlassIcon} label="Search" />
-                  <DisabledMenuItem icon={SquaresFourIcon} label="Agents" />
+                  <DisabledMenuItem icon={Search01Icon} label="Search" />
+                  <DisabledMenuItem icon={GridViewIcon} label="Agents" />
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       asChild
@@ -142,12 +181,12 @@ export function TourSidebar() {
                       className="font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-200 [&>svg]:size-5"
                     >
                       <Link href="/marketplace">
-                        <StorefrontIcon className="size-5" />
+                        <Icon icon={Store01Icon} className="size-5" />
                         <span className="truncate">Marketplace</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <DisabledMenuItem icon={FlowArrowIcon} label="Build" />
+                  <DisabledMenuItem icon={FlowIcon} label="Build" />
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -159,8 +198,8 @@ export function TourSidebar() {
                 <SidebarGroupLabel asChild className="text-[13px] font-medium">
                   <CollapsibleTrigger>
                     Workspace
-                    <CaretDownIcon
-                      weight="bold"
+                    <Icon
+                      icon={ArrowDown01Icon}
                       className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
                     />
                   </CollapsibleTrigger>
@@ -168,7 +207,7 @@ export function TourSidebar() {
                 <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
                   <SidebarGroupContent>
                     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
-                      <DisabledMenuItem icon={FolderIcon} label="Files" />
+                      <DisabledMenuItem icon={Folder01Icon} label="Files" />
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </CollapsibleContent>
@@ -182,15 +221,21 @@ export function TourSidebar() {
           >
             <SidebarGroup className="py-1">
               <SidebarGroupLabel className="text-[13px] font-medium">
-                Recent chats
+                {variant === "marketplace" ? "Try Autopilot" : "Recent chats"}
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <TourSessionsMenu />
+                <TourSessionsMenu variant={variant} />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
         </motion.div>
       </SidebarContent>
+
+      {!isDemoComplete && (
+        <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+          <TourUpsellCard />
+        </SidebarFooter>
+      )}
 
       <SidebarRail />
     </Sidebar>

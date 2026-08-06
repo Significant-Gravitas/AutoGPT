@@ -26,16 +26,19 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
+import backend.api.features.experts.routes as experts_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
+import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
@@ -53,6 +56,7 @@ import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
@@ -64,6 +68,8 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.webhook_routes import register_webhook_adapters
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
@@ -92,6 +98,11 @@ settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
 
 logging.getLogger("autogpt_libs").setLevel(logging.INFO)
+
+# Backing client for webhook chat adapters (Slack Events API, etc.) whose routes
+# mount on this API. Owned at module level so `lifespan_context` can close it on
+# shutdown; the routes themselves are mounted further down once `app` exists.
+_webhook_bot_backend = BotBackend()
 
 
 @contextlib.contextmanager
@@ -152,6 +163,9 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
 
+    # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
+    backend.data.llm_registry.load_catalog()
+
     with launch_darkly_context():
         yield
 
@@ -168,6 +182,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Each cleanup is wrapped so one failure doesn't block the rest. The
     # Redis close in particular silences asyncio's "Unclosed ClusterNode"
     # GC warning at interpreter shutdown.
+    try:
+        await _webhook_bot_backend.close()
+    except Exception:
+        logger.warning("webhook BotBackend.close() failed", exc_info=True)
+
     try:
         await backend.data.redis_client.disconnect_async()
     except Exception:
@@ -334,6 +353,11 @@ app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
+    auth_email_routes.auth_email_router,
+    prefix="/api/auth/email",
+    tags=["auth-email"],
+)
+app.include_router(
     integrations_router,
     prefix="/api/integrations",
     tags=["v1", "integrations"],
@@ -394,11 +418,15 @@ app.include_router(
     tags=["v2", "admin"],
     prefix="/api",
 )
-app.include_router(
-    backend.api.features.admin.test_data_routes.router,
-    tags=["v2", "admin"],
-    prefix="/api",
-)
+# Dev-only surface: the test-data seeder is never mounted outside a local
+# app_env, matching how docs_url/metrics are gated above. The runtime
+# `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
+if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+    app.include_router(
+        backend.api.features.admin.test_data_routes.router,
+        tags=["v2", "admin"],
+        prefix="/api",
+    )
 app.include_router(
     backend.api.features.executions.review.routes.router,
     tags=["v2", "executions", "review"],
@@ -407,10 +435,16 @@ app.include_router(
 app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
 
+app.include_router(
+    onboarding_dump_routes.router,
+    tags=["v1", "onboarding"],
+    prefix="/api",
+)
 app.include_router(
     backend.api.features.postmark.postmark.router,
     tags=["v1", "email"],
@@ -491,6 +525,10 @@ app.include_router(
     tags=["platform-linking"],
     prefix="/api/platform-linking",
 )
+
+# Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
+# No-op when no webhook platform is configured; errors surface at startup.
+register_webhook_adapters(app, _webhook_bot_backend)
 
 app.mount("/external-api", external_api)
 

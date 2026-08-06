@@ -19,6 +19,21 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import SkillsPage from "../page";
 
+const pushMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: pushMock,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/library/skills",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
+
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -43,6 +58,7 @@ function makeSkill(overrides: Partial<CopilotSkillInfo>): CopilotSkillInfo {
 describe("SkillsPage", () => {
   beforeEach(() => {
     toastMock.mockClear();
+    pushMock.mockClear();
   });
 
   afterEach(() => {
@@ -330,6 +346,70 @@ describe("SkillsPage", () => {
         }),
       );
     });
+  });
+
+  test("header shows New skill button in empty state and it starts the guided flow", async () => {
+    server.use(getListCopilotSkillsMockHandler([]));
+
+    render(<SkillsPage />);
+    await screen.findByTestId("skills-empty");
+
+    fireEvent.click(screen.getByTestId("skill-new-button"));
+
+    await vi.waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith(
+        expect.stringContaining("/copilot#prompt="),
+      );
+    });
+    const url = pushMock.mock.calls[0][0] as string;
+    expect(decodeURIComponent(url.split("#prompt=")[1])).toContain(
+      "I want to teach you a new skill",
+    );
+  });
+
+  test("empty state shows the spec copy", async () => {
+    server.use(getListCopilotSkillsMockHandler([]));
+
+    render(<SkillsPage />);
+
+    const empty = await screen.findByTestId("skills-empty");
+    expect(empty.textContent).toContain("No skills yet");
+    expect(empty.textContent).toContain(
+      "then it'll reach for it automatically",
+    );
+  });
+
+  test("uploaded skill shows a New badge", async () => {
+    server.use(
+      getListCopilotSkillsMockHandler([
+        makeSkill({
+          name: "uploaded_skill",
+          description: "An uploaded recipe.",
+          triggers: [],
+        }),
+      ]),
+      getUploadCopilotSkillMockHandler201({
+        name: "uploaded_skill",
+        description: "An uploaded recipe.",
+        triggers: [],
+      }),
+    );
+
+    render(<SkillsPage />);
+    await screen.findAllByTestId("skill-row");
+    expect(screen.queryByTestId("skill-new-badge")).toBeNull();
+
+    const input = screen.getByTestId("skill-upload-input");
+    const file = new File(
+      [
+        "---\nname: uploaded_skill\ndescription: An uploaded recipe.\n---\n\n# Body\n",
+      ],
+      "uploaded_skill.md",
+      { type: "text/markdown" },
+    );
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByTestId("skill-new-badge")).toBeDefined();
   });
 
   test("shows a destructive toast when the delete API fails", async () => {

@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.dream.batch_callbacks import handle_dream_batch_result
+from backend.copilot.dream.schemas import IngestionDrainStatus
 from backend.executor.batch_executor import PendingEntry
 from backend.util.llm.providers import BatchResultRow
 
@@ -251,7 +252,14 @@ class TestPhaseChaining:
             row=_row(custom_id="p1:recombine", content=_RECOMBINE_CONTENT),
         )
 
-        apply = AsyncMock(return_value={"writes": 0, "snapshot": "..."})
+        # Real batch-path apply reports ``skipped`` (drain not run by design).
+        apply = AsyncMock(
+            return_value={
+                "writes": 0,
+                "snapshot": "...",
+                "ingestion_drain_status": IngestionDrainStatus.skipped,
+            }
+        )
         mark_complete = AsyncMock()
         record_cost = AsyncMock()
         release_lock = AsyncMock()
@@ -271,10 +279,21 @@ class TestPhaseChaining:
         # The demotion allowlist is threaded from the bundle already loaded
         # for the clamp — apply must not re-read the bundle from Redis.
         assert apply.call_args.kwargs["known_fact_uuids"] == {"fact-1"}
+        # The batch path must NOT run the 300s in-line ingestion drain: apply
+        # executes inside this handler, which BatchExecutor.walk_once awaits
+        # serially — a long drain would stall every other user's batch poll.
+        assert apply.call_args.kwargs["ingestion_drain_timeout"] == 0
         mark_complete.assert_awaited_once()
         # The sanitizer's user-facing narrative must ride on the result so the
         # Memory Visualizer isn't blank for batch-completed dreams.
         assert mark_complete.call_args.kwargs["result"].summary_for_user == "ok"
+        # Drain was skipped by design on the batch path — the tri-state says
+        # so (``skipped``), distinguishing it from a real sync-path failure
+        # (``timed_out``) rather than masking either as success.
+        assert (
+            mark_complete.call_args.kwargs["result"].ingestion_drain_status
+            is IngestionDrainStatus.skipped
+        )
         # The batch path disowned the dream lock to this callback; the
         # terminal handler must release it with the ownership token the
         # input bundle carried — compare-and-delete, never a blind DEL.
@@ -861,6 +880,9 @@ class TestLockTokenWiring:
         # summary must say so.
         assert final.result["summary_for_user"].endswith("ok")
         assert "duplicate delivery" in final.result["summary_for_user"]
+        # The batch path never drains in-line, so the finalized result marks
+        # the writes as a by-design skip (``skipped``), not a drain failure.
+        assert final.result["ingestion_drain_status"] == IngestionDrainStatus.skipped
 
     @pytest.mark.asyncio
     async def test_duplicate_dispatch_leaves_terminal_job_untouched(self, fake_redis):
