@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { useOnboardingWizardStore } from "../../store";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import { headline, SILENCE_NUDGE_SECONDS } from "./helpers";
@@ -112,8 +113,15 @@ export function useBrainDumpStep() {
     // Duration comes back from `stop()` for the same reason the id is
     // passed in below — `recorder.elapsedSeconds` here is this render's
     // value, and it is short by however long stopping took.
-    const durationSecs = await recorder.stop();
-    await submitRecording(recorder.recordingId, durationSecs);
+    try {
+      const durationSecs = await recorder.stop();
+      await submitRecording(recorder.recordingId, durationSecs);
+    } catch (error) {
+      Sentry.captureException(error, {
+        tags: { component: "useBrainDumpStep", action: "send" },
+      });
+      setScreen("failed");
+    }
   }
 
   async function handleStop() {
@@ -122,11 +130,17 @@ export function useBrainDumpStep() {
     if (recordingId && !actionToken) return;
     trackBrainDump("brain_dump_canceled");
     try {
-      await recorder.stop();
+      try {
+        await recorder.stop();
+      } catch (error) {
+        Sentry.captureException(error, {
+          tags: { component: "useBrainDumpStep", action: "cancel" },
+        });
+      }
       recorder.resetQueue();
       if (recordingId) await discardTake(recordingId);
-      setScreen("rest");
     } finally {
+      setScreen("rest");
       if (actionToken) releaseTakeAction(actionToken);
     }
   }
@@ -205,13 +219,20 @@ export function useBrainDumpStep() {
     const actionToken = previousId ? claimTakeAction(previousId) : null;
     if (previousId && !actionToken) return;
     trackBrainDump("brain_dump_restarted");
+    let started = false;
     try {
-      await recorder.stop();
+      try {
+        await recorder.stop();
+      } catch (error) {
+        Sentry.captureException(error, {
+          tags: { component: "useBrainDumpStep", action: "restart" },
+        });
+      }
       recorder.resetQueue();
       if (previousId) await discardTake(previousId);
-      const started = await recorder.start();
-      setScreen(started ? "recording" : "rest");
+      started = await recorder.start();
     } finally {
+      setScreen(started ? "recording" : "rest");
       if (actionToken) releaseTakeAction(actionToken);
     }
   }

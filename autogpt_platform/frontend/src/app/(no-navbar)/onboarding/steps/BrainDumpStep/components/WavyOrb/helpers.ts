@@ -345,6 +345,9 @@ export function createWavyOrbRenderer({
   let frequencies: Uint8Array<ArrayBuffer> | null = null;
   if (audioStream && typeof AudioContext !== "undefined") {
     audioContext = new AudioContext();
+    if (audioContext.state === "suspended") {
+      void audioContext.resume().catch(() => undefined);
+    }
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.93;

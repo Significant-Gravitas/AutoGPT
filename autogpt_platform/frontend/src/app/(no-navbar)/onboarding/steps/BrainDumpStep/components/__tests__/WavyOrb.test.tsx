@@ -21,6 +21,7 @@ const animationFrames = new Map<number, FrameRequestCallback>();
 const intersectionCallbacks: ObserverCallback[] = [];
 const resizeCallbacks: Array<() => void> = [];
 const closeAudioContext = vi.fn(() => Promise.resolve());
+const resumeAudioContext = vi.fn(() => Promise.resolve());
 let animationFrameId = 0;
 
 function createWebGlContext() {
@@ -88,6 +89,7 @@ beforeEach(() => {
   resizeCallbacks.length = 0;
   animationFrameId = 0;
   closeAudioContext.mockClear();
+  resumeAudioContext.mockClear();
   setReducedMotion(false);
 
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -181,6 +183,7 @@ describe("WavyOrb", () => {
     vi.stubGlobal(
       "AudioContext",
       class {
+        state: AudioContextState = "suspended";
         sampleRate = 48000;
         createAnalyser() {
           return {
@@ -194,6 +197,7 @@ describe("WavyOrb", () => {
           return { connect };
         }
         close = closeAudioContext;
+        resume = resumeAudioContext;
       },
     );
 
@@ -206,6 +210,7 @@ describe("WavyOrb", () => {
 
     act(() => flushAnimationFrames());
     expect(connect).toHaveBeenCalled();
+    expect(resumeAudioContext).toHaveBeenCalled();
     expect(getByteFrequencyData).toHaveBeenCalled();
     expect(gl.uniform1f).toHaveBeenCalled();
 
