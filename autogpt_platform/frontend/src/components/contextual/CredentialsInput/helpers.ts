@@ -1,4 +1,3 @@
-import { GlobeSimple, KeyIcon, Lock, Password } from "@phosphor-icons/react";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import {
   FaDiscord,
@@ -9,8 +8,18 @@ import {
   FaTwitter,
 } from "react-icons/fa";
 import { CredentialsType } from "@/lib/autogpt-server-api/types";
+import {
+  Globe02Icon,
+  Key01Icon,
+  LockIcon,
+  LockPasswordIcon,
+} from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
-export const fallbackIcon = KeyIcon;
+export const fallbackIcon = createIconComponent(Key01Icon);
+const globeIcon = createIconComponent(Globe02Icon);
+const lockIcon = createIconComponent(LockIcon);
+const lockPasswordIcon = createIconComponent(LockPasswordIcon);
 
 export const providerIcons: Partial<
   Record<string, React.FC<{ className?: string }>>
@@ -116,14 +125,11 @@ export function getCredentialTypeIcon(
   provider?: string,
 ): CredentialIcon {
   if (type === "oauth2" && provider) {
-    const icon = providerIcons[provider];
-    if (icon) return icon as CredentialIcon;
-    return GlobeSimple as CredentialIcon;
+    return providerIcons[provider] ?? globeIcon;
   }
-  if (type === "api_key") return KeyIcon as CredentialIcon;
-  if (type === "user_password") return Password as CredentialIcon;
-  if (type === "host_scoped") return Lock as CredentialIcon;
-  return KeyIcon as CredentialIcon;
+  if (type === "user_password") return lockPasswordIcon;
+  if (type === "host_scoped") return lockIcon;
+  return fallbackIcon;
 }
 
 export function getActionButtonText(

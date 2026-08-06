@@ -8,8 +8,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
 import Link from "next/link";
+import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function AppSidebarHeader() {
   const { state, toggleSidebar } = useSidebar();
@@ -45,7 +46,10 @@ export function AppSidebarHeader() {
                 : "flex",
             )}
           >
-            <SidebarSimpleIcon className="size-5 text-sidebar-foreground" />
+            <Icon
+              icon={SidebarLeftIcon}
+              className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+            />
           </button>
         </TooltipTrigger>
         <TooltipContent side="right">

@@ -42,6 +42,7 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.CONGRATS,
     OnboardingStep.VISIT_COPILOT,
     OnboardingStep.BUILDER_OPEN,
+    OnboardingStep.CAPABILITY_CARDS,
 ]
 
 
@@ -425,6 +426,44 @@ def format_onboarding_for_extraction(
         f"Q: What tasks are eating your time?\nA: {', '.join(points)}",
     ]
     return "\n\n".join(lines)
+
+
+def format_brain_dump_for_extraction(
+    user_name: str,
+    user_role: str,
+    transcript: str,
+) -> str:
+    """Format a spoken brain dump for the same LLM extraction pass.
+
+    The transcript is unpunctuated, rambling, first-person speech rather
+    than form answers, so it gets its own framing: the extractor is told
+    what it is looking at and which fields the "what would you hand off"
+    part of a dump maps onto, otherwise it tends to file everything under
+    ``additional_notes``.
+
+    The transcript is passed **whole** — extraction runs against the
+    complete text even when a shortened version is what gets injected into
+    the copilot's first prompt.
+    """
+    name = " ".join(user_name.strip().split())
+    role = " ".join(user_role.strip().split())
+
+    return "\n\n".join(
+        [
+            f"Q: What is your name?\nA: {name}",
+            f"Q: What best describes your role?\nA: {role}",
+            (
+                "The following is a transcript of the user speaking freely for a "
+                "few minutes about their work, in answer to: what keeps stealing "
+                "your week? It is unedited speech — expect filler words, "
+                "self-corrections and no punctuation. Extract only what the user "
+                "actually said; never invent details. Work they describe wanting "
+                "to hand off belongs in manual_tasks and automation_goals; tools "
+                "they name belong in current_software.\n\n"
+                f"Transcript:\n{transcript.strip()}"
+            ),
+        ]
+    )
 
 
 @cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes

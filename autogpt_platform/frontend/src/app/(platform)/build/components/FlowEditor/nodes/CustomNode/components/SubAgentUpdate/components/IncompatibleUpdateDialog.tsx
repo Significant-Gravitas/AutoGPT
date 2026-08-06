@@ -1,14 +1,15 @@
 import React from "react";
-import {
-  WarningIcon,
-  XCircleIcon,
-  PlusCircleIcon,
-} from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { beautifyString } from "@/lib/utils";
 import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate/types";
+import {
+  Alert01Icon,
+  CancelCircleIcon,
+  PlusSignCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type IncompatibleUpdateDialogProps = {
   isOpen: boolean;
@@ -43,7 +44,7 @@ export function IncompatibleUpdateDialog({
     <Dialog
       title={
         <div className="flex items-center gap-2">
-          <WarningIcon className="h-5 w-5 text-amber-500" weight="fill" />
+          <Icon icon={Alert01Icon} className="h-5 w-5 text-amber-500" />
           Incompatible Update
         </div>
       }
@@ -68,14 +69,17 @@ export function IncompatibleUpdateDialog({
             <TwoColumnSection
               title="Input Changes"
               leftIcon={
-                <XCircleIcon className="h-4 w-4 text-red-500" weight="fill" />
+                <Icon
+                  icon={CancelCircleIcon}
+                  className="h-4 w-4 text-red-500"
+                />
               }
               leftTitle="Removed"
               leftItems={incompatibilities.missingInputs}
               rightIcon={
-                <PlusCircleIcon
+                <Icon
+                  icon={PlusSignCircleIcon}
                   className="h-4 w-4 text-green-500"
-                  weight="fill"
                 />
               }
               rightTitle="Added"
@@ -88,14 +92,17 @@ export function IncompatibleUpdateDialog({
             <TwoColumnSection
               title="Output Changes"
               leftIcon={
-                <XCircleIcon className="h-4 w-4 text-red-500" weight="fill" />
+                <Icon
+                  icon={CancelCircleIcon}
+                  className="h-4 w-4 text-red-500"
+                />
               }
               leftTitle="Removed"
               leftItems={incompatibilities.missingOutputs}
               rightIcon={
-                <PlusCircleIcon
+                <Icon
+                  icon={PlusSignCircleIcon}
                   className="h-4 w-4 text-green-500"
-                  weight="fill"
                 />
               }
               rightTitle="Added"
@@ -106,7 +113,10 @@ export function IncompatibleUpdateDialog({
           {hasTypeMismatches && (
             <SingleColumnSection
               icon={
-                <XCircleIcon className="h-4 w-4 text-red-500" weight="fill" />
+                <Icon
+                  icon={CancelCircleIcon}
+                  className="h-4 w-4 text-red-500"
+                />
               }
               title="Type Changed"
               description="These connected inputs have a different type:"
@@ -119,9 +129,9 @@ export function IncompatibleUpdateDialog({
           {hasNewRequired && (
             <SingleColumnSection
               icon={
-                <PlusCircleIcon
+                <Icon
+                  icon={PlusSignCircleIcon}
                   className="h-4 w-4 text-amber-500"
-                  weight="fill"
                 />
               }
               title="New Required Inputs"

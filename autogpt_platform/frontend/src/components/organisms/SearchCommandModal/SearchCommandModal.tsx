@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 import * as RXDialog from "@radix-ui/react-dialog";
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import {
@@ -15,6 +14,8 @@ import {
 import { SearchCommandResults } from "./SearchCommandResults";
 import { SearchCommandSkeleton } from "./SearchCommandSkeleton";
 import { useKeyboardNav } from "./useKeyboardNav";
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   isOpen: boolean;
@@ -126,7 +127,10 @@ export function SearchCommandModal({
             Search commands and results.
           </RXDialog.Description>
           <div className="flex items-center gap-3 bg-zinc-50 p-3">
-            <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-zinc-800" />
+            <Icon
+              icon={Search01Icon}
+              className="h-5 w-5 shrink-0 text-zinc-800"
+            />
             <Input
               ref={inputRef}
               value={query}
@@ -158,7 +162,7 @@ export function SearchCommandModal({
                 onClick={() => onQueryChange("")}
                 className="shrink-0"
               >
-                <XIcon className="h-4 w-4" />
+                <Icon icon={Cancel01Icon} className="h-4 w-4" />
               </Button>
             ) : null}
           </div>
