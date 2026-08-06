@@ -260,13 +260,32 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     would re-pause her and Resume would be a no-op until the ISO week rolls
     over. Resuming is the user explicitly accepting more spend this week —
     the durable billing ledger is untouched, only the guardrail's counter
-    restarts."""
+    restarts.
+
+    The forgiveness only fires when a pause was actually reversed: resume
+    on a not-paused expert is an idempotent success that leaves the counter
+    alone, so repeated calls can't hold the guardrail at zero. Archived
+    experts return False (re-hiring is archive's reversal, not Resume)."""
     updated = await prisma.models.Expert.prisma().update_many(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "schedulesPausedAt": {"not": None},
+        },
         data={"schedulesPausedAt": None},
     )
     if updated == 0:
-        return False
+        expert = await prisma.models.Expert.prisma().find_first(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        return expert is not None
     await reset_weekly_spend(expert_id)
     await prisma.models.ExpertPauseEvent.prisma().update_many(
         where={"expertId": expert_id, "clearedAt": None},

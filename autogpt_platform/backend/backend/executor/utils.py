@@ -1401,16 +1401,19 @@ async def add_graph_execution(
             # persisted row on resume/requeue.
             expert_id=expert_id or graph_exec.expert_id,
         )
-    elif execution_context.organization_id is None and graph_exec.organization_id:
+    else:
         # A caller-supplied context (e.g. review-resume, admin-requeue) may
-        # be built before org/team are known. Backfill from the persisted
-        # row so billing and sub-graph runs aren't tenant-blind on resume.
-        execution_context = execution_context.model_copy(
-            update={
-                "organization_id": graph_exec.organization_id,
-                "team_id": graph_exec.team_id,
-            }
-        )
+        # be built before org/team/expert attribution is known. Backfill
+        # from the persisted row so billing, sub-graph runs, and expert
+        # thread posts aren't attribution-blind on resume.
+        backfill: dict[str, str | None] = {}
+        if execution_context.organization_id is None and graph_exec.organization_id:
+            backfill["organization_id"] = graph_exec.organization_id
+            backfill["team_id"] = graph_exec.team_id
+        if execution_context.expert_id is None and graph_exec.expert_id:
+            backfill["expert_id"] = graph_exec.expert_id
+        if backfill:
+            execution_context = execution_context.model_copy(update=backfill)
 
     try:
         graph_exec_entry = graph_exec.to_graph_execution_entry(

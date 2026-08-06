@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -1113,3 +1114,61 @@ async def test_append_expert_run_message_creates_session_when_none_exists() -> N
     assert result == "sess-new"
     assert created.call_args.kwargs["expert_id"] == "e1"
     assert add_message.call_args.kwargs["session_id"] == "sess-new"
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_find_or_create_under_expert_lock() -> None:
+    """The session find-or-create must serialize on an expert-scoped lock,
+    not just the (not-yet-existing) session id — otherwise two concurrent
+    first posts each create a session and fork the expert's thread."""
+    from backend.copilot import db as copilot_db
+    from backend.copilot.db import append_expert_run_message
+
+    order: list[str] = []
+
+    @asynccontextmanager
+    async def fake_lock(key: str) -> AsyncIterator[bool]:
+        order.append(f"lock:{key}")
+        yield True
+        order.append(f"unlock:{key}")
+
+    async def record_find_first(**kwargs: Any) -> None:
+        order.append("find")
+        return None
+
+    created_info = AsyncMock()
+    created_info.session_id = "sess-new"
+
+    async def record_create(**kwargs: Any) -> Any:
+        order.append("create")
+        return created_info
+
+    find_unique = AsyncMock(return_value=None)
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(
+            PrismaChatSession,
+            "prisma",
+            return_value=AsyncMock(find_first=AsyncMock(side_effect=record_find_first)),
+        ),
+        patch.object(copilot_db, "_get_session_lock", new=fake_lock),
+        patch("backend.copilot.db.add_chat_message", new=AsyncMock()),
+        patch(
+            "backend.copilot.db.create_chat_session",
+            new=AsyncMock(side_effect=record_create),
+        ),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=0)),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result == "sess-new"
+    assert order[:4] == [
+        "lock:expert-thread:u1:e1",
+        "find",
+        "create",
+        "unlock:expert-thread:u1:e1",
+    ]

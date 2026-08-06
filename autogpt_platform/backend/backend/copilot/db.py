@@ -1061,17 +1061,23 @@ async def append_expert_run_message(
     if existing is not None:
         return None
 
-    session = await PrismaChatSession.prisma().find_first(
-        where={"userId": user_id, "expertId": expert_id},
-        order={"updatedAt": "desc"},
-    )
-    if session is not None:
-        session_id = session.id
-    else:
-        created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+    # Find-or-create serializes on an expert-scoped lock: the per-session
+    # lock below can't cover this window (the session may not exist yet),
+    # and without it two concurrent first posts each create a session and
+    # fork the expert's thread. Degraded mode (Redis down) falls back to
+    # best-effort, same as the sequence lock.
+    async with _get_session_lock(f"expert-thread:{user_id}:{expert_id}"):
+        session = await PrismaChatSession.prisma().find_first(
+            where={"userId": user_id, "expertId": expert_id},
+            order={"updatedAt": "desc"},
         )
-        session_id = created.session_id
+        if session is not None:
+            session_id = session.id
+        else:
+            created = await create_chat_session(
+                session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+            )
+            session_id = created.session_id
 
     # Same Redis NX lock as turn_queue.append_and_save_message: the
     # sequence read + insert must not interleave with a concurrent turn

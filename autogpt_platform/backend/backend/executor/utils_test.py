@@ -609,6 +609,7 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = "org-rpc"
     mock_graph_exec.team_id = "team-rpc"
+    mock_graph_exec.expert_id = None
     mock_graph_exec.id = "exec-id-rpc"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
@@ -973,6 +974,67 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     assert captured_kwargs["execution_context"].team_id == "team-row"
     # The "CREATE path only" invariant: resume never consults the resolver.
     mock_get_default_team.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_resume_backfills_expert_from_row(
+    mocker: MockerFixture,
+):
+    """On resume, a caller-supplied ExecutionContext built without expert_id
+    (e.g. the review-resume path) must recover it from the persisted row —
+    otherwise weekly spend metering and the expert thread post silently stop
+    after a human-in-the-loop resume. Row deliberately has no org so the
+    org-backfill condition alone can't mask a missing expert backfill."""
+    from backend.data.execution import ExecutionContext, GraphExecutionWithNodes
+    from backend.executor.utils import add_graph_execution
+
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "exec-resume-2"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.nodes_input_masks = {}
+    mock_graph_exec.organization_id = None
+    mock_graph_exec.team_id = None
+    mock_graph_exec.expert_id = "expert-row"
+
+    captured_kwargs: dict = {}
+
+    def capture_to_entry(**kwargs):
+        captured_kwargs.update(kwargs)
+        return mocker.MagicMock()
+
+    mock_graph_exec.to_graph_execution_entry.side_effect = capture_to_entry
+
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_get_event_bus = mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    )
+    mock_prisma.is_connected.return_value = True
+    mock_edb.get_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
+    mock_get_queue.return_value = mocker.AsyncMock()
+    mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
+    mocker.patch(
+        "backend.executor.utils._enforce_expert_run_budget", new=mocker.AsyncMock()
+    )
+
+    resume_ctx = ExecutionContext(user_id="test-user-id", workspace_id="ws-1")
+    assert resume_ctx.expert_id is None
+
+    await add_graph_execution(
+        graph_id="test-graph-id",
+        user_id="test-user-id",
+        graph_exec_id="exec-resume-2",
+        execution_context=resume_ctx,
+    )
+
+    assert captured_kwargs["execution_context"].expert_id == "expert-row"
 
 
 @pytest.mark.asyncio
@@ -1997,6 +2059,7 @@ def _mock_add_graph_execution_create_path(
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = org_id
     mock_graph_exec.team_id = team_id
+    mock_graph_exec.expert_id = None
     mock_graph_exec.id = "exec-id"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED

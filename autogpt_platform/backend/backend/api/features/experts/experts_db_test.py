@@ -489,6 +489,39 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_resume_without_pause_is_noop_and_keeps_counter(
+    server: SpinTestServer, test_user
+):
+    """Resume on a not-paused expert must be an idempotent success that
+    leaves the weekly spend counter alone — otherwise repeated Resume calls
+    keep the counter near zero and defeat the guardrail."""
+    template = await _seed_template(name="Nia", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with patch.object(scheduling, "reset_weekly_spend", new=AsyncMock()) as reset_spend:
+        assert await scheduling.resume_expert_schedules(test_user.id, hired.expert.id)
+    reset_spend.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_resume_archived_expert_returns_false(server: SpinTestServer, test_user):
+    """Archive's reversal is re-hiring, not Resume: resuming an archived
+    expert must fail (404 at the route) instead of clearing her pause state
+    and forgiving spend while her schedules stay deleted."""
+    template = await _seed_template(name="Ola", preload_listings=[])
+    sched = AsyncMock()
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+        await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with patch.object(scheduling, "reset_weekly_spend", new=AsyncMock()) as reset_spend:
+        assert not await scheduling.resume_expert_schedules(
+            test_user.id, hired.expert.id
+        )
+    reset_spend.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_round_trip(server: SpinTestServer):
     first_ids = await seed.seed_roster()
     assert len(first_ids) == 3
