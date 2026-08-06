@@ -1,7 +1,7 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AccountMenuOrgList } from "../AccountMenuOrgList";
 
@@ -57,7 +57,12 @@ function seedStore(overrides = {}) {
 
 describe("AccountMenuOrgList", () => {
   beforeEach(() => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
   });
 
   it("renders nothing until the org store has loaded", () => {

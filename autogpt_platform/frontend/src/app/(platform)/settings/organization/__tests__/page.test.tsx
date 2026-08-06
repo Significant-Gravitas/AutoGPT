@@ -288,6 +288,42 @@ describe("OrganizationSettingsPage", () => {
     });
   });
 
+  it("keeps the joined org in the store when the refreshed list omits it", async () => {
+    mockTeamOrg({
+      myInvitations: [
+        {
+          id: "inv-9",
+          token: "tok-9",
+          org_id: "org-other",
+          org_name: "Other Corp",
+          org_slug: "other-corp",
+          is_admin: false,
+          is_billing_manager: false,
+          expires_at: new Date("2026-08-01T00:00:00Z"),
+          created_at: new Date("2026-07-01T00:00:00Z"),
+        },
+      ],
+    });
+    server.use(
+      getPostV2AcceptInvitationMockHandler(() => ({
+        orgId: "org-other",
+        message: "Invitation accepted",
+      })),
+      // The membership hasn't propagated to the list endpoint yet.
+      getGetV2ListUserOrganizationsMockHandler([TEAM_ORG]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    expect(await screen.findByText("Other Corp")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() => {
+      const state = useOrgTeamStore.getState();
+      expect(state.activeOrgID).toBe("org-other");
+      expect(state.orgs.map((org) => org.id)).toContain("org-other");
+    });
+  });
+
   it("shows an error when the members query fails", async () => {
     server.use(
       getGetV2GetOrganizationDetailsMockHandler(TEAM_ORG),
