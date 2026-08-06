@@ -1,80 +1,77 @@
 "use client";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
 import { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
-import { AudioWave01Icon } from "@hugeicons/core-free-icons";
 import { motion, type MotionValue, useTransform } from "framer-motion";
-import { ORB_UI_SIZE, OrbUiOrb } from "./OrbUiOrb";
-import { OrbVariant } from "./OrbSelector";
-import { type WavyOrbSettings } from "./WavyOrb/helpers";
-import { WavyOrb } from "./WavyOrb/WavyOrb";
+import { type AudioBarLevels } from "./useAudioBars";
 
 interface Props {
-  variant: OrbVariant;
   glassParams: GlassParams;
-  audioStream: MediaStream | null;
-  audioLevel: MotionValue<number>;
-  wavySettings: WavyOrbSettings;
+  audioBars: AudioBarLevels;
   isRecording: boolean;
-  isLoading: boolean;
 }
 
-export function OrbVisual({
-  variant,
-  glassParams,
-  audioStream,
-  audioLevel,
-  wavySettings,
-  isRecording,
-  isLoading,
-}: Props) {
-  if (variant === "glass") {
-    return (
-      <div data-testid="orb-current" className="h-full w-full">
-        <GlassOrb params={glassParams} audioLevel={audioLevel} showRim={false}>
-          <ReactiveWaveIcon audioLevel={audioLevel} />
-        </GlassOrb>
-      </div>
-    );
-  }
-
-  if (variant === "orb-ui") {
-    return (
-      <div className="relative h-full w-full" aria-hidden>
-        <div
-          data-testid="orb-ui-frame"
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-          style={{ width: ORB_UI_SIZE, height: ORB_UI_SIZE }}
-        >
-          <OrbUiOrb
-            audioLevel={audioLevel}
-            state={isLoading ? "thinking" : isRecording ? "listening" : "idle"}
-          />
-        </div>
-      </div>
-    );
-  }
-
+export function OrbVisual({ glassParams, audioBars, isRecording }: Props) {
   return (
-    <div className="relative h-full w-full" aria-hidden>
-      <div className="absolute left-1/2 top-1/2 h-[240px] w-[620px] -translate-x-1/2 -translate-y-1/2">
-        <WavyOrb audioStream={audioStream} settings={wavySettings} />
-      </div>
+    <div data-testid="orb-current" className="h-full w-full">
+      <GlassOrb params={glassParams} showRim={false}>
+        <AudioBars levels={audioBars} isRecording={isRecording} />
+      </GlassOrb>
     </div>
   );
 }
 
-function ReactiveWaveIcon({ audioLevel }: { audioLevel: MotionValue<number> }) {
-  const scale = useTransform(audioLevel, [0, 1], [1, 1.2]);
+const AUDIO_BARS = [
+  { id: "low", height: 22, idleScale: 0.48 },
+  { id: "low-mid", height: 34, idleScale: 0.58 },
+  { id: "mid", height: 46, idleScale: 0.72 },
+  { id: "high-mid", height: 34, idleScale: 0.58 },
+  { id: "high", height: 22, idleScale: 0.48 },
+];
+
+function AudioBars({
+  levels,
+  isRecording,
+}: {
+  levels: AudioBarLevels;
+  isRecording: boolean;
+}) {
+  return (
+    <div
+      data-testid="orb-audio-bars"
+      className="flex h-12 items-center justify-center gap-1.5 drop-shadow-[0_2px_12px_rgba(90,40,180,0.5)]"
+    >
+      {AUDIO_BARS.map((bar, index) => (
+        <AudioBar
+          key={bar.id}
+          level={levels[index]}
+          height={bar.height}
+          idleScale={bar.idleScale}
+          isRecording={isRecording}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AudioBar({
+  level,
+  height,
+  idleScale,
+  isRecording,
+}: {
+  level: MotionValue<number>;
+  height: number;
+  idleScale: number;
+  isRecording: boolean;
+}) {
+  const reactiveScaleY = useTransform(level, [0, 1], [idleScale * 0.45, 1]);
 
   return (
-    <motion.div
-      data-testid="orb-voice-wave"
-      style={{ scale }}
-      className="flex items-center justify-center text-white/95 drop-shadow-[0_2px_12px_rgba(90,40,180,0.5)]"
-    >
-      <Icon icon={AudioWave01Icon} size={56} strokeWidth={1.5} />
-    </motion.div>
+    <motion.span
+      data-testid="orb-audio-bar"
+      className="block w-1.5 origin-center rounded-full bg-white/95"
+      style={{ height, scaleY: isRecording ? reactiveScaleY : idleScale }}
+    />
   );
 }

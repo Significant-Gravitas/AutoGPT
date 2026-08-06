@@ -230,9 +230,6 @@ importers:
       nuqs:
         specifier: 2.7.2
         version: 2.7.2(next@15.5.21(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      orb-ui:
-        specifier: 0.7.0
-        version: 0.7.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       pg:
         specifier: 8.21.0
         version: 8.21.0
@@ -7371,16 +7368,6 @@ packages:
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
-
-  orb-ui@0.7.0:
-    resolution: {integrity: sha512-ipwMdpGO406RqHHky5O1gTz94gAUIapE+bYc50cALJrWejtbi7/HYK3TbY5YGbpQn9Re2lSiIuloi2Dm6Tucrg==}
-    peerDependencies:
-      livekit-client: '>=2.20.0 <3'
-      react: '>=18.0.0'
-      react-dom: '>=18.0.0'
-    peerDependenciesMeta:
-      livekit-client:
-        optional: true
 
   orval@7.13.0:
     resolution: {integrity: sha512-8Q8BviorGpY2c252CxeeE8eFs7iBJX4KaTGxKmaardvRXjO0oWnEnaeAx9H5cB0FRYZPPKC0n5YHyo1GLs//CQ==}
@@ -17288,11 +17275,6 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
       word-wrap: 1.2.5
-
-  orb-ui@0.7.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
-    dependencies:
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
 
   orval@7.13.0(openapi-types@12.1.3)(typescript@5.9.3):
     dependencies:

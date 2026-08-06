@@ -352,39 +352,33 @@ describe("onboarding brain dump — flag gating", () => {
     expect(screen.queryByText(PILLBOX_HEADING)).toBeNull();
   });
 
-  it("offers each orb style", async () => {
+  it("renders the original orb with reactive audio bars", async () => {
     mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
 
-    const selector = await screen.findByRole("combobox", {
-      name: "Orb style",
-    });
-    expect(selector.textContent).toContain("Current orb");
+    expect(await screen.findByTestId("orb-current")).toBeDefined();
     expect(screen.getByTestId("orb-frame").style.width).toBe("184px");
     expect(screen.getByTestId("orb-decorative-ring")).toBeDefined();
-    expect(screen.getByTestId("orb-voice-wave")).toBeDefined();
-
-    selector.focus();
-    await userEvent.keyboard("{Enter}");
-
-    expect(screen.getByRole("option", { name: "Current orb" })).toBeDefined();
-    expect(screen.getByRole("option", { name: "Wavy orb" })).toBeDefined();
-    expect(screen.getByRole("option", { name: "Orb UI" })).toBeDefined();
-
-    await userEvent.keyboard("{ArrowDown}{Enter}");
-
-    expect(screen.getByTestId("orb-wavy")).toBeDefined();
-    expect(screen.queryByTestId("orb-decorative-ring")).toBeNull();
-    expect(screen.queryByTestId("orb-voice-wave")).toBeNull();
-    expect(screen.getByRole("button", { name: "Start talking" })).toBeDefined();
-
-    selector.focus();
-    await userEvent.keyboard("{Enter}{ArrowDown}{Enter}");
-
-    expect(screen.getByTestId("orb-ui")).toBeDefined();
-    expect(screen.queryByTestId("orb-wavy")).toBeNull();
+    expect(screen.getByTestId("orb-audio-bars")).toBeDefined();
+    const audioBars = screen.getAllByTestId("orb-audio-bar");
+    expect(audioBars).toHaveLength(5);
+    expect(audioBars.map((bar) => bar.style.height)).toEqual([
+      "22px",
+      "34px",
+      "46px",
+      "34px",
+      "22px",
+    ]);
+    expect(audioBars.map((bar) => bar.style.transform)).toEqual([
+      "scaleY(0.48)",
+      "scaleY(0.58)",
+      "scaleY(0.72)",
+      "scaleY(0.58)",
+      "scaleY(0.48)",
+    ]);
+    expect(screen.queryByRole("combobox", { name: "Orb style" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start talking" })).toBeDefined();
   });
 

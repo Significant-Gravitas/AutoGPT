@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -15,8 +14,6 @@ import { RecoveryPrompt } from "./components/RecoveryPrompt";
 import { RevealGroup, RevealItem } from "@/components/atoms/Reveal/Reveal";
 import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
 import { TypedFallback } from "./components/TypedFallback";
-import { OrbSelector, OrbVariant } from "./components/OrbSelector";
-import { DEFAULT_WAVY_ORB_SETTINGS } from "./components/WavyOrb/helpers";
 import { OrbControlButton } from "./components/OrbControlButton";
 import { ringProgress } from "./helpers";
 import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";
@@ -28,7 +25,6 @@ const TIME_LIMIT_CAPTION =
 export function BrainDumpStep() {
   const dump = useBrainDumpStep();
   const prefersReducedMotion = useReducedMotion();
-  const [orbVariant, setOrbVariant] = useState<OrbVariant>("glass");
   const isRecording = dump.screen === "recording";
   const isProcessing = dump.screen === "processing";
   const isMicScreen = dump.screen === "rest" || isRecording;
@@ -81,9 +77,6 @@ export function BrainDumpStep() {
             isRecording && "hidden",
           )}
         >
-          {orbScreen && (
-            <OrbSelector value={orbVariant} onChange={setOrbVariant} />
-          )}
           {/* Skipping mid-submit would advance the wizard a second time
               behind the finalize that is already in flight, landing past
               the last step on a blank screen. */}
@@ -128,10 +121,6 @@ export function BrainDumpStep() {
         {orbScreen && (
           <RevealItem blur={false} className="flex flex-col items-center gap-4">
             <motion.div
-              className={cn(
-                "will-change-transform",
-                isRecording && orbVariant === "wavy" && "mb-20",
-              )}
               animate={{
                 scale: isRecording ? (prefersReducedMotion ? 1.12 : 1.3) : 1,
               }}
@@ -145,8 +134,6 @@ export function BrainDumpStep() {
                 progress={ringProgress(dump.elapsedSeconds)}
                 audioStream={dump.audioStream}
                 glassParams={DEFAULT_GLASS_PARAMS}
-                variant={orbVariant}
-                wavySettings={DEFAULT_WAVY_ORB_SETTINGS}
               />
             </motion.div>
             {orbScreen === "recording" ? (

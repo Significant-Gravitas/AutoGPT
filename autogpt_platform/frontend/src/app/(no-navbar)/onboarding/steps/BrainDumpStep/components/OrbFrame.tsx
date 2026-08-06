@@ -1,10 +1,8 @@
 "use client";
 
 import { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
-import { OrbVariant } from "./OrbSelector";
 import { OrbVisual } from "./OrbVisual";
-import { useAudioLevel } from "./useAudioLevel";
-import { type WavyOrbSettings } from "./WavyOrb/helpers";
+import { useAudioBars } from "./useAudioBars";
 
 export const ORB_SIZE = 184;
 const STROKE = 6;
@@ -16,9 +14,7 @@ const LOADER_ARC = CIRCUMFERENCE * 0.25;
 
 interface Props {
   glassParams: GlassParams;
-  variant: OrbVariant;
   audioStream: MediaStream | null;
-  wavySettings: WavyOrbSettings;
   // Omitted when there is nothing to meter — the arc is not rendered at all.
   progress?: number;
   // Indeterminate: a single arc chasing the ring while work is in flight.
@@ -29,16 +25,12 @@ interface Props {
 // in the same neumorphic ring, whether or not it is interactive.
 export function OrbFrame({
   glassParams,
-  variant,
   audioStream,
-  wavySettings,
   progress,
   isLoading,
 }: Props) {
   const isRecording = progress !== undefined;
-  const audioLevel = useAudioLevel(
-    isRecording && variant !== "wavy" ? audioStream : null,
-  );
+  const audioBars = useAudioBars(isRecording ? audioStream : null);
 
   return (
     <div
@@ -46,20 +38,18 @@ export function OrbFrame({
       className="relative"
       style={{ width: ORB_SIZE, height: ORB_SIZE }}
     >
-      {variant === "glass" && (
-        <div
-          data-testid="orb-decorative-ring"
-          className="pointer-events-none absolute rounded-full bg-[#f1f1f4]"
-          style={{
-            inset: -glassParams.ringWidth,
-            boxShadow: `${glassParams.ringDepth}px ${glassParams.ringDepth}px ${glassParams.ringDepth * 2.3}px rgba(166,171,189,${glassParams.ringDark}), -${glassParams.ringDepth}px -${glassParams.ringDepth}px ${glassParams.ringDepth * 2.3}px #ffffff, inset 1px 1px 3px rgba(255,255,255,0.95), inset -1px -1px 3px rgba(166,171,189,${glassParams.ringDark * 0.55})`,
-          }}
-        />
-      )}
+      <div
+        data-testid="orb-decorative-ring"
+        className="pointer-events-none absolute rounded-full bg-[#f1f1f4]"
+        style={{
+          inset: -glassParams.ringWidth,
+          boxShadow: `${glassParams.ringDepth}px ${glassParams.ringDepth}px ${glassParams.ringDepth * 2.3}px rgba(166,171,189,${glassParams.ringDark}), -${glassParams.ringDepth}px -${glassParams.ringDepth}px ${glassParams.ringDepth * 2.3}px #ffffff, inset 1px 1px 3px rgba(255,255,255,0.95), inset -1px -1px 3px rgba(166,171,189,${glassParams.ringDark * 0.55})`,
+        }}
+      />
       {/* A depth meter, not a limit — the ring fills toward three minutes
           and then simply holds, so passing it reads as an achievement
           rather than a warning. */}
-      {variant === "glass" && progress !== undefined && (
+      {progress !== undefined && (
         <svg
           data-testid="orb-progress-ring"
           className="pointer-events-none absolute inset-0 -rotate-90"
@@ -82,7 +72,7 @@ export function OrbFrame({
           />
         </svg>
       )}
-      {variant === "glass" && isLoading && (
+      {isLoading && (
         <svg
           className="absolute inset-0 motion-safe:animate-spin"
           width={ORB_SIZE}
@@ -103,21 +93,11 @@ export function OrbFrame({
         </svg>
       )}
 
-      <div
-        className={
-          variant === "glass"
-            ? "absolute inset-[8px] rounded-full"
-            : "absolute inset-0 rounded-full"
-        }
-      >
+      <div className="absolute inset-[8px] rounded-full">
         <OrbVisual
-          variant={variant}
           glassParams={glassParams}
-          audioStream={audioStream}
-          audioLevel={audioLevel}
-          wavySettings={wavySettings}
+          audioBars={audioBars}
           isRecording={isRecording}
-          isLoading={isLoading ?? false}
         />
       </div>
     </div>
