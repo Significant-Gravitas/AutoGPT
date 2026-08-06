@@ -3,15 +3,14 @@
 import { useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
 import {
-  ArrowReloadHorizontalIcon,
-  Cancel01Icon,
-  Loading03Icon,
-  SentIcon,
-} from "@hugeicons/core-free-icons";
-import { type IconSvgElement } from "@hugeicons/react";
+  ArrowCounterClockwiseIcon,
+  PaperPlaneTiltIcon,
+  SpinnerGapIcon,
+  XIcon,
+  type Icon as PhosphorIcon,
+} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { RecordingStatus } from "../RecordingStatus";
 
@@ -73,7 +72,7 @@ export function RecordingControls({
         <RecordingControlButton
           label="Cancel recording"
           pendingLabel="Canceling recording"
-          icon={Cancel01Icon}
+          icon={XIcon}
           action="cancel"
           pendingAction={pendingAction}
           onClick={() => void runAction("cancel", onStop)}
@@ -81,7 +80,7 @@ export function RecordingControls({
         <RecordingControlButton
           label="Send recording"
           pendingLabel="Sending recording"
-          icon={SentIcon}
+          icon={PaperPlaneTiltIcon}
           action="send"
           pendingAction={pendingAction}
           onClick={() => void runAction("send", onSend)}
@@ -90,7 +89,7 @@ export function RecordingControls({
         <RecordingControlButton
           label="Retry recording"
           pendingLabel="Restarting recording"
-          icon={ArrowReloadHorizontalIcon}
+          icon={ArrowCounterClockwiseIcon}
           action="retry"
           pendingAction={pendingAction}
           onClick={() => void runAction("retry", onRetry)}
@@ -126,7 +125,7 @@ export function RecordingControls({
 interface RecordingControlButtonProps {
   label: string;
   pendingLabel: string;
-  icon: IconSvgElement;
+  icon: PhosphorIcon;
   action: RecordingAction;
   pendingAction: RecordingAction | null;
   onClick: () => void;
@@ -144,6 +143,7 @@ function RecordingControlButton({
 }: RecordingControlButtonProps) {
   const isLoading = pendingAction === action;
   const isInactive = pendingAction !== null && !isLoading;
+  const ControlIcon = icon;
 
   return (
     <Button
@@ -168,15 +168,14 @@ function RecordingControlButton({
           className="flex size-[22px] items-center justify-center"
         >
           {isLoading ? (
-            <Icon
-              icon={Loading03Icon}
+            <SpinnerGapIcon
               size={22}
-              strokeWidth={1.5}
+              weight="light"
               className="motion-safe:animate-spin"
               data-testid="recording-control-loader"
             />
           ) : (
-            <Icon icon={icon} size={22} strokeWidth={1.5} />
+            <ControlIcon size={22} weight="light" />
           )}
         </SwapFade>
       </span>

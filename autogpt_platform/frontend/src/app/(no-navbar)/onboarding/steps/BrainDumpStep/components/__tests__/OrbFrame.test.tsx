@@ -13,7 +13,9 @@ vi.mock("../useAudioLevel", () => ({
 }));
 
 vi.mock("../OrbVisual", () => ({
-  OrbVisual: () => <div data-testid="orb-visual" />,
+  OrbVisual: function OrbVisual() {
+    return <div data-testid="orb-visual" />;
+  },
 }));
 
 beforeEach(() => {

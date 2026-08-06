@@ -291,6 +291,7 @@ export function createWavyOrbRenderer({
     powerPreference: "low-power",
   });
   if (!gl) return null;
+  const context = gl;
 
   const vertexShader = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
   const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
@@ -364,7 +365,7 @@ export function createWavyOrbRenderer({
       canvas.width = width;
       canvas.height = height;
     }
-    gl.viewport(0, 0, width, height);
+    context.viewport(0, 0, width, height);
   }
 
   function readBands(now: number, delta: number) {
@@ -397,32 +398,32 @@ export function createWavyOrbRenderer({
     const wakeRate = wakeTarget > wake ? 1.8 : 0.65;
     wake += (wakeTarget - wake) * Math.min(1, delta * wakeRate);
     wakeLag += (wake - wakeLag) * Math.min(1, delta * 2.8);
-    gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-    gl.uniform1f(uniforms.time, prefersReducedMotion ? 3.2 : now / 1000);
-    gl.uniform1f(uniforms.low, bands.low);
-    gl.uniform1f(uniforms.mid, bands.mid);
-    gl.uniform1f(uniforms.high, bands.high);
-    gl.uniform1f(uniforms.level, bands.level);
-    gl.uniform1f(uniforms.wake, wake);
-    gl.uniform1f(uniforms.wakeLag, wakeLag);
+    context.uniform2f(uniforms.resolution, canvas.width, canvas.height);
+    context.uniform1f(uniforms.time, prefersReducedMotion ? 3.2 : now / 1000);
+    context.uniform1f(uniforms.low, bands.low);
+    context.uniform1f(uniforms.mid, bands.mid);
+    context.uniform1f(uniforms.high, bands.high);
+    context.uniform1f(uniforms.level, bands.level);
+    context.uniform1f(uniforms.wake, wake);
+    context.uniform1f(uniforms.wakeLag, wakeLag);
     const settings = getSettings();
     const tint = hexToRgb(settings.tint);
-    gl.uniform1f(uniforms.opacity, settings.opacity);
-    gl.uniform1f(uniforms.haze, settings.haze);
-    gl.uniform1f(uniforms.brightness, settings.brightness);
-    gl.uniform1f(uniforms.amplitude, settings.amplitude);
-    gl.uniform1f(uniforms.spread, settings.spread);
-    gl.uniform1f(uniforms.speed, settings.speed);
-    gl.uniform1f(uniforms.edgeFade, settings.edgeFade);
-    gl.uniform3f(uniforms.tint, tint[0], tint[1], tint[2]);
-    gl.uniform1f(uniforms.tintMix, settings.tintMix);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    context.uniform1f(uniforms.opacity, settings.opacity);
+    context.uniform1f(uniforms.haze, settings.haze);
+    context.uniform1f(uniforms.brightness, settings.brightness);
+    context.uniform1f(uniforms.amplitude, settings.amplitude);
+    context.uniform1f(uniforms.spread, settings.spread);
+    context.uniform1f(uniforms.speed, settings.speed);
+    context.uniform1f(uniforms.edgeFade, settings.edgeFade);
+    context.uniform3f(uniforms.tint, tint[0], tint[1], tint[2]);
+    context.uniform1f(uniforms.tintMix, settings.tintMix);
+    context.drawArrays(context.TRIANGLES, 0, 3);
   }
 
   function dispose() {
     void audioContext?.close().catch(() => undefined);
-    if (vertexArray) gl.deleteVertexArray(vertexArray);
-    gl.deleteProgram(program);
+    if (vertexArray) context.deleteVertexArray(vertexArray);
+    context.deleteProgram(program);
   }
 
   return { draw, dispose };

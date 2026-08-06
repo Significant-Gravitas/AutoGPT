@@ -49,6 +49,10 @@ export function useBrainDumpStep() {
   // `completeAndAdvance` to `nextStep()`, or the wizard advances twice and
   // lands past the last step with nothing to render.
   const isSubmittingRef = useRef(false);
+  const activeTakeActionRef = useRef<{
+    recordingId: string;
+    token: symbol;
+  } | null>(null);
 
   useEffect(() => {
     async function checkForRecovery() {
@@ -113,12 +117,18 @@ export function useBrainDumpStep() {
   }
 
   async function handleStop() {
-    trackBrainDump("brain_dump_canceled");
     const recordingId = recorder.recordingId;
-    await recorder.stop();
-    recorder.resetQueue();
-    if (recordingId) await discardTake(recordingId);
-    setScreen("rest");
+    const actionToken = recordingId ? claimTakeAction(recordingId) : null;
+    if (recordingId && !actionToken) return;
+    trackBrainDump("brain_dump_canceled");
+    try {
+      await recorder.stop();
+      recorder.resetQueue();
+      if (recordingId) await discardTake(recordingId);
+      setScreen("rest");
+    } finally {
+      if (actionToken) releaseTakeAction(actionToken);
+    }
   }
 
   // The id is passed in rather than read off the recorder: `adoptRecovered`
@@ -128,11 +138,14 @@ export function useBrainDumpStep() {
     recordingId: string | null,
     durationSecs: number,
   ) {
+    const actionToken = recordingId ? claimTakeAction(recordingId) : null;
+    if (recordingId && !actionToken) return;
     isSubmittingRef.current = true;
     try {
       await finalizeRecording(recordingId, durationSecs);
     } finally {
       isSubmittingRef.current = false;
+      if (actionToken) releaseTakeAction(actionToken);
     }
   }
 
@@ -188,13 +201,19 @@ export function useBrainDumpStep() {
   // local parts and the server's half-uploaded buffer both — before the
   // orb starts listening again under a new recording id.
   async function handleRestart() {
-    trackBrainDump("brain_dump_restarted");
     const previousId = recorder.recordingId;
-    await recorder.stop();
-    recorder.resetQueue();
-    if (previousId) await discardTake(previousId);
-    const started = await recorder.start();
-    setScreen(started ? "recording" : "rest");
+    const actionToken = previousId ? claimTakeAction(previousId) : null;
+    if (previousId && !actionToken) return;
+    trackBrainDump("brain_dump_restarted");
+    try {
+      await recorder.stop();
+      recorder.resetQueue();
+      if (previousId) await discardTake(previousId);
+      const started = await recorder.start();
+      setScreen(started ? "recording" : "rest");
+    } finally {
+      if (actionToken) releaseTakeAction(actionToken);
+    }
   }
 
   async function handleRetry() {
@@ -338,8 +357,14 @@ export function useBrainDumpStep() {
   // nobody will ever finalize.
   async function dropRecoverable() {
     if (!recoverable) return;
-    await discardTake(recoverable.recordingId);
-    setRecoverable(null);
+    const actionToken = claimTakeAction(recoverable.recordingId);
+    if (!actionToken) return;
+    try {
+      await discardTake(recoverable.recordingId);
+      setRecoverable(null);
+    } finally {
+      releaseTakeAction(actionToken);
+    }
   }
 
   async function discardTake(recordingId: string) {
@@ -347,6 +372,19 @@ export function useBrainDumpStep() {
     await discardBrainDump({ recording_id: recordingId }).catch(
       () => undefined,
     );
+  }
+
+  function claimTakeAction(recordingId: string) {
+    if (activeTakeActionRef.current) return null;
+    const token = Symbol(recordingId);
+    activeTakeActionRef.current = { recordingId, token };
+    return token;
+  }
+
+  function releaseTakeAction(token: symbol) {
+    if (activeTakeActionRef.current?.token === token) {
+      activeTakeActionRef.current = null;
+    }
   }
 
   async function handleDownloadRecording() {

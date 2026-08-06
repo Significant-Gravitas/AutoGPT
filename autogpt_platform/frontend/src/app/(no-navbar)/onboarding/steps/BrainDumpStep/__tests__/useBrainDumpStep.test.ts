@@ -182,6 +182,72 @@ describe("useBrainDumpStep — recording", () => {
     expect(result.current.screen).toBe("rest");
   });
 
+  it("does not submit a take while cancellation owns it", async () => {
+    const stopping = deferred<number>();
+    recorderState.recordingId = "rec-1";
+    recorderState.stop.mockReturnValue(stopping.promise);
+    const { result, rerender } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStart();
+    });
+
+    let cancelPromise!: Promise<void>;
+    act(() => {
+      cancelPromise = result.current.handleStop();
+    });
+    act(() => {
+      recorderState.hitTimeLimit = true;
+      rerender();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(finalizeBrainDump).not.toHaveBeenCalled();
+
+    await act(async () => {
+      stopping.resolve(30 * 60);
+      await cancelPromise;
+    });
+
+    expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+  });
+
+  it("does not discard a take while time-limit submission owns it", async () => {
+    const finalizing = deferred<ReturnType<typeof completed>>();
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockReturnValue(finalizing.promise);
+    const { result, rerender } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStart();
+    });
+    act(() => {
+      recorderState.hitTimeLimit = true;
+      rerender();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await result.current.handleStop();
+    });
+
+    expect(discardBrainDump).not.toHaveBeenCalled();
+    expect(recorderState.stop).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finalizing.resolve(completed());
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(2),
+    );
+  });
+
   // The nudge is for someone who has not started talking yet, so it keys
   // on whether the mic has heard anything — not on elapsed time alone.
   it("nudges only while recording, past the threshold, and still silent", async () => {

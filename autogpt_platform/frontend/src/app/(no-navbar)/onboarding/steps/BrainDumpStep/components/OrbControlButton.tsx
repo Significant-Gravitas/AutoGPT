@@ -1,12 +1,11 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
 import {
-  ArrowReloadHorizontalIcon,
-  Mic01Icon,
-} from "@hugeicons/core-free-icons";
+  ArrowCounterClockwiseIcon,
+  MicrophoneIcon,
+} from "@phosphor-icons/react";
 
 interface Props {
   screen: "rest" | "failed";
@@ -26,9 +25,9 @@ export function OrbControlButton({ screen, onClick }: Props) {
     >
       <SwapFade swapKey={screen} className="flex items-center justify-center">
         {screen === "failed" ? (
-          <Icon icon={ArrowReloadHorizontalIcon} size={22} strokeWidth={1.5} />
+          <ArrowCounterClockwiseIcon size={22} weight="light" />
         ) : (
-          <Icon icon={Mic01Icon} size={22} strokeWidth={1.5} />
+          <MicrophoneIcon size={22} weight="light" />
         )}
       </SwapFade>
     </Button>

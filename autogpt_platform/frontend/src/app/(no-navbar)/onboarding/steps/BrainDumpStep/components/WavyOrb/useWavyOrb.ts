@@ -30,6 +30,7 @@ export function useWavyOrb(
       setIsSupported(false);
       return;
     }
+    const activeRenderer = renderer;
 
     let animationFrame = 0;
     let isVisible = true;
@@ -37,7 +38,7 @@ export function useWavyOrb(
 
     function render(now: number) {
       if (!isVisible || !isIntersecting) return;
-      renderer.draw(now);
+      activeRenderer.draw(now);
       animationFrame = requestAnimationFrame(render);
     }
 
@@ -46,14 +47,14 @@ export function useWavyOrb(
       cancelAnimationFrame(animationFrame);
       if (!isVisible || !isIntersecting) return;
       if (prefersReducedMotion) {
-        renderer.draw(performance.now());
+        activeRenderer.draw(performance.now());
         return;
       }
       animationFrame = requestAnimationFrame(render);
     }
 
     const resizeObserver = new ResizeObserver(() =>
-      renderer.draw(performance.now()),
+      activeRenderer.draw(performance.now()),
     );
     const intersectionObserver = new IntersectionObserver(([entry]) => {
       isIntersecting = entry.isIntersecting;
@@ -69,7 +70,7 @@ export function useWavyOrb(
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
       document.removeEventListener("visibilitychange", syncAnimation);
-      renderer.dispose();
+      activeRenderer.dispose();
     };
   }, [audioStream, prefersReducedMotion]);
 
