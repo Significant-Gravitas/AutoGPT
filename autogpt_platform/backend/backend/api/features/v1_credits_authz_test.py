@@ -13,7 +13,8 @@ dropping the dependency from any single route must fail this suite.
 """
 
 import dataclasses
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
