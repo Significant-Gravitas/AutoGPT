@@ -164,7 +164,7 @@ export const AgentInfo = ({
               {creatorAvatar && (
                 <AvatarImage src={creatorAvatar} alt={`${creator} avatar`} />
               )}
-              <AvatarFallback size={28}>{creator.charAt(0)}</AvatarFallback>
+              <AvatarFallback size={28}>{creator}</AvatarFallback>
             </Avatar>
             <Text variant="body" className="text-md">
               by
