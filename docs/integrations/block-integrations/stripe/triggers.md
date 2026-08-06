@@ -25,7 +25,7 @@ your Stripe account when the last trigger using it goes away.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| events | Subscription lifecycle events to subscribe to | Events | Yes |
+| events | Subscription lifecycle events to subscribe to | Events | No |
 
 ### Outputs
 
@@ -37,7 +37,7 @@ your Stripe account when the last trigger using it goes away.
 | subscription_id | Stripe subscription ID (sub_...) | str |
 | customer_id | Stripe customer ID (cus_...) | str |
 | status | Subscription status: active, trialing, past_due, canceled, etc. | str |
-| plan_name | Plan nickname from the subscription's first item price | str |
+| plan_name | Nickname of the subscription's first item price. Prices without a nickname fall back to the raw price ID (price_...). | str |
 | plan_interval | Billing interval: month or year | str |
 | amount_cents | Plan unit amount in the smallest currency unit (e.g. cents for USD) | int |
 | currency | Three-letter ISO currency code | str |

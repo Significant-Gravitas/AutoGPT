@@ -76,11 +76,12 @@ class StripeWebhooksManager(BaseWebhooksManager):
                 status_code=403, detail="Stripe webhook timestamp is too old"
             )
 
+        # Sign the raw bytes: decoding and re-encoding the body would transcode
+        # the whole payload for nothing, and blow up on a non-UTF-8 body.
         payload_body = await request.body()
-        signed_payload = f"{timestamp}.{payload_body.decode('utf-8')}"
         expected = hmac.new(
             signing_secret.encode("utf-8"),
-            msg=signed_payload.encode("utf-8"),
+            msg=f"{timestamp}.".encode("utf-8") + payload_body,
             digestmod=hashlib.sha256,
         ).hexdigest()
 

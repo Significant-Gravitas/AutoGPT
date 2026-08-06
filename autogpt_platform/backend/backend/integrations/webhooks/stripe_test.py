@@ -98,6 +98,20 @@ async def test_verify_signature_accepts_one_of_several_v1_signatures() -> None:
 
 
 @pytest.mark.asyncio
+async def test_verify_signature_handles_non_utf8_body() -> None:
+    """Signing operates on raw bytes, so an undecodable body must not 500."""
+    body = b"\xff\xfe not utf-8"
+    now = int(time.time())
+    signature = hmac.new(
+        SIGNING_SECRET.encode(),
+        msg=f"{now}.".encode() + body,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+    request = make_request({"Stripe-Signature": f"t={now},v1={signature}"}, body=body)
+    await StripeWebhooksManager.verify_signature(make_webhook(), request)
+
+
+@pytest.mark.asyncio
 async def test_verify_signature_rejects_wrong_secret() -> None:
     request = make_request(
         {"Stripe-Signature": sign(int(time.time()), secret="whsec_other_secret")}

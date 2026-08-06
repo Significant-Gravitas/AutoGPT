@@ -47,6 +47,8 @@ class StripeSubscriptionTriggerBlock(Block):
         events: EventsFilter = SchemaField(
             title="Events",
             description="Subscription lifecycle events to subscribe to",
+            default_factory=EventsFilter,
+            advanced=False,
         )
 
     class Output(BlockSchemaOutput):
@@ -64,7 +66,10 @@ class StripeSubscriptionTriggerBlock(Block):
             description="Subscription status: active, trialing, past_due, canceled, etc."
         )
         plan_name: str = SchemaField(
-            description="Plan nickname from the subscription's first item price"
+            description=(
+                "Nickname of the subscription's first item price. Prices without "
+                "a nickname fall back to the raw price ID (price_...)."
+            )
         )
         plan_interval: str = SchemaField(description="Billing interval: month or year")
         amount_cents: int = SchemaField(
