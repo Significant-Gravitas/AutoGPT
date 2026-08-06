@@ -122,7 +122,15 @@ class CoPilotExecutor(AppProcess):
 
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
-        start_http_server(settings.config.copilot_executor_port)
+        # Deliberate reuse of pyro_host: despite the legacy name it is the
+        # bind address for every service's internal listener (see
+        # backend.util.service). Metrics follow the same interface as the RPC
+        # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
+        # cross-container scraping), loopback in the single-container runtime.
+        start_http_server(
+            settings.config.copilot_executor_port,
+            addr=settings.config.pyro_host,
+        )
 
         self.cancel_thread.start()
         self.run_thread.start()
