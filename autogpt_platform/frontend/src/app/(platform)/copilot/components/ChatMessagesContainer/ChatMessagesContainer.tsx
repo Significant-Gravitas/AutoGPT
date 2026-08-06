@@ -47,6 +47,7 @@ import { ReasoningGroup } from "./components/ReasoningGroup";
 import { StepsCollapse } from "./components/StepsCollapse";
 import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { UserMessageClamp } from "./components/UserMessageClamp";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -96,7 +97,7 @@ interface Props {
   /** Expert identity for expert-scoped sessions: drives the thread header
    *  and the assistant avatar/name. Null/undefined = default header. */
   expertIdentity?: ExpertIdentity | null;
-  /** Ignore the NEW_TOOL_UI flag — used by the tool-ui-debug page so its
+  /** Ignore the NEW_TOOL_UI flag — used by the tool page so its
    *  "Old" view stays on the legacy renderer regardless of flag state. */
   forceOldToolUI?: boolean;
 }
@@ -704,18 +705,20 @@ export function ChatMessagesContainer({
                     readOnly,
                   })
                 ) : (
-                  renderableParts.map((part, i) => (
-                    <MessagePartRenderer
-                      key={`${message.id}-${i}`}
-                      part={part}
-                      messageID={message.id}
-                      partIndex={i}
-                      onRetry={isLastAssistant ? onRetry : undefined}
-                      fileUrlBuilder={fileUrlBuilder}
-                      forceArtifacts={readOnly}
-                      readOnly={readOnly}
-                    />
-                  ))
+                  <UserMessageClamp>
+                    {renderableParts.map((part, i) => (
+                      <MessagePartRenderer
+                        key={`${message.id}-${i}`}
+                        part={part}
+                        messageID={message.id}
+                        partIndex={i}
+                        onRetry={isLastAssistant ? onRetry : undefined}
+                        fileUrlBuilder={fileUrlBuilder}
+                        forceArtifacts={readOnly}
+                        readOnly={readOnly}
+                      />
+                    ))}
+                  </UserMessageClamp>
                 )}
                 {isLastInTurn && !isCurrentlyStreaming && (
                   <TurnStatsBar
