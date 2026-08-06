@@ -52,7 +52,6 @@ export function useBrainDumpStep() {
   const isSubmittingRef = useRef(false);
   const activeTakeActionRef = useRef<{
     action: "submit" | "discard";
-    recordingId: string;
     token: symbol;
   } | null>(null);
 
@@ -410,7 +409,7 @@ export function useBrainDumpStep() {
   function claimTakeAction(recordingId: string, action: "submit" | "discard") {
     if (activeTakeActionRef.current) return null;
     const token = Symbol(recordingId);
-    activeTakeActionRef.current = { action, recordingId, token };
+    activeTakeActionRef.current = { action, token };
     return token;
   }
 

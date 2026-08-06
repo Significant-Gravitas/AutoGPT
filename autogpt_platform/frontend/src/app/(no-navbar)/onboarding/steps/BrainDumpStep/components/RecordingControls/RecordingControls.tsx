@@ -99,12 +99,9 @@ export function RecordingControls({
         data-testid="recording-feedback-slot"
         className="relative h-8 w-80 max-w-[calc(100vw-2rem)]"
       >
-        <div className="absolute inset-x-0 top-0">
+        <div aria-live="polite" className="absolute inset-x-0 top-0">
           {pendingStatus ? (
-            <div
-              aria-live="polite"
-              className="flex h-8 items-start justify-center pt-2"
-            >
+            <div className="flex h-8 items-start justify-center pt-2">
               <SwapFade swapKey={pendingAction ?? "idle"}>
                 <p className="text-sm text-zinc-500">{pendingStatus}</p>
               </SwapFade>

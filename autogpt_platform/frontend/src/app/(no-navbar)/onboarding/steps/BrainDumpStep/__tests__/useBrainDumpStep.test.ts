@@ -230,6 +230,7 @@ describe("useBrainDumpStep — recording", () => {
     });
 
     expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    expect(result.current.screen).toBe("rest");
   });
 
   it("does not discard a take while time-limit submission owns it", async () => {
