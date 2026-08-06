@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from praw.models import Comment, Submission
 
@@ -10,6 +10,9 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.reddit import (
+    MOD_CONTRIBUTORS_SCOPE,
+    MOD_POSTS_SCOPE,
+    MODMAIL_SCOPE,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     RedditCredentials,
@@ -24,16 +27,43 @@ from backend.data.model import SchemaField
 REMOVE_MOD_NOTE_MAX_LENGTH = 250
 BAN_REASON_MAX_LENGTH = 100
 BAN_MOD_NOTE_MAX_LENGTH = 300
+BAN_MESSAGE_MAX_LENGTH = 1000
+MODMAIL_SUBJECT_MAX_LENGTH = 100
+MODMAIL_BODY_MAX_LENGTH = 10000
+MOD_QUEUE_MAX_LIMIT = 100
+BAN_MAX_DURATION_DAYS = 999  # Reddit's cap for temporary bans
+
+COMMENT_PREFIX = "t1_"
+SUBMISSION_PREFIX = "t3_"
+
+THING_ID_DESCRIPTION = (
+    "Full Reddit thing ID, prefixed with 't3_' for a post (e.g. 't3_abc123') or "
+    "'t1_' for a comment (e.g. 't1_xyz789'). Bare IDs are rejected: posts and "
+    "comments share an ID namespace, so an unprefixed ID cannot be resolved safely."
+)
 
 
 def _get_moderated_thing(
     creds: RedditCredentials, thing_id: str
 ) -> Comment | Submission:
-    client = get_praw(creds)
-    normalized_id = strip_reddit_prefix(thing_id)
-    if thing_id.startswith("t1_"):
-        return client.comment(id=normalized_id)
-    return client.submission(id=normalized_id)
+    """
+    Resolve a Reddit thing ID to the comment or submission it names.
+
+    The prefix is mandatory. Reddit comment and submission IDs are drawn from the
+    same base-36 namespace, so a bare ID like ``abc123`` is a valid submission ID
+    *and* a valid comment ID — guessing would let a moderation action land on an
+    unrelated object.
+    """
+    if thing_id.startswith(COMMENT_PREFIX):
+        return get_praw(creds).comment(id=strip_reddit_prefix(thing_id))
+    if thing_id.startswith(SUBMISSION_PREFIX):
+        return get_praw(creds).submission(id=strip_reddit_prefix(thing_id))
+    raise ValueError(
+        f"Ambiguous Reddit thing ID {thing_id!r}. Prefix it with "
+        f"'{SUBMISSION_PREFIX}' for a post or '{COMMENT_PREFIX}' for a comment — "
+        "bare IDs are ambiguous because posts and comments share an ID namespace. "
+        "The Mod Queue block emits prefixed IDs on its 'post_id' output."
+    )
 
 
 def _get_thing_id(item: Comment | Submission) -> str:
@@ -41,25 +71,32 @@ def _get_thing_id(item: Comment | Submission) -> str:
     if fullname:
         return fullname
     if isinstance(item, Comment):
-        return f"t1_{item.id}"
-    return f"t3_{item.id}"
+        return f"{COMMENT_PREFIX}{item.id}"
+    return f"{SUBMISSION_PREFIX}{item.id}"
 
 
-def _get_thing_type(item: Comment | Submission) -> Literal["comment", "submission"]:
-    if _get_thing_id(item).startswith("t1_"):
+def _get_thing_type(thing_id: str) -> Literal["comment", "submission"]:
+    if thing_id.startswith(COMMENT_PREFIX):
         return "comment"
     return "submission"
 
 
 class ModQueueBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: RedditCredentialsInput = RedditCredentialsField()
+        credentials: RedditCredentialsInput = RedditCredentialsField(
+            required_scopes={MOD_POSTS_SCOPE}
+        )
         subreddit: str = SchemaField(
             description="Subreddit name, excluding the /r/ prefix",
         )
         limit: int = SchemaField(
-            description="Maximum number of items to fetch from the mod queue",
+            description=(
+                "Maximum number of items to fetch from the mod queue "
+                f"(1-{MOD_QUEUE_MAX_LIMIT})"
+            ),
             default=25,
+            ge=1,
+            le=MOD_QUEUE_MAX_LIMIT,
         )
         only: Literal["submissions", "comments"] | None = SchemaField(
             description="Filter to only submissions or only comments. Leave blank for both.",
@@ -77,7 +114,9 @@ class ModQueueBlock(Block):
         author: str = SchemaField(description="Username of the author")
         permalink: str = SchemaField(description="Full Reddit permalink")
         reason: str = SchemaField(description="Mod queue reason (if any)")
-        items: list[dict] = SchemaField(description="All queued items as a list")
+        items: list[dict[str, Any]] = SchemaField(
+            description="All queued items as a list"
+        )
 
     def __init__(self):
         super().__init__(
@@ -137,25 +176,25 @@ class ModQueueBlock(Block):
         subreddit: str,
         limit: int,
         only: Literal["submissions", "comments"] | None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         client = get_praw(creds)
         sub = client.subreddit(subreddit)
-        kwargs: dict = {"limit": limit}
+        kwargs: dict[str, Any] = {"limit": limit}
         if only:
             kwargs["only"] = only
-        items = []
-        for item in sub.mod.modqueue(**kwargs):
-            items.append(
-                {
-                    "id": _get_thing_id(item),
-                    "type": _get_thing_type(item),
-                    "title": getattr(item, "title", "[comment]"),
-                    "author": str(item.author) if item.author else "[deleted]",
-                    "permalink": item.permalink,
-                    "reason": getattr(item, "mod_reason_title", "") or "",
-                }
-            )
-        return items
+
+        def to_item(item: Comment | Submission) -> dict[str, Any]:
+            thing_id = _get_thing_id(item)
+            return {
+                "id": thing_id,
+                "type": _get_thing_type(thing_id),
+                "title": getattr(item, "title", "[comment]"),
+                "author": str(item.author) if item.author else "[deleted]",
+                "permalink": item.permalink,
+                "reason": getattr(item, "mod_reason_title", "") or "",
+            }
+
+        return [to_item(item) for item in sub.mod.modqueue(**kwargs)]
 
     async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
@@ -178,9 +217,11 @@ class ModQueueBlock(Block):
 
 class RemoveRedditPostBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: RedditCredentialsInput = RedditCredentialsField()
+        credentials: RedditCredentialsInput = RedditCredentialsField(
+            required_scopes={MOD_POSTS_SCOPE}
+        )
         post_id: str = SchemaField(
-            description="ID or fullname of the post/comment to remove, such as 't3_abc123', 't1_xyz789', or bare submission ID 'abc123'",
+            description=f"Post or comment to remove. {THING_ID_DESCRIPTION}",
         )
         spam: bool = SchemaField(
             description="Mark as spam (True) or just remove (False). Spam trains the filter.",
@@ -210,11 +251,11 @@ class RemoveRedditPostBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "post_id": "abc123",
+                "post_id": "t3_abc123",
                 "spam": False,
             },
             test_output=[
-                ("post_id", "abc123"),
+                ("post_id", "t3_abc123"),
                 ("success", True),
             ],
             test_mock={"remove_post": lambda creds, post_id, spam, mod_note: True},
@@ -229,9 +270,9 @@ class RemoveRedditPostBlock(Block):
         mod_note: str | None,
     ) -> bool:
         thing = _get_moderated_thing(creds, post_id)
-        remove_kwargs: dict[str, bool | str] = {"spam": spam}
+        remove_kwargs: dict[str, Any] = {"spam": spam}
         if mod_note:
-            remove_kwargs["mod_note"] = mod_note[:REMOVE_MOD_NOTE_MAX_LENGTH]
+            remove_kwargs["mod_note"] = mod_note
         thing.mod.remove(**remove_kwargs)
         return True
 
@@ -250,9 +291,11 @@ class RemoveRedditPostBlock(Block):
 
 class ApproveRedditPostBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: RedditCredentialsInput = RedditCredentialsField()
+        credentials: RedditCredentialsInput = RedditCredentialsField(
+            required_scopes={MOD_POSTS_SCOPE}
+        )
         post_id: str = SchemaField(
-            description="ID or fullname of the post/comment to approve, such as 't3_abc123', 't1_xyz789', or bare submission ID 'abc123'",
+            description=f"Post or comment to approve. {THING_ID_DESCRIPTION}",
         )
 
     class Output(BlockSchemaOutput):
@@ -273,10 +316,10 @@ class ApproveRedditPostBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "post_id": "abc123",
+                "post_id": "t3_abc123",
             },
             test_output=[
-                ("post_id", "abc123"),
+                ("post_id", "t3_abc123"),
                 ("success", True),
             ],
             test_mock={"approve_post": lambda creds, post_id: True},
@@ -299,9 +342,11 @@ class ApproveRedditPostBlock(Block):
 
 class LockRedditPostBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: RedditCredentialsInput = RedditCredentialsField()
+        credentials: RedditCredentialsInput = RedditCredentialsField(
+            required_scopes={MOD_POSTS_SCOPE}
+        )
         post_id: str = SchemaField(
-            description="ID or fullname of the post/comment to lock or unlock",
+            description=f"Post or comment to lock or unlock. {THING_ID_DESCRIPTION}",
         )
         lock: bool = SchemaField(
             description="True to lock (disable comments/replies), False to unlock",
@@ -326,11 +371,11 @@ class LockRedditPostBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "post_id": "abc123",
+                "post_id": "t3_abc123",
                 "lock": True,
             },
             test_output=[
-                ("post_id", "abc123"),
+                ("post_id", "t3_abc123"),
                 ("locked", True),
             ],
             test_mock={"set_lock": lambda creds, post_id, lock: lock},
@@ -360,7 +405,9 @@ class LockRedditPostBlock(Block):
 
 class BanSubredditUserBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: RedditCredentialsInput = RedditCredentialsField()
+        credentials: RedditCredentialsInput = RedditCredentialsField(
+            required_scopes={MOD_CONTRIBUTORS_SCOPE}
+        )
         subreddit: str = SchemaField(
             description="Subreddit to ban the user from, excluding the /r/ prefix",
         )
@@ -368,9 +415,14 @@ class BanSubredditUserBlock(Block):
             description="Reddit username to ban (without the u/ prefix)",
         )
         duration: int | None = SchemaField(
-            description="Ban duration in days. Leave blank for a permanent ban.",
+            description=(
+                "Ban duration in days "
+                f"(1-{BAN_MAX_DURATION_DAYS}, Reddit's cap for temporary bans). "
+                "Leave blank for a permanent ban."
+            ),
             default=None,
             ge=1,
+            le=BAN_MAX_DURATION_DAYS,
         )
         reason: str = SchemaField(
             description="Internal moderator-only ban reason (max 100 chars). Use ban_message to explain the ban to the user.",
@@ -385,6 +437,7 @@ class BanSubredditUserBlock(Block):
         ban_message: str | None = SchemaField(
             description="Optional custom message sent to the user explaining the ban",
             default=None,
+            max_length=BAN_MESSAGE_MAX_LENGTH,
         )
 
     class Output(BlockSchemaOutput):
@@ -434,16 +487,13 @@ class BanSubredditUserBlock(Block):
         mod_note: str | None,
         ban_message: str | None,
     ) -> bool:
-        if duration is not None and duration <= 0:
-            raise ValueError("Ban duration must be a positive number of days.")
-
         client = get_praw(creds)
         sub = client.subreddit(subreddit)
-        ban_kwargs: dict = {"ban_reason": reason[:BAN_REASON_MAX_LENGTH]}
+        ban_kwargs: dict[str, Any] = {"ban_reason": reason}
         if duration is not None:
             ban_kwargs["duration"] = duration
         if mod_note:
-            ban_kwargs["note"] = mod_note[:BAN_MOD_NOTE_MAX_LENGTH]
+            ban_kwargs["note"] = mod_note
         if ban_message:
             ban_kwargs["ban_message"] = ban_message
         sub.banned.add(username, **ban_kwargs)
@@ -469,7 +519,9 @@ class BanSubredditUserBlock(Block):
 
 class UnbanSubredditUserBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: RedditCredentialsInput = RedditCredentialsField()
+        credentials: RedditCredentialsInput = RedditCredentialsField(
+            required_scopes={MOD_CONTRIBUTORS_SCOPE}
+        )
         subreddit: str = SchemaField(
             description="Subreddit to unban the user from, excluding the /r/ prefix",
         )
@@ -530,7 +582,9 @@ class UnbanSubredditUserBlock(Block):
 
 class SendModMailBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: RedditCredentialsInput = RedditCredentialsField()
+        credentials: RedditCredentialsInput = RedditCredentialsField(
+            required_scopes={MODMAIL_SCOPE}
+        )
         subreddit: str = SchemaField(
             description="Subreddit to send modmail from, excluding the /r/ prefix",
         )
@@ -539,9 +593,11 @@ class SendModMailBlock(Block):
         )
         subject: str = SchemaField(
             description="Subject line of the modmail message",
+            max_length=MODMAIL_SUBJECT_MAX_LENGTH,
         )
         body: str = SchemaField(
             description="Body of the modmail message",
+            max_length=MODMAIL_BODY_MAX_LENGTH,
         )
 
     class Output(BlockSchemaOutput):

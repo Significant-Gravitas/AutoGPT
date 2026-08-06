@@ -45,16 +45,16 @@ Approves a Reddit post or comment from the mod queue. Requires 'modposts' scope.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block normalizes the incoming `post_id`, accepting either a bare submission ID or a Reddit fullname such as `t3_...` or `t1_...`. It then loads the correct PRAW object for a submission or comment and calls the moderator `approve()` action with credentials that include the `modposts` scope.
+This block requires a prefixed Reddit thing ID — `t3_...` for a post or `t1_...` for a comment — and loads the matching PRAW object before calling the moderator `approve()` action with credentials that include the `modposts` scope. Bare IDs are rejected: posts and comments share an ID namespace, so an unprefixed ID could resolve to an unrelated object.
 
-On success, the block returns the original `post_id` and `success=True`, which makes it easy to chain directly from `Mod Queue` output without losing whether the item started as a comment or a submission.
+On success, the block returns the original `post_id` and `success=True`. `Mod Queue` emits prefixed IDs on its `post_id` output, so the two blocks chain directly without losing whether the item started as a comment or a submission.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| post_id | ID or fullname of the post/comment to approve, such as 't3_abc123', 't1_xyz789', or bare submission ID 'abc123' | str | Yes |
+| post_id | Post or comment to approve. Full Reddit thing ID, prefixed with 't3_' for a post (e.g. 't3_abc123') or 't1_' for a comment (e.g. 't1_xyz789'). Bare IDs are rejected: posts and comments share an ID namespace, so an unprefixed ID cannot be resolved safely. | str | Yes |
 
 ### Outputs
 
@@ -130,7 +130,7 @@ Bans a user from a subreddit. Requires 'modcontributors' scope.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block validates the optional `duration` before sending the request, rejects non-positive values, and truncates the internal `reason` and `mod_note` fields to Reddit's moderation limits. It then calls `sub.banned.add(...)`, optionally including a temporary duration and a user-facing `ban_message`.
+The input schema bounds the optional `duration` to 1–999 days (Reddit's cap for temporary bans) and caps the internal `reason`, `mod_note`, and user-facing `ban_message` fields at Reddit's moderation limits, so invalid values are rejected before any API call is made. The block then calls `sub.banned.add(...)`, optionally including a temporary duration and a `ban_message`.
 
 The outputs echo the target user and subreddit, plus `success` and a derived `permanent` flag so downstream steps can branch on temporary versus permanent bans. Use `reason` and `mod_note` for internal moderation context, and reserve `ban_message` for the explanation shown to the banned user.
 <!-- END MANUAL -->
@@ -141,7 +141,7 @@ The outputs echo the target user and subreddit, plus `success` and a derived `pe
 |-------|-------------|------|----------|
 | subreddit | Subreddit to ban the user from, excluding the /r/ prefix | str | Yes |
 | username | Reddit username to ban (without the u/ prefix) | str | Yes |
-| duration | Ban duration in days. Leave blank for a permanent ban. | int | No |
+| duration | Ban duration in days (1-999, Reddit's cap for temporary bans). Leave blank for a permanent ban. | int | No |
 | reason | Internal moderator-only ban reason (max 100 chars). Use ban_message to explain the ban to the user. | str | No |
 | mod_note | Internal moderator note (not shown to the user) | str | No |
 | ban_message | Optional custom message sent to the user explaining the ban | str | No |
@@ -825,7 +825,7 @@ Locks or unlocks a Reddit post or comment to prevent or allow replies. Requires 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block resolves the target `post_id` to the correct Reddit object, so both submissions and comments can be locked or unlocked from the same input field. It then calls `lock()` when `lock=True` or `unlock()` when `lock=False`, using moderator credentials with the `modposts` scope.
+This block resolves the target `post_id` to the correct Reddit object from its `t3_` (post) or `t1_` (comment) prefix, so both can be locked or unlocked from the same input field; bare, unprefixed IDs are rejected as ambiguous. It then calls `lock()` when `lock=True` or `unlock()` when `lock=False`, using moderator credentials with the `modposts` scope.
 
 The block returns the original `post_id` plus the resulting `locked` state, which makes it useful in review pipelines where the moderation decision and final state need to be recorded explicitly.
 <!-- END MANUAL -->
@@ -834,7 +834,7 @@ The block returns the original `post_id` plus the resulting `locked` state, whic
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| post_id | ID or fullname of the post/comment to lock or unlock | str | Yes |
+| post_id | Post or comment to lock or unlock. Full Reddit thing ID, prefixed with 't3_' for a post (e.g. 't3_abc123') or 't1_' for a comment (e.g. 't1_xyz789'). Bare IDs are rejected: posts and comments share an ID namespace, so an unprefixed ID cannot be resolved safely. | str | Yes |
 | lock | True to lock (disable comments/replies), False to unlock | bool | No |
 
 ### Outputs
@@ -863,7 +863,7 @@ Fetches the mod queue for a subreddit. Requires moderator access.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block calls `sub.mod.modqueue(...)` for the target subreddit, forwarding the optional `only` filter and `limit` value to Reddit. Each returned PRAW item is normalized into a predictable dictionary with a fullname ID, detected item type, title fallback for comments, author, permalink, and moderator reason.
+This block calls `sub.mod.modqueue(...)` for the target subreddit, forwarding the optional `only` filter and the `limit` value (bounded to 1–100 so a single run can't fan out into an unbounded chain of paginated Reddit calls). Each returned PRAW item is normalized into a predictable dictionary with a fullname ID, detected item type, title fallback for comments, author, permalink, and moderator reason.
 
 The block emits every queue entry individually for fan-out workflows and also emits the full `items` list for batch processing. Because the `post_id` output keeps the Reddit fullname (`t1_...` or `t3_...`), downstream moderation blocks can safely act on comments and submissions without extra type checks.
 <!-- END MANUAL -->
@@ -873,7 +873,7 @@ The block emits every queue entry individually for fan-out workflows and also em
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | subreddit | Subreddit name, excluding the /r/ prefix | str | Yes |
-| limit | Maximum number of items to fetch from the mod queue | int | No |
+| limit | Maximum number of items to fetch from the mod queue (1-100) | int | No |
 | only | Filter to only submissions or only comments. Leave blank for both. | "submissions" \| "comments" | No |
 
 ### Outputs
@@ -1059,16 +1059,16 @@ Removes a Reddit post or comment as a moderator. Requires 'modposts' scope.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block accepts either bare submission IDs or full Reddit thing IDs and resolves them to the correct submission or comment object before moderation. It calls `thing.mod.remove(...)`, forwarding the `spam` flag and truncating the optional `mod_note` to Reddit's 250-character moderator-note limit.
+This block requires a prefixed Reddit thing ID (`t3_...` for a post, `t1_...` for a comment) and resolves it to the matching submission or comment before moderation; bare IDs are rejected because posts and comments share an ID namespace. It then calls `thing.mod.remove(...)`, forwarding the `spam` flag and the optional `mod_note`, which is capped at Reddit's 250-character moderator-note limit by the input schema.
 
-The block returns the original `post_id` and a success flag so workflows can record or branch on the removal decision. Passing through fullnames from `Mod Queue` lets the same flow moderate queued comments and submissions without extra conversion.
+The block returns the original `post_id` and a success flag so workflows can record or branch on the removal decision. Passing through the prefixed IDs emitted by `Mod Queue` lets the same flow moderate queued comments and submissions without extra conversion.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| post_id | ID or fullname of the post/comment to remove, such as 't3_abc123', 't1_xyz789', or bare submission ID 'abc123' | str | Yes |
+| post_id | Post or comment to remove. Full Reddit thing ID, prefixed with 't3_' for a post (e.g. 't3_abc123') or 't1_' for a comment (e.g. 't1_xyz789'). Bare IDs are rejected: posts and comments share an ID namespace, so an unprefixed ID cannot be resolved safely. | str | Yes |
 | spam | Mark as spam (True) or just remove (False). Spam trains the filter. | bool | No |
 | mod_note | Optional internal moderator note visible only to mods | str | No |
 

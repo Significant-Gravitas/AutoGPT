@@ -13,6 +13,22 @@ from backend.util.settings import Settings
 settings = Settings()
 
 
+def _granted_scopes(raw_scope: object, requested_scopes: list[str]) -> list[str]:
+    """
+    Resolve the scopes Reddit actually granted from a token response.
+
+    Reddit returns them as a space-separated string in the `scope` field, and uses
+    the wildcard `*` to mean "every scope this app may request". Falling back to
+    the requested scopes keeps behaviour sane if Reddit omits the field entirely.
+    """
+    if not isinstance(raw_scope, str) or not raw_scope.strip():
+        return requested_scopes
+    granted = raw_scope.replace(",", " ").split()
+    if "*" in granted:
+        return requested_scopes
+    return granted
+
+
 class RedditOAuthHandler(BaseOAuthHandler):
     """
     Reddit OAuth 2.0 handler.
@@ -28,6 +44,10 @@ class RedditOAuthHandler(BaseOAuthHandler):
     """
 
     PROVIDER_NAME = ProviderName.REDDIT
+    # Baseline scopes granted to every Reddit connection. Elevated moderator
+    # scopes are NOT listed here on purpose: blocks that need them declare them
+    # per-block via `RedditCredentialsField(required_scopes=...)`, so a user who
+    # only posts or reads is never asked to grant ban/remove/modmail authority.
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "identity",  # Get username, verify auth
         "read",  # Access posts and comments
@@ -36,10 +56,6 @@ class RedditOAuthHandler(BaseOAuthHandler):
         "history",  # Access user's post history
         "privatemessages",  # Access inbox and send private messages
         "flair",  # Access and set flair on posts/subreddits
-        "modposts",  # Moderate posts and comments
-        "modcontributors",  # Manage subreddit bans and contributors
-        "modmail",  # Send modmail conversations
-        "modlog",  # Read moderation log entries
     ]
 
     AUTHORIZE_URL = "https://www.reddit.com/api/v1/authorize"
@@ -114,7 +130,10 @@ class RedditOAuthHandler(BaseOAuthHandler):
             refresh_token=tokens.get("refresh_token"),
             access_token_expires_at=int(time.time()) + tokens.get("expires_in", 3600),
             refresh_token_expires_at=None,  # Reddit refresh tokens don't expire
-            scopes=scopes,
+            # Persist what Reddit granted, not what we asked for: a non-moderator
+            # who authorizes a moderation block must not end up with a credential
+            # that falsely claims mod scopes it never received.
+            scopes=_granted_scopes(tokens.get("scope"), scopes),
         )
 
     async def _get_username(self, access_token: str) -> str:
@@ -187,7 +206,7 @@ class RedditOAuthHandler(BaseOAuthHandler):
             refresh_token=refresh_token,
             access_token_expires_at=int(time.time()) + tokens.get("expires_in", 3600),
             refresh_token_expires_at=None,
-            scopes=credentials.scopes,
+            scopes=_granted_scopes(tokens.get("scope"), credentials.scopes),
         )
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:

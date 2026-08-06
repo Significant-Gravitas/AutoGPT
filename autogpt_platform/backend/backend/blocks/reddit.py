@@ -19,6 +19,7 @@ from backend.data.model import (
     OAuth2Credentials,
     SchemaField,
 )
+from backend.integrations.oauth.reddit import RedditOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.util.mock import MockObject
 from backend.util.settings import Settings
@@ -36,24 +37,36 @@ RedditCredentialsInput = CredentialsMetaInput[
     Literal["oauth2"],
 ]
 
-REDDIT_REQUIRED_SCOPES = [
-    "identity",
-    "read",
-    "submit",
-    "edit",
-    "history",
-    "privatemessages",
-    "flair",
-    "modposts",
-    "modcontributors",
-    "modmail",
-    "modlog",
-]
+# Single source of truth for the baseline scopes: the OAuth handler owns them, so
+# the two lists can't drift apart.
+REDDIT_BASE_SCOPES = frozenset(RedditOAuthHandler.DEFAULT_SCOPES)
+
+# Elevated moderator scopes. These are never in `DEFAULT_SCOPES`; only blocks that
+# actually need them ask for them via `RedditCredentialsField(required_scopes=...)`.
+MOD_POSTS_SCOPE = "modposts"  # Remove/approve/lock posts and comments
+MOD_CONTRIBUTORS_SCOPE = "modcontributors"  # Ban and unban subreddit users
+MODMAIL_SCOPE = "modmail"  # Send modmail conversations
+REDDIT_MODERATION_SCOPES = frozenset(
+    {MOD_POSTS_SCOPE, MOD_CONTRIBUTORS_SCOPE, MODMAIL_SCOPE}
+)
 
 
-def RedditCredentialsField() -> RedditCredentialsInput:
-    """Creates a Reddit credentials input on a block."""
+def RedditCredentialsField(
+    required_scopes: set[str] | None = None,
+) -> RedditCredentialsInput:
+    """
+    Creates a Reddit credentials input on a block.
+
+    `required_scopes` declares any *elevated* scopes the block needs on top of the
+    baseline. The baseline is merged in because `BaseOAuthHandler.handle_default_scopes`
+    *replaces* `DEFAULT_SCOPES` with a non-empty requested list rather than unioning
+    them — without the merge, a moderation block would mint a token that can't even
+    call `client.user.me()`.
+    """
     return CredentialsField(
+        required_scopes=(
+            set(REDDIT_BASE_SCOPES) | required_scopes if required_scopes else set()
+        ),
         description="Connect your Reddit account to access Reddit features.",
     )
 
@@ -64,7 +77,7 @@ TEST_CREDENTIALS = OAuth2Credentials(
     access_token=SecretStr("mock-reddit-access-token"),
     refresh_token=SecretStr("mock-reddit-refresh-token"),
     access_token_expires_at=9999999999,
-    scopes=REDDIT_REQUIRED_SCOPES,
+    scopes=sorted(REDDIT_BASE_SCOPES | REDDIT_MODERATION_SCOPES),
     title="Mock Reddit credentials",
     username="mock-reddit-username",
 )
