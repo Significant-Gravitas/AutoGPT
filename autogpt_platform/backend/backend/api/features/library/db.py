@@ -697,6 +697,8 @@ async def update_agent_version_in_library(
     user_id: str,
     agent_graph_id: str,
     agent_graph_version: int,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the agent version in the library for any agent owned by the user.
@@ -705,6 +707,11 @@ async def update_agent_version_in_library(
         user_id: Owner of the LibraryAgent.
         agent_graph_id: The agent graph's ID to update.
         agent_graph_version: The new version of the agent graph.
+        organization_id: Re-tag the entry with this org. Omit to leave the
+            entry's tenancy as-is.
+        team_id: Team to re-tag the entry with (``None`` clears it to
+            org-home). Only applied when ``organization_id`` is given, since
+            a team is only meaningful inside its org.
 
     Raises:
         DatabaseError: If there's an error with the update.
@@ -743,6 +750,22 @@ async def update_agent_version_in_library(
                         }
                     },
                 },
+                # Keep the entry's tenancy in step with the version it now
+                # points at — list badges/filters read teamId off this row,
+                # so leaving it stale makes them disagree with where the
+                # version was actually saved.
+                **(
+                    {
+                        "organizationId": organization_id,
+                        "Team": (
+                            {"connect": {"id": team_id}}
+                            if team_id
+                            else {"disconnect": True}
+                        ),
+                    }
+                    if organization_id
+                    else {}
+                ),
             },
             include={"AgentGraph": True},
         )
@@ -849,11 +872,23 @@ async def update_graph_in_library(
 
 
 async def update_library_agent_version_and_settings(
-    user_id: str, agent_graph: graph_db.GraphModel
+    user_id: str,
+    agent_graph: graph_db.GraphModel,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
-    """Update library agent to point to new graph version and sync settings."""
+    """Update library agent to point to new graph version and sync settings.
+
+    ``organization_id``/``team_id`` re-tag the library entry so its tenancy
+    keeps matching the graph version it points at; omit both to leave the
+    existing tenancy untouched.
+    """
     library = await update_agent_version_in_library(
-        user_id, agent_graph.id, agent_graph.version
+        user_id,
+        agent_graph.id,
+        agent_graph.version,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     updated_settings = GraphSettings.from_graph(
         graph=agent_graph,

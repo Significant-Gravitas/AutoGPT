@@ -22,23 +22,7 @@ from backend.api.features.search.embeddings import (
     ensure_content_embedding,
     get_embedding_stats,
 )
-
-
-async def _first_db_call(coro_factory):
-    """Run the test's first DB call, retrying once on a transient
-    ``Event loop is closed``.
-
-    Same pattern as conftest's ``_create_user_with_loop_retry``: fire-and-forget
-    background tasks elsewhere can leave the Prisma pool bound to a now-closed
-    test function loop; the first session-loop DB call after that surfaces as
-    ``RuntimeError: Event loop is closed`` and the pool re-establishes on retry.
-    """
-    try:
-        return await coro_factory()
-    except RuntimeError as e:
-        if "Event loop is closed" not in str(e):
-            raise
-        return await coro_factory()
+from backend.util.test import retry_once_on_closed_loop
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -46,8 +30,10 @@ async def test_store_agent_handler_real_db():
     """Test StoreAgentHandler with real database queries."""
     handler = StoreAgentHandler()
 
-    # Get stats from real DB
-    stats = await _first_db_call(handler.get_stats)
+    # Get stats from real DB. Only the first DB call needs the guard — see
+    # retry_once_on_closed_loop for why, and for the teardown fix that will
+    # let it go away.
+    stats = await retry_once_on_closed_loop(handler.get_stats)
 
     # Stats should have correct structure
     assert "total" in stats

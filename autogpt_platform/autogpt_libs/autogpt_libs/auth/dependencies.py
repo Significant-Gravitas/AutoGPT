@@ -257,11 +257,13 @@ async def get_request_context(
             or ws_member.Team is None
             or ws_member.Team.orgId != org_id
         ):
-            logger.debug(
-                "Workspace %s not valid for user %s in org %s; falling back to org-home",
-                team_id,
-                user_id,
-                org_id,
+            # Warn, not debug: the caller asked for a team and silently gets
+            # org-home instead, which widens the scope of anything they
+            # create in this request (e.g. an org-wide API key). A mistyped
+            # or expired team header should be visible to operators.
+            logger.warning(
+                f"Workspace {team_id} not valid in org {org_id} for the "
+                "requesting user (user:<redacted>); falling back to org-home"
             )
             team_id = None
         else:
