@@ -90,10 +90,18 @@ vi.mock("@/app/api/helpers", () => ({
   resolveResponse: (p: Promise<{ data: unknown }>) => p.then((r) => r.data),
 }));
 
+// Answers per-flag rather than returning one shared boolean: these tests
+// only mean to toggle the paywall, and a blanket `true` would also switch
+// on every other gated flag — including the brain dump, which replaces
+// the pillbox step this file asserts on.
 let mockFlagValue = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT" },
-  useGetFlag: () => mockFlagValue,
+  Flag: {
+    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
+    ONBOARDING_BRAIN_DUMP: "ONBOARDING_BRAIN_DUMP",
+  },
+  useGetFlag: (flag: string) =>
+    flag === "ENABLE_PLATFORM_PAYMENT" ? mockFlagValue : false,
 }));
 
 vi.mock("launchdarkly-react-client-sdk", () => ({

@@ -25,7 +25,8 @@ def _make_slv(
 
 @pytest.mark.asyncio
 async def test_add_graph_to_library_create_new_agent() -> None:
-    """When no matching LibraryAgent exists, create inserts a new one."""
+    """When no matching LibraryAgent exists, create inserts a new one — born
+    tenanted with the adding user's default org/team."""
     graph_model = MagicMock(id="graph-id", version=2, nodes=[])
     created_agent = MagicMock(name="CreatedLibraryAgent")
     converted_agent = MagicMock(name="ConvertedLibraryAgent")
@@ -41,6 +42,10 @@ async def test_add_graph_to_library_create_new_agent() -> None:
         patch(
             "backend.api.features.library._add_to_library._fetch_schedule_info",
             new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=AsyncMock(return_value=("org-lib", "team-lib")),
         ),
     ):
         mock_prisma.return_value.create = AsyncMock(return_value=created_agent)
@@ -62,6 +67,81 @@ async def test_add_graph_to_library_create_new_agent() -> None:
     assert create_data["name"] == "Marketplace Title"
     assert create_data["description"] == "Marketplace description"
     assert create_data["imageUrl"] == "https://cdn.example.com/agent.png"
+    # Born tenanted: stamped with the user's default org/team
+    assert create_data["organizationId"] == "org-lib"
+    assert create_data["Team"] == {"connect": {"id": "team-lib"}}
+
+
+@pytest.mark.asyncio
+async def test_add_graph_to_library_no_default_team_stays_untenanted() -> None:
+    """Bootstrap failure → get_user_default_team returns (None, None) → the
+    library add still succeeds and leaves the row untagged (no crash)."""
+    graph_model = MagicMock(id="graph-id", version=2, nodes=[])
+    created_agent = MagicMock(name="CreatedLibraryAgent")
+    converted_agent = MagicMock(name="ConvertedLibraryAgent")
+
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models.LibraryAgent.prisma"
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.library_model.LibraryAgent.from_db",
+            return_value=converted_agent,
+        ),
+        patch(
+            "backend.api.features.library._add_to_library._fetch_schedule_info",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=AsyncMock(return_value=(None, None)),
+        ),
+    ):
+        mock_prisma.return_value.create = AsyncMock(return_value=created_agent)
+
+        result = await add_graph_to_library(graph_model, "user-id", _make_slv())
+
+    assert result is converted_agent
+    create_data = mock_prisma.return_value.create.call_args.kwargs["data"]
+    assert "organizationId" not in create_data
+    assert "Team" not in create_data
+
+
+@pytest.mark.asyncio
+async def test_add_graph_to_library_default_team_lookup_failure_stays_untenanted() -> (
+    None
+):
+    """The default-team lookup is best-effort: if it RAISES, the library add
+    still succeeds (untagged) rather than aborting the bookmark."""
+    graph_model = MagicMock(id="graph-id", version=2, nodes=[])
+    created_agent = MagicMock(name="CreatedLibraryAgent")
+    converted_agent = MagicMock(name="ConvertedLibraryAgent")
+
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models.LibraryAgent.prisma"
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.library_model.LibraryAgent.from_db",
+            return_value=converted_agent,
+        ),
+        patch(
+            "backend.api.features.library._add_to_library._fetch_schedule_info",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=AsyncMock(side_effect=RuntimeError("bootstrap unavailable")),
+        ),
+    ):
+        mock_prisma.return_value.create = AsyncMock(return_value=created_agent)
+
+        result = await add_graph_to_library(graph_model, "user-id", _make_slv())
+
+    assert result is converted_agent
+    create_data = mock_prisma.return_value.create.call_args.kwargs["data"]
+    assert "organizationId" not in create_data
+    assert "Team" not in create_data
 
 
 @pytest.mark.asyncio
@@ -82,6 +162,10 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
         patch(
             "backend.api.features.library._add_to_library._fetch_schedule_info",
             new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "backend.api.features.orgs.db.get_user_default_team",
+            new=AsyncMock(return_value=("org-lib", "team-lib")),
         ),
     ):
         mock_prisma.return_value.create = AsyncMock(
@@ -111,6 +195,11 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     assert update_data["name"] == "Marketplace Title"
     assert update_data["description"] == "Marketplace description"
     assert update_data["imageUrl"] == "https://cdn.example.com/agent.png"
+    # Re-add must NOT touch tenancy — the existing row keeps its org/team
+    # (only the create branch born-tenants). Prevents disconnecting an
+    # existing team when no default team resolves.
+    assert "organizationId" not in update_data
+    assert "Team" not in update_data
 
 
 def test_marketplace_metadata_returns_first_image() -> None:

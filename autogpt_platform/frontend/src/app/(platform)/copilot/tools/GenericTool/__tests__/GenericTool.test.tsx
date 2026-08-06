@@ -335,3 +335,104 @@ describe("GenericTool", () => {
     });
   });
 });
+
+// Every tool category maps to its own Hugeicons glyph in both the status row
+// (ToolIcon) and the accordion header (AccordionIcon). The icon is picked by a
+// switch on the category, so a mis-mapped or undefined import silently renders
+// nothing rather than failing loudly — assert on the glyph geometry.
+describe("GenericTool icons", () => {
+  const CATEGORY_TOOLS: [string, string][] = [
+    ["bash", "bash_exec"],
+    ["web", "web_search"],
+    ["browser", "browser_navigate"],
+    ["file-read", "read_file"],
+    ["file-write", "write_file"],
+    ["file-delete", "delete_workspace_file"],
+    ["file-list", "glob"],
+    ["search", "grep"],
+    ["edit", "edit_file"],
+    ["todo", "TodoWrite"],
+    ["agent", "Agent"],
+    ["other", "some_unknown_tool"],
+  ];
+
+  function iconShapes(root: HTMLElement) {
+    return Array.from(root.querySelectorAll("svg")).map((svg) =>
+      Array.from(svg.querySelectorAll("path,circle,rect,line,polyline"))
+        .map((n) => n.getAttribute("d") ?? n.outerHTML)
+        .join("|"),
+    );
+  }
+
+  function renderCategory(toolName: string) {
+    return render(
+      <GenericTool
+        part={
+          {
+            type: `tool-${toolName}`,
+            toolCallId: "call-icons",
+            state: "output-available",
+            input: { command: "x", todos: [], path: "a.txt", query: "q" },
+            output: { message: "done" },
+          } as unknown as ToolUIPart
+        }
+      />,
+    );
+  }
+
+  it.each(CATEGORY_TOOLS)(
+    "renders a status icon and an accordion icon for the %s category",
+    (_category, toolName) => {
+      const { container } = renderCategory(toolName);
+      const shapes = iconShapes(container).filter(Boolean);
+      // One for the status row, one for the accordion header.
+      expect(shapes.length).toBeGreaterThanOrEqual(2);
+    },
+  );
+
+  it("gives each tool category a distinct glyph", () => {
+    const seen = new Map<string, string>();
+    for (const [category, toolName] of CATEGORY_TOOLS) {
+      const { container, unmount } = renderCategory(toolName);
+      const shape = iconShapes(container).filter(Boolean)[0];
+      expect(shape).toBeTruthy();
+      seen.set(category, shape);
+      unmount();
+    }
+    // file-read and file-write intentionally share the "file" glyph; every
+    // other category must be visually distinguishable from the rest.
+    const shapes = [...seen.entries()]
+      .filter(([c]) => c !== "file-write")
+      .map(([, s]) => s);
+    expect(new Set(shapes).size).toBe(shapes.length);
+  });
+
+  it("renders the compaction icon without an accordion", () => {
+    const { container } = renderCategory("context_compaction");
+    expect(iconShapes(container).filter(Boolean).length).toBe(1);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("swaps in the alert glyph when the tool errored", () => {
+    const { container: ok } = renderCategory("bash_exec");
+    const okShape = iconShapes(ok).filter(Boolean)[0];
+
+    const { container: bad } = render(
+      <GenericTool
+        part={
+          {
+            type: "tool-bash_exec",
+            toolCallId: "call-err",
+            state: "output-error",
+            input: { command: "x" },
+            output: { message: "boom" },
+          } as unknown as ToolUIPart
+        }
+      />,
+    );
+    const badShape = iconShapes(bad).filter(Boolean)[0];
+
+    expect(badShape).toBeTruthy();
+    expect(badShape).not.toBe(okShape);
+  });
+});

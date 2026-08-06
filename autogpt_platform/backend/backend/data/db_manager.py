@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from backend.api.features.experts import experts_db
+from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -15,6 +16,7 @@ from backend.api.features.library.db import (
     get_folder_tree,
     get_library_agent,
     get_library_agent_by_graph_id,
+    get_library_agent_id_by_graph_id,
     get_preset,
     get_root_agent_summaries,
     list_folders,
@@ -31,7 +33,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.api.features.orgs.db import get_user_default_team
+from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     get_embedding_stats,
@@ -347,6 +349,7 @@ class DatabaseManager(AppService):
     # ============ Library ============ #
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
+    get_library_agent_id_by_graph_id = _(get_library_agent_id_by_graph_id)
     create_graph_in_library = _(create_graph_in_library)
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
@@ -441,6 +444,7 @@ class DatabaseManager(AppService):
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
+    resolve_default_tenancy = _(resolve_default_tenancy)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -481,6 +485,7 @@ class DatabaseManager(AppService):
     # identity/team context via db_accessors.experts_db().
     get_expert = _(experts_db.get_expert)
     list_experts = _(experts_db.list_experts)
+    enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -493,12 +498,14 @@ class DatabaseManager(AppService):
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
@@ -558,6 +565,10 @@ class DatabaseManagerClient(AppServiceClient):
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
     validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
+
+    # Expert run posts (executor completion hook)
+    append_expert_run_message = _(d.append_expert_run_message)
+    get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -732,6 +743,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
+    resolve_default_tenancy = d.resolve_default_tenancy
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
@@ -764,6 +776,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Experts ============ #
     get_expert = d.get_expert
     list_experts = d.list_experts
+    enforce_expert_run_budget = d.enforce_expert_run_budget
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
@@ -772,12 +785,15 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
+    append_expert_run_message = d.append_expert_run_message
+    get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
     update_message_content_by_sequence = d.update_message_content_by_sequence
+    update_chat_message_stamps = d.update_chat_message_stamps
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
     update_chat_session_pinned = d.update_chat_session_pinned

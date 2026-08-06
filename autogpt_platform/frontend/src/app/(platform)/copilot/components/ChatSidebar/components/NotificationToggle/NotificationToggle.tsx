@@ -9,8 +9,13 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Bell, BellRinging, BellSlash } from "@phosphor-icons/react";
 import { useCopilotUIStore } from "../../../../store";
+import {
+  BellIcon,
+  BellOffIcon,
+  BellRingIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NotificationToggle() {
   const {
@@ -51,11 +56,11 @@ export function NotificationToggle() {
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="Notification settings">
           {!isNotificationsEnabled ? (
-            <BellSlash className="!size-5" />
+            <Icon icon={BellOffIcon} className="!size-5" />
           ) : isSoundEnabled ? (
-            <BellRinging className="!size-5" />
+            <Icon icon={BellRingIcon} className="!size-5" />
           ) : (
-            <Bell className="!size-5" />
+            <Icon icon={BellIcon} className="!size-5" />
           )}
         </Button>
       </PopoverTrigger>

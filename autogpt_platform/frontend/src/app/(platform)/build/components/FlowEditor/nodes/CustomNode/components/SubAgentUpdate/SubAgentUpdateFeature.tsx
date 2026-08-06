@@ -1,5 +1,4 @@
 import React from "react";
-import { ArrowUpIcon, WarningIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
@@ -11,6 +10,8 @@ import { CustomNodeData } from "../../CustomNode";
 import { useSubAgentUpdateState } from "./useSubAgentUpdateState";
 import { IncompatibleUpdateDialog } from "./components/IncompatibleUpdateDialog";
 import { ResolutionModeBar } from "./components/ResolutionModeBar";
+import { Alert01Icon, ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /**
  * Inline component for the update bar that can be placed after the header.
@@ -84,14 +85,17 @@ function SubAgentUpdateAvailableBar({
   return (
     <div className="flex items-center justify-between gap-2 rounded-t-xl bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
       <div className="flex items-center gap-2">
-        <ArrowUpIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+        <Icon
+          icon={ArrowUp02Icon}
+          className="h-4 w-4 text-blue-600 dark:text-blue-400"
+        />
         <span className="text-sm text-blue-700 dark:text-blue-300">
           Update available (v{currentVersion} → v{latestVersion})
         </span>
         {!isCompatible && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <WarningIcon className="h-4 w-4 text-amber-500" />
+              <Icon icon={Alert01Icon} className="h-4 w-4 text-amber-500" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p className="font-medium">Incompatible changes detected</p>

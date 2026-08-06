@@ -3,11 +3,9 @@
 import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/ArtifactsList/helpers";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { cn } from "@/lib/utils";
-import {
-  CircleNotch as CircleNotchIcon,
-  WarningCircle as WarningCircleIcon,
-} from "@phosphor-icons/react";
 import type { MutableRefObject } from "react";
+import { AlertCircleIcon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   files: WorkspaceFileItem[];
@@ -42,12 +40,15 @@ export function MentionDropdown({
     >
       {isError ? (
         <p className="flex items-center gap-2 px-3 py-2 text-sm text-red-600">
-          <WarningCircleIcon className="h-4 w-4 shrink-0" />
+          <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
           Couldn&apos;t load files. Try again.
         </p>
       ) : isLoading ? (
         <p className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500">
-          <CircleNotchIcon className="h-4 w-4 shrink-0 animate-spin" />
+          <Icon
+            icon={Loading03Icon}
+            className="h-4 w-4 shrink-0 animate-spin"
+          />
           Searching files…
         </p>
       ) : null}
@@ -56,7 +57,7 @@ export function MentionDropdown({
       )}
       {files.map((file, index) => {
         const isHighlighted = index === highlightedIndex;
-        const Icon = getFileTypeIcon(file.mime_type);
+        const fileIcon = getFileTypeIcon(file.mime_type);
         return (
           <button
             key={file.id}
@@ -76,7 +77,7 @@ export function MentionDropdown({
               isHighlighted ? "bg-zinc-100 text-zinc-900" : "text-zinc-700",
             )}
           >
-            <Icon weight="regular" className="h-4 w-4 shrink-0 text-zinc-900" />
+            <Icon icon={fileIcon} className="h-4 w-4 shrink-0 text-zinc-900" />
             <span className="min-w-0 flex-1 truncate">{file.name}</span>
           </button>
         );

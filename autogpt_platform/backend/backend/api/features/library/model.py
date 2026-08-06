@@ -522,6 +522,10 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     webhook_id: Optional[str] = None
     webhook: "Webhook | None"
 
+    # Expert attribution, resolved server-side at creation; every run this
+    # preset fires inherits it.
+    expert_id: Optional[str] = None
+
     @pydantic.field_serializer("webhook")
     def _redact_webhook_signing_material(
         self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
@@ -572,6 +576,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             team_id=preset.teamId,
             webhook_id=preset.webhookId,
             webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            expert_id=preset.expertId,
         )
 
 
