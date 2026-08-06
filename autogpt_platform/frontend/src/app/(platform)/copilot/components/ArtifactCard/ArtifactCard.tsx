@@ -2,12 +2,13 @@
 
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
-import { CaretRight, DownloadSimple } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
 import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
 import { classifyArtifact } from "../ArtifactPanel/helpers";
+import { ArrowRight01Icon, Download04Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   artifact: ArtifactRef;
@@ -56,7 +57,6 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
     artifact.title,
     artifact.sizeBytes,
   );
-  const Icon = classification.icon;
 
   function handleDownloadOnly() {
     downloadArtifact(artifact).catch(() => {
@@ -75,7 +75,11 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
         onClick={handleDownloadOnly}
         className="my-1 flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50"
       >
-        <Icon size={20} className="shrink-0 text-zinc-400" />
+        <Icon
+          icon={classification.icon}
+          size={20}
+          className="shrink-0 text-zinc-400"
+        />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-zinc-900">
             {artifact.title}
@@ -87,7 +91,11 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
               : ""}
           </p>
         </div>
-        <DownloadSimple size={16} className="shrink-0 text-zinc-400" />
+        <Icon
+          icon={Download04Icon}
+          size={16}
+          className="shrink-0 text-zinc-400"
+        />
       </button>
     );
   }
@@ -102,6 +110,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       )}
     >
       <Icon
+        icon={classification.icon}
         size={20}
         className={cn(
           "shrink-0",
@@ -128,7 +137,8 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
             : ""}
         </p>
       </div>
-      <CaretRight
+      <Icon
+        icon={ArrowRight01Icon}
         size={16}
         className={cn(
           "shrink-0",

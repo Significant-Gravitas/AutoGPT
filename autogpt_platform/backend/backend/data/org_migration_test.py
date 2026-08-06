@@ -1265,3 +1265,47 @@ class TestCredentialMigration:
 
         assert created == 0
         mock_prisma.integrationcredential.create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Soft-deleted org exclusion (dev incident follow-up: dead duplicate orgs must
+# never re-enter the money-copy or tenancy JOINs, or deleted-org cleanup gets
+# resurrected on the next startup)
+# ---------------------------------------------------------------------------
+
+
+class TestSoftDeletedOrgsExcludedFromMigrationSQL:
+    @pytest.mark.asyncio
+    async def test_balance_copy_sql_excludes_soft_deleted_orgs(self, mock_prisma):
+        await migrate_org_balances()
+
+        sql = mock_prisma.execute_raw.call_args[0][0]
+        assert 'o."deletedAt" IS NULL' in sql
+
+    @pytest.mark.asyncio
+    async def test_ledger_copy_sql_excludes_soft_deleted_orgs(self, mock_prisma):
+        await migrate_credit_transactions()
+
+        sql = mock_prisma.execute_raw.call_args[0][0]
+        assert 'o."deletedAt" IS NULL' in sql
+
+    @pytest.mark.asyncio
+    async def test_tenancy_assignment_sql_excludes_soft_deleted_orgs(self, mock_prisma):
+        await assign_resources_to_teams()
+
+        for call in mock_prisma.execute_raw.call_args_list:
+            sql = call[0][0]
+            assert 'o."deletedAt" IS NULL' in sql, sql
+
+    def test_every_personal_org_join_in_module_excludes_soft_deleted(self):
+        """Tripwire: any raw-SQL JOIN on personal orgs added to this module
+        must carry the soft-delete guard on the same line."""
+        import inspect
+
+        import backend.data.org_migration as org_migration
+
+        for lineno, line in enumerate(
+            inspect.getsource(org_migration).splitlines(), start=1
+        ):
+            if '"isPersonal" = true' in line:
+                assert '"deletedAt" IS NULL' in line, f"line {lineno}: {line.strip()}"

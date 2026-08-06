@@ -1,15 +1,14 @@
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  ProhibitIcon,
-  WarningCircleIcon,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
-
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { SubmissionStats } from "@/app/api/__generated__/models/submissionStats";
+import {
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  UnavailableIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string;
@@ -97,7 +96,7 @@ export function isFiltered(state: FilterState): boolean {
 
 export interface StatusVisual {
   label: string;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
   pillClass: string;
   dotClass: string;
 }
@@ -109,26 +108,26 @@ export function getStatusVisual(status: SubmissionStatus): StatusVisual {
 export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
   [SubmissionStatus.DRAFT]: {
     label: "Draft",
-    Icon: ClockIcon,
+    Icon: Clock01Icon,
     pillClass: "bg-zinc-100 text-zinc-700 ring-1 ring-inset ring-zinc-200",
     dotClass: "bg-zinc-400",
   },
   [SubmissionStatus.PENDING]: {
     label: "In review",
-    Icon: ClockIcon,
+    Icon: Clock01Icon,
     pillClass: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
     dotClass: "bg-amber-500",
   },
   [SubmissionStatus.APPROVED]: {
     label: "Approved",
-    Icon: CheckCircleIcon,
+    Icon: CheckmarkCircle02Icon,
     pillClass:
       "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200",
     dotClass: "bg-emerald-500",
   },
   [SubmissionStatus.REJECTED]: {
     label: "Needs changes",
-    Icon: ProhibitIcon,
+    Icon: UnavailableIcon,
     pillClass: "bg-rose-50 text-rose-800 ring-1 ring-inset ring-rose-200",
     dotClass: "bg-rose-500",
   },
@@ -197,4 +196,4 @@ export function formatSubmittedAt(value: Date | null | undefined): string {
   });
 }
 
-export const FILTER_EMPTY_ICON: PhosphorIcon = WarningCircleIcon;
+export const FILTER_EMPTY_ICON: IconSvgElement = AlertCircleIcon;

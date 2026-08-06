@@ -15,15 +15,16 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { providerIcons } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Key01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function UserIntegrationsPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
@@ -124,8 +125,8 @@ export default function UserIntegrationsPage() {
 
   useEffect(() => {
     if (isUserLoading) return;
-    if (!user || !supabase) router.push("/login");
-  }, [isUserLoading, user, supabase, router]);
+    if (!user) router.push("/login");
+  }, [isUserLoading, user, router]);
 
   if (isUserLoading) {
     return <LoadingBox className="h-[80vh]" />;
@@ -148,7 +149,7 @@ export default function UserIntegrationsPage() {
               ...credentials,
               provider: provider.provider,
               providerName: provider.providerName,
-              ProviderIcon: providerIcons[provider.provider] || KeyIcon,
+              providerIcon: providerIcons[provider.provider] || Key01Icon,
               TypeIcon: {
                 oauth2: IconUser,
                 api_key: IconKey,
@@ -175,7 +176,7 @@ export default function UserIntegrationsPage() {
             <TableRow key={cred.id}>
               <TableCell>
                 <div className="flex items-center space-x-1.5">
-                  <cred.ProviderIcon className="h-4 w-4" />
+                  <Icon icon={cred.providerIcon} className="h-4 w-4" />
                   <strong>{cred.providerName}</strong>
                 </div>
               </TableCell>
