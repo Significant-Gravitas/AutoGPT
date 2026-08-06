@@ -264,6 +264,12 @@ test("archive backs up a git-clean worktree carrying a diverged ignored .env", (
   );
   // An identical (non-diverged) copy is not worth archiving.
   assert.ok(!existsSync(join(out, "ignored-env", "autogpt_platform")));
+  // This archive has no patches and no untracked files, so the restore block
+  // would be empty if ignored-env were left out of it.
+  assert.match(
+    readFileSync(join(out, "RESTORE.md"), "utf8"),
+    /cp -R <archive>\/ignored-env\/\. \./,
+  );
 });
 
 test(

@@ -109,7 +109,9 @@ function listIgnoredEnvFiles(base) {
   // 0 = at least one path ignored, 1 = none ignored, anything else = git error
   if (r.status !== 0 && r.status !== 1) {
     console.error(
-      `git check-ignore failed in ${base}: ${r.error?.message ?? r.stderr}`,
+      `warning: could not determine which .env files are ignored in ${base} ` +
+        `(${r.error?.message ?? r.stderr}); env files will not be linked, and ` +
+        `local-only env edits will not be backed up`,
     );
     return [];
   }
@@ -237,10 +239,21 @@ function copyInto(destRoot, rel, srcPath) {
 }
 
 function restoreDoc({ outDir, branch, head, patches, untracked, envs }) {
-  const apply = patches
-    .map((p) => `git apply --binary <archive>/${p}`)
-    .concat(untracked ? ["cp -R <archive>/untracked/. ."] : [])
-    .join("\n");
+  const steps = [
+    ...patches.map((p) => `git apply --binary <archive>/${p}`),
+    ...(untracked ? ["cp -R <archive>/untracked/. ."] : []),
+    // Not an unconditional copy: these are local, git-ignored env files and
+    // blindly restoring them can clobber a working config.
+    ...(envs
+      ? [
+          "# review these first, then copy back the ones you want:",
+          "#   cp -R <archive>/ignored-env/. .",
+        ]
+      : []),
+  ];
+  const apply = steps.length
+    ? steps.join("\n")
+    : "# nothing could be captured — check the archive hook output for errors";
   return `# Worktree archive: ${basename(outDir)}
 
 Written by \`.orca/hooks.mjs archive\` just before Orca deleted the worktree
