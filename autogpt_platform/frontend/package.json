@@ -77,7 +77,7 @@
     "@xyflow/react": "12.9.2",
     "ai": "6.0.134",
     "bcryptjs": "3.0.3",
-    "better-auth": "1.6.14",
+    "better-auth": "1.6.22",
     "boring-avatars": "1.11.2",
     "canvas-confetti": "1.9.4",
     "class-variance-authority": "0.7.1",
@@ -87,7 +87,6 @@
     "date-fns": "4.1.0",
     "dexie": "4.2.1",
     "dotenv": "17.2.3",
-    "elliptic": "6.6.1",
     "embla-carousel-react": "8.6.0",
     "flatbush": "4.5.0",
     "framer-motion": "12.23.24",
@@ -101,7 +100,7 @@
     "lodash": "4.17.21",
     "lucide-react": "0.552.0",
     "motion": "12.38.0",
-    "next": "15.5.18",
+    "next": "15.5.21",
     "next-themes": "0.4.6",
     "nuqs": "2.7.2",
     "pg": "8.21.0",
@@ -134,7 +133,7 @@
     "tailwindcss-animate": "1.0.7",
     "twemoji": "14.0.2",
     "use-stick-to-bottom": "1.1.2",
-    "uuid": "11.1.0",
+    "uuid": "11.1.1",
     "vaul": "1.1.2",
     "zod": "3.25.76",
     "zustand": "5.0.8"
@@ -181,7 +180,7 @@
     "msw-storybook-addon": "2.0.6",
     "orval": "7.13.0",
     "pbkdf2": "3.1.5",
-    "postcss": "8.5.6",
+    "postcss": "8.5.23",
     "prettier": "3.6.2",
     "prettier-plugin-tailwindcss": "0.7.1",
     "require-in-the-middle": "8.0.1",
@@ -201,7 +200,8 @@
     "overrides": {
       "@opentelemetry/instrumentation": "0.209.0",
       "lodash-es": "4.17.23",
-      "kysely": "0.28.17"
+      "kysely": "0.28.17",
+      "protobufjs": "7.6.5"
     }
   },
   "packageManager": "pnpm@10.20.0+sha512.cf9998222162dd85864d0a8102e7892e7ba4ceadebbf5a31f9c2fce48dfce317a9c53b9f6464d1ef9042cba2e02ae02a9f7c143a2b438cd93c91840f0192b9dd"
