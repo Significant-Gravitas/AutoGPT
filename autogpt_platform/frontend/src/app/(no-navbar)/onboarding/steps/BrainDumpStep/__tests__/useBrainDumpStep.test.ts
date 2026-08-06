@@ -6,7 +6,8 @@ import type { RecordingPart } from "../recordingStore";
 // `recorderState` after a render does NOT reach the handlers already
 // closed over — which is why the hook passes ids and durations around by
 // argument instead of reading them off the recorder.
-const { recorderState } = vi.hoisted(() => ({
+const { captureException, recorderState } = vi.hoisted(() => ({
+  captureException: vi.fn(),
   recorderState: {
     phase: "idle" as "idle" | "recording" | "stopping" | "stopped",
     hitTimeLimit: false,
@@ -55,6 +56,8 @@ const trackBrainDump = vi.fn();
 vi.mock("@/services/onboarding/brain-dump-analytics", () => ({
   trackBrainDump: (...args: unknown[]) => trackBrainDump(...args),
 }));
+
+vi.mock("@sentry/nextjs", () => ({ captureException }));
 
 import { useOnboardingWizardStore } from "../../../store";
 import { useBrainDumpStep } from "../useBrainDumpStep";
@@ -166,6 +169,99 @@ describe("useBrainDumpStep — recording", () => {
       await result.current.handleStart();
     });
     expect(result.current.screen).toBe("recording");
+  });
+
+  it("tracks cancel and discards the active take", async () => {
+    recorderState.recordingId = "rec-1";
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStop();
+    });
+
+    expect(events()).toContain("brain_dump_canceled");
+    expect(clearRecording).toHaveBeenCalledWith("rec-1");
+    expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    expect(result.current.screen).toBe("rest");
+  });
+
+  it("returns to rest and discards the take when stopping fails", async () => {
+    recorderState.recordingId = "rec-1";
+    recorderState.stop.mockRejectedValueOnce(new Error("stop failed"));
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStop();
+    });
+
+    expect(result.current.screen).toBe("rest");
+    expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    expect(captureException).toHaveBeenCalled();
+  });
+
+  it("does not submit a take while cancellation owns it", async () => {
+    const stopping = deferred<number>();
+    recorderState.recordingId = "rec-1";
+    recorderState.stop.mockReturnValue(stopping.promise);
+    const { result, rerender } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStart();
+    });
+
+    let cancelPromise!: Promise<void>;
+    act(() => {
+      cancelPromise = result.current.handleStop();
+    });
+    act(() => {
+      recorderState.hitTimeLimit = true;
+      rerender();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(finalizeBrainDump).not.toHaveBeenCalled();
+    expect(result.current.screen).toBe("rest");
+
+    await act(async () => {
+      stopping.resolve(30 * 60);
+      await cancelPromise;
+    });
+
+    expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    expect(result.current.screen).toBe("rest");
+  });
+
+  it("does not discard a take while time-limit submission owns it", async () => {
+    const finalizing = deferred<ReturnType<typeof completed>>();
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockReturnValue(finalizing.promise);
+    const { result, rerender } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStart();
+    });
+    act(() => {
+      recorderState.hitTimeLimit = true;
+      rerender();
+    });
+    await waitFor(() => expect(finalizeBrainDump).toHaveBeenCalled());
+
+    await act(async () => {
+      await result.current.handleStop();
+    });
+
+    expect(discardBrainDump).not.toHaveBeenCalled();
+    expect(recorderState.stop).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finalizing.resolve(completed());
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(2),
+    );
   });
 
   // The nudge is for someone who has not started talking yet, so it keys
@@ -284,6 +380,20 @@ describe("useBrainDumpStep — the 30-minute cap", () => {
 });
 
 describe("useBrainDumpStep — finishing a take", () => {
+  it("shows the failure state when stopping the recorder fails", async () => {
+    recorderState.recordingId = "rec-1";
+    recorderState.stop.mockRejectedValueOnce(new Error("stop failed"));
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("failed");
+    expect(finalizeBrainDump).not.toHaveBeenCalled();
+    expect(captureException).toHaveBeenCalled();
+  });
+
   it("finalizes with the duration reported by stop(), not the last render", async () => {
     // The render's value is stale by however long stopping took, and the
     // backend splits long recordings on this number.
@@ -459,6 +569,23 @@ describe("useBrainDumpStep — restart", () => {
 
     expect(recorderState.start).toHaveBeenCalled();
     expect(result.current.screen).not.toBe("failed");
+  });
+
+  it("starts a fresh take when stopping the previous recorder fails", async () => {
+    recorderState.recordingId = "rec-old";
+    recorderState.stop.mockRejectedValueOnce(new Error("stop failed"));
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+
+    expect(discardBrainDump).toHaveBeenCalledWith({
+      recording_id: "rec-old",
+    });
+    expect(recorderState.start).toHaveBeenCalled();
+    expect(result.current.screen).toBe("recording");
+    expect(captureException).toHaveBeenCalled();
   });
 
   it("drops back to rest when the mic does not reopen", async () => {
@@ -822,6 +949,35 @@ describe("useBrainDumpStep — recovery", () => {
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
     expect(events()).toContain("brain_dump_recovery_used");
+  });
+
+  it("does not leave recovery while its submission owns the take", async () => {
+    const finalizing = deferred<ReturnType<typeof completed>>();
+    recorderState.findRecoverable.mockResolvedValue(recovered);
+    getParts.mockResolvedValue([part(0, "rec-crashed")]);
+    finalizeBrainDump.mockReturnValue(finalizing.promise);
+    const { result } = await renderStep();
+    await waitFor(() => expect(result.current.screen).toBe("recovery"));
+
+    act(() => {
+      void result.current.handleResumeRecovered();
+    });
+    await waitFor(() => expect(finalizeBrainDump).toHaveBeenCalled());
+
+    await act(async () => {
+      await result.current.handleTypeInsteadOfRecovered();
+    });
+
+    expect(result.current.screen).toBe("processing");
+    expect(result.current.recoverable).toEqual(recovered);
+
+    await act(async () => {
+      finalizing.resolve(completed());
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(2),
+    );
   });
 
   it("releases the server buffer when the take is abandoned", async () => {
