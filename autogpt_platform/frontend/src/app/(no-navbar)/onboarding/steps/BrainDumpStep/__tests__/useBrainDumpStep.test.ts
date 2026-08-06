@@ -222,6 +222,7 @@ describe("useBrainDumpStep — recording", () => {
     });
 
     expect(finalizeBrainDump).not.toHaveBeenCalled();
+    expect(result.current.screen).toBe("rest");
 
     await act(async () => {
       stopping.resolve(30 * 60);
@@ -244,10 +245,7 @@ describe("useBrainDumpStep — recording", () => {
       recorderState.hitTimeLimit = true;
       rerender();
     });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await waitFor(() => expect(finalizeBrainDump).toHaveBeenCalled());
 
     await act(async () => {
       await result.current.handleStop();
@@ -950,6 +948,35 @@ describe("useBrainDumpStep — recovery", () => {
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
     expect(events()).toContain("brain_dump_recovery_used");
+  });
+
+  it("does not leave recovery while its submission owns the take", async () => {
+    const finalizing = deferred<ReturnType<typeof completed>>();
+    recorderState.findRecoverable.mockResolvedValue(recovered);
+    getParts.mockResolvedValue([part(0, "rec-crashed")]);
+    finalizeBrainDump.mockReturnValue(finalizing.promise);
+    const { result } = await renderStep();
+    await waitFor(() => expect(result.current.screen).toBe("recovery"));
+
+    act(() => {
+      void result.current.handleResumeRecovered();
+    });
+    await waitFor(() => expect(finalizeBrainDump).toHaveBeenCalled());
+
+    await act(async () => {
+      await result.current.handleTypeInsteadOfRecovered();
+    });
+
+    expect(result.current.screen).toBe("processing");
+    expect(result.current.recoverable).toEqual(recovered);
+
+    await act(async () => {
+      finalizing.resolve(completed());
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(2),
+    );
   });
 
   it("releases the server buffer when the take is abandoned", async () => {

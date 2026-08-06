@@ -51,6 +51,7 @@ export function useBrainDumpStep() {
   // lands past the last step with nothing to render.
   const isSubmittingRef = useRef(false);
   const activeTakeActionRef = useRef<{
+    action: "submit" | "discard";
     recordingId: string;
     token: symbol;
   } | null>(null);
@@ -126,7 +127,9 @@ export function useBrainDumpStep() {
 
   async function handleStop() {
     const recordingId = recorder.recordingId;
-    const actionToken = recordingId ? claimTakeAction(recordingId) : null;
+    const actionToken = recordingId
+      ? claimTakeAction(recordingId, "discard")
+      : null;
     if (recordingId && !actionToken) return;
     trackBrainDump("brain_dump_canceled");
     try {
@@ -152,11 +155,19 @@ export function useBrainDumpStep() {
     recordingId: string | null,
     durationSecs: number,
   ) {
-    const actionToken = recordingId ? claimTakeAction(recordingId) : null;
-    if (recordingId && !actionToken) return;
+    const actionToken = recordingId
+      ? claimTakeAction(recordingId, "submit")
+      : null;
+    if (recordingId && !actionToken) {
+      if (activeTakeActionRef.current?.action === "discard") {
+        setScreen("rest");
+      }
+      return false;
+    }
     isSubmittingRef.current = true;
     try {
       await finalizeRecording(recordingId, durationSecs);
+      return true;
     } finally {
       isSubmittingRef.current = false;
       if (actionToken) releaseTakeAction(actionToken);
@@ -216,7 +227,9 @@ export function useBrainDumpStep() {
   // orb starts listening again under a new recording id.
   async function handleRestart() {
     const previousId = recorder.recordingId;
-    const actionToken = previousId ? claimTakeAction(previousId) : null;
+    const actionToken = previousId
+      ? claimTakeAction(previousId, "discard")
+      : null;
     if (previousId && !actionToken) return;
     trackBrainDump("brain_dump_restarted");
     let started = false;
@@ -364,25 +377,24 @@ export function useBrainDumpStep() {
   }
 
   async function handleDiscardRecovered() {
-    await dropRecoverable();
-    setScreen("rest");
+    if (await dropRecoverable()) setScreen("rest");
   }
 
   async function handleTypeInsteadOfRecovered() {
-    await dropRecoverable();
-    handleShowTyping();
+    if (await dropRecoverable()) handleShowTyping();
   }
 
   // Abandoning a take also releases the server's half-uploaded buffer —
   // otherwise those chunks sit in Redis until their TTL for a recording
   // nobody will ever finalize.
   async function dropRecoverable() {
-    if (!recoverable) return;
-    const actionToken = claimTakeAction(recoverable.recordingId);
-    if (!actionToken) return;
+    if (!recoverable) return false;
+    const actionToken = claimTakeAction(recoverable.recordingId, "discard");
+    if (!actionToken) return false;
     try {
       await discardTake(recoverable.recordingId);
       setRecoverable(null);
+      return true;
     } finally {
       releaseTakeAction(actionToken);
     }
@@ -395,10 +407,10 @@ export function useBrainDumpStep() {
     );
   }
 
-  function claimTakeAction(recordingId: string) {
+  function claimTakeAction(recordingId: string, action: "submit" | "discard") {
     if (activeTakeActionRef.current) return null;
     const token = Symbol(recordingId);
-    activeTakeActionRef.current = { recordingId, token };
+    activeTakeActionRef.current = { action, recordingId, token };
     return token;
   }
 
