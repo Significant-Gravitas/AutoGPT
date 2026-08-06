@@ -133,16 +133,37 @@ class TestInvitationResend:
         assert body["token"] == "tok-new"
         assert body["token"] != "tok-old"
 
-    def test_resend_reads_back_the_row_it_wrote(self):
+    def test_resend_reads_the_row_back_by_id(self):
+        """Read back by id, not by the minted token.
+
+        A second concurrent resend may have rotated the token again; looking up
+        the token this request minted would then find nothing and turn a
+        harmless double-resend into a spurious 404.
+        """
         invitation = self._make_invitation()
         refreshed = self._make_invitation(token="tok-new")
         self._expect_successful_resend(invitation, refreshed)
 
         self._client(_owner_ctx()).post(f"/orgs/{ORG_ID}/invitations/inv-1/resend")
 
-        minted = self.prisma.orginvitation.update_many.call_args[1]["data"]["token"]
         read_back = self.prisma.orginvitation.find_unique.call_args_list[1][1]["where"]
-        assert read_back == {"token": minted}
+        assert read_back == {"id": "inv-1"}
+
+    def test_resend_superseded_by_concurrent_resend_still_succeeds(self):
+        """Our rotation committed, then another resend rotated again."""
+        invitation = self._make_invitation()
+        # The read-back sees the *other* request's token, not the one we minted.
+        superseded = self._make_invitation(token="tok-from-other-resend")
+        self._expect_successful_resend(invitation, superseded)
+
+        resp = self._client(_owner_ctx()).post(
+            f"/orgs/{ORG_ID}/invitations/inv-1/resend"
+        )
+
+        assert resp.status_code == 200
+        # Still a live, non-stale token: never the pre-update one.
+        assert resp.json()["token"] == "tok-from-other-resend"
+        assert resp.json()["token"] != "tok-old"
 
     def test_resend_update_is_scoped_to_still_pending_rows(self):
         """The write must re-assert pending state to close the TOCTOU window."""

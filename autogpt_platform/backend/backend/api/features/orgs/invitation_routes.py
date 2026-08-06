@@ -209,9 +209,13 @@ async def resend_invitation(
         _reject_if_not_pending(current)
         raise HTTPException(400, detail="Invitation changed concurrently; retry")
 
-    # Read back by the token we just minted so the response is provably the row
-    # this request wrote. `update_many` returns a count, not the record.
-    refreshed = await prisma.orginvitation.find_unique(where={"token": new_token})
+    # `update_many` returns a count, not the record, so re-read it. Read by id,
+    # not by the token just minted: a second concurrent resend may already have
+    # rotated the token again, and that row is still a perfectly good invitation
+    # to hand back. Reading by id returns the committed state at or after our
+    # write, so the token is never the stale pre-update one; looking the token
+    # up instead would turn a harmless double-resend into a spurious 404.
+    refreshed = await prisma.orginvitation.find_unique(where={"id": invitation_id})
     if refreshed is None:
         raise NotFoundError(f"Invitation {invitation_id} not found")
 
