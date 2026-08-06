@@ -466,6 +466,20 @@ class SlackAdapter(WebhookAdapter):
         except Exception:
             return None
 
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        # A DM link carries no workspace, so this resolves via the static
+        # single-workspace token — multi-workspace installs can't be picked
+        # without a team id on the user link.
+        client = await self._client_for("")
+        if client is None:
+            return None
+        try:
+            resp = await client.conversations_open(users=platform_user_id)
+        except Exception:
+            logger.warning(f"Cannot open Slack DM with user {platform_user_id}")
+            return None
+        return (resp.get("channel") or {}).get("id") or None
+
     async def post_channel_message(
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:

@@ -28,6 +28,11 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.dream.scheduling import (
+    COMMUNITY_REBUILD_REGISTRATION_PREFIX,
+    NIGHTLY_BATCH_REGISTRATION_PREFIX,
+    clear_registration_marker,
+)
 from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
@@ -56,6 +61,7 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
 )
+from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -65,7 +71,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
 )
-from backend.util.settings import Config
+from backend.util.settings import AppEnvironment, Config
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -101,6 +107,29 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 # legitimately take >5 min. Match the dream lock's 30 min TTL so the
 # future resolves before the lock expires under the dream pass.
 SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
+
+
+def _init_launchdarkly_for_scheduler() -> None:
+    """Eagerly initialize LaunchDarkly unless running LOCAL.
+
+    Mirrors ``rest_api.py``'s ``launch_darkly_context``: the @expose flag
+    gates (e.g. ``add_nightly_batch_schedule``'s ``DREAM_PASS_ENABLED``
+    check) fail closed, so evaluating them against a lazily-initialized LD
+    client right after a pod restart would silently skip registrations
+    until the first lazy init completed. Skipped LOCAL, where LD is
+    unconfigured and flags resolve to their mock defaults.
+    """
+    if config.app_env != AppEnvironment.LOCAL:
+        initialize_launchdarkly()
+
+
+def _shutdown_launchdarkly_for_scheduler() -> None:
+    """Reverse of ``_init_launchdarkly_for_scheduler`` — only tears down the
+    LD client when it was actually initialized (non-LOCAL)."""
+    if config.app_env != AppEnvironment.LOCAL:
+        shutdown_launchdarkly()
+
+
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
@@ -347,26 +376,35 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
 
 
 async def _best_effort_unschedule(
-    schedule_id: str | None, user_id: str, *, reason: str
+    schedule_id: str | None, graph_id: str | None, user_id: str, *, reason: str
 ) -> None:
     """Self-delete a schedule whose firing condition is no longer satisfiable
     (graph deleted, session deleted, validation failure, etc.).
 
-    Best-effort: failures are logged and swallowed. For recurring schedules
-    the next cron tick will re-attempt the cleanup; for one-shot schedules
-    APScheduler removes the job after fire anyway, so a missed delete
-    here doesn't accumulate orphans indefinitely.
+    ``graph_id`` enables targeted cleanup of legacy jobs that predate
+    ``schedule_id``; copilot-turn schedules have no graph to target and pass
+    ``None``. Best-effort: failures are logged and swallowed. For recurring
+    schedules the next cron tick will re-attempt the cleanup; for one-shot
+    schedules APScheduler removes the job after fire anyway, so a missed
+    delete here doesn't accumulate orphans indefinitely.
     """
-    if not schedule_id:
-        logger.warning(
-            f"Cannot unschedule (reason: {reason}) — no schedule_id "
-            f"available; this is an old job, remove manually"
-        )
-        return
     try:
-        await get_scheduler_client().delete_schedule(
-            schedule_id=schedule_id, user_id=user_id
-        )
+        if schedule_id:
+            await get_scheduler_client().delete_schedule(
+                schedule_id=schedule_id, user_id=user_id
+            )
+        elif graph_id is not None:
+            logger.warning(
+                f"Old scheduled job for graph {graph_id} (user {user_id}) "
+                f"has no schedule_id, attempting targeted cleanup"
+            )
+            await _cleanup_old_schedules_without_id(graph_id, user_id=user_id)
+        else:
+            logger.warning(
+                f"Cannot unschedule (reason: {reason}) — no schedule_id "
+                f"available; this is an old job, remove manually"
+            )
+            return
         logger.info(f"Unscheduled job {schedule_id} (reason: {reason})")
     except Exception:
         logger.warning(
@@ -377,8 +415,10 @@ async def _best_effort_unschedule(
 
 async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None:
     """Convenience wrapper for copilot-turn schedules whose target session is gone."""
+    # Copilot-turn schedules aren't graph-bound — no graph target for legacy
+    # cleanup, so a schedule_id-less job can only be removed manually.
     await _best_effort_unschedule(
-        args.schedule_id, args.user_id, reason="session deleted"
+        args.schedule_id, None, args.user_id, reason="session deleted"
     )
 
 
@@ -388,6 +428,7 @@ async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
     )
     await _best_effort_unschedule(
         args.schedule_id,
+        args.graph_id,
         args.user_id,
         reason=f"graph {args.graph_id} validation failed",
     )
@@ -430,6 +471,35 @@ async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> 
         except Exception:
             logger.exception(
                 f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}"
+            )
+
+
+async def _cleanup_old_schedules_without_id(graph_id: str, user_id: str) -> None:
+    """Remove only schedules that have no schedule_id in their job args.
+
+    Unlike _cleanup_orphaned_schedules_for_graph (which removes ALL schedules
+    for a graph), this only targets legacy jobs created before schedule_id was
+    added to GraphExecutionJobArgs, preserving any valid newer schedules.
+    """
+    scheduler_client = get_scheduler_client()
+    schedules = await scheduler_client.get_execution_schedules(
+        graph_id=graph_id, user_id=user_id
+    )
+
+    for schedule in schedules:
+        if schedule.schedule_id is not None:
+            continue
+        try:
+            await scheduler_client.delete_schedule(
+                schedule_id=schedule.id, user_id=user_id
+            )
+            logger.info(
+                f"Cleaned up old schedule {schedule.id} (no schedule_id) "
+                f"for graph {graph_id}"
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to delete old schedule {schedule.id} for graph {graph_id}"
             )
 
 
@@ -868,6 +938,27 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
             )
         return
 
+    error = result.get("error")
+    if error:
+        # ``rebuild_communities_for_user`` never raises — failures land
+        # in ``result['error']``. Same contract as the dream/nightly
+        # wrappers above: an errored rebuild must surface as errored,
+        # otherwise the Memory Visualizer toasts success on a rebuild
+        # that deleted every :Community node and then crashed.
+        try:
+            run_async(
+                mark_errored(kind="rebuild", job_id=job_id, error=error),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to mark community rebuild %s errored for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
     try:
         run_async(
             mark_complete(kind="rebuild", job_id=job_id, result=result),
@@ -877,6 +968,24 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
         logger.warning(
             "Failed to mark community rebuild %s complete for user %s",
             job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
+    """Bridge ``clear_registration_marker`` onto the scheduler's event loop.
+
+    Best-effort: a failed clear only delays lazy re-registration until
+    the marker's 7-day TTL expires, so it must never break the delete
+    RPC that called it.
+    """
+    try:
+        run_async(clear_registration_marker(user_id, key_prefix), timeout=10)
+    except Exception:
+        logger.warning(
+            "Failed to clear registration marker %s for user %s",
+            key_prefix,
             user_id[:12],
             exc_info=True,
         )
@@ -1304,6 +1413,11 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
+        # Eagerly initialize LaunchDarkly before any @expose flag gate can
+        # run (see the helper for why lazy init would skip registrations
+        # after a pod restart).
+        _init_launchdarkly_for_scheduler()
+
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -1525,6 +1639,10 @@ class Scheduler(AppService):
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+
+        # Reverse order of run_service: LD was initialized before the
+        # scheduler started, so close it after all jobs have drained.
+        _shutdown_launchdarkly_for_scheduler()
 
         super().cleanup()
 
@@ -1944,6 +2062,7 @@ class Scheduler(AppService):
         if not job:
             return False
         job.remove()
+        _clear_dream_registration_marker(user_id, COMMUNITY_REBUILD_REGISTRATION_PREFIX)
         logger.info("Removed community rebuild job for user %s", user_id[:12])
         return True
 
@@ -2050,6 +2169,7 @@ class Scheduler(AppService):
         if not job:
             return False
         job.remove()
+        _clear_dream_registration_marker(user_id, NIGHTLY_BATCH_REGISTRATION_PREFIX)
         logger.info("Removed nightly batch job for user %s", user_id[:12])
         return True
 

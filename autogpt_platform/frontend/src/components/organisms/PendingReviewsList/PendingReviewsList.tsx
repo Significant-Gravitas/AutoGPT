@@ -5,13 +5,14 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import {
-  ClockIcon,
-  WarningIcon,
-  CaretDownIcon,
-  CaretRightIcon,
-} from "@phosphor-icons/react";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
+import {
+  Alert01Icon,
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  Clock01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
@@ -196,7 +197,11 @@ export function PendingReviewsList({
   if (reviews.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <ClockIcon size={48} className="mb-4 text-muted-foreground" />
+        <Icon
+          icon={Clock01Icon}
+          size={48}
+          className="mb-4 text-muted-foreground"
+        />
         <Text variant="h4" className="text-muted-foreground">
           {emptyMessage}
         </Text>
@@ -212,10 +217,10 @@ export function PendingReviewsList({
     <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
       <div className="space-y-6">
         <div className="flex items-start gap-2">
-          <WarningIcon
+          <Icon
+            icon={Alert01Icon}
             size={28}
             className="fill-yellow-600 text-white"
-            weight="fill"
           />
           <Text
             variant="large-semibold"
@@ -251,9 +256,17 @@ export function PendingReviewsList({
                 className="flex w-full items-center gap-2 text-left"
               >
                 {isCollapsed ? (
-                  <CaretRightIcon size={20} className="text-gray-600" />
+                  <Icon
+                    icon={ArrowRight01Icon}
+                    size={20}
+                    className="text-gray-600"
+                  />
                 ) : (
-                  <CaretDownIcon size={20} className="text-gray-600" />
+                  <Icon
+                    icon={ArrowDown01Icon}
+                    size={20}
+                    className="text-gray-600"
+                  />
                 )}
                 <div className="flex-1">
                   <Text variant="body" className="font-semibold text-gray-900">

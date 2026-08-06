@@ -151,6 +151,7 @@ def _make_chat_session_row(
     m.Messages = []
     m.organizationId = None
     m.teamId = None
+    m.expertId = None
     return m
 
 
@@ -698,25 +699,24 @@ class TestChatSessionUserIdIsolation:
     @pytest.mark.asyncio
     async def test_regression_list_sessions_filtered_by_user(self):
         """get_user_chat_sessions() filters by userId so each user only
-        sees their own chat sessions."""
+        sees their own chat sessions.
+
+        The list path is raw SQL (Prisma's JsonFilter can't express the
+        ``metadata->>'kind'`` dream exclusion), so the userId predicate
+        lives in the SQL WHERE clause with the user_id bound as $1.
+        """
         session_rows = [_make_chat_session_row()]
 
-        mock_actions = AsyncMock()
-        mock_actions.find_many = AsyncMock(return_value=session_rows)
-
-        with patch(
-            "backend.copilot.db.PrismaChatSession.prisma",
-            return_value=mock_actions,
-        ):
+        raw = AsyncMock(return_value=session_rows)
+        with patch("backend.copilot.db.db.query_raw_with_schema", raw):
             from backend.copilot.db import get_user_chat_sessions
 
             results = await get_user_chat_sessions(USER_ID)
 
-        mock_actions.find_many.assert_called_once()
-        where_arg = mock_actions.find_many.call_args.kwargs.get(
-            "where", mock_actions.find_many.call_args[1].get("where")
-        )
-        assert where_arg["userId"] == USER_ID
+        raw.assert_called_once()
+        query = raw.call_args.args[0]
+        assert '"userId" = $1' in query
+        assert raw.call_args.args[1] == USER_ID
         assert len(results) == 1
 
     @pytest.mark.asyncio
@@ -745,24 +745,18 @@ class TestChatSessionUserIdIsolation:
 
     @pytest.mark.asyncio
     async def test_regression_list_sessions_excludes_other_users(self):
-        """get_user_chat_sessions() with OTHER_USER_ID should not return
-        sessions belonging to USER_ID."""
-        mock_actions = AsyncMock()
-        mock_actions.find_many = AsyncMock(return_value=[])
-
-        with patch(
-            "backend.copilot.db.PrismaChatSession.prisma",
-            return_value=mock_actions,
-        ):
+        """get_user_chat_sessions() with OTHER_USER_ID binds that user_id
+        into the WHERE clause, so it can never return USER_ID's sessions."""
+        raw = AsyncMock(return_value=[])
+        with patch("backend.copilot.db.db.query_raw_with_schema", raw):
             from backend.copilot.db import get_user_chat_sessions
 
             results = await get_user_chat_sessions(OTHER_USER_ID)
 
-        mock_actions.find_many.assert_called_once()
-        where_arg = mock_actions.find_many.call_args.kwargs.get(
-            "where", mock_actions.find_many.call_args[1].get("where")
-        )
-        assert where_arg["userId"] == OTHER_USER_ID
+        raw.assert_called_once()
+        query = raw.call_args.args[0]
+        assert '"userId" = $1' in query
+        assert raw.call_args.args[1] == OTHER_USER_ID
         assert len(results) == 0
 
     @pytest.mark.asyncio

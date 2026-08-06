@@ -1056,11 +1056,11 @@ class ChatPlatformChannelListResponse(ToolResponseBase):
 
 
 class ChatPlatformPostedResponse(ToolResponseBase):
-    """Response after the bot posts a message or creates a thread."""
+    """Response after the bot posts a message, creates a thread, or DMs."""
 
     type: ResponseType = ResponseType.CHAT_PLATFORM_POSTED
     platform: str
-    kind: Literal["message", "thread"]
+    kind: Literal["message", "thread", "dm"]
     channel_id: str
     ref_id: str | None = None
     url: str | None = None

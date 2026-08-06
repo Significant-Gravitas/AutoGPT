@@ -184,7 +184,7 @@ CopilotMode = Literal["fast", "extended_thinking"]
 #   default to Opus today).
 # None means no preference — falls through to LD per-user targeting, then config.
 # Using tier names instead of model names keeps the contract model-agnostic.
-CopilotLlmModel = Literal["standard", "advanced"]
+CopilotLLMModel = Literal["standard", "advanced"]
 
 
 class ChatConfig(BaseSettings):
@@ -193,7 +193,7 @@ class ChatConfig(BaseSettings):
     # Chat model tiers — a 2×2 of (path, tier).  ``path`` = ``CopilotMode``
     # (``"fast"`` → baseline OpenAI-compat / any OpenRouter model;
     # ``"extended_thinking"`` → Claude Agent SDK, Anthropic-only CLI).
-    # ``tier`` = ``CopilotLlmModel`` (``"standard"`` / ``"advanced"``).
+    # ``tier`` = ``CopilotLLMModel`` (``"standard"`` / ``"advanced"``).
     # Each cell has its own config so the two paths can evolve
     # independently (cheap provider on baseline, Anthropic on SDK) at each
     # tier without conflating one path's needs with the other's constraint.

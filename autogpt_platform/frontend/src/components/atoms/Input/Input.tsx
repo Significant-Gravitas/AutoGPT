@@ -3,13 +3,14 @@ import {
   type InputProps,
 } from "@/components/__legacy__/ui/input";
 import { cn } from "@/lib/utils";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { forwardRef, ReactNode, useRef, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useInput } from "./useInput";
+import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
@@ -111,7 +112,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           className={cn(
             baseStyles,
             errorStyles,
-            "-mb-1 h-auto min-h-[2.875rem] rounded-xl",
+            "-mb-1 h-auto min-h-[2.875rem]",
             // Size variants for textarea
             size === "small" && [
               "min-h-[2.25rem]", // 36px minimum
@@ -223,7 +224,11 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           aria-label={showPassword ? "Hide password" : "Show password"}
           aria-pressed={showPassword}
         >
-          {showPassword ? <Eye size={16} /> : <EyeSlash size={16} />}
+          {showPassword ? (
+            <Icon icon={EyeIcon} size={16} />
+          ) : (
+            <Icon icon={EyeOffIcon} size={16} />
+          )}
         </button>
       )}
     </div>
