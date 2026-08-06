@@ -43,10 +43,9 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 });
 
 const notFoundMock = vi.hoisted(() => vi.fn());
-const pushMock = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: pushMock,
+    push: vi.fn(),
     replace: vi.fn(),
     prefetch: vi.fn(),
     back: vi.fn(),
@@ -136,14 +135,14 @@ describe("TeamPage", () => {
     expect(screen.queryByText("SEO Audit")).toBeNull();
   });
 
-  test("clicking the card navigates to the expert page", async () => {
+  test("links the card content to the expert page", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
-    pushMock.mockClear();
 
     render(<TeamPage />);
 
-    fireEvent.click(await screen.findByText("Maria"));
-    expect(pushMock).toHaveBeenCalledWith("/team/expert-maria");
+    await screen.findByText("Maria");
+    const link = screen.getByRole("link", { name: "View Maria" });
+    expect(link.getAttribute("href")).toBe("/team/expert-maria");
   });
 
   test("links Chat to the expert's copilot thread", async () => {

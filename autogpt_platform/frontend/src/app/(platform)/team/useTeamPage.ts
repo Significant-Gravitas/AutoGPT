@@ -35,12 +35,16 @@ export function useTeamPage({ enabled }: Args) {
     setPickerExpertId(null);
   }
 
+  function refetch() {
+    return Promise.all([expertsQuery.refetch(), schedulesQuery.refetch()]);
+  }
+
   return {
     hiredExperts,
     schedulesForExpert,
-    isLoading: enabled && expertsQuery.isLoading,
-    isError: expertsQuery.isError,
-    refetch: expertsQuery.refetch,
+    isLoading: enabled && (expertsQuery.isLoading || schedulesQuery.isLoading),
+    isError: expertsQuery.isError || schedulesQuery.isError,
+    refetch,
     installWorkflow,
     pickerExpertId,
     closeWorkflowPicker,

@@ -109,9 +109,14 @@ export function InstallWorkflowPicker({
                 Searching…
               </Text>
             ) : searchResults.length === 0 ? (
-              <Text variant="small" className="py-2 text-center !text-zinc-500">
-                No workflows found.
-              </Text>
+              searchQuery ? (
+                <Text
+                  variant="small"
+                  className="py-2 text-center !text-zinc-500"
+                >
+                  No workflows found.
+                </Text>
+              ) : null
             ) : (
               <div className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80">
                 {searchResults.map((agent) => (

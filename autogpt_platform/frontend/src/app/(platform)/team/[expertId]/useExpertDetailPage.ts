@@ -51,11 +51,18 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
       },
     });
 
+  async function refetch() {
+    await Promise.all([expertQuery.refetch(), schedulesQuery.refetch()]);
+  }
+
   return {
     expert,
     isLoading: enabled && (expertQuery.isLoading || schedulesQuery.isLoading),
-    isError: expertQuery.isError || (expertQuery.isFetched && expert === null),
-    refetch: expertQuery.refetch,
+    isError:
+      expertQuery.isError ||
+      schedulesQuery.isError ||
+      (expertQuery.isFetched && expert === null),
+    refetch,
     schedules,
     isPickerOpen,
     openPicker: () => setIsPickerOpen(true),

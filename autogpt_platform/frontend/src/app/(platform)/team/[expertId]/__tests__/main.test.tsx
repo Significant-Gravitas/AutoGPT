@@ -14,6 +14,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
@@ -126,10 +127,14 @@ describe("ExpertDetailPage", () => {
     ).toBeDefined();
     expect(screen.getByText("Content strategy")).toBeDefined();
 
-    expect(screen.getByText("Content Calendar")).toBeDefined();
-    expect(screen.getByText("SEO Audit")).toBeDefined();
-    expect(screen.getByText(/Every day at 07:40/)).toBeDefined();
-    expect(screen.getByText("Needs setup")).toBeDefined();
+    const workflowRows = screen.getAllByTestId("expert-workflow-row");
+    expect(workflowRows).toHaveLength(2);
+    expect(within(workflowRows[0]).getByText("Content Calendar")).toBeDefined();
+    expect(
+      within(workflowRows[0]).getByText(/Every day at 07:40/),
+    ).toBeDefined();
+    expect(within(workflowRows[1]).getByText("SEO Audit")).toBeDefined();
+    expect(within(workflowRows[1]).getByText("Needs setup")).toBeDefined();
   });
 
   test("lists the expert's schedules with edit and delete actions", async () => {
