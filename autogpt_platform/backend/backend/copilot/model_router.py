@@ -56,6 +56,7 @@ from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
 if TYPE_CHECKING:
+    from backend.integrations.codex.transport import PooledCodexRuntimeLease
     from backend.integrations.credential_lease import CredentialLease
 
 logger = logging.getLogger(__name__)
@@ -328,14 +329,20 @@ async def resolve_model_route(
 async def resolve_codex_model_route(
     mode: ModelMode,
     tier: ModelTier,
-    credential_lease: "CredentialLease",
+    credential_lease: "CredentialLease | PooledCodexRuntimeLease",
     config: ChatConfig,
 ) -> ResolvedCodexModel:
     """Resolve a Codex model against both the catalog and the account."""
     del config
-    from backend.integrations.codex.transport import get_codex_transport
+    from backend.integrations.codex.transport import (
+        PooledCodexRuntimeLease,
+        get_codex_transport,
+    )
 
-    advertised = await get_codex_transport().models(credential_lease)
+    if isinstance(credential_lease, PooledCodexRuntimeLease):
+        advertised = await credential_lease.models()
+    else:
+        advertised = await get_codex_transport().models(credential_lease)
     by_slug = {model.model: model for model in advertised}
 
     catalog_slug = llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier)

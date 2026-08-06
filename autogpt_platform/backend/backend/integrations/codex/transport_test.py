@@ -4,7 +4,7 @@ import json
 import threading
 from collections.abc import Callable, Coroutine
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -29,6 +29,7 @@ from backend.integrations.codex.transport import (
     CodexTransport,
     CodexTransportError,
     CodexTransportOverloadedError,
+    _run_with_lease_guard,
 )
 from backend.integrations.credential_lease import CredentialLease
 
@@ -407,6 +408,1018 @@ async def test_agent_invocation_uses_separate_tool_timeout_and_checkpoints(tmp_p
     assert runtime.agent_dynamic_tools == [tool]
     checkpoint.assert_awaited_once()
     assert runtime.closed
+    assert not tuple(tmp_path.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_overlaps_borrowers_on_one_lease_and_runtime(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+
+    both_started = threading.Event()
+    allow_finish = threading.Event()
+
+    class ConcurrentRuntime(_FakeRuntime):
+        def __init__(self):
+            super().__init__()
+            self._active_lock = threading.Lock()
+            self.active = 0
+            self.max_active = 0
+            self.requests: list[CodexInvocationRequest] = []
+
+        async def invoke_agent(
+            self,
+            request,
+            dynamic_tools,
+            tool_handler,
+            event_handler=None,
+            *,
+            tool_timeout_seconds,
+        ):
+            del dynamic_tools, tool_handler, event_handler, tool_timeout_seconds
+            self.requests.append(request)
+            with self._active_lock:
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+                if self.active == 2:
+                    both_started.set()
+            try:
+                while not allow_finish.is_set():
+                    await asyncio.sleep(0.01)
+                return CodexInvocationResult(
+                    response_id=f"turn-{len(self.requests)}",
+                    final_response=request.prompt,
+                    status="completed",
+                )
+            finally:
+                with self._active_lock:
+                    self.active -= 1
+
+    runtime = ConcurrentRuntime()
+    factory = AsyncMock(side_effect=_runtime_factory(runtime))
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=factory,
+    )
+
+    first, second = await asyncio.gather(
+        transport.acquire_runtime_lease(
+            "user-1",
+            "credential-1",
+            lock_timeout_seconds=1,
+        ),
+        transport.acquire_runtime_lease(
+            "user-1",
+            "credential-1",
+            lock_timeout_seconds=1,
+        ),
+    )
+
+    async def tool_handler(_call):
+        return CodexDynamicToolResult(content="ok")
+
+    first_call = asyncio.create_task(
+        first.invoke(
+            CodexInvocationRequest(prompt="first"),
+            [],
+            tool_handler,
+        )
+    )
+    second_call = asyncio.create_task(
+        second.invoke(
+            CodexInvocationRequest(prompt="second"),
+            [],
+            tool_handler,
+        )
+    )
+    assert await asyncio.to_thread(both_started.wait, 2)
+    assert not first_call.done()
+    assert not second_call.done()
+    assert manager.acquire_lease.await_count == 1
+    assert factory.await_count == 1
+    assert runtime.max_active == 2
+
+    allow_finish.set()
+    results = await asyncio.gather(first_call, second_call)
+    assert {result.final_response for result in results} == {"first", "second"}
+
+    await first.release()
+    assert not runtime.closed
+    raw_lease._lock.release.assert_not_awaited()
+    await second.release()
+    assert runtime.closed
+    raw_lease._lock.release.assert_awaited_once()
+    assert not tuple(tmp_path.iterdir())
+    await transport.close_runtime_pool()
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_cancels_one_borrower_without_closing_sibling(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    cancel_started = threading.Event()
+    cancel_observed = threading.Event()
+    peer_started = threading.Event()
+    finish_peer = threading.Event()
+
+    class CancellationRuntime(_FakeRuntime):
+        async def invoke_agent(
+            self,
+            request,
+            dynamic_tools,
+            tool_handler,
+            event_handler=None,
+            *,
+            tool_timeout_seconds,
+        ):
+            del dynamic_tools, tool_handler, event_handler, tool_timeout_seconds
+            if request.prompt == "cancel":
+                cancel_started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancel_observed.set()
+            peer_started.set()
+            while not finish_peer.is_set():
+                await asyncio.sleep(0.01)
+            return CodexInvocationResult(
+                response_id="peer-turn",
+                final_response="peer-ok",
+                status="completed",
+            )
+
+    runtime = CancellationRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    first, second = await asyncio.gather(
+        transport.acquire_runtime_lease(
+            "user-1",
+            "credential-1",
+            lock_timeout_seconds=1,
+        ),
+        transport.acquire_runtime_lease(
+            "user-1",
+            "credential-1",
+            lock_timeout_seconds=1,
+        ),
+    )
+
+    async def tool_handler(_call):
+        return CodexDynamicToolResult(content="ok")
+
+    canceled_call = asyncio.create_task(
+        first.invoke(CodexInvocationRequest(prompt="cancel"), [], tool_handler)
+    )
+    peer_call = asyncio.create_task(
+        second.invoke(CodexInvocationRequest(prompt="peer"), [], tool_handler)
+    )
+    assert await asyncio.to_thread(cancel_started.wait, 2)
+    assert await asyncio.to_thread(peer_started.wait, 2)
+    canceled_call.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await canceled_call
+    assert await asyncio.to_thread(cancel_observed.wait, 2)
+    assert not peer_call.done()
+    assert not runtime.closed
+
+    finish_peer.set()
+    assert (await peer_call).final_response == "peer-ok"
+    await first.release()
+    assert not runtime.closed
+    await second.release()
+    assert runtime.closed
+    await transport.close_runtime_pool()
+
+
+def test_runtime_pool_loop_start_is_singleton_across_threads():
+    transport = CodexTransport()
+    barrier = threading.Barrier(8)
+    loops: list[asyncio.AbstractEventLoop] = []
+    errors: list[BaseException] = []
+
+    def start_loop() -> None:
+        try:
+            barrier.wait(timeout=2)
+            loops.append(transport._runtime_pool._ensure_loop())
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=start_loop) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert not errors
+    assert len(loops) == 8
+    assert len({id(loop) for loop in loops}) == 1
+    asyncio.run(transport.close_runtime_pool())
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_lock_timeout_does_not_bound_healthy_startup(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    runtime = _FakeRuntime()
+
+    async def delayed_runtime_factory(home):
+        await asyncio.sleep(0.05)
+        runtime.home = home.path
+        return runtime
+
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=delayed_runtime_factory,
+    )
+
+    lease = await transport.acquire_runtime_lease(
+        "user-1",
+        "credential-1",
+        lock_timeout_seconds=0.01,
+    )
+
+    assert manager.acquire_lease.await_count == 1
+    await lease.release()
+    assert runtime.closed
+    await transport.close_runtime_pool()
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_canceled_acquire_releases_completed_borrow(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    runtime = _FakeRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    pool = transport._runtime_pool
+    original_borrow = pool._borrow_on_actor_loop
+    borrowed = threading.Event()
+
+    async def hold_completed_borrow(*args, **kwargs):
+        credentials = await original_borrow(*args, **kwargs)
+        borrowed.set()
+        await asyncio.Event().wait()
+        return credentials
+
+    monkeypatch.setattr(pool, "_borrow_on_actor_loop", hold_completed_borrow)
+    acquire = asyncio.create_task(
+        transport.acquire_runtime_lease(
+            "user-1",
+            "credential-1",
+            lock_timeout_seconds=1,
+        )
+    )
+    assert await asyncio.to_thread(borrowed.wait, 2)
+    acquire.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await acquire
+
+    assert runtime.closed
+    raw_lease._lock.release.assert_awaited_once()
+    assert not tuple(tmp_path.iterdir())
+    await transport.close_runtime_pool()
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_release_can_retry_after_submission_failure(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    runtime = _FakeRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    lease = await transport.acquire_runtime_lease(
+        "user-1",
+        "credential-1",
+        lock_timeout_seconds=1,
+    )
+    pool = transport._runtime_pool
+    original_release = pool.release
+    attempts = 0
+
+    async def fail_once(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("release submission failed")
+        return await original_release(*args, **kwargs)
+
+    monkeypatch.setattr(pool, "release", fail_once)
+
+    with pytest.raises(RuntimeError, match="release submission failed"):
+        await lease.release()
+
+    assert not runtime.closed
+    await lease.release()
+    assert attempts == 2
+    assert runtime.closed
+    raw_lease._lock.release.assert_awaited_once()
+    await transport.close_runtime_pool()
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_canceled_release_follower_does_not_cancel_leader(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    runtime = _FakeRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    lease = await transport.acquire_runtime_lease(
+        "user-1",
+        "credential-1",
+        lock_timeout_seconds=1,
+    )
+    pool = transport._runtime_pool
+    original_release = pool.release
+    release_started = asyncio.Event()
+    allow_release = asyncio.Event()
+
+    async def delayed_release(*args, **kwargs):
+        release_started.set()
+        await allow_release.wait()
+        return await original_release(*args, **kwargs)
+
+    monkeypatch.setattr(pool, "release", delayed_release)
+    leader = asyncio.create_task(lease.release())
+    await asyncio.wait_for(release_started.wait(), timeout=1)
+    follower = asyncio.create_task(lease.release())
+    await asyncio.sleep(0)
+    follower.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await follower
+
+    allow_release.set()
+    await leader
+    await lease.release()
+
+    assert runtime.closed
+    raw_lease._lock.release.assert_awaited_once()
+    await transport.close_runtime_pool()
+
+
+def test_runtime_pool_close_serializes_with_acquire_submission(tmp_path, monkeypatch):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    runtime = _FakeRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    real_submit = asyncio.run_coroutine_threadsafe
+    submit_entered = threading.Event()
+    allow_submit = threading.Event()
+    close_complete = threading.Event()
+    acquire_results: list[object] = []
+    acquire_errors: list[BaseException] = []
+    close_errors: list[BaseException] = []
+
+    def block_first_submit(operation, loop):
+        monkeypatch.setattr(asyncio, "run_coroutine_threadsafe", real_submit)
+        submit_entered.set()
+        if not allow_submit.wait(timeout=2):
+            operation.close()
+            raise RuntimeError("timed out waiting to submit")
+        return real_submit(operation, loop)
+
+    monkeypatch.setattr(asyncio, "run_coroutine_threadsafe", block_first_submit)
+
+    def acquire() -> None:
+        try:
+            acquire_results.append(
+                asyncio.run(
+                    transport.acquire_runtime_lease(
+                        "user-1",
+                        "credential-1",
+                        lock_timeout_seconds=1,
+                    )
+                )
+            )
+        except BaseException as error:
+            acquire_errors.append(error)
+
+    def close() -> None:
+        try:
+            asyncio.run(transport.close_runtime_pool())
+        except BaseException as error:
+            close_errors.append(error)
+        finally:
+            close_complete.set()
+
+    acquire_thread = threading.Thread(target=acquire)
+    close_thread = threading.Thread(target=close)
+    acquire_thread.start()
+    assert submit_entered.wait(timeout=2)
+    close_thread.start()
+    assert not close_complete.wait(timeout=0.05)
+    allow_submit.set()
+    acquire_thread.join(timeout=5)
+    close_thread.join(timeout=5)
+
+    assert not acquire_thread.is_alive()
+    assert not close_thread.is_alive()
+    assert not close_errors
+    assert not acquire_results
+    assert len(acquire_errors) == 1
+    assert isinstance(acquire_errors[0], CodexTransportError)
+    if manager.acquire_lease.await_count:
+        assert runtime.closed
+        raw_lease._lock.release.assert_awaited_once()
+    else:
+        assert not runtime.closed
+        raw_lease._lock.release.assert_not_awaited()
+    assert not tuple(tmp_path.iterdir())
+    with pytest.raises(CodexTransportError, match="shutting down"):
+        asyncio.run(
+            transport.acquire_runtime_lease(
+                "user-1",
+                "credential-1",
+                lock_timeout_seconds=1,
+            )
+        )
+
+
+def test_runtime_pool_close_racing_completed_start_cleans_actor_once(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    runtime = _FakeRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    pool = transport._runtime_pool
+    original_start = pool._start_actor
+    actor_ready = threading.Event()
+    allow_start_return = threading.Event()
+
+    async def gated_start(*args, **kwargs):
+        actor = await original_start(*args, **kwargs)
+        actor_ready.set()
+        if not allow_start_return.wait(timeout=2):
+            raise RuntimeError("timed out waiting to return started actor")
+        return actor
+
+    monkeypatch.setattr(pool, "_start_actor", gated_start)
+    acquire_results: list[object] = []
+    acquire_errors: list[BaseException] = []
+    close_errors: list[BaseException] = []
+
+    def acquire() -> None:
+        try:
+            acquire_results.append(
+                asyncio.run(
+                    transport.acquire_runtime_lease(
+                        "user-1",
+                        "credential-1",
+                        lock_timeout_seconds=1,
+                    )
+                )
+            )
+        except BaseException as error:
+            acquire_errors.append(error)
+
+    def close() -> None:
+        try:
+            asyncio.run(transport.close_runtime_pool())
+        except BaseException as error:
+            close_errors.append(error)
+
+    acquire_thread = threading.Thread(target=acquire)
+    close_thread = threading.Thread(target=close)
+    acquire_thread.start()
+    assert actor_ready.wait(timeout=2)
+    close_thread.start()
+    for _ in range(200):
+        with pool._state_lock:
+            if pool._closing:
+                break
+        threading.Event().wait(0.01)
+    else:
+        pytest.fail("runtime pool did not begin closing")
+    allow_start_return.set()
+    acquire_thread.join(timeout=5)
+    close_thread.join(timeout=5)
+
+    assert not acquire_thread.is_alive()
+    assert not close_thread.is_alive()
+    assert not close_errors
+    assert not acquire_results
+    assert len(acquire_errors) == 1
+    assert isinstance(acquire_errors[0], CodexTransportError)
+    assert runtime.closed
+    raw_lease._lock.release.assert_awaited_once()
+    assert not tuple(tmp_path.iterdir())
+
+
+def test_runtime_pool_close_waits_for_loop_bootstrap(monkeypatch):
+    transport = CodexTransport()
+    pool = transport._runtime_pool
+    real_new_event_loop = asyncio.new_event_loop
+    bootstrap_entered = threading.Event()
+    allow_bootstrap = threading.Event()
+    acquire_errors: list[BaseException] = []
+    close_errors: list[BaseException] = []
+
+    def gated_new_event_loop():
+        if threading.current_thread().name == "autogpt-codex-runtime-pool":
+            bootstrap_entered.set()
+            if not allow_bootstrap.wait(timeout=2):
+                raise RuntimeError("timed out waiting to bootstrap actor loop")
+        return real_new_event_loop()
+
+    monkeypatch.setattr(asyncio, "new_event_loop", gated_new_event_loop)
+
+    def acquire() -> None:
+        try:
+            asyncio.run(
+                transport.acquire_runtime_lease(
+                    "user-1",
+                    "credential-1",
+                    lock_timeout_seconds=1,
+                )
+            )
+        except BaseException as error:
+            acquire_errors.append(error)
+
+    def close() -> None:
+        try:
+            asyncio.run(transport.close_runtime_pool())
+        except BaseException as error:
+            close_errors.append(error)
+
+    acquire_thread = threading.Thread(target=acquire)
+    close_thread = threading.Thread(target=close)
+    acquire_thread.start()
+    assert bootstrap_entered.wait(timeout=2)
+    close_thread.start()
+    for _ in range(200):
+        with pool._state_lock:
+            if pool._closing:
+                break
+        threading.Event().wait(0.01)
+    else:
+        pytest.fail("runtime pool did not begin closing")
+    allow_bootstrap.set()
+    acquire_thread.join(timeout=5)
+    close_thread.join(timeout=5)
+
+    assert not acquire_thread.is_alive()
+    assert not close_thread.is_alive()
+    assert not close_errors
+    assert len(acquire_errors) == 1
+    assert isinstance(acquire_errors[0], CodexTransportError)
+    with pool._state_lock:
+        assert pool._thread is None
+        assert pool._loop is None
+        assert pool._closed
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_release_rejects_late_invocation_while_draining(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    active_started = threading.Event()
+    cancellation_seen = threading.Event()
+    allow_cancellation = threading.Event()
+    late_started = threading.Event()
+
+    class ReleaseRaceRuntime(_FakeRuntime):
+        async def invoke_agent(
+            self,
+            request,
+            dynamic_tools,
+            tool_handler,
+            event_handler=None,
+            *,
+            tool_timeout_seconds,
+        ):
+            del dynamic_tools, tool_handler, event_handler, tool_timeout_seconds
+            if request.prompt != "active":
+                late_started.set()
+                return CodexInvocationResult(
+                    response_id="late",
+                    final_response="late",
+                    status="completed",
+                )
+            active_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancellation_seen.set()
+                while not allow_cancellation.is_set():
+                    await asyncio.sleep(0.01)
+                raise
+
+    runtime = ReleaseRaceRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    lease = await transport.acquire_runtime_lease(
+        "user-1",
+        "credential-1",
+        lock_timeout_seconds=1,
+    )
+
+    async def tool_handler(_call):
+        return CodexDynamicToolResult(content="ok")
+
+    active = asyncio.create_task(
+        lease.invoke(
+            CodexInvocationRequest(prompt="active"),
+            [],
+            tool_handler,
+        )
+    )
+    assert await asyncio.to_thread(active_started.wait, 2)
+    release = asyncio.create_task(lease.release())
+    assert await asyncio.to_thread(cancellation_seen.wait, 2)
+
+    with pytest.raises(RuntimeError, match="no longer active"):
+        await lease._pool.invoke(
+            lease._key,
+            lease._handle_id,
+            CodexInvocationRequest(prompt="late"),
+            [],
+            tool_handler,
+            None,
+        )
+
+    assert not late_started.is_set()
+    allow_cancellation.set()
+    with pytest.raises(asyncio.CancelledError):
+        await active
+    await release
+
+    assert runtime.closed
+    raw_lease._lock.release.assert_awaited_once()
+    await transport.close_runtime_pool()
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_release_cancels_and_drains_model_lookup(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    models_started = threading.Event()
+    models_canceled = threading.Event()
+
+    class BlockingModelsRuntime(_FakeRuntime):
+        async def models(self):
+            models_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                models_canceled.set()
+
+    runtime = BlockingModelsRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    lease = await transport.acquire_runtime_lease(
+        "user-1",
+        "credential-1",
+        lock_timeout_seconds=1,
+    )
+    models = asyncio.create_task(lease.models())
+    assert await asyncio.to_thread(models_started.wait, 2)
+
+    await lease.release()
+    with pytest.raises(asyncio.CancelledError):
+        await models
+
+    assert models_canceled.is_set()
+    assert runtime.closed
+    raw_lease._lock.release.assert_awaited_once()
+    assert not tuple(tmp_path.iterdir())
+    await transport.close_runtime_pool()
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_rejects_borrower_after_lease_heartbeat_failure(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    runtime = _FakeRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    first = await transport.acquire_runtime_lease(
+        "user-1",
+        "credential-1",
+        lock_timeout_seconds=1,
+    )
+    raw_lease._heartbeat_error = RuntimeError("redis lease lost")
+
+    with pytest.raises(CodexTransportError, match="runtime is unavailable"):
+        await transport.acquire_runtime_lease(
+            "user-1",
+            "credential-1",
+            lock_timeout_seconds=1,
+        )
+
+    assert manager.acquire_lease.await_count == 1
+    raw_lease._heartbeat_error = None
+    await first.release()
+    assert runtime.closed
+    await transport.close_runtime_pool()
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_rejects_active_call_after_lease_heartbeat_failure(
+    tmp_path,
+    monkeypatch,
+):
+    raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=raw_lease)
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    runtime = _FakeRuntime()
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=_runtime_factory(runtime),
+    )
+    lease = await transport.acquire_runtime_lease(
+        "user-1",
+        "credential-1",
+        lock_timeout_seconds=1,
+    )
+    raw_lease._heartbeat_error = RuntimeError("redis lease lost")
+
+    async def tool_handler(_call):
+        return CodexDynamicToolResult(content="ok")
+
+    with pytest.raises(CodexTransportError, match="runtime is unavailable"):
+        await lease.invoke(
+            CodexInvocationRequest(prompt="must not start"),
+            [],
+            tool_handler,
+        )
+
+    assert runtime.last_request is None
+    raw_lease._heartbeat_error = None
+    await lease.release()
+    assert runtime.closed
+    await transport.close_runtime_pool()
+
+
+@pytest.mark.asyncio
+async def test_lease_guard_closes_operation_before_known_heartbeat_failure():
+    lease, _ = _lease()
+    lease._heartbeat_error = RuntimeError("redis lease lost")
+
+    async def operation() -> str:
+        raise AssertionError("provider operation must not start")
+
+    provider_operation = operation()
+    with pytest.raises(RuntimeError, match="heartbeat failed"):
+        await _run_with_lease_guard(lease, provider_operation)
+
+    assert provider_operation.cr_frame is None
+
+
+@pytest.mark.asyncio
+async def test_lease_guard_closes_operation_before_failed_monitor():
+    lease, _ = _lease()
+
+    async def fail_monitor() -> None:
+        raise RuntimeError("auth monitor failed")
+
+    monitor = asyncio.create_task(fail_monitor())
+    await asyncio.sleep(0)
+
+    async def operation() -> str:
+        raise AssertionError("provider operation must not start")
+
+    provider_operation = operation()
+    with pytest.raises(RuntimeError, match="auth monitor failed"):
+        await _run_with_lease_guard(
+            lease,
+            provider_operation,
+            monitor_task=monitor,
+        )
+
+    assert provider_operation.cr_frame is None
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_shutdown_cleans_other_actors_after_close_error(
+    tmp_path,
+    monkeypatch,
+):
+    first_raw_lease, _ = _lease()
+    second_raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(side_effect=[first_raw_lease, second_raw_lease])
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+
+    class FailingCloseRuntime(_FakeRuntime):
+        async def close(self):
+            raise RuntimeError("runtime close failed")
+
+    first_runtime = FailingCloseRuntime()
+    second_runtime = _FakeRuntime()
+    runtimes = iter((first_runtime, second_runtime))
+
+    async def runtime_factory(home):
+        runtime = next(runtimes)
+        runtime.home = home.path
+        return runtime
+
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        control_timeout_seconds=0.1,
+        runtime_factory=runtime_factory,
+    )
+    await asyncio.gather(
+        transport.acquire_runtime_lease(
+            "user-1",
+            "credential-1",
+            lock_timeout_seconds=1,
+        ),
+        transport.acquire_runtime_lease(
+            "user-2",
+            "credential-2",
+            lock_timeout_seconds=1,
+        ),
+    )
+
+    results = await asyncio.gather(
+        transport.close_runtime_pool(),
+        transport.close_runtime_pool(),
+        return_exceptions=True,
+    )
+
+    assert len(results) == 2
+    assert all(isinstance(result, CodexTransportError) for result in results)
+    assert second_runtime.closed
+    first_raw_lease._lock.release.assert_awaited_once()
+    second_raw_lease._lock.release.assert_awaited_once()
+    assert not tuple(tmp_path.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_runtime_pool_shutdown_closes_actors_concurrently(tmp_path, monkeypatch):
+    first_raw_lease, _ = _lease()
+    second_raw_lease, _ = _lease()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(side_effect=[first_raw_lease, second_raw_lease])
+    monkeypatch.setattr(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        lambda: manager,
+    )
+    first_runtime = _FakeRuntime()
+    second_runtime = _FakeRuntime()
+    runtimes = iter((first_runtime, second_runtime))
+
+    async def runtime_factory(home):
+        runtime = next(runtimes)
+        runtime.home = home.path
+        return runtime
+
+    transport = CodexTransport(
+        temp_root=tmp_path,
+        runtime_factory=runtime_factory,
+    )
+    await asyncio.gather(
+        transport.acquire_runtime_lease(
+            "user-1",
+            "credential-1",
+            lock_timeout_seconds=1,
+        ),
+        transport.acquire_runtime_lease(
+            "user-2",
+            "credential-2",
+            lock_timeout_seconds=1,
+        ),
+    )
+    pool = transport._runtime_pool
+    original_close = pool._close_actor_bounded
+    close_count = 0
+    close_count_lock = threading.Lock()
+    both_closing = threading.Event()
+    allow_close = threading.Event()
+
+    async def delayed_close(actor):
+        nonlocal close_count
+        with close_count_lock:
+            close_count += 1
+            if close_count == 2:
+                both_closing.set()
+        while not allow_close.is_set():
+            await asyncio.sleep(0.01)
+        await original_close(actor)
+
+    monkeypatch.setattr(pool, "_close_actor_bounded", delayed_close)
+    shutdown = asyncio.create_task(transport.close_runtime_pool())
+    reached_both = await asyncio.to_thread(both_closing.wait, 2)
+    allow_close.set()
+    await shutdown
+
+    assert reached_both
+    assert first_runtime.closed
+    assert second_runtime.closed
+    first_raw_lease._lock.release.assert_awaited_once()
+    second_raw_lease._lock.release.assert_awaited_once()
     assert not tuple(tmp_path.iterdir())
 
 

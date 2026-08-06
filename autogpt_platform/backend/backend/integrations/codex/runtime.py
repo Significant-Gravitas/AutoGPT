@@ -17,6 +17,7 @@ from openai_codex import (
     AsyncCodex,
     AsyncDeviceCodeLoginHandle,
     AsyncThread,
+    AsyncTurnHandle,
     CodexConfig,
     Sandbox,
     TurnResult,
@@ -168,6 +169,7 @@ class CodexRuntime:
         self._home = home
         self._close_timeout_seconds = close_timeout_seconds
         self._closed = False
+        self._poisoned = False
         self._close_lock = asyncio.Lock()
         self._dynamic_tool_handlers: dict[
             str,
@@ -180,6 +182,10 @@ class CodexRuntime:
             str, set[concurrent.futures.Future[CodexDynamicToolResult]]
         ] = {}
         self._dynamic_tool_futures_lock = threading.Lock()
+
+    @property
+    def closed(self) -> bool:
+        return self._closed or self._poisoned
 
     @classmethod
     async def start(cls, home: TemporaryCodexHome) -> "CodexRuntime":
@@ -346,14 +352,22 @@ class CodexRuntime:
         )
         try:
             effort = ReasoningEffort(request.effort) if request.effort else None
-            turn = await thread.turn(
-                request.prompt,
-                approval_mode=ApprovalMode.deny_all,
-                effort=effort,
-                model=request.model,
-                sandbox=Sandbox.read_only,
+            turn_start = asyncio.create_task(
+                thread.turn(
+                    request.prompt,
+                    approval_mode=ApprovalMode.deny_all,
+                    effort=effort,
+                    model=request.model,
+                    sandbox=Sandbox.read_only,
+                )
             )
+            try:
+                turn = await asyncio.shield(turn_start)
+            except asyncio.CancelledError:
+                await self._stop_cancelled_turn_start(turn_start)
+                raise
             stream = turn.stream()
+            abnormal_exit = False
 
             async def observed_stream():
                 async for event in stream:
@@ -366,13 +380,18 @@ class CodexRuntime:
                     observed_stream(),
                     turn_id=turn.id,
                 )
-            except asyncio.CancelledError:
+            except BaseException:
+                abnormal_exit = True
                 self._cancel_dynamic_tool_futures(thread.id)
-                with suppress(BaseException):
-                    await asyncio.wait_for(turn.interrupt(), timeout=2)
+                await self._interrupt_turn_or_close(turn)
                 raise
             finally:
-                await self._close_agent_stream(stream)
+                try:
+                    await self._close_agent_stream(stream)
+                except BaseException:
+                    if not abnormal_exit:
+                        raise
+                    await self._poison_runtime()
         finally:
             self._unregister_dynamic_tool_handler(thread.id)
         if result.final_response is None:
@@ -551,8 +570,6 @@ class CodexRuntime:
         except asyncio.CancelledError:
             closing.cancel()
             _detach_task(closing)
-            with suppress(BaseException):
-                await self.close()
             raise
         if closing in done:
             try:
@@ -567,6 +584,75 @@ class CodexRuntime:
         with suppress(BaseException):
             await self.close()
         raise CodexRuntimeError("codex_stream_shutdown_timeout")
+
+    async def _stop_cancelled_turn_start(
+        self,
+        turn_start: asyncio.Task[AsyncTurnHandle],
+    ) -> None:
+        try:
+            done, _ = await asyncio.wait(
+                {turn_start},
+                timeout=self._close_timeout_seconds,
+            )
+        except BaseException:
+            await self._poison_runtime()
+            return
+        if turn_start not in done:
+            await self._poison_runtime()
+            await _cancel_task_bounded(
+                cast(asyncio.Task[object], turn_start),
+                self._close_timeout_seconds,
+            )
+            return
+        try:
+            turn = turn_start.result()
+        except BaseException:
+            await self._poison_runtime()
+            return
+        await self._interrupt_turn_or_close(turn)
+
+    async def _interrupt_turn_or_close(self, turn: AsyncTurnHandle) -> bool:
+        interrupting = asyncio.create_task(turn.interrupt())
+        try:
+            done, _ = await asyncio.wait(
+                {interrupting},
+                timeout=min(2.0, self._close_timeout_seconds),
+            )
+        except BaseException:
+            interrupting.cancel()
+            _detach_task(cast(asyncio.Task[object], interrupting))
+            await self._poison_runtime()
+            return False
+        if interrupting in done:
+            try:
+                interrupting.result()
+            except BaseException:
+                await self._poison_runtime()
+                return False
+            return True
+        await _cancel_task_bounded(
+            cast(asyncio.Task[object], interrupting),
+            self._close_timeout_seconds,
+        )
+        await self._poison_runtime()
+        return False
+
+    async def _poison_runtime(self) -> None:
+        self._poisoned = True
+        closing = asyncio.create_task(self.close())
+        try:
+            done, _ = await asyncio.wait(
+                {closing},
+                timeout=self._close_timeout_seconds,
+            )
+        except BaseException:
+            _detach_task(cast(asyncio.Task[object], closing))
+            return
+        if closing not in done:
+            _detach_task(cast(asyncio.Task[object], closing))
+            return
+        with suppress(BaseException):
+            closing.result()
 
 
 def _install_concurrent_server_request_dispatcher(client: AsyncCodex) -> None:

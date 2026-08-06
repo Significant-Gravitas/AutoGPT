@@ -6,7 +6,7 @@ import json
 import logging
 import re
 import secrets
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from contextlib import AbstractAsyncContextManager, suppress
 from typing import Protocol, cast
 from uuid import uuid4
@@ -60,6 +60,18 @@ class _AgentTransport(Protocol):
         self,
         lease: CredentialLease,
     ) -> AbstractAsyncContextManager[CodexAgentSession]: ...
+
+
+class _AgentSession(Protocol):
+    async def invoke(
+        self,
+        request: CodexInvocationRequest,
+        dynamic_tools: list[CodexDynamicToolSpec],
+        tool_handler: Callable[
+            [CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]
+        ],
+        event_handler: Callable[[Notification], Awaitable[None]] | None = None,
+    ) -> CodexInvocationResult: ...
 
 
 class _GatewayState(BaseModel):
@@ -118,11 +130,16 @@ class CodexAnthropicGateway:
     def __init__(
         self,
         *,
-        credential_lease: CredentialLease,
+        credential_lease: CredentialLease | None = None,
+        agent_session: _AgentSession | None = None,
         model: str,
         effort: CodexReasoningEffort | None = None,
         transport: CodexTransport | _AgentTransport | None = None,
     ) -> None:
+        if credential_lease is None and agent_session is None:
+            raise ValueError(
+                "Codex gateway requires a credential lease or agent session"
+            )
         self._credential_lease = credential_lease
         self.model = model
         self.effort: CodexReasoningEffort | None = effort
@@ -133,7 +150,7 @@ class CodexAnthropicGateway:
         self._agent_context: AbstractAsyncContextManager[CodexAgentSession] | None = (
             None
         )
-        self._agent_session: CodexAgentSession | None = None
+        self._agent_session: _AgentSession | None = agent_session
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
         self._base_url: str | None = None
@@ -182,8 +199,12 @@ class CodexAnthropicGateway:
     async def __aenter__(self) -> "CodexAnthropicGateway":
         if self._runner is not None:
             return self
-        self._agent_context = self._transport.agent_session(self._credential_lease)
-        self._agent_session = await self._agent_context.__aenter__()
+        if self._agent_session is None:
+            credential_lease = self._credential_lease
+            if credential_lease is None:
+                raise RuntimeError("Codex gateway credential lease is unavailable")
+            self._agent_context = self._transport.agent_session(credential_lease)
+            self._agent_session = await self._agent_context.__aenter__()
         try:
             application = web.Application(client_max_size=_MAX_REQUEST_BYTES)
             application.router.add_post("/v1/messages", self._handle_messages)
@@ -399,7 +420,7 @@ class CodexAnthropicGateway:
     async def _run_conversation(
         self,
         conversation: _Conversation,
-        agent_session: CodexAgentSession,
+        agent_session: _AgentSession,
         invocation: CodexInvocationRequest,
         tools: list[CodexDynamicToolSpec],
         original_names: dict[str, str],

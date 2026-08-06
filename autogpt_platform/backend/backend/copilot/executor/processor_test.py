@@ -27,6 +27,10 @@ from backend.copilot.executor.processor import (
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
 from backend.copilot.model import ChatSession
+from backend.integrations.codex.transport import (
+    CodexCredentialBusyError,
+    CodexCredentialIntegrityError,
+)
 
 
 class TestResolveUseSdkForMode:
@@ -365,8 +369,8 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
     lease = MagicMock()
     lease.credentials = SimpleNamespace(type="oauth2", id="cred-1")
     lease.release = AsyncMock()
-    manager = MagicMock()
-    manager.acquire_lease = AsyncMock(return_value=lease)
+    transport = MagicMock()
+    transport.acquire_runtime_lease = AsyncMock(return_value=lease)
     baseline_stream = MagicMock()
     sdk_stream = MagicMock(return_value=MagicMock())
 
@@ -376,8 +380,8 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
             new=AsyncMock(return_value=_codex_session(builder_graph_id="graph-1")),
         ),
         patch(
-            "backend.integrations.creds_manager.IntegrationCredentialsManager",
-            return_value=manager,
+            "backend.integrations.codex.transport.get_codex_transport",
+            return_value=transport,
         ),
         patch("backend.integrations.codex.credential_codec.bundle_from_credentials"),
         patch(
@@ -408,7 +412,11 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
             _make_log(),
         )
 
-    manager.acquire_lease.assert_awaited_once_with("user-1", "cred-1")
+    transport.acquire_runtime_lease.assert_awaited_once_with(
+        "user-1",
+        "cred-1",
+        lock_timeout_seconds=5.0,
+    )
     lease.release.assert_awaited_once()
     sdk_stream.assert_called_once()
     assert sdk_stream.call_args.kwargs["credential_lease"] is lease
@@ -417,9 +425,113 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
 
 
 @pytest.mark.asyncio
+async def test_codex_release_failure_does_not_fail_successful_turn():
+    published = _TrackedStream(events=[])
+    lease = MagicMock()
+    lease.credentials = SimpleNamespace(type="oauth2", id="cred-1")
+    lease.release = AsyncMock(side_effect=RuntimeError("Redis release failed"))
+    transport = MagicMock()
+    transport.acquire_runtime_lease = AsyncMock(return_value=lease)
+    mark_completed = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=_codex_session()),
+        ),
+        patch(
+            "backend.integrations.codex.transport.get_codex_transport",
+            return_value=transport,
+        ),
+        patch("backend.integrations.codex.credential_codec.bundle_from_credentials"),
+        patch(
+            "backend.copilot.sdk.service.stream_chat_completion_sdk",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=published,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            mark_completed,
+        ),
+    ):
+        await CoPilotProcessor()._execute_async(
+            _codex_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
+
+    lease.release.assert_awaited_once()
+    mark_completed.assert_awaited_once_with(
+        "sess-codex",
+        error_message=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_codex_checkpoint_failure_fails_closed_after_successful_turn():
+    published = _TrackedStream(events=[])
+    lease = MagicMock()
+    lease.credentials = SimpleNamespace(type="oauth2", id="cred-1")
+    lease.release = AsyncMock(
+        side_effect=CodexCredentialIntegrityError("codex_credential_checkpoint_failed")
+    )
+    transport = MagicMock()
+    transport.acquire_runtime_lease = AsyncMock(return_value=lease)
+    mark_completed = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=_codex_session()),
+        ),
+        patch(
+            "backend.integrations.codex.transport.get_codex_transport",
+            return_value=transport,
+        ),
+        patch("backend.integrations.codex.credential_codec.bundle_from_credentials"),
+        patch(
+            "backend.copilot.sdk.service.stream_chat_completion_sdk",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=published,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            mark_completed,
+        ),
+    ):
+        await CoPilotProcessor()._execute_async(
+            _codex_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
+
+    lease.release.assert_awaited_once()
+    mark_completed.assert_awaited_once_with(
+        "sess-codex",
+        error_message="codex_credential_checkpoint_failed",
+    )
+
+
+@pytest.mark.asyncio
 async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
-    manager = MagicMock()
-    manager.acquire_lease = AsyncMock()
+    transport = MagicMock()
+    transport.acquire_runtime_lease = AsyncMock()
     mark_completed = AsyncMock()
     with (
         patch(
@@ -427,8 +539,8 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
             new=AsyncMock(return_value=_codex_session(credential_id="authoritative")),
         ),
         patch(
-            "backend.integrations.creds_manager.IntegrationCredentialsManager",
-            return_value=manager,
+            "backend.integrations.codex.transport.get_codex_transport",
+            return_value=transport,
         ),
         patch(
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
@@ -443,7 +555,7 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
                 _make_log(),
             )
 
-    manager.acquire_lease.assert_not_awaited()
+    transport.acquire_runtime_lease.assert_not_awaited()
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_session_route_mismatch",
@@ -452,8 +564,10 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
 
 @pytest.mark.asyncio
 async def test_codex_busy_credential_fails_closed_without_platform_fallback():
-    manager = MagicMock()
-    manager.acquire_lease = AsyncMock(side_effect=asyncio.TimeoutError)
+    transport = MagicMock()
+    transport.acquire_runtime_lease = AsyncMock(
+        side_effect=CodexCredentialBusyError("codex_credential_busy")
+    )
     mark_completed = AsyncMock()
     baseline_stream = MagicMock()
     sdk_stream = MagicMock()
@@ -463,8 +577,8 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
             new=AsyncMock(return_value=_codex_session()),
         ),
         patch(
-            "backend.integrations.creds_manager.IntegrationCredentialsManager",
-            return_value=manager,
+            "backend.integrations.codex.transport.get_codex_transport",
+            return_value=transport,
         ),
         patch(
             "backend.copilot.executor.processor.stream_chat_completion_baseline",
@@ -717,9 +831,9 @@ class TestExecuteSafetyNet:
 
         # The sync safety net must have fired despite the async path
         # blowing up — this is the core guarantee of the PR.
-        assert call_log == [
-            "sync-ok"
-        ], f"expected sync_fail_close_session to run once, got {call_log!r}"
+        assert call_log == ["sync-ok"], (
+            f"expected sync_fail_close_session to run once, got {call_log!r}"
+        )
 
     def test_cancel_waits_for_async_task_to_finish(self, exec_loop) -> None:
         """A cancel request must not let ``_execute`` return while the

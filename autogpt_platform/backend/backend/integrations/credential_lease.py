@@ -49,6 +49,10 @@ class CredentialLease:
             "Credential lease heartbeat failed"
         ) from self._heartbeat_error
 
+    @property
+    def failure(self) -> BaseException | None:
+        return self._heartbeat_error
+
     async def checkpoint(self, updated: Credentials) -> None:
         if self._deleted:
             raise RuntimeError("Credential lease was deleted")

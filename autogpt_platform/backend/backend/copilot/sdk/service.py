@@ -52,6 +52,7 @@ from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
+from backend.integrations.codex.transport import PooledCodexRuntimeLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
@@ -3990,7 +3991,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
-    credential_lease: CredentialLease | None = None,
+    credential_lease: CredentialLease | PooledCodexRuntimeLease | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4375,11 +4376,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 credential_lease,
                 config=config,
             )
-            codex_gateway = CodexAnthropicGateway(
-                credential_lease=credential_lease,
-                model=sdk_model,
-                effort=codex_effort,
-            )
+            if isinstance(credential_lease, PooledCodexRuntimeLease):
+                codex_gateway = CodexAnthropicGateway(
+                    agent_session=credential_lease,
+                    model=sdk_model,
+                    effort=codex_effort,
+                )
+            else:
+                codex_gateway = CodexAnthropicGateway(
+                    credential_lease=credential_lease,
+                    model=sdk_model,
+                    effort=codex_effort,
+                )
             await codex_gateway.start()
             fallback_model = None
         else:

@@ -103,6 +103,7 @@ class CoPilotExecutor(AppProcess):
 
         self._task_locks: dict[str, ClusterLock] = {}
         self._active_tasks_lock_obj: threading.Lock | None = None
+        self._codex_runtime_pool_closed = False
 
     # ============ Main Entry Points (AppProcess interface) ============ #
 
@@ -140,11 +141,14 @@ class CoPilotExecutor(AppProcess):
            own ``finally`` publishes its terminal state via
            ``mark_session_completed``. When a turn exits, ``on_run_done``
            removes it from ``active_tasks`` and releases its cluster lock.
-        3. Shut down the thread-pool executor (cancels pending, leaves
+        3. Stop message consumer threads and disconnect their clients.
+        4. Close the process-local Codex runtime pool after turns and
+           consumers have stopped, checkpointing credentials before worker
+           teardown.
+        5. Shut down the thread-pool executor (cancels pending, leaves
            running threads alone — process exit handles them).
-        4. Release any cluster locks still held (defensive — on_run_done's
+        6. Release any cluster locks still held (defensive — on_run_done's
            finally should have already released them).
-        5. Stop message consumer threads + disconnect pika clients.
 
         The zombie-session bug this PR targets is handled inside each
         turn's own lifecycle by :func:`sync_fail_close_session`, NOT by
@@ -216,7 +220,10 @@ class CoPilotExecutor(AppProcess):
                 self._cancel_thread, self.cancel_client, f"{prefix} [cancel]"
             )
 
-        # 4. Worker cleanup + executor shutdown
+        # 4. Checkpoint and close shared Codex runtimes before worker teardown
+        self._close_codex_runtime_pool(prefix)
+
+        # 5. Worker cleanup + executor shutdown
         if self._executor:
             from .processor import cleanup_worker
 
@@ -233,7 +240,7 @@ class CoPilotExecutor(AppProcess):
             logger.info(f"{prefix} Shutting down executor...")
             self._executor.shutdown(wait=False)
 
-        # 5. Release any cluster locks still held
+        # 6. Release any cluster locks still held
         for session_id, lock in list(self._task_locks.items()):
             try:
                 lock.release()
@@ -242,6 +249,20 @@ class CoPilotExecutor(AppProcess):
                 logger.error(f"{prefix} Failed to release lock for {session_id}: {e}")
 
         logger.info(f"{prefix} Graceful shutdown completed")
+
+    def _close_codex_runtime_pool(self, prefix: str) -> None:
+        with self._active_tasks_lock:
+            if self._codex_runtime_pool_closed:
+                return
+            self._codex_runtime_pool_closed = True
+
+        try:
+            from backend.integrations.codex.transport import get_codex_transport
+
+            logger.info(f"{prefix} Closing Codex runtime pool...")
+            asyncio.run(get_codex_transport().close_runtime_pool())
+        except Exception as e:
+            logger.error(f"{prefix} Codex runtime pool cleanup error: {e}")
 
     # ============ RabbitMQ Consumer Methods ============ #
 

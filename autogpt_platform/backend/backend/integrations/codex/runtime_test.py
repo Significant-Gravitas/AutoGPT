@@ -748,3 +748,210 @@ async def test_cancelled_invoke_does_not_wait_for_stuck_turn_start(tmp_path):
     client.close.assert_awaited_once()
     release.set()
     await asyncio.sleep(0)
+
+
+async def test_cancelled_agent_turn_start_recovers_and_interrupts_without_closing(
+    tmp_path,
+):
+    started = asyncio.Event()
+    release = asyncio.Event()
+    interrupt = AsyncMock()
+
+    class RecoverableThread:
+        id = "thread-1"
+
+        async def turn(self, *_args, **_kwargs):
+            started.set()
+            await release.wait()
+            return SimpleNamespace(id="turn-1", interrupt=interrupt)
+
+    client = SimpleNamespace(
+        close=AsyncMock(),
+        _client=SimpleNamespace(
+            _sync=SimpleNamespace(_approval_handler=None, _proc=None)
+        ),
+    )
+
+    async def execute(_call):
+        return CodexDynamicToolResult(content="ok", success=True)
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(  # type: ignore[arg-type]
+            client,
+            home,
+            close_timeout_seconds=0.1,
+        )
+        runtime._start_thread = AsyncMock(  # type: ignore[method-assign]
+            return_value=RecoverableThread()
+        )
+        invocation = asyncio.create_task(
+            runtime.invoke_agent(
+                CodexInvocationRequest(prompt="hello"),
+                [],
+                execute,
+                tool_timeout_seconds=1,
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        invocation.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(invocation, timeout=1)
+
+        assert not runtime.closed
+
+    interrupt.assert_awaited_once()
+    client.close.assert_not_awaited()
+
+
+async def test_cancelled_agent_turn_start_poisoned_when_handle_cannot_be_recovered(
+    tmp_path,
+):
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class StuckThread:
+        id = "thread-1"
+
+        async def turn(self, *_args, **_kwargs):
+            started.set()
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    continue
+            return SimpleNamespace(id="turn-1")
+
+    client = SimpleNamespace(
+        close=AsyncMock(),
+        _client=SimpleNamespace(
+            _sync=SimpleNamespace(_approval_handler=None, _proc=None)
+        ),
+    )
+
+    async def execute(_call):
+        return CodexDynamicToolResult(content="ok", success=True)
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(  # type: ignore[arg-type]
+            client,
+            home,
+            close_timeout_seconds=0.01,
+        )
+        runtime._start_thread = AsyncMock(  # type: ignore[method-assign]
+            return_value=StuckThread()
+        )
+        invocation = asyncio.create_task(
+            runtime.invoke_agent(
+                CodexInvocationRequest(prompt="hello"),
+                [],
+                execute,
+                tool_timeout_seconds=1,
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        invocation.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(invocation, timeout=1)
+
+        assert runtime.closed
+
+    client.close.assert_awaited_once()
+    release.set()
+    await asyncio.sleep(0)
+
+
+async def test_agent_stream_failure_interrupts_without_closing_sibling_runtime(
+    tmp_path,
+):
+    interrupt = AsyncMock()
+
+    async def failing_stream():
+        if False:
+            yield None
+        raise RuntimeError("stream failed")
+
+    turn = SimpleNamespace(
+        id="turn-1",
+        interrupt=interrupt,
+        stream=failing_stream,
+    )
+    thread = SimpleNamespace(
+        id="thread-1",
+        turn=AsyncMock(return_value=turn),
+    )
+    client = SimpleNamespace(
+        close=AsyncMock(),
+        _client=SimpleNamespace(
+            _sync=SimpleNamespace(_approval_handler=None, _proc=None)
+        ),
+    )
+
+    async def execute(_call):
+        return CodexDynamicToolResult(content="ok", success=True)
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(client, home)  # type: ignore[arg-type]
+        runtime._start_thread = AsyncMock(  # type: ignore[method-assign]
+            return_value=thread
+        )
+        with pytest.raises(RuntimeError, match="stream failed"):
+            await runtime.invoke_agent(
+                CodexInvocationRequest(prompt="hello"),
+                [],
+                execute,
+                tool_timeout_seconds=1,
+            )
+
+        assert not runtime.closed
+
+    interrupt.assert_awaited_once()
+    client.close.assert_not_awaited()
+
+
+async def test_agent_event_failure_poisoned_when_interrupt_fails(tmp_path):
+    interrupt = AsyncMock(side_effect=RuntimeError("interrupt failed"))
+
+    async def one_event_stream():
+        yield SimpleNamespace()
+
+    turn = SimpleNamespace(
+        id="turn-1",
+        interrupt=interrupt,
+        stream=one_event_stream,
+    )
+    thread = SimpleNamespace(
+        id="thread-1",
+        turn=AsyncMock(return_value=turn),
+    )
+    client = SimpleNamespace(
+        close=AsyncMock(),
+        _client=SimpleNamespace(
+            _sync=SimpleNamespace(_approval_handler=None, _proc=None)
+        ),
+    )
+
+    async def execute(_call):
+        return CodexDynamicToolResult(content="ok", success=True)
+
+    async def reject_event(_event):
+        raise RuntimeError("event failed")
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(client, home)  # type: ignore[arg-type]
+        runtime._start_thread = AsyncMock(  # type: ignore[method-assign]
+            return_value=thread
+        )
+        with pytest.raises(RuntimeError, match="event failed"):
+            await runtime.invoke_agent(
+                CodexInvocationRequest(prompt="hello"),
+                [],
+                execute,
+                reject_event,
+                tool_timeout_seconds=1,
+            )
+
+        assert runtime.closed
+
+    interrupt.assert_awaited_once()
+    client.close.assert_awaited_once()

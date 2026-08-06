@@ -80,10 +80,14 @@ platform-funded AutoPilot. Builder-panel-bound sessions remain platform-funded
 in this preview because their persistent session is created without an AI
 connection selector.
 
-One exclusive lease is held for the selected credential for the full turn, so
-a concurrent top-level turn using the same connection fails with a bounded,
-retryable `codex_credential_busy` error instead of deadlocking. The normal
-platform AutoPilot route is unchanged.
+The Copilot executor keeps one exclusive credential lease and one Codex runtime
+per connected account, then multiplexes overlapping chats onto separate Codex
+threads. Canceling or finishing one chat does not stop its siblings. This pool
+is process-local: a request routed to another executor process or replica cannot
+join the owner yet and still fails with the bounded, retryable
+`codex_credential_busy` error. A hosted multi-replica rollout therefore needs
+credential-owner routing or a dedicated bridge. The normal platform AutoPilot
+route is unchanged.
 
 ### Test the AutoPilot graph block
 
@@ -183,12 +187,14 @@ device-code completion.
   truth.
 - Raw ChatGPT tokens do not enter Redis, RabbitMQ, frontend responses,
   container-wide environment variables, or AutoPilot session records.
-- Each invocation materializes auth into a fresh temporary home, checkpoints
-  Codex-managed refresh before releasing the credential, and cleans the home
-  after success, failure, timeout, or cancellation.
+- Each native invocation or shared AutoPilot runtime actor materializes auth
+  into an isolated temporary home. An AutoPilot actor keeps that home only
+  while one or more overlapping chats are attached, checkpoints Codex-managed
+  refresh throughout its lifetime and at shutdown, then cleans the home.
 - Code Generation turns expose no dynamic tools or host workspace. AutoPilot
   exposes only the tools registered by its existing Claude SDK/MCP harness.
-- One user credential is never pooled, shared, or substituted for another.
+- Runtime reuse is scoped to the exact user and credential. Credentials are
+  never pooled across users or substituted for another account.
 - There is no silent platform-key fallback.
 
 The current implementation launches Codex App Server in-process from the

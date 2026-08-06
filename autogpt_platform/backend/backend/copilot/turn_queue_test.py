@@ -216,6 +216,56 @@ async def test_dispatch_leaves_queued_when_user_paywalled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_codex_dispatch_skips_platform_billing_gates() -> None:
+    head = _mock_session()
+    head.metadata.llm_auth_provider = "codex"
+    head.metadata.llm_credential_id = "cred-1"
+    pending = _pyd_message()
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+    paywall_check = AsyncMock(side_effect=AssertionError("platform paywall checked"))
+    global_limits = AsyncMock(side_effect=AssertionError("USD limits fetched"))
+    rate_limit_check = AsyncMock(side_effect=AssertionError("USD limit checked"))
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=paywall_check,
+        ),
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=global_limits,
+        ),
+        patch(
+            "backend.copilot.turn_queue.check_rate_limit",
+            new=rate_limit_check,
+        ),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=dispatch_turn_mock,
+        ),
+        patch.object(
+            turn_queue,
+            "invalidate_session_cache",
+            new=AsyncMock(),
+        ),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    paywall_check.assert_not_awaited()
+    global_limits.assert_not_awaited()
+    rate_limit_check.assert_not_awaited()
+    dispatch_turn_mock.assert_awaited_once()
+    assert dispatch_turn_mock.call_args.kwargs["llm_auth_provider"] == "codex"
+    assert dispatch_turn_mock.call_args.kwargs["llm_credential_id"] == "cred-1"
+
+
+@pytest.mark.asyncio
 async def test_dispatch_leaves_queued_on_rate_limit_exceeded() -> None:
     """Mid-queue rate-limit lapse: leave the head queued, the next tick
     re-validates."""

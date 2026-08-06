@@ -21,6 +21,7 @@ from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.executor.cluster_lock import ClusterLock
+from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger, configure_logging
@@ -537,8 +538,9 @@ class CoPilotProcessor:
                 from backend.integrations.codex.credential_codec import (
                     bundle_from_credentials,
                 )
-                from backend.integrations.creds_manager import (
-                    IntegrationCredentialsManager,
+                from backend.integrations.codex.transport import (
+                    CodexCredentialBusyError,
+                    get_codex_transport,
                 )
 
                 if entry.user_id is None:
@@ -547,14 +549,16 @@ class CoPilotProcessor:
                 if entry.llm_credential_id is None:
                     raise RuntimeError("codex_credential_required")
                 try:
-                    credential_lease = await asyncio.wait_for(
-                        IntegrationCredentialsManager().acquire_lease(
+                    credential_lease = (
+                        await get_codex_transport().acquire_runtime_lease(
                             codex_user_id,
                             entry.llm_credential_id,
-                        ),
-                        timeout=_CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
+                            lock_timeout_seconds=(
+                                _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS
+                            ),
+                        )
                     )
-                except asyncio.TimeoutError:
+                except CodexCredentialBusyError:
                     raise RuntimeError("codex_credential_busy") from None
                 except asyncio.CancelledError:
                     raise
@@ -701,8 +705,12 @@ class CoPilotProcessor:
                 if credential_lease is not None:
                     try:
                         await credential_lease.release()
+                    except CodexCredentialIntegrityError as release_err:
+                        error_msg = error_msg or "codex_credential_checkpoint_failed"
+                        log.error(
+                            f"Failed to checkpoint Codex credential: {release_err}"
+                        )
                     except Exception as release_err:
-                        error_msg = error_msg or "codex_credential_release_failed"
                         log.error(f"Failed to release Codex credential: {release_err}")
             finally:
                 try:
