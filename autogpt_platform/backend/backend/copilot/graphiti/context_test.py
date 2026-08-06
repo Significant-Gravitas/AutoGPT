@@ -1,6 +1,7 @@
 """Tests for Graphiti warm context retrieval."""
 
 import asyncio
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -373,3 +374,70 @@ class TestRatificationHitHookFiresFireAndForget:
         user_id, uuids = captured_calls[0]
         assert user_id == "user-xyz"
         assert uuids == ["edge-a", "edge-b"]
+
+
+class TestRatificationHitTaskRetention:
+    """The event loop holds only weak references to tasks — the spawn
+    helper must keep a strong reference until the task completes, or GC
+    pressure can collect the hit-recording task mid-flight and silently
+    drop hits the nightly sweep can never see."""
+
+    def test_spawned_hit_task_retained_until_done_then_discarded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.copilot.dream import ratification as ratification_mod
+
+        async def driver():
+            context._pending_hit_tasks.clear()
+            release = asyncio.Event()
+
+            async def fake_try_ratify(user_id: str, edge_uuids: list[str]):
+                await release.wait()
+
+            monkeypatch.setattr(ratification_mod, "try_ratify_on_hit", fake_try_ratify)
+            context._spawn_ratification_hits(
+                "user-xyz", edges=[SimpleNamespace(uuid="edge-a")]
+            )
+            # Strong ref held while the task is in flight.
+            assert len(context._pending_hit_tasks) == 1
+            task = next(iter(context._pending_hit_tasks))
+
+            release.set()
+            await task
+            # One more tick so the done-callback (call_soon) runs.
+            await asyncio.sleep(0)
+            assert context._pending_hit_tasks == set()
+
+        asyncio.run(driver())
+
+    def test_failed_hit_task_logs_exception_and_is_discarded(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The done-callback must observe the exception (no 'Task
+        exception was never retrieved' noise) and log it at WARNING."""
+        from backend.copilot.dream import ratification as ratification_mod
+
+        async def driver():
+            context._pending_hit_tasks.clear()
+
+            async def fake_try_ratify(user_id: str, edge_uuids: list[str]):
+                raise RuntimeError("falkordb down")
+
+            monkeypatch.setattr(ratification_mod, "try_ratify_on_hit", fake_try_ratify)
+            context._spawn_ratification_hits(
+                "user-xyz", edges=[SimpleNamespace(uuid="edge-a")]
+            )
+            task = next(iter(context._pending_hit_tasks))
+            await asyncio.gather(task, return_exceptions=True)
+            await asyncio.sleep(0)
+
+        with caplog.at_level(
+            logging.WARNING, logger="backend.copilot.graphiti.context"
+        ):
+            asyncio.run(driver())
+
+        assert context._pending_hit_tasks == set()
+        assert any(
+            record.levelno == logging.WARNING and "failed" in record.getMessage()
+            for record in caplog.records
+        )

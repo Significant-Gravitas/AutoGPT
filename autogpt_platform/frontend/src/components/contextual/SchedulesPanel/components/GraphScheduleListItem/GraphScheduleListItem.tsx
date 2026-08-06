@@ -4,9 +4,14 @@ import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graph
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { CalendarDotsIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useGraphScheduleListItem } from "./useGraphScheduleListItem";
+import {
+  Calendar03Icon,
+  Delete02Icon,
+  EyeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   schedule: GraphExecutionJobInfo;
@@ -42,11 +47,7 @@ export function GraphScheduleListItem({ schedule }: Props) {
         data-testid="schedule-open-agent"
       >
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-emerald-50">
-          <CalendarDotsIcon
-            size={18}
-            className="text-emerald-700"
-            weight="bold"
-          />
+          <Icon icon={Calendar03Icon} size={18} className="text-emerald-700" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text
@@ -86,7 +87,7 @@ export function GraphScheduleListItem({ schedule }: Props) {
           data-testid="schedule-view-button"
           aria-label="View schedule"
         >
-          <EyeIcon className="mr-1 h-4 w-4" />
+          <Icon icon={EyeIcon} className="mr-1 h-4 w-4" />
           View
         </Button>
         <Button
@@ -96,7 +97,7 @@ export function GraphScheduleListItem({ schedule }: Props) {
           data-testid="schedule-delete-button"
           aria-label="Delete schedule"
         >
-          <TrashIcon className="mr-1 h-4 w-4" />
+          <Icon icon={Delete02Icon} className="mr-1 h-4 w-4" />
           Delete
         </Button>
       </div>

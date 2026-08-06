@@ -6,8 +6,9 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
-import { GearIcon } from "@phosphor-icons/react";
 import { useState } from "react";
+import { Settings01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -58,7 +59,7 @@ export function AgentSettingsModal({
             className="m-0 min-w-0 rounded-full p-0 px-1"
             aria-label="Agent Settings"
           >
-            <GearIcon size={18} className="text-zinc-600" />
+            <Icon icon={Settings01Icon} size={18} className="text-zinc-600" />
             <Text variant="small">Agent Settings</Text>
           </Button>
         </Dialog.Trigger>

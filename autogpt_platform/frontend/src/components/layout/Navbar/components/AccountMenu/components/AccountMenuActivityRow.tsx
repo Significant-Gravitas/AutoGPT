@@ -5,11 +5,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { CaretRightIcon, PulseIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { ActivityDropdown } from "../../AgentActivityDropdown/components/ActivityDropdown/ActivityDropdown";
 import { formatNotificationCount } from "../../AgentActivityDropdown/helpers";
 import { useAgentActivityDropdown } from "../../AgentActivityDropdown/useAgentActivityDropdown";
+import { ArrowRight01Icon, Pulse01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const rowClasses =
   "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-sm font-normal text-neutral-700 outline-none transition-colors duration-200 ease-out hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none data-[state=open]:bg-neutral-100";
@@ -38,10 +39,7 @@ export function AccountMenuActivityRow() {
             aria-hidden="true"
           />
           <span className="relative z-10 flex shrink-0 items-center">
-            <PulseIcon
-              className="h-[18px] w-[18px] shrink-0"
-              weight="regular"
-            />
+            <Icon icon={Pulse01Icon} className="h-[18px] w-[18px] shrink-0" />
           </span>
           <span className="relative z-10 truncate">Activity</span>
           {totalCount > 0 && (
@@ -53,10 +51,10 @@ export function AccountMenuActivityRow() {
             </span>
           )}
           <span className="flex-1" aria-hidden="true" />
-          <CaretRightIcon
+          <Icon
+            icon={ArrowRight01Icon}
             className="relative z-10 shrink-0 text-neutral-700"
             size={16}
-            weight="regular"
             aria-hidden="true"
           />
         </button>
