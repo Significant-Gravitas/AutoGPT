@@ -25,7 +25,13 @@ export const DEFAULT_GLASS_PARAMS: GlassParams = {
   ringDark: 0.45,
 };
 
-export function GlassSurface({ params }: { params: GlassParams }) {
+export function GlassSurface({
+  params,
+  showRim = true,
+}: {
+  params: GlassParams;
+  showRim?: boolean;
+}) {
   const { frost, saturation, tint, edge } = params;
   const backdropFilter = `blur(${frost}px) saturate(${saturation})`;
 
@@ -37,8 +43,12 @@ export function GlassSurface({ params }: { params: GlassParams }) {
           backdropFilter,
           WebkitBackdropFilter: backdropFilter,
           backgroundImage: `linear-gradient(155deg, rgba(255,255,255,${tint}), rgba(255,255,255,${tint * 0.2}) 48%, rgba(255,255,255,${tint * 0.6}))`,
-          border: `1px solid rgba(255,255,255,${Math.min(edge, 1)})`,
-          boxShadow: `inset 0 1px 3px rgba(255,255,255,${Math.min(edge * 1.2, 1)}), inset 0 -12px 28px rgba(255,255,255,${edge * 0.5}), 0 12px 40px rgba(96,64,224,0.18)`,
+          border: showRim
+            ? `1px solid rgba(255,255,255,${Math.min(edge, 1)})`
+            : undefined,
+          boxShadow: showRim
+            ? `inset 0 1px 3px rgba(255,255,255,${Math.min(edge * 1.2, 1)}), inset 0 -12px 28px rgba(255,255,255,${edge * 0.5}), 0 12px 40px rgba(96,64,224,0.18)`
+            : "0 12px 40px rgba(96,64,224,0.18)",
         }}
       />
       <div

@@ -1,6 +1,13 @@
 "use client";
 
 import { ReactNode } from "react";
+import {
+  motion,
+  type MotionValue,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+} from "framer-motion";
 import { GlassParams, GlassSurface } from "./GlassSurface";
 import styles from "./GlassOrb.module.css";
 
@@ -10,12 +17,36 @@ import styles from "./GlassOrb.module.css";
 // real lens would (feDisplacementMap, per the Aave glass article).
 interface Props {
   params: GlassParams;
+  audioLevel?: MotionValue<number>;
   children?: ReactNode;
+  showRim?: boolean;
 }
 
-export function GlassOrb({ params, children }: Props) {
+export function GlassOrb({
+  params,
+  audioLevel,
+  children,
+  showRim = true,
+}: Props) {
+  const prefersReducedMotion = useReducedMotion();
+  const idleLevel = useMotionValue(0);
+  const level = audioLevel ?? idleLevel;
+  const fillScale = useTransform(level, [0, 1], [1, 1.34]);
+  const fillOpacity = useTransform(level, [0, 1], [0.72, 1]);
+  const pulseOpacity = useTransform(level, [0, 1], [0.08, 0.58]);
+
   return (
-    <div className="relative h-full w-full" aria-hidden>
+    <motion.div
+      className="relative h-full w-full"
+      initial={prefersReducedMotion ? false : { scale: 0.94 }}
+      animate={{ scale: 1 }}
+      transition={
+        prefersReducedMotion
+          ? undefined
+          : { type: "spring", stiffness: 420, damping: 28, mass: 0.7 }
+      }
+      aria-hidden
+    >
       <svg className="absolute h-0 w-0" aria-hidden>
         <filter id="glass-orb-refraction">
           <feTurbulence
@@ -36,9 +67,13 @@ export function GlassOrb({ params, children }: Props) {
       </svg>
 
       <div className="absolute inset-0 overflow-hidden rounded-full">
-        <div
+        <motion.div
           className="absolute inset-0"
-          style={{ filter: "url(#glass-orb-refraction)" }}
+          style={{
+            filter: "url(#glass-orb-refraction)",
+            scale: fillScale,
+            opacity: fillOpacity,
+          }}
         >
           <div className={`${styles.spinner} ${styles.spinner1}`}>
             <div className={`${styles.blob} ${styles.blob1}`} />
@@ -55,16 +90,20 @@ export function GlassOrb({ params, children }: Props) {
           <div className={`${styles.spinner} ${styles.spinner5}`}>
             <div className={`${styles.blob} ${styles.blob5}`} />
           </div>
-        </div>
+        </motion.div>
+        <motion.div
+          className="pointer-events-none absolute inset-[12%] rounded-full bg-[radial-gradient(circle,rgba(233,213,255,0.9),rgba(168,85,247,0.22)_45%,transparent_72%)] blur-md"
+          style={{ opacity: pulseOpacity, scale: fillScale }}
+        />
       </div>
 
-      <GlassSurface params={params} />
+      <GlassSurface params={params} showRim={showRim} />
 
       {children && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           {children}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

@@ -112,6 +112,19 @@ export function useBrainDumpStep() {
     await submitRecording(recorder.recordingId, durationSecs);
   }
 
+  async function handleStop() {
+    const recordingId = recorder.recordingId;
+    await recorder.stop();
+    recorder.resetQueue();
+    if (recordingId) {
+      await clearRecording(recordingId).catch(() => undefined);
+      await discardBrainDump({ recording_id: recordingId }).catch(
+        () => undefined,
+      );
+    }
+    setScreen("rest");
+  }
+
   // The id is passed in rather than read off the recorder: `adoptRecovered`
   // writes it to a ref, and this function's closure would still be holding
   // the previous render's `null`.
@@ -193,7 +206,7 @@ export function useBrainDumpStep() {
       );
     }
     const started = await recorder.start();
-    if (!started) setScreen("rest");
+    setScreen(started ? "recording" : "rest");
   }
 
   async function handleRetry() {
@@ -375,6 +388,7 @@ export function useBrainDumpStep() {
     reachedTimeLimit,
     recoverable,
     handleStart,
+    handleStop,
     handleDone,
     handleRestart,
     handleRetry,

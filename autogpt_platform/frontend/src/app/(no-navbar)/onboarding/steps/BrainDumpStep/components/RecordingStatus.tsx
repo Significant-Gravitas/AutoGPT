@@ -1,40 +1,40 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { CloudOffIcon } from "@hugeicons/core-free-icons";
-import { encouragementAt, SILENCE_NUDGE_COPY } from "../helpers";
+import { recordingFeedbackAt, SILENCE_NUDGE_COPY } from "../helpers";
 
 interface Props {
   elapsedSeconds: number;
   showSilenceNudge: boolean;
   isOffline: boolean;
-  isSavedLocally: boolean;
 }
 
 const OFFLINE_COPY = "You're offline — we'll send this when you're back.";
-const SAVED_LOCALLY_COPY = "Saved on this device as you talk";
 
 export function RecordingStatus({
   elapsedSeconds,
   showSilenceNudge,
   isOffline,
-  isSavedLocally,
 }: Props) {
-  const encouragement = encouragementAt(elapsedSeconds);
+  const feedback = showSilenceNudge
+    ? null
+    : recordingFeedbackAt(elapsedSeconds);
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <Text
-        variant="small"
-        className={cn(
-          "h-5 text-center transition-opacity duration-500",
-          encouragement ? "!text-purple-600 opacity-100" : "opacity-0",
-        )}
-      >
-        {encouragement ?? ""}
-      </Text>
+      <div className="mt-2 h-6" aria-live="polite">
+        <SwapFade swapKey={feedback ?? "idle"} className="flex justify-center">
+          <Text
+            variant="small"
+            className="text-center !text-sm !font-medium !text-purple-400"
+          >
+            {feedback ?? ""}
+          </Text>
+        </SwapFade>
+      </div>
 
       {showSilenceNudge && (
         <Text variant="small" className="max-w-sm text-center !text-zinc-500">
@@ -55,12 +55,6 @@ export function RecordingStatus({
             {OFFLINE_COPY}
           </Text>
         </div>
-      )}
-
-      {isSavedLocally && (
-        <Text variant="small" className="text-center !text-zinc-400">
-          {SAVED_LOCALLY_COPY}
-        </Text>
       )}
     </div>
   );
