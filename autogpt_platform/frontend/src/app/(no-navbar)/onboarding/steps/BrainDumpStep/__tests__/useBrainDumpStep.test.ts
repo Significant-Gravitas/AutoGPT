@@ -168,6 +168,20 @@ describe("useBrainDumpStep — recording", () => {
     expect(result.current.screen).toBe("recording");
   });
 
+  it("tracks cancel and discards the active take", async () => {
+    recorderState.recordingId = "rec-1";
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStop();
+    });
+
+    expect(events()).toContain("brain_dump_canceled");
+    expect(clearRecording).toHaveBeenCalledWith("rec-1");
+    expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    expect(result.current.screen).toBe("rest");
+  });
+
   // The nudge is for someone who has not started talking yet, so it keys
   // on whether the mic has heard anything — not on elapsed time alone.
   it("nudges only while recording, past the threshold, and still silent", async () => {

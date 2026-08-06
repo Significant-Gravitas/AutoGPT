@@ -113,15 +113,11 @@ export function useBrainDumpStep() {
   }
 
   async function handleStop() {
+    trackBrainDump("brain_dump_canceled");
     const recordingId = recorder.recordingId;
     await recorder.stop();
     recorder.resetQueue();
-    if (recordingId) {
-      await clearRecording(recordingId).catch(() => undefined);
-      await discardBrainDump({ recording_id: recordingId }).catch(
-        () => undefined,
-      );
-    }
+    if (recordingId) await discardTake(recordingId);
     setScreen("rest");
   }
 
@@ -196,15 +192,7 @@ export function useBrainDumpStep() {
     const previousId = recorder.recordingId;
     await recorder.stop();
     recorder.resetQueue();
-    if (previousId) await clearRecording(previousId).catch(() => undefined);
-    // Say which take: without an id the server drops whatever the row
-    // currently points at, which in a second tab is somebody else's
-    // buffer still being filled.
-    if (previousId) {
-      await discardBrainDump({ recording_id: previousId }).catch(
-        () => undefined,
-      );
-    }
+    if (previousId) await discardTake(previousId);
     const started = await recorder.start();
     setScreen(started ? "recording" : "rest");
   }
@@ -350,11 +338,15 @@ export function useBrainDumpStep() {
   // nobody will ever finalize.
   async function dropRecoverable() {
     if (!recoverable) return;
-    await clearRecording(recoverable.recordingId).catch(() => undefined);
-    await discardBrainDump({ recording_id: recoverable.recordingId }).catch(
+    await discardTake(recoverable.recordingId);
+    setRecoverable(null);
+  }
+
+  async function discardTake(recordingId: string) {
+    await clearRecording(recordingId).catch(() => undefined);
+    await discardBrainDump({ recording_id: recordingId }).catch(
       () => undefined,
     );
-    setRecoverable(null);
   }
 
   async function handleDownloadRecording() {

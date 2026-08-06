@@ -197,6 +197,7 @@ class FakeMediaRecorder {
 
 class FakeAudioContext {
   state: AudioContextState = "running";
+  sampleRate = 48_000;
 
   createAnalyser() {
     return {
@@ -205,6 +206,9 @@ class FakeAudioContext {
       smoothingTimeConstant: 0,
       getByteTimeDomainData(samples: Uint8Array) {
         samples.fill(128);
+      },
+      getByteFrequencyData(samples: Uint8Array) {
+        samples.fill(0);
       },
     } as unknown as AnalyserNode;
   }
@@ -623,7 +627,8 @@ describe("onboarding brain dump — finishing a take", () => {
       ).disabled,
     ).toBe(true);
 
-    finishDiscard?.();
+    await waitFor(() => expect(finishDiscard).toBeDefined());
+    finishDiscard!();
     expect(
       await screen.findByRole("button", { name: "Start talking" }),
     ).toBeDefined();

@@ -16,7 +16,10 @@ export function OrbUiOrb({ audioLevel, state }: Props) {
   const isIdlePreview = state === "idle";
 
   useMotionValueEvent(audioLevel, "change", (latest) => {
-    setVolume(Math.round(latest * 100) / 100);
+    const nextVolume = Math.round(latest * 20) / 20;
+    setVolume((currentVolume) =>
+      currentVolume === nextVolume ? currentVolume : nextVolume,
+    );
   });
 
   return (

@@ -71,8 +71,8 @@ export function GlassOrb({
           className="absolute inset-0"
           style={{
             filter: "url(#glass-orb-refraction)",
-            scale: fillScale,
-            opacity: fillOpacity,
+            scale: prefersReducedMotion ? 1 : fillScale,
+            opacity: prefersReducedMotion ? 0.85 : fillOpacity,
           }}
         >
           <div className={`${styles.spinner} ${styles.spinner1}`}>
@@ -93,7 +93,10 @@ export function GlassOrb({
         </motion.div>
         <motion.div
           className="pointer-events-none absolute inset-[12%] rounded-full bg-[radial-gradient(circle,rgba(233,213,255,0.9),rgba(168,85,247,0.22)_45%,transparent_72%)] blur-md"
-          style={{ opacity: pulseOpacity, scale: fillScale }}
+          style={{
+            opacity: prefersReducedMotion ? 0.2 : pulseOpacity,
+            scale: prefersReducedMotion ? 1 : fillScale,
+          }}
         />
       </div>
 

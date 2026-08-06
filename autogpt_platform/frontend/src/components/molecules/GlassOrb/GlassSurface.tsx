@@ -25,13 +25,12 @@ export const DEFAULT_GLASS_PARAMS: GlassParams = {
   ringDark: 0.45,
 };
 
-export function GlassSurface({
-  params,
-  showRim = true,
-}: {
+interface Props {
   params: GlassParams;
   showRim?: boolean;
-}) {
+}
+
+export function GlassSurface({ params, showRim = true }: Props) {
   const { frost, saturation, tint, edge } = params;
   const backdropFilter = `blur(${frost}px) saturate(${saturation})`;
 

@@ -49,7 +49,7 @@ export function useAudioLevel(audioStream: MediaStream | null) {
     return () => {
       cancelAnimationFrame(animationFrame);
       level.set(0);
-      void audioContext.close();
+      void audioContext.close().catch(() => undefined);
     };
   }, [audioStream, level]);
 
