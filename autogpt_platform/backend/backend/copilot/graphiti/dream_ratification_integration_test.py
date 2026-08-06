@@ -42,6 +42,7 @@ from backend.copilot.dream.ratification import run_ratification_pass, try_ratify
 from backend.copilot.dream.ratification_hits import (
     RATIFICATION_GRACE_PERIOD,
     parse_created_at,
+    record_memory_hit,
 )
 from backend.copilot.dream.schemas import ProposedFinding
 
@@ -95,8 +96,6 @@ _SCRIPTED_RESPONSES: dict[str, dict] = {
             }
         ]
     },
-    "EdgeDuplicate": {"duplicate_facts": [], "contradicted_facts": []},
-    "SummarizedEntities": {"summaries": []},
     # The MemoryFact attribute extractor only ever sees the fact TEXT, so in
     # production it returns the model defaults — which contradict the dream
     # envelope on every field that matters. Reproducing that here is what
@@ -152,7 +151,7 @@ async def dream_graph(
     Deliberately not the shared ``clean_graph`` fixture: that one mints a
     standalone ``test_*`` database, while ratification opens its OWN driver
     from the user_id and would read an empty graph. Yields ``(driver,
-    user_id)``; everything is detach-deleted afterwards.
+    user_id)``; the graph key is dropped afterwards.
     """
     user_id = f"test-{uuid.uuid4().hex[:16]}"
     driver = AutoGPTFalkorDriver(
@@ -165,10 +164,16 @@ async def dream_graph(
     try:
         yield driver, user_id
     finally:
-        # Let a failed cleanup surface as a test error rather than pass
-        # silently; the driver still closes either way.
+        # A true GRAPH.DELETE: DETACH DELETE only empties the graph and
+        # leaks the ``user_test-*`` graphdata key on the shared instance —
+        # indistinguishable from a real user graph to ops tooling. A
+        # failed delete surfaces as a test error; the driver still closes.
         try:
-            await driver.execute_query("MATCH (n) DETACH DELETE n")
+            try:
+                await driver._get_graph(None).delete()
+            except Exception as exc:
+                if "empty key" not in str(exc).lower():
+                    raise
         finally:
             await driver.close()
 
@@ -343,6 +348,33 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
     assert (
         await try_ratify_on_hit(user_id, [edge_uuid]) == 0
     ), "the status='tentative' guard makes repeat hits no-ops"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sweep_promotes_a_tentative_edge_that_earned_a_hit(dream_graph) -> None:
+    """Promote leg of the SWEEP: distinct from the warm-context hook.
+
+    ``try_ratify_on_hit`` promotes via ``_promote_if_tentative``; the sweep
+    reaches ``_promote_edge`` only through ``_process_edge``'s ``hits >= 1``
+    branch, keyed off the Redis counter — this is the test that makes the
+    ``_FakeRedis`` counter load-bearing.
+    """
+    driver, user_id = dream_graph
+    await _ingest_dream_proposal(user_id)
+    edge_uuid = (await _sole_edge(driver))["uuid"]
+    await record_memory_hit(user_id, edge_uuid)
+
+    result = await run_ratification_pass(user_id)
+
+    assert result.error is None
+    assert result.examined_count == 1
+    assert result.ratified_count == 1
+    assert result.superseded_count == 0
+
+    edge = await _sole_edge(driver)
+    assert edge["status"] == "active"
+    assert edge["ratified_at"] is not None
 
 
 @pytest.mark.integration

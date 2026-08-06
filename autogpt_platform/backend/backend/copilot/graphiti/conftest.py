@@ -54,14 +54,12 @@ class ScriptedLLMClient(LLMClient):
     Keyed by ``response_model.__name__`` so one instance can serve every
     prompt ``add_episode`` issues. Unlisted models get ``{}`` — graphiti's
     per-entity-type attribute models are all-optional, so an empty payload
-    validates into defaults. ``prompts_requested`` records the call order
-    for tests that assert which code path ran.
+    validates into defaults.
     """
 
     def __init__(self, responses: dict[str, dict] | None = None) -> None:
         super().__init__(config=None, cache=False)
         self.responses = responses or {}
-        self.prompts_requested: list[str] = []
 
     async def _generate_response(
         self,
@@ -71,7 +69,6 @@ class ScriptedLLMClient(LLMClient):
         model_size: ModelSize = ModelSize.medium,
     ) -> dict:
         name = response_model.__name__ if response_model else "raw"
-        self.prompts_requested.append(name)
         return self.responses.get(name, {})
 
 
