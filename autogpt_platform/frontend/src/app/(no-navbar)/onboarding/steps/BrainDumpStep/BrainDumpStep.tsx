@@ -92,15 +92,6 @@ export function BrainDumpStep() {
           {orbScreen && (
             <OrbSelector value={orbVariant} onChange={setOrbVariant} />
           )}
-          {isRecording && (
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={dump.handleRestart}
-            >
-              Restart
-            </Button>
-          )}
           {/* Skipping mid-submit would advance the wizard a second time
               behind the finalize that is already in flight, landing past
               the last step on a blank screen. */}
