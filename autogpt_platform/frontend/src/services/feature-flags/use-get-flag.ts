@@ -99,6 +99,7 @@ const defaultFlags = {
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.SHOW_ORG_SETTINGS]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
 };
 
@@ -177,6 +178,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.SHOW_ORG_SETTINGS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
     case Flag.COPILOT_BOT_PLATFORMS:
       return undefined;
   }
