@@ -16,7 +16,7 @@ import {
 } from "../helpers";
 import type { MessagePart } from "../helpers";
 import type { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import type { TodoItem } from "../../ContextPanel/components/ProgressTab/helpers";
+import type { TodoItem } from "../../TaskProgressBar/helpers";
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;

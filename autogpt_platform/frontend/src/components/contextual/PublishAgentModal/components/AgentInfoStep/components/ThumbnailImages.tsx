@@ -2,15 +2,16 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  CircleNotchIcon,
-  MagicWandIcon,
-  PlusIcon,
-  XIcon,
-} from "@phosphor-icons/react";
 import Image from "next/image";
 import { useThumbnailImages } from "./useThumbnailImages";
 import { cn } from "@/lib/utils";
+import {
+  Cancel01Icon,
+  Loading03Icon,
+  MagicWand01Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface ThumbnailImagesProps {
   agentId: string | null;
@@ -87,13 +88,9 @@ export function ThumbnailImages({
                 className="hidden"
               />
               {isUploading ? (
-                <CircleNotchIcon
-                  size={16}
-                  weight="bold"
-                  className="animate-spin"
-                />
+                <Icon icon={Loading03Icon} size={16} className="animate-spin" />
               ) : (
-                <PlusIcon size={16} weight="bold" />
+                <Icon icon={PlusSignIcon} size={16} />
               )}
               <span>{isUploading ? "Uploading" : "Add image"}</span>
             </label>
@@ -104,7 +101,7 @@ export function ThumbnailImages({
               onClick={handleGenerateImage}
               disabled={isGenerating || isUploading || images.length >= 5}
               loading={isGenerating}
-              leftIcon={<MagicWandIcon className="h-4 w-4" />}
+              leftIcon={<Icon icon={MagicWand01Icon} className="h-4 w-4" />}
             >
               {isGenerating ? "Generating" : "Generate"}
             </Button>
@@ -144,7 +141,7 @@ export function ThumbnailImages({
                     aria-label={`Remove image ${index + 1}`}
                     data-testid={`thumbnail-remove-${index}`}
                   >
-                    <XIcon size={14} weight="bold" />
+                    <Icon icon={Cancel01Icon} size={14} />
                   </button>
                   {index === 0 ? (
                     <span className="mt-1 block text-center text-[11px] font-medium text-zinc-500">
@@ -166,7 +163,7 @@ export function ThumbnailImages({
                   loading={isUploading}
                   leftIcon={
                     isUploading ? undefined : (
-                      <PlusIcon size={16} weight="bold" />
+                      <Icon icon={PlusSignIcon} size={16} />
                     )
                   }
                   data-testid="thumbnail-add-image"
@@ -181,7 +178,7 @@ export function ThumbnailImages({
                 onClick={handleGenerateImage}
                 disabled={isGenerating || isUploading || images.length >= 5}
                 loading={isGenerating}
-                leftIcon={<MagicWandIcon className="h-4 w-4" />}
+                leftIcon={<Icon icon={MagicWand01Icon} className="h-4 w-4" />}
               >
                 {isGenerating
                   ? "Generating"

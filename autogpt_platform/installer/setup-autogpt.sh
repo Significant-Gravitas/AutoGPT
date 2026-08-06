@@ -438,7 +438,7 @@ run_docker() {
         print_color "YELLOW" "Common issues:"
         print_color "YELLOW" "- Docker is not running"
         print_color "YELLOW" "- Insufficient disk space"
-        print_color "YELLOW" "- Port conflicts (check if ports 3000, 8000, etc. are in use)"
+        print_color "YELLOW" "- Port conflicts (check if ports 3000, 8006, etc. are in use)"
         exit 1
     fi
 }
@@ -463,7 +463,7 @@ main() {
     print_color "GREEN" "============================="
     echo
     print_color "BLUE" "🚀 Access AutoGPT at: http://localhost:3000"
-    print_color "BLUE" "📡 API available at: http://localhost:8000"
+    print_color "BLUE" "📡 API available at: http://localhost:8006"
     if [ "$WITH_OLLAMA" = true ]; then
         echo
         print_color "BLUE" "🦙 AutoPilot wired to Ollama (model: $OLLAMA_MODEL)"
