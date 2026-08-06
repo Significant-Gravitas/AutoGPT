@@ -9747,9 +9747,14 @@
               }
             }
           },
+          "400": {
+            "description": "Invitation was already accepted or revoked"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "403": { "description": "Not a member of this organization" },
+          "404": { "description": "Invitation not found in this organization" },
           "422": {
             "description": "Validation Error",
             "content": {

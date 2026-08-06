@@ -169,6 +169,11 @@ async def revoke_invitation(
     "/{invitation_id}/resend",
     summary="Resend invitation",
     tags=["orgs", "invitations"],
+    responses={
+        400: {"description": "Invitation was already accepted or revoked"},
+        403: {"description": "Not a member of this organization"},
+        404: {"description": "Invitation not found in this organization"},
+    },
 )
 async def resend_invitation(
     org_id: str,

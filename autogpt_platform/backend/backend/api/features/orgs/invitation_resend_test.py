@@ -10,6 +10,7 @@ from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.models import RequestContext
 
 from backend.api.features.orgs.invitation_routes import INVITATION_TTL_DAYS, org_router
+from backend.api.rest_api import handle_internal_http_error
 from backend.util.exceptions import NotFoundError
 
 USER_ID = "user-owner-1"
@@ -86,27 +87,14 @@ class TestInvitationResend:
             setattr(inv, key, value)
         return inv
 
-    def _app(self, ctx):
+    def _client(self, ctx):
         app = fastapi.FastAPI()
         app.include_router(org_router, prefix="/orgs/{org_id}/invitations")
         app.dependency_overrides[get_request_context] = lambda: ctx
-        return app
-
-    def _client(self, ctx):
-        return fastapi.testclient.TestClient(
-            self._app(ctx), raise_server_exceptions=False
-        )
-
-    def _raising_client(self, ctx):
-        """Client that re-raises handler exceptions instead of returning 500.
-
-        The bare test app has no NotFoundError handler (the real app maps it to
-        404 in rest_api.py), so this is how a test asserts *which* error was
-        raised rather than just observing an opaque 500.
-        """
-        return fastapi.testclient.TestClient(
-            self._app(ctx), raise_server_exceptions=True
-        )
+        # Mirror the production mapping (rest_api.py) so these tests assert the
+        # HTTP contract callers actually see rather than an opaque 500.
+        app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
+        return fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 
     def test_resend_pending_rotates_token_and_extends_expiry(self):
         invitation = self._make_invitation()
@@ -275,13 +263,13 @@ class TestInvitationResend:
         self.prisma.orginvitation.find_unique = AsyncMock(return_value=invitation)
         self.prisma.orginvitation.update_many = AsyncMock()
 
-        # NotFoundError has no handler in the bare test app (same pattern as
-        # TestInvitationAcceptance): surfaces as 500 with a safe client.
+        # Cross-org lookups must be indistinguishable from "no such invitation",
+        # so this is a 404 and not a 403.
         resp = self._client(_owner_ctx()).post(
             f"/orgs/{ORG_ID}/invitations/inv-1/resend"
         )
 
-        assert resp.status_code == 500
+        assert resp.status_code == 404
         self.prisma.orginvitation.update_many.assert_not_called()
 
     def test_resend_missing_invitation_not_found(self):
@@ -289,11 +277,11 @@ class TestInvitationResend:
         self.prisma.orginvitation.find_unique = AsyncMock(return_value=None)
         self.prisma.orginvitation.update_many = AsyncMock()
 
-        with pytest.raises(NotFoundError):
-            self._raising_client(_owner_ctx()).post(
-                f"/orgs/{ORG_ID}/invitations/inv-1/resend"
-            )
+        resp = self._client(_owner_ctx()).post(
+            f"/orgs/{ORG_ID}/invitations/inv-1/resend"
+        )
 
+        assert resp.status_code == 404
         self.prisma.orginvitation.update_many.assert_not_called()
 
     def test_resend_requires_member_management_permission(self):
