@@ -144,6 +144,7 @@ model User {
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
   CoPilotUnderstanding  CoPilotUnderstanding?
+  OnboardingBrainDump   OnboardingBrainDump?
   BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
@@ -214,6 +215,9 @@ enum OnboardingStep {
   // No longer rewarded but exist for analytical purposes
   BUILDER_OPEN
   BUILDER_RUN_AGENT
+  // Copilot home first-run: the capability-cards modal was completed or
+  // skipped. Unrewarded; recorded so it shows only once per user.
+  CAPABILITY_CARDS
 }
 
 model UserOnboarding {
@@ -248,6 +252,67 @@ model CoPilotUnderstanding {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   data Json?
+
+  @@index([userId])
+}
+
+enum BrainDumpStatus {
+  recording_uploaded
+  transcribing
+  transcribed
+  extracting
+  completed
+  failed
+}
+
+enum BrainDumpInputMode {
+  voice
+  typed
+  skipped
+}
+
+/// Onboarding voice "brain dump": the raw recording plus its full
+/// transcript. The transcript is stored complete even when a shortened
+/// version is what gets injected into the copilot's first prompt —
+/// truncation is never silent, and the audio is never deleted on failure
+/// so the user can always re-run or download it.
+model OnboardingBrainDump {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Client-generated identifier that ties uploaded parts to one take and
+  /// makes `finalize` idempotent across retries.
+  recordingId String
+
+  status    BrainDumpStatus
+  inputMode BrainDumpInputMode
+
+  audioPath      String?
+  mimeType       String?
+  sizeBytes      Int?
+  durationSecs   Float?
+  transcript     String?
+  transcriptLang String?
+  errorCode      String?
+
+  /// Written once when the dump is processed, read by the copilot home's
+  /// greeting. Generated up-front rather than on page load so the greeting
+  /// is instant — the user has already waited through the loading screen.
+  greeting         String?
+  /// List of {title, prompt} objects the user can pick from under the
+  /// greeting. JSON so the shape can evolve without a migration.
+  suggestedPrompts Json    @default("[]")
+  /// True once the user has sent their first message. The greeting is
+  /// never shown again after this, but its content is kept.
+  greetingSeen     Boolean @default(false)
+  /// List of {provider, reason} objects Claude picks from the transcript
+  /// and the live provider registry. Null until the recommendation
+  /// background job (separate from the greeting one) writes its result.
+  recommendedProviders Json?
 
   @@index([userId])
 }

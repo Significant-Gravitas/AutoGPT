@@ -100,10 +100,23 @@ function NewTaskIcon() {
   );
 }
 
+// The stronger active state + grey shell ship with the brain-dump
+// experience; off keeps the original white sidebar.
+function useNavItemClassName() {
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  return cn(
+    "h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5",
+    isBrainDumpEnabled
+      ? "data-[active=true]:!bg-zinc-200 data-[active=true]:hover:!bg-zinc-200"
+      : "data-[active=true]:!bg-zinc-100",
+  );
+}
+
 // New Task shares the nav-item styling with the main links so it sits in the
 // same section with a uniform gap, instead of being a standalone CTA button.
 function NewTaskItem() {
   const pathname = usePathname();
+  const navItemClassName = useNavItemClassName();
 
   return (
     <SidebarMenuItem>
@@ -111,7 +124,7 @@ function NewTaskItem() {
         asChild
         tooltip="New Task"
         isActive={isLinkActive(pathname, "/copilot")}
-        className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5"
+        className={navItemClassName}
       >
         <Link href="/copilot">
           <NewTaskIcon />
@@ -131,6 +144,7 @@ function NavMenu({
   leading?: ReactNode;
 }) {
   const pathname = usePathname();
+  const navItemClassName = useNavItemClassName();
 
   return (
     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
@@ -141,7 +155,7 @@ function NavMenu({
             asChild
             tooltip={link.name}
             isActive={isLinkActive(pathname, link.href)}
-            className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5"
+            className={navItemClassName}
           >
             <Link href={link.href}>
               <Icon
@@ -218,6 +232,7 @@ export function AppSidebar(props: Props) {
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const mainLinks = isHireExpertsEnabled
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
@@ -245,7 +260,11 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
+      className={
+        isBrainDumpEnabled
+          ? "[&_[data-sidebar=sidebar]]:bg-[#F4F4F4]"
+          : "[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
+      }
     >
       <AppSidebarHeader />
 

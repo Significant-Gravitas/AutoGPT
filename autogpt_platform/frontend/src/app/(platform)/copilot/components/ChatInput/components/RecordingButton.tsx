@@ -11,6 +11,10 @@ interface Props {
   isStreaming: boolean;
   disabled: boolean;
   onClick: () => void;
+  // One-time highlight for the user who skipped the onboarding brain
+  // dump: AutoPilot's intro invites them to record, so the button it
+  // points at has to be findable.
+  highlight?: boolean;
 }
 
 export function RecordingButton({
@@ -19,6 +23,7 @@ export function RecordingButton({
   isStreaming,
   disabled,
   onClick,
+  highlight = false,
 }: Props) {
   return (
     <Button
@@ -34,6 +39,9 @@ export function RecordingButton({
         isRecording && "animate-pulse bg-red-500 text-white hover:bg-red-600",
         isTranscribing && "bg-zinc-100 text-zinc-400",
         isStreaming && "opacity-40",
+        highlight &&
+          !isRecording &&
+          "border-purple-300 text-purple-600 ring-4 ring-purple-100",
       )}
     >
       {isTranscribing ? (

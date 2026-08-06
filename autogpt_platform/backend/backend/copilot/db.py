@@ -583,6 +583,35 @@ async def add_chat_messages_batch(
     raise RuntimeError(f"Failed to insert messages after {max_retries} attempts")
 
 
+# WHERE fragment shared by the user-facing session list and its count so
+# the sidebar list, its pagination total, and /search/global stay
+# consistent.
+#
+# ``IS DISTINCT FROM`` (not ``<>``) is load-bearing: sessions created
+# before ``ChatSessionMetadata.kind`` existed have no ``kind`` key in
+# their metadata JSON, so ``metadata->>'kind'`` evaluates to SQL NULL
+# for them. ``NULL <> 'dream'`` is NULL → WHERE drops the row → every
+# legacy chat would vanish from the sidebar. ``IS DISTINCT FROM`` treats
+# NULL as an ordinary comparable value, so missing-key / null-metadata
+# rows stay visible and only rows with ``kind = 'dream'`` are excluded.
+#
+# Raw SQL because the Python Prisma client's ``JsonFilter`` supports only
+# whole-value ``equals`` / ``not`` — it has no ``path`` access at all.
+#
+# ``exclude_dream_sessions_sql`` is the public form for OTHER ChatSession
+# listing surfaces (e.g. the search-embedding backfill in
+# ``api/features/search/content_handlers.py``) so the predicate can't
+# drift between them; ``column`` lets aliased queries pass
+# ``cs.metadata``.
+
+
+def exclude_dream_sessions_sql(column: str = "metadata") -> str:
+    return f"({column}->>'kind' IS DISTINCT FROM 'dream')"
+
+
+_EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
+
+
 async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
@@ -593,26 +622,40 @@ async def get_user_chat_sessions(
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
+    Dream-pass sessions (``metadata.kind == "dream"``) are hidden from
+    this LIST path — they are pipeline artifacts, not user chats, until
+    the UI grows a dedicated surface for them (P6). Fetch-by-id paths
+    (:func:`get_chat_session_metadata`, :func:`get_chat_messages_paginated`)
+    intentionally still return them.
+
     ``title_contains`` is a case-insensitive substring filter used by
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
     """
-    where: ChatSessionWhereInput = {"userId": user_id}
-    if org_scope := _own_org_scope(organization_id):
-        where["AND"] = org_scope
+    params: list[Any] = [user_id]
+    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if organization_id is not None:
+        params.append(organization_id)
+        conditions.append(
+            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
+        )
     if title_contains:
-        where["title"] = {"contains": title_contains, "mode": "insensitive"}
+        params.append(f"%{_escape_like(title_contains)}%")
+        conditions.append(f'"title" ILIKE ${len(params)}')
     if expert_id:
-        where["expertId"] = expert_id
-    prisma_sessions = await PrismaChatSession.prisma().find_many(
-        where=where,
-        order=[{"isPinned": "desc"}, {"updatedAt": "desc"}],
-        take=limit,
-        skip=offset,
+        params.append(expert_id)
+        conditions.append(f'"expertId" = ${len(params)}')
+    params.extend((limit, offset))
+    query = (
+        'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
+        + " AND ".join(conditions)
+        + ' ORDER BY "isPinned" DESC, "updatedAt" DESC '
+        + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
     )
-    return [ChatSessionInfo.from_db(s) for s in prisma_sessions]
+    sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
+    return [ChatSessionInfo.from_db(s) for s in sessions]
 
 
 async def get_user_session_count(
@@ -620,13 +663,37 @@ async def get_user_session_count(
     organization_id: str | None = None,
     expert_id: str | None = None,
 ) -> int:
-    """Get the total number of chat sessions for a user."""
-    where: ChatSessionWhereInput = {"userId": user_id}
-    if org_scope := _own_org_scope(organization_id):
-        where["AND"] = org_scope
+    """Get the total number of chat sessions for a user.
+
+    Applies the same dream-session exclusion, org scoping, and expert
+    filter as :func:`get_user_chat_sessions` so pagination totals always
+    match the visible list.
+    """
+    params: list[Any] = [user_id]
+    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if organization_id is not None:
+        params.append(organization_id)
+        conditions.append(
+            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
+        )
     if expert_id:
-        where["expertId"] = expert_id
-    return await PrismaChatSession.prisma().count(where=where)
+        params.append(expert_id)
+        conditions.append(f'"expertId" = ${len(params)}')
+    rows = await db.query_raw_with_schema(
+        'SELECT COUNT(*)::int AS "count" FROM {schema_prefix}"ChatSession" WHERE '
+        + " AND ".join(conditions),
+        *params,
+    )
+    return rows[0]["count"] if rows else 0
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so ``title_contains`` matches literally.
+
+    Parity with Prisma's ``contains`` filter, which escapes them too;
+    Postgres' default LIKE escape character is the backslash.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 async def delete_chat_session(
