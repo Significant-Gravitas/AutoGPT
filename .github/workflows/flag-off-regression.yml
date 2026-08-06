@@ -1,0 +1,77 @@
+name: Flag-off regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, "**/feature/**", "**/initiative/**", "**/epic/**"]
+
+concurrency:
+  group: flag-off-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  backend-flag-off:
+    name: Backend flag-off tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: autogpt_platform/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: pip install poetry==2.2.2
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction --no-root
+      - name: Run flag-off tests
+        run: |
+          poetry run pytest backend/copilot/expert_context_test.py \
+            backend/copilot/prompt_cache_test.py \
+            -v
+
+  frontend-unit:
+    name: Frontend unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: autogpt_platform/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run unit tests
+        run: pnpm test:unit -- --reporter=verbose
+
+  flag-off-smoke:
+    name: Flag-off E2E smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: autogpt_platform/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Build and run flag-off smoke tests
+        run: |
+          NEXT_PUBLIC_PW_TEST=true pnpm build --turbo
+          pnpm exec playwright test --grep="flag-off"
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000

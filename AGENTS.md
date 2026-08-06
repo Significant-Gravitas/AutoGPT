@@ -56,6 +56,51 @@ Use conventional commit messages for all commits (e.g. `feat(backend): add API`)
 Types: - feat - fix - refactor - ci - dx (developer experience)
 Scopes: - platform - platform/library - platform/marketplace - backend - backend/executor - frontend - frontend/library - frontend/marketplace - blocks
 
+## Flag-off contract 🚩
+
+"Flag-off" means all LaunchDarkly feature flags evaluate to their safe defaults
+(`false` for booleans). This is the state that CI, local dev without a
+LaunchDarkly SDK key, and Playwright (via `NEXT_PUBLIC_PW_TEST=true`) all run
+in. Changes must preserve three invariants:
+
+1. **System prompt is byte-identical.** The SHA-256 hash of
+   `_CACHEABLE_SYSTEM_PROMPT` in `backend/copilot/service.py` is pinned in
+   `_PRE_CHANGE_PROMPT_SHA256` in `expert_context_test.py`. Changing the
+   prompt text requires a matching hash update and an explicit PR callout.
+2. **`/team` returns 404.** The TeamPage calls `notFound()` when
+   `HIRE_EXPERTS` evaluates to `false`. Confirm in E2E tests.
+3. **Session list is flat.** No flag-gated grouping, nesting, or
+   restructuring is applied when flags are off.
+
+### Running flag-off tests locally
+
+```bash
+# Backend — system-prompt hash lock + prompt cache fallback
+cd autogpt_platform/backend
+poetry run pytest backend/copilot/expert_context_test.py \
+  backend/copilot/prompt_cache_test.py -v
+
+# Frontend — flag defaults, /team 404, and unit suite
+cd autogpt_platform/frontend
+pnpm test:unit
+
+# Frontend — E2E smoke (copilot, marketplace, library)
+pnpm exec playwright test --grep="flag-off"
+```
+
+### CI enforcement
+
+The `Flag-off regression` workflow (`.github/workflows/flag-off-regression.yml`)
+runs the backend hash lock, frontend unit suite, and E2E smoke on every push and
+PR to `main` and initiative branches. It must pass before merge.
+
+### PR callout rule
+
+Any intentional change to flag-off behavior must be called out in the
+**Flag-off behavior** section of the PR description with a rationale.
+
+---
+
 ## Pull requests
 
 - Use the template in `.github/PULL_REQUEST_TEMPLATE.md`.

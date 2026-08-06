@@ -1,3 +1,17 @@
+### Flag-off behavior 🚩
+
+**Does this change intentionally alter flag-off behavior?** If yes, explain why
+and describe the expected impact on the production flag-off contract.
+
+- The system-prompt SHA-256 hash (locked in `_PRE_CHANGE_PROMPT_SHA256`) must
+  not change unless the `_CACHEABLE_SYSTEM_PROMPT` constant is intentionally
+  updated.
+- The `/team` page must continue to `notFound()` when `HIRE_EXPERTS` is off.
+- The sessions list must stay flat (no flag-gated grouping or nesting) when
+  all flags are off.
+
+---
+
 ### Why / What / How
 
 <!-- Why: Why does this PR exist? What problem does it solve, or what's broken/missing without it? -->
