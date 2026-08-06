@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PREVIEW_ACCOUNTS,
   type QueryExecutor,
   assertSafeSchemaName,
+  closePool,
   deterministicUserId,
   seedRoster,
 } from "../seed-preview-accounts.helpers";
@@ -73,6 +74,26 @@ describe("assertSafeSchemaName", () => {
     for (const bad of ['platform"; DROP TABLE x; --', "Platform", "1abc", ""]) {
       expect(() => assertSafeSchemaName(bad)).toThrow(/Unsafe schema name/);
     }
+  });
+});
+
+describe("closePool", () => {
+  it("preserves the seed result when pool shutdown fails", async () => {
+    const reportError = vi.fn();
+
+    await expect(
+      closePool(
+        {
+          async end() {
+            throw new Error("shutdown failed");
+          },
+        },
+        reportError,
+      ),
+    ).resolves.toBeUndefined();
+    expect(reportError).toHaveBeenCalledWith(
+      "Preview account seeder cleanup failed: shutdown failed",
+    );
   });
 });
 

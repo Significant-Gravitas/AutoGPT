@@ -63,6 +63,23 @@ export function assertSafeSchemaName(schema: string): string {
   return schema;
 }
 
+interface PoolCloser {
+  end(): Promise<void>;
+}
+
+/** Closes the pool without allowing cleanup to replace the seed outcome. */
+export async function closePool(
+  pool: PoolCloser,
+  reportError: (message: string) => void = console.error,
+) {
+  try {
+    await pool.end();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    reportError(`Preview account seeder cleanup failed: ${message}`);
+  }
+}
+
 interface QueryResultLike {
   rows: { id?: string }[];
   rowCount: number | null;

@@ -29,6 +29,7 @@ import { hash } from "bcryptjs";
 import { Pool } from "pg";
 import {
   assertSafeSchemaName,
+  closePool,
   seedRoster,
 } from "./seed-preview-accounts.helpers";
 
@@ -125,7 +126,7 @@ async function main() {
       client.release();
     }
   } finally {
-    await pool.end();
+    await closePool(pool);
   }
 }
 
