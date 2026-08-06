@@ -24,6 +24,8 @@ real anchor points instead of a blank page.
   org ownership and cross-org transfers
 - **Frontend**: org/team switcher in the navbar, `OrgTeamProvider`
   bootstraps context on login, zustand store persists the active org/team
+- **Branding**: org owners/admins can set the organization logo from
+  Settings → Organization (`POST /api/orgs/{org_id}/avatar`)
 - **Migration**: idempotent personal-org bootstrap
   (`create_orgs_for_existing_users`) behind a Redis lock at startup
 

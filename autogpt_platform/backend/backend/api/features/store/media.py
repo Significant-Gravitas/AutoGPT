@@ -61,8 +61,17 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
 
 
 async def upload_media(
-    user_id: str, file: fastapi.UploadFile, use_file_name: bool = False
+    user_id: str,
+    file: fastapi.UploadFile,
+    use_file_name: bool = False,
+    organization_id: str | None = None,
 ) -> str:
+    """Validate, virus-scan, and upload a media file to GCS.
+
+    When ``organization_id`` is set the file is stored under the org-scoped
+    path ``orgs/{organization_id}/...`` instead of ``users/{user_id}/...``.
+    Both IDs come from the server-side auth context, never from the client.
+    """
     # Get file content for deeper validation
     try:
         content = await file.read(1024)  # Read first 1KB for validation
@@ -167,7 +176,10 @@ async def upload_media(
 
         # Construct storage path
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
-        storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
+        if organization_id:
+            storage_path = f"orgs/{organization_id}/{media_type}/{unique_filename}"
+        else:
+            storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
 
         try:
             async with async_storage.Storage() as async_client:
