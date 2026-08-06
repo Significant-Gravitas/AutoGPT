@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.experts import experts_db
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -30,6 +31,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.api.features.orgs.db import get_user_default_team
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     get_embedding_stats,
@@ -45,6 +47,7 @@ from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
+from backend.data import bot_installs as bot_installs_db
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -129,6 +132,7 @@ from backend.data.understanding import (
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
+    get_auth_user_flag_fields,
     get_user_by_id,
     get_user_credentials,
     get_user_email_by_id,
@@ -303,6 +307,9 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
+    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
@@ -432,6 +439,9 @@ class DatabaseManager(AppService):
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
 
     # ============ Platform Linking ============ #
+    # ============ Orgs ============ #
+    get_user_default_team = _(get_user_default_team)
+
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
     resolve_server_link = _(platform_linking_db.resolve_server_link)
@@ -452,11 +462,25 @@ class DatabaseManager(AppService):
     )
     fetch_workspace_artifact = _(platform_linking_db.fetch_workspace_artifact)
 
+    # ============ Bot Installs ============ #
+    # Exposed so the Prisma-less copilot-bot bridge pod can resolve per-workspace
+    # install tokens via db_accessors.bot_installs_db().
+    get_bot_install = _(bot_installs_db.get_bot_install)
+    is_install_revoked = _(bot_installs_db.is_install_revoked)
+    upsert_bot_install = _(bot_installs_db.upsert_bot_install)
+    revoke_bot_install = _(bot_installs_db.revoke_bot_install)
+
     # ============ Bot Analytics ============ #
     record_bot_event = _(bot_analytics_db.record_bot_event)
     record_guild_joined = _(bot_analytics_db.record_guild_joined)
     mark_guild_left = _(bot_analytics_db.mark_guild_left)
     sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
+
+    # ============ Experts ============ #
+    # Exposed so the Prisma-less copilot executor can resolve expert
+    # identity/team context via db_accessors.experts_db().
+    get_expert = _(experts_db.get_expert)
+    list_experts = _(experts_db.list_experts)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -475,6 +499,8 @@ class DatabaseManager(AppService):
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
+    update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
@@ -583,6 +609,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_user_credentials = d.get_user_credentials
@@ -705,6 +732,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
+    get_user_default_team = d.get_user_default_team
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
@@ -722,11 +750,21 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
     fetch_workspace_artifact = d.fetch_workspace_artifact
 
+    # ============ Bot Installs ============ #
+    get_bot_install = d.get_bot_install
+    is_install_revoked = d.is_install_revoked
+    upsert_bot_install = d.upsert_bot_install
+    revoke_bot_install = d.revoke_bot_install
+
     # ============ Bot Analytics ============ #
     record_bot_event = d.record_bot_event
     record_guild_joined = d.record_guild_joined
     mark_guild_left = d.mark_guild_left
     sync_guild_presence = d.sync_guild_presence
+
+    # ============ Experts ============ #
+    get_expert = d.get_expert
+    list_experts = d.list_experts
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
@@ -741,6 +779,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
     update_message_content_by_sequence = d.update_message_content_by_sequence
+    update_chat_message_stamps = d.update_chat_message_stamps
+    update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
     update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration

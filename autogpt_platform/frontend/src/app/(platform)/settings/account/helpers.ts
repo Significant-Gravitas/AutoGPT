@@ -1,13 +1,12 @@
-import {
-  BellSimpleRingingIcon,
-  ChartLineUpIcon,
-  CoinsIcon,
-  RobotIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
-import type { Icon } from "@phosphor-icons/react";
-
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
+import {
+  ChartIncreaseIcon,
+  Coins01Icon,
+  Notification03Icon,
+  Robot01Icon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 export const EASE_IOS = [0.32, 0.72, 0, 1] as const;
@@ -42,7 +41,7 @@ export interface NotificationGroup {
   id: "agents" | "store" | "balance" | "summary";
   title: string;
   caption: string;
-  icon: Icon;
+  icon: IconSvgElement;
   accent: string;
   items: NotificationItem[];
 }
@@ -52,7 +51,7 @@ export const NOTIFICATION_GROUPS: NotificationGroup[] = [
     id: "agents",
     title: "Agent activity",
     caption: "Heads-up when your agents do something — or stop doing it.",
-    icon: RobotIcon,
+    icon: Robot01Icon,
     accent: "from-violet-500/15 to-violet-500/0 text-violet-700",
     items: [
       {
@@ -77,7 +76,7 @@ export const NOTIFICATION_GROUPS: NotificationGroup[] = [
     id: "store",
     title: "Marketplace",
     caption: "Updates on agents you've published to the store.",
-    icon: StorefrontIcon,
+    icon: Store01Icon,
     accent: "from-amber-400/15 to-amber-500/0 text-amber-700",
     items: [
       {
@@ -96,7 +95,7 @@ export const NOTIFICATION_GROUPS: NotificationGroup[] = [
     id: "balance",
     title: "Credits & balance",
     caption: "Stay ahead of an empty tank.",
-    icon: CoinsIcon,
+    icon: Coins01Icon,
     accent: "from-emerald-400/15 to-emerald-500/0 text-emerald-700",
     items: [
       {
@@ -115,7 +114,7 @@ export const NOTIFICATION_GROUPS: NotificationGroup[] = [
     id: "summary",
     title: "Summaries",
     caption: "Recap emails to keep tabs on your account at a glance.",
-    icon: ChartLineUpIcon,
+    icon: ChartIncreaseIcon,
     accent: "from-sky-400/15 to-sky-500/0 text-sky-700",
     items: [
       {
@@ -137,7 +136,7 @@ export const NOTIFICATION_GROUPS: NotificationGroup[] = [
   },
 ];
 
-export const NOTIFICATIONS_FALLBACK_ICON = BellSimpleRingingIcon;
+export const NOTIFICATIONS_FALLBACK_ICON = Notification03Icon;
 
 const PREFERENCE_API_KEYS: Record<NotificationKey, string> = {
   notifyOnAgentRun: "AGENT_RUN",

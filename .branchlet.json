@@ -1,14 +1,13 @@
 {
   "worktreeCopyPatterns": [
-    ".env*",
-    ".vscode/**",
+    ".env",
+    ".env.local",
+    ".env.*.local",
     ".auth/**",
-    ".claude/**",
-    "autogpt_platform/.env*",
-    "autogpt_platform/backend/.env*",
-    "autogpt_platform/frontend/.env*",
     "autogpt_platform/frontend/.auth/**",
-    "autogpt_platform/db/docker/.env*"
+    ".claude/settings.local.json",
+    ".vscode/settings.json",
+    ".vscode/tasks.json"
   ],
   "worktreeCopyIgnores": [
     "**/node_modules/**",
@@ -23,13 +22,25 @@
     "**/*.pyc",
     "**/playwright-report/**",
     "**/logs/**",
-    "**/site/**"
+    "**/site/**",
+    "**/*.worktree/**",
+    "**/.env.default",
+    "**/.env.example",
+    "**/.env.template",
+    "**/.envrc",
+    "**/.claude/settings.json",
+    "**/.claude/skills/**",
+    "**/.claude/commands/**",
+    "**/.claude/agents/**",
+    "**/.vscode/launch.json",
+    "**/.vscode/all-projects.code-workspace"
   ],
   "worktreePathTemplate": "$BASE_PATH.worktree",
   "postCreateCmd": [
+    "for d in autogpt_platform autogpt_platform/backend autogpt_platform/frontend; do if [ ! -f \"$d/.env\" ] && [ -f \"$d/.env.default\" ]; then cp \"$d/.env.default\" \"$d/.env\"; echo \"seeded $d/.env from .env.default (no local .env was available to copy)\"; fi; done",
     "cd autogpt_platform/autogpt_libs && poetry install",
     "cd autogpt_platform/backend && poetry install && poetry run prisma generate",
-    "cd autogpt_platform/frontend && pnpm install"
+    "FE='pnpm install && pnpm generate:api'; NODE_MAJOR=$(cut -d. -f1 .nvmrc 2>/dev/null); [ \"${NODE_MAJOR:-0}\" -ge 24 ] 2>/dev/null || NODE_MAJOR=24; cd autogpt_platform/frontend || exit 1; NODE_HAVE=$(node -v 2>/dev/null || echo v0); NODE_HAVE=${NODE_HAVE#v}; NODE_HAVE=${NODE_HAVE%%.*}; if [ \"${NODE_HAVE:-0}\" -ge \"$NODE_MAJOR\" ] 2>/dev/null; then sh -c \"$FE\"; elif [ -s \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" ]; then . \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" && { nvm use \"$NODE_MAJOR\" >/dev/null 2>&1 || nvm install \"$NODE_MAJOR\"; } && sh -c \"$FE\"; elif command -v mise >/dev/null 2>&1; then mise exec \"node@$NODE_MAJOR\" -- sh -c \"$FE\"; elif command -v fnm >/dev/null 2>&1; then fnm exec --using \"$NODE_MAJOR\" -- sh -c \"$FE\"; elif command -v volta >/dev/null 2>&1; then volta run --node \"$NODE_MAJOR\" sh -c \"$FE\"; else echo \"branchlet postCreate: the frontend needs Node >= $NODE_MAJOR but found $(node -v 2>/dev/null || echo 'no node on PATH'), and no nvm/mise/fnm/volta was detected. Install Node $NODE_MAJOR, then run: cd autogpt_platform/frontend && pnpm install && pnpm generate:api\" >&2; exit 1; fi"
   ],
   "terminalCommand": "code .",
   "deleteBranchWithWorktree": false

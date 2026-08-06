@@ -1,10 +1,4 @@
 "use client";
-
-import {
-  CheckCircleIcon,
-  CircleDashedIcon,
-  CircleIcon,
-} from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
 import {
@@ -12,6 +6,12 @@ import {
   getLatestTaskList,
   type TodoItem,
 } from "../../../TaskProgressBar/helpers";
+import {
+  CheckmarkCircle02Icon,
+  CircleDashedIcon,
+  CircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   sessionId: string | null;
@@ -101,9 +101,9 @@ function TaskRow({ todo }: { todo: TodoItem }) {
 function StatusIcon({ status }: { status: TodoItem["status"] }) {
   if (status === "completed") {
     return (
-      <CheckCircleIcon
+      <Icon
+        icon={CheckmarkCircle02Icon}
         size={14}
-        weight="fill"
         className="text-green-500"
         aria-label="completed"
       />
@@ -111,18 +111,18 @@ function StatusIcon({ status }: { status: TodoItem["status"] }) {
   }
   if (status === "in_progress") {
     return (
-      <CircleDashedIcon
+      <Icon
+        icon={CircleDashedIcon}
         size={14}
-        weight="bold"
         className="text-blue-500"
         aria-label="in progress"
       />
     );
   }
   return (
-    <CircleIcon
+    <Icon
+      icon={CircleIcon}
       size={14}
-      weight="regular"
       className="text-neutral-400"
       aria-label="pending"
     />
@@ -143,9 +143,9 @@ function AllTasksComplete({ total }: { total: number }) {
           animate={{ scale: [0, 1.15, 1] }}
           transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
         >
-          <CheckCircleIcon
+          <Icon
+            icon={CheckmarkCircle02Icon}
             size={32}
-            weight="fill"
             className="text-emerald-500"
           />
         </motion.div>

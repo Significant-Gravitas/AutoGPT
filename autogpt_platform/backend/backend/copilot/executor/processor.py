@@ -11,6 +11,7 @@ import os
 import subprocess
 import threading
 import time
+from typing import Callable, cast
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
@@ -189,6 +190,24 @@ async def resolve_use_sdk_for_mode(
 _tls = threading.local()
 
 
+async def _building_mode_forces_sdk(session_id: str) -> bool:
+    """True when the session's history shows it entered agent-building mode.
+
+    Building-mode sessions are pinned to the SDK engine (guide-in-prompt +
+    in-turn restart live there) regardless of the requested mode — derived
+    from message history, so it survives stale frontend mode pickers.
+    ``get_chat_session`` is Redis-cached: one cache hit, not a DB round-trip.
+    """
+    # Lazy imports: pulling these at module level drags the full tools/model
+    # chain into processor import, which reconfigures logging at import time
+    # and breaks caplog in tests.
+    from backend.copilot.model import get_chat_session
+    from backend.copilot.tools.helpers import session_entered_building_mode
+
+    session = await get_chat_session(session_id)
+    return session is not None and session_entered_building_mode(session)
+
+
 def execute_copilot_turn(
     entry: CoPilotExecutionEntry,
     cancel: threading.Event,
@@ -281,7 +300,7 @@ class CoPilotProcessor:
         )
         self._prewarm_cli(cli_path=cli_path or None)
 
-        logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
+        logger.info(f"Worker {self.tid} started")
 
     def _prewarm_cli(self, cli_path: str | None = None) -> None:
         """Run the Claude Code CLI binary once to warm OS page caches.
@@ -300,7 +319,13 @@ class CoPilotProcessor:
                     SubprocessCLITransport,
                 )
 
-                cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+                # _find_bundled_cli is an instance method that never touches
+                # self (pure __file__-based lookup) — safe to call unbound.
+                finder = cast(
+                    Callable[[object], str | None],
+                    SubprocessCLITransport._find_bundled_cli,
+                )
+                cli_path = finder(None)
             if cli_path:
                 result = subprocess.run(
                     [cli_path, "-v"],
@@ -308,15 +333,13 @@ class CoPilotProcessor:
                     timeout=10,
                 )
                 if result.returncode == 0:
-                    logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+                    logger.info(f"CLI pre-warm done: {cli_path}")
                 else:
                     logger.warning(
-                        "[CoPilotExecutor] CLI pre-warm failed (rc=%d): %s",
-                        result.returncode,  # type: ignore[reportCallIssue]
-                        cli_path,
+                        f"CLI pre-warm failed (rc={result.returncode}): {cli_path}"
                     )
         except Exception as e:
-            logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
+            logger.debug(f"CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -336,14 +359,12 @@ class CoPilotProcessor:
         except Exception as e:
             coro.close()  # Prevent "coroutine was never awaited" warning
             error_msg = str(e) or type(e).__name__
-            logger.warning(
-                f"[CoPilotExecutor] Worker {self.tid} cleanup error: {error_msg}"
-            )
+            logger.warning(f"Worker {self.tid} cleanup error: {error_msg}")
 
         # Stop the event loop
         self.execution_loop.call_soon_threadsafe(self.execution_loop.stop)
         self.execution_thread.join(timeout=5)
-        logger.info(f"[CoPilotExecutor] Worker {self.tid} cleaned up")
+        logger.info(f"Worker {self.tid} cleaned up")
 
     @error_logged(swallow=False)
     def execute(
@@ -518,6 +539,17 @@ class CoPilotProcessor:
                     config_default=config.use_claude_agent_sdk,
                     thinking_available=config.thinking_available,
                 )
+                # Building-mode sessions are pinned to the SDK engine
+                # (guide-in-prompt + in-turn restart live there). Derived
+                # from message history — survives stale frontend mode
+                # pickers. get_chat_session is Redis-cached, so this is
+                # one cache hit, not a DB round-trip.
+                if not use_sdk and config.thinking_available:
+                    if await _building_mode_forces_sdk(entry.session_id):
+                        use_sdk = True
+                        log.info(
+                            "Forcing SDK engine: session is in agent building mode"
+                        )
                 stream_fn = (
                     sdk_service.stream_chat_completion_sdk
                     if use_sdk

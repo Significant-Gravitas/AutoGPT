@@ -6,10 +6,11 @@ import React, { ButtonHTMLAttributes } from "react";
 import Link from "next/link";
 import { highlightText } from "./helpers";
 import {
-  ArrowSquareOutIcon,
-  CircleNotchIcon,
-  PlusIcon,
-} from "@phosphor-icons/react";
+  LinkSquare01Icon,
+  Loading03Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -93,7 +94,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             <span className="font-sans text-xs leading-5 text-blue-700 underline">
               Agent page
             </span>
-            <ArrowSquareOutIcon
+            <Icon
+              icon={LinkSquare01Icon}
               className="h-4 w-4 text-blue-700"
               strokeWidth={1}
             />
@@ -106,9 +108,13 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         )}
       >
         {!loading ? (
-          <PlusIcon className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+          <Icon
+            icon={PlusSignIcon}
+            className="h-5 w-5 text-zinc-50"
+            strokeWidth={2}
+          />
         ) : (
-          <CircleNotchIcon className="h-5 w-5 animate-spin" />
+          <Icon icon={Loading03Icon} className="h-5 w-5 animate-spin" />
         )}
       </div>
     </Button>

@@ -1,14 +1,6 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import {
-  CaretLeftIcon,
-  CaretRightIcon,
-  CheckCircleIcon,
-  PlusIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
-
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
 import { Select } from "../../../../atoms/Select/Select";
@@ -20,6 +12,14 @@ import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
+import {
+  AlertCircleIcon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  CheckmarkCircle02Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -82,11 +82,7 @@ export function AgentSelectStep({
           currentStep="select"
         />
         <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-rose-100 bg-rose-50 px-6 py-8 text-center">
-          <WarningCircleIcon
-            size={32}
-            weight="duotone"
-            className="text-rose-600"
-          />
+          <Icon icon={AlertCircleIcon} size={32} className="text-rose-600" />
           <Text variant="large-medium" className="text-rose-900">
             We could not load your agents
           </Text>
@@ -122,7 +118,7 @@ export function AgentSelectStep({
       {showLibraryEmpty ? (
         <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
           <div className="flex size-11 items-center justify-center rounded-full bg-white text-zinc-700 shadow-[0_1px_2px_rgba(15,15,20,0.06)]">
-            <PlusIcon size={20} weight="bold" />
+            <Icon icon={PlusSignIcon} size={20} />
           </div>
           <Text variant="large-medium" className="text-textBlack">
             No publishable agents yet
@@ -294,7 +290,7 @@ export function AgentSelectStep({
                           </div>
                           {isSelected ? (
                             <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
-                              <CheckCircleIcon size={14} weight="fill" />
+                              <Icon icon={CheckmarkCircle02Icon} size={14} />
                             </span>
                           ) : (
                             <span
@@ -381,7 +377,7 @@ function PaginationBar({
           onClick={() => onChange(page - 1)}
           className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <CaretLeftIcon size={14} weight="bold" />
+          <Icon icon={ArrowLeft01Icon} size={14} />
         </button>
         {pages.map((entry, idx) =>
           entry === "…" ? (
@@ -424,7 +420,7 @@ function PaginationBar({
           onClick={() => onChange(page + 1)}
           className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <CaretRightIcon size={14} weight="bold" />
+          <Icon icon={ArrowRight01Icon} size={14} />
         </button>
       </div>
     </div>

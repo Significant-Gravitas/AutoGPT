@@ -3,7 +3,6 @@ import { RJSFSchema } from "@rjsf/utils";
 import { uiSchema } from "../../../FlowEditor/nodes/uiSchema";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockIcon, PlayIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { useRunInputDialog } from "./useRunInputDialog";
@@ -11,6 +10,8 @@ import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog"
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 import { useEffect } from "react";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
+import { Clock01Icon, PlayIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const RunInputDialog = ({
   isOpen,
@@ -131,7 +132,10 @@ export const RunInputDialog = ({
                   data-id="run-input-manual-run-button"
                 >
                   {!isExecutingGraph && (
-                    <PlayIcon className="size-5 transition-transform group-hover:scale-110" />
+                    <Icon
+                      icon={PlayIcon}
+                      className="size-5 transition-transform group-hover:scale-110"
+                    />
                   )}
                   <span className="font-semibold">Manual Run</span>
                 </Button>
@@ -144,7 +148,10 @@ export const RunInputDialog = ({
                   onClick={() => setOpenCronSchedulerDialog(true)}
                   data-id="run-input-schedule-button"
                 >
-                  <ClockIcon className="size-5 transition-transform group-hover:scale-110" />
+                  <Icon
+                    icon={Clock01Icon}
+                    className="size-5 transition-transform group-hover:scale-110"
+                  />
                   <span className="font-semibold">Schedule Run</span>
                 </Button>
               )}

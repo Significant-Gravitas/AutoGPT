@@ -1,14 +1,14 @@
-import type { Icon } from "@phosphor-icons/react";
 import {
-  BracketsCurlyIcon,
+  BracesIcon,
   CodeIcon,
-  FileIcon,
-  FilePdfIcon,
-  FileTextIcon,
-  ImageIcon,
+  File02Icon,
+  FileEmpty02Icon,
+  Image01Icon,
+  Pdf01Icon,
   TableIcon,
-  VideoCameraIcon,
-} from "@phosphor-icons/react";
+  Video01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export type FileOrigin =
   | { kind: "session"; sessionId: string; href: string }
@@ -176,12 +176,12 @@ export function getFileTypeLabel(
 export function getFileTypeIcon(
   mimeType: string | undefined,
   fileName?: string,
-): Icon {
+): IconSvgElement {
   if (isCodeFile(fileName)) return CodeIcon;
   const mt = (mimeType ?? "").toLowerCase();
-  if (mt.startsWith("image/")) return ImageIcon;
-  if (mt.startsWith("video/")) return VideoCameraIcon;
-  if (mt.includes("pdf")) return FilePdfIcon;
+  if (mt.startsWith("image/")) return Image01Icon;
+  if (mt.startsWith("video/")) return Video01Icon;
+  if (mt.includes("pdf")) return Pdf01Icon;
   if (mt.includes("html") || mt.includes("xhtml")) return CodeIcon;
   if (
     mt.includes("csv") ||
@@ -190,9 +190,9 @@ export function getFileTypeIcon(
   ) {
     return TableIcon;
   }
-  if (mt.includes("json")) return BracketsCurlyIcon;
-  if (mt.includes("text") || mt.includes("markdown")) return FileTextIcon;
-  return FileIcon;
+  if (mt.includes("json")) return BracesIcon;
+  if (mt.includes("text") || mt.includes("markdown")) return File02Icon;
+  return FileEmpty02Icon;
 }
 
 export type PreviewKind =

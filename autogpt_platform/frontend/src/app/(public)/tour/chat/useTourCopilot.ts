@@ -4,6 +4,7 @@ import { useMountEffect } from "@/hooks/useMountEffect";
 import { useRef, useState } from "react";
 import { appendPartToLastMessage, textRevealDurationMs } from "./helpers";
 import type { TourMessage, TourScript } from "./script/types";
+import { trackTourScenarioStart } from "./tracking";
 
 type TourStatus = "ready" | "streaming";
 
@@ -144,6 +145,7 @@ export function useTourCopilot({
   // hook — each fresh mount auto-plays its first turn (pressing Enter still
   // works and just skips the wait).
   useMountEffect(() => {
+    trackTourScenarioStart(sessionId);
     scheduleAutoStart();
     return clearTimers;
   });
