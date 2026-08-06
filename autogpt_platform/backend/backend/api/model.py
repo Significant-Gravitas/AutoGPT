@@ -47,7 +47,8 @@ class CreateGraph(pydantic.BaseModel):
         default=None,
         description=(
             "Team to create the agent under. Must be a team in the caller's "
-            "org that the caller is an active member of. Omit for org-home."
+            "org that the caller is an active member of. Omit to use the "
+            "active team from the request context, falling back to org-home."
         ),
     )
 
@@ -61,7 +62,8 @@ class CreateAPIKeyRequest(pydantic.BaseModel):
         description=(
             "Restrict the key to a single team: it may only access that team's "
             "resources. Must be a team in the caller's org that the caller is an "
-            "active member of. Omit for an org-wide key."
+            "active member of. Omit to use the active team from the request "
+            "context; with no active team the key is org-wide."
         ),
     )
 
