@@ -482,10 +482,11 @@ class CodexRuntime:
             self._dynamic_tool_futures.setdefault(thread_id, set())
 
     def _unregister_dynamic_tool_handler(self, thread_id: str) -> None:
-        self._cancel_dynamic_tool_futures(thread_id)
         with self._dynamic_tool_futures_lock:
             self._dynamic_tool_handlers.pop(thread_id, None)
-            self._dynamic_tool_futures.pop(thread_id, None)
+            futures = tuple(self._dynamic_tool_futures.pop(thread_id, ()))
+        for future in futures:
+            future.cancel()
 
     def _ensure_dynamic_tool_dispatcher(self) -> None:
         loop = asyncio.get_running_loop()
@@ -509,16 +510,21 @@ class CodexRuntime:
 
             with self._dynamic_tool_futures_lock:
                 registration = self._dynamic_tool_handlers.get(call.thread_id)
-            if registration is None:
-                return _dynamic_tool_error("codex_tool_handler_unavailable")
-            handler, timeout_seconds = registration
+                futures = self._dynamic_tool_futures.get(call.thread_id)
+                if self.closed or registration is None or futures is None:
+                    return _dynamic_tool_error("codex_tool_handler_unavailable")
+                handler, timeout_seconds = registration
 
-            async def execute_handler() -> CodexDynamicToolResult:
-                return await handler(call)
+                async def execute_handler() -> CodexDynamicToolResult:
+                    return await handler(call)
 
-            future = asyncio.run_coroutine_threadsafe(execute_handler(), loop)
-            with self._dynamic_tool_futures_lock:
-                self._dynamic_tool_futures.setdefault(call.thread_id, set()).add(future)
+                coroutine = execute_handler()
+                try:
+                    future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+                except BaseException:
+                    coroutine.close()
+                    return _dynamic_tool_error("codex_tool_execution_failed")
+                futures.add(future)
             try:
                 result = future.result(timeout=timeout_seconds)
             except concurrent.futures.TimeoutError:

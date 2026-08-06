@@ -329,7 +329,7 @@ async def resolve_model_route(
 async def resolve_codex_model_route(
     mode: ModelMode,
     tier: ModelTier,
-    credential_lease: "CredentialLease | PooledCodexRuntimeLease",
+    credential_lease: CredentialLease | PooledCodexRuntimeLease,
     config: ChatConfig,
 ) -> ResolvedCodexModel:
     """Resolve a Codex model against both the catalog and the account."""

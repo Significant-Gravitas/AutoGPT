@@ -580,7 +580,7 @@ class CoPilotProcessor:
                         credential_lease = None
                     raise RuntimeError("codex_credential_not_found") from None
                 stream_fn = sdk_service.stream_chat_completion_sdk
-                effective_mode = entry.mode
+                effective_mode = await resolve_effective_mode(entry.mode, entry.user_id)
                 log.info("Using Claude SDK with Codex subscription transport")
             else:
                 if entry.llm_credential_id is not None:

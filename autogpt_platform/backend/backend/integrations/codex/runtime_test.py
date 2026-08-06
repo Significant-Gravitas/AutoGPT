@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import importlib.metadata
 import os
 import subprocess
@@ -315,6 +316,102 @@ async def test_dynamic_tool_timeout_cancels_callback_and_fails_closed(tmp_path):
 
     assert response == {
         "contentItems": [{"type": "inputText", "text": "codex_tool_execution_timeout"}],
+        "success": False,
+    }
+
+
+async def test_unregister_cancels_tool_reserved_during_dispatch(tmp_path, monkeypatch):
+    class ObservedLock:
+        def __init__(self) -> None:
+            self._lock = threading.Lock()
+            self.owner_ident: int | None = None
+            self.unregister_attempted = threading.Event()
+            self.unregister_acquired = threading.Event()
+
+        def __enter__(self):
+            is_unregister = threading.current_thread().name == "codex-unregister"
+            if is_unregister:
+                self.unregister_attempted.set()
+            self._lock.acquire()
+            self.owner_ident = threading.get_ident()
+            if is_unregister:
+                self.unregister_acquired.set()
+            return self
+
+        def __exit__(self, _exc_type, _exc_value, _traceback) -> None:
+            self.owner_ident = None
+            self._lock.release()
+
+    observed_lock = ObservedLock()
+    sync_client = SimpleNamespace(_approval_handler=None)
+    client = SimpleNamespace(_client=SimpleNamespace(_sync=sync_client))
+    scheduler_entered = threading.Event()
+    allow_scheduler_return = threading.Event()
+    scheduler_held_lock: list[bool] = []
+    future: concurrent.futures.Future[CodexDynamicToolResult] = (
+        concurrent.futures.Future()
+    )
+
+    async def execute(_call):
+        return CodexDynamicToolResult(content="unused", success=True)
+
+    def schedule(coroutine, _loop):
+        coroutine.close()
+        scheduler_held_lock.append(observed_lock.owner_ident == threading.get_ident())
+        scheduler_entered.set()
+        assert allow_scheduler_return.wait(timeout=1)
+        return future
+
+    monkeypatch.setattr(runtime_module.asyncio, "run_coroutine_threadsafe", schedule)
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(client, home)  # type: ignore[arg-type]
+        runtime._dynamic_tool_futures_lock = observed_lock  # type: ignore[assignment]
+        runtime._register_dynamic_tool_handler("thread-1", execute, timeout_seconds=1)
+        dispatch = asyncio.create_task(
+            asyncio.to_thread(
+                sync_client._approval_handler,
+                "item/tool/call",
+                {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "callId": "call-1",
+                    "tool": "find_agent",
+                    "arguments": {},
+                },
+            )
+        )
+        assert await asyncio.to_thread(scheduler_entered.wait, 1)
+
+        unregister_done = threading.Event()
+
+        def unregister() -> None:
+            runtime._unregister_dynamic_tool_handler("thread-1")
+            unregister_done.set()
+
+        unregister_thread = threading.Thread(
+            target=unregister,
+            name="codex-unregister",
+        )
+        unregister_thread.start()
+        assert await asyncio.to_thread(observed_lock.unregister_attempted.wait, 1)
+        if scheduler_held_lock == [True]:
+            assert not observed_lock.unregister_acquired.is_set()
+        else:
+            assert await asyncio.to_thread(unregister_done.wait, 1)
+
+        allow_scheduler_return.set()
+        assert await asyncio.to_thread(unregister_done.wait, 1)
+        unregister_thread.join(timeout=1)
+        assert not unregister_thread.is_alive()
+        response = await dispatch
+
+    assert scheduler_held_lock == [True]
+    assert future.cancelled()
+    assert "thread-1" not in runtime._dynamic_tool_handlers
+    assert "thread-1" not in runtime._dynamic_tool_futures
+    assert response == {
+        "contentItems": [{"type": "inputText", "text": "codex_tool_execution_failed"}],
         "success": False,
     }
 

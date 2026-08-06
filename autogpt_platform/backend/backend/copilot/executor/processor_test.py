@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.config import CopilotMode
 from backend.copilot.executor.processor import (
     CoPilotProcessor,
     resolve_effective_mode,
@@ -338,12 +339,17 @@ class TestExecuteAsyncAclose:
         assert published.aclose_called is True
 
 
-def _codex_entry(*, credential_id: str = "cred-1") -> CoPilotExecutionEntry:
+def _codex_entry(
+    *,
+    credential_id: str = "cred-1",
+    mode: CopilotMode | None = None,
+) -> CoPilotExecutionEntry:
     return CoPilotExecutionEntry(
         session_id="sess-codex",
         turn_id="turn-codex",
         user_id="user-1",
         message="hi",
+        mode=mode,
         llm_auth_provider="codex",
         llm_credential_id=credential_id,
     )
@@ -373,6 +379,7 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
     transport.acquire_runtime_lease = AsyncMock(return_value=lease)
     baseline_stream = MagicMock()
     sdk_stream = MagicMock(return_value=MagicMock())
+    resolve_mode = AsyncMock(return_value=None)
 
     with (
         patch(
@@ -393,6 +400,10 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
             sdk_stream,
         ),
         patch(
+            "backend.copilot.executor.processor.resolve_effective_mode",
+            resolve_mode,
+        ),
+        patch(
             "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
             return_value=MagicMock(),
         ),
@@ -406,7 +417,7 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
         ),
     ):
         await CoPilotProcessor()._execute_async(
-            _codex_entry(),
+            _codex_entry(mode="extended_thinking"),
             threading.Event(),
             MagicMock(),
             _make_log(),
@@ -418,7 +429,9 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
         lock_timeout_seconds=5.0,
     )
     lease.release.assert_awaited_once()
+    resolve_mode.assert_awaited_once_with("extended_thinking", "user-1")
     sdk_stream.assert_called_once()
+    assert sdk_stream.call_args.kwargs["mode"] is None
     assert sdk_stream.call_args.kwargs["credential_lease"] is lease
     assert sdk_stream.call_args.kwargs["session"].session_id == "sess-codex"
     baseline_stream.assert_not_called()
@@ -831,9 +844,9 @@ class TestExecuteSafetyNet:
 
         # The sync safety net must have fired despite the async path
         # blowing up — this is the core guarantee of the PR.
-        assert call_log == ["sync-ok"], (
-            f"expected sync_fail_close_session to run once, got {call_log!r}"
-        )
+        assert call_log == [
+            "sync-ok"
+        ], f"expected sync_fail_close_session to run once, got {call_log!r}"
 
     def test_cancel_waits_for_async_task_to_finish(self, exec_loop) -> None:
         """A cancel request must not let ``_execute`` return while the
