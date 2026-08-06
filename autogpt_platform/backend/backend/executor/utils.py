@@ -1282,6 +1282,39 @@ async def add_graph_execution(
             dry_run=dry_run,
         )
 
+        # Tenant a NEW execution at creation: several callers arrive with a
+        # falsy organization_id — legacy schedules (empty organizationId),
+        # sub-graphs inheriting an untenanted parent's ExecutionContext (see
+        # AgentExecutorBlock), or any caller that omits tenancy. Resolve the
+        # user's default org/team so create_graph_execution gets a non-null
+        # value and the ExecutionContext built below inherits it.
+        #
+        # CREATE path only — resume/requeue backfills org/team from the
+        # persisted row (the graph_exec_id branch above and the
+        # execution_context backfill below), so re-resolving here would risk
+        # re-tenanting an existing row under a different org.
+        #
+        # Only resolve when NEITHER field was supplied — never overwrite an
+        # explicit team_id. resolve_default_tenancy is best-effort: an
+        # unresolvable org or a raised lookup yields (None, None) and the row
+        # is created untenanted rather than crashing the run.
+        if not organization_id and not team_id:
+            from backend.api.features.orgs.db import resolve_default_tenancy
+
+            # add_graph_execution runs in both the API server (direct prisma)
+            # and the scheduler/executor (no prisma — DB access via the RPC
+            # client). Dispatch the resolver the same way every other DB dep in
+            # this function does, or it silently no-ops in the scheduler
+            # process — exactly where scheduled executions are created.
+            resolve = (
+                resolve_default_tenancy
+                if prisma.is_connected()
+                else get_database_manager_async_client().resolve_default_tenancy
+            )
+            default_org_id, default_team_id = await resolve(user_id)
+            if default_org_id:
+                organization_id, team_id = default_org_id, default_team_id
+
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
