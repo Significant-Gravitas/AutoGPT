@@ -7,7 +7,8 @@ import { AudioWave01Icon } from "@hugeicons/core-free-icons";
 import { motion, type MotionValue, useTransform } from "framer-motion";
 import { ORB_UI_SIZE, OrbUiOrb } from "./OrbUiOrb";
 import { OrbVariant } from "./OrbSelector";
-import { WavyOrb, type WavyOrbSettings } from "./WavyOrb";
+import { type WavyOrbSettings } from "./WavyOrb/helpers";
+import { WavyOrb } from "./WavyOrb/WavyOrb";
 
 interface Props {
   variant: OrbVariant;

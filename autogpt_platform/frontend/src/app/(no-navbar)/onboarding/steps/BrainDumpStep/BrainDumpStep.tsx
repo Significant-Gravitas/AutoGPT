@@ -16,7 +16,7 @@ import { RevealGroup, RevealItem } from "@/components/atoms/Reveal/Reveal";
 import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
 import { TypedFallback } from "./components/TypedFallback";
 import { OrbSelector, OrbVariant } from "./components/OrbSelector";
-import { DEFAULT_WAVY_ORB_SETTINGS } from "./components/WavyOrb";
+import { DEFAULT_WAVY_ORB_SETTINGS } from "./components/WavyOrb/helpers";
 import { OrbControlButton } from "./components/OrbControlButton";
 import { ringProgress } from "./helpers";
 import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";

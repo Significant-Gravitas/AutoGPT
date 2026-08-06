@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_GLASS_PARAMS } from "@/components/molecules/GlassOrb/GlassSurface";
 import { OrbFrame } from "../OrbFrame";
-import { DEFAULT_WAVY_ORB_SETTINGS } from "../WavyOrb";
+import { DEFAULT_WAVY_ORB_SETTINGS } from "../WavyOrb/helpers";
 
 const { useAudioLevelMock } = vi.hoisted(() => ({
   useAudioLevelMock: vi.fn(() => ({ get: () => 0 })),

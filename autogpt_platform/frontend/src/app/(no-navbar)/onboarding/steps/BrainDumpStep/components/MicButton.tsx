@@ -1,7 +1,7 @@
 import { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 import { OrbFrame } from "./OrbFrame";
 import { OrbVariant } from "./OrbSelector";
-import { type WavyOrbSettings } from "./WavyOrb";
+import { type WavyOrbSettings } from "./WavyOrb/helpers";
 
 export type OrbScreen = "rest" | "recording" | "processing" | "failed";
 

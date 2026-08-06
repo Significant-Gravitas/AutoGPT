@@ -1,6 +1,19 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_WAVY_ORB_SETTINGS, WavyOrb } from "../WavyOrb";
+import { DEFAULT_WAVY_ORB_SETTINGS } from "../WavyOrb/helpers";
+import { WavyOrb } from "../WavyOrb/WavyOrb";
+
+const { reducedMotion } = vi.hoisted(() => ({
+  reducedMotion: { value: false },
+}));
+
+vi.mock("framer-motion", async (importOriginal) => {
+  const original = await importOriginal<typeof import("framer-motion")>();
+  return {
+    ...original,
+    useReducedMotion: () => reducedMotion.value,
+  };
+});
 
 type ObserverCallback = (entries: Array<{ isIntersecting: boolean }>) => void;
 
@@ -35,7 +48,10 @@ function createWebGlContext() {
     bindVertexArray: vi.fn(),
     deleteVertexArray: vi.fn(),
     useProgram: vi.fn(),
-    getUniformLocation: vi.fn(() => ({}) as WebGLUniformLocation),
+    getUniformLocation: vi.fn(
+      (_program: WebGLProgram, name: string) =>
+        ({ name }) as unknown as WebGLUniformLocation,
+    ),
     viewport: vi.fn(),
     uniform2f: vi.fn(),
     uniform1f: vi.fn(),
@@ -53,6 +69,7 @@ function flushAnimationFrames(count = 1) {
 }
 
 function setReducedMotion(matches: boolean) {
+  reducedMotion.value = matches;
   vi.stubGlobal(
     "matchMedia",
     vi.fn().mockReturnValue({
@@ -134,13 +151,13 @@ describe("WavyOrb", () => {
 
     expect(screen.getByTestId("orb-wavy")).toBeDefined();
     expect(gl.createShader).toHaveBeenCalledTimes(2);
-    expect(gl.drawArrays).toHaveBeenCalled();
 
     act(() => {
       flushAnimationFrames(2);
       resizeCallbacks[0]();
       intersectionCallbacks[0]([{ isIntersecting: false }]);
     });
+    expect(gl.drawArrays).toHaveBeenCalled();
     expect(animationFrames.size).toBe(0);
 
     act(() => {
@@ -194,6 +211,23 @@ describe("WavyOrb", () => {
 
     unmount();
     expect(closeAudioContext).toHaveBeenCalled();
+  });
+
+  it("draws one static frame when reduced motion is requested", () => {
+    setReducedMotion(true);
+    const gl = createWebGlContext();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+      gl as unknown as WebGL2RenderingContext,
+    );
+
+    render(<WavyOrb audioStream={null} settings={DEFAULT_WAVY_ORB_SETTINGS} />);
+
+    expect(gl.drawArrays).toHaveBeenCalledTimes(1);
+    expect(animationFrames.size).toBe(0);
+    expect(gl.uniform1f).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "uTime" }),
+      3.2,
+    );
   });
 
   it("renders a fallback when WebGL2 is unavailable", () => {

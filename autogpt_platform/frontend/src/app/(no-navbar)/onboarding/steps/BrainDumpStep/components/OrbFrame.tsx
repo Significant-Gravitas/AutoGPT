@@ -4,7 +4,7 @@ import { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 import { OrbVariant } from "./OrbSelector";
 import { OrbVisual } from "./OrbVisual";
 import { useAudioLevel } from "./useAudioLevel";
-import { type WavyOrbSettings } from "./WavyOrb";
+import { type WavyOrbSettings } from "./WavyOrb/helpers";
 
 export const ORB_SIZE = 184;
 const STROKE = 6;
