@@ -5554,6 +5554,84 @@
         }
       }
     },
+    "/api/experts/{expert_id}/detach-preview": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Detach Preview",
+        "description": "What archiving this expert would pause — schedules and triggers —\nso the client can show a clear confirmation prompt.",
+        "operationId": "get_expert_detach_preview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertDetachPreview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/schedules/resume": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Resume Expert Schedules",
+        "description": "One-click reversal of a budget/archive pause.",
+        "operationId": "resume_expert_schedules",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/workflows": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -17043,6 +17121,33 @@
             "items": { "$ref": "#/components/schemas/ExpertWorkflowRef" },
             "type": "array",
             "title": "Workflows"
+          },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
+          },
+          "last_run_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Run Status"
+          },
+          "weekly_budget": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Weekly Budget"
+          },
+          "weekly_spend": {
+            "type": "integer",
+            "title": "Weekly Spend",
+            "default": 0
+          },
+          "schedules_paused_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Schedules Paused At"
           }
         },
         "type": "object",
@@ -17061,6 +17166,24 @@
           "workflows"
         ],
         "title": "Expert"
+      },
+      "ExpertDetachPreview": {
+        "properties": {
+          "schedule_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Schedule Names"
+          },
+          "trigger_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Trigger Names"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_names", "trigger_names"],
+        "title": "ExpertDetachPreview",
+        "description": "What archiving the expert would pause — drives the confirm dialog."
       },
       "ExpertWorkflowRef": {
         "properties": {
@@ -17084,6 +17207,14 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Cron"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
           }
         },
         "type": "object",
@@ -17534,6 +17665,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -17602,6 +17737,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -17707,6 +17846,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -17807,6 +17950,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           },
           "stats": {
             "anyOf": [
@@ -18761,6 +18908,10 @@
               { "$ref": "#/components/schemas/Webhook" },
               { "type": "null" }
             ]
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
@@ -19356,12 +19507,34 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Failed Uuids"
+          },
+          "failures": {
+            "items": { "$ref": "#/components/schemas/MemoryForgetFailure" },
+            "type": "array",
+            "title": "Failures"
           }
         },
         "type": "object",
         "required": ["message"],
         "title": "MemoryForgetConfirmResponse",
         "description": "Response after deleting specific memory edges."
+      },
+      "MemoryForgetFailure": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "code": { "$ref": "#/components/schemas/MemoryForgetFailureCode" },
+          "reason": { "type": "string", "title": "Reason" }
+        },
+        "type": "object",
+        "required": ["uuid", "code", "reason"],
+        "title": "MemoryForgetFailure",
+        "description": "One edge that could not be deleted, with an actionable reason.\n\nSurfaced so the assistant (and user) can tell *why* a delete failed —\ne.g. the edge was not found vs. the query itself errored — instead of a\nbare \"N failed\" count that gives the model nothing to act on."
+      },
+      "MemoryForgetFailureCode": {
+        "type": "string",
+        "enum": ["no_match", "query_error"],
+        "title": "MemoryForgetFailureCode",
+        "description": "Stable, machine-switchable reason a forget delete failed.\n\nThe frontend/model can branch on this code (retry vs. give up) without\nparsing the free-text ``reason``. New codes may be added over time, so\nconsumers must tolerate unknown values."
       },
       "MemoryOverview": {
         "properties": {
@@ -21845,6 +22018,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Timezone",
             "description": "User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC."
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id",
+            "description": "Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow."
           }
         },
         "type": "object",

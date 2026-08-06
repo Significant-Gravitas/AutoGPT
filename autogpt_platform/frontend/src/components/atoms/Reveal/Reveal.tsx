@@ -13,6 +13,15 @@ const ITEM: Variants = {
   },
 };
 
+const ITEM_UNBLURRED: Variants = {
+  hidden: { opacity: 0, y: 14 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] },
+  },
+};
+
 const ITEM_REDUCED: Variants = {
   hidden: { opacity: 0 },
   show: { opacity: 1, transition: { duration: 0.2 } },
@@ -36,15 +45,19 @@ export function RevealGroup({
 export function RevealItem({
   children,
   className,
+  blur = true,
 }: {
   children: ReactNode;
   className?: string;
+  blur?: boolean;
 }) {
   const prefersReducedMotion = useReducedMotion();
 
   return (
     <motion.div
-      variants={prefersReducedMotion ? ITEM_REDUCED : ITEM}
+      variants={
+        prefersReducedMotion ? ITEM_REDUCED : blur ? ITEM : ITEM_UNBLURRED
+      }
       initial="hidden"
       animate="show"
       className={className}
