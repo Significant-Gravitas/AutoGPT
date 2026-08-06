@@ -450,6 +450,7 @@ class TestRatificationHitTaskRetention:
             for record in caplog.records
         )
 
+
 # ---------------------------------------------------------------------------
 # SECRT-2378: follow-up-turn warm context refresh
 # ---------------------------------------------------------------------------
