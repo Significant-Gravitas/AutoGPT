@@ -8,8 +8,10 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import starlette.datastructures
+from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException, UploadFile
+from prisma.enums import APIKeyStatus
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.exceptions import VirusDetectedError
@@ -20,19 +22,21 @@ from backend.copilot.tools.skills import (
     SkillLimitError,
     SkillNotFoundError,
 )
+from backend.data.auth.api_key import APIKeyInfo
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
+from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import InsufficientBalanceError
 
-from .v1 import upload_file, v1_router
+from .v1 import _resolve_write_team_id, upload_file, v1_router
 
 
-def _test_ctx(user_id: str) -> RequestContext:
+def _test_ctx(user_id: str, team_id: str | None = "test-workspace") -> RequestContext:
     return RequestContext(
         user_id=user_id,
         org_id="test-org",
-        team_id="test-workspace",
+        team_id=team_id,
         is_org_owner=True,
         is_org_admin=True,
         is_org_billing_manager=False,
@@ -1050,6 +1054,503 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
     update_lib_agent_mock.assert_not_awaited()
 
 
+# ---------------------------------------------------------------------------
+# Team-picker on create/save flows (SECRT-2462)
+#
+# The frontend retired the active-team header (X-Team-Id is now always null),
+# so create/save endpoints must accept an explicit team_id in the request
+# instead of silently stamping from the header. These tests lock in the
+# resolution: an explicit, membership-validated team wins; an invalid team is
+# rejected; and omitting it preserves each surface's safe default.
+# ---------------------------------------------------------------------------
+TEAM_ID = "team-abc"
+_GRAPH_BODY = {"name": "Test Graph", "description": "Test", "nodes": [], "links": []}
+
+
+def _saved_graph_model(user_id: str) -> GraphModel:
+    return GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Test Graph",
+        description="A test graph",
+        user_id=user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
+    )
+
+
+def _mock_graph_create_pipeline(mocker: pytest_mock.MockFixture, saved: GraphModel):
+    """Stub the create pipeline so only team stamping is under test."""
+    mocker.patch(
+        "backend.api.features.v1.graph_db.make_graph_model", return_value=Mock()
+    )
+    mocker.patch(
+        "backend.api.features.v1.before_graph_activate",
+        new=AsyncMock(return_value=saved),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.v1.graph_db.create_graph",
+        new=AsyncMock(return_value=saved),
+    )
+    create_lib_agent_mock = mocker.patch(
+        "backend.api.features.v1.library_db.create_library_agent", new=AsyncMock()
+    )
+    return create_graph_mock, create_lib_agent_mock
+
+
+def test_create_new_graph_stamps_explicit_team(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A valid team_id in the body lands the agent (and its library entry)
+    under that team."""
+    create_graph_mock, create_lib_agent_mock = _mock_graph_create_pipeline(
+        mocker, _saved_graph_model(test_user_id)
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[TEAM_ID]),
+    )
+
+    response = client.post("/graphs", json={"graph": _GRAPH_BODY, "team_id": TEAM_ID})
+
+    assert response.status_code == 200
+    assert create_graph_mock.await_args.kwargs["team_id"] == TEAM_ID
+    assert create_lib_agent_mock.await_args.kwargs["team_id"] == TEAM_ID
+
+
+def test_create_new_graph_omitted_team_lands_org_home(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """No team_id -> org-home (teamId NULL), and no membership lookup happens."""
+    create_graph_mock, create_lib_agent_mock = _mock_graph_create_pipeline(
+        mocker, _saved_graph_model(test_user_id)
+    )
+    get_teams = mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[TEAM_ID]),
+    )
+
+    response = client.post("/graphs", json={"graph": _GRAPH_BODY})
+
+    assert response.status_code == 200
+    assert create_graph_mock.await_args.kwargs["team_id"] is None
+    assert create_lib_agent_mock.await_args.kwargs["team_id"] is None
+    get_teams.assert_not_awaited()
+
+
+def test_create_new_graph_rejects_non_member_team(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A team the caller isn't an active member of -> 400, nothing persisted."""
+    create_graph_mock, _ = _mock_graph_create_pipeline(
+        mocker, _saved_graph_model(test_user_id)
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[]),
+    )
+
+    response = client.post("/graphs", json={"graph": _GRAPH_BODY, "team_id": TEAM_ID})
+
+    assert response.status_code == 400
+    assert "active member" in response.json()["detail"]
+    create_graph_mock.assert_not_awaited()
+
+
+def test_create_new_graph_rejects_cross_org_team(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A team in another org never appears in the caller's team list -> 400.
+
+    get_user_team_ids only returns teams within the caller's org, so a
+    cross-org team is indistinguishable from a non-member team here — both
+    reject. We assert the org-scoped list can't be bypassed by a foreign id."""
+    create_graph_mock, _ = _mock_graph_create_pipeline(
+        mocker, _saved_graph_model(test_user_id)
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["team-in-my-org"]),
+    )
+
+    response = client.post(
+        "/graphs", json={"graph": _GRAPH_BODY, "team_id": "team-in-another-org"}
+    )
+
+    assert response.status_code == 400
+    create_graph_mock.assert_not_awaited()
+
+
+def _existing_version(
+    team_id: str | None = "team-existing", organization_id: str | None = "test-org"
+) -> Mock:
+    return Mock(
+        version=1, is_active=True, team_id=team_id, organization_id=organization_id
+    )
+
+
+def _mock_update_graph_pipeline(
+    mocker: pytest_mock.MockFixture,
+    existing: Mock,
+    saved: GraphModel,
+    new_version_active: bool = False,
+):
+    mocker.patch(
+        "backend.api.features.v1.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[existing]),
+    )
+    mocker.patch(
+        "backend.api.features.v1.graph_db.make_graph_model",
+        return_value=Mock(is_active=new_version_active),
+    )
+    if new_version_active:
+        mocker.patch(
+            "backend.api.features.v1.before_graph_activate",
+            new=AsyncMock(side_effect=lambda graph, user_id: graph),
+        )
+        mocker.patch(
+            "backend.api.features.v1.graph_db.set_graph_active_version",
+            new=AsyncMock(),
+        )
+        mocker.patch("backend.api.features.v1.on_graph_deactivate", new=AsyncMock())
+    create_graph_mock = mocker.patch(
+        "backend.api.features.v1.graph_db.create_graph",
+        new=AsyncMock(
+            return_value=Mock(
+                version=2, is_active=new_version_active, webhook_input_node=None
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.v1.graph_db.get_graph",
+        new=AsyncMock(return_value=saved),
+    )
+    return create_graph_mock
+
+
+def test_update_graph_inherits_existing_team_when_omitted(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """Regression (SECRT-2462): re-saving a team agent must keep its team, not
+    reset it to org-home now that the active-team header is always null."""
+    create_graph_mock = _mock_update_graph_pipeline(
+        mocker, _existing_version(), _saved_graph_model(test_user_id)
+    )
+
+    response = client.put("/graphs/graph-123", json={"id": "graph-123", **_GRAPH_BODY})
+
+    assert response.status_code == 200
+    assert create_graph_mock.await_args.kwargs["team_id"] == "team-existing"
+
+
+def test_update_graph_moves_to_explicit_team(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """An explicit team_id query param saves the new version into that team."""
+    create_graph_mock = _mock_update_graph_pipeline(
+        mocker, _existing_version(), _saved_graph_model(test_user_id)
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["team-new"]),
+    )
+
+    response = client.put(
+        "/graphs/graph-123?team_id=team-new",
+        json={"id": "graph-123", **_GRAPH_BODY},
+    )
+
+    assert response.status_code == 200
+    assert create_graph_mock.await_args.kwargs["team_id"] == "team-new"
+
+
+def test_update_graph_rejects_non_member_team(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """An explicit ?team_id= the caller isn't an active member of -> 400, and
+    no new version is persisted."""
+    create_graph_mock = _mock_update_graph_pipeline(
+        mocker, _existing_version(), _saved_graph_model(test_user_id)
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["some-other-team"]),
+    )
+
+    response = client.put(
+        "/graphs/graph-123?team_id=team-not-mine",
+        json={"id": "graph-123", **_GRAPH_BODY},
+    )
+
+    assert response.status_code == 400
+    assert "active member" in response.json()["detail"]
+    create_graph_mock.assert_not_awaited()
+
+
+def test_update_graph_does_not_inherit_team_from_another_org(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A version owned by a different org must not have its team id stamped
+    onto a row tagged with the request's org — fall back to org-home."""
+    create_graph_mock = _mock_update_graph_pipeline(
+        mocker,
+        _existing_version(team_id="team-in-other-org", organization_id="other-org"),
+        _saved_graph_model(test_user_id),
+    )
+
+    response = client.put("/graphs/graph-123", json={"id": "graph-123", **_GRAPH_BODY})
+
+    assert response.status_code == 200
+    assert create_graph_mock.await_args.kwargs["team_id"] is None
+
+
+def test_update_graph_syncs_library_agent_tenancy(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """Moving a version to another team must re-tag the library entry too —
+    list badges and team filters read org/team off the LibraryAgent row."""
+    create_graph_mock = _mock_update_graph_pipeline(
+        mocker,
+        _existing_version(),
+        _saved_graph_model(test_user_id),
+        new_version_active=True,
+    )
+    sync_mock = mocker.patch(
+        "backend.api.features.v1.library_db.update_library_agent_version_and_settings",
+        new=AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["team-new"]),
+    )
+
+    response = client.put(
+        "/graphs/graph-123?team_id=team-new",
+        json={"id": "graph-123", **_GRAPH_BODY},
+    )
+
+    assert response.status_code == 200
+    assert create_graph_mock.await_args.kwargs["team_id"] == "team-new"
+    assert sync_mock.await_args.kwargs["team_id"] == "team-new"
+    assert sync_mock.await_args.kwargs["organization_id"] == "test-org"
+
+
+@pytest.mark.asyncio
+async def test_resolve_write_team_id_requires_org_context() -> None:
+    """Requesting a team with no org context is a 400, not a silent stamp."""
+    assert await _resolve_write_team_id("user-1", None, None) is None
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _resolve_write_team_id("user-1", None, TEAM_ID)
+
+    assert exc_info.value.status_code == 400
+    assert "organization context" in exc_info.value.detail
+
+
+# --- Schedule create: same three-branch team resolution as graph save -------
+def _mock_schedule_create_pipeline(
+    mocker: pytest_mock.MockFixture, graph: Mock, user_id: str
+):
+    mocker.patch(
+        "backend.api.features.v1.graph_db.get_graph", new=AsyncMock(return_value=graph)
+    )
+    mocker.patch("backend.api.features.v1.complete_onboarding_step", new=AsyncMock())
+    add_schedule_mock = AsyncMock(
+        return_value=GraphExecutionJobInfo(
+            id="schedule-1",
+            name="s",
+            next_run_time="2025-09-04T13:37:00+00:00",
+            user_id=user_id,
+            graph_id="graph-123",
+            graph_version=1,
+            cron="0 0 * * *",
+            input_data={},
+        )
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_scheduler_client",
+        return_value=Mock(add_execution_schedule=add_schedule_mock),
+    )
+    return add_schedule_mock
+
+
+_SCHEDULE_BODY = {
+    "name": "s",
+    "cron": "0 0 * * *",
+    "inputs": {},
+    "timezone": "UTC",
+}
+
+
+def test_create_schedule_stamps_explicit_team(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A valid team_id in the body scopes the schedule to that team."""
+    add_schedule_mock = _mock_schedule_create_pipeline(
+        mocker, _existing_version(), test_user_id
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[TEAM_ID]),
+    )
+
+    response = client.post(
+        "/graphs/graph-123/schedules", json={**_SCHEDULE_BODY, "team_id": TEAM_ID}
+    )
+
+    assert response.status_code == 200
+    assert add_schedule_mock.await_args.kwargs["team_id"] == TEAM_ID
+
+
+def test_create_schedule_inherits_graph_team_when_omitted(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """Omitting team_id keeps the schedule with the agent it runs, instead of
+    silently dropping it to org-home."""
+    add_schedule_mock = _mock_schedule_create_pipeline(
+        mocker, _existing_version(team_id="team-existing"), test_user_id
+    )
+    get_teams = mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[TEAM_ID]),
+    )
+
+    response = client.post("/graphs/graph-123/schedules", json=_SCHEDULE_BODY)
+
+    assert response.status_code == 200
+    assert add_schedule_mock.await_args.kwargs["team_id"] == "team-existing"
+    get_teams.assert_not_awaited()
+
+
+def test_create_schedule_does_not_inherit_team_from_another_org(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A graph owned by another org must not leak its team onto a schedule
+    tagged with this request's org."""
+    add_schedule_mock = _mock_schedule_create_pipeline(
+        mocker,
+        _existing_version(team_id="team-in-other-org", organization_id="other-org"),
+        test_user_id,
+    )
+
+    response = client.post("/graphs/graph-123/schedules", json=_SCHEDULE_BODY)
+
+    assert response.status_code == 200
+    assert add_schedule_mock.await_args.kwargs["team_id"] is None
+
+
+def test_create_schedule_rejects_non_member_team(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A team the caller isn't an active member of -> 400, no schedule created."""
+    add_schedule_mock = _mock_schedule_create_pipeline(
+        mocker, _existing_version(), test_user_id
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[]),
+    )
+
+    response = client.post(
+        "/graphs/graph-123/schedules", json={**_SCHEDULE_BODY, "team_id": TEAM_ID}
+    )
+
+    assert response.status_code == 400
+    assert "active member" in response.json()["detail"]
+    add_schedule_mock.assert_not_awaited()
+
+
+def _api_key_info(user_id: str):
+    return APIKeyInfo(
+        id="key-1",
+        name="k",
+        head="agpt_xxxx",
+        tail="yyyy",
+        status=APIKeyStatus.ACTIVE,
+        scopes=[],
+        user_id=user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
+    )
+
+
+def test_create_api_key_stamps_team_restriction(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A valid team_id pins the new key to that team (teamIdRestriction)."""
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key",
+        new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[TEAM_ID]),
+    )
+
+    response = client.post(
+        "/api-keys", json={"name": "k", "permissions": [], "team_id": TEAM_ID}
+    )
+
+    assert response.status_code == 200
+    assert create_mock.await_args.kwargs["team_id_restriction"] == TEAM_ID
+
+
+def test_create_api_key_omitted_team_is_unrestricted(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """No team_id -> an org-wide (unrestricted) key, today's behavior."""
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key",
+        new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
+    )
+
+    response = client.post("/api-keys", json={"name": "k", "permissions": []})
+
+    assert response.status_code == 200
+    assert create_mock.await_args.kwargs["team_id_restriction"] is None
+
+
+def test_create_api_key_rejects_non_member_team(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Scoping a key to a team the caller isn't in -> 400, no key minted."""
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key", new=AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[]),
+    )
+
+    response = client.post(
+        "/api-keys", json={"name": "k", "permissions": [], "team_id": TEAM_ID}
+    )
+
+    assert response.status_code == 400
+    create_mock.assert_not_awaited()
+
+
+def test_create_api_key_rejects_empty_team_id(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An empty-string team_id is an invalid team, not "unset" — it must be
+    rejected rather than falling through to the request-context team."""
+    _override_ctx_team("test-team")
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key", new=AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["test-team"]),
+    )
+
+    response = client.post(
+        "/api-keys", json={"name": "k", "permissions": [], "team_id": ""}
+    )
+
+    assert response.status_code == 400
+    create_mock.assert_not_awaited()
+
+
 # Invalid request tests
 def test_invalid_json_request() -> None:
     """Test endpoint with invalid JSON"""
@@ -1598,3 +2099,85 @@ def test_upload_copilot_skill_returns_400_on_virus_detection(
     response = client.post("/skills", json={"content": _VALID_SKILL_MD})
     assert response.status_code == 400
     assert "virus scan" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# API-key create: active-team context (X-Team-Id) restriction (SECRT-2488)
+#
+# The X-Team-Id header lands the active team in ctx.team_id. create_api_key
+# must stamp that as the key's team restriction so a team-scoped key can only
+# act on that team's resources — instead of silently ignoring the header and
+# minting an org-wide key. These lock in that fallback and its validation.
+#
+# Shares the `_api_key_info` helper defined with the SECRT-2462 tests above.
+# ---------------------------------------------------------------------------
+def _override_ctx_team(team_id: str | None) -> None:
+    """Repoint get_request_context at a ctx with the given active team.
+
+    The autouse setup_app_auth fixture already installs a ctx with
+    team_id=None; this lets a single test exercise the header-set case. The
+    fixture's teardown clears the override afterwards.
+    """
+    ctx = _test_ctx("test-user-id", team_id=team_id)
+    app.dependency_overrides[get_request_context] = lambda: ctx
+
+
+def test_create_api_key_stamps_ctx_team_restriction(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """An active-team ctx (X-Team-Id) pins the new key to that team."""
+    _override_ctx_team("test-team")
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key",
+        new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["test-team"]),
+    )
+
+    response = client.post("/api-keys", json={"name": "k", "permissions": []})
+
+    assert response.status_code == 200
+    assert create_mock.await_args.kwargs["team_id_restriction"] == "test-team"
+
+
+def test_create_api_key_no_team_context_is_unrestricted(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """Org-home ctx (team_id=None) -> an org-wide key; no membership lookup."""
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key",
+        new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
+    )
+    get_teams = mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=["test-team"]),
+    )
+
+    response = client.post("/api-keys", json={"name": "k", "permissions": []})
+
+    assert response.status_code == 200
+    assert create_mock.await_args.kwargs["team_id_restriction"] is None
+    get_teams.assert_not_awaited()
+
+
+def test_create_api_key_rejects_ctx_team_user_not_member(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Defense-in-depth: a ctx team the caller isn't an active member of is
+    re-validated and rejected with 400 — no key minted."""
+    _override_ctx_team("test-team")
+    create_mock = mocker.patch(
+        "backend.api.features.v1.api_key_db.create_api_key", new=AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_team_ids",
+        new=AsyncMock(return_value=[]),
+    )
+
+    response = client.post("/api-keys", json={"name": "k", "permissions": []})
+
+    assert response.status_code == 400
+    assert "active member" in response.json()["detail"]
+    create_mock.assert_not_awaited()

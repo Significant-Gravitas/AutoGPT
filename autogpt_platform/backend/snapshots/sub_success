@@ -28,7 +28,8 @@
       "review_comments": null,
       "run_count": 50,
       "review_count": 5,
-      "review_avg_rating": 4.2
+      "review_avg_rating": 4.2,
+      "organization_id": "test-org"
     }
   ],
   "pagination": {

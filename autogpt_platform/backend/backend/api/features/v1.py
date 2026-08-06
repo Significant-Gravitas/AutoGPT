@@ -1722,6 +1722,43 @@ async def get_graph_all_versions(
     return graphs
 
 
+async def _resolve_write_team_id(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> str | None:
+    """Validate an explicitly-requested team_id for a create/save.
+
+    Returns ``team_id`` when the caller is an ACTIVE member of a team that
+    belongs to ``organization_id`` (which is what makes it stampable), and
+    ``None`` when no team was requested (org-home). Raises HTTP 400 for a
+    team the caller may not write into — a team in another org, or one the
+    caller is not an active member of. Org admins are not exempt: creating
+    into a team requires membership (join the team first).
+
+    Validation convention across the write paths: caller-supplied team ids
+    (request body / query param) always go through here, while
+    ``ctx.team_id`` arrives pre-validated by ``get_request_context`` (which
+    resolves an unusable X-Team-Id header to None) and is therefore trusted
+    directly. ``create_api_key`` is the one exception — see the comment
+    there.
+    """
+    if team_id is None:
+        return None
+    if not organization_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No organization context available for team assignment.",
+        )
+    if team_id not in await get_user_team_ids(user_id, organization_id):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid team_id: it must be a team in your organization that "
+                "you are an active member of."
+            ),
+        )
+    return team_id
+
+
 @v1_router.post(
     path="/graphs",
     summary="Create new graph",
@@ -1733,6 +1770,16 @@ async def create_new_graph(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> graph_db.GraphModel:
+    # Explicit picker choice wins; otherwise fall back to the (already
+    # validated) active-team context, which is org-home (None) unless a
+    # legacy X-Team-Id header set it.
+    if create_graph.team_id is not None:
+        team_id = await _resolve_write_team_id(
+            user_id, ctx.org_id, create_graph.team_id
+        )
+    else:
+        team_id = ctx.team_id
+
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
@@ -1747,10 +1794,10 @@ async def create_new_graph(
         graph,
         user_id=user_id,
         organization_id=ctx.org_id,
-        team_id=ctx.team_id,
+        team_id=team_id,
     )
     await library_db.create_library_agent(
-        graph, user_id, organization_id=ctx.org_id, team_id=ctx.team_id
+        graph, user_id, organization_id=ctx.org_id, team_id=team_id
     )
 
     return graph
@@ -1790,6 +1837,23 @@ async def update_graph(
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
+    # Sibling create endpoints (CreateGraph, CreateAPIKeyRequest,
+    # ScheduleCreationRequest) carry team_id in the body; this one cannot.
+    # The PUT body is the bare `Graph` payload — an existing public-API
+    # contract — so wrapping it in an envelope to add a sibling field would
+    # break every current client. The query param is the non-breaking
+    # equivalent; keep it here rather than "unifying" it.
+    team_id: Annotated[
+        Optional[str],
+        Query(
+            description=(
+                "Team to save the new version under. Must be a team in your org "
+                "that you are an active member of. Omit to use the active team "
+                "from the request context, falling back to the agent's current "
+                "team."
+            ),
+        ),
+    ] = None,
 ) -> UpdateGraphResponse:
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
@@ -1800,6 +1864,28 @@ async def update_graph(
 
     graph.version = max(g.version for g in existing_versions) + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
+
+    # Team resolution for the new version: an explicit picker choice wins,
+    # then the (already validated) active-team context, otherwise inherit the
+    # agent's existing tenant. Inheriting on omission is what keeps a team
+    # agent in its team instead of falling back to org-home when no team_id
+    # is supplied.
+    #
+    # The inherited team is only carried over when the existing version lives
+    # in the org this request is acting in: a graph saved under org A's team
+    # must not have that team id stamped onto a row tagged with org B (the
+    # user can own a graph across orgs and switch context between saves).
+    if team_id is not None:
+        resolved_team_id = await _resolve_write_team_id(user_id, ctx.org_id, team_id)
+    elif ctx.team_id is not None:
+        resolved_team_id = ctx.team_id
+    else:
+        inherited_from = current_active_version or existing_versions[0]
+        resolved_team_id = (
+            inherited_from.team_id
+            if inherited_from.organization_id == ctx.org_id
+            else None
+        )
 
     graph = graph_db.make_graph_model(graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
@@ -1816,13 +1902,19 @@ async def update_graph(
         graph,
         user_id=user_id,
         organization_id=ctx.org_id,
-        team_id=ctx.team_id,
+        team_id=resolved_team_id,
     )
 
     skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_graph_version.is_active:
+        # Re-tag the library entry with the version's tenancy: list badges and
+        # team filters read org/team off the LibraryAgent row, so a save that
+        # moves the agent to another team has to move its entry too.
         await library_db.update_library_agent_version_and_settings(
-            user_id, new_graph_version
+            user_id,
+            new_graph_version,
+            organization_id=ctx.org_id,
+            team_id=resolved_team_id,
         )
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
@@ -2436,6 +2528,15 @@ class ScheduleCreationRequest(pydantic.BaseModel):
         default=None,
         description="User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC.",
     )
+    team_id: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "Team to create the schedule under. Must be a team in the caller's "
+            "org that the caller is an active member of. Omit to use the "
+            "active team from the request context, falling back to the "
+            "scheduled agent's team."
+        ),
+    )
 
 
 @v1_router.post(
@@ -2461,6 +2562,21 @@ async def create_graph_execution_schedule(
             detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
         )
 
+    # A schedule is bound to a graph, so it inherits the graph's tenant unless
+    # the picker explicitly targets a team the caller may write into, or the
+    # request carries an active team. As in update_graph, the graph's team is
+    # only inherited when the graph lives in the org this request acts in.
+    if schedule_params.team_id is not None:
+        resolved_team_id = await _resolve_write_team_id(
+            user_id, ctx.org_id, schedule_params.team_id
+        )
+    elif ctx.team_id is not None:
+        resolved_team_id = ctx.team_id
+    else:
+        resolved_team_id = (
+            graph.team_id if graph.organization_id == ctx.org_id else None
+        )
+
     # Use timezone from request if provided, otherwise fetch from user profile
     if schedule_params.timezone:
         user_timezone = schedule_params.timezone
@@ -2478,7 +2594,7 @@ async def create_graph_execution_schedule(
         input_credentials=schedule_params.credentials,
         user_timezone=user_timezone,
         organization_id=ctx.org_id,
-        team_id=ctx.team_id,
+        team_id=resolved_team_id,
     )
 
     # Convert the next_run_time back to user timezone for display
@@ -2811,12 +2927,29 @@ async def create_api_key(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
+    # A team-scoped key may only ever act on that team's resources, so the
+    # caller must be an active member of the team they're scoping it to.
+    # Explicit request.team_id wins; otherwise fall back to the active team
+    # carried by the X-Team-Id transport (ctx.team_id). Only `None` means
+    # "not supplied" — an explicit empty string is an invalid team and must
+    # be rejected rather than silently inheriting the context team.
+    #
+    # Unlike the graph/fork/folder writes, ctx.team_id is re-validated here
+    # even though get_request_context already checked it: this mints a
+    # long-lived credential whose blast radius is the whole team, so the
+    # extra membership lookup is worth one indexed query per key created.
+    team_id_restriction = await _resolve_write_team_id(
+        user_id,
+        ctx.org_id,
+        request.team_id if request.team_id is not None else ctx.team_id,
+    )
     api_key_info, plain_text_key = await api_key_db.create_api_key(
         name=request.name,
         user_id=user_id,
         permissions=request.permissions,
         description=request.description,
         organization_id=ctx.org_id,
+        team_id_restriction=team_id_restriction,
     )
     return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
 

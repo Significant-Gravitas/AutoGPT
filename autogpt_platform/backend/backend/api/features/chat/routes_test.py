@@ -1324,6 +1324,8 @@ def _make_session_info(
     title: str | None = "Test",
     source_platform: str | None = None,
     is_pinned: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     expert_id: str | None = None,
 ):
     """Build a minimal ChatSessionInfo-like mock."""
@@ -1338,6 +1340,8 @@ def _make_session_info(
         updated_at=datetime.now(UTC),
         metadata=ChatSessionMetadata(source_platform=source_platform),
         is_pinned=is_pinned,
+        organization_id=organization_id,
+        team_id=team_id,
         expert_id=expert_id,
     )
 
@@ -1396,6 +1400,35 @@ def test_list_sessions_returns_source_platform(
 
     assert response.status_code == 200
     assert response.json()["sessions"][0]["source_platform"] == "discord"
+
+
+def test_list_sessions_includes_team_tenancy(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Session rows surface team_id/organization_id for list badges (SECRT-2488)."""
+    session = _make_session_info("sess-team", organization_id="org-1", team_id="team-7")
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([session], 1),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=["done"])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    row = response.json()["sessions"][0]
+    assert row["team_id"] == "team-7"
+    assert row["organization_id"] == "org-1"
 
 
 def test_list_sessions_returns_is_pinned(

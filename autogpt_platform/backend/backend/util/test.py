@@ -3,7 +3,7 @@ import inspect
 import logging
 import time
 import uuid
-from typing import Sequence, cast
+from typing import Awaitable, Callable, Sequence, TypeVar, cast
 
 from autogpt_libs.auth import get_user_id
 
@@ -234,3 +234,30 @@ async def execute_block_test(block: Block):
         raise ValueError(
             f"{prefix} produced output less than expected. output_index={output_index}, len(block.test_output)={len(block.test_output)}"
         )
+
+
+_T = TypeVar("_T")
+
+
+async def retry_once_on_closed_loop(call: Callable[[], Awaitable[_T]]) -> _T:
+    """Run a test's *first* DB call, retrying once on ``Event loop is closed``.
+
+    Fire-and-forget background tasks (``asyncio.create_task`` in image
+    generation, embeddings, notifications) can outlive the function-scoped
+    loop that spawned them and leave the Prisma connection pool bound to a
+    loop that has since closed. The next DB call made on the session loop
+    then fails with ``RuntimeError: Event loop is closed`` before the pool
+    re-establishes itself, so only the first call of a session-loop test
+    needs this guard — later calls reuse the healthy pool.
+
+    TODO: this is a mitigation, not a fix. The real fix is to track those
+    background tasks and await/cancel them at function-loop teardown so the
+    pool is never left bound to a dead loop; delete this helper (and its two
+    call sites) once that lands.
+    """
+    try:
+        return await call()
+    except Exception as e:
+        if "Event loop is closed" not in str(e):
+            raise
+        return await call()
