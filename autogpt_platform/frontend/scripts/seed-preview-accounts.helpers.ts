@@ -32,15 +32,16 @@ export const PREVIEW_ACCOUNTS = [
 
 /**
  * Deterministic user id for FRESH inserts: uuid-shaped truncation of
- * SHA-256(email). Databases seeded by the older SQL (which derived IDs with
- * Postgres md5(email)::uuid) are still safe to re-seed: the seeder matches
- * existing identities by email before ever deriving an id, so the
- * derivation only has to be stable, not backward-identical.
+ * SHA-256(email). These are stable login handles only; product entitlements
+ * are outside this auth seeder. Databases seeded by the older SQL (which
+ * derived IDs with Postgres md5(email)::uuid) are still safe to re-seed: the
+ * seeder matches existing identities by email before ever deriving an id, so
+ * the derivation only has to be stable, not backward-identical.
  */
 export function deterministicUserID(email: string): string {
-  // SHA-256 is used purely for deterministic id derivation from public,
-  // well-known roster emails — not for secrecy (CodeQL's weak-crypto rule
-  // doesn't apply; nothing here is a security digest).
+  // SHA-256 provides a stable mapping from public roster emails to IDs; this
+  // is not a security digest, so secrecy and password-hashing properties are
+  // irrelevant here.
   const hex = createHash("sha256").update(email).digest("hex").slice(0, 32);
   return [
     hex.slice(0, 8),
@@ -141,24 +142,27 @@ export async function seedRoster(
       );
     }
 
-    // Converge the roster contract on pre-existing rows: an identity that
+    // The roster is the source of truth: deliberately converge pre-existing
+    // rows even if a long-lived preview has drifted. An identity that
     // predates this seeder (older seed generations, or a DB cloned from a
     // template) may carry the wrong role or an unverified email, and
     // preview-admin's role='admin' is the property the roster exists to
     // guarantee. Passwords are deliberately NOT converged (see the entry
     // script's docstring).
-    await client.query(
-      `UPDATE ${identityTable}
-       SET role = $2, "emailVerified" = true, "updatedAt" = now()
-       WHERE id = $1
-         AND (role IS DISTINCT FROM $2 OR "emailVerified" IS DISTINCT FROM true)`,
-      [userID, account.role],
-    );
+    if (insertedIdentity.rowCount !== 1) {
+      await client.query(
+        `UPDATE ${identityTable}
+         SET role = $2, "emailVerified" = true, "updatedAt" = now()
+         WHERE id = $1
+           AND (role IS DISTINCT FROM $2 OR "emailVerified" IS DISTINCT FROM true)`,
+        [userID, account.role],
+      );
+    }
 
-    // Single-statement guarded insert: no SELECT-then-INSERT window, so a
-    // retried or concurrent seeding can't double-create the credential.
-    // An existing credential is never touched — rotating the password only
-    // affects databases seeded fresh.
+    // The guarded insert keeps sequential retries idempotent. Preview CD runs
+    // one seeder per branch DB; cross-process safety would require a partial
+    // credential-only unique index because OAuth allows multiple accounts for
+    // the same user/provider. Existing credentials are never overwritten.
     const insertedCredential = await client.query(
       `INSERT INTO ${accountTable}
          (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")

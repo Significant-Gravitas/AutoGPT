@@ -109,10 +109,11 @@ interface Call {
 }
 
 /**
- * Fake pg client scripted per statement kind. `existingByEmail` maps a
- * roster email to the id the SELECT-by-email returns (simulating rows that
- * pre-exist or were inserted); emails absent from the map behave as freshly
- * inserted (SELECT returns the deterministic id, INSERT reports 1 row).
+ * Fake pg client mirrors seedRoster's stable operation and table tokens.
+ * `existingByEmail` maps a roster email to the id the SELECT-by-email returns
+ * (simulating rows that pre-exist or were inserted); emails absent from the
+ * map behave as freshly inserted (SELECT returns the deterministic id, INSERT
+ * reports 1 row).
  */
 function fakeClient(behavior: {
   existingByEmail?: Record<string, string | null>;
@@ -127,7 +128,10 @@ function fakeClient(behavior: {
         const preexisting = behavior.existingByEmail?.[email] !== undefined;
         return { rows: [], rowCount: preexisting ? 0 : 1 };
       }
-      if (text.includes("SELECT id FROM")) {
+      if (
+        text.includes("SELECT id FROM") &&
+        text.includes("UserAuthIdentity")
+      ) {
         const email = params[0] as string;
         if (behavior.existingByEmail?.[email] !== undefined) {
           const id = behavior.existingByEmail[email];
@@ -135,7 +139,7 @@ function fakeClient(behavior: {
         }
         return { rows: [{ id: deterministicUserID(email) }], rowCount: 1 };
       }
-      if (text.includes("UPDATE")) {
+      if (text.includes("UPDATE") && text.includes("UserAuthIdentity")) {
         return { rows: [], rowCount: 0 };
       }
       if (text.includes("INSERT INTO") && text.includes("UserAuthAccount")) {
@@ -151,9 +155,12 @@ function fakeClient(behavior: {
 
 describe("seedRoster", () => {
   it("creates all five identities and credentials on a fresh database", async () => {
-    const { client } = fakeClient({});
+    const { client, calls } = fakeClient({});
     const result = await seedRoster(client, TABLES);
     expect(result).toEqual({ createdIdentities: 5, createdAccounts: 5 });
+    expect(calls.filter((call) => call.text.includes("UPDATE"))).toHaveLength(
+      0,
+    );
   });
 
   it("is idempotent: a second run creates nothing and never rewrites a credential", async () => {
