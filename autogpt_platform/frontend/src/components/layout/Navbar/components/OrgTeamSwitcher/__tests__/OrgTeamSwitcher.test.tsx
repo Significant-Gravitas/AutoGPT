@@ -1,7 +1,7 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { OrgTeamSwitcher } from "../OrgTeamSwitcher";
 
@@ -64,7 +64,12 @@ async function openSwitcher() {
 
 describe("OrgTeamSwitcher", () => {
   beforeEach(() => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
   });
 
   it("renders nothing before the org context has loaded", () => {
