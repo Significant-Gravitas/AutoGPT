@@ -25,9 +25,14 @@ export const createOrgSchema = z.object({
 export type CreateOrgFormValues = z.infer<typeof createOrgSchema>;
 
 export function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 50);
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 50)
+      // Truncating can cut mid-separator and leave a trailing dash, which
+      // the slug regex rejects — trim again after slicing.
+      .replace(/-+$/g, "")
+  );
 }

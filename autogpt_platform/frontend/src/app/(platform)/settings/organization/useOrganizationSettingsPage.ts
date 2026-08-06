@@ -36,8 +36,8 @@ export function useOrganizationSettingsPage() {
     isAdmin,
     isLoading:
       !isOrgContextLoaded || orgQuery.isLoading || membersQuery.isLoading,
-    isError: orgQuery.isError,
-    error: orgQuery.error,
+    isError: orgQuery.isError || membersQuery.isError,
+    error: orgQuery.error ?? membersQuery.error,
     refetchMembers: membersQuery.refetch,
     refetchOrg: orgQuery.refetch,
   };

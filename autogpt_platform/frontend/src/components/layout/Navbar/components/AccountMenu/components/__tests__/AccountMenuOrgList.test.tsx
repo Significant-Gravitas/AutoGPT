@@ -86,6 +86,19 @@ describe("AccountMenuOrgList", () => {
     expect(screen.getByText(PERSONAL_ORG.name)).toBeDefined();
     expect(screen.getByText(COMPANY_ORG.name)).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
+
+    // The checkmark alone is invisible to screen readers — the active org has
+    // to be exposed through aria-pressed as well.
+    expect(
+      screen
+        .getByRole("button", { name: new RegExp(COMPANY_ORG.name) })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: new RegExp(PERSONAL_ORG.name) })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
   it("never renders a teams section — teams are managed in org settings, not context switches", () => {

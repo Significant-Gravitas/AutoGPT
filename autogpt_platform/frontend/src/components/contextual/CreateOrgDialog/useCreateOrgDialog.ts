@@ -17,7 +17,7 @@ interface Args {
 }
 
 export function useCreateOrgDialog({ onClose }: Args) {
-  const { orgs, setOrgs, setActiveOrg } = useOrgTeamStore();
+  const { setOrgs, setActiveOrg } = useOrgTeamStore();
 
   const form = useForm<CreateOrgFormValues>({
     resolver: zodResolver(createOrgSchema),
@@ -46,15 +46,22 @@ export function useCreateOrgDialog({ onClose }: Args) {
   }
 
   async function handleSubmit(values: CreateOrgFormValues) {
-    const response = await createOrg({
-      data: {
-        name: values.name,
-        slug: values.slug,
-        description: values.description || null,
-      },
-    });
+    let response;
+    try {
+      response = await createOrg({
+        data: {
+          name: values.name,
+          slug: values.slug,
+          description: values.description || null,
+        },
+      });
+    } catch {
+      // onError already surfaced the failure toast; swallow the rejection so
+      // it doesn't escape the submit handler unhandled.
+      return;
+    }
     const org = response.data as OrgResponse;
-    setOrgs([...orgs, normalizeOrg(org)]);
+    setOrgs([...useOrgTeamStore.getState().orgs, normalizeOrg(org)]);
     setActiveOrg(org.id);
     getQueryClient().resetQueries();
     toast({ title: `Organization "${org.name}" created`, variant: "success" });
