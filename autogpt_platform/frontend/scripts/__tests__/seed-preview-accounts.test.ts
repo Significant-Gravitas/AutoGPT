@@ -5,7 +5,7 @@ import {
   type QueryExecutor,
   assertSafeSchemaName,
   closePool,
-  deterministicUserId,
+  deterministicUserID,
   seedRoster,
 } from "../seed-preview-accounts.helpers";
 
@@ -33,7 +33,7 @@ describe("preview account roster", () => {
   });
 });
 
-describe("deterministicUserId", () => {
+describe("deterministicUserID", () => {
   it("matches an independently computed sha256 truncation and the pinned literal", () => {
     const email = "preview-admin@previews.agpt.co";
     const hex = createHash("sha256").update(email).digest("hex").slice(0, 32);
@@ -44,20 +44,20 @@ describe("deterministicUserId", () => {
       hex.slice(16, 20),
       hex.slice(20, 32),
     ].join("-");
-    expect(deterministicUserId(email)).toBe(independent);
+    expect(deterministicUserID(email)).toBe(independent);
     // Pinned literal so an accidental derivation change (which would orphan
-    // ids the seeder previously inserted) fails loudly.
-    expect(deterministicUserId(email)).toBe(
+    // IDs the seeder previously inserted) fails loudly.
+    expect(deterministicUserID(email)).toBe(
       "5702fe7e-71d4-12ed-0728-436c56f6e8d1",
     );
   });
 
-  it("derives distinct, stable, uuid-shaped ids across the whole roster", () => {
-    const ids = PREVIEW_ACCOUNTS.map((a) => deterministicUserId(a.email));
-    expect(new Set(ids).size).toBe(PREVIEW_ACCOUNTS.length);
+  it("derives distinct, stable, uuid-shaped IDs across the whole roster", () => {
+    const userIDs = PREVIEW_ACCOUNTS.map((a) => deterministicUserID(a.email));
+    expect(new Set(userIDs).size).toBe(PREVIEW_ACCOUNTS.length);
     for (const [i, account] of PREVIEW_ACCOUNTS.entries()) {
-      expect(ids[i]).toBe(deterministicUserId(account.email));
-      expect(ids[i]).toMatch(
+      expect(userIDs[i]).toBe(deterministicUserID(account.email));
+      expect(userIDs[i]).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       );
     }
@@ -133,14 +133,14 @@ function fakeClient(behavior: {
           const id = behavior.existingByEmail[email];
           return { rows: id === null ? [] : [{ id }], rowCount: id ? 1 : 0 };
         }
-        return { rows: [{ id: deterministicUserId(email) }], rowCount: 1 };
+        return { rows: [{ id: deterministicUserID(email) }], rowCount: 1 };
       }
       if (text.includes("UPDATE")) {
         return { rows: [], rowCount: 0 };
       }
       if (text.includes("INSERT INTO") && text.includes("UserAuthAccount")) {
-        const userId = params[0] as string;
-        const has = behavior.existingCredentials?.has(userId) ?? false;
+        const userID = params[0] as string;
+        const has = behavior.existingCredentials?.has(userID) ?? false;
         return { rows: [], rowCount: has ? 0 : 1 };
       }
       throw new Error(`Unscripted statement: ${text.slice(0, 60)}`);
@@ -158,7 +158,7 @@ describe("seedRoster", () => {
 
   it("is idempotent: a second run creates nothing and never rewrites a credential", async () => {
     const existingByEmail = Object.fromEntries(
-      PREVIEW_ACCOUNTS.map((a) => [a.email, deterministicUserId(a.email)]),
+      PREVIEW_ACCOUNTS.map((a) => [a.email, deterministicUserID(a.email)]),
     );
     const existingCredentials = new Set(Object.values(existingByEmail));
     const { client, calls } = fakeClient({
@@ -181,9 +181,9 @@ describe("seedRoster", () => {
   });
 
   it("attaches the credential to the email-matched id when the identity pre-exists under a different id", async () => {
-    const legacyId = "6d08c936-9f91-dadf-0744-a7c3789b322c"; // old md5-derived id
+    const legacyID = "6d08c936-9f91-dadf-0744-a7c3789b322c"; // old md5-derived ID
     const { client, calls } = fakeClient({
-      existingByEmail: { "preview-admin@previews.agpt.co": legacyId },
+      existingByEmail: { "preview-admin@previews.agpt.co": legacyID },
     });
 
     await seedRoster(client, TABLES);
@@ -191,21 +191,21 @@ describe("seedRoster", () => {
     const credentialInsert = calls.find(
       (c) =>
         c.text.includes("UserAuthAccount") &&
-        (c.params[0] as string) === legacyId,
+        (c.params[0] as string) === legacyID,
     );
     expect(credentialInsert).toBeDefined();
   });
 
   it("converges role and emailVerified on the resolved identity", async () => {
-    const legacyId = "6d08c936-9f91-dadf-0744-a7c3789b322c";
+    const legacyID = "6d08c936-9f91-dadf-0744-a7c3789b322c";
     const { client, calls } = fakeClient({
-      existingByEmail: { "preview-admin@previews.agpt.co": legacyId },
+      existingByEmail: { "preview-admin@previews.agpt.co": legacyID },
     });
 
     await seedRoster(client, TABLES);
 
     const convergence = calls.find(
-      (c) => c.text.includes("UPDATE") && (c.params[0] as string) === legacyId,
+      (c) => c.text.includes("UPDATE") && (c.params[0] as string) === legacyID,
     );
     expect(convergence).toBeDefined();
     expect(convergence?.params[1]).toBe("admin");

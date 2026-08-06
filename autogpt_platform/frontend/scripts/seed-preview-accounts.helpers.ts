@@ -32,12 +32,12 @@ export const PREVIEW_ACCOUNTS = [
 
 /**
  * Deterministic user id for FRESH inserts: uuid-shaped truncation of
- * SHA-256(email). Databases seeded by the older SQL (which derived ids with
+ * SHA-256(email). Databases seeded by the older SQL (which derived IDs with
  * Postgres md5(email)::uuid) are still safe to re-seed: the seeder matches
  * existing identities by email before ever deriving an id, so the
  * derivation only has to be stable, not backward-identical.
  */
-export function deterministicUserId(email: string): string {
+export function deterministicUserID(email: string): string {
   // SHA-256 is used purely for deterministic id derivation from public,
   // well-known roster emails — not for secrecy (CodeQL's weak-crypto rule
   // doesn't apply; nothing here is a security digest).
@@ -115,7 +115,7 @@ export async function seedRoster(
        VALUES ($1, $2, $3, true, $4, now(), now())
        ON CONFLICT DO NOTHING`,
       [
-        deterministicUserId(account.email),
+        deterministicUserID(account.email),
         account.name,
         account.email,
         account.role,
@@ -133,8 +133,8 @@ export async function seedRoster(
       `SELECT id FROM ${identityTable} WHERE email = $1`,
       [account.email],
     );
-    const userId = identity.rows[0]?.id;
-    if (!userId) {
+    const userID = identity.rows[0]?.id;
+    if (!userID) {
       throw new Error(
         `Identity for ${account.email} neither existed nor could be ` +
           "created (its deterministic id is taken by a different user)",
@@ -152,7 +152,7 @@ export async function seedRoster(
        SET role = $2, "emailVerified" = true, "updatedAt" = now()
        WHERE id = $1
          AND (role IS DISTINCT FROM $2 OR "emailVerified" IS DISTINCT FROM true)`,
-      [userId, account.role],
+      [userID, account.role],
     );
 
     // Single-statement guarded insert: no SELECT-then-INSERT window, so a
@@ -167,7 +167,7 @@ export async function seedRoster(
          SELECT 1 FROM ${accountTable}
          WHERE "userId" = $1 AND "providerId" = 'credential'
        )`,
-      [userId, passwordHash],
+      [userID, passwordHash],
     );
     createdAccounts += insertedCredential.rowCount ?? 0;
   }
