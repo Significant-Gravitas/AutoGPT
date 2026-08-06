@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { XIcon } from "@phosphor-icons/react";
 import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { FilesTab } from "./components/FilesTab/FilesTab";
@@ -16,6 +15,8 @@ import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
 import { ProgressTab } from "./components/ProgressTab/ProgressTab";
 import { TabSwitcher } from "./components/TabSwitcher";
 import { useContextPanel } from "./useContextPanel";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   sessionId: string | null;
@@ -63,7 +64,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
             aria-label="Close workspace panel"
             className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
           >
-            <XIcon size={16} />
+            <Icon icon={Cancel01Icon} size={16} />
           </button>
         )}
       </div>

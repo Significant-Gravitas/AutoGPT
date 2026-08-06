@@ -4,10 +4,11 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 import NextLink, { type LinkProps } from "next/link";
 import React from "react";
 import { ButtonProps, extendedButtonVariants } from "./helpers";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function Button(props: ButtonProps) {
   const {
@@ -54,7 +55,7 @@ export function Button(props: ButtonProps) {
   const buttonContent = (
     <>
       {loading && (
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
       )}
       {!loading && leftIcon}
       {children}
@@ -105,7 +106,7 @@ export function Button(props: ButtonProps) {
           className={loadingClassName}
           aria-disabled="true"
         >
-          <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+          <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
           {children}
         </NextLink>
       );
@@ -113,7 +114,7 @@ export function Button(props: ButtonProps) {
 
     const loadingButton = (
       <button className={loadingClassName} disabled>
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
         {children}
       </button>
     );

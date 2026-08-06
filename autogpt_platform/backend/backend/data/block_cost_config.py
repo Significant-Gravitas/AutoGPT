@@ -5,10 +5,12 @@ from pydantic import BaseModel
 
 from backend.blocks._base import Block, BlockCost, BlockCostType, TokenRateDisplay
 from backend.data.block import BlockInput
+from backend.data.llm_registry.catalog import get_catalog
 from backend.data.model import APIKeyCredentials
 
 if TYPE_CHECKING:
     from backend.data.model import NodeExecutionStats
+
 from backend.blocks.ai_condition import AIConditionBlock
 from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
@@ -43,7 +45,7 @@ from backend.blocks.llm import (
     AIStructuredResponseGeneratorBlock,
     AITextGeneratorBlock,
     AITextSummarizerBlock,
-    LlmModel,
+    LLMModel,
 )
 from backend.blocks.mem0 import (
     AddMemoryBlock,
@@ -101,119 +103,32 @@ from backend.integrations.credentials_store import (
 
 # =============== Configure the cost for each LLM Model call =============== #
 
-MODEL_COST: dict[LlmModel, int] = {
-    LlmModel.O4_MINI: 2,
-    LlmModel.O3: 4,
-    LlmModel.O3_MINI: 2,
-    LlmModel.O3_PRO: 30,
-    LlmModel.O1: 16,
-    LlmModel.O1_MINI: 2,
-    # GPT-5.6 models
-    LlmModel.GPT5_6_SOL: 10,
-    LlmModel.GPT5_6_TERRA: 6,
-    LlmModel.GPT5_6_LUNA: 2,
-    # GPT-5.5 models
-    LlmModel.GPT5_5: 10,
-    LlmModel.GPT5_5_PRO: 60,
-    # GPT-5 models
-    LlmModel.GPT5_4: 6,
-    LlmModel.GPT5_4_MINI: 2,
-    LlmModel.GPT5_4_NANO: 1,
-    LlmModel.GPT5_4_PRO: 60,
-    LlmModel.GPT5_3: 5,
-    LlmModel.GPT5_3_CODEX: 5,
-    LlmModel.GPT5_2: 6,
-    LlmModel.GPT5_2_PRO: 60,
-    LlmModel.GPT5_1: 5,
-    LlmModel.GPT5_1_CODEX: 5,
-    LlmModel.GPT5: 2,
-    LlmModel.GPT5_MINI: 1,
-    LlmModel.GPT5_NANO: 1,
-    LlmModel.GPT5_PRO: 60,
-    LlmModel.GPT5_CHAT: 5,
-    LlmModel.GPT41: 2,
-    LlmModel.GPT41_MINI: 1,
-    LlmModel.GPT41_NANO: 1,
-    LlmModel.GPT4O_MINI: 1,
-    LlmModel.GPT4O: 3,
-    LlmModel.CLAUDE_4_6_OPUS: 14,
-    LlmModel.CLAUDE_4_7_OPUS: 14,
-    LlmModel.CLAUDE_4_6_SONNET: 9,
-    LlmModel.CLAUDE_4_5_HAIKU: 4,
-    LlmModel.CLAUDE_4_5_OPUS: 14,
-    LlmModel.CLAUDE_4_5_SONNET: 9,
-    LlmModel.AIML_API_LLAMA3_3_70B: 1,
-    LlmModel.LLAMA3_3_70B: 1,
-    LlmModel.LLAMA3_1_8B: 1,
-    LlmModel.OLLAMA_LLAMA3_3: 1,
-    LlmModel.OLLAMA_LLAMA3_2: 1,
-    LlmModel.OLLAMA_LLAMA3_8B: 1,
-    LlmModel.OLLAMA_LLAMA3_405B: 1,
-    LlmModel.OLLAMA_DOLPHIN: 1,
-    LlmModel.OPENAI_GPT_OSS_120B: 1,
-    LlmModel.OPENAI_GPT_OSS_20B: 1,
-    LlmModel.GEMINI_2_5_PRO: 4,
-    LlmModel.GEMINI_3_1_PRO_PREVIEW: 5,
-    LlmModel.GEMINI_3_FLASH_PREVIEW: 2,
-    LlmModel.GEMINI_2_5_FLASH: 1,
-    LlmModel.GEMINI_2_0_FLASH: 1,
-    LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: 1,
-    LlmModel.GEMINI_2_5_FLASH_LITE: 1,
-    LlmModel.GEMINI_2_0_FLASH_LITE: 1,
-    LlmModel.MISTRAL_LARGE_3: 2,
-    LlmModel.MISTRAL_MEDIUM_3_1: 2,
-    LlmModel.MISTRAL_SMALL_3_2: 1,
-    LlmModel.CODESTRAL: 1,
-    LlmModel.COHERE_COMMAND_A_03_2025: 3,
-    LlmModel.COHERE_COMMAND_A_TRANSLATE_08_2025: 3,
-    LlmModel.COHERE_COMMAND_A_REASONING_08_2025: 6,
-    LlmModel.COHERE_COMMAND_A_VISION_07_2025: 3,
-    LlmModel.DEEPSEEK_CHAT: 2,
-    LlmModel.DEEPSEEK_R1_0528: 1,
-    LlmModel.PERPLEXITY_SONAR: 1,
-    LlmModel.PERPLEXITY_SONAR_PRO: 5,
-    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: 5,
-    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
-    LlmModel.AMAZON_NOVA_LITE_V1: 1,
-    LlmModel.AMAZON_NOVA_MICRO_V1: 1,
-    LlmModel.AMAZON_NOVA_PRO_V1: 1,
-    LlmModel.MICROSOFT_PHI_4: 1,
-    LlmModel.GRYPHE_MYTHOMAX_L2_13B: 1,
-    LlmModel.META_LLAMA_4_SCOUT: 1,
-    LlmModel.META_LLAMA_4_MAVERICK: 1,
-    LlmModel.LLAMA_API_LLAMA_4_SCOUT: 1,
-    LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
-    LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
-    LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
-    LlmModel.GROK_3: 3,
-    LlmModel.GROK_4: 9,
-    LlmModel.GROK_4_FAST: 1,
-    LlmModel.GROK_4_1_FAST: 1,
-    LlmModel.GROK_4_20: 5,
-    LlmModel.GROK_4_20_MULTI_AGENT: 5,
-    LlmModel.GROK_CODE_FAST_1: 1,
-    LlmModel.KIMI_K2_5: 1,
-    LlmModel.KIMI_K2_6: 2,
-    LlmModel.KIMI_K2_THINKING: 2,
-    LlmModel.QWEN3_235B_A22B_THINKING: 1,
-    LlmModel.QWEN3_CODER: 9,
-    # Z.ai (Zhipu) models
-    LlmModel.ZAI_GLM_4_6: 1,
-    LlmModel.ZAI_GLM_4_6V: 1,
-    LlmModel.ZAI_GLM_4_7: 1,
-    LlmModel.ZAI_GLM_4_7_FLASH: 1,
-    LlmModel.ZAI_GLM_5: 2,
-    LlmModel.ZAI_GLM_5_TURBO: 4,
-    LlmModel.ZAI_GLM_5V_TURBO: 4,
-    # v0 by Vercel models
-    LlmModel.V0_1_5_MD: 1,
-    LlmModel.V0_1_5_LG: 2,
-    LlmModel.V0_1_0_MD: 1,
-}
 
-for model in LlmModel:
+def _enum_members_by_value() -> dict[str, LLMModel]:
+    return {m.value: m for m in LLMModel}
+
+
+def _model_cost_from_catalog() -> dict[LLMModel, int]:
+    """Flat credits-per-run tiers, read from the catalog — the single
+    source of truth for model pricing.
+
+    Deliberately does NOT filter on ``is_enabled``: the kill switch stops
+    a model from being SERVED to new work, but stored graphs that still
+    reference it keep executing — and an execution that happens must be
+    billed. Filtering here would make killed-model usage free."""
+    members = _enum_members_by_value()
+    costs: dict[LLMModel, int] = {}
+    for model in get_catalog().models:
+        member = members.get(model.slug)
+        if member is None or model.cost is None or model.cost.run_credits is None:
+            continue
+        costs[member] = model.cost.run_credits
+    return costs
+
+
+MODEL_COST: dict[LLMModel, int] = _model_cost_from_catalog()
+
+for model in LLMModel:
     if model not in MODEL_COST:
         raise ValueError(f"Missing MODEL_COST for model: {model}")
 
@@ -234,120 +149,31 @@ class TokenRate(BaseModel):
 
 
 # TOKEN_COST populates gradually as we migrate LLM blocks to the TOKENS
-# cost type. Entries not yet listed fall back to the flat MODEL_COST tier
-# via the RUN-based LLM_COST list. Rates below are credits/1M tokens at the
-# current credit-to-USD conversion (1 credit ≈ $0.01), with a uniform 1.5x
-# margin over the published provider price (nearest-integer rounded).
-TOKEN_COST: dict[LlmModel, TokenRate] = {
-    # Anthropic Opus current ($5/$25/$0.50/$6.25 per 1M).
-    LlmModel.CLAUDE_4_6_OPUS: TokenRate(
-        input=750, output=3750, cache_read=75, cache_creation=938
-    ),
-    LlmModel.CLAUDE_4_7_OPUS: TokenRate(
-        input=750, output=3750, cache_read=75, cache_creation=938
-    ),
-    LlmModel.CLAUDE_4_5_OPUS: TokenRate(
-        input=750, output=3750, cache_read=75, cache_creation=938
-    ),
-    # Anthropic Sonnet ($3/$15/$0.30/$3.75).
-    LlmModel.CLAUDE_4_6_SONNET: TokenRate(
-        input=450, output=2250, cache_read=45, cache_creation=563
-    ),
-    LlmModel.CLAUDE_4_5_SONNET: TokenRate(
-        input=450, output=2250, cache_read=45, cache_creation=563
-    ),
-    # Anthropic Haiku 4.5 ($1/$5/$0.10/$1.25).
-    LlmModel.CLAUDE_4_5_HAIKU: TokenRate(
-        input=150, output=750, cache_read=15, cache_creation=188
-    ),
-    # OpenAI
-    LlmModel.GPT5_6_SOL: TokenRate(input=750, output=4500),
-    LlmModel.GPT5_6_TERRA: TokenRate(input=375, output=2250),
-    LlmModel.GPT5_6_LUNA: TokenRate(input=150, output=900),
-    LlmModel.GPT5_5: TokenRate(input=750, output=4500),
-    LlmModel.GPT5_5_PRO: TokenRate(input=4500, output=27000),
-    LlmModel.GPT5_4: TokenRate(input=375, output=2250),
-    LlmModel.GPT5_4_MINI: TokenRate(input=113, output=675),
-    LlmModel.GPT5_4_NANO: TokenRate(input=30, output=188),
-    LlmModel.GPT5_4_PRO: TokenRate(input=4500, output=27000),
-    LlmModel.GPT5_3: TokenRate(input=263, output=2100),
-    LlmModel.GPT5_3_CODEX: TokenRate(input=263, output=2100),
-    LlmModel.GPT5_2: TokenRate(input=263, output=2100),
-    LlmModel.GPT5_2_PRO: TokenRate(input=3150, output=25200),
-    LlmModel.GPT5_1: TokenRate(input=188, output=1500),
-    LlmModel.GPT5_1_CODEX: TokenRate(input=188, output=1500),
-    LlmModel.GPT5: TokenRate(input=188, output=1500),
-    LlmModel.GPT5_MINI: TokenRate(input=38, output=300),
-    LlmModel.GPT5_NANO: TokenRate(input=8, output=60),
-    LlmModel.GPT5_PRO: TokenRate(input=2250, output=18000),
-    LlmModel.GPT5_CHAT: TokenRate(input=188, output=1500),
-    LlmModel.GPT4O: TokenRate(input=375, output=1500),
-    LlmModel.GPT4O_MINI: TokenRate(input=23, output=90),
-    LlmModel.GPT41: TokenRate(input=300, output=1200),
-    LlmModel.GPT41_MINI: TokenRate(input=60, output=240),
-    LlmModel.GPT41_NANO: TokenRate(input=15, output=60),
-    LlmModel.O4_MINI: TokenRate(input=165, output=660),
-    LlmModel.O3: TokenRate(input=300, output=1200),
-    LlmModel.O3_MINI: TokenRate(input=165, output=660),
-    LlmModel.O3_PRO: TokenRate(input=3000, output=12000),
-    LlmModel.O1: TokenRate(input=2250, output=9000),
-    LlmModel.O1_MINI: TokenRate(input=165, output=660),
-    # Google Gemini (uses <=200k context tier pricing).
-    LlmModel.GEMINI_2_5_PRO: TokenRate(input=188, output=1500),
-    LlmModel.GEMINI_2_5_FLASH: TokenRate(input=45, output=375),
-    LlmModel.GEMINI_2_0_FLASH: TokenRate(input=15, output=60),
-    LlmModel.GEMINI_2_0_FLASH_LITE: TokenRate(input=11, output=45),
-    LlmModel.GEMINI_2_5_FLASH_LITE: TokenRate(input=15, output=60),
-    LlmModel.GEMINI_3_1_PRO_PREVIEW: TokenRate(input=300, output=1800),
-    LlmModel.GEMINI_3_FLASH_PREVIEW: TokenRate(input=75, output=450),
-    LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: TokenRate(input=38, output=225),
-    # xAI Grok. docs.x.ai currently lists only Grok 4.20 and grok-4-1-fast;
-    # the rest (grok-3, grok-4-0709, grok-4-fast, grok-code-fast-1) were
-    # removed from the public pricing page but remain callable via the
-    # API. Rates below match their launch pricing (verified historically):
-    # grok-3 / grok-4 $3/$15, grok-4-fast / grok-4-1-fast $0.20/$0.50,
-    # grok-code-fast-1 $0.20/$1.50.
-    LlmModel.GROK_3: TokenRate(input=450, output=2250),
-    LlmModel.GROK_4: TokenRate(input=450, output=2250),
-    LlmModel.GROK_4_FAST: TokenRate(input=30, output=75),
-    LlmModel.GROK_4_1_FAST: TokenRate(input=30, output=75),
-    LlmModel.GROK_4_20: TokenRate(input=300, output=900),
-    LlmModel.GROK_CODE_FAST_1: TokenRate(input=30, output=225),
-    # DeepSeek: both `deepseek-chat` and `deepseek-reasoner` now alias to
-    # `deepseek-v4-flash` (non-thinking + thinking modes) at unified
-    # $0.14/$0.28 per 1M (Sept 2025 price unification).
-    LlmModel.DEEPSEEK_CHAT: TokenRate(input=21, output=42),
-    LlmModel.DEEPSEEK_R1_0528: TokenRate(input=21, output=42),
-    # Mistral — models route through OpenRouter (ModelMetadata provider =
-    # "open_router"). TOKEN_COST here is the safety floor when OpenRouter
-    # fails to return x-total-cost; rates below match OpenRouter's current
-    # pass-through pricing (NOT Mistral's direct /v1/chat prices, which
-    # we never call).
-    LlmModel.MISTRAL_LARGE_3: TokenRate(input=300, output=900),
-    LlmModel.MISTRAL_MEDIUM_3_1: TokenRate(input=60, output=300),
-    LlmModel.MISTRAL_SMALL_3_2: TokenRate(input=15, output=45),
-    LlmModel.CODESTRAL: TokenRate(input=45, output=135),
-    # Cohere
-    LlmModel.COHERE_COMMAND_A_03_2025: TokenRate(input=375, output=1500),
-    # Moonshot Kimi
-    # K2.5 / K2.6 aren't on Moonshot's direct pricing page today; OpenRouter
-    # passes through $0.44/$2.00 for K2.5 and $0.7448/$4.655 for K2.6.
-    LlmModel.KIMI_K2_5: TokenRate(input=66, output=300),
-    LlmModel.KIMI_K2_6: TokenRate(input=112, output=698),
-    LlmModel.KIMI_K2_THINKING: TokenRate(input=90, output=375),
-    # Perplexity Sonar
-    LlmModel.PERPLEXITY_SONAR: TokenRate(input=150, output=150),
-    LlmModel.PERPLEXITY_SONAR_PRO: TokenRate(input=450, output=2250),
-    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: TokenRate(input=300, output=1200),
-    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: TokenRate(input=300, output=1200),
-    # Groq (LLama + OpenAI OSS). Maverick not listed on Groq; using Meta rate.
-    LlmModel.LLAMA3_3_70B: TokenRate(input=89, output=119),
-    LlmModel.LLAMA3_1_8B: TokenRate(input=8, output=12),
-    LlmModel.META_LLAMA_4_SCOUT: TokenRate(input=17, output=51),
-    LlmModel.META_LLAMA_4_MAVERICK: TokenRate(input=75, output=116),
-    LlmModel.OPENAI_GPT_OSS_120B: TokenRate(input=23, output=90),
-    LlmModel.OPENAI_GPT_OSS_20B: TokenRate(input=11, output=45),
-}
+# cost type: only catalog models carrying per-1M rates get an entry; the
+# rest fall back to the flat MODEL_COST tier via the RUN-based LLM_COST
+# list. Rates live in the catalog (credits/1M tokens at the current
+# credit-to-USD conversion, 1 credit ≈ $0.01, uniform 1.5x margin over
+# the published provider price).
+def _token_cost_from_catalog() -> dict[LLMModel, TokenRate]:
+    members = _enum_members_by_value()
+    rates: dict[LLMModel, TokenRate] = {}
+    for model in get_catalog().models:
+        member = members.get(model.slug)
+        cost = model.cost
+        if member is None or cost is None:
+            continue
+        if cost.input_credits_per_1m is None or cost.output_credits_per_1m is None:
+            continue
+        rates[member] = TokenRate(
+            input=cost.input_credits_per_1m,
+            output=cost.output_credits_per_1m,
+            cache_read=cost.cache_read_credits_per_1m or 0.0,
+            cache_creation=cost.cache_creation_credits_per_1m or 0.0,
+        )
+    return rates
+
+
+TOKEN_COST: dict[LLMModel, TokenRate] = _token_cost_from_catalog()
 
 
 def compute_token_credits(
@@ -381,13 +207,13 @@ def compute_token_credits(
     return max(0, math.ceil(total / 1_000_000))
 
 
-def _lookup_llm_model(raw: "str | LlmModel | None") -> "LlmModel | None":
+def _lookup_llm_model(raw: "str | LLMModel | None") -> "LLMModel | None":
     if raw is None:
         return None
-    if isinstance(raw, LlmModel):
+    if isinstance(raw, LLMModel):
         return raw
     try:
-        return LlmModel(raw)
+        return LLMModel(raw)
     except ValueError:
         return None
 
@@ -399,7 +225,7 @@ def _lookup_llm_model(raw: "str | LlmModel | None") -> "LlmModel | None":
 _USD_PER_1M_DIVISOR = 150
 
 
-def _token_rate_display(model: LlmModel) -> TokenRateDisplay | None:
+def _token_rate_display(model: LLMModel) -> TokenRateDisplay | None:
     """Return the published per-1M-token USD `TokenRateDisplay` for `model`,
     or None if the model has no TOKEN_COST entry. cache_* fields are set
     only when the provider publishes a distinct cached-token rate (most
@@ -420,7 +246,7 @@ def _token_rate_display(model: LlmModel) -> TokenRateDisplay | None:
     )
 
 
-def _tokens_llm_cost(model: LlmModel, credentials: APIKeyCredentials) -> BlockCost:
+def _tokens_llm_cost(model: LLMModel, credentials: APIKeyCredentials) -> BlockCost:
     """Build a TOKENS BlockCost for `model` + `credentials`, attaching the
     public per-1M-token USD rates when the model has a TOKEN_COST entry.
     """
@@ -439,7 +265,7 @@ def _tokens_llm_cost(model: LlmModel, credentials: APIKeyCredentials) -> BlockCo
     )
 
 
-def _groq_llm_cost(model: LlmModel) -> BlockCost:
+def _groq_llm_cost(model: LLMModel) -> BlockCost:
     """Groq variant of `_tokens_llm_cost` — keeps the legacy id-only
     cost_filter shape so older graphs that stored just the credential id
     continue to match.
@@ -455,7 +281,7 @@ def _groq_llm_cost(model: LlmModel) -> BlockCost:
     )
 
 
-def _open_router_llm_cost(model: LlmModel) -> BlockCost:
+def _open_router_llm_cost(model: LLMModel) -> BlockCost:
     """OpenRouter variant — bills via COST_USD against x-total-cost, but
     still exposes the same per-1M-token USD rates so the builder UI shows
     the "$X in / $Y out per 1M tokens" pair instead of "Pay-as-you-go".
@@ -1340,7 +1166,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
 def _validate_codex_costs() -> None:
     """Keep Codex pricing exhaustive.
 
-    ``LlmModel`` has module-load completeness guards; ``CodexModel`` does not, so
+    ``LLMModel`` has module-load completeness guards; ``CodexModel`` does not, so
     a Codex model added without a matching ``BlockCost`` would silently bill as
     free.
     """

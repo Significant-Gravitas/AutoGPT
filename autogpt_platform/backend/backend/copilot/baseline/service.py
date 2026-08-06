@@ -42,7 +42,7 @@ from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
-from backend.copilot.config import CopilotLlmModel, CopilotMode
+from backend.copilot.config import CopilotLLMModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
@@ -53,12 +53,13 @@ from backend.copilot.local_context_probe import (
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
+    RoutingSource,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
 )
 from backend.copilot.model_normalize import normalize_model_for_transport
-from backend.copilot.model_router import resolve_model
+from backend.copilot.model_router import ResolvedModel, resolve_model_route
 from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
@@ -404,16 +405,17 @@ def _filter_tools_by_permissions(
 
 
 async def _resolve_baseline_model(
-    tier: CopilotLlmModel | None, user_id: str | None
-) -> str:
+    tier: CopilotLLMModel | None, user_id: str | None
+) -> ResolvedModel:
     """Pick the model for the baseline path based on the per-request tier.
 
-    Delegates to :func:`copilot.model_router.resolve_model` so the
-    ``(fast, tier)`` cell is LD-overridable per user.  ``None`` tier
-    maps to ``"standard"``.
+    Delegates to :func:`copilot.model_router.resolve_model_route` so the
+    ``(fast, tier)`` cell resolves LD → registry cell → env.  ``None`` tier
+    maps to ``"standard"``.  The routing source rides along so persisted
+    assistant messages can be stamped for product-intelligence segmentation.
     """
     tier_name = "advanced" if tier == "advanced" else "standard"
-    return await resolve_model("fast", tier_name, user_id, config=config)
+    return await resolve_model_route("fast", tier_name, user_id, config=config)
 
 
 @dataclass
@@ -425,6 +427,11 @@ class _BaselineStreamState:
     """
 
     model: str = ""
+    # Which routing layer picked ``model`` — stamped onto persisted assistant
+    # messages for product-intelligence segmentation. The baseline path only
+    # ever produces "ld" | "catalog" | "env" ("fallback" is SDK-only, marking
+    # a CLI 529-overload swap); typed as the shared RoutingSource superset.
+    routing_source: RoutingSource = "env"
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
@@ -1236,6 +1243,8 @@ def _baseline_conversation_updater(
     if state is not None and tool_results:
         assistant_msg = ChatMessage(
             role="assistant",
+            model=state.model,
+            routing_source=state.routing_source,
             content=response.response_text or "",
             tool_calls=[
                 {
@@ -1560,7 +1569,7 @@ async def stream_chat_completion_baseline(
     permissions: "CopilotPermissions | None" = None,
     context: dict[str, str] | None = None,
     mode: CopilotMode | None = None,
-    model: CopilotLlmModel | None = None,
+    model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -1643,7 +1652,9 @@ async def stream_chat_completion_baseline(
     # would be rejected by the direct client.  Pass the baseline-side
     # ``config`` so monkeypatch fixtures targeting this module's
     # ``config`` symbol drive the decision.
-    resolved_model = await _resolve_baseline_model(model, user_id)
+    resolved_route = await _resolve_baseline_model(model, user_id)
+    resolved_model = resolved_route.model
+    routing_source = resolved_route.source
     try:
         active_model = normalize_model_for_transport(resolved_model, config)
     except ValueError as exc:
@@ -1664,6 +1675,7 @@ async def stream_chat_completion_baseline(
             active_model = normalize_model_for_transport(tier_default, config)
         except ValueError:
             raise exc
+        routing_source = "env"
         logger.warning(
             "[Baseline] [%s] LD model %r rejected for tier=%s (%s); falling "
             "back to tier default %s",
@@ -2068,7 +2080,7 @@ async def stream_chat_completion_baseline(
         logger.warning("[Baseline] Langfuse trace context setup failed")
 
     _stream_error = False  # Track whether an error occurred during streaming
-    state = _BaselineStreamState(model=active_model)
+    state = _BaselineStreamState(model=active_model, routing_source=routing_source)
 
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
@@ -2220,7 +2232,12 @@ async def stream_chat_completion_baseline(
                     current_session = _session_holder[0]
                     if text_only_text.strip():
                         current_session.messages.append(
-                            ChatMessage(role="assistant", content=text_only_text)
+                            ChatMessage(
+                                role="assistant",
+                                content=text_only_text,
+                                model=state.model,
+                                routing_source=state.routing_source,
+                            )
                         )
                     for _buffered in state.session_messages:
                         current_session.messages.append(_buffered)
@@ -2490,7 +2507,14 @@ async def stream_chat_completion_baseline(
             if final_text.startswith(recorded):
                 final_text = final_text[len(recorded) :]
         if final_text.strip():
-            session.messages.append(ChatMessage(role="assistant", content=final_text))
+            session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=final_text,
+                    model=state.model,
+                    routing_source=state.routing_source,
+                )
+            )
         try:
             await upsert_chat_session(session)
         except Exception as persist_err:

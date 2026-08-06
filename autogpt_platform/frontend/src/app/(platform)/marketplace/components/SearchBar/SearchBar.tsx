@@ -1,7 +1,7 @@
 "use client";
-
-import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useSearchbar } from "./useSearchBar";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface SearchBarProps {
   placeholder?: string;
@@ -22,7 +22,8 @@ export function SearchBar({
       data-testid="store-search-bar"
       className={`${width} ${height} flex items-center gap-3 rounded-full border border-zinc-200 bg-white px-4 shadow-none focus-within:border-zinc-400 focus-within:ring-1 focus-within:ring-zinc-400 focus-within:ring-offset-0`}
     >
-      <MagnifyingGlass
+      <Icon
+        icon={Search01Icon}
         size={20}
         className="text-zinc-400 md:h-6 md:w-6"
         aria-hidden="true"

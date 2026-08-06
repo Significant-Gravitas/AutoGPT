@@ -28,6 +28,11 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.dream.scheduling import (
+    COMMUNITY_REBUILD_REGISTRATION_PREFIX,
+    NIGHTLY_BATCH_REGISTRATION_PREFIX,
+    clear_registration_marker,
+)
 from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
@@ -50,12 +55,14 @@ from backend.util.clients import (
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    ExpertRunPausedError,
     GraphNotFoundError,
     GraphNotInLibraryError,
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
 )
+from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -65,7 +72,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
 )
-from backend.util.settings import Config
+from backend.util.settings import AppEnvironment, Config
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -101,6 +108,29 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 # legitimately take >5 min. Match the dream lock's 30 min TTL so the
 # future resolves before the lock expires under the dream pass.
 SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
+
+
+def _init_launchdarkly_for_scheduler() -> None:
+    """Eagerly initialize LaunchDarkly unless running LOCAL.
+
+    Mirrors ``rest_api.py``'s ``launch_darkly_context``: the @expose flag
+    gates (e.g. ``add_nightly_batch_schedule``'s ``DREAM_PASS_ENABLED``
+    check) fail closed, so evaluating them against a lazily-initialized LD
+    client right after a pod restart would silently skip registrations
+    until the first lazy init completed. Skipped LOCAL, where LD is
+    unconfigured and flags resolve to their mock defaults.
+    """
+    if config.app_env != AppEnvironment.LOCAL:
+        initialize_launchdarkly()
+
+
+def _shutdown_launchdarkly_for_scheduler() -> None:
+    """Reverse of ``_init_launchdarkly_for_scheduler`` — only tears down the
+    LD client when it was actually initialized (non-LOCAL)."""
+    if config.app_env != AppEnvironment.LOCAL:
+        shutdown_launchdarkly()
+
+
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
@@ -176,6 +206,7 @@ async def _execute_graph(**kwargs):
             graph_credentials_inputs=args.input_credentials,
             organization_id=args.organization_id,
             team_id=args.team_id,
+            expert_id=args.expert_id,
         )
         await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
@@ -194,6 +225,10 @@ async def _execute_graph(**kwargs):
         await _handle_graph_not_available(e, args, start_time)
     except GraphValidationError:
         await _handle_graph_validation_error(args)
+    except ExpertRunPausedError as e:
+        # Expected while an expert is paused (budget/archive): skip quietly;
+        # the schedule stays registered for one-click resume.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -909,6 +944,27 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
             )
         return
 
+    error = result.get("error")
+    if error:
+        # ``rebuild_communities_for_user`` never raises — failures land
+        # in ``result['error']``. Same contract as the dream/nightly
+        # wrappers above: an errored rebuild must surface as errored,
+        # otherwise the Memory Visualizer toasts success on a rebuild
+        # that deleted every :Community node and then crashed.
+        try:
+            run_async(
+                mark_errored(kind="rebuild", job_id=job_id, error=error),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to mark community rebuild %s errored for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
     try:
         run_async(
             mark_complete(kind="rebuild", job_id=job_id, result=result),
@@ -918,6 +974,24 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
         logger.warning(
             "Failed to mark community rebuild %s complete for user %s",
             job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
+    """Bridge ``clear_registration_marker`` onto the scheduler's event loop.
+
+    Best-effort: a failed clear only delays lazy re-registration until
+    the marker's 7-day TTL expires, so it must never break the delete
+    RPC that called it.
+    """
+    try:
+        run_async(clear_registration_marker(user_id, key_prefix), timeout=10)
+    except Exception:
+        logger.warning(
+            "Failed to clear registration marker %s for user %s",
+            key_prefix,
             user_id[:12],
             exc_info=True,
         )
@@ -1100,6 +1174,11 @@ class GraphExecutionJobArgs(BaseModel):
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
     organization_id: str = ""
     team_id: str | None = None
+    # Expert attribution: set when the schedule belongs to a hired expert
+    # (install-time schedule or manual schedule of an expert-installed
+    # workflow). Stamped onto every execution this schedule fires. Optional
+    # for backward compat with rows persisted before expert attribution.
+    expert_id: str | None = None
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -1345,6 +1424,11 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
+        # Eagerly initialize LaunchDarkly before any @expose flag gate can
+        # run (see the helper for why lazy init would skip registrations
+        # after a pod restart).
+        _init_launchdarkly_for_scheduler()
+
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -1567,6 +1651,10 @@ class Scheduler(AppService):
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
 
+        # Reverse order of run_service: LD was initialized before the
+        # scheduler started, so close it after all jobs have drained.
+        _shutdown_launchdarkly_for_scheduler()
+
         super().cleanup()
 
     def _persist_schedule(
@@ -1613,6 +1701,7 @@ class Scheduler(AppService):
         user_timezone: str | None = None,
         organization_id: Optional[str] = None,
         team_id: Optional[str] = None,
+        expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -1638,6 +1727,7 @@ class Scheduler(AppService):
             input_credentials=input_credentials,
             organization_id=organization_id or "",
             team_id=team_id,
+            expert_id=expert_id,
         )
         job = self._persist_schedule(
             dispatch_func=execute_graph,
@@ -1985,6 +2075,7 @@ class Scheduler(AppService):
         if not job:
             return False
         job.remove()
+        _clear_dream_registration_marker(user_id, COMMUNITY_REBUILD_REGISTRATION_PREFIX)
         logger.info("Removed community rebuild job for user %s", user_id[:12])
         return True
 
@@ -2091,6 +2182,7 @@ class Scheduler(AppService):
         if not job:
             return False
         job.remove()
+        _clear_dream_registration_marker(user_id, NIGHTLY_BATCH_REGISTRATION_PREFIX)
         logger.info("Removed nightly batch job for user %s", user_id[:12])
         return True
 

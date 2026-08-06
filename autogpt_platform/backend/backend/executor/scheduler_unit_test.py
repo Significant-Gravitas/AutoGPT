@@ -23,6 +23,7 @@ from backend.executor.scheduler import (
     _build_trigger,
     _cleanup_old_schedules_without_id,
     _execute_copilot_turn,
+    _execute_graph,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
@@ -469,6 +470,50 @@ def test_graph_args_defaults_kind_to_graph():
         input_credentials={},
     )
     assert args.kind == "graph"
+
+
+def test_graph_args_expert_id_defaults_to_none():
+    """Legacy persisted job kwargs predate expert attribution; they must
+    deserialize with ``expert_id=None``."""
+    args = GraphExecutionJobArgs(
+        user_id="u",
+        graph_id="g",
+        graph_version=1,
+        cron="* * * * *",
+        input_data={},
+        input_credentials={},
+    )
+    assert args.expert_id is None
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_forwards_expert_id():
+    """An expert-attributed schedule must stamp its expert_id onto the
+    execution it creates, so any surface can answer "who ran this"."""
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+        expert_id="expert-1",
+    )
+    mock_add = AsyncMock(return_value=MagicMock(id="exec-1"))
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
 
 
 def test_copilot_turn_args_cap_retry_count_defaults_to_zero():

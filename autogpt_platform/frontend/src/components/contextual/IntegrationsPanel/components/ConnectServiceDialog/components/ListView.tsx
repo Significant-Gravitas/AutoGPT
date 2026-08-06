@@ -1,13 +1,12 @@
 "use client";
-
-import { MagnifyingGlassIcon, PlugIcon } from "@phosphor-icons/react";
-
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import type { ConnectableProvider } from "../helpers";
 import { ProviderRow } from "./ProviderRow";
+import { Plug01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   query: string;
@@ -24,7 +23,8 @@ export function ListView({ query, setQuery, providers, onSelect }: Props) {
       </Text>
 
       <div className="relative w-full">
-        <MagnifyingGlassIcon
+        <Icon
+          icon={Search01Icon}
           size={20}
           className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#83838C]"
         />
@@ -40,7 +40,7 @@ export function ListView({ query, setQuery, providers, onSelect }: Props) {
 
       {providers.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-10 text-center">
-          <PlugIcon size={24} className="text-[#83838C]" />
+          <Icon icon={Plug01Icon} size={24} className="text-[#83838C]" />
           <Text variant="body" className="text-[#505057]">
             {query.trim()
               ? `No services match "${query.trim()}"`
