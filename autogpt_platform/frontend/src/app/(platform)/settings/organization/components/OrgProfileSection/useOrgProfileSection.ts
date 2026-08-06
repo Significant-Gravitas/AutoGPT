@@ -39,7 +39,7 @@ interface Args {
 }
 
 export function useOrgProfileSection({ org, onSaved }: Args) {
-  const { orgs, setOrgs } = useOrgTeamStore();
+  const { setOrgs } = useOrgTeamStore();
 
   const form = useForm<OrgProfileFormValues>({
     resolver: zodResolver(orgProfileSchema),
@@ -65,25 +65,36 @@ export function useOrgProfileSection({ org, onSaved }: Args) {
   });
 
   async function handleSubmit(values: OrgProfileFormValues) {
-    const response = await updateOrg({
-      orgId: org.id,
-      data: {
-        name: values.name !== org.name ? values.name : undefined,
-        slug: values.slug !== org.slug ? values.slug : undefined,
-        description:
-          (values.description || "") !== (org.description ?? "")
-            ? values.description || null
-            : undefined,
-      },
-    });
+    let response;
+    try {
+      response = await updateOrg({
+        orgId: org.id,
+        data: {
+          name: values.name !== org.name ? values.name : undefined,
+          slug: values.slug !== org.slug ? values.slug : undefined,
+          description:
+            (values.description || "") !== (org.description ?? "")
+              ? values.description || null
+              : undefined,
+        },
+      });
+    } catch {
+      // onError already surfaced the failure toast; swallow the rejection so
+      // it doesn't escape the submit handler unhandled.
+      return;
+    }
     const updated = response.data as OrgResponse;
-    // Keep the switcher's org list in step with the rename.
+    // Keep the switcher's org list in step with the rename, reading the list
+    // at write time so a concurrent update isn't clobbered by a render-time
+    // snapshot.
     setOrgs(
-      orgs.map((o) =>
-        o.id === updated.id
-          ? { ...o, name: updated.name, slug: updated.slug }
-          : o,
-      ),
+      useOrgTeamStore
+        .getState()
+        .orgs.map((o) =>
+          o.id === updated.id
+            ? { ...o, name: updated.name, slug: updated.slug }
+            : o,
+        ),
     );
     form.reset({
       name: updated.name,

@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -25,6 +26,8 @@ interface Args {
 }
 
 export function useInvitationsSection({ orgId, isAdmin }: Args) {
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
   const invitationsQuery = useGetV2ListPendingInvitations(orgId, {
     query: {
       enabled: isAdmin,
@@ -52,37 +55,49 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
       },
     });
 
-  const { mutateAsync: revokeInvitation, isPending: isRevoking } =
-    useDeleteV2RevokeInvitation({
-      mutation: {
-        onError: (error) => {
-          toast({
-            title: "Failed to revoke invitation",
-            description:
-              error instanceof Error ? error.message : "Please try again.",
-            variant: "destructive",
-          });
-        },
+  const { mutateAsync: revokeInvitation } = useDeleteV2RevokeInvitation({
+    mutation: {
+      onError: (error) => {
+        toast({
+          title: "Failed to revoke invitation",
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        });
       },
-    });
+    },
+  });
 
   async function handleInvite(values: InviteFormValues) {
-    await createInvitation({
-      orgId,
-      data: { email: values.email, is_admin: values.isAdmin },
-    });
+    try {
+      await createInvitation({
+        orgId,
+        data: { email: values.email, is_admin: values.isAdmin },
+      });
+    } catch {
+      // onError already surfaced the failure toast.
+      return;
+    }
     toast({ title: `Invitation sent to ${values.email}`, variant: "success" });
     form.reset();
     invitationsQuery.refetch();
   }
 
   async function handleRevoke(invitation: InvitationResponse) {
-    await revokeInvitation({ orgId, invitationId: invitation.id });
-    toast({
-      title: `Invitation to ${invitation.email} revoked`,
-      variant: "success",
-    });
-    invitationsQuery.refetch();
+    // Track the row being revoked so only its button shows a spinner.
+    setRevokingId(invitation.id);
+    try {
+      await revokeInvitation({ orgId, invitationId: invitation.id });
+      toast({
+        title: `Invitation to ${invitation.email} revoked`,
+        variant: "success",
+      });
+      invitationsQuery.refetch();
+    } catch {
+      // onError already surfaced the failure toast.
+    } finally {
+      setRevokingId(null);
+    }
   }
 
   return {
@@ -90,7 +105,7 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     invitations: invitationsQuery.data ?? [],
     isLoading: invitationsQuery.isLoading,
     isInviting,
-    isRevoking,
+    revokingId,
     handleInvite,
     handleRevoke,
   };

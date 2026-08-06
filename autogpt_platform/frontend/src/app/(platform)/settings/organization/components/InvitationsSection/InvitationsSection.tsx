@@ -25,7 +25,7 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
     form,
     invitations,
     isInviting,
-    isRevoking,
+    revokingId,
     handleInvite,
     handleRevoke,
   } = useInvitationsSection({ orgId, isAdmin });
@@ -109,7 +109,7 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
               <Button
                 variant="ghost"
                 size="small"
-                loading={isRevoking}
+                loading={revokingId === invitation.id}
                 onClick={() => handleRevoke(invitation)}
               >
                 Revoke
