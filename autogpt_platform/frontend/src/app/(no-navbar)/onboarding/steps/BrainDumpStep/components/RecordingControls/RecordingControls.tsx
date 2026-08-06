@@ -1,18 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
 import {
-  ArrowCounterClockwiseIcon,
-  PaperPlaneTiltIcon,
-  SpinnerGapIcon,
-  XIcon,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+  ArrowReloadHorizontalIcon,
+  Cancel01Icon,
+  Loading03Icon,
+  SentIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
 import { RecordingStatus } from "../RecordingStatus";
+import { CancelRecordingDialog } from "./CancelRecordingDialog";
 
 interface Props {
   onStop: () => Promise<void>;
@@ -36,7 +38,14 @@ export function RecordingControls({
   const [pendingAction, setPendingAction] = useState<RecordingAction | null>(
     null,
   );
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const isActionPendingRef = useRef(false);
+  const cancelControlRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (pendingAction !== "cancel") return;
+    cancelControlRef.current?.querySelector("button")?.focus();
+  }, [pendingAction]);
 
   async function runAction(
     action: RecordingAction,
@@ -69,18 +78,20 @@ export function RecordingControls({
   return (
     <div className="mt-16 flex flex-col items-center gap-3">
       <div className="flex items-center gap-4">
-        <RecordingControlButton
-          label="Cancel recording"
-          pendingLabel="Canceling recording"
-          icon={XIcon}
-          action="cancel"
-          pendingAction={pendingAction}
-          onClick={() => void runAction("cancel", onStop)}
-        />
+        <div ref={cancelControlRef}>
+          <RecordingControlButton
+            label="Cancel recording"
+            pendingLabel="Canceling recording"
+            icon={Cancel01Icon}
+            action="cancel"
+            pendingAction={pendingAction}
+            onClick={() => setIsCancelDialogOpen(true)}
+          />
+        </div>
         <RecordingControlButton
           label="Send recording"
           pendingLabel="Sending recording"
-          icon={PaperPlaneTiltIcon}
+          icon={SentIcon}
           action="send"
           pendingAction={pendingAction}
           onClick={() => void runAction("send", onSend)}
@@ -89,7 +100,7 @@ export function RecordingControls({
         <RecordingControlButton
           label="Retry recording"
           pendingLabel="Restarting recording"
-          icon={ArrowCounterClockwiseIcon}
+          icon={ArrowReloadHorizontalIcon}
           action="retry"
           pendingAction={pendingAction}
           onClick={() => void runAction("retry", onRetry)}
@@ -100,21 +111,30 @@ export function RecordingControls({
         className="relative h-8 w-80 max-w-[calc(100vw-2rem)]"
       >
         <div aria-live="polite" className="absolute inset-x-0 top-0">
-          {pendingStatus ? (
+          {pendingStatus && (
             <div className="flex h-8 items-start justify-center pt-2">
               <SwapFade swapKey={pendingAction ?? "idle"}>
                 <p className="text-sm text-zinc-500">{pendingStatus}</p>
               </SwapFade>
             </div>
-          ) : (
-            <RecordingStatus
-              elapsedSeconds={elapsedSeconds}
-              showSilenceNudge={showSilenceNudge}
-              isOffline={isOffline}
-            />
           )}
         </div>
+        {!pendingStatus && (
+          <RecordingStatus
+            elapsedSeconds={elapsedSeconds}
+            showSilenceNudge={showSilenceNudge}
+            isOffline={isOffline}
+          />
+        )}
       </div>
+      <CancelRecordingDialog
+        isOpen={isCancelDialogOpen}
+        onOpenChange={setIsCancelDialogOpen}
+        onConfirm={() => {
+          setIsCancelDialogOpen(false);
+          void runAction("cancel", onStop);
+        }}
+      />
     </div>
   );
 }
@@ -122,7 +142,7 @@ export function RecordingControls({
 interface RecordingControlButtonProps {
   label: string;
   pendingLabel: string;
-  icon: PhosphorIcon;
+  icon: IconSvgElement;
   action: RecordingAction;
   pendingAction: RecordingAction | null;
   onClick: () => void;
@@ -140,14 +160,18 @@ function RecordingControlButton({
 }: RecordingControlButtonProps) {
   const isLoading = pendingAction === action;
   const isInactive = pendingAction !== null && !isLoading;
-  const ControlIcon = icon;
+
+  function handleClick() {
+    if (pendingAction !== null) return;
+    onClick();
+  }
 
   return (
     <Button
       variant="icon"
       size="icon"
-      onClick={onClick}
-      disabled={pendingAction !== null}
+      onClick={handleClick}
+      aria-disabled={pendingAction !== null}
       aria-label={isLoading ? pendingLabel : label}
       aria-busy={isLoading}
       className={cn(
@@ -165,14 +189,14 @@ function RecordingControlButton({
           className="flex size-[22px] items-center justify-center"
         >
           {isLoading ? (
-            <SpinnerGapIcon
+            <Icon
+              icon={Loading03Icon}
               size={22}
-              weight="light"
               className="motion-safe:animate-spin"
               data-testid="recording-control-loader"
             />
           ) : (
-            <ControlIcon size={22} weight="light" />
+            <Icon icon={icon} size={22} />
           )}
         </SwapFade>
       </span>

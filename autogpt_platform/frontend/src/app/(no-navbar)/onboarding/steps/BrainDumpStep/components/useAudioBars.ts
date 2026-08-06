@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { type MotionValue, useMotionValue } from "framer-motion";
+import {
+  type MotionValue,
+  useMotionValue,
+  useReducedMotion,
+} from "framer-motion";
 
 export type AudioBarLevels = MotionValue<number>[];
 
@@ -14,6 +18,7 @@ const VOICE_BANDS = [
 ] as const;
 
 export function useAudioBars(audioStream: MediaStream | null) {
+  const prefersReducedMotion = useReducedMotion();
   const first = useMotionValue(0);
   const second = useMotionValue(0);
   const third = useMotionValue(0);
@@ -23,21 +28,33 @@ export function useAudioBars(audioStream: MediaStream | null) {
   useEffect(() => {
     const levels = [first, second, third, fourth, fifth];
 
-    if (!audioStream) {
+    if (!audioStream || prefersReducedMotion) {
       levels.forEach((level) => level.set(0));
       return;
     }
 
-    const audioContext = new AudioContext();
-    if (audioContext.state === "suspended") {
-      void audioContext.resume();
+    let audioContext: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+
+    try {
+      audioContext = new AudioContext();
+      if (audioContext.state === "suspended") {
+        void audioContext.resume().catch(() => undefined);
+      }
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.45;
+      source = audioContext.createMediaStreamSource(audioStream);
+      source.connect(analyser);
+    } catch {
+      levels.forEach((level) => level.set(0));
+      void audioContext?.close().catch(() => undefined);
+      return;
     }
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.45;
-    const source = audioContext.createMediaStreamSource(audioStream);
-    source.connect(analyser);
-    const samples = new Uint8Array(analyser.frequencyBinCount);
+
+    const activeAnalyser = analyser;
+    const samples = new Uint8Array(activeAnalyser.frequencyBinCount);
     const binWidth = audioContext.sampleRate / analyser.fftSize;
     let animationFrame = 0;
     const currentLevels = [0, 0, 0, 0, 0];
@@ -46,7 +63,7 @@ export function useAudioBars(audioStream: MediaStream | null) {
     function update(now: number) {
       const delta = Math.min((now - lastFrame) / 1000, 0.1);
       lastFrame = now;
-      analyser.getByteFrequencyData(samples);
+      activeAnalyser.getByteFrequencyData(samples);
 
       VOICE_BANDS.forEach(([minimum, maximum], index) => {
         const start = Math.max(1, Math.ceil(minimum / binWidth));
@@ -77,7 +94,7 @@ export function useAudioBars(audioStream: MediaStream | null) {
       levels.forEach((level) => level.set(0));
       void audioContext.close().catch(() => undefined);
     };
-  }, [audioStream, fifth, first, fourth, second, third]);
+  }, [audioStream, fifth, first, fourth, prefersReducedMotion, second, third]);
 
   return [first, second, third, fourth, fifth];
 }

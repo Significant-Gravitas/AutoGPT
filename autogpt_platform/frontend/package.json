@@ -40,7 +40,6 @@
     "@hugeicons/react": "^1.1.9",
     "@next/third-parties": "15.4.6",
     "@number-flow/react": "0.6.0",
-    "@phosphor-icons/react": "2.1.10",
     "@posthog/react": "1.7.0",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",

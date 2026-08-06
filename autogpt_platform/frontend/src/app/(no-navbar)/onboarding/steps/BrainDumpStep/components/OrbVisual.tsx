@@ -2,7 +2,12 @@
 
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
 import { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
-import { motion, type MotionValue, useTransform } from "framer-motion";
+import {
+  motion,
+  type MotionValue,
+  useReducedMotion,
+  useTransform,
+} from "framer-motion";
 import { type AudioBarLevels } from "./useAudioBars";
 
 interface Props {
@@ -36,6 +41,8 @@ function AudioBars({
   levels: AudioBarLevels;
   isRecording: boolean;
 }) {
+  const prefersReducedMotion = useReducedMotion();
+
   return (
     <div
       data-testid="orb-audio-bars"
@@ -48,6 +55,7 @@ function AudioBars({
           height={bar.height}
           idleScale={bar.idleScale}
           isRecording={isRecording}
+          prefersReducedMotion={prefersReducedMotion === true}
         />
       ))}
     </div>
@@ -59,11 +67,13 @@ function AudioBar({
   height,
   idleScale,
   isRecording,
+  prefersReducedMotion,
 }: {
   level: MotionValue<number>;
   height: number;
   idleScale: number;
   isRecording: boolean;
+  prefersReducedMotion: boolean;
 }) {
   const reactiveScaleY = useTransform(level, [0, 1], [idleScale * 0.45, 1]);
 
@@ -71,7 +81,11 @@ function AudioBar({
     <motion.span
       data-testid="orb-audio-bar"
       className="block w-1.5 origin-center rounded-full bg-white/95"
-      style={{ height, scaleY: isRecording ? reactiveScaleY : idleScale }}
+      style={{
+        height,
+        scaleY:
+          isRecording && !prefersReducedMotion ? reactiveScaleY : idleScale,
+      }}
     />
   );
 }

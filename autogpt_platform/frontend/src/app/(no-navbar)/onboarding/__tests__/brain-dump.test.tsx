@@ -599,6 +599,24 @@ describe("onboarding brain dump — finishing a take", () => {
       await screen.findByRole("button", { name: "Cancel recording" }),
     );
 
+    expect(await screen.findByText("Discard recording?")).toBeDefined();
+    expect(
+      screen.getByText(/This permanently deletes your current take/),
+    ).toBeDefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Keep recording" }),
+    );
+    expect(screen.queryByText("Discard recording?")).toBeNull();
+    expect(finishDiscard).toBeUndefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Cancel recording" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Discard recording" }),
+    );
+
     expect(screen.getByTestId("recording-feedback-slot")).toBeDefined();
     const cancelingButton = (await screen.findByRole("button", {
       name: "Canceling recording",
@@ -612,14 +630,29 @@ describe("onboarding brain dump — finishing a take", () => {
           name: "Send recording",
         }) as HTMLButtonElement
       ).disabled,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      screen
+        .getByRole("button", { name: "Send recording" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
     expect(
       (
         screen.getByRole("button", {
           name: "Retry recording",
         }) as HTMLButtonElement
       ).disabled,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      screen
+        .getByRole("button", { name: "Retry recording" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    expect(cancelingButton.disabled).toBe(false);
+    expect(cancelingButton.getAttribute("aria-disabled")).toBe("true");
+    await waitFor(() => expect(document.activeElement).toBe(cancelingButton));
+    await userEvent.click(cancelingButton);
+    expect(screen.queryByText("Discard recording?")).toBeNull();
 
     await waitFor(() => expect(finishDiscard).toBeDefined());
     finishDiscard!();
