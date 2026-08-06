@@ -3701,6 +3701,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "403": {
+            "description": "No longer a member of the session's organization"
+          },
           "404": { "description": "Session not found or access denied" },
           "409": {
             "description": "Session has no active turn to receive pending messages"
@@ -3985,6 +3988,9 @@
           },
           "402": {
             "description": "Subscription required (NO_TIER user, paywall on)"
+          },
+          "403": {
+            "description": "No longer a member of the session's organization"
           },
           "404": { "description": "Session not found or access denied" },
           "422": {

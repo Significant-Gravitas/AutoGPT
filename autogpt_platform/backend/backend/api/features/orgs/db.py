@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from prisma.enums import OrgMemberStatus
 from prisma.errors import UniqueViolationError
 
 from backend.data.db import prisma, transaction
@@ -14,7 +15,13 @@ from backend.data.org_migration import (
 )
 from backend.util.exceptions import NotFoundError
 
-from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
+from .model import (
+    OrgAliasResponse,
+    OrgMemberResponse,
+    OrgResponse,
+    SessionTenancyMembership,
+    UpdateOrgData,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +178,56 @@ async def get_user_default_team(
     workspace = await prisma.team.find_first(where={"orgId": org_id, "isDefault": True})
     ws_id = workspace.id if workspace else None
     return org_id, ws_id
+
+
+async def get_session_tenancy_membership(
+    user_id: str,
+    organization_id: str,
+    team_id: str | None = None,
+) -> SessionTenancyMembership:
+    """Whether *user_id* still holds an org (and optionally team) tenancy.
+
+    Enforces exactly the membership policy
+    :func:`autogpt_libs.auth.dependencies.get_request_context` applies to the
+    header org/team, so a re-check on a persisted tenancy cannot pass where a
+    normal HTTP request would 403:
+
+    - org: ACTIVE ``OrgMember`` **and** the ``Organization`` is not
+      soft-deleted (``delete_org`` only sets ``deletedAt`` and leaves member
+      rows ACTIVE).
+    - team: ACTIVE ``TeamMember`` **and** ``Team.orgId == organization_id``.
+
+    Both reads hit a unique index (``OrgMember@@unique(orgId, userId)`` /
+    ``TeamMember@@unique(teamId, userId)``); the team read is skipped when
+    *team_id* is ``None`` or the org already failed.
+
+    Returns plain booleans rather than Prisma rows so Prisma-less processes
+    (the CoPilot executor) can call this over the DatabaseManager RPC.
+    """
+    org_member = await prisma.orgmember.find_unique(
+        where={"orgId_userId": {"orgId": organization_id, "userId": user_id}},
+        include={"Org": True},
+    )
+    org_active = (
+        org_member is not None
+        and org_member.status == OrgMemberStatus.ACTIVE
+        and org_member.Org is not None
+        and org_member.Org.deletedAt is None
+    )
+    if not org_active or team_id is None:
+        return SessionTenancyMembership(org_active=org_active, team_active=False)
+
+    team_member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": team_id, "userId": user_id}},
+        include={"Team": True},
+    )
+    team_active = (
+        team_member is not None
+        and team_member.status == OrgMemberStatus.ACTIVE
+        and team_member.Team is not None
+        and team_member.Team.orgId == organization_id
+    )
+    return SessionTenancyMembership(org_active=True, team_active=team_active)
 
 
 async def _create_personal_org_for_user(

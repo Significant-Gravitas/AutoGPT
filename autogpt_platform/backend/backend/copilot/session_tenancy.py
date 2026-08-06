@@ -1,30 +1,38 @@
 """Per-turn re-verification of a chat session's persisted org/team.
 
+**This module docstring is the single source of truth for the policy — call
+sites reference it rather than restating it.**
+
 A :class:`ChatSession` row is the authoritative tenancy for every turn in
 it, but membership is only validated when the session is *created*. A user
 who is later removed or suspended from that org would otherwise keep acting
 under the stale org through every existing session — spending credits and
 running agents under a tenancy they no longer belong to.
 
-This module re-verifies ACTIVE membership at every turn-dispatch choke
-point (the HTTP ``/stream`` handler and the queue-promotion hook), mirroring
-the checks :func:`autogpt_libs.auth.get_request_context` runs for the
-*header* org:
+:func:`resolve_session_tenancy` re-verifies membership at every
+turn-dispatch choke point (the HTTP ``/stream`` handler, the pending-message
+endpoint, and the queue-promotion hook), enforcing exactly the checks
+:func:`autogpt_libs.auth.get_request_context` runs for the *header* org:
 
-- No ACTIVE ``OrgMember`` for the session's org → access revoked. The caller
-  surfaces this as an honest failure (HTTP 403 on the request path); we do
-  NOT silently strip to personal context, which would run agents under the
-  wrong tenancy without the user understanding.
-- Team removal is routine, not revocation: a stale ``team_id`` (no ACTIVE
-  ``TeamMember``) on a still-valid org is stripped to org-home, matching
+- Org is a hard gate. No ACTIVE ``OrgMember``, or a soft-deleted
+  ``Organization``, means access was revoked; the caller surfaces this as an
+  honest failure (HTTP 403 on the request path). We do NOT silently strip to
+  personal context, which would run agents under the wrong tenancy without
+  the user understanding.
+- Team is a soft strip. Team removal is routine, not revocation: a stale
+  ``team_id`` (no ACTIVE ``TeamMember``, or a team that no longer belongs to
+  the session's org) on a still-valid org is stripped to org-home, matching
   ``get_request_context``'s existing team fallback.
+
+The lookups go through :func:`backend.data.db_accessors.orgs_db` rather than
+the global Prisma client: :func:`backend.copilot.turn_queue.dispatch_next_for_user`
+runs inside the CoPilot executor, which has no Prisma connection and must
+reach the database over the DatabaseManager RPC.
 """
 
 import logging
 
-from prisma.enums import OrgMemberStatus
-
-from backend.data.db import prisma
+from backend.data.db_accessors import orgs_db
 
 logger = logging.getLogger(__name__)
 
@@ -43,37 +51,34 @@ class SessionOrgMembershipRevoked(Exception):
         )
 
 
-async def verify_session_org_membership(
+async def resolve_session_tenancy(
     *,
     user_id: str,
     organization_id: str,
     team_id: str | None,
 ) -> str | None:
-    """Re-verify ACTIVE membership for a session's persisted tenancy.
-
-    Runs up to two indexed lookups on the membership unique constraints
-    (``OrgMember@@unique(orgId, userId)`` and, only when *team_id* is set,
-    ``TeamMember@@unique(teamId, userId)``).
+    """Re-verify a session's persisted tenancy and resolve the team to use.
 
     Returns the ``team_id`` the turn should run under: the input value when
-    the team membership is still ACTIVE, or ``None`` (org-home) when the team
-    is stale. Raises :class:`SessionOrgMembershipRevoked` when the user has
-    no ACTIVE ``OrgMember`` row for *organization_id* — the org membership is
-    a hard gate, the team is not.
+    the team membership is still ACTIVE and the team still belongs to
+    *organization_id*, or ``None`` (org-home) when the team is stale.
+
+    Raises :class:`SessionOrgMembershipRevoked` when the org tenancy no
+    longer holds — see the module docstring for why org is a hard gate and
+    team is not.
     """
-    org_member = await prisma.orgmember.find_unique(
-        where={"orgId_userId": {"orgId": organization_id, "userId": user_id}},
+    membership = await orgs_db().get_session_tenancy_membership(
+        user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
-    if org_member is None or org_member.status != OrgMemberStatus.ACTIVE:
+    if not membership.org_active:
         raise SessionOrgMembershipRevoked(organization_id)
 
     if team_id is None:
         return None
 
-    team_member = await prisma.teammember.find_unique(
-        where={"teamId_userId": {"teamId": team_id, "userId": user_id}},
-    )
-    if team_member is None or team_member.status != OrgMemberStatus.ACTIVE:
+    if not membership.team_active:
         logger.info(
             "Stripping stale team %s to org-home for user %s in org %s",
             team_id,

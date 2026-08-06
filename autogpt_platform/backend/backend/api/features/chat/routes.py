@@ -73,7 +73,7 @@ from backend.copilot.response_model import (
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.session_tenancy import (
     SessionOrgMembershipRevoked,
-    verify_session_org_membership,
+    resolve_session_tenancy,
 )
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
@@ -126,6 +126,10 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
+
+# 403 detail shared by every turn-dispatch choke point that re-verifies a
+# session's persisted tenancy (see backend/copilot/session_tenancy.py).
+SESSION_ORG_REVOKED_DETAIL = "You are no longer a member of this session's organization"
 
 
 async def _validate_and_get_session(
@@ -1137,6 +1141,7 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
     "/sessions/{session_id}/stream",
     responses={
         402: {"description": "Subscription required (NO_TIER user, paywall on)"},
+        403: {"description": "No longer a member of the session's organization"},
         404: {"description": "Session not found or access denied"},
         429: {
             "description": "Cost rate-limit, call-frequency cap, or "
@@ -1199,18 +1204,11 @@ async def stream_chat_post(
     turn_org_id = session.organization_id or ctx.org_id
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
-    # Membership is only checked at session creation; re-verify it here so a
-    # user removed or suspended from the session's org *after* creation cannot
-    # keep acting under that stale org through this (or any) existing session.
-    # A 403 is the honest failure: silently degrading to personal context
-    # would run agents / spend credits under the wrong tenancy without the
-    # user understanding, and would hide revocation bugs.  A stale team on a
-    # still-valid org is stripped to org-home instead (team removal is
-    # routine; org removal is access revocation) — matching the team fallback
-    # in get_request_context.
+    # Per-turn tenancy re-check — policy lives in
+    # ``backend/copilot/session_tenancy.py``'s module docstring.
     if session.organization_id is not None:
         try:
-            turn_team_id = await verify_session_org_membership(
+            turn_team_id = await resolve_session_tenancy(
                 user_id=user_id,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
@@ -1218,7 +1216,7 @@ async def stream_chat_post(
         except SessionOrgMembershipRevoked as exc:
             raise HTTPException(
                 status_code=403,
-                detail="You are no longer a member of this session's organization",
+                detail=SESSION_ORG_REVOKED_DETAIL,
             ) from exc
 
     try:
@@ -1523,6 +1521,7 @@ async def stream_chat_post(
     "/sessions/{session_id}/messages/pending",
     response_model=QueuePendingMessageResponse,
     responses={
+        403: {"description": "No longer a member of the session's organization"},
         404: {"description": "Session not found or access denied"},
         409: {"description": "Session has no active turn to receive pending messages"},
         429: {"description": "Call-frequency cap exceeded"},
@@ -1538,7 +1537,26 @@ async def queue_pending_message(
     user_id: str = Security(auth.get_user_id),
 ):
     """Queue a follow-up message while the session has an active turn."""
-    await _validate_and_get_session(session_id, user_id)
+    session = await _validate_and_get_session(session_id, user_id)
+
+    # Per-turn tenancy re-check — policy lives in
+    # ``backend/copilot/session_tenancy.py``'s module docstring.  Pending
+    # messages drain straight into the running turn loop (and can auto-continue
+    # as new model/tool work), so this endpoint is a dispatch choke point too:
+    # without the gate a revoked member keeps driving the session's stale org.
+    if session.organization_id is not None:
+        try:
+            await resolve_session_tenancy(
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+        except SessionOrgMembershipRevoked as exc:
+            raise HTTPException(
+                status_code=403,
+                detail=SESSION_ORG_REVOKED_DETAIL,
+            ) from exc
+
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
     except StreamRegistryUnavailable as exc:

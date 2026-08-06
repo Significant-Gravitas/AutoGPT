@@ -32,6 +32,17 @@ class UpdateOrgData(BaseModel):
     avatar_url: str | None = None
 
 
+class SessionTenancyMembership(BaseModel):
+    """Whether a user still holds a given org/team tenancy.
+
+    Plain booleans (not Prisma rows) so this can cross the DatabaseManager
+    RPC boundary for Prisma-less processes such as the CoPilot executor.
+    """
+
+    org_active: bool
+    team_active: bool
+
+
 class OrgResponse(BaseModel):
     id: str
     name: str

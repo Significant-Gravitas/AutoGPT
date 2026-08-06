@@ -39,6 +39,7 @@ from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
     ChatMessage,
+    ChatSessionInfo,
     _get_session_lock,
     invalidate_session_cache,
 )
@@ -51,7 +52,7 @@ from backend.copilot.rate_limit import (
 )
 from backend.copilot.session_tenancy import (
     SessionOrgMembershipRevoked,
-    verify_session_org_membership,
+    resolve_session_tenancy,
 )
 from backend.data.db_accessors import chat_db
 
@@ -291,38 +292,14 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         )
         return False
 
-    # Re-verify org/team membership before promoting: a turn queued while the
-    # user was a member can sit here until a slot frees, and the user may have
-    # been removed/suspended from the session's org in that window.  Same gate
-    # the HTTP ``/stream`` choke point applies before dispatch — a promoted
-    # turn must never run under an org the user no longer belongs to.
-    promoted_team_id = head.team_id
-    if head.organization_id is not None:
-        try:
-            promoted_team_id = await verify_session_org_membership(
-                user_id=user_id,
-                organization_id=head.organization_id,
-                team_id=head.team_id,
-            )
-        except SessionOrgMembershipRevoked:
-            logger.warning(
-                "dispatch_next_for_user: user=%s no longer an active member of "
-                "session org=%s; dropping session=%s from the queue",
-                user_id,
-                head.organization_id,
-                head.session_id,
-            )
-            # Drop it out of the queue (queued → idle) so it neither runs under
-            # the revoked org nor blocks promotion of the user's other queued
-            # sessions.  The persisted user message is left intact; a re-send
-            # from a valid context re-dispatches it.
-            await chat_db().update_chat_session_status(
-                session_id=head.session_id,
-                expect_status=CHAT_STATUS_QUEUED,
-                status=CHAT_STATUS_IDLE,
-            )
-            await invalidate_session_cache(head.session_id)
-            return False
+    # Per-turn tenancy re-check before promoting — policy lives in
+    # ``backend/copilot/session_tenancy.py``'s module docstring.  A turn
+    # queued while the user was a member can sit here until a slot frees,
+    # and the user may have lost the session's org in that window.
+    promotable = await _resolve_promotable_head(user_id, queued)
+    if promotable is None:
+        return False
+    head, promoted_team_id = promotable
 
     # Claim by transitioning the session ``queued`` → ``running``.  A
     # parallel cancel between validation and claim rejects this
@@ -411,3 +388,48 @@ async def dispatch_next_for_user(user_id: str) -> bool:
 
     await invalidate_session_cache(head.session_id)
     return True
+
+
+async def _resolve_promotable_head(
+    user_id: str, queued: list[ChatSessionInfo]
+) -> tuple[ChatSessionInfo, str | None] | None:
+    """First queued session the user may still run, with its resolved team.
+
+    Walks *queued* in FIFO order and re-verifies each session's persisted
+    tenancy (see ``backend/copilot/session_tenancy.py``).  Sessions whose org
+    membership was revoked are dropped out of the queue (queued → idle) and
+    skipped, so the freed running slot goes to the next still-valid session
+    instead of being wasted for this tick — ``dispatch_next_for_user`` only
+    runs on turn completion, so a wasted tick can stall the rest of the
+    user's queue until an unrelated turn ends.
+
+    Returns ``None`` when nothing in the queue is promotable.  Dropped
+    sessions keep their persisted user message; a re-send from a valid
+    context re-dispatches it.
+    """
+    for session in queued:
+        if session.organization_id is None:
+            # Untagged legacy session: tenancy comes from the request context,
+            # which ``get_request_context`` already validated.
+            return session, session.team_id
+        try:
+            return session, await resolve_session_tenancy(
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+        except SessionOrgMembershipRevoked:
+            logger.warning(
+                "dispatch_next_for_user: user=%s no longer an active member of "
+                "session org=%s; dropping session=%s from the queue",
+                user_id,
+                session.organization_id,
+                session.session_id,
+            )
+            await chat_db().update_chat_session_status(
+                session_id=session.session_id,
+                expect_status=CHAT_STATUS_QUEUED,
+                status=CHAT_STATUS_IDLE,
+            )
+            await invalidate_session_cache(session.session_id)
+    return None
