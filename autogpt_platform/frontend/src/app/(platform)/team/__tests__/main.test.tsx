@@ -3,7 +3,9 @@ import {
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -11,12 +13,16 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
 const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
 }));
+
+beforeEach(() => {
+  server.use(getGetV1ListExecutionSchedulesForAUserMockHandler([]));
+});
 
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
@@ -37,9 +43,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 });
 
 const notFoundMock = vi.hoisted(() => vi.fn());
+const pushMock = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: pushMock,
     replace: vi.fn(),
     prefetch: vi.fn(),
     back: vi.fn(),
@@ -117,16 +124,26 @@ describe("TeamPage", () => {
     ).toBeTruthy();
   });
 
-  test("renders hired experts with workflow names and count", async () => {
+  test("renders hired experts with a workflow count instead of chips", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
 
     expect(await screen.findByText("Maria")).toBeDefined();
     expect(screen.getByText("Marketing Strategist")).toBeDefined();
-    expect(screen.getByText("Content Calendar")).toBeDefined();
-    expect(screen.getByText("SEO Audit")).toBeDefined();
     expect(screen.getByText("2 workflows")).toBeDefined();
+    expect(screen.queryByText("Content Calendar")).toBeNull();
+    expect(screen.queryByText("SEO Audit")).toBeNull();
+  });
+
+  test("clicking the card navigates to the expert page", async () => {
+    server.use(getListExpertsMockHandler([hiredMaria]));
+    pushMock.mockClear();
+
+    render(<TeamPage />);
+
+    fireEvent.click(await screen.findByText("Maria"));
+    expect(pushMock).toHaveBeenCalledWith("/team/expert-maria");
   });
 
   test("links Chat to the expert's copilot thread", async () => {
@@ -145,17 +162,31 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
-  test("shows schedule summary and last-run status on the expert card", async () => {
-    server.use(getListExpertsMockHandler([scheduledMaria]));
+  test("shows a schedule count with the next run on the expert card", async () => {
+    const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const mariaSchedule: GraphExecutionJobInfo = {
+      id: "sched-1",
+      name: "Content Calendar",
+      user_id: "user-1",
+      graph_id: "graph-1",
+      graph_version: 1,
+      cron: "40 7 * * *",
+      input_data: {},
+      next_run_time: inTwoDays.toISOString(),
+      expert_id: "expert-maria",
+    };
+    server.use(
+      getListExpertsMockHandler([scheduledMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([mariaSchedule]),
+    );
 
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText(/Every day at 07:40/)).toBeDefined();
-    expect(screen.getByText(/Last run succeeded/)).toBeDefined();
+    expect(await screen.findByText(/1 schedule · next in/)).toBeDefined();
   });
 
-  test("marks a scheduled workflow without a schedule as needing setup", async () => {
+  test("marks scheduled workflows without a schedule as needing setup", async () => {
     const needsSetupMaria: Expert = {
       ...hiredMaria,
       workflows: [
@@ -171,10 +202,10 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText(/Needs setup/)).toBeDefined();
+    expect(screen.getByText(/1 needs setup/)).toBeDefined();
   });
 
-  test("shows weekly spend on the expert card", async () => {
+  test("shows weekly spend as a progress bar on the expert card", async () => {
     const budgetMaria: Expert = {
       ...hiredMaria,
       weekly_budget: 50,
@@ -185,7 +216,8 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText(/12 of 50 credits this week/)).toBeDefined();
+    expect(screen.getByText("Credits this week")).toBeDefined();
+    expect(screen.getByText("12 / 50")).toBeDefined();
   });
 
   test("paused expert offers one-click resume", async () => {

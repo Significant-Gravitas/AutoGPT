@@ -57,40 +57,43 @@ export function InstallWorkflowPicker({
     >
       <Dialog.Content>
         {mode === "pick-expert" ? (
-          <div className="flex flex-col gap-2">
-            {hiredExperts.length === 0 ? (
-              <Text variant="body" className="text-zinc-500">
-                No hired experts yet.
-              </Text>
-            ) : null}
-            {hiredExperts.map((expert) => (
-              <div
-                key={expert.id}
-                className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3"
-              >
-                <Avatar className="h-9 w-9">
-                  {expert.avatar_url ? (
-                    <AvatarImage src={expert.avatar_url} alt={expert.name} />
-                  ) : null}
-                  <AvatarFallback>{expert.name}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <Text variant="large-medium">{expert.name}</Text>
-                  <Text variant="small" className="text-zinc-500">
-                    {expert.role}
-                  </Text>
-                </div>
-                <Button
-                  variant="primary"
-                  size="small"
-                  loading={pendingKey === expert.id}
-                  onClick={() => installOnExpert(expert)}
+          hiredExperts.length === 0 ? (
+            <Text variant="body" className="text-zinc-500">
+              No hired experts yet.
+            </Text>
+          ) : (
+            <div className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80">
+              {hiredExperts.map((expert) => (
+                <div
+                  key={expert.id}
+                  className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
                 >
-                  Install
-                </Button>
-              </div>
-            ))}
-          </div>
+                  <Avatar className="h-9 w-9">
+                    {expert.avatar_url ? (
+                      <AvatarImage src={expert.avatar_url} alt={expert.name} />
+                    ) : null}
+                    <AvatarFallback>{expert.name}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <Text variant="body-medium" className="truncate">
+                      {expert.name}
+                    </Text>
+                    <Text variant="small" className="!text-zinc-500">
+                      {expert.role}
+                    </Text>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    loading={pendingKey === expert.id}
+                    onClick={() => installOnExpert(expert)}
+                  >
+                    Install
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )
         ) : (
           <div className="flex flex-col gap-3">
             <Input
@@ -102,33 +105,49 @@ export function InstallWorkflowPicker({
               onChange={(event) => setSearchQuery(event.target.value)}
             />
             {isSearching ? (
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="py-2 text-center !text-zinc-500">
                 Searching…
               </Text>
-            ) : null}
-            <div className="flex flex-col gap-2">
-              {searchResults.map((agent) => (
-                <div
-                  key={agent.agent_graph_id}
-                  className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <Text variant="large-medium">{agent.agent_name}</Text>
-                    <Text variant="small" className="text-zinc-500">
-                      by {agent.creator}
-                    </Text>
-                  </div>
-                  <Button
-                    variant="primary"
-                    size="small"
-                    loading={pendingKey === agent.agent_graph_id}
-                    onClick={() => installFromListing(agent)}
+            ) : searchResults.length === 0 ? (
+              <Text variant="small" className="py-2 text-center !text-zinc-500">
+                No workflows found.
+              </Text>
+            ) : (
+              <div className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80">
+                {searchResults.map((agent) => (
+                  <div
+                    key={agent.agent_graph_id}
+                    className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
                   >
-                    Install
-                  </Button>
-                </div>
-              ))}
-            </div>
+                    <Avatar className="h-9 w-9">
+                      {agent.agent_image ? (
+                        <AvatarImage
+                          src={agent.agent_image}
+                          alt={agent.agent_name}
+                        />
+                      ) : null}
+                      <AvatarFallback>{agent.agent_name}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <Text variant="body-medium" className="truncate">
+                        {agent.agent_name}
+                      </Text>
+                      <Text variant="small" className="!text-zinc-500">
+                        by {agent.creator}
+                      </Text>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      loading={pendingKey === agent.agent_graph_id}
+                      onClick={() => installFromListing(agent)}
+                    >
+                      Install
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </Dialog.Content>
