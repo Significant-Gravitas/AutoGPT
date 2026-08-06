@@ -33,9 +33,9 @@ export const PREVIEW_ACCOUNTS = [
 /**
  * Deterministic user id for FRESH inserts: uuid-shaped truncation of
  * SHA-256(email). These are stable login handles only; product entitlements
- * are outside this auth seeder. Databases seeded by the older SQL (which
- * derived IDs with Postgres md5(email)::uuid) are still safe to re-seed: the
- * seeder matches existing identities by email before ever deriving an id, so
+ * are outside this auth seeder. Legacy branch databases may carry identities
+ * whose IDs were derived with Postgres md5(email)::uuid. Re-seeding remains
+ * safe because identities are matched by email before any ID is derived, so
  * the derivation only has to be stable, not backward-identical.
  */
 export function deterministicUserID(email: string): string {

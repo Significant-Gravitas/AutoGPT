@@ -133,7 +133,7 @@ export async function seedPreviewAccounts(
     schema,
   );
   if (tableState === "absent") {
-    reportError(
+    reportLog(
       `Better Auth tables not present in schema "${schema}" — ` +
         "pre-migration database, nothing to seed here.",
     );
@@ -149,10 +149,16 @@ export async function seedPreviewAccounts(
       () => seed(client, { identityTable, accountTable, passwordHash }),
       reportError,
     );
-    reportLog(
-      `Seeded preview accounts: ${createdIdentities} identities and ` +
-        `${createdAccounts} credential accounts created.`,
-    );
+    if (createdIdentities === 0 && createdAccounts === 0) {
+      reportLog(
+        "Preview accounts are now up to date; no new identities or credential accounts created.",
+      );
+    } else {
+      reportLog(
+        `Seeded preview accounts: ${createdIdentities} identities and ` +
+          `${createdAccounts} credential accounts created.`,
+      );
+    }
     return SEEDED_EXIT_CODE;
   } finally {
     client.release();

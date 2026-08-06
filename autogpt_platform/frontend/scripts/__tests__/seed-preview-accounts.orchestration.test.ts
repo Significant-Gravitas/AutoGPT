@@ -55,6 +55,15 @@ describe("preview seeder configuration", () => {
     expect(validatePreviewPassword("x".repeat(12))).toBe("x".repeat(12));
   });
 
+  it("rejects missing connection and password configuration", () => {
+    expect(() => resolvePreviewConnectionString(undefined, undefined)).toThrow(
+      "DIRECT_URL or DATABASE_URL must be set",
+    );
+    expect(() => validatePreviewPassword(undefined)).toThrow(
+      "PREVIEW_ACCOUNTS_PASSWORD must be set",
+    );
+  });
+
   it("prefers DIRECT_URL and warns on the DATABASE_URL fallback", () => {
     const reportWarning = vi.fn();
     expect(
@@ -88,16 +97,16 @@ describe("preview seeder configuration", () => {
 describe("seedPreviewAccounts", () => {
   it("returns exit 3 when both Better Auth tables are absent", async () => {
     const { pool, connect } = fakePool("absent");
-    const reportError = vi.fn();
+    const reportLog = vi.fn();
 
     await expect(
       seedPreviewAccounts(pool, OPTIONS, {
         hashPassword: vi.fn(),
-        reportError,
+        reportLog,
       }),
     ).resolves.toBe(NO_BETTER_AUTH_EXIT_CODE);
     expect(connect).not.toHaveBeenCalled();
-    expect(reportError).toHaveBeenCalledWith(
+    expect(reportLog).toHaveBeenCalledWith(
       expect.stringContaining("pre-migration database"),
     );
   });
@@ -130,6 +139,25 @@ describe("seedPreviewAccounts", () => {
     expect(release).toHaveBeenCalledOnce();
     expect(reportLog).toHaveBeenCalledWith(
       "Seeded preview accounts: 5 identities and 5 credential accounts created.",
+    );
+  });
+
+  it("reports an idempotent seed as already up to date", async () => {
+    const { pool } = fakePool("present");
+    const reportLog = vi.fn();
+
+    await expect(
+      seedPreviewAccounts(pool, OPTIONS, {
+        hashPassword: vi.fn(async () => "hash"),
+        seedRoster: vi.fn(async () => ({
+          createdIdentities: 0,
+          createdAccounts: 0,
+        })),
+        reportLog,
+      }),
+    ).resolves.toBe(SEEDED_EXIT_CODE);
+    expect(reportLog).toHaveBeenCalledWith(
+      "Preview accounts are now up to date; no new identities or credential accounts created.",
     );
   });
 });
