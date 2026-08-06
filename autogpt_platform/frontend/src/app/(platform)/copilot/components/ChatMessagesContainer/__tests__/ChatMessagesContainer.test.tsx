@@ -120,12 +120,6 @@ vi.mock("@/components/atoms/LoadingSpinner/LoadingSpinner", () => ({
   LoadingSpinner: () => <div data-testid="loading-spinner" />,
 }));
 
-vi.mock("@phosphor-icons/react", () => ({
-  Clock: () => <span data-testid="clock-icon" />,
-  ArrowDown: () => null,
-  ArrowUp: () => null,
-}));
-
 // ── helpers ───────────────────────────────────────────────────────────────
 
 type ObserverCallback = (entries: { isIntersecting: boolean }[]) => void;
