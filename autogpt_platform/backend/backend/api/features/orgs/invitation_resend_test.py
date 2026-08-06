@@ -1,5 +1,6 @@
 """HTTP-level tests for the org invitation resend endpoint."""
 
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,6 +9,7 @@ import fastapi.testclient
 import pytest
 from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.models import RequestContext
+from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.orgs.invitation_routes import INVITATION_TTL_DAYS, org_router
 from backend.api.rest_api import handle_internal_http_error
@@ -17,6 +19,9 @@ USER_ID = "user-owner-1"
 OTHER_USER_ID = "user-member-2"
 ORG_ID = "org-aaa"
 FIXED_NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+# Excluded from the response snapshot: `token` is a bearer credential and the
+# timestamps move on every run. Both are asserted explicitly instead.
+_VOLATILE_FIELDS = {"token", "expires_at", "created_at"}
 
 
 def _owner_ctx() -> RequestContext:
@@ -62,7 +67,8 @@ class TestInvitationResend:
         """Wire the two find_unique calls a successful resend makes.
 
         The handler reads the invitation by id, compare-and-swaps via
-        update_many, then reads the row back by the freshly minted token.
+        update_many, then re-reads the row by id (not by the minted token —
+        see test_resend_reads_the_row_back_by_id).
         """
         self.prisma.orginvitation.find_unique = AsyncMock(
             side_effect=[invitation, refreshed]
@@ -96,7 +102,9 @@ class TestInvitationResend:
         app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
         return fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 
-    def test_resend_pending_rotates_token_and_extends_expiry(self):
+    def test_resend_pending_rotates_token_and_extends_expiry(
+        self, configured_snapshot: Snapshot
+    ):
         invitation = self._make_invitation()
         refreshed = self._make_invitation(token="tok-new")
         self._expect_successful_resend(invitation, refreshed)
@@ -120,6 +128,16 @@ class TestInvitationResend:
         body = resp.json()
         assert body["token"] == "tok-new"
         assert body["token"] != "tok-old"
+
+        # Snapshot the rest of the payload so drift in any other
+        # InvitationCreateResponse field is caught. The token is a bearer
+        # credential and expires_at/created_at are volatile, so both are
+        # asserted above/below instead of being committed to the snapshot.
+        snapshotted = {k: v for k, v in body.items() if k not in _VOLATILE_FIELDS}
+        configured_snapshot.assert_match(
+            json.dumps(snapshotted, indent=2, sort_keys=True),
+            "invitation_resend_response",
+        )
 
     def test_resend_reads_the_row_back_by_id(self):
         """Read back by id, not by the minted token.
