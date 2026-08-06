@@ -78,4 +78,17 @@ describe("GenerateTestDataButton", () => {
     ).toBeDefined();
     expect(screen.getByText(/users created/i)).toBeDefined();
   });
+
+  test("renders a failed result message", () => {
+    hookState.isDialogOpen = true;
+    hookState.result = {
+      success: false,
+      message: "Failed to generate test data: local environments only",
+    };
+    render(<GenerateTestDataButton />);
+    expect(
+      screen.getByText("Failed to generate test data: local environments only"),
+    ).toBeDefined();
+    expect(screen.queryByText(/users created/i)).toBeNull();
+  });
 });

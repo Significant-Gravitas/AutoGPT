@@ -9,6 +9,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.util.settings import AppEnvironment, BehaveAs
 
+from .test_data_routes import _load_test_script
 from .test_data_routes import router as test_data_router
 
 app = fastapi.FastAPI()
@@ -116,10 +117,32 @@ def test_full_generation_success(local_env, fake_scripts):
     fake_scripts.full.main.assert_awaited_once()
 
 
+def test_skips_connect_when_prisma_already_connected(local_env, fake_scripts):
+    fake_scripts.prisma.is_connected.return_value = True
+
+    response = client.post(_ENDPOINT, json={"script_type": "e2e"})
+
+    assert response.status_code == 200
+    fake_scripts.prisma.connect.assert_not_awaited()
+
+
 def test_generation_failure_returns_500(local_env, fake_scripts):
     fake_scripts.full.main.side_effect = RuntimeError("boom")
 
     response = client.post(_ENDPOINT, json={"script_type": "full"})
+
+    assert response.status_code == 500
+    assert "boom" not in response.json()["detail"]
+
+
+def test_e2e_generation_failure_returns_500(local_env, fake_scripts, mocker):
+    mocker.patch.object(
+        _FakeE2ECreator,
+        "create_all_test_data",
+        new=AsyncMock(side_effect=RuntimeError("boom")),
+    )
+
+    response = client.post(_ENDPOINT, json={"script_type": "e2e"})
 
     assert response.status_code == 500
     assert "boom" not in response.json()["detail"]
@@ -166,3 +189,27 @@ def test_rejects_invalid_script_type(local_env):
     response = client.post(_ENDPOINT, json={"script_type": "not-a-real-script"})
 
     assert response.status_code == 422
+
+
+def test_real_seeding_scripts_expose_the_entrypoints_the_route_uses():
+    """Loader smoke test: catches drift in the out-of-tree seeding scripts.
+
+    Every other test stubs `_load_test_script`, so without this the route would
+    keep passing while `backend/test/` moved or renamed its entrypoints.
+    """
+    e2e_module = _load_test_script("e2e_test_data")
+    full_module = _load_test_script("test_data_creator")
+
+    creator_class = getattr(e2e_module, "TestDataCreator")
+    assert callable(getattr(creator_class, "create_all_test_data"))
+    for attribute in (
+        "users",
+        "agent_graphs",
+        "library_agents",
+        "store_submissions",
+        "presets",
+        "api_keys",
+    ):
+        assert attribute in creator_class().__dict__
+
+    assert callable(getattr(full_module, "main"))

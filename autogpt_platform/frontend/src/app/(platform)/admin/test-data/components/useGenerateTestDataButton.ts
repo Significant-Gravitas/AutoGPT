@@ -3,6 +3,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { usePostV2GenerateTestData } from "@/app/api/__generated__/endpoints/admin/admin";
 import type { GenerateTestDataResponse } from "@/app/api/__generated__/models/generateTestDataResponse";
 import type { TestDataScriptType } from "@/app/api/__generated__/models/testDataScriptType";
+import { getErrorDetail } from "./helpers";
 
 export function useGenerateTestDataButton() {
   const { toast } = useToast();
@@ -25,15 +26,17 @@ export function useGenerateTestDataButton() {
         });
       },
       onError: (error) => {
-        const detail =
-          error instanceof Error ? error.message : "Unknown error occurred";
+        // ApiError.message carries the backend's `detail` string, so a 403
+        // surfaces "only available in local environments" rather than a
+        // misleading "please try again".
+        const detail = getErrorDetail(error);
         setResult({
           success: false,
           message: `Failed to generate test data: ${detail}`,
         });
         toast({
           title: "Error",
-          description: "Failed to generate test data. Please try again.",
+          description: detail,
           variant: "destructive",
         });
       },

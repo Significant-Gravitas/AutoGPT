@@ -99,6 +99,31 @@ describe("useGenerateTestDataButton", () => {
     );
   });
 
+  test("puts the server detail in the toast instead of a generic retry hint", () => {
+    renderHook(() => useGenerateTestDataButton());
+    act(() =>
+      hoisted.captured.mutation?.onError(
+        new Error(
+          "Test data generation is only available in local environments.",
+        ),
+      ),
+    );
+    expect(hoisted.toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description:
+          "Test data generation is only available in local environments.",
+      }),
+    );
+  });
+
+  test("falls back to a generic message when the error carries no detail", () => {
+    const { result } = renderHook(() => useGenerateTestDataButton());
+    act(() => hoisted.captured.mutation?.onError({}));
+    expect(result.current.result?.message).toContain(
+      "Failed to generate test data. Please try again.",
+    );
+  });
+
   test("openDialog clears any prior result and opens the dialog", () => {
     const { result } = renderHook(() => useGenerateTestDataButton());
     act(() =>

@@ -1,6 +1,8 @@
+import { notFound } from "next/navigation";
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { GenerateTestDataButton } from "./components/GenerateTestDataButton";
 import { Text } from "@/components/atoms/Text/Text";
+import { environment } from "@/services/environment";
 
 function TestDataDashboard() {
   return (
@@ -156,6 +158,9 @@ function TestDataDashboard() {
 
 export default async function TestDataDashboardPage() {
   "use server";
+  // The backend route only exists on local stacks, so the page 404s elsewhere
+  // instead of rendering a button that can only ever return 403.
+  if (!environment.isLocal()) notFound();
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedTestDataDashboard = await withAdminAccess(TestDataDashboard);
   return <ProtectedTestDataDashboard />;

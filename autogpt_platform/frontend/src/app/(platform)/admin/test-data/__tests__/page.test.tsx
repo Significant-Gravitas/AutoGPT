@@ -1,5 +1,27 @@
 import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { environment } from "@/services/environment";
+
+// The shared next/navigation mock has no notFound(); re-declare it here with
+// the same router surface plus the export this page depends on.
+const notFoundMock = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/admin/test-data",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+  notFound: () => {
+    notFoundMock();
+    throw new Error("NEXT_NOT_FOUND");
+  },
+}));
 
 // Bypass server-side admin auth wrapper.
 vi.mock("@/lib/withRoleAccess", () => ({
@@ -20,6 +42,18 @@ vi.mock("../components/GenerateTestDataButton", () => ({
 import TestDataDashboardPage from "../page";
 
 describe("TestDataDashboardPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    notFoundMock.mockClear();
+  });
+
+  it("404s outside a local stack instead of rendering a dead-end page", async () => {
+    vi.spyOn(environment, "isLocal").mockReturnValue(false);
+
+    await expect(TestDataDashboardPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(notFoundMock).toHaveBeenCalled();
+  });
+
   it("renders the dashboard heading and script descriptions", async () => {
     render(await TestDataDashboardPage());
 
