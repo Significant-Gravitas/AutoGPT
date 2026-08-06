@@ -36,26 +36,48 @@ function withFiles(): ListFilesResponse {
   };
 }
 
+// One entry per branch of `isInternalToolOutput`, each newer than the real
+// deliverable so a missing filter would surface it instead.
 function withToolOutputAndRealFile(): ListFilesResponse {
   const response = withFiles();
-  response.files.push({
-    id: "bbbbbbbb-0000-0000-0000-000000000002",
-    name: "toolu_01ABCdef.json",
-    path: "/sessions/session-1/toolu_01ABCdef.json",
-    mime_type: "application/json",
-    size_bytes: 512,
-    metadata: {},
-    origin: "generated",
-    created_at: "2026-05-20T12:00:00Z",
-  });
+  response.files.push(
+    {
+      id: "bbbbbbbb-0000-0000-0000-000000000002",
+      name: "toolu_01ABCdef.json",
+      path: "/sessions/session-1/toolu_01ABCdef.json",
+      mime_type: "application/json",
+      size_bytes: 512,
+      metadata: {},
+      origin: "generated",
+      created_at: "2026-05-20T12:00:00Z",
+    },
+    {
+      id: "cccccccc-0000-0000-0000-000000000003",
+      name: "mcp_a1b2-c3d4.json",
+      path: "/sessions/session-1/mcp_a1b2-c3d4.json",
+      mime_type: "application/json",
+      size_bytes: 256,
+      metadata: {},
+      origin: "generated",
+      created_at: "2026-05-20T13:00:00Z",
+    },
+    {
+      id: "dddddddd-0000-0000-0000-000000000004",
+      name: "summary.json",
+      path: "/root/.claude/projects/-workspace/abc-123/tool-results/summary.json",
+      mime_type: "application/json",
+      size_bytes: 128,
+      metadata: {},
+      origin: "generated",
+      created_at: "2026-05-20T14:00:00Z",
+    },
+  );
   return response;
 }
 
 function withOnlyToolOutput(): ListFilesResponse {
   const response = withToolOutputAndRealFile();
-  response.files = response.files.filter((file) =>
-    file.name.startsWith("toolu_"),
-  );
+  response.files = response.files.filter((file) => file.name !== "result.csv");
   return response;
 }
 
@@ -82,7 +104,7 @@ describe("ContextPanelAutoOpen", () => {
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });
 
-  test("skips a newer internal tool output and opens the real generated file", async () => {
+  test("skips newer internal tool outputs and opens the real generated file", async () => {
     server.use(
       getListWorkspaceFilesMockHandler200(withToolOutputAndRealFile()),
     );
@@ -92,9 +114,10 @@ describe("ContextPanelAutoOpen", () => {
         useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
       ).toBe("aaaaaaaa-0000-0000-0000-000000000001"),
     );
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });
 
-  test("leaves the panel closed when the only generated file is an internal tool output", async () => {
+  test("leaves the panel closed when every generated file is an internal tool output", async () => {
     server.use(getListWorkspaceFilesMockHandler200(withOnlyToolOutput()));
     render(
       <>
@@ -103,7 +126,7 @@ describe("ContextPanelAutoOpen", () => {
       </>,
     );
     await waitFor(() =>
-      expect(screen.getByTestId("generated-count").textContent).toBe("1"),
+      expect(screen.getByTestId("generated-count").textContent).toBe("3"),
     );
     expect(
       useCopilotUIStore.getState().artifactPanel.activeArtifact,

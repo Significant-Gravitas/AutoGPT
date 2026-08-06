@@ -65,12 +65,18 @@ describe("isInternalToolOutput", () => {
   test("matches files living under an SDK tool result directory", () => {
     expect(
       isInternalToolOutput(
-        generated("summary.json", "/sessions/s1/tool-results/summary.json"),
+        generated(
+          "summary.json",
+          "/root/.claude/projects/-workspace/abc-123/tool-results/summary.json",
+        ),
       ),
     ).toBe(true);
     expect(
       isInternalToolOutput(
-        generated("summary.json", "/sessions/s1/tool-outputs/summary.json"),
+        generated(
+          "summary.json",
+          ".claude/projects/-workspace/abc-123/tool-outputs/summary.json",
+        ),
       ),
     ).toBe(true);
   });
@@ -84,6 +90,25 @@ describe("isInternalToolOutput", () => {
     expect(
       isInternalToolOutput(
         generated("notes.json", "/sessions/s1/my-tool-results-archive.json"),
+      ),
+    ).toBe(false);
+  });
+
+  // The backend classifier refuses to treat a bare `tool-outputs/` segment as
+  // SDK-internal; a user deliverable that happens to live in such a folder must
+  // still be eligible for auto-open.
+  test("leaves user deliverables under a tool-outputs directory alone", () => {
+    expect(
+      isInternalToolOutput(
+        generated(
+          "data.json",
+          "/sessions/s1/my-pipeline/tool-outputs/data.json",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      isInternalToolOutput(
+        generated("data.json", "/sessions/s1/tool-results/data.json"),
       ),
     ).toBe(false);
   });
