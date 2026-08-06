@@ -197,8 +197,8 @@
   },
   "pnpm": {
     "//kysely": "DO NOT UPGRADE past 0.28.x: @better-auth/kysely-adapter (better-auth) imports DEFAULT_MIGRATION_LOCK_TABLE from the kysely root, which 0.29 moved to kysely/migration — upgrading crashes every /api/auth route. Revisit when better-auth's adapter supports kysely 0.29+.",
-    "//shell-quote": "SECURITY PIN (dev-only): forces shell-quote exactly 1.9.0 to clear GHSA advisories in the vulnerable 1.8.x line. Only transitive consumer today is concurrently (used by the test-storybook:ci script). Kept global rather than scoped to concurrently so any future transitive consumer also gets a patched version. Safe to remove once every consumer resolves shell-quote >=1.9.0 on its own.",
-    "//ws": "SECURITY PIN (dev-only): forces ws exactly 8.21.1 to clear advisories in 8.19.0 pulled by happy-dom, jsdom, Storybook, and Vitest. Safe to remove once every consumer resolves ws >=8.21.0 on its own.",
+    "//shell-quote": "SECURITY PIN (dev-only): forces shell-quote exactly 1.9.0 to clear GHSA-395f-4hp3-45gv and GHSA-w7jw-789q-3m8p in the vulnerable 1.8.x line. Consumed transitively via concurrently (used by the test-storybook:ci script). Kept global rather than scoped to concurrently so any future transitive consumer also gets a patched version. Safe to remove once every consumer resolves shell-quote >=1.9.0 on its own.",
+    "//ws": "SECURITY PIN (dev-only): forces ws exactly 8.21.1 to clear GHSA-58qx-3vcg-4xpx and GHSA-96hv-2xvq-fx4p in 8.19.0 pulled by happy-dom, jsdom, Storybook, and Vitest. Safe to remove once every consumer resolves ws >=8.21.0 on its own.",
     "overrides": {
       "@opentelemetry/instrumentation": "0.209.0",
       "lodash-es": "4.17.23",
