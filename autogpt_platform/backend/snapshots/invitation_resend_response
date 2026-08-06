@@ -1,0 +1,7 @@
+{
+  "email": "alice@example.com",
+  "id": "inv-1",
+  "is_admin": false,
+  "is_billing_manager": false,
+  "team_ids": []
+}
