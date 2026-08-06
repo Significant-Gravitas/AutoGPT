@@ -6609,6 +6609,103 @@
         }
       }
     },
+    "/api/integrations/teams/{team_id}/credentials": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List Team Credentials",
+        "operationId": "getV1List team credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The team whose credentials to list"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialsMetaResponse"
+                  },
+                  "title": "Response Getv1List Team Credentials"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/teams/{team_id}/credentials/{cred_id}": {
+      "delete": {
+        "tags": ["v1", "integrations"],
+        "summary": "Delete Team Credential",
+        "operationId": "deleteV1Delete team credential",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The team that owns the credential"
+            }
+          },
+          {
+            "name": "cred_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The ID of the team credential to delete"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/webhooks/{webhook_id}/ping": {
       "post": {
         "tags": ["v1", "integrations"],
@@ -6755,6 +6852,15 @@
               "type": "string",
               "title": "The provider to create credentials for",
               "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "If set, create a team-owned credential for this team (team admins only) instead of a personal one. Team credentials are listed and deleted via /teams/{team_id}/credentials."
             }
           }
         ],

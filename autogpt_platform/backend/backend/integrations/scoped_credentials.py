@@ -1,6 +1,6 @@
 """Scoped credential store using the IntegrationCredential table.
 
-Provides the new credential resolution path (USER → WORKSPACE → ORG)
+Provides the new credential resolution path (USER → TEAM → ORG)
 using the IntegrationCredential table introduced in PR1. During the
 dual-read transition period, callers should try this store first and
 fall back to the legacy IntegrationCredentialsStore.
@@ -10,13 +10,53 @@ reads from the User.integrations encrypted blob.
 """
 
 import logging
-from typing import Optional
+from datetime import datetime
+from enum import StrEnum
+from typing import Any, NotRequired, Optional, TypedDict
 from uuid import uuid4
 
+from prisma.enums import CredentialOwnerType
+from prisma.types import IntegrationCredentialCreateInput
+
 from backend.data.db import prisma
+from backend.data.model import CredentialsType
 from backend.util.encryption import JSONCryptor
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
+
+
+class CredentialStatus(StrEnum):
+    """Lifecycle status of an ``IntegrationCredential`` row.
+
+    Lowercase because the column is a plain ``String @default("active")``.
+    Deliberately *not* the casing of ``TeamMember.status`` (``ACTIVE``), which
+    is a real Prisma enum on an unrelated model — don't normalize them.
+    """
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+class CredentialMetadata(TypedDict):
+    """Non-secret view of a credential row — the store↔caller boundary shape.
+
+    The integrations router maps this straight onto ``CredentialsMetaResponse``,
+    so the keys here are load-bearing API surface.
+    """
+
+    id: str
+    provider: str
+    credentialType: CredentialsType
+    displayName: str
+    scope: CredentialOwnerType
+    createdByUserId: str
+    lastUsedAt: Optional[datetime]
+    expiresAt: Optional[datetime]
+    createdAt: Optional[datetime]
+    metadata: Optional[dict[str, Any]]
+    payload: NotRequired[dict[str, Any]]
+
 
 _cryptor: JSONCryptor | None = None
 
@@ -37,60 +77,63 @@ async def get_scoped_credentials(
     organization_id: str,
     team_id: str | None = None,
     provider: str | None = None,
-) -> list[dict]:
-    """Get credentials visible to the user in the current org/workspace context.
+) -> list[CredentialMetadata]:
+    """Get credentials visible to the user in the current org/team context.
 
     Resolution order (per plan 3D):
     1. USER credentials created by this user in this org
-    2. WORKSPACE credentials for the active workspace (if workspace is set)
+    2. TEAM credentials for the active team (if a team is set)
     3. ORG credentials for the active org
 
     Returns a list of credential metadata dicts (not decrypted payloads).
     """
-    results: list[dict] = []
+    results: list[CredentialMetadata] = []
 
     # 1. User-scoped credentials
     user_where: dict = {
         "organizationId": organization_id,
-        "ownerType": "USER",
+        "ownerType": CredentialOwnerType.USER,
         "ownerId": user_id,
-        "status": "active",
+        "status": CredentialStatus.ACTIVE,
     }
     if provider:
         user_where["provider"] = provider
 
     user_creds = await prisma.integrationcredential.find_many(where=user_where)
-    for c in user_creds:
-        results.append(_cred_to_metadata(c, scope="USER"))
+    results.extend(
+        _cred_to_metadata(c, scope=CredentialOwnerType.USER) for c in user_creds
+    )
 
-    # 2. Workspace-scoped credentials (only if workspace is active)
+    # 2. Team-scoped credentials (only if a team context is active)
     if team_id:
         ws_where: dict = {
             "organizationId": organization_id,
-            "ownerType": "TEAM",
+            "ownerType": CredentialOwnerType.TEAM,
             "ownerId": team_id,
-            "status": "active",
+            "status": CredentialStatus.ACTIVE,
         }
         if provider:
             ws_where["provider"] = provider
 
         ws_creds = await prisma.integrationcredential.find_many(where=ws_where)
-        for c in ws_creds:
-            results.append(_cred_to_metadata(c, scope="TEAM"))
+        results.extend(
+            _cred_to_metadata(c, scope=CredentialOwnerType.TEAM) for c in ws_creds
+        )
 
     # 3. Org-scoped credentials
     org_where: dict = {
         "organizationId": organization_id,
-        "ownerType": "ORG",
+        "ownerType": CredentialOwnerType.ORG,
         "ownerId": organization_id,
-        "status": "active",
+        "status": CredentialStatus.ACTIVE,
     }
     if provider:
         org_where["provider"] = provider
 
     org_creds = await prisma.integrationcredential.find_many(where=org_where)
-    for c in org_creds:
-        results.append(_cred_to_metadata(c, scope="ORG"))
+    results.extend(
+        _cred_to_metadata(c, scope=CredentialOwnerType.ORG) for c in org_creds
+    )
 
     return results
 
@@ -101,10 +144,11 @@ async def get_credential_by_id(
     organization_id: str,
     team_id: str | None = None,
     decrypt: bool = False,
-) -> Optional[dict]:
+) -> Optional[CredentialMetadata]:
     """Get a specific credential by ID if the user has access.
 
     Access rules (enforced HERE, not trusted to callers):
+    - Revoked (soft-deleted) rows are invisible, same as the list paths
     - USER creds: only the creating user can access
     - TEAM creds: only via the matching active team, or verified team
       membership when the caller's active context is a different team
@@ -115,10 +159,16 @@ async def get_credential_by_id(
     if cred is None or cred.organizationId != organization_id:
         return None
 
-    if cred.ownerType == "USER" and cred.createdByUserId != user_id:
+    # A revoked credential must stay revoked on every path. The list queries
+    # already filter on `status`; without the same filter here a soft-deleted
+    # credential would still be readable — and with decrypt=True, usable — by ID.
+    if cred.status != CredentialStatus.ACTIVE:
         return None
 
-    if cred.ownerType == "TEAM" and cred.ownerId != team_id:
+    if cred.ownerType == CredentialOwnerType.USER and cred.createdByUserId != user_id:
+        return None
+
+    if cred.ownerType == CredentialOwnerType.TEAM and cred.ownerId != team_id:
         # Not the active team — allow only if the user is actually a
         # member of the owning team. Without this check any org member
         # could fetch (and with decrypt=True, exfiltrate) another
@@ -138,32 +188,26 @@ async def get_credential_by_id(
 
 async def create_credential(
     organization_id: str,
-    owner_type: str,  # USER, TEAM, ORG
+    owner_type: CredentialOwnerType,
     owner_id: str,  # userId, teamId, or orgId
     provider: str,
     credential_type: str,
     display_name: str,
     payload: dict,
     user_id: str,
-    team_id: str | None = None,
-    expires_at=None,
+    expires_at: datetime | None = None,
     metadata: dict | None = None,
-) -> dict:
+) -> CredentialMetadata:
     """Create a new scoped credential.
 
-    For TEAM-owned credentials, pass ``owner_type="TEAM"``, ``owner_id=<teamId>``
-    and ``team_id=<teamId>`` so the dedicated ``teamId`` FK is populated (this
-    gives ``onDelete: Cascade`` cleanup when the team is deleted). The read
-    path (:func:`get_scoped_credentials` / :func:`get_credential_by_id`)
-    resolves TEAM rows by ``ownerType="TEAM"`` + ``ownerId=<teamId>`` +
+    For TEAM-owned credentials pass ``owner_type=CredentialOwnerType.TEAM`` and
+    ``owner_id=<teamId>``; the dedicated ``teamId`` FK is derived from
+    ``owner_id`` so the two can never desync (the FK is what gives
+    ``onDelete: Cascade`` cleanup when the team is deleted). The read path
+    (:func:`get_scoped_credentials` / :func:`get_credential_by_id`) resolves
+    TEAM rows by ``ownerType="TEAM"`` + ``ownerId=<teamId>`` +
     ``organizationId``, so those three fields are the load-bearing shape.
     """
-    if owner_type == "TEAM" and team_id != owner_id:
-        # Enforce the invariant the docstring promises: without the matching
-        # teamId FK, the row loses cascade cleanup and diverges from what the
-        # read path resolves on.
-        raise ValueError("team_id must equal owner_id for TEAM-owned credentials")
-
     # Generate the id up front so the encrypted payload's id matches the row's
     # primary key. Otherwise a decrypted read (via CREDENTIALS_ADAPTER) would
     # surface the client-supplied id from the blob instead of the authoritative
@@ -171,22 +215,31 @@ async def create_credential(
     credential_id = str(uuid4())
     encrypted = _get_cryptor().encrypt({**payload, "id": credential_id})
 
-    cred = await prisma.integrationcredential.create(
-        data={
-            "id": credential_id,
-            "organizationId": organization_id,
-            "ownerType": owner_type,
-            "ownerId": owner_id,
-            "teamId": team_id,
-            "provider": provider,
-            "credentialType": credential_type,
-            "displayName": display_name,
-            "encryptedPayload": encrypted,
-            "createdByUserId": user_id,
-            "expiresAt": expires_at,
-            "metadata": metadata,
-        }
-    )
+    # `Organization` is a *required* relation on IntegrationCredential, so the
+    # query engine rejects a raw `organizationId` scalar with
+    # MissingRequiredValueError — it has to be given in `connect` form.
+    data: IntegrationCredentialCreateInput = {
+        "id": credential_id,
+        "Organization": {"connect": {"id": organization_id}},
+        "ownerType": owner_type,
+        "ownerId": owner_id,
+        "provider": provider,
+        "credentialType": credential_type,
+        "displayName": display_name,
+        "encryptedPayload": encrypted,
+        "createdByUserId": user_id,
+        "expiresAt": expires_at,
+    }
+    if owner_type == CredentialOwnerType.TEAM:
+        # The teamId relation is named `Workspace` on this model (see its
+        # @relation("TeamCredentials")), and it only ever points at the owning
+        # team. Non-TEAM rows must omit the key entirely rather than pass None.
+        data["Workspace"] = {"connect": {"id": owner_id}}
+    if metadata is not None:
+        # `metadata` is a `Json?` column: a raw dict is not a valid input value.
+        data["metadata"] = SafeJson(metadata)
+
+    cred = await prisma.integrationcredential.create(data=data)
 
     return _cred_to_metadata(cred, scope=owner_type)
 
@@ -195,7 +248,7 @@ async def list_team_credentials(
     organization_id: str,
     team_id: str,
     provider: str | None = None,
-) -> list[dict]:
+) -> list[CredentialMetadata]:
     """List active TEAM-owned credentials for a team (metadata only, no secrets).
 
     Matches the TEAM branch of :func:`get_scoped_credentials`. Callers MUST
@@ -203,15 +256,15 @@ async def list_team_credentials(
     """
     where: dict = {
         "organizationId": organization_id,
-        "ownerType": "TEAM",
+        "ownerType": CredentialOwnerType.TEAM,
         "ownerId": team_id,
-        "status": "active",
+        "status": CredentialStatus.ACTIVE,
     }
     if provider:
         where["provider"] = provider
 
     creds = await prisma.integrationcredential.find_many(where=where)
-    return [_cred_to_metadata(c, scope="TEAM") for c in creds]
+    return [_cred_to_metadata(c, scope=CredentialOwnerType.TEAM) for c in creds]
 
 
 async def delete_team_credential(
@@ -221,28 +274,32 @@ async def delete_team_credential(
 ) -> None:
     """Soft-delete a TEAM-owned credential (``status`` -> ``'revoked'``).
 
-    Scoped to a single team: the credential must be TEAM-owned by exactly
-    ``team_id`` within ``organization_id``. This prevents a team admin from
-    revoking a *different* team's credential by ID (cross-team escalation
-    inside a shared org). The caller MUST have verified team-admin
-    authorization for ``team_id`` first.
+    Scoped to a single team: the credential must be an active TEAM-owned row
+    belonging to exactly ``team_id`` within ``organization_id``. This prevents
+    a team admin from revoking a *different* team's credential by ID
+    (cross-team escalation inside a shared org). The caller MUST have verified
+    team-admin authorization for ``team_id`` first.
+
+    The scope is expressed as the ``where`` of a single ``update_many``, so the
+    ownership check and the write are one atomic statement (and one round-trip)
+    instead of a find-then-update that another writer can slip between.
 
     Raises:
-        ValueError: If no matching TEAM credential exists for this team/org.
+        ValueError: If no matching active TEAM credential exists for this
+            team/org.
     """
-    cred = await prisma.integrationcredential.find_unique(where={"id": credential_id})
-    if (
-        cred is None
-        or cred.organizationId != organization_id
-        or cred.ownerType != "TEAM"
-        or cred.ownerId != team_id
-    ):
-        raise ValueError(f"Credential {credential_id} not found")
-
-    await prisma.integrationcredential.update(
-        where={"id": credential_id},
-        data={"status": "revoked"},
+    revoked = await prisma.integrationcredential.update_many(
+        where={
+            "id": credential_id,
+            "organizationId": organization_id,
+            "ownerType": CredentialOwnerType.TEAM,
+            "ownerId": team_id,
+            "status": CredentialStatus.ACTIVE,
+        },
+        data={"status": CredentialStatus.REVOKED},
     )
+    if revoked == 0:
+        raise ValueError(f"Credential {credential_id} not found")
 
 
 async def delete_credential(
@@ -266,11 +323,11 @@ async def delete_credential(
 
     await prisma.integrationcredential.update(
         where={"id": credential_id},
-        data={"status": "revoked"},
+        data={"status": CredentialStatus.REVOKED},
     )
 
 
-def _cred_to_metadata(cred, scope: str) -> dict:
+def _cred_to_metadata(cred, scope: CredentialOwnerType) -> CredentialMetadata:
     """Convert a Prisma IntegrationCredential to a metadata dict."""
     return {
         "id": cred.id,
@@ -282,4 +339,5 @@ def _cred_to_metadata(cred, scope: str) -> dict:
         "lastUsedAt": cred.lastUsedAt,
         "expiresAt": cred.expiresAt,
         "createdAt": cred.createdAt,
+        "metadata": cred.metadata,
     }

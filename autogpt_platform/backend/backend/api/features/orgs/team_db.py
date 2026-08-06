@@ -5,9 +5,31 @@ import logging
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
 
-from .team_model import TeamMemberResponse, TeamResponse
+from .team_model import TeamMemberResponse, TeamMembership, TeamResponse
 
 logger = logging.getLogger(__name__)
+
+
+async def get_team_membership(team_id: str, user_id: str) -> TeamMembership | None:
+    """Look up a user's membership of a live team, for authorization.
+
+    Returns ``None`` when there is no membership row *or* the team is missing
+    or archived. Callers should map all of those to the same "not found"
+    response: a team in another org has no membership row for the caller
+    either, so team ids outside the caller's orgs stay unprobeable.
+    """
+    member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": team_id, "userId": user_id}},
+        include={"Team": True},
+    )
+    if member is None or member.Team is None or member.Team.archivedAt is not None:
+        return None
+
+    return TeamMembership(
+        org_id=member.Team.orgId,
+        is_active=member.status == "ACTIVE",
+        is_admin=member.isAdmin,
+    )
 
 
 async def create_team(
