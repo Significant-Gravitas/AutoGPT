@@ -2,11 +2,7 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
-)
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
 StripeCredentials = APIKeyCredentials
@@ -34,5 +30,5 @@ TEST_CREDENTIALS_INPUT = {
     "provider": TEST_CREDENTIALS.provider,
     "id": TEST_CREDENTIALS.id,
     "type": TEST_CREDENTIALS.type,
-    "title": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
 }

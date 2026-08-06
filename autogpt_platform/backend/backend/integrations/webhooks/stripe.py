@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import logging
 import time
+from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request
 from strenum import StrEnum
@@ -24,7 +25,7 @@ class StripeWebhookType(StrEnum):
     ACCOUNT = "account"
 
 
-class StripeWebhooksManager(BaseWebhooksManager[StripeWebhookType]):
+class StripeWebhooksManager(BaseWebhooksManager):
     PROVIDER_NAME = ProviderName.STRIPE
     WebhookType = StripeWebhookType
 
@@ -47,17 +48,30 @@ class StripeWebhooksManager(BaseWebhooksManager[StripeWebhookType]):
                 status_code=500, detail="Stripe signing secret not configured"
             )
 
-        # Parse Stripe-Signature header: t=timestamp,v1=signature
-        parts = {k: v for k, v in (p.split("=", 1) for p in sig_header.split(","))}
-        timestamp = parts.get("t")
-        v1_sig = parts.get("v1")
-        if not timestamp or not v1_sig:
+        # Parse Stripe-Signature header: t=timestamp,v1=signature. During a
+        # signing-secret rotation Stripe signs each delivery with every active
+        # secret, so there can be more than one v1 entry.
+        timestamp = ""
+        v1_sigs: list[str] = []
+        for part in sig_header.split(","):
+            key, _, value = part.partition("=")
+            if key.strip() == "t":
+                timestamp = value
+            elif key.strip() == "v1":
+                v1_sigs.append(value)
+        if not timestamp or not v1_sigs:
             raise HTTPException(
                 status_code=403, detail="Invalid Stripe-Signature format"
             )
 
         # Reject stale timestamps
-        if abs(time.time() - int(timestamp)) > STRIPE_TIMESTAMP_TOLERANCE:
+        try:
+            age = abs(time.time() - int(timestamp))
+        except ValueError:
+            raise HTTPException(
+                status_code=403, detail="Invalid Stripe-Signature timestamp"
+            )
+        if age > STRIPE_TIMESTAMP_TOLERANCE:
             raise HTTPException(
                 status_code=403, detail="Stripe webhook timestamp is too old"
             )
@@ -70,7 +84,7 @@ class StripeWebhooksManager(BaseWebhooksManager[StripeWebhookType]):
             digestmod=hashlib.sha256,
         ).hexdigest()
 
-        if not hmac.compare_digest(expected, v1_sig):
+        if not any(hmac.compare_digest(expected, sig) for sig in v1_sigs):
             raise HTTPException(
                 status_code=403, detail="Stripe webhook signature mismatch"
             )
@@ -104,10 +118,10 @@ class StripeWebhooksManager(BaseWebhooksManager[StripeWebhookType]):
 
         api_key = credentials.api_key.get_secret_value()
 
-        # Build form-encoded body for Stripe API (requires form encoding, not JSON)
-        form_data = f"url={ingress_url}"
-        for event in events:
-            form_data += f"&enabled_events[]={event}"
+        # Stripe's API takes form encoding, not JSON
+        form_data = urlencode(
+            [("url", ingress_url)] + [("enabled_events[]", event) for event in events]
+        )
 
         response = await Requests(raise_for_status=False).post(
             f"{STRIPE_API_URL}/webhook_endpoints",
@@ -132,7 +146,9 @@ class StripeWebhooksManager(BaseWebhooksManager[StripeWebhookType]):
         self, webhook: integrations.Webhook, credentials: Credentials
     ) -> None:
         if not isinstance(credentials, APIKeyCredentials):
-            logger.warning("Cannot deregister Stripe webhook: API key credentials required")
+            logger.warning(
+                "Cannot deregister Stripe webhook: API key credentials required"
+            )
             return
 
         endpoint_id = webhook.provider_webhook_id

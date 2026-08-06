@@ -112,6 +112,7 @@
 * [Slant3D Webhook](block-integrations/slant3d/webhook.md)
 * [Smartlead Campaign](block-integrations/smartlead/campaign.md)
 * [Stagehand Blocks](block-integrations/stagehand/blocks.md)
+* [Stripe Triggers](block-integrations/stripe/triggers.md)
 * [System Library Operations](block-integrations/system/library_operations.md)
 * [System Store Operations](block-integrations/system/store_operations.md)
 * [Telegram Blocks](block-integrations/telegram/blocks.md)

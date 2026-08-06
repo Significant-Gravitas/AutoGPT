@@ -59,18 +59,14 @@ class StripeSubscriptionTriggerBlock(Block):
         subscription_id: str = SchemaField(
             description="Stripe subscription ID (sub_...)"
         )
-        customer_id: str = SchemaField(
-            description="Stripe customer ID (cus_...)"
-        )
+        customer_id: str = SchemaField(description="Stripe customer ID (cus_...)")
         status: str = SchemaField(
             description="Subscription status: active, trialing, past_due, canceled, etc."
         )
         plan_name: str = SchemaField(
             description="Plan nickname from the subscription's first item price"
         )
-        plan_interval: str = SchemaField(
-            description="Billing interval: month or year"
-        )
+        plan_interval: str = SchemaField(description="Billing interval: month or year")
         amount_cents: int = SchemaField(
             description="Plan unit amount in the smallest currency unit (e.g. cents for USD)"
         )
@@ -92,7 +88,7 @@ class StripeSubscriptionTriggerBlock(Block):
         )
 
         super().__init__(
-            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            id="bc05f7ef-ba6f-4cb7-a899-3913b745ed11",
             description=(
                 "Triggers on Stripe subscription events (new, upgrade, cancel). "
                 "Uses Stripe webhooks directly — real external customers only, "
@@ -134,28 +130,28 @@ class StripeSubscriptionTriggerBlock(Block):
 
         try:
             subscription = payload["data"]["object"]
-            event_type = payload.get("type", "")
 
-            yield "event_type", event_type
+            # Plan info lives on the first subscription item; older Stripe API
+            # versions only expose it as a top-level `plan`.
+            if items := subscription.get("items", {}).get("data", []):
+                price = items[0].get("price", {})
+                plan_name = price.get("nickname") or price.get("id", "")
+                plan_interval = price.get("recurring", {}).get("interval", "")
+                amount_cents = price.get("unit_amount") or 0
+            else:
+                plan = subscription.get("plan", {})
+                plan_name = plan.get("nickname") or plan.get("id", "")
+                plan_interval = plan.get("interval", "")
+                amount_cents = plan.get("amount") or 0
+
+            yield "event_type", payload.get("type", "")
             yield "subscription_id", subscription.get("id", "")
             yield "customer_id", subscription.get("customer", "")
             yield "status", subscription.get("status", "")
+            yield "plan_name", plan_name
+            yield "plan_interval", plan_interval
+            yield "amount_cents", amount_cents
             yield "currency", subscription.get("currency", "")
             yield "livemode", payload.get("livemode", False)
-
-            # Extract plan info from the first subscription item
-            items = subscription.get("items", {}).get("data", [])
-            if items:
-                price = items[0].get("price", {})
-                recurring = price.get("recurring", {})
-                yield "plan_name", price.get("nickname") or price.get("id", "")
-                yield "plan_interval", recurring.get("interval", "")
-                yield "amount_cents", price.get("unit_amount", 0)
-            else:
-                # Fall back to top-level plan (older Stripe API versions)
-                plan = subscription.get("plan", {})
-                yield "plan_name", plan.get("nickname") or plan.get("id", "")
-                yield "plan_interval", plan.get("interval", "")
-                yield "amount_cents", plan.get("amount", 0)
         except (KeyError, TypeError) as e:
             yield "error", f"Failed to parse Stripe subscription payload: {e}"
