@@ -35,17 +35,18 @@ vi.mock("../helpers/resolve-collision", () => ({
 
 const mockCapturedReactFlowProps: Record<string, unknown>[] = [];
 
+interface MockReactFlowProps {
+  children: ReactNode;
+  [key: string]: unknown;
+}
+
+function MockReactFlow({ children, ...props }: MockReactFlowProps) {
+  mockCapturedReactFlowProps.push(props);
+  return <div data-testid="react-flow">{children}</div>;
+}
+
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({
-    children,
-    ...props
-  }: {
-    children: ReactNode;
-    [key: string]: unknown;
-  }) => {
-    mockCapturedReactFlowProps.push(props);
-    return <div data-testid="react-flow">{children}</div>;
-  },
+  ReactFlow: MockReactFlow,
   Background: () => <div data-testid="background" />,
   useReactFlow: () => ({ zoomIn: vi.fn(), zoomOut: vi.fn(), fitView: vi.fn() }),
 }));
