@@ -6,7 +6,7 @@ import {
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import { resolveResponse } from "@/app/api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLDClient } from "launchdarkly-react-client-sdk";
@@ -54,7 +54,7 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn, isUserLoading } = useSupabase();
+  const { isLoggedIn, isUserLoading, refreshSession } = useAuth();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -91,6 +91,16 @@ export function useOnboardingPage() {
   if (paymentEnabledSnapshot.current === null && areFlagsReady) {
     paymentEnabledSnapshot.current = livePaymentEnabled;
   }
+
+  // Snapshotted for the same reason as the paywall flag: the brain dump
+  // and the pillboxes occupy the same step, and swapping them under a
+  // user who is already recording would drop the take.
+  const liveBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const brainDumpEnabledSnapshot = useRef<boolean | null>(null);
+  if (brainDumpEnabledSnapshot.current === null && areFlagsReady) {
+    brainDumpEnabledSnapshot.current = liveBrainDumpEnabled;
+  }
+  const isBrainDumpEnabled = brainDumpEnabledSnapshot.current ?? false;
 
   // Skip the paywall for users already on a paid tier (admin grants or
   // pre-VISIT_COPILOT accounts) so they aren't asked to pay again to escape.
@@ -200,16 +210,32 @@ export function useOnboardingPage() {
     // the profile is only ever submitted here, once, on reaching Preparing.
     // Guard against an empty name so a stray Preparing visit can't blank a
     // previously-saved profile.
-    if (!name.trim()) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
 
     postV1SubmitOnboardingProfile({
-      user_name: name,
+      user_name: trimmedName,
       user_role: role,
       pain_points: painPoints,
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
-  }, [currentStep, preparingStep]);
+
+    // Also store the chosen name in auth user_metadata so the copilot
+    // greeting (getGreetingName) uses it; refresh the cached session user
+    // so the new name shows up right after onboarding without a reload.
+    // Goes through the server route because the browser Supabase client has
+    // no session (persistSession: false) and can't call auth.updateUser.
+    fetch("/api/auth/user", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferred_name: trimmedName }),
+    })
+      .then((res) => (res.ok ? refreshSession() : undefined))
+      .catch(() => {
+        // Best effort — the greeting falls back to existing metadata
+      });
+  }, [currentStep, preparingStep, refreshSession]);
 
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -233,6 +259,7 @@ export function useOnboardingPage() {
     isLoading: isOnboardingStateLoading || !isReady,
     handlePreparingComplete,
     isPaymentEnabled,
+    isBrainDumpEnabled,
     steps,
     preparingStep,
     totalSteps,

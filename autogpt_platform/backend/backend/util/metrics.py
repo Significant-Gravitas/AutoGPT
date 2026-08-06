@@ -1,5 +1,6 @@
 import logging
 from enum import Enum
+from types import TracebackType
 
 from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
@@ -70,11 +71,40 @@ _PIKA_RECONNECT_SIGNATURES = (
     "connection_lost",
 )
 
+# FalkorDB (Graphiti CoPilot memory) connection-teardown noise. graphiti-core's
+# ``execute_query`` logs ERROR + re-raises whenever a query races the closing of
+# its redis.asyncio connection — the fire-and-forget cache-eviction close or a
+# per-request ``driver.close()`` in a finally block. Chat degrades gracefully
+# (memory callers swallow it), so these are benign. Drop only the two teardown
+# signatures, scoped to the graphiti driver (by logger for log events, by
+# traceback for exceptions) so genuine query errors (Cypher typos, missing
+# graphs) — and unrelated main-redis outages — still reach Sentry. (SENTRY-1387.)
+_FALKORDB_DRIVER_LOGGER = "graphiti_core.driver.falkordb_driver"
+_FALKORDB_TEARDOWN_SIGNATURES = (
+    "buffer is closed",
+    "connection closed by server",
+)
+
+
+def _raised_from_graphiti_falkordb(exc_tb: TracebackType | None) -> bool:
+    """True if the graphiti FalkorDB driver module appears in the traceback.
+
+    graphiti-core's ``execute_query`` re-raises from that module, so its frame
+    is on the traceback of a teardown error originating there. Scoping to it
+    keeps unrelated redis exceptions (e.g. the platform's main redis) reaching
+    Sentry even when they share the ``connection closed by server`` message.
+    """
+    while exc_tb is not None:
+        if exc_tb.tb_frame.f_globals.get("__name__") == _FALKORDB_DRIVER_LOGGER:
+            return True
+        exc_tb = exc_tb.tb_next
+    return False
+
 
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
     if "exc_info" in hint:
-        exc_type, exc_value, _ = hint["exc_info"]
+        exc_type, exc_value, exc_tb = hint["exc_info"]
         exc_msg = str(exc_value).lower() if exc_value else ""
 
         # AMQP/RabbitMQ transient connection errors — expected during deploys
@@ -90,6 +120,14 @@ def _before_send(event, hint):
                 for ind in _AMQP_INDICATORS
             ) or any(kw in exc_msg for kw in _AMQP_INDICATORS):
                 return None
+
+        # FalkorDB connection-teardown races (eviction/shutdown) — benign, but
+        # only when raised from the graphiti driver, so an unrelated main-redis
+        # outage sharing the message still reaches Sentry.
+        if any(
+            sig in exc_msg for sig in _FALKORDB_TEARDOWN_SIGNATURES
+        ) and _raised_from_graphiti_falkordb(exc_tb):
+            return None
 
         # User-caused credential/auth/integration errors — not platform bugs
         if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
@@ -133,6 +171,9 @@ def _before_send(event, hint):
     logger_name = event.get("logger")
     if logger_name in _PIKA_RECONNECT_LOGGERS and log_msg:
         if any(sig in log_msg.lower() for sig in _PIKA_RECONNECT_SIGNATURES):
+            return None
+    if logger_name == _FALKORDB_DRIVER_LOGGER and log_msg:
+        if any(sig in log_msg.lower() for sig in _FALKORDB_TEARDOWN_SIGNATURES):
             return None
     if logger_name and log_msg:
         msg = log_msg.lower()

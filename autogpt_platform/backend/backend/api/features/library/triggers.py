@@ -9,6 +9,7 @@ because the copilot tool runs without a connected Prisma client.
 import logging
 from typing import Any
 
+from backend.api.features.experts import experts_db
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -70,10 +71,14 @@ async def setup_triggered_preset(
         ),
     }
 
+    # Resource-follows-parent: the webhook lives in the graph's org/team,
+    # not the caller's active org.
     new_webhook, feedback = await setup_webhook_for_block(
         user_id=user_id,
         trigger_block=trigger_node.block,
         trigger_config=trigger_config_with_credentials,
+        organization_id=graph.organization_id,
+        team_id=graph.team_id,
     )
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
@@ -87,9 +92,12 @@ async def setup_triggered_preset(
             description=description,
             inputs=trigger_config_with_credentials,
             credentials=agent_credentials,
-            webhook_id=new_webhook.id,
             is_active=True,
         ),
+        webhook_id=new_webhook.id,
+        # A trigger on an expert-installed workflow fires as the expert's
+        # work: unique (user, graph) → expert matches keep the attribution.
+        expert_id=await experts_db.resolve_expert_for_graph(user_id, graph.id),
     )
 
 
@@ -143,6 +151,9 @@ async def update_triggered_preset(
                 trigger_block=trigger_node.block,
                 trigger_config=trigger_config_with_credentials,
                 for_preset_id=preset_id,
+                # Resource-follows-parent: webhook lives in the graph's org/team.
+                organization_id=graph.organization_id,
+                team_id=graph.team_id,
             )
             trigger_inputs_updated = True
             if not new_webhook:

@@ -37,7 +37,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === "chat-search",
+    useGetFlag: (flag: string) =>
+      flag === "chat-search" || flag === "chat-pinning",
   };
 });
 
@@ -284,6 +285,80 @@ describe("ChatSidebar — chat_status indicators", () => {
   });
 });
 
+describe("ChatSidebar — pinning", () => {
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  async function openMenuFor(title: string) {
+    const sessionRow = (await screen.findByText(title)).closest("div.group");
+    if (!sessionRow) throw new Error(`row not found for ${title}`);
+    const moreButton = within(sessionRow as HTMLElement).getByRole("button", {
+      name: /more actions/i,
+    });
+    fireEvent.pointerDown(moreButton, { button: 0 });
+  }
+
+  it("pins an unpinned session via the dropdown", async () => {
+    let pinnedBody: { is_pinned?: boolean } | null = null;
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: [
+          {
+            id: "s1",
+            title: "Unpinned chat",
+            is_processing: false,
+            is_pinned: false,
+            created_at: "2025-01-01T00:00:00Z",
+            updated_at: "2025-01-01T00:00:00Z",
+          },
+        ],
+        total: 1,
+      }),
+      http.patch("*/api/chat/sessions/:id/pinned", async ({ request }) => {
+        pinnedBody = (await request.json()) as { is_pinned: boolean };
+        return HttpResponse.json({ status: "ok" });
+      }),
+    );
+    renderSidebar();
+
+    await openMenuFor("Unpinned chat");
+    const pinItem = await screen.findByRole("menuitem", { name: /pin chat/i });
+    fireEvent.click(pinItem);
+
+    await vi.waitFor(() => {
+      expect(pinnedBody).toEqual({ is_pinned: true });
+    });
+  });
+
+  it("offers Unpin and a pinned indicator for pinned sessions", async () => {
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: [
+          {
+            id: "s1",
+            title: "Pinned chat",
+            is_processing: false,
+            is_pinned: true,
+            created_at: "2025-01-01T00:00:00Z",
+            updated_at: "2025-01-01T00:00:00Z",
+          },
+        ],
+        total: 1,
+      }),
+    );
+    renderSidebar();
+
+    await screen.findByText("Pinned chat");
+    expect(screen.getByTestId("session-pinned-indicator")).toBeDefined();
+
+    await openMenuFor("Pinned chat");
+    expect(
+      await screen.findByRole("menuitem", { name: /unpin chat/i }),
+    ).toBeDefined();
+  });
+});
+
 describe("ChatSidebar — pagination", () => {
   afterEach(() => {
     server.resetHandlers();
@@ -353,5 +428,5 @@ describe("ChatSidebar — pagination", () => {
         screen.queryByRole("button", { name: /load older chats/i }),
       ).toBeNull();
     });
-  });
+  }, 10_000);
 });

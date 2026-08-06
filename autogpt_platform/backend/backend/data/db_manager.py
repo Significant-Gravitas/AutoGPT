@@ -2,6 +2,8 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.experts import experts_db
+from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -14,6 +16,7 @@ from backend.api.features.library.db import (
     get_folder_tree,
     get_library_agent,
     get_library_agent_by_graph_id,
+    get_library_agent_id_by_graph_id,
     get_preset,
     get_root_agent_summaries,
     list_folders,
@@ -30,6 +33,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     get_embedding_stats,
@@ -45,6 +49,7 @@ from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
+from backend.data import bot_installs as bot_installs_db
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -112,6 +117,9 @@ from backend.data.notifications import (
     remove_notifications_from_batch,
 )
 from backend.data.onboarding import increment_onboarding_runs
+from backend.data.org_credit import get_org_credits as _get_org_credits_raw
+from backend.data.org_credit import get_personal_org_owner
+from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
@@ -126,11 +134,14 @@ from backend.data.understanding import (
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
+    get_auth_user_flag_fields,
     get_user_by_id,
+    get_user_credentials,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
     get_user_notification_preference,
+    set_user_credentials,
     update_user_integrations,
 )
 from backend.data.workspace import (
@@ -182,6 +193,28 @@ async def _get_credits(user_id: str) -> int:
 # Public aliases used by db_accessors.credit_db() when Prisma is connected
 get_credits = _get_credits
 spend_credits = _spend_credits
+
+
+async def _spend_org_credits(
+    org_id: str,
+    user_id: str,
+    cost: int,
+    metadata: UsageTransactionMetadata,
+    team_id: str | None = None,
+    fail_insufficient_credits: bool = True,
+) -> int:
+    return await _spend_org_credits_raw(
+        org_id=org_id,
+        user_id=user_id,
+        amount=cost,
+        team_id=team_id,
+        metadata=metadata.model_dump(),
+        fail_insufficient_credits=fail_insufficient_credits,
+    )
+
+
+async def _get_org_credits(org_id: str) -> int:
+    return await _get_org_credits_raw(org_id)
 
 
 class DatabaseManager(AppService):
@@ -270,11 +303,19 @@ class DatabaseManager(AppService):
     # ============ Credits ============ #
     spend_credits = _(_spend_credits, name="spend_credits")
     get_credits = _(_get_credits, name="get_credits")
+    spend_org_credits = _(_spend_org_credits, name="spend_org_credits")
+    get_org_credits = _(_get_org_credits, name="get_org_credits")
+    get_personal_org_owner = _(get_personal_org_owner)
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
+    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
+    get_user_credentials = _(get_user_credentials)
+    set_user_credentials = _(set_user_credentials)
 
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
@@ -308,6 +349,7 @@ class DatabaseManager(AppService):
     # ============ Library ============ #
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
+    get_library_agent_id_by_graph_id = _(get_library_agent_id_by_graph_id)
     create_graph_in_library = _(create_graph_in_library)
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
@@ -400,6 +442,10 @@ class DatabaseManager(AppService):
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
 
     # ============ Platform Linking ============ #
+    # ============ Orgs ============ #
+    get_user_default_team = _(get_user_default_team)
+    resolve_default_tenancy = _(resolve_default_tenancy)
+
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
     resolve_server_link = _(platform_linking_db.resolve_server_link)
@@ -420,11 +466,26 @@ class DatabaseManager(AppService):
     )
     fetch_workspace_artifact = _(platform_linking_db.fetch_workspace_artifact)
 
+    # ============ Bot Installs ============ #
+    # Exposed so the Prisma-less copilot-bot bridge pod can resolve per-workspace
+    # install tokens via db_accessors.bot_installs_db().
+    get_bot_install = _(bot_installs_db.get_bot_install)
+    is_install_revoked = _(bot_installs_db.is_install_revoked)
+    upsert_bot_install = _(bot_installs_db.upsert_bot_install)
+    revoke_bot_install = _(bot_installs_db.revoke_bot_install)
+
     # ============ Bot Analytics ============ #
     record_bot_event = _(bot_analytics_db.record_bot_event)
     record_guild_joined = _(bot_analytics_db.record_guild_joined)
     mark_guild_left = _(bot_analytics_db.mark_guild_left)
     sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
+
+    # ============ Experts ============ #
+    # Exposed so the Prisma-less copilot executor can resolve expert
+    # identity/team context via db_accessors.experts_db().
+    get_expert = _(experts_db.get_expert)
+    list_experts = _(experts_db.list_experts)
+    enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -437,13 +498,17 @@ class DatabaseManager(AppService):
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
+    update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
+    update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
     # ChatSession lifecycle primitives.  Three functions cover the
     # cap-count + cross-session queue (count/list/transition).
@@ -479,6 +544,9 @@ class DatabaseManagerClient(AppServiceClient):
     # Credits
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
+    spend_org_credits = _(d.spend_org_credits)
+    get_org_credits = _(d.get_org_credits)
+    get_personal_org_owner = _(d.get_personal_org_owner)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -497,6 +565,10 @@ class DatabaseManagerClient(AppServiceClient):
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
     validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
+
+    # Expert run posts (executor completion hook)
+    append_expert_run_message = _(d.append_expert_run_message)
+    get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -547,8 +619,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
+    get_user_credentials = d.get_user_credentials
+    set_user_credentials = d.set_user_credentials
 
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
@@ -641,6 +716,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Credits ============ #
     spend_credits = d.spend_credits
     get_credits = d.get_credits
+    spend_org_credits = d.spend_org_credits
+    get_org_credits = d.get_org_credits
+    get_personal_org_owner = d.get_personal_org_owner
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
@@ -664,6 +742,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
+    get_user_default_team = d.get_user_default_team
+    resolve_default_tenancy = d.resolve_default_tenancy
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
@@ -681,11 +761,22 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
     fetch_workspace_artifact = d.fetch_workspace_artifact
 
+    # ============ Bot Installs ============ #
+    get_bot_install = d.get_bot_install
+    is_install_revoked = d.is_install_revoked
+    upsert_bot_install = d.upsert_bot_install
+    revoke_bot_install = d.revoke_bot_install
+
     # ============ Bot Analytics ============ #
     record_bot_event = d.record_bot_event
     record_guild_joined = d.record_guild_joined
     mark_guild_left = d.mark_guild_left
     sync_guild_presence = d.sync_guild_presence
+
+    # ============ Experts ============ #
+    get_expert = d.get_expert
+    list_experts = d.list_experts
+    enforce_expert_run_budget = d.enforce_expert_run_budget
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
@@ -694,13 +785,18 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
+    append_expert_run_message = d.append_expert_run_message
+    get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
     update_message_content_by_sequence = d.update_message_content_by_sequence
+    update_chat_message_stamps = d.update_chat_message_stamps
+    update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
+    update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration
     count_chat_sessions_by_status = d.count_chat_sessions_by_status
     list_chat_sessions_by_status = d.list_chat_sessions_by_status

@@ -52,9 +52,9 @@ describe("MainMarketplacePage", () => {
   test("renders featured agents, all agents, and creators", () => {
     render(<MainMarkeplacePage />);
 
-    expect(screen.getByText(/Featured agents/i)).toBeDefined();
+    expect(screen.getByText(/hand-picked/i)).toBeDefined();
     expect(screen.getByText("Featured Agent")).toBeDefined();
-    expect(screen.getByText("All Agents")).toBeDefined();
+    expect(screen.getByText("All AI Workflows")).toBeDefined();
     expect(screen.getAllByText("Top Agent").length).toBeGreaterThan(0);
     expect(screen.getByText("Creator One")).toBeDefined();
     expect(

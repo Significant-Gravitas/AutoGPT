@@ -19,8 +19,11 @@ from backend.executor.scheduler import (
     GraphExecutionJobArgs,
     GraphExecutionJobInfo,
     Scheduler,
+    _best_effort_unschedule,
     _build_trigger,
+    _cleanup_old_schedules_without_id,
     _execute_copilot_turn,
+    _execute_graph,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
@@ -198,8 +201,11 @@ async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
 async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_none():
     """Sentinel: when ``session_id`` is ``None`` the executor creates a brand-
     new chat at fire-time and routes the turn into it.  This is the path that
-    powers ``schedule_followup`` calls with no explicit session_id."""
-    args = _args(session_id=None)
+    powers ``schedule_followup`` calls with no explicit session_id.
+
+    The fresh session must land in the org/team captured at schedule time —
+    not the user's default org — so an org chat's followups stay in-tenant."""
+    args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
     mock_schedule_turn = AsyncMock()
     mock_get_session = AsyncMock()  # should NOT be called
     new_session = MagicMock(session_id="new-session-uuid")
@@ -214,12 +220,19 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
-    mock_create_session.assert_awaited_once_with("user-1", dry_run=False)
+    mock_create_session.assert_awaited_once_with(
+        "user-1",
+        dry_run=False,
+        organization_id="org-sched",
+        team_id="team-sched",
+    )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
     mock_schedule_turn.assert_awaited_once()
     call_kwargs = mock_schedule_turn.call_args.kwargs
     assert call_kwargs["session_id"] == "new-session-uuid"
     assert call_kwargs["message"] == "check CI"
+    assert call_kwargs["organization_id"] == "org-sched"
+    assert call_kwargs["team_id"] == "team-sched"
 
 
 @pytest.mark.asyncio
@@ -340,6 +353,56 @@ async def test_self_delete_copilot_turn_swallows_errors():
 
 
 # ---------------------------------------------------------------------------
+# _best_effort_unschedule / _cleanup_old_schedules_without_id
+# ---------------------------------------------------------------------------
+
+
+def _schedule_info(schedule_id: str | None, job_id: str) -> MagicMock:
+    info = MagicMock()
+    info.schedule_id = schedule_id
+    info.id = job_id
+    return info
+
+
+@pytest.mark.asyncio
+async def test_unschedule_without_id_runs_targeted_graph_cleanup():
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules.return_value = [
+        _schedule_info(None, "legacy-job"),
+        _schedule_info("sched-9", "valid-job"),
+    ]
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _best_effort_unschedule(None, "graph-1", "user-1", reason="test")
+    # Only the schedule_id-less legacy job is deleted; valid ones survive.
+    mock_client.delete_schedule.assert_awaited_once_with(
+        schedule_id="legacy-job", user_id="user-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_unschedule_without_id_or_graph_is_a_no_op():
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _best_effort_unschedule(None, None, "user-1", reason="test")
+    mock_client.delete_schedule.assert_not_awaited()
+    mock_client.get_execution_schedules.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_schedules_swallows_per_schedule_delete_errors():
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules.return_value = [
+        _schedule_info(None, "legacy-1"),
+        _schedule_info(None, "legacy-2"),
+    ]
+    mock_client.delete_schedule.side_effect = [RuntimeError("boom"), None]
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        # Must not raise, and must still attempt the second delete.
+        await _cleanup_old_schedules_without_id("graph-1", user_id="user-1")
+    assert mock_client.delete_schedule.await_count == 2
+
+
+# ---------------------------------------------------------------------------
 # _reschedule_one_shot_after_cap
 # ---------------------------------------------------------------------------
 
@@ -409,6 +472,50 @@ def test_graph_args_defaults_kind_to_graph():
     assert args.kind == "graph"
 
 
+def test_graph_args_expert_id_defaults_to_none():
+    """Legacy persisted job kwargs predate expert attribution; they must
+    deserialize with ``expert_id=None``."""
+    args = GraphExecutionJobArgs(
+        user_id="u",
+        graph_id="g",
+        graph_version=1,
+        cron="* * * * *",
+        input_data={},
+        input_credentials={},
+    )
+    assert args.expert_id is None
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_forwards_expert_id():
+    """An expert-attributed schedule must stamp its expert_id onto the
+    execution it creates, so any surface can answer "who ran this"."""
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+        expert_id="expert-1",
+    )
+    mock_add = AsyncMock(return_value=MagicMock(id="exec-1"))
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+
+
 def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
     args = CopilotTurnJobArgs(
         user_id="u",
@@ -474,3 +581,105 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     calls = _registered_jobs(monkeypatch, interval_hours=12)
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+class TestScheduleOrgVisibility:
+    """Org/team visibility filtering in get_execution_schedules."""
+
+    def _scheduler_with_jobs(self, infos):
+        from unittest.mock import MagicMock
+
+        from backend.executor.scheduler import Scheduler
+
+        sched = Scheduler.__new__(Scheduler)
+        jobs = []
+        for info in infos:
+            job = MagicMock()
+            job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+            jobs.append((job, info))
+
+        def fake_job_to_info(job):
+            for j, i in jobs:
+                if j is job:
+                    return i
+            return None
+
+        return sched, [j for j, _ in jobs], fake_job_to_info
+
+    def _graph_info(self, *, user_id, organization_id="", team_id=None, sid="s1"):
+        return GraphExecutionJobInfo(
+            id=sid,
+            name="n",
+            next_run_time="2026-05-22T10:00:00+00:00",
+            schedule_id=sid,
+            user_id=user_id,
+            graph_id="g1",
+            graph_version=1,
+            cron="* * * * *",
+            input_data={},
+            input_credentials={},
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+
+    def _run(self, infos, **kwargs):
+        from unittest.mock import patch
+
+        sched, jobs, fake_job_to_info = self._scheduler_with_jobs(infos)
+        with (
+            patch.object(Scheduler, "_get_jobs_cached", lambda self: jobs),
+            patch(
+                "backend.executor.scheduler._job_to_info",
+                side_effect=fake_job_to_info,
+            ),
+        ):
+            return sched.get_execution_schedules(**kwargs)
+
+    def test_own_schedules_always_visible_in_org_mode(self):
+        infos = [self._graph_info(user_id="me", organization_id="", sid="mine")]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert [r.schedule_id for r in result] == ["mine"]
+
+    def test_org_home_schedule_visible_to_member(self):
+        infos = [
+            self._graph_info(
+                user_id="teammate", organization_id="org-1", sid="org-home"
+            )
+        ]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert [r.schedule_id for r in result] == ["org-home"]
+
+    def test_team_schedule_only_visible_to_team_members(self):
+        infos = [
+            self._graph_info(
+                user_id="teammate",
+                organization_id="org-1",
+                team_id="team-x",
+                sid="team-x-job",
+            )
+        ]
+        visible = self._run(
+            infos, user_id="me", organization_id="org-1", team_ids=["team-x"]
+        )
+        hidden = self._run(
+            infos, user_id="me", organization_id="org-1", team_ids=["team-y"]
+        )
+        assert [r.schedule_id for r in visible] == ["team-x-job"]
+        assert hidden == []
+
+    def test_other_org_schedule_hidden(self):
+        infos = [
+            self._graph_info(
+                user_id="stranger", organization_id="org-OTHER", sid="foreign"
+            )
+        ]
+        result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
+        assert result == []
+
+    def test_no_org_mode_is_strict_ownership(self):
+        infos = [
+            self._graph_info(user_id="me", sid="mine"),
+            self._graph_info(user_id="other", organization_id="org-1", sid="theirs"),
+        ]
+        result = self._run(infos, user_id="me")
+        assert [r.schedule_id for r in result] == ["mine"]

@@ -50,6 +50,8 @@ export const DEFAULT_ARTIFACT_PANEL_WIDTH = 640;
 export const MIN_CONTEXT_PANEL_WIDTH = 280;
 export const MAX_CONTEXT_PANEL_WIDTH = 600;
 export const MIN_ARTIFACT_PANEL_WIDTH = 400;
+/** Space kept for the chat + rail when sizing a side panel (drag clamp and viewport clamp). */
+export const PANEL_RESERVED_WIDTH = 440;
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -122,6 +124,16 @@ interface CopilotUIState {
   initialPrompt: string | null;
   setInitialPrompt: (prompt: string | null) => void;
 
+  /**
+   * Expert ids whose latest thread was already adopted via a
+   * /copilot?expertId= deep link this page load. Lives here — not in
+   * useChatSession refs — because the chat host remounts on every sessionId
+   * change (CopilotPage keys the subtree), wiping hook refs; a wiped latch
+   * made "New Chat" bounce straight back into the adopted thread.
+   */
+  adoptedExpertThreads: Set<string>;
+  markExpertThreadAdopted: (expertId: string) => void;
+
   contextPanelWidth: number;
   artifactPanelWidth: number;
   setContextPanelWidth: (width: number) => void;
@@ -152,8 +164,11 @@ interface CopilotUIState {
 
   // Artifact panel
   artifactPanel: ArtifactPanelState;
-  openArtifact: (ref: ArtifactRef) => void;
-  closeArtifactPanel: () => void;
+  // `persist: false` skips the localStorage write — used by the public
+  // /tour demo so a scripted open/close never leaks into the panel state
+  // the real copilot restores on load.
+  openArtifact: (ref: ArtifactRef, opts?: { persist?: boolean }) => void;
+  closeArtifactPanel: (opts?: { persist?: boolean }) => void;
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
   goBackArtifact: () => void;
@@ -174,6 +189,9 @@ interface CopilotUIState {
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
   copilotChatMode: CopilotMode;
   setCopilotChatMode: (mode: CopilotMode) => void;
+  copilotModePinned: boolean;
+  applyServerModeChange: (mode: CopilotMode) => void;
+  clearCopilotModePin: () => void;
 
   /** Model tier: 'standard' (default) or 'advanced' (highest-capability). */
   copilotLlmModel: CopilotLlmModel;
@@ -197,6 +215,14 @@ let _autoOpenUserClosed = false;
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+
+  adoptedExpertThreads: new Set<string>(),
+  markExpertThreadAdopted: (expertId) =>
+    set((state) => {
+      const next = new Set(state.adoptedExpertThreads);
+      next.add(expertId);
+      return { adoptedExpertThreads: next };
+    }),
 
   contextPanelWidth: getPersistedContextWidth(),
   artifactPanelWidth: getPersistedArtifactWidth(),
@@ -269,7 +295,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     history: [],
     activeTab: getPersistedTab(),
   },
-  openArtifact: (ref) =>
+  openArtifact: (ref, opts) =>
     set((state) => {
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
@@ -282,7 +308,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         : shouldPushHistory
           ? [...prevHistory, activeArtifact!].slice(-MAX_HISTORY)
           : prevHistory;
-      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      if (isClient && opts?.persist !== false)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
       return {
         artifactPanel: {
           ...state.artifactPanel,
@@ -292,9 +319,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
-  closeArtifactPanel: () =>
+  closeArtifactPanel: (opts) =>
     set((state) => {
-      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
+      if (isClient && opts?.persist !== false)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
       // NOTE: deliberately does NOT set _autoOpenUserClosed. Unlike
       // toggleContextPanel (a user action), closeArtifactPanel is also the
       // programmatic collapse path — useCollapseContextPanelOnSession calls it
@@ -478,6 +506,13 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   setCopilotChatMode: (mode) => {
     storage.set(Key.COPILOT_MODE, mode);
     set({ copilotChatMode: mode });
+  },
+  copilotModePinned: false,
+  applyServerModeChange: (mode) => {
+    set({ copilotChatMode: mode, copilotModePinned: true });
+  },
+  clearCopilotModePin: () => {
+    set({ copilotModePinned: false });
   },
 
   copilotLlmModel: (() => {
