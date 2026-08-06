@@ -1,13 +1,16 @@
 name: Flag-off regression
 
+permissions:
+  contents: read
+
 on:
   push:
-    branches: [main]
+    branches: [main, "**/feature/**", "**/initiative/**", "**/epic/**"]
   pull_request:
     branches: [main, "**/feature/**", "**/initiative/**", "**/epic/**"]
 
 concurrency:
-  group: flag-off-${{ github.head_ref || github.ref_name }}
+  group: flag-off-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -19,6 +22,8 @@ jobs:
         working-directory: autogpt_platform/backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -40,6 +45,8 @@ jobs:
         working-directory: autogpt_platform/frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -59,6 +66,8 @@ jobs:
         working-directory: autogpt_platform/frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

@@ -14,7 +14,7 @@ poetry run pytest backend/copilot/expert_context_test.py \
   backend/copilot/prompt_cache_test.py -v
 
 # Frontend — flag defaults, /team 404, and unit suite
-cd autogpt_platform/frontend
+cd ../frontend
 pnpm test:unit
 
 # Frontend — E2E smoke (copilot, marketplace, library)

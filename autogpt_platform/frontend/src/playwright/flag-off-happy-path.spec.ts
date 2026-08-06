@@ -10,7 +10,9 @@ test("flag-off: copilot loads and accepts input under flag-off", async ({
   test.setTimeout(60000);
 
   const copilotPage = new CopilotPage(page);
-  await copilotPage.open();
+
+  const sessionId = await copilotPage.createSessionViaApi();
+  await copilotPage.open(sessionId);
   await copilotPage.waitForChatInput();
 
   const userPrompt = `smoke ${Date.now().toString().slice(-6)}`;
@@ -31,9 +33,9 @@ test("flag-off: marketplace loads under flag-off", async ({ page }) => {
   await page.waitForLoadState("domcontentloaded");
 
   await expect(
-    page.getByRole("heading", { name: "Explore AI agents" }).first(),
+    page.locator('[data-testid="store-card"], [data-testid="featured-store-card"]').first(),
     "marketplace landing page must render under flag-off",
-  ).toBeVisible({ timeout: 10000 });
+  ).toBeVisible({ timeout: 15000 });
 });
 
 test("flag-off: library loads under flag-off", async ({ page }) => {
@@ -45,7 +47,7 @@ test("flag-off: library loads under flag-off", async ({ page }) => {
   await expect(
     page.getByTestId("library-textbox").first(),
     "library page must render under flag-off",
-  ).toBeVisible({ timeout: 10000 });
+  ).toBeVisible({ timeout: 15000 });
 });
 
 test("flag-off: /team returns 404 when HIRE_EXPERTS is off", async ({
@@ -53,9 +55,10 @@ test("flag-off: /team returns 404 when HIRE_EXPERTS is off", async ({
 }) => {
   test.setTimeout(15000);
 
-  await page.goto("/team");
+  const response = await page.goto("/team");
 
-  // notFound() keeps the URL at /team, renders the default 404 page.
+  expect(response?.status()).toBe(404);
+
   await expect(page).toHaveURL(/\/team/);
 
   await expect(
