@@ -4760,7 +4760,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "List Stripe invoices",
-        "description": "Recent Stripe invoices for the current user.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the user has no Stripe customer yet.",
+        "description": "Recent Stripe invoices for the caller's active org, for billing managers.\n\nThe invoices belong to the org the request resolves to (the caller's\npersonal org when no ``X-Org-Id`` is supplied), so this is restricted to\norg roles holding ``MANAGE_BILLING``.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the org has no Stripe customer yet.",
         "operationId": "getV1List stripe invoices",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

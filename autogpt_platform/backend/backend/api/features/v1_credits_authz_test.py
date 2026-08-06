@@ -9,21 +9,28 @@ so the gate is a no-op for them.
 
 The gate is applied as an independent per-route dependency (there is no
 shared router-level enforcement), so every gated route is asserted here:
-dropping the dependency from any single route must fail this suite.
+dropping the dependency from any single route must fail this suite. Route
+coverage is not left to the hand-maintained ``GATED_ROUTES`` list either —
+``test_every_credits_route_is_gated_or_explicitly_exempt`` introspects the
+mounted app, so a *newly added* ungated ``/credits`` route also fails.
 """
 
-import dataclasses
+import inspect
 from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
+import pydantic
 import pytest
 import pytest_mock
 from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction
+from fastapi.dependencies.models import Dependant
+from fastapi.routing import APIRoute
 
 from backend.data.model import AutoTopUpConfig, TransactionHistory
 
@@ -33,6 +40,8 @@ app = fastapi.FastAPI()
 app.include_router(v1_router)
 client = fastapi.testclient.TestClient(app)
 
+ORG_ID = "test-org"
+
 
 def _ctx(
     user_id: str,
@@ -40,7 +49,7 @@ def _ctx(
     owner: bool = False,
     admin: bool = False,
     billing: bool = False,
-    org_id: str = "test-org",
+    org_id: str = ORG_ID,
 ) -> RequestContext:
     return RequestContext(
         user_id=user_id,
@@ -68,15 +77,14 @@ def _ctx(
 # overriding it — a role-flag row here could not tell a personal org apart
 # from a team org, since the gate is a pure function of the role flags.
 ROLE_CASES: dict[str, tuple[dict, int]] = {
-    "org_owner": (dict(owner=True, admin=True), 200),
-    "billing_manager": (dict(billing=True), 200),
-    "org_admin": (dict(admin=True), 403),
-    "plain_member": (dict(), 403),
+    "org_owner": ({"owner": True, "admin": True}, 200),
+    "billing_manager": ({"billing": True}, 200),
+    "org_admin": ({"admin": True}, 403),
+    "plain_member": ({}, 403),
 }
 
 
-@dataclasses.dataclass(frozen=True)
-class GatedRoute:
+class GatedRoute(pydantic.BaseModel):
     """One MANAGE_BILLING-gated endpoint and how to exercise it."""
 
     name: str
@@ -92,7 +100,10 @@ class GatedRoute:
 
 
 # Every route in v1.py carrying
-# ``Security(requires_org_permission(OrgAction.MANAGE_BILLING))``.
+# ``Security(requires_org_permission(OrgAction.MANAGE_BILLING))`` (via the
+# ``BillingManagerContext`` alias). Kept in sync with the app by
+# ``test_every_credits_route_is_gated_or_explicitly_exempt``; ``name`` is the
+# endpoint function name, which is also the FastAPI route name.
 GATED_ROUTES: list[GatedRoute] = [
     GatedRoute(
         name="get_user_credits",
@@ -162,9 +173,21 @@ GATED_ROUTES: list[GatedRoute] = [
 ]
 
 
-@dataclasses.dataclass(frozen=True)
-class CreditStubs:
+# ``/credits*`` routes that are deliberately NOT behind MANAGE_BILLING, keyed
+# by endpoint function name with the reason they are exempt. Adding an entry
+# here is an explicit product decision, not a way to silence the introspection
+# test below.
+UNGATED_CREDITS_ROUTES: dict[str, str] = {
+    "get_subscription_status": "subscriptions are user-level, not org-pooled",
+    "update_subscription_tier": "subscriptions are user-level, not org-pooled",
+    "stripe_webhook": "unauthenticated by design; verified by Stripe signature",
+}
+
+
+class CreditStubs(pydantic.BaseModel):
     """Patched data-layer entry points reachable from the gated routes."""
+
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
     get_credit_model: AsyncMock
     get_auto_top_up: AsyncMock
@@ -237,11 +260,68 @@ def test_credits_route_requires_manage_billing(
     assert resp.status_code == expected, resp.text
     if expected == 200:
         assert route.check_ok(resp), resp.text
+        if route.guard == "get_credit_model":
+            # The org the gate resolved is what the credit model is scoped to,
+            # so a wrong-org regression fails here on every gated route — not
+            # only in the single personal-org resolution test below.
+            assert credit_stubs.get_credit_model.await_args.args[1] == ORG_ID
     else:
         assert resp.json()["detail"] == "Missing org permission: MANAGE_BILLING"
         # The gate rejects during dependency resolution, before the route body
         # ever reaches the org-pooled balance.
         getattr(credit_stubs, route.guard).assert_not_awaited()
+
+
+def _enforced_org_actions(dependant: Dependant) -> set[OrgAction]:
+    """Org actions enforced by a route's dependency tree.
+
+    ``requires_org_permission(*actions)`` returns a closure, so the actions it
+    enforces are read back off the closure rather than re-derived from the
+    route signature.
+    """
+    enforced: set[OrgAction] = set()
+    for sub in dependant.dependencies:
+        call = sub.call
+        if (
+            inspect.isfunction(call)
+            and call.__qualname__ == "requires_org_permission.<locals>._dependency"
+        ):
+            enforced.update(inspect.getclosurevars(call).nonlocals["actions"])
+        enforced |= _enforced_org_actions(sub)
+    return enforced
+
+
+def test_every_credits_route_is_gated_or_explicitly_exempt():
+    """Introspect the mounted app so a *new* ungated /credits route fails.
+
+    ``GATED_ROUTES`` above is hand-maintained, so on its own it can only prove
+    that the routes someone remembered to list are gated. This walks the real
+    routing table instead: every ``/credits*`` route must either carry the
+    MANAGE_BILLING dependency or be an explicit, documented exemption.
+    """
+    gated: set[str] = set()
+    ungated: set[str] = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or not route.path.startswith("/credits"):
+            continue
+        if OrgAction.MANAGE_BILLING in _enforced_org_actions(route.dependant):
+            gated.add(route.name)
+        else:
+            ungated.add(route.name)
+
+    assert gated, "no /credits routes found — did the router or prefix change?"
+    assert ungated == set(UNGATED_CREDITS_ROUTES), (
+        "A /credits route is not behind MANAGE_BILLING. Gate it with "
+        "`ctx: BillingManagerContext`, or — if it is genuinely not org-pooled "
+        "— add it to UNGATED_CREDITS_ROUTES with the reason. Unexpected: "
+        f"{sorted(ungated - set(UNGATED_CREDITS_ROUTES))}"
+    )
+    assert gated == {route.name for route in GATED_ROUTES}, (
+        "GATED_ROUTES is out of sync with the routes actually carrying the "
+        "MANAGE_BILLING dependency; add the new route to GATED_ROUTES so the "
+        "role matrix exercises it: "
+        f"{sorted(gated ^ {route.name for route in GATED_ROUTES})}"
+    )
 
 
 def _org_member(
