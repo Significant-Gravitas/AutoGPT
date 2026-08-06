@@ -72,6 +72,24 @@ function gitStrict(args, cwd) {
   return r.stdout ?? "";
 }
 
+// Same, but returning raw stdout bytes. Patch output must never be decoded:
+// git base85-encodes only the blobs it classifies as *binary* (i.e. containing
+// a NUL byte), so a tracked text file that is merely not valid UTF-8 — latin-1
+// fixtures, legacy .po/.csv data — travels through `git diff --binary` as raw
+// bytes. Decoding those to a JS string turns them into U+FFFD, the patch stops
+// matching the blob it came from, and `git apply` rejects the developer's only
+// surviving copy of the change.
+function gitStrictRaw(args, cwd) {
+  const r = spawnSync("git", args, { cwd, maxBuffer: 1024 ** 3 });
+  if (r.error || r.status !== 0) {
+    console.error(
+      `git ${args.join(" ")} failed: ${r.error?.message ?? r.stderr}`,
+    );
+    process.exit(1);
+  }
+  return r.stdout ?? Buffer.alloc(0);
+}
+
 // Best-effort permission tightening: chmod is a no-op on Windows/ACL volumes.
 function restrictPerms(target, perms) {
   try {
@@ -328,8 +346,8 @@ function archive() {
     ["staged.patch", ["diff", "--cached", "--binary"]],
     ["unstaged.patch", ["diff", "--binary"]],
   ]) {
-    const body = gitStrict(args, worktree);
-    if (!body.trim()) continue;
+    const body = gitStrictRaw(args, worktree);
+    if (body.length === 0) continue; // git prints nothing for an empty diff
     const p = join(outDir, file);
     writeFileSync(p, body, { mode: 0o600 });
     restrictPerms(p, 0o600);

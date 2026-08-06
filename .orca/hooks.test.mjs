@@ -198,6 +198,37 @@ test("archive round-trips staged, unstaged and binary tracked changes", (t) => {
   );
 });
 
+test("archive round-trips a tracked text file that is not valid UTF-8", (t) => {
+  const { base, root, wt, env } = makeFixture(t);
+  runHook("setup", env);
+
+  // git only base85-encodes blobs it classifies as *binary*, and it classifies
+  // by looking for a NUL byte. LATIN1 has none, so git calls it text and emits
+  // its bytes into `git diff --binary` verbatim — no base85 armour. If the hook
+  // decodes that patch as utf8, 0xe9/0xef become U+FFFD, the patch no longer
+  // matches the blob it came from, and `git apply` rejects it: the developer's
+  // only copy of this file's changes is gone.
+  const LATIN1 = Buffer.from("caf\xe9 na\xefve\n", "latin1");
+  const LATIN1_EDIT = Buffer.from("caf\xe9 na\xefve edited\n", "latin1");
+  writeFileSync(join(wt, "latin1.txt"), LATIN1);
+  git(["add", "latin1.txt"], wt);
+  git(["commit", "-qm", "add latin1"], wt);
+  writeFileSync(join(wt, "latin1.txt"), LATIN1_EDIT);
+
+  const r = runHook("archive", env);
+  assert.equal(r.status, 0, r.stderr);
+  const out = latestArchive(base);
+  assert.ok(existsSync(join(out, "unstaged.patch")));
+
+  const replay = join(base, "replay");
+  git(["worktree", "add", "-q", "--detach", replay, "feature"], root);
+  git(["apply", "--binary", join(out, "unstaged.patch")], replay);
+  assert.ok(
+    readFileSync(join(replay, "latin1.txt")).equals(LATIN1_EDIT),
+    "non-UTF-8 tracked text must survive the archive/restore round trip",
+  );
+});
+
 test("archive preserves untracked binary files byte-for-byte", (t) => {
   const { base, wt, env } = makeFixture(t);
   runHook("setup", env);
