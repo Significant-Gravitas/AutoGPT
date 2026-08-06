@@ -36,7 +36,9 @@ export function OrbFrame({
   isLoading,
 }: Props) {
   const isRecording = progress !== undefined;
-  const audioLevel = useAudioLevel(isRecording ? audioStream : null);
+  const audioLevel = useAudioLevel(
+    isRecording && variant !== "wavy" ? audioStream : null,
+  );
 
   return (
     <div
