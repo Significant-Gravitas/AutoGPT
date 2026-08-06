@@ -6662,10 +6662,10 @@
             "required": false,
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "description": "Team to save the new version under. Must be a team in your org that you are an active member of. Omit to keep the agent's current team.",
+              "description": "Team to save the new version under. Must be a team in your org that you are an active member of. Omit to use the active team from the request context, falling back to the agent's current team.",
               "title": "Team Id"
             },
-            "description": "Team to save the new version under. Must be a team in your org that you are an active member of. Omit to keep the agent's current team."
+            "description": "Team to save the new version under. Must be a team in your org that you are an active member of. Omit to use the active team from the request context, falling back to the agent's current team."
           }
         ],
         "requestBody": {
@@ -17583,7 +17583,7 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id",
-            "description": "Restrict the key to a single team: it may only access that team's resources. Must be a team in the caller's org that the caller is an active member of. Omit for an org-wide key."
+            "description": "Restrict the key to a single team: it may only access that team's resources. Must be a team in the caller's org that the caller is an active member of. Omit to use the active team from the request context; with no active team the key is org-wide."
           }
         },
         "type": "object",
@@ -17626,7 +17626,7 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id",
-            "description": "Team to create the agent under. Must be a team in the caller's org that the caller is an active member of. Omit for org-home."
+            "description": "Team to create the agent under. Must be a team in the caller's org that the caller is an active member of. Omit to use the active team from the request context, falling back to org-home."
           }
         },
         "type": "object",
@@ -21351,6 +21351,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Folder Name"
           },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "is_hidden": {
             "type": "boolean",
             "title": "Is Hidden",
@@ -21698,6 +21706,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -21741,6 +21757,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "children": {
             "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
@@ -24789,7 +24813,7 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id",
-            "description": "Team to create the schedule under. Must be a team in the caller's org that the caller is an active member of. Omit to inherit the scheduled agent's team."
+            "description": "Team to create the schedule under. Must be a team in the caller's org that the caller is an active member of. Omit to use the active team from the request context, falling back to the scheduled agent's team."
           }
         },
         "type": "object",
@@ -25195,6 +25219,14 @@
             "type": "boolean",
             "title": "Is Pinned",
             "default": false
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -25909,6 +25941,10 @@
             "type": "number",
             "title": "Review Avg Rating",
             "default": 0.0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
           }
         },
         "type": "object",
@@ -26012,6 +26048,10 @@
             "type": "number",
             "title": "Review Avg Rating",
             "default": 0.0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
           },
           "internal_comments": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
