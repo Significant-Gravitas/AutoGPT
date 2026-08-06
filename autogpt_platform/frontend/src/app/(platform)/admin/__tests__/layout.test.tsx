@@ -1,6 +1,6 @@
 import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { environment } from "@/services/environment";
+import * as testDataHelpers from "../test-data/helpers";
 import AdminLayout from "../layout";
 
 const ADMIN_LINKS = [
@@ -46,7 +46,7 @@ describe("AdminLayout", () => {
   });
 
   it("shows the Test Data link on a local stack", () => {
-    vi.spyOn(environment, "isLocal").mockReturnValue(true);
+    vi.spyOn(testDataHelpers, "isTestDataSurfaceEnabled").mockReturnValue(true);
     render(
       <AdminLayout>
         <div />
@@ -59,7 +59,9 @@ describe("AdminLayout", () => {
   });
 
   it("hides the Test Data link outside a local stack", () => {
-    vi.spyOn(environment, "isLocal").mockReturnValue(false);
+    vi.spyOn(testDataHelpers, "isTestDataSurfaceEnabled").mockReturnValue(
+      false,
+    );
     render(
       <AdminLayout>
         <div />

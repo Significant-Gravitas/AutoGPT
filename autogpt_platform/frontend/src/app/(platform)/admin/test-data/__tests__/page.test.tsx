@@ -1,6 +1,6 @@
 import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { environment } from "@/services/environment";
+import * as testDataHelpers from "../helpers";
 
 // The shared next/navigation mock has no notFound(); re-declare it here with
 // the same router surface plus the export this page depends on.
@@ -48,7 +48,9 @@ describe("TestDataDashboardPage", () => {
   });
 
   it("404s outside a local stack instead of rendering a dead-end page", async () => {
-    vi.spyOn(environment, "isLocal").mockReturnValue(false);
+    vi.spyOn(testDataHelpers, "isTestDataSurfaceEnabled").mockReturnValue(
+      false,
+    );
 
     await expect(TestDataDashboardPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(notFoundMock).toHaveBeenCalled();

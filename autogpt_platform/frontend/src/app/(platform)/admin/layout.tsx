@@ -14,7 +14,7 @@ import {
   UserMultipleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { environment } from "@/services/environment";
+import { isTestDataSurfaceEnabled } from "./test-data/helpers";
 
 function getSidebarLinkGroups() {
   return [
@@ -76,8 +76,8 @@ function getSidebarLinkGroups() {
           icon: <IconSliders className="h-6 w-6" />,
         },
         // Test data seeding only exists on local stacks; hide the entry point
-        // everywhere else so cloud admins don't hit a guaranteed 403.
-        ...(environment.isLocal()
+        // everywhere else so cloud admins don't hit a guaranteed 403/404.
+        ...(isTestDataSurfaceEnabled()
           ? [
               {
                 text: "Test Data",
