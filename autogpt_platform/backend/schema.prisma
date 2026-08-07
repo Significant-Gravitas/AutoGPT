@@ -136,6 +136,7 @@ model User {
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  UserBriefings        UserBriefing[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
@@ -315,6 +316,23 @@ model OnboardingBrainDump {
   recommendedProviders Json?
 
   @@index([userId])
+}
+
+model UserBriefing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Local calendar date the briefing covers, in the user's timezone at generation time.
+  briefingDate DateTime @db.Date
+
+  // Serialized BriefingContent (see backend/copilot/briefing/models.py).
+  content Json
+
+  @@unique([userId, briefingDate])
+  @@index([userId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////
