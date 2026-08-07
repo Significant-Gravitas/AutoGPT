@@ -1100,3 +1100,63 @@ async def append_expert_run_message(
                 message_id=message_id,
             )
     return session_id
+
+
+async def append_plain_session_message(
+    user_id: str,
+    content: str,
+    message_id: str,
+    metadata: dict[str, Any] | None = None,
+) -> str | None:
+    """Post an assistant message into the user's latest non-expert (plain
+    Autopilot) session, creating one when none exists — this is the user's
+    "primary thread", e.g. where a morning briefing lands.
+
+    Deduplicates on *message_id* (deterministic per event at the caller), so
+    retries and double-fires never produce duplicate posts.
+    Returns the session id the message landed in, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    session = await PrismaChatSession.prisma().find_first(
+        where={"userId": user_id, "expertId": None},
+        order={"updatedAt": "desc"},
+    )
+    if session is not None:
+        session_id = session.id
+    else:
+        created = await create_chat_session(
+            session_id=str(uuid.uuid4()), user_id=user_id
+        )
+        session_id = created.session_id
+
+    # Same Redis NX lock as append_expert_run_message: the sequence read +
+    # insert must not interleave with a concurrent turn writer picking the
+    # same sequence and PK-colliding on (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+                metadata=metadata,
+            )
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+                metadata=metadata,
+            )
+    return session_id
