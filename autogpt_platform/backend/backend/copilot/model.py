@@ -1,8 +1,9 @@
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator, Self, cast
+from typing import Any, AsyncIterator, Literal, Self, cast
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -21,7 +22,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
 from backend.data.db_accessors import chat_db, library_db
 from backend.data.graph import GraphSettings
@@ -33,6 +34,14 @@ from .config import ChatConfig
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+# The routing layer that picked a turn's model. Defined here — on the
+# persistence model, the lowest layer — so ChatMessage can type its
+# stamped column and model_router / the SDK service import the ONE
+# definition instead of re-declaring the Literal. ("fallback" is stamped,
+# never routed: it marks a CLI 529-overload fallback to a different model.)
+RoutingSource = Literal["ld", "catalog", "env", "fallback"]
 
 
 # Redis cache key prefix for chat sessions
@@ -104,6 +113,53 @@ class ChatMessage(BaseModel):
     duration_ms: int | None = None
     created_at: datetime | None = None
 
+    # Which LLM served this assistant turn ("model" — visible to clients,
+    # the model-badge UX) and which routing layer picked it
+    # ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+    # overload fallback served a different model than the routed one).
+    # Product-intelligence mirrors these to segment quality judgments by
+    # model. None on user/tool rows.
+    #
+    # routing_source is excluded from serialized payloads: "ld" vs "env"
+    # would let a client infer LaunchDarkly cohort membership. It still
+    # persists — the DB save path maps fields explicitly (not via
+    # model_dump) and the back-fill reads attributes.
+    model: str | None = None
+    routing_source: RoutingSource | None = Field(default=None, exclude=True)
+
+    stamps_pending_save: bool = Field(default=False, exclude=True)
+    """True when model/routing_source were stamped after this row was already
+    persisted (mid-turn flush assigned its sequence before end-of-turn
+    stamping ran). The save path back-fills flagged rows — same mechanism
+    as ``tool_calls_pending_save`` below."""
+
+    tool_calls_pending_save: bool = Field(default=False, exclude=True)
+    """True when ``tool_calls`` mutated after this row was already persisted.
+
+    An assistant row is often flushed to the DB (getting its ``sequence``)
+    while its text streams, BEFORE the turn's tool_use blocks arrive — the
+    save path only inserts ``sequence is None`` rows, so late-attached
+    tool_calls would otherwise never reach the DB and the tool activity
+    becomes invisible in session history. ``_save_session_to_db`` back-fills
+    rows flagged here and clears the flag.
+
+    In-memory only (``exclude=True``) by necessity, not oversight: the flag
+    marks tool_calls content that exists ONLY in this process — if the
+    worker dies before a back-fill succeeds, the content is gone with it,
+    so a persisted flag would have nothing left to back-fill from. Residual
+    window: a back-fill failure on the turn's final save is retried on any
+    later save of the session, but not across a worker restart."""
+
+    def mark_tool_calls_pending_save(self) -> None:
+        """Flag this row for a toolCalls back-fill if it was already
+        persisted (has a sequence). The single invariant behind the
+        mid-turn-flush fix: any site that mutates ``tool_calls`` on a
+        possibly-sequenced message must call this — encapsulated here so a
+        future third mutation site can't silently reintroduce the
+        dropped-tool-calls bug."""
+        if self.sequence is not None:
+            self.tool_calls_pending_save = True
+
     # Owning session id and generic per-row JSONB bag.  Today the
     # dispatcher uses ``metadata`` to preserve the submit-time payload
     # (file_ids / mode / model / permissions / context / arrival_at)
@@ -130,6 +186,10 @@ class ChatMessage(BaseModel):
             created_at=prisma_message.createdAt,
             session_id=prisma_message.sessionId,
             metadata=_parse_json_field(prisma_message.metadata),
+            model=prisma_message.model,
+            # DB column is a plain string; the values are always ones we wrote
+            # (this PR owns the column) and Pydantic re-validates on construct.
+            routing_source=cast("RoutingSource | None", prisma_message.routingSource),
         )
 
 
@@ -198,6 +258,15 @@ class ChatSessionInfo(BaseModel):
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
     chat_status: str = "idle"
+    # Org/team tenancy anchor for the whole session: agent runs, block
+    # executions, and sub-sessions launched from this chat attribute to
+    # THIS org/team, not the user's default org at tool-call time.
+    organization_id: str | None = None
+    team_id: str | None = None
+    # Whether the user has pinned this session to the top of the sidebar.
+    is_pinned: bool = False
+    # Hired expert this session is scoped to; None = plain Autopilot session.
+    expert_id: str | None = None
 
     @property
     def dry_run(self) -> bool:
@@ -247,6 +316,10 @@ class ChatSessionInfo(BaseModel):
             successful_agent_schedules=successful_agent_schedules,
             metadata=metadata,
             chat_status=prisma_session.chatStatus,
+            organization_id=prisma_session.organizationId,
+            team_id=prisma_session.teamId,
+            is_pinned=prisma_session.isPinned,
+            expert_id=prisma_session.expertId,
         )
 
 
@@ -271,6 +344,27 @@ class ChatSession(ChatSessionInfo):
     # list of argument dicts (one entry per dispatched call).
     _inflight_tool_call_args: dict[str, list[dict]] = PrivateAttr(default_factory=dict)
 
+    guide_in_system_prompt: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag: True when this turn's system prompt includes the
+    agent-building guide (builder-bound session, or a building session detected
+    from a prior-turn guide read / mode switch). Set by the SDK service at turn
+    start after the system prompt is assembled; never persisted — recomputed
+    every turn. The guide gate and ``get_agent_building_guide`` consult it to
+    skip redundant guide round-trips."""
+
+    sdk_turn_active: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag: True while the SDK service is running this
+    turn (set at turn start, never persisted). Lets shared tools branch on
+    the execution path — e.g. enter_agent_building_mode restarts in-turn on
+    SDK but degrades gracefully on the baseline path."""
+
+    building_mode_requested: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag set by ``enter_agent_building_mode``: asks the
+    SDK service to restart the in-flight attempt with the agent-building
+    guide in the system prompt. Cleared by the restart handler; never
+    persisted — the durable mode signal is the tool call in message
+    history."""
+
     @classmethod
     def new(
         cls,
@@ -279,6 +373,9 @@ class ChatSession(ChatSessionInfo):
         dry_run: bool,
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        expert_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
@@ -294,6 +391,9 @@ class ChatSession(ChatSessionInfo):
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
             ),
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
         )
 
     @classmethod
@@ -394,6 +494,7 @@ class ChatSession(ChatSessionInfo):
                 if not msg.tool_calls:
                     msg.tool_calls = []
                 msg.tool_calls.append(tool_call)
+                msg.mark_tool_calls_pending_save()
                 return
 
         self.messages.append(
@@ -744,15 +845,19 @@ async def upsert_chat_session(
             db_error = e
 
         # Save to cache (best-effort, even if DB failed).
-        # Title updates (update_session_title) run *outside* this lock because
-        # they only touch the title field, not messages.  So a concurrent rename
-        # or auto-title may have written a newer title to Redis while this
-        # upsert was in progress.  Always prefer the cached title to avoid
-        # overwriting it with the stale in-memory copy.
+        # Title (update_session_title) and pin state (update_session_pinned)
+        # are mutated *outside* this lock — they only touch their single field,
+        # not messages — so a concurrent rename, auto-title, or pin/unpin may
+        # have written a newer value to Redis while this upsert was in progress.
+        # Always prefer the cached title/pin to avoid reverting it with the
+        # stale in-memory copy.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
-            if existing_cached and existing_cached.title:
-                session = session.model_copy(update={"title": existing_cached.title})
+            if existing_cached:
+                updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
+                if existing_cached.title:
+                    updates["title"] = existing_cached.title
+                session = session.model_copy(update=updates)
             await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
@@ -799,6 +904,8 @@ async def _save_session_to_db(
             await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
                 metadata=session.metadata,
             )
             existing_message_count = 0
@@ -852,6 +959,8 @@ async def _save_session_to_db(
                     "refusal": msg.refusal,
                     "tool_calls": msg.tool_calls,
                     "function_call": msg.function_call,
+                    "model": msg.model,
+                    "routing_source": msg.routing_source,
                 }
             )
         logger.info(
@@ -872,6 +981,77 @@ async def _save_session_to_db(
         )
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
+            msg.tool_calls_pending_save = False
+            msg.stamps_pending_save = False
+
+    # Back-fill tool_calls onto rows that were flushed before their
+    # tool_use blocks arrived (see ChatMessage.tool_calls_pending_save).
+    # Save-ordering invariant: this only repairs the row if a save runs
+    # AFTER the tool_use blocks arrive. That is guaranteed by the end-of-turn
+    # save (every turn ends with save_chat_session, including the error paths
+    # that append an error marker) — mid-turn flushes merely narrow the
+    # window. On failure the flag stays set so any later save retries.
+    pending = [
+        m
+        for m in session.messages
+        if m.tool_calls_pending_save and m.sequence is not None
+    ]
+
+    # Same repair for stamps: rows flushed mid-turn got their sequence
+    # before end-of-turn stamping ran (see ChatMessage.stamps_pending_save).
+    pending_stamps = [
+        m for m in session.messages if m.stamps_pending_save and m.sequence is not None
+    ]
+
+    async def _backfill_stamps(msg: ChatMessage) -> None:
+        assert msg.sequence is not None
+        try:
+            updated = await db.update_chat_message_stamps(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                model=msg.model,
+                routing_source=msg.routing_source,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill stamps for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+        if updated:
+            msg.stamps_pending_save = False
+
+    async def _backfill(msg: ChatMessage) -> None:
+        assert msg.sequence is not None  # narrowed by the filter above
+        try:
+            updated = await db.update_chat_message_tool_calls(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                tool_calls=msg.tool_calls or [],
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+
+        if updated:
+            msg.tool_calls_pending_save = False
+        else:
+            logger.warning(
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence} (row not found)"
+            )
+
+    # One concurrent pass for both repairs — a mid-turn-flushed assistant
+    # row with tools commonly needs BOTH back-fills; success/failure flags
+    # stay independent per mechanism.
+    if pending or pending_stamps:
+        await asyncio.gather(
+            *(_backfill(m) for m in pending),
+            *(_backfill_stamps(m) for m in pending_stamps),
+        )
 
 
 async def append_and_save_message(
@@ -970,7 +1150,10 @@ async def create_chat_session(
     *,
     dry_run: bool,
     builder_graph_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     source_platform: str | None = None,
+    expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -982,6 +1165,8 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
+        expert_id: Hired expert this session is scoped to. Ownership and
+            archived state must be validated by the caller.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -993,6 +1178,9 @@ async def create_chat_session(
         dry_run=dry_run,
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
+        organization_id=organization_id,
+        team_id=team_id,
+        expert_id=expert_id,
     )
 
     # Create in database first - fail fast if this fails
@@ -1000,7 +1188,10 @@ async def create_chat_session(
         await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
             metadata=session.metadata,
+            expert_id=expert_id,
         )
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")
@@ -1020,6 +1211,8 @@ async def create_chat_session(
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -1060,6 +1253,8 @@ async def get_or_create_builder_session(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,
@@ -1073,7 +1268,9 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    organization_id: str | None = None,
     title_contains: str | None = None,
+    expert_id: str | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -1081,36 +1278,50 @@ async def get_user_sessions(
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
 
+    ``expert_id`` restricts the listing to sessions scoped to that expert.
+
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
     sessions = await db.get_user_chat_sessions(
-        user_id, limit, offset, title_contains=title_contains
+        user_id,
+        limit,
+        offset,
+        organization_id=organization_id,
+        title_contains=title_contains,
+        expert_id=expert_id,
     )
-    # Total count ignores the filter — it's the user's overall session
-    # count, used by paginated listings. The /search/global caller
-    # discards it.
-    total_count = await db.get_user_session_count(user_id)
+    total_count = await db.get_user_session_count(
+        user_id, organization_id=organization_id, expert_id=expert_id
+    )
 
     return sessions, total_count
 
 
-async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+async def delete_chat_session(
+    session_id: str,
+    user_id: str | None = None,
+    organization_id: str | None = None,
+) -> bool:
     """Delete a chat session from both cache and database.
 
     Args:
         session_id: The session ID to delete.
         user_id: If provided, validates that the session belongs to this user
             before deletion. This prevents unauthorized deletion.
+        organization_id: If provided, scopes the deletion to sessions
+            belonging to this organization.
 
     Returns:
         True if deleted successfully, False otherwise.
     """
     # Delete from database first (with optional user_id validation)
     # This confirms ownership before invalidating cache
-    deleted = await chat_db().delete_chat_session(session_id, user_id)
+    deleted = await chat_db().delete_chat_session(
+        session_id, user_id, organization_id=organization_id
+    )
 
     if not deleted:
         return False
@@ -1211,6 +1422,46 @@ async def update_session_title(
     except Exception as e:
         logger.error(f"Failed to update title for session {session_id}: {e}")
         return False
+
+
+async def update_session_pinned(
+    session_id: str,
+    user_id: str,
+    is_pinned: bool,
+) -> bool:
+    """Pin or unpin a chat session, scoped to the owning user.
+
+    Lightweight operation that doesn't touch messages, mirroring
+    ``update_session_title``. Keeps the Redis cache in sync so the
+    sidebar reflects the change without waiting on a cache invalidation.
+
+    Args:
+        session_id: The session ID to update.
+        user_id: Owning user — the DB query filters on this.
+        is_pinned: New pin state.
+
+    Returns:
+        True if updated successfully, False only for the real not-found / wrong-user
+        case. Unexpected DB/runtime failures propagate so the route surfaces a 5xx
+        rather than masking them as a 404.
+    """
+    updated = await chat_db().update_chat_session_pinned(session_id, user_id, is_pinned)
+    if not updated:
+        return False
+
+    # Cache refresh is best-effort — a cache failure must not fail the request,
+    # the DB write already succeeded.
+    try:
+        cached = await _get_session_from_cache(session_id)
+        if cached:
+            cached.is_pinned = is_pinned
+            await cache_chat_session(cached)
+    except Exception as e:
+        logger.warning(
+            f"Cache pin update failed for session {session_id} (non-critical): {e}"
+        )
+
+    return True
 
 
 # ==================== Chat session locks ==================== #

@@ -19,6 +19,11 @@ refresh: ``poetry run python scripts/refresh_anthropic_rates.py``.
 Anthropic prompt-caching docs (rates we apply when the source omits
 the 1h cache-write field on a model):
 https://docs.claude.com/en/docs/build-with-claude/prompt-caching
+
+Scope note: this rate card exists only for direct-Anthropic cost
+recovery on the OpenAI-compat transport. Per-model catalog costs (the
+ones the platform manages) live in ``backend/data/llm_registry/
+catalog.py`` — see docs/platform/contributing/managing-llm-models.md.
 """
 
 from __future__ import annotations

@@ -1,8 +1,9 @@
 "use client";
 
 import { Input } from "@/components/atoms/Input/Input";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import type { ChangeEvent } from "react";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   searchTerm: string;
@@ -19,7 +20,8 @@ export function ArtifactsSearchBar({ searchTerm, setSearchTerm }: Props) {
       data-testid="artifacts-search-bar"
       className="relative -mb-6 flex w-full items-center md:w-auto"
     >
-      <MagnifyingGlassIcon
+      <Icon
+        icon={Search01Icon}
         width={18}
         height={18}
         className="absolute left-4 top-[34%] z-20 -translate-y-1/2 text-zinc-800"

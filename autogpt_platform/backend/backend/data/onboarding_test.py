@@ -1,10 +1,14 @@
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
-from prisma.enums import OnboardingStep
 
-from backend.data.onboarding import _reward_user, format_onboarding_for_extraction
+from backend.data.onboarding import (
+    OnboardingStep,
+    _reward_user,
+    format_onboarding_for_extraction,
+)
 
 
 def test_format_onboarding_for_extraction_basic():
@@ -37,10 +41,10 @@ def test_format_onboarding_for_extraction_with_other():
 @pytest.mark.parametrize(
     "step,expected_reward",
     [
-        (OnboardingStep.VISIT_COPILOT, 300),
+        (OnboardingStep.ONBOARDING_COMPLETE, 300),
         (OnboardingStep.AGENT_NEW_RUN, 300),
         (OnboardingStep.MARKETPLACE_ADD_AGENT, 100),
-        (OnboardingStep.MARKETPLACE_RUN_AGENT, 100),
+        (OnboardingStep.LIBRARY_RUN_AGENT, 100),
         (OnboardingStep.SCHEDULE_AGENT, 100),
         (OnboardingStep.RUN_3_DAYS, 100),
         (OnboardingStep.TRIGGER_WEBHOOK, 100),
@@ -89,3 +93,64 @@ async def test_reward_user_skips_if_already_rewarded(
     await _reward_user("user-1", onboarding, OnboardingStep.RUN_14_DAYS)
 
     credit_model.onboarding_reward.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_reward_user_noop_for_zero_reward_step(
+    mocker: pytest_mock.MockFixture,
+):
+    # Steps without a configured reward (e.g. WELCOME) must never touch the
+    # credit model — they are pure progress markers.
+    onboarding = Mock()
+    onboarding.rewardedFor = []
+
+    credit_model = Mock()
+    credit_model.onboarding_reward = AsyncMock()
+    mocker.patch(
+        "backend.data.onboarding.get_user_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+
+    await _reward_user("user-1", onboarding, OnboardingStep.WELCOME)
+
+    credit_model.onboarding_reward.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_reward_user_accepts_plain_string_step(
+    mocker: pytest_mock.MockFixture,
+):
+    # The completion endpoint validates against ``FrontendOnboardingStep``
+    # (a ``Literal[OnboardingStep, ...]``), which can hand the data layer a
+    # plain ``str`` rather than an enum instance. The persist path must coerce
+    # with ``str()``, not ``.value`` (which would AttributeError on a str).
+    onboarding = Mock()
+    onboarding.rewardedFor = []
+
+    credit_model = Mock()
+    credit_model.onboarding_reward = AsyncMock()
+    mocker.patch(
+        "backend.data.onboarding.get_user_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mock_prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    mock_prisma.return_value.update = AsyncMock()
+
+    # Pass a raw string typed as OnboardingStep to mimic the endpoint boundary.
+    await _reward_user(
+        "user-1", onboarding, cast(OnboardingStep, "ONBOARDING_COMPLETE")
+    )
+
+    credit_model.onboarding_reward.assert_called_once()
+    persisted = mock_prisma.return_value.update.call_args.kwargs["data"]["rewardedFor"]
+    assert persisted == ["ONBOARDING_COMPLETE"]
+
+
+def test_onboarding_step_values_are_plain_strings():
+    # StrEnum members must round-trip through ``str`` unchanged so they can be
+    # written directly into the ``String[]`` columns on UserOnboarding.
+    assert str(OnboardingStep.ONBOARDING_COMPLETE) == "ONBOARDING_COMPLETE"
+    assert OnboardingStep.ONBOARDING_COMPLETE == "ONBOARDING_COMPLETE"
+    # Legacy values that have been retired (e.g. VISIT_COPILOT) must not appear
+    # in the active set — existing rows containing them remain inert strings.
+    assert "VISIT_COPILOT" not in {step.value for step in OnboardingStep}

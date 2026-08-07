@@ -17,6 +17,9 @@ from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
+import backend.data.llm_registry
+from backend.copilot import engine_switch
+from backend.copilot.executor.utils import schedule_turn
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
@@ -39,6 +42,20 @@ from .utils import (
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 settings = Settings()
+
+
+def _load_catalog() -> None:
+    """Load the LLM catalog into THIS process's registry cache.
+
+    Copilot turns run in this executor, not the rest API process — without
+    this, routing cells and serve-time gating silently no-op (an empty
+    registry gates nothing by design). Fail-hard: the catalog is
+    load-bearing (blocks and billing already built from it at import), so
+    a failure here is a bug that should stop the process, not silently
+    disable gating.
+    """
+    backend.data.llm_registry.load_catalog()
+
 
 # Prometheus metrics
 active_tasks_gauge = Gauge(
@@ -94,6 +111,8 @@ class CoPilotExecutor(AppProcess):
         logger.info(f"Pod assigned executor_id: {self.executor_id}")
         logger.info(f"Spawn max-{self.pool_size} workers...")
 
+        _load_catalog()
+
         # Materialise the active-tasks lock NOW, before any worker threads
         # exist, so subsequent multi-threaded reads of the lazy property
         # never race on its check-then-init pattern.  ``__init__`` can't
@@ -103,7 +122,15 @@ class CoPilotExecutor(AppProcess):
 
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
-        start_http_server(settings.config.copilot_executor_port)
+        # Deliberate reuse of pyro_host: despite the legacy name it is the
+        # bind address for every service's internal listener (see
+        # backend.util.service). Metrics follow the same interface as the RPC
+        # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
+        # cross-container scraping), loopback in the single-container runtime.
+        start_http_server(
+            settings.config.copilot_executor_port,
+            addr=settings.config.pyro_host,
+        )
 
         self.cancel_thread.start()
         self.run_thread.start()
@@ -459,6 +486,7 @@ class CoPilotExecutor(AppProcess):
                     self._task_locks[session_id].release()
                     del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
+                _maybe_dispatch_engine_switch(session_id, error_msg)
 
         future.add_done_callback(on_run_done)
 
@@ -559,3 +587,112 @@ class CoPilotExecutor(AppProcess):
         if self._run_client is None:
             self._run_client = SyncRabbitMQ(create_copilot_queue_config())
         return self._run_client
+
+
+def _maybe_dispatch_engine_switch(session_id: str, error_msg: str | None) -> None:
+    """Consume a pending engine switch after the turn fully finished.
+
+    Called from the turn future's done-callback: dispatch the SDK
+    continuation only NOW — the turn thread has fully finished (fail-close
+    ran, message acked, cluster lock released, active_tasks cleaned), so
+    neither the fail-close CAS nor the RMQ same-session duplicate rejection
+    can kill the new turn.
+    """
+    switch = engine_switch.pop_switch(session_id)
+    if switch is None:
+        return
+    if error_msg is not None:
+        # Turn failed — the persisted history (and thus the derived
+        # building-mode signal) can't be trusted, so no continuation fires.
+        # Not silent: the session is idle and the user's next message
+        # re-resolves the engine.
+        logger.info(
+            f"Engine-switch continuation for {session_id} not "
+            f"dispatched — turn ended with error: {error_msg}"
+        )
+        return
+    # Dispatch on a dedicated short-lived thread: the async RabbitMQ client
+    # is @thread_cached and loop-bound, so asyncio.run() on this pool thread
+    # would reuse a client created under a previous (now-closed) event loop.
+    # A fresh thread gets a fresh loop AND a fresh thread-cached client, so
+    # nothing crosses loops.
+    threading.Thread(
+        target=_dispatch_engine_switch_continuation,
+        args=(session_id, switch),
+        name=f"engine-switch-{session_id[:8]}",
+        daemon=True,
+    ).start()
+
+
+_SWITCH_DISPATCH_ATTEMPTS = 3
+
+
+def _dispatch_engine_switch_continuation(
+    session_id: str, switch: engine_switch.SwitchRequest
+) -> None:
+    """Dispatch the SDK continuation turn after an engine switch.
+
+    Runs on its own thread with its own event loop so the thread-cached
+    async queue client is created fresh and never reused across loops.
+
+    Best-effort with bounded retry (transient queue/redis blips): if all
+    attempts fail, the session is left idle (not stranded) with a
+    user-visible marker — building mode is derived from persisted message
+    history, so the user's next message still lands on the SDK engine with
+    the guide in the prefix.
+    """
+    for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
+        try:
+            asyncio.run(
+                schedule_turn(
+                    session_id=session_id,
+                    user_id=switch.user_id,
+                    turn_id=str(uuid.uuid4()),
+                    message=engine_switch.CONTINUATION_MESSAGE,
+                    is_user_message=False,
+                    mode="extended_thinking",
+                    organization_id=switch.organization_id,
+                    team_id=switch.team_id,
+                )
+            )
+            logger.info(f"Dispatched engine-switch continuation for {session_id}")
+            return
+        except Exception as switch_err:
+            logger.error(
+                f"Engine-switch continuation dispatch failed for {session_id} "
+                f"(attempt {attempt}/{_SWITCH_DISPATCH_ATTEMPTS}): {switch_err}"
+            )
+            if attempt < _SWITCH_DISPATCH_ATTEMPTS:
+                time.sleep(attempt)
+    _persist_switch_failure_marker(session_id)
+
+
+def _persist_switch_failure_marker(session_id: str) -> None:
+    """Leave a user-visible error in the session when every dispatch attempt
+    failed — the user was told building continues automatically, so a silent
+    drop would strand them on that promise. Best-effort: building mode
+    itself survives (derived from history), so their next message recovers.
+    """
+    # Lazy imports: manager must stay importable without the model chain.
+    from backend.copilot.constants import COPILOT_ERROR_PREFIX
+    from backend.copilot.model import ChatMessage, append_and_save_message
+
+    try:
+        asyncio.run(
+            append_and_save_message(
+                session_id,
+                ChatMessage(
+                    role="assistant",
+                    content=(
+                        f"{COPILOT_ERROR_PREFIX} Could not start the "
+                        "agent-building engine automatically. Building mode "
+                        "is still active — send a message to continue."
+                    ),
+                ),
+            )
+        )
+    except Exception as marker_err:
+        logger.error(
+            f"Failed to persist engine-switch failure marker for "
+            f"{session_id}: {marker_err}"
+        )

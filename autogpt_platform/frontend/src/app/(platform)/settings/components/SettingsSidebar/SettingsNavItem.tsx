@@ -5,6 +5,7 @@ import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import type { SettingsNavItem as SettingsNavItemType } from "./helpers";
 
 type Props = {
@@ -25,9 +26,9 @@ function NavItemContent({
 
   return (
     <>
-      <Icon
+      <UIIcon
+        icon={Icon}
         size={16}
-        weight={isActive ? "regular" : "light"}
         className={isActive ? "text-black" : "text-[#1F1F20]"}
       />
       <Text

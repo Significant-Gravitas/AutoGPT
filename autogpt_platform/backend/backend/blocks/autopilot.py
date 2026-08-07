@@ -299,11 +299,23 @@ class AutoPilotBlock(Block):
             },
         )
 
-    async def create_session(self, user_id: str, *, dry_run: bool) -> str:
+    async def create_session(
+        self,
+        user_id: str,
+        *,
+        dry_run: bool,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+    ) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
         from backend.copilot.model import create_chat_session  # avoid circular import
 
-        session = await create_chat_session(user_id, dry_run=dry_run)
+        session = await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
         return session.session_id
 
     async def execute_copilot(
@@ -468,6 +480,8 @@ class AutoPilotBlock(Block):
             sid = await self.create_session(
                 execution_context.user_id,
                 dry_run=input_data.dry_run or execution_context.dry_run,
+                organization_id=execution_context.organization_id,
+                team_id=execution_context.team_id,
             )
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own

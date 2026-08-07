@@ -18,7 +18,7 @@ export default defineConfig({
       indexFiles: false,
       mock: {
         type: "msw",
-        baseUrl: "http://localhost:3000/api/proxy",
+        baseUrl: "/api/proxy",
         generateEachHttpStatus: true,
         delay: 0,
       },

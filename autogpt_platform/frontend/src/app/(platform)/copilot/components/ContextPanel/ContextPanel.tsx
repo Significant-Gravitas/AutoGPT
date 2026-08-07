@@ -7,7 +7,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { XIcon } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { FilesTab } from "./components/FilesTab/FilesTab";
@@ -15,6 +15,8 @@ import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
 import { ProgressTab } from "./components/ProgressTab/ProgressTab";
 import { TabSwitcher } from "./components/TabSwitcher";
 import { useContextPanel } from "./useContextPanel";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   sessionId: string | null;
@@ -33,6 +35,12 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   } = useContextPanel();
   const { uploaded, generated } = useSessionFiles(sessionId);
   const filesCount = uploaded.length + generated.length;
+  // When the task bar (above the chat input) is on, the sidebar drops the
+  // Progress tab and shows Files only.
+  const showProgressTab = !useGetFlag(Flag.TASK_PROGRESS_BAR);
+  // Clamp a persisted "progress" tab to "files" when Progress is hidden, so
+  // the switcher never ends up with no selected tab.
+  const effectiveTab = showProgressTab ? activeTab : "files";
 
   const tabs = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -43,25 +51,29 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         )}
       >
         <TabSwitcher
-          activeTab={activeTab}
+          activeTab={effectiveTab}
           filesCount={filesCount}
           onChange={setActiveTab}
+          showProgressTab={showProgressTab}
         />
         {!mobile && (
           <button
             type="button"
-            onClick={closeArtifactPanel}
+            onClick={() => closeArtifactPanel()}
             title="Close"
             aria-label="Close workspace panel"
             className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
           >
-            <XIcon size={16} />
+            <Icon icon={Cancel01Icon} size={16} />
           </button>
         )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        {activeTab === "progress" && <ProgressTab sessionId={sessionId} />}
-        {activeTab === "files" && <FilesTab sessionId={sessionId} />}
+        {showProgressTab && effectiveTab === "progress" ? (
+          <ProgressTab sessionId={sessionId} />
+        ) : (
+          <FilesTab sessionId={sessionId} />
+        )}
       </div>
     </div>
   );

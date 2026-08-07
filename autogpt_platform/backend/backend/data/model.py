@@ -21,13 +21,14 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType, OnboardingStep, SubscriptionTier
+from prisma.enums import CreditTransactionType, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     GetCoreSchemaHandler,
     SecretStr,
+    TypeAdapter,
     field_serializer,
     model_validator,
 )
@@ -40,6 +41,7 @@ from pydantic_core import (
 )
 from typing_extensions import TypedDict
 
+from backend.data.onboarding_steps import OnboardingStep
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
@@ -444,6 +446,10 @@ Credentials = Annotated[
     | HostScopedCredentials,
     Field(discriminator="type"),
 ]
+
+# For validating a bare Credentials union outside a parent model (e.g.
+# decrypted IntegrationCredential row payloads).
+CREDENTIALS_ADAPTER: TypeAdapter[Credentials] = TypeAdapter(Credentials)
 
 
 CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
@@ -980,6 +986,10 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
+    # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
+    # the frontend (the DB stores plain strings). The rename migration keeps
+    # existing rows within the enum, and writes are validated on the completion
+    # endpoint via the ``FrontendOnboardingStep`` Literal.
     completedSteps: list[OnboardingStep]
     walletShown: bool
     notified: list[OnboardingStep]
