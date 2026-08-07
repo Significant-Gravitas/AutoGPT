@@ -8,6 +8,7 @@ import {
   getGetBrainDumpIntroMockHandler200,
   getGetBrainDumpRecommendedProvidersMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { getBriefingsMock } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import { getChatMock } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
@@ -51,6 +52,7 @@ export const mockHandlers = [
     ready: true,
     providers: [],
   }),
+  ...getBriefingsMock(),
   ...getChatMock(),
   ...getCreditsMock(),
   ...getDefaultMock(),
