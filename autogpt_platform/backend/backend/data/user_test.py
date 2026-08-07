@@ -84,6 +84,7 @@ class TestUpdateUserTimezone:
         time. A profile-page timezone change MUST eagerly re-register
         the dream-system crons so they fire at the right local time
         without waiting for the 7-day Redis dedup-key TTL to expire."""
+        from backend.copilot.briefing import scheduling as briefing_scheduling
         from backend.copilot.dream import scheduling as dream_scheduling
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
@@ -101,6 +102,19 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_or_create_user, "cache_clear"),
             patch.object(
                 dream_scheduling, "ensure_dream_system_scheduled", new=fake_ensure
+            ),
+            # This test isolates the dream-system re-registration contract;
+            # the sibling morning-briefing re-registration (also wired here)
+            # is covered separately by scheduling_test.py.
+            patch.object(
+                briefing_scheduling,
+                "clear_briefing_registration_marker",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                briefing_scheduling,
+                "ensure_morning_briefing_scheduled",
+                new=AsyncMock(),
             ),
         ):
             mock_prisma_user.prisma.return_value.update = AsyncMock(
@@ -120,6 +134,7 @@ class TestUpdateUserTimezone:
         exception never observed. The spawn must keep a strong ref in
         ``_background_tasks`` until done and log failures via the
         done-callback instead of dropping them."""
+        from backend.copilot.briefing import scheduling as briefing_scheduling
         from backend.copilot.dream import scheduling as dream_scheduling
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
@@ -135,6 +150,21 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_or_create_user, "cache_clear"),
             patch.object(
                 dream_scheduling, "ensure_dream_system_scheduled", new=failing_ensure
+            ),
+            # Isolate the dream-system task-retention contract under test
+            # from the sibling morning-briefing re-registration (also wired
+            # here) — real Redis/flag I/O in that path would otherwise give
+            # the event loop extra turns and let the dream task above
+            # complete (and get discarded) before the assertion below runs.
+            patch.object(
+                briefing_scheduling,
+                "clear_briefing_registration_marker",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                briefing_scheduling,
+                "ensure_morning_briefing_scheduled",
+                new=AsyncMock(),
             ),
             patch.object(user_module.logger, "warning") as warn_mock,
         ):

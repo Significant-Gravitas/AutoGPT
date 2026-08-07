@@ -827,6 +827,22 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
                 exc_info=True,
             )
 
+        # Same rationale for the morning-briefing cron: clear the stored
+        # marker first so the re-register below isn't skipped by its own
+        # drift check reading the just-superseded timezone, then re-ensure
+        # so the profile change takes effect immediately instead of
+        # waiting out the marker's 7-day TTL. Both calls are internally
+        # exception-safe (catch-all + warning log), so — unlike the
+        # dream-system task spawn above — no extra try/except is needed
+        # here.
+        from backend.copilot.briefing.scheduling import (
+            clear_briefing_registration_marker,
+            ensure_morning_briefing_scheduled,
+        )
+
+        await clear_briefing_registration_marker(user_id)
+        await ensure_morning_briefing_scheduled(user_id)
+
         return User.from_db(user)
     except Exception as e:
         raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e

@@ -1173,6 +1173,16 @@ async def stream_chat_post(
     import asyncio
     import time
 
+    # Fire-and-forget; per-user Redis dedup inside the helper provides
+    # cross-process / cross-restart idempotency. Same pattern as
+    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
+    from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
+
+    asyncio.create_task(
+        ensure_morning_briefing_scheduled(user_id),
+        name=f"morning-briefing-register-{user_id[:12]}",
+    )
+
     stream_start_time = time.perf_counter()
     # Wall-clock arrival time, propagated to the executor so the turn-start
     # drain can order pending messages relative to this request (pending
