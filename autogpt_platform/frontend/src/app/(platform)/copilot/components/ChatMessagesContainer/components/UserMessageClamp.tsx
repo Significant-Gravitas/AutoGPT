@@ -17,10 +17,7 @@ export function UserMessageClamp({ children }: Props) {
 
   return (
     <div>
-      <div
-        ref={contentRef}
-        className={expanded ? undefined : "line-clamp-6"}
-      >
+      <div ref={contentRef} className={expanded ? undefined : "line-clamp-6"}>
         {children}
       </div>
       {(isOverflowing || expanded) && (

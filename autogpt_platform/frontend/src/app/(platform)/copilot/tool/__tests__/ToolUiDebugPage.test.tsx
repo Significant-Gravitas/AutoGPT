@@ -1,6 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
+import { render } from "@/tests/integrations/test-utils";
 import { ToolUiDebugPage } from "../ToolUiDebugPage";
 
 describe("ToolUiDebugPage", () => {

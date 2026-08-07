@@ -17,12 +17,13 @@ import type { ChainRow } from "./helpers";
 import {
   FixResultCard,
   PlanSteps,
+  QuestionsCard,
   SkillCard,
   SuggestedGoalCard,
   TriggerSetupCard,
   ValidationCard,
 } from "./InfoCards";
-import { QuestionRowForm } from "./QuestionRowForm";
+import { extractClarifyingQuestions } from "../../tools/clarifying-questions";
 import {
   DocsList,
   FeatureRequestList,
@@ -193,7 +194,8 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
   if (output) {
     const setupCard = setupRequirementsCard(row, output);
     if (setupCard) return setupCard;
-    if (asItems(output.questions)) return <QuestionRowForm row={row} />;
+    const questions = asItems(output.questions);
+    if (questions) return <QuestionsCard questions={questions} />;
   }
 
   switch (row.tool) {
@@ -278,8 +280,16 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       return output ? <ValidationCard output={output} /> : null;
     case "fix_agent_graph":
       return output ? <FixResultCard output={output} /> : null;
-    case "ask_question":
-      return <QuestionRowForm row={row} />;
+    // Interactive answering lives in the QuestionDock above the chat input;
+    // the chain row keeps a read-only record of what was asked.
+    case "ask_question": {
+      const questions = extractClarifyingQuestions(row);
+      return questions.length > 0 ? (
+        <QuestionsCard
+          questions={questions as unknown as Record<string, unknown>[]}
+        />
+      ) : null;
+    }
     case "list_schedules": {
       const schedules = output && asItems(output.schedules);
       return schedules ? <ScheduleList schedules={schedules} /> : null;

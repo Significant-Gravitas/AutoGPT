@@ -46,10 +46,7 @@ interface Props {
 }
 
 export function ChainRowView({ row, isLast }: Props) {
-  // Question rows start open — they need the user's answer to proceed.
-  const [open, setOpen] = useState(
-    row.category === "question" || row.requiresAction === true,
-  );
+  const [open, setOpen] = useState(row.requiresAction === true);
   const isReasoning = row.category === "reasoning";
   const liveReasoning =
     isReasoning && row.state === "running" && !!row.reasoningText;
@@ -74,18 +71,10 @@ export function ChainRowView({ row, isLast }: Props) {
         <div
           className={cn(
             "relative flex size-7 shrink-0 items-center justify-center rounded-full transition-colors duration-300",
-            row.state === "error"
-              ? "bg-red-50"
-              : row.state === "running"
-                ? "bg-purple-50"
-                : "bg-zinc-100",
+            row.state === "error" ? "bg-red-50" : "bg-zinc-100",
           )}
         >
-          <ToolStatusBadge
-            state={row.state}
-            label={row.text}
-            morphToCheck={!isReasoning && !row.requiresAction}
-          >
+          <ToolStatusBadge state={row.state} label={row.text}>
             {row.state !== "error" && row.providerIconSrc ? (
               <ProviderIcon src={row.providerIconSrc} row={row} />
             ) : (
@@ -93,7 +82,9 @@ export function ChainRowView({ row, isLast }: Props) {
             )}
           </ToolStatusBadge>
         </div>
-        {!isLast && <div className="w-px flex-1 bg-zinc-200" />}
+        {!isLast && (
+          <div className="w-px flex-1 origin-top animate-grow-line bg-zinc-200 motion-reduce:animate-none" />
+        )}
       </div>
       <div className={cn("min-w-0 flex-1", isLast ? "pb-0" : "pb-3")}>
         {hasContent ? (

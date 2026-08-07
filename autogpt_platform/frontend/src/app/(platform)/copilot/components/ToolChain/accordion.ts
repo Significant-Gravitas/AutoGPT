@@ -10,13 +10,6 @@ export function accordionState(open: boolean): string {
     : "[grid-template-rows:0fr] opacity-0";
 }
 
+// One fade for the whole panel — per-row staggering made long chains feel
+// slow, and streaming rows already animate individually as they arrive.
 export const PANEL_REVEAL = "animate-fade-up motion-reduce:animate-none";
-
-const STAGGER_MS = 45;
-const MAX_STAGGERED_ROWS = 8;
-
-// Rows cascade in behind the panel. Capped so a long chain doesn't turn the
-// expand into a several-second reveal.
-export function rowStaggerDelay(index: number): string {
-  return `${Math.min(index, MAX_STAGGERED_ROWS) * STAGGER_MS}ms`;
-}

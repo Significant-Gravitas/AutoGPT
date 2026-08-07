@@ -17,7 +17,7 @@ import {
   FilesIcon,
   FlashIcon,
   FolderIcon,
-  GlobeIcon,
+  Globe02Icon,
   HierarchyIcon,
   InformationCircleIcon,
   MegaphoneIcon,
@@ -56,7 +56,7 @@ export function RowIcon({ row }: RowIconProps) {
     case "bash":
       return <Icon icon={TerminalIcon} size={16} className={cls} />;
     case "web":
-      return <Icon icon={GlobeIcon} size={16} className={cls} />;
+      return <Icon icon={Globe02Icon} size={16} className={cls} />;
     case "browser":
       return <Icon icon={ComputerIcon} size={16} className={cls} />;
     case "file-read":

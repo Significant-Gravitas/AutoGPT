@@ -3,8 +3,10 @@
 import { PlayIcon, RefreshIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ChatInput } from "../components/ChatInput/ChatInput";
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
+import { QuestionDock } from "../components/QuestionDock/QuestionDock";
 import { NewChatView } from "./components/NewChatView";
 import { type ToolUiVariant, useToolUiDebugPage } from "./useToolUiDebugPage";
 
@@ -53,7 +55,7 @@ export function ToolUiDebugPage() {
 
   return (
     <CopilotChatActionsProvider onSend={sendUserMessage}>
-      <div className="flex h-[calc(100vh-72px)] flex-col bg-[#fafafa]">
+      <div className="flex h-full min-h-0 flex-col bg-[#fafafa]">
         <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-3">
           <div className="flex items-center gap-3">
             <h1 className="text-sm font-semibold text-zinc-800">
@@ -95,11 +97,25 @@ export function ToolUiDebugPage() {
               forceOldToolUI
             />
           ) : (
-            <NewChatView
-              messages={messages}
-              status={status}
-              statusMessage={statusMessage}
-            />
+            <>
+              <NewChatView
+                messages={messages}
+                status={status}
+                statusMessage={statusMessage}
+              />
+              <div className="relative px-3 pb-6 pt-2">
+                <div className="relative z-10">
+                  <QuestionDock messages={messages} />
+                </div>
+                <ChatInput
+                  inputId="chat-input-tool-debug"
+                  onSend={(message) => sendUserMessage(message)}
+                  placeholder="What else can I help with?"
+                  hasSession
+                  forceNewComposer
+                />
+              </div>
+            </>
           )}
         </div>
       </div>

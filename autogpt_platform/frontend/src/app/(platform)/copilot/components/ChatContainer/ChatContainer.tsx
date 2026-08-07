@@ -14,6 +14,7 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { QuestionDock } from "../QuestionDock/QuestionDock";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
@@ -121,6 +122,9 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
+  // Old tool UI keeps its interactive in-transcript question card; the dock
+  // is the new-UI answering surface, so gate it to avoid double forms.
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -278,6 +282,11 @@ export const ChatContainer = ({
                         todos={getLatestTaskList(messages) ?? []}
                         isStreaming={isStreaming}
                       />
+                    </div>
+                  )}
+                  {isNewToolUI && (
+                    <div className="relative z-10">
+                      <QuestionDock messages={messages} />
                     </div>
                   )}
                   <Tooltip open={isLimitReached ? undefined : false}>

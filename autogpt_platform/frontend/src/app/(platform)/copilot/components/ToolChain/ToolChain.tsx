@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import {
   AnimatePresence,
   domAnimation,
@@ -11,12 +11,7 @@ import {
 import { useId, useMemo, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
-import {
-  ACCORDION_PANEL,
-  accordionState,
-  PANEL_REVEAL,
-  rowStaggerDelay,
-} from "./accordion";
+import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import { ChainRowView } from "./ChainRowView";
 import { type ChainRow, getChainHeading, toChainRow } from "./helpers";
 import { SwapText } from "./SwapText";
@@ -29,7 +24,7 @@ interface Props {
 }
 
 export function ToolChain({ parts, isStreaming }: Props) {
-  const [expanded, setExpanded] = useState(false);
+  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const panelId = useId();
   const reducedMotion = useReducedMotion();
 
@@ -42,10 +37,13 @@ export function ToolChain({ parts, isStreaming }: Props) {
   );
   if (rows.length === 0) return null;
 
+  const expanded = manualExpanded === true;
   const heading = getChainHeading(rows, isStreaming && !expanded);
   const hasError = rows.some((row) => row.state === "error");
   const hasRequiredAction = rows.some((row) => row.requiresAction);
-  const open = expanded || isStreaming || hasRequiredAction;
+  // Auto-open while streaming or action-required; a manual toggle overrides
+  // either direction and sticks until the next toggle.
+  const open = manualExpanded ?? (isStreaming || hasRequiredAction);
   const windowMode = isStreaming && !expanded;
   // Rows stay mounted while closed so the 0fr collapse can animate.
   const visible = windowMode ? rows.slice(-COLLAPSED_WINDOW) : rows;
@@ -55,19 +53,11 @@ export function ToolChain({ parts, isStreaming }: Props) {
       <div className="my-2">
         <button
           type="button"
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => setManualExpanded(!open)}
           aria-expanded={open}
           aria-controls={panelId}
-          className="group/chain flex w-full items-center gap-1.5 text-left"
+          className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-zinc-100"
         >
-          <Icon
-            icon={ArrowRight01Icon}
-            size={12}
-            className={
-              "shrink-0 text-zinc-400 transition-transform duration-300 ease-out-quint " +
-              (open ? "rotate-90" : "")
-            }
-          />
           <SwapText
             text={heading}
             shimmer={isStreaming && !expanded}
@@ -76,9 +66,14 @@ export function ToolChain({ parts, isStreaming }: Props) {
               (hasError && !isStreaming ? "text-red-500" : "text-zinc-700")
             }
           />
-          <span className="ml-auto shrink-0 text-xs text-zinc-400 opacity-0 transition-opacity group-hover/chain:opacity-100">
-            {rows.length} steps
-          </span>
+          <Icon
+            icon={ArrowDown01Icon}
+            size={12}
+            className={
+              "shrink-0 text-zinc-400 transition-transform duration-300 ease-out-quint " +
+              (open ? "rotate-180" : "")
+            }
+          />
         </button>
         <div className={ACCORDION_PANEL + " " + accordionState(open)}>
           <div
@@ -87,7 +82,12 @@ export function ToolChain({ parts, isStreaming }: Props) {
             inert={open ? undefined : ("" as unknown as boolean)}
             className="min-h-0 overflow-hidden"
           >
-            <div className="flex flex-col pl-0.5 pt-2.5">
+            <div
+              className={
+                "flex flex-col pl-0.5 pt-2.5" +
+                (open && !windowMode ? " " + PANEL_REVEAL : "")
+              }
+            >
               <AnimatePresence mode="popLayout">
                 {visible.map((row, i) => (
                   <m.div
@@ -124,15 +124,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
                       },
                     }}
                   >
-                    <div
-                      className={open && !windowMode ? PANEL_REVEAL : undefined}
-                      style={{ animationDelay: rowStaggerDelay(i) }}
-                    >
-                      <ChainRowView
-                        row={row}
-                        isLast={i === visible.length - 1}
-                      />
-                    </div>
+                    <ChainRowView row={row} isLast={i === visible.length - 1} />
                   </m.div>
                 ))}
               </AnimatePresence>

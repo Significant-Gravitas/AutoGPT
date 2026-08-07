@@ -5,9 +5,9 @@ import { ToolStatusBadge } from "../ToolStatusBadge";
 describe("ToolStatusBadge", () => {
   afterEach(cleanup);
 
-  it("morphs declaratively from a spinner into completion", () => {
+  it("keeps the tool icon when running completes", () => {
     const { rerender } = render(
-      <ToolStatusBadge state="running" label="Running" morphToCheck>
+      <ToolStatusBadge state="running" label="Running">
         <span>tool</span>
       </ToolStatusBadge>,
     );
@@ -15,9 +15,10 @@ describe("ToolStatusBadge", () => {
     expect(screen.getByRole("img", { name: "Running" }).dataset.state).toBe(
       "spinning",
     );
+    expect(screen.getByText("tool")).toBeDefined();
 
     rerender(
-      <ToolStatusBadge state="done" label="Done" morphToCheck>
+      <ToolStatusBadge state="done" label="Done">
         <span>tool</span>
       </ToolStatusBadge>,
     );
@@ -25,11 +26,12 @@ describe("ToolStatusBadge", () => {
     expect(screen.getByRole("img", { name: "Done" }).dataset.state).toBe(
       "done",
     );
+    expect(screen.getByText("tool")).toBeDefined();
   });
 
-  it("keeps action-required rows on their tool icon", () => {
+  it("keeps completed rows on their tool icon", () => {
     render(
-      <ToolStatusBadge state="done" label="Connect" morphToCheck={false}>
+      <ToolStatusBadge state="done" label="Connect">
         <span>integration</span>
       </ToolStatusBadge>,
     );

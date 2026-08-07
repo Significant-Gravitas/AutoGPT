@@ -29,7 +29,6 @@ const ACTION_RESPONSE_TYPES = new Set([
   "review_required",
   "need_login",
   "trigger_config_required",
-  "agent_builder_clarification_needed",
   "suggested_goal",
 ]);
 
@@ -54,9 +53,6 @@ function actionLabel(output: unknown): string | null {
     return typeof name === "string" && name.trim()
       ? `Review ${name.trim()}`
       : "Review this action";
-  }
-  if (data.type === "agent_builder_clarification_needed") {
-    return "Answer a few questions";
   }
   if (data.type === "suggested_goal") return "Review the suggested goal";
   return typeof data.message === "string" && data.message.trim()

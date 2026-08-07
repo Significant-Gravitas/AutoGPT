@@ -264,6 +264,10 @@ const config = {
           from: { opacity: "0", transform: "translateY(6px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        "grow-line": {
+          from: { transform: "scaleY(0)" },
+          to: { transform: "scaleY(1)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -285,6 +289,7 @@ const config = {
         "caret-blink": "caret-blink 1s step-end infinite",
         "shimmer-text": "shimmer-text 2s linear infinite",
         "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
+        "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
       },
       transitionDuration: {
         "400": "400ms",
