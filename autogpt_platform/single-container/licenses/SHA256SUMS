@@ -1,0 +1,13 @@
+34e94c5087ba6e9fb34f35ae71df5e6533c5fc7cbbf6c44186a71e82806b69e1  /usr/share/licenses/falkordb/SSPL-1.0.txt  # pragma: allowlist secret
+4a0e416b9537688f30dfe69ddaceb2ca64d96b7df02a0a6760d376890ddc4e40  /usr/share/licenses/redis/LICENSE.txt  # pragma: allowlist secret
+aa6a56234e5ca27f09010693d1c31ca83988d7a0dc80fb253603e052d1d7f0d1  /usr/share/licenses/redis/REDISCONTRIBUTIONS.txt  # pragma: allowlist secret
+c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566  /usr/share/licenses/redis/deps/fpconv/LICENSE.txt  # pragma: allowlist secret
+a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499  /usr/share/licenses/redis/deps/hdr_histogram/COPYING.txt  # pragma: allowlist secret
+c124afa369aae960fa33f6944c82e161e482f2e998d6f07b37ae2c018f3c6c69  /usr/share/licenses/redis/deps/hdr_histogram/LICENSE.txt  # pragma: allowlist secret
+dca05ce8fc87a8261783b4aed0deef8becc9350b6aa770bc714d0c1833b896eb  /usr/share/licenses/redis/deps/hiredis/COPYING  # pragma: allowlist secret
+94aa2caa98c25d942f58b956c71dba6a99ff98fc3a31cbc669fe2a4cd0268b53  /usr/share/licenses/redis/deps/jemalloc/COPYING  # pragma: allowlist secret
+ee5e3e82af1e1b543c4f216e399d7c8cfee797711913f349e385101c4ae60a79  /usr/share/licenses/redis/deps/lua/COPYRIGHT  # pragma: allowlist secret
+6ffedbc0f7878612d2b23589f1ff2ab15633e1df7963a5d9fc750ec5500c7e7a  /usr/share/licenses/redis/deps/xxhash/LICENSE  # pragma: allowlist secret
+e562f3f974ced7e69dd1db77b820b36bcf8f30377f1aa105723fba449c53c4e6  /usr/share/licenses/redis/deps/fast_float/LICENSE-MIT  # pragma: allowlist secret
+9355e97eff48e649ebb290f3dc76866a00ae9ab42855fff8e892df3e487e58a8  /usr/share/licenses/redis/src/lzf_c.c  # pragma: allowlist secret
+5bc74a3cb8a2cf60e174a2e67dc32cc092b1c5dc4474f7bf88f81d30b0cfc194  /usr/share/licenses/redis/src/lzf_d.c  # pragma: allowlist secret

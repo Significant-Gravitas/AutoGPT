@@ -86,11 +86,12 @@ initialize_backend_config() {
 
 configure_environment() {
   validate_legacy_auth
-  normalize_toggle AUTOGPT_ENABLE_FALKORDB true
   normalize_toggle AUTOGPT_ENABLE_CLAMAV true
   normalize_toggle AUTOGPT_ENABLE_BOT_SERVICES false
-  normalize_toggle AUTH_REQUIRE_EMAIL_VERIFICATION false
   normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS true
+  if [[ "${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}" != false ]]; then
+    fatal "email verification is not supported by the single-container distribution"
+  fi
   normalize_integer DB_CONNECTION_LIMIT 5 1 20
   normalize_integer DB_CONNECT_TIMEOUT 60 1 600
   normalize_integer DB_POOL_TIMEOUT 300 1 3600
@@ -154,7 +155,7 @@ configure_environment() {
   export AGPT_WS_SERVER_URL=ws://127.0.0.1:8001/ws
   export WORKSPACE_STORAGE_DIR=/data/workspaces
   export VAPID_CLAIM_EMAIL="${VAPID_CLAIM_EMAIL:-mailto:admin@localhost}"
-  export AUTH_REQUIRE_EMAIL_VERIFICATION="${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}"
+  export AUTH_REQUIRE_EMAIL_VERIFICATION=false
   export NODE_ENV=production
   # Python imports this directory's sitecustomize module before each service
   # entry point, suppressing HTTP access targets and redacting WS query tokens.
@@ -196,10 +197,6 @@ normalize_toggle() {
     *) fatal "${name} must be true or false" ;;
   esac
   case "${name}" in
-    AUTOGPT_ENABLE_FALKORDB)
-      AUTOGPT_ENABLE_FALKORDB="${value}"
-      export AUTOGPT_ENABLE_FALKORDB
-      ;;
     AUTOGPT_ENABLE_CLAMAV)
       AUTOGPT_ENABLE_CLAMAV="${value}"
       export AUTOGPT_ENABLE_CLAMAV
@@ -207,10 +204,6 @@ normalize_toggle() {
     AUTOGPT_ENABLE_BOT_SERVICES)
       AUTOGPT_ENABLE_BOT_SERVICES="${value}"
       export AUTOGPT_ENABLE_BOT_SERVICES
-      ;;
-    AUTH_REQUIRE_EMAIL_VERIFICATION)
-      AUTH_REQUIRE_EMAIL_VERIFICATION="${value}"
-      export AUTH_REQUIRE_EMAIL_VERIFICATION
       ;;
     AUTH_ALLOW_NEW_ACCOUNTS)
       AUTH_ALLOW_NEW_ACCOUNTS="${value}"
@@ -311,7 +304,6 @@ seed_clamav_database() {
 }
 
 write_falkordb_config() {
-  [[ "${AUTOGPT_ENABLE_FALKORDB}" == true ]] || return 0
   local temporary
   temporary="$(mktemp "${AUTOGPT_RUNTIME_DIR}/falkordb.conf.XXXXXX")"
   chmod 0600 "${temporary}"
@@ -323,7 +315,8 @@ write_falkordb_config() {
     printf 'dir /data/falkordb\n'
     printf 'appendonly yes\n'
     printf 'requirepass %s\n' "${GRAPHITI_FALKORDB_PASSWORD}"
-    printf 'loadmodule /opt/falkordb/falkordb.so\n'
+    printf '%s\n' \
+      'loadmodule /opt/falkordb/falkordb.so MAX_QUEUED_QUERIES 25 TIMEOUT 1000 RESULTSET_SIZE 10000'
   } >"${temporary}"
   chown autogpt-falkor:autogpt-falkor "${temporary}"
   mv -f "${temporary}" "${AUTOGPT_RUNTIME_DIR}/falkordb.conf"

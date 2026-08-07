@@ -27,10 +27,8 @@ wait_for_infrastructure() {
   wait_until "Valkey node 17001" 120 "${PROBE[@]}" redis --port 17001
   wait_until "Valkey node 17002" 120 "${PROBE[@]}" redis --port 17002
   wait_until "RabbitMQ" 240 run_rabbitmq_cli /opt/rabbitmq/sbin/rabbitmq-diagnostics -q ping
-  if [[ "${AUTOGPT_ENABLE_FALKORDB:-true}" == true ]]; then
-    wait_until "FalkorDB" 120 "${PROBE[@]}" redis --port 6380 \
-      --password-env GRAPHITI_FALKORDB_PASSWORD
-  fi
+  wait_until "FalkorDB" 120 "${PROBE[@]}" redis --port 6380 \
+    --password-env GRAPHITI_FALKORDB_PASSWORD
   if [[ "${AUTOGPT_ENABLE_CLAMAV:-true}" == true ]]; then
     wait_until "ClamAV" 300 "${PROBE[@]}" clam --port 3310
   fi

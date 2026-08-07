@@ -24,19 +24,11 @@ services:
     environment:
       AUTOGPT_COMPOSE_ENV_LOADED: "${AUTOGPT_COMPOSE_ENV_LOADED:?copy .env.example to .env and pass it with docker compose --env-file}"
       AUTOGPT_PUBLIC_URL: "${AUTOGPT_PUBLIC_URL:-http://localhost:3000}"
-      AUTOGPT_ENABLE_FALKORDB: "${AUTOGPT_ENABLE_FALKORDB:-true}"
       AUTOGPT_ENABLE_CLAMAV: "${AUTOGPT_ENABLE_CLAMAV:-true}"
       AUTOGPT_ENABLE_BOT_SERVICES: "${AUTOGPT_ENABLE_BOT_SERVICES:-false}"
       AUTOGPT_ENABLE_LEGACY_AUTH: "${AUTOGPT_ENABLE_LEGACY_AUTH:-false}"
-      AUTH_REQUIRE_EMAIL_VERIFICATION: "${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}"
       AUTH_ALLOW_NEW_ACCOUNTS: "${AUTH_ALLOW_NEW_ACCOUNTS:-true}"
       AUTH_SIGNUP_ALLOWLIST: "${AUTH_SIGNUP_ALLOWLIST:-}"
-      # Self-hosted telemetry is opt-in. When enabled, the default destination
-      # is the AutoGPT project property unless a custom GA ID is supplied.
-      AUTOGPT_TELEMETRY_ENABLED: "${AUTOGPT_TELEMETRY_ENABLED:-false}"
-      AUTOGPT_GA_MEASUREMENT_ID: "${AUTOGPT_GA_MEASUREMENT_ID:-}"
-      AUTOGPT_FEEDBACK_ENABLED: "${AUTOGPT_FEEDBACK_ENABLED:-false}"
-      AUTOGPT_DEVELOPER_UI_ENABLED: "${AUTOGPT_DEVELOPER_UI_ENABLED:-false}"
       # Bound each Python role's Prisma pool so the bundled roles collectively
       # stay below PostgreSQL's connection ceiling on high-core hosts.
       DB_CONNECTION_LIMIT: "${DB_CONNECTION_LIMIT:-5}"
@@ -58,8 +50,6 @@ services:
       AUTH_DISCORD_CLIENT_SECRET: "${AUTH_DISCORD_CLIENT_SECRET:-}"
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
-      GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
-      GOOGLE_APP_ID: "${GOOGLE_APP_ID:-}"
       GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID:-}"
       GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET:-}"
       DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"

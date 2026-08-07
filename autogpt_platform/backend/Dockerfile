@@ -204,7 +204,6 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_APP_ENV=local \
     NEXT_PUBLIC_BEHAVE_AS=LOCAL \
     NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false \
-    NEXT_PUBLIC_REACT_QUERY_DEVTOOL=false \
     NEXT_PUBLIC_SOURCEMAPS=false \
     NEXT_PUBLIC_TURNSTILE=disabled \
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
@@ -221,9 +220,8 @@ RUN pnpm run generate:api \
 # Pin the current supported 4.1.x patch by its multi-platform manifest.
 FROM rabbitmq:4.1.8@sha256:b921426eabfb39e201c60f0623f6b45a3160cf97b2dc3af2f5340365f65b5be3 AS single-container-rabbitmq
 
-# FalkorDB is copied without its Browser UI. This manifest is the audited
-# multi-platform FalkorDB 4.20.1 server-only image.
-# Its SSPL terms are copied separately and require approval before publishing.
+# FalkorDB provides the Graphiti memory store. Copy only the server and module;
+# its browser UI is not part of the appliance image.
 FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS single-container-falkordb
 
 # Seed ClamAV's persistent signature volume so a cold start can scan before the
@@ -321,12 +319,18 @@ COPY --from=single-container-frontend /app/public /app/frontend/public
 COPY autogpt_platform/single-container /opt/autogpt/single-container
 COPY autogpt_platform/db/init/00-init.sql /opt/autogpt/single-container/00-init.sql
 COPY autogpt_platform/LICENSE.md /usr/share/licenses/autogpt-platform/LICENSE.md
+COPY autogpt_platform/single-container/licenses/FalkorDB-SSPL-1.0.txt /usr/share/licenses/falkordb/SSPL-1.0.txt
+COPY autogpt_platform/single-container/licenses/FalkorDB-SOURCE.txt /usr/share/licenses/falkordb/SOURCE.txt
+COPY autogpt_platform/single-container/licenses/Redis-LICENSE.txt /usr/share/licenses/redis/LICENSE.txt
+COPY autogpt_platform/single-container/licenses/Redis-REDISCONTRIBUTIONS.txt /usr/share/licenses/redis/REDISCONTRIBUTIONS.txt
+COPY autogpt_platform/single-container/licenses/Redis-SOURCE.txt /usr/share/licenses/redis/SOURCE.txt
+COPY autogpt_platform/single-container/licenses/redis/deps /usr/share/licenses/redis/deps
+COPY autogpt_platform/single-container/licenses/redis/src /usr/share/licenses/redis/src
+COPY autogpt_platform/single-container/licenses/SHA256SUMS /usr/share/licenses/autogpt-single-container/SHA256SUMS
 
-# FalkorDB 4.20.1's SSPL license is fetched from its immutable source commit
-# with an expected checksum. Publication still requires project legal review.
-ADD --checksum=sha256:34e94c5087ba6e9fb34f35ae71df5e6533c5fc7cbbf6c44186a71e82806b69e1 \
-    https://raw.githubusercontent.com/FalkorDB/FalkorDB/efea8d99f8492f3eeaadcafeae29967c66d825a0/LICENSE.txt \
-    /usr/share/licenses/falkordb/SSPL-1.0.txt
+RUN sed 's/  # pragma: allowlist secret$//' \
+        /usr/share/licenses/autogpt-single-container/SHA256SUMS \
+    | sha256sum -c -
 
 RUN groupadd --system --gid 10001 autogpt \
     && useradd --system --uid 10001 --gid autogpt --home-dir /data/home --shell /usr/sbin/nologin autogpt \
@@ -336,7 +340,7 @@ RUN groupadd --system --gid 10001 autogpt \
     && useradd --system --uid 10003 --gid autogpt-valkey --home-dir /data/valkey --shell /usr/sbin/nologin autogpt-valkey \
     && groupadd --system --gid 10004 autogpt-falkor \
     && useradd --system --uid 10004 --gid autogpt-falkor --home-dir /data/falkordb --shell /usr/sbin/nologin autogpt-falkor \
-    && chmod -R a+rX /opt/autogpt/single-container /usr/share/licenses/autogpt-platform /usr/share/licenses/falkordb \
+    && chmod -R a+rX /opt/autogpt/single-container /usr/share/licenses/autogpt-platform /usr/share/licenses/falkordb /usr/share/licenses/redis \
     && find /opt/autogpt/single-container -type f \( -name '*.sh' -o -name 'entrypoint' -o -name 'autogpt-*' \) -exec chmod 0755 {} + \
     && ln -sf /opt/autogpt/single-container/healthcheck.sh /usr/local/bin/autogpt-healthcheck \
     && ln -sf /opt/autogpt/single-container/promote-admin.sh /usr/local/bin/autogpt-admin \
@@ -366,6 +370,7 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     NEXT_TELEMETRY_DISABLED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    FORCE_FLAG_GRAPHITI_MEMORY=true \
     AUTOGPT_PUBLIC_URL=http://localhost:3000
 
 WORKDIR /app/autogpt_platform/backend

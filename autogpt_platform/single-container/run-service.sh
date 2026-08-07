@@ -33,9 +33,6 @@ case "${service}" in
     exec /opt/rabbitmq/sbin/rabbitmq-server
     ;;
   falkordb)
-    if [[ "${AUTOGPT_ENABLE_FALKORDB:-true}" == false ]]; then
-      exec "${AUTOGPT_ASSET_DIR}/disabled-service.sh" falkordb
-    fi
     exec /opt/falkordb/redis-server "${AUTOGPT_RUNTIME_DIR}/falkordb.conf"
     ;;
   clamd)

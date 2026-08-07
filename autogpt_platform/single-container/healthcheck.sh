@@ -42,10 +42,8 @@ check_infrastructure() {
   "${POSTGRES_BINDIR}/pg_isready" -q -h 127.0.0.1 -p 5432 -U postgres
   "${PROBE[@]}" redis --port 17000 --cluster
   run_rabbitmq_cli /opt/rabbitmq/sbin/rabbitmq-diagnostics -q ping
-  if [[ "${AUTOGPT_ENABLE_FALKORDB:-true}" == true ]]; then
-    "${PROBE[@]}" redis --port 6380 \
-      --password-env GRAPHITI_FALKORDB_PASSWORD
-  fi
+  "${PROBE[@]}" redis --port 6380 \
+    --password-env GRAPHITI_FALKORDB_PASSWORD
   if [[ "${AUTOGPT_ENABLE_CLAMAV:-true}" == true ]]; then
     "${PROBE[@]}" clam --port 3310
   fi
