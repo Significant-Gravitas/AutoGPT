@@ -38,9 +38,14 @@ async def client(server, mock_jwt_user) -> AsyncGenerator[httpx.AsyncClient, Non
     app.dependency_overrides.pop(get_jwt_payload, None)
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture(loop_scope="session", autouse=True)
 async def _clean_briefings(server, test_user_id: str):
-    """Ensure no leftover briefings for the shared test user before/after each test."""
+    """Ensure no leftover briefings for the shared test user before/after each test.
+
+    loop_scope must match the session-scoped Prisma client — a
+    function-scoped loop here hits "Event loop is closed" on the first
+    delete_many once another test has already bound the client's HTTP
+    session to a since-closed loop."""
     await UserBriefing.prisma().delete_many(where={"userId": test_user_id})
     yield
     await UserBriefing.prisma().delete_many(where={"userId": test_user_id})
