@@ -432,7 +432,7 @@ async def _enrich_pending_reviews(
 
     executions = (
         await AgentGraphExecution.prisma().find_many(
-            where={"id": {"in": real_exec_ids}},
+            where={"id": {"in": real_exec_ids}, "userId": user_id},
             include={"Expert": True, "AgentGraph": True},
         )
         if real_exec_ids
@@ -452,7 +452,8 @@ async def _enrich_pending_reviews(
 
     sessions = (
         await ChatSession.prisma().find_many(
-            where={"id": {"in": session_ids}}, include={"Expert": True}
+            where={"id": {"in": session_ids}, "userId": user_id},
+            include={"Expert": True},
         )
         if session_ids
         else []
