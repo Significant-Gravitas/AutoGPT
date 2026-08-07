@@ -60,6 +60,11 @@ from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
 )
+from backend.data.briefing import (
+    create_briefing,
+    get_briefing_for_date,
+    get_latest_briefing,
+)
 from backend.data.credit import (
     UsageTransactionMetadata,
     get_user_credit_model,
@@ -498,6 +503,10 @@ class DatabaseManager(AppService):
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    append_plain_session_message = _(chat_db.append_plain_session_message)
+    create_briefing = _(create_briefing)
+    get_briefing_for_date = _(get_briefing_for_date)
+    get_latest_briefing = _(get_latest_briefing)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
@@ -567,6 +576,10 @@ class DatabaseManagerClient(AppServiceClient):
     validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
 
     # Expert run posts (executor completion hook)
+    append_plain_session_message = _(d.append_plain_session_message)
+    create_briefing = _(d.create_briefing)
+    get_briefing_for_date = _(d.get_briefing_for_date)
+    get_latest_briefing = _(d.get_latest_briefing)
     append_expert_run_message = _(d.append_expert_run_message)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
@@ -785,6 +798,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
+    append_plain_session_message = d.append_plain_session_message
+    create_briefing = d.create_briefing
+    get_briefing_for_date = d.get_briefing_for_date
+    get_latest_briefing = d.get_latest_briefing
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
