@@ -505,6 +505,7 @@ describe("useBrainDumpStep — finishing a take", () => {
       "Brain Dump Transcription Failed",
       {
         error_code: "transcription_error",
+        input_mode: "voice",
         attempt: 0,
       },
     );
@@ -525,6 +526,7 @@ describe("useBrainDumpStep — finishing a take", () => {
       "Brain Dump Transcription Failed",
       {
         error_code: 500,
+        input_mode: "voice",
         attempt: 0,
       },
     );
@@ -561,6 +563,7 @@ describe("useBrainDumpStep — insufficient content", () => {
     expect(result.current.screen).toBe("insufficient");
     expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Quality Rejected", {
       error_code: "no_usable_speech",
+      input_mode: "voice",
       attempt: 0,
     });
     // No accidental advance, and nothing personalized to advance to.

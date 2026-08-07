@@ -135,14 +135,18 @@ async def test_spaceless_script_dump_passes_on_characters(llm):
 # --- threshold seams: exact boundaries route correctly --------------------
 
 # 45 distinct natural words, sliced to sit exactly on CLEAR_PASS_WORDS.
-_DISTINCT_WORDS = (
-    "my bakery ships fresh sourdough daily while managing wholesale orders "
-    "refunds invoices suppliers deliveries roster payroll marketing newsletters "
-    "customers complaints reviews inventory flour butter yeast ovens repairs "
-    "budget taxes accounting spreadsheets emails scheduling drivers routes "
-    "packaging labels promotions seasonal catering events quarterly forecasts "
-    "vendors contracts"
-).split()
+# fmt: off
+_DISTINCT_WORDS = [
+    "my", "bakery", "ships", "fresh", "sourdough", "daily", "while",
+    "managing", "wholesale", "orders", "refunds", "invoices", "suppliers",
+    "deliveries", "roster", "payroll", "marketing", "newsletters",
+    "customers", "complaints", "reviews", "inventory", "flour", "butter",
+    "yeast", "ovens", "repairs", "budget", "taxes", "accounting",
+    "spreadsheets", "emails", "scheduling", "drivers", "routes",
+    "packaging", "labels", "promotions", "seasonal", "catering", "events",
+    "quarterly", "forecasts", "vendors", "contracts",
+]
+# fmt: on
 
 
 @pytest.mark.asyncio

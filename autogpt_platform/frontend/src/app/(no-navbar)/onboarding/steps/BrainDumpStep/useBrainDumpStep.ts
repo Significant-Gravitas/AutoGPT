@@ -219,6 +219,7 @@ export function useBrainDumpStep() {
             : "Brain Dump Transcription Failed",
           {
             error_code: errorCode,
+            input_mode: "voice",
             attempt: retryCountRef.current,
           },
         );
@@ -315,15 +316,18 @@ export function useBrainDumpStep() {
       // home built from nothing.
       if (response.status !== 200 || response.data.status === "failed") {
         const errorCode =
-          response.status === 200 ? response.data.error_code : undefined;
+          response.status === 200 ? response.data.error_code : response.status;
         const rejected = isInsufficientDump(errorCode);
-        if (rejected) {
-          trackBrainDump("Brain Dump Quality Rejected", {
+        trackBrainDump(
+          rejected
+            ? "Brain Dump Quality Rejected"
+            : "Brain Dump Transcription Failed",
+          {
             error_code: errorCode,
             input_mode: "typed",
-          });
-          setInsufficientMode("typed");
-        }
+          },
+        );
+        if (rejected) setInsufficientMode("typed");
         // The typed text stays in the composer, so "Type instead" from
         // the recovery screen reopens it with nothing lost.
         setScreen(rejected ? "insufficient" : "failed");

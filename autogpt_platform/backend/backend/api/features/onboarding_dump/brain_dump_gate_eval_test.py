@@ -222,6 +222,7 @@ def test_shipped_corpus_matches_its_manifest():
     references = {path.stem for path in EVAL_DATA_DIR.glob("*.txt")}
 
     assert set(manifest) == audio, "manifest keys and audio files must match 1:1"
+    assert references <= audio, "reference files must match an audio file"
     for stem in sorted(audio):
         if stem.startswith("gate-reject-"):
             assert manifest[stem] == "reject"
