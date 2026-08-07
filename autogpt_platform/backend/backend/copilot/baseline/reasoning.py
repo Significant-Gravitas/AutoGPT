@@ -39,6 +39,10 @@ from backend.copilot.response_model import (
     StreamReasoningEnd,
     StreamReasoningStart,
 )
+from backend.data.llm_registry.llm_models import (
+    CLAUDE_5_FAMILY_PREFIXES,
+    strip_anthropic_vendor_prefix,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +219,14 @@ def reasoning_extra_body(model: str, max_thinking_tokens: int) -> dict[str, Any]
     """
     if not _is_reasoning_route(model) or max_thinking_tokens <= 0:
         return None
+    if _is_claude_5_family(model):
+        # Claude 5 removed ``budget_tokens`` (adaptive thinking only) and
+        # OpenRouter maps ``reasoning.max_tokens`` onto it — the request
+        # would 400. Send nothing: omitting the field runs the family's
+        # documented adaptive default. Before routing copilot traffic to a
+        # 5-family model, live-probe whether OpenRouter accepts the
+        # ``reasoning.effort`` shape and wire it here.
+        return None
     return {"reasoning": {"max_tokens": max_thinking_tokens}}
 
 
@@ -225,21 +237,26 @@ def reasoning_extra_body(model: str, max_thinking_tokens: int) -> dict[str, Any]
 # output cap (4096 on Haiku) also 400s — so we narrow to the families
 # that actually support extended thinking instead of broad-matching
 # ``"claude" in model``.
+# The Claude 5 family is deliberately NOT in this list: it runs ADAPTIVE
+# thinking by default and 400s on the ``budget_tokens`` fragment (removed
+# for the 5 family only — opus-4-7/4-8 share the 5-generation tokenizer
+# but still accept ``budget_tokens`` via the ``claude-opus-4`` prefix
+# below). ``anthropic_thinking_extra_body`` also guards this explicitly,
+# so adding a 5-family slug here cannot silently reintroduce the 400.
 _THINKING_CAPABLE_PREFIXES: tuple[str, ...] = (
-    "claude-opus-4",  # 4.0 / 4.1 / 4.5 / 4.7
+    "claude-opus-4",  # 4.0 / 4.1 / 4.5 / 4.7 / 4.8
     "claude-sonnet-4",  # 4.0 / 4.5 / 4.6
     "claude-haiku-4",  # 4.5
     "claude-3-7",  # 3.7 sonnet — only 3.x with thinking
 )
 
 
+def _is_claude_5_family(model: str) -> bool:
+    return strip_anthropic_vendor_prefix(model).startswith(CLAUDE_5_FAMILY_PREFIXES)
+
+
 def _is_thinking_capable_claude(model: str) -> bool:
-    lowered = model.lower()
-    for prefix in ("anthropic/", "anthropic."):
-        if lowered.startswith(prefix):
-            lowered = lowered[len(prefix) :]
-            break
-    return lowered.startswith(_THINKING_CAPABLE_PREFIXES)
+    return strip_anthropic_vendor_prefix(model).startswith(_THINKING_CAPABLE_PREFIXES)
 
 
 def anthropic_thinking_extra_body(
@@ -259,6 +276,12 @@ def anthropic_thinking_extra_body(
     variants 400 on the ``thinking`` field).
     """
     if not _is_reasoning_route(model) or max_thinking_tokens <= 0:
+        return None
+    if _is_claude_5_family(model):
+        # Symmetric with ``reasoning_extra_body``: Claude 5 removed
+        # ``budget_tokens`` (adaptive-only thinking) and 400s on the
+        # fragment. Guarded explicitly so adding a 5-family slug to
+        # ``_THINKING_CAPABLE_PREFIXES`` can't reintroduce the 400.
         return None
     if not _is_thinking_capable_claude(model):
         return None

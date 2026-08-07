@@ -2594,6 +2594,13 @@ async def create_subscription_checkout(
         automatic_tax={"enabled": True},
         billing_address_collection="auto",
         customer_update={"address": "auto"},
+        # Cards attached by a previous subscription-mode Checkout carry
+        # allow_redisplay=limited; without "limited" in the filters Stripe
+        # hides them and returning subscribers must re-enter card details.
+        saved_payment_method_options={
+            "payment_method_save": "enabled",
+            "allow_redisplay_filters": ["always", "limited"],
+        },
         metadata=datafast,
     )
     if not session.url:

@@ -36,6 +36,7 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.experts import experts_db
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
@@ -2435,6 +2436,10 @@ class ScheduleCreationRequest(pydantic.BaseModel):
         default=None,
         description="User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC.",
     )
+    expert_id: Optional[str] = pydantic.Field(
+        default=None,
+        description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
+    )
 
 
 @v1_router.post(
@@ -2467,6 +2472,21 @@ async def create_graph_execution_schedule(
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
 
+    # Expert attribution: explicit expert_id must be an active expert owned
+    # by the caller; when omitted, a unique (user, graph) → expert match
+    # keeps attribution for schedules created through the generic UI.
+    expert_id = schedule_params.expert_id
+    if expert_id is not None:
+        expert = await experts_db.get_expert(
+            user_id, expert_id, include_workflows=False
+        )
+        if expert is None or expert.is_archived:
+            raise HTTPException(
+                status_code=404, detail=f"Expert #{expert_id} not found."
+            )
+    else:
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
+
     result = await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
@@ -2478,6 +2498,7 @@ async def create_graph_execution_schedule(
         user_timezone=user_timezone,
         organization_id=ctx.org_id,
         team_id=ctx.team_id,
+        expert_id=expert_id,
     )
 
     # Convert the next_run_time back to user timezone for display
