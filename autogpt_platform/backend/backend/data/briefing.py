@@ -13,6 +13,7 @@ class BriefingRecord(BaseModel):
     briefing_date: date
     content: dict
     created_at: datetime
+    delivered_at: datetime | None = None
 
     @classmethod
     def from_db(cls, row: prisma.models.UserBriefing) -> "BriefingRecord":
@@ -22,6 +23,7 @@ class BriefingRecord(BaseModel):
             briefing_date=row.briefingDate.date(),
             content=dict(row.content) if row.content else {},
             created_at=row.createdAt,
+            delivered_at=row.deliveredAt,
         )
 
 
@@ -57,6 +59,13 @@ async def get_briefing_for_date(
         where={"userId": user_id, "briefingDate": _as_db_date(briefing_date)}
     )
     return BriefingRecord.from_db(row) if row else None
+
+
+async def mark_briefing_delivered(user_id: str, briefing_id: str) -> None:
+    await prisma.models.UserBriefing.prisma().update_many(
+        where={"id": briefing_id, "userId": user_id},
+        data={"deliveredAt": datetime.now(timezone.utc)},
+    )
 
 
 async def get_latest_briefing(user_id: str) -> BriefingRecord | None:

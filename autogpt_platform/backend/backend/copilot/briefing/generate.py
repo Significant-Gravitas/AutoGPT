@@ -1,8 +1,11 @@
+import logging
 import uuid
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from typing import NamedTuple
 from zoneinfo import ZoneInfo
+
+from pydantic import ValidationError
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
@@ -20,6 +23,8 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
+
+logger = logging.getLogger(__name__)
 
 _TERMINAL_STATUSES = {"COMPLETED", "FAILED"}
 _MAX_RUN_ITEMS = 10
@@ -165,6 +170,22 @@ def _merge_agent_info(agent_info: dict[str, AgentInfo], experts: list[Expert]) -
             )
 
 
+def _stored_briefing_content(content: dict) -> BriefingContent | None:
+    """Re-validate a stored briefing for redelivery.
+
+    ``None`` means the stored shape is unreadable (written by a different
+    composer version) — the caller recomposes instead of failing the run.
+    """
+    try:
+        return BriefingContent.model_validate(content)
+    except ValidationError:
+        logger.warning(
+            "Stored briefing content failed validation; recomposing instead",
+            exc_info=True,
+        )
+        return None
+
+
 async def generate_and_deliver_briefing(user_id: str) -> dict:
     if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
         return {"status": "skipped", "reason": "flag_disabled"}
@@ -175,36 +196,43 @@ async def generate_and_deliver_briefing(user_id: str) -> dict:
     briefing_date = now_local.date()
 
     client = get_database_manager_async_client()
-    if await client.get_briefing_for_date(user_id, briefing_date):
+    record = await client.get_briefing_for_date(user_id, briefing_date)
+    if record and record.delivered_at:
         return {"status": "skipped", "reason": "already_delivered"}
 
-    window_start = (now_local - timedelta(hours=24)).astimezone(dt_timezone.utc)
-    experts = await experts_db().list_experts(user_id)
-    executions = await execution_db().get_graph_executions(
-        user_id=user_id, created_time_gte=window_start
-    )
-    reviews = await review_db().get_pending_reviews_for_user(user_id, 1, 100)
-
-    library = await library_db().list_library_agents(user_id, page_size=100)
-    agent_info: dict[str, AgentInfo] = {
-        agent.graph_id: AgentInfo(agent.name, agent.id) for agent in library.agents
-    }
-    _merge_agent_info(agent_info, experts)
-
-    content = compose_briefing(
-        experts=experts,
-        executions=executions,
-        reviews=reviews,
-        agent_info_by_graph_id=agent_info,
-        generated_at=now_local,
-        tz_name=tz_name,
-    )
+    # An undelivered record means a prior run stored the briefing but the
+    # session post failed — redeliver the stored content so the record and
+    # the posted message can't diverge.
+    content = _stored_briefing_content(record.content) if record else None
     if content is None:
-        return {"status": "skipped", "reason": "nothing_to_say"}
+        window_start = (now_local - timedelta(hours=24)).astimezone(dt_timezone.utc)
+        experts = await experts_db().list_experts(user_id)
+        executions = await execution_db().get_graph_executions(
+            user_id=user_id, created_time_gte=window_start
+        )
+        reviews = await review_db().get_pending_reviews_for_user(user_id, 1, 100)
 
-    record = await client.create_briefing(
-        user_id, briefing_date, content.model_dump(mode="json")
-    )
+        library = await library_db().list_library_agents(user_id, page_size=100)
+        agent_info: dict[str, AgentInfo] = {
+            agent.graph_id: AgentInfo(agent.name, agent.id) for agent in library.agents
+        }
+        _merge_agent_info(agent_info, experts)
+
+        content = compose_briefing(
+            experts=experts,
+            executions=executions,
+            reviews=reviews,
+            agent_info_by_graph_id=agent_info,
+            generated_at=now_local,
+            tz_name=tz_name,
+        )
+        if content is None:
+            return {"status": "skipped", "reason": "nothing_to_say"}
+        if record is None:
+            record = await client.create_briefing(
+                user_id, briefing_date, content.model_dump(mode="json")
+            )
+
     message_id = str(
         uuid.uuid5(
             _BRIEFING_NAMESPACE,
@@ -217,6 +245,7 @@ async def generate_and_deliver_briefing(user_id: str) -> dict:
         message_id=message_id,
         metadata={"kind": "morning_briefing", "briefing_id": record.id},
     )
+    await client.mark_briefing_delivered(user_id, record.id)
     return {
         "status": "delivered",
         "briefing_id": record.id,

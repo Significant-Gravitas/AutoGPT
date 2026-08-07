@@ -257,7 +257,8 @@ async def test_generate_skips_when_already_delivered(monkeypatch):
         "user_db",
         lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
     )
-    client = MagicMock(get_briefing_for_date=AsyncMock(return_value=MagicMock()))
+    delivered_record = MagicMock(delivered_at=datetime(2026, 8, 7, 9, 5))
+    client = MagicMock(get_briefing_for_date=AsyncMock(return_value=delivered_record))
     monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
 
     result = await generate.generate_and_deliver_briefing("user-1")
@@ -291,6 +292,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         get_briefing_for_date=AsyncMock(return_value=None),
         create_briefing=AsyncMock(return_value=briefing_record),
         append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
     )
     monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
 
@@ -364,6 +366,118 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         "message_id": expected_message_id,
         "metadata": {"kind": "morning_briefing", "briefing_id": "briefing-1"},
     }
+    client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
+
+
+def _patch_generate_env(monkeypatch, generate, client):
+    """Shared plumbing for the delivery-retry tests: fixed clock, flag on,
+    UTC user, and the given database-manager client."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+    fake_datetime = MagicMock(wraps=datetime)
+    fake_datetime.now.return_value = fixed_now
+    monkeypatch.setattr(generate, "datetime", fake_datetime)
+    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    user = MagicMock()
+    user.timezone = "UTC"
+    monkeypatch.setattr(
+        generate,
+        "user_db",
+        lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+    )
+    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+
+
+@pytest.mark.asyncio
+async def test_generate_retries_undelivered_briefing_without_recomposing(monkeypatch):
+    """A stored-but-undelivered record (prior session post failed) is
+    redelivered from its stored content — no data gathering, no recompose,
+    no duplicate create."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    stored = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec()],
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert stored is not None
+    record = MagicMock(
+        id="briefing-1", delivered_at=None, content=stored.model_dump(mode="json")
+    )
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=record),
+        create_briefing=AsyncMock(),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_generate_env(monkeypatch, generate, client)
+    gather_mock = MagicMock(list_experts=AsyncMock(return_value=[]))
+    monkeypatch.setattr(generate, "experts_db", lambda: gather_mock)
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    assert result == {
+        "status": "delivered",
+        "briefing_id": "briefing-1",
+        "session_id": "session-1",
+    }
+    client.create_briefing.assert_not_awaited()
+    gather_mock.list_experts.assert_not_awaited()
+    append_call = client.append_plain_session_message.await_args
+    assert append_call.kwargs["content"] == render_briefing_markdown(stored)
+    client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
+
+
+@pytest.mark.asyncio
+async def test_generate_failed_post_leaves_briefing_retryable(monkeypatch):
+    """When the session post raises, the record must stay undelivered so the
+    next run retries instead of skipping with already_delivered."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(
+            side_effect=RuntimeError("session post failed")
+        ),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_generate_env(monkeypatch, generate, client)
+    monkeypatch.setattr(
+        generate,
+        "experts_db",
+        lambda: MagicMock(list_experts=AsyncMock(return_value=[make_expert()])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "execution_db",
+        lambda: MagicMock(get_graph_executions=AsyncMock(return_value=[make_exec()])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "review_db",
+        lambda: MagicMock(get_pending_reviews_for_user=AsyncMock(return_value=[])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "library_db",
+        lambda: MagicMock(
+            list_library_agents=AsyncMock(return_value=MagicMock(agents=[]))
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="session post failed"):
+        await generate.generate_and_deliver_briefing("user-1")
+
+    client.mark_briefing_delivered.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -395,6 +509,7 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
         get_briefing_for_date=AsyncMock(return_value=None),
         create_briefing=AsyncMock(return_value=briefing_record),
         append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
     )
     monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
 

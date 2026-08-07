@@ -64,6 +64,7 @@ from backend.data.briefing import (
     create_briefing,
     get_briefing_for_date,
     get_latest_briefing,
+    mark_briefing_delivered,
 )
 from backend.data.credit import (
     UsageTransactionMetadata,
@@ -509,6 +510,7 @@ class DatabaseManager(AppService):
     create_briefing = _(create_briefing)
     get_briefing_for_date = _(get_briefing_for_date)
     get_latest_briefing = _(get_latest_briefing)
+    mark_briefing_delivered = _(mark_briefing_delivered)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
@@ -582,6 +584,7 @@ class DatabaseManagerClient(AppServiceClient):
     create_briefing = _(d.create_briefing)
     get_briefing_for_date = _(d.get_briefing_for_date)
     get_latest_briefing = _(d.get_latest_briefing)
+    mark_briefing_delivered = _(d.mark_briefing_delivered)
     append_expert_run_message = _(d.append_expert_run_message)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
@@ -805,6 +808,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_briefing = d.create_briefing
     get_briefing_for_date = d.get_briefing_for_date
     get_latest_briefing = d.get_latest_briefing
+    mark_briefing_delivered = d.mark_briefing_delivered
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions

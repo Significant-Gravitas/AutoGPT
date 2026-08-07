@@ -90,3 +90,24 @@ async def test_get_latest_briefing_orders_by_briefing_date_not_created_at(
         assert latest.briefing_date == date(2026, 8, 10)
     finally:
         await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_mark_briefing_delivered_is_user_scoped(server: SpinTestServer):
+    user_id = f"briefing-delivered-{uuid4()}"
+    await _create_user(user_id)
+    try:
+        record = await briefing.create_briefing(user_id, date(2026, 8, 7), {"k": "v"})
+        assert record.delivered_at is None
+
+        await briefing.mark_briefing_delivered(f"not-{user_id}", record.id)
+        undelivered = await briefing.get_briefing_for_date(user_id, date(2026, 8, 7))
+        assert undelivered is not None
+        assert undelivered.delivered_at is None  # foreign user can't mark it
+
+        await briefing.mark_briefing_delivered(user_id, record.id)
+        delivered = await briefing.get_briefing_for_date(user_id, date(2026, 8, 7))
+        assert delivered is not None
+        assert delivered.delivered_at is not None
+    finally:
+        await _cleanup(user_id)
