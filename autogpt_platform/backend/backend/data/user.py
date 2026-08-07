@@ -828,20 +828,36 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
             )
 
         # Same rationale for the morning-briefing cron: clear the stored
-        # marker first so the re-register below isn't skipped by its own
-        # drift check reading the just-superseded timezone, then re-ensure
-        # so the profile change takes effect immediately instead of
-        # waiting out the marker's 7-day TTL. Both calls are internally
-        # exception-safe (catch-all + warning log), so — unlike the
-        # dream-system task spawn above — no extra try/except is needed
-        # here.
-        from backend.copilot.briefing.scheduling import (
-            clear_briefing_registration_marker,
-            ensure_morning_briefing_scheduled,
-        )
+        # marker first so the re-register isn't skipped by its own drift
+        # check reading the just-superseded timezone, then re-ensure so
+        # the profile change takes effect immediately instead of waiting
+        # out the marker's 7-day TTL. Fire-and-forget like the dream task
+        # above so the profile update doesn't block on Redis/scheduler
+        # I/O, and guard the import so a failure here can't surface as a
+        # false "failed to update timezone" after the row committed.
+        try:
+            from backend.copilot.briefing.scheduling import (
+                clear_briefing_registration_marker,
+                ensure_morning_briefing_scheduled,
+            )
 
-        await clear_briefing_registration_marker(user_id)
-        await ensure_morning_briefing_scheduled(user_id)
+            async def _reregister_briefing() -> None:
+                await clear_briefing_registration_marker(user_id)
+                await ensure_morning_briefing_scheduled(user_id)
+
+            task = asyncio.create_task(
+                _reregister_briefing(),
+                name=f"briefing-tz-reregister-{user_id[:12]}",
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_on_background_task_done)
+        except Exception:
+            logger.warning(
+                "Failed to spawn morning-briefing re-register after timezone "
+                "update for user %s — lazy drift detection will catch it",
+                user_id[:12],
+                exc_info=True,
+            )
 
         return User.from_db(user)
     except Exception as e:

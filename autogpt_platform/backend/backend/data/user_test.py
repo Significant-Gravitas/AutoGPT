@@ -189,6 +189,60 @@ class TestUpdateUserTimezone:
         warn_mock.assert_called_once()
         assert isinstance(warn_mock.call_args.kwargs["exc_info"], RuntimeError)
 
+    @pytest.mark.asyncio
+    async def test_briefing_re_register_runs_in_background_clear_first(self):
+        """The briefing re-register must not block the profile update
+        (it's a spawned task, like the dream sibling) and must clear the
+        stored marker before re-ensuring, or the drift check would read
+        the just-superseded timezone and skip the re-register."""
+        from backend.copilot.briefing import scheduling as briefing_scheduling
+        from backend.copilot.dream import scheduling as dream_scheduling
+
+        prisma_user = MagicMock(id="user-tz", email="user@example.com")
+        calls: list[str] = []
+
+        async def fake_clear(user_id: str):
+            calls.append("clear")
+
+        async def fake_ensure(user_id: str):
+            calls.append("ensure")
+
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(user_module.get_user_by_id, "cache_delete"),
+            patch.object(user_module.get_user_by_email, "cache_delete"),
+            patch.object(user_module.get_or_create_user, "cache_clear"),
+            patch.object(
+                dream_scheduling, "ensure_dream_system_scheduled", new=AsyncMock()
+            ),
+            patch.object(
+                briefing_scheduling,
+                "clear_briefing_registration_marker",
+                new=fake_clear,
+            ),
+            patch.object(
+                briefing_scheduling,
+                "ensure_morning_briefing_scheduled",
+                new=fake_ensure,
+            ),
+        ):
+            mock_prisma_user.prisma.return_value.update = AsyncMock(
+                return_value=prisma_user
+            )
+            await update_user_timezone("user-tz", "Europe/Paris")
+            assert calls == []  # nothing ran inline — it's a background task
+
+            spawned = [
+                t
+                for t in user_module._background_tasks
+                if t.get_name() == "briefing-tz-reregister-user-tz"
+            ]
+            assert spawned, "briefing re-register task must be spawned + retained"
+            await asyncio.gather(*spawned)
+
+        assert calls == ["clear", "ensure"]
+
 
 class TestTableBackedCredentials:
     """get/set_user_credentials — the IntegrationCredential-backed seam the
