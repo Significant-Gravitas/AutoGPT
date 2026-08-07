@@ -25,7 +25,8 @@ interface Props {
 
 /** Everything the chain still needs from the user, stacked below it as one
  *  card per kind of ask — connectors, run inputs, questions — with a single
- *  Proceed underneath that sends them all back to the chat. */
+ *  Proceed underneath that drafts one combined reply into the chat input.
+ *  A connectors-only card has no Proceed: connecting is the whole ask. */
 export function ChainActionCard({
   connectors,
   inputs,
@@ -85,15 +86,17 @@ export function ChainActionCard({
         </div>
       )}
 
-      <Button
-        variant="primary"
-        size="small"
-        className="w-fit"
-        disabled={!isReady}
-        onClick={onProceed}
-      >
-        Proceed
-      </Button>
+      {(hasInputs || hasQuestions) && (
+        <Button
+          variant="primary"
+          size="small"
+          className="w-fit"
+          disabled={!isReady}
+          onClick={onProceed}
+        >
+          Proceed
+        </Button>
+      )}
     </div>
   );
 }

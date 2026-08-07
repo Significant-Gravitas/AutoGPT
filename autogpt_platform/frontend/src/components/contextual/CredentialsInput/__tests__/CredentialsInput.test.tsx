@@ -109,6 +109,10 @@ afterEach(() => {
   cleanup();
 });
 
+// These cover useCredentialsInput's direct OAuth flow (pre-opened popup,
+// abort/supersede handling). variant="node" wires the Add credential button
+// straight to that flow; the default variant routes through
+// ConnectCredentialDialog instead.
 describe("CredentialsInput – OAuth flow", () => {
   it("clears a credential retained from a different transport provider", async () => {
     const onSelectCredentials = vi.fn();
@@ -188,7 +192,7 @@ describe("CredentialsInput – OAuth flow", () => {
     });
   });
 
-  it("clicking the Add account button calls oAuthLogin without a credentialID", async () => {
+  it("clicking the Add credential button calls oAuthLogin without a credentialID", async () => {
     const oAuthLoginMock = vi.fn().mockResolvedValue({
       login_url: "https://accounts.google.com/o/oauth2/auth",
       state_token: "state-xyz",
@@ -209,13 +213,14 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
-    const addAccountButton = await screen.findByRole("button", {
-      name: /add account/i,
+    const addCredentialButton = await screen.findByRole("button", {
+      name: /add credential/i,
     });
-    fireEvent.click(addAccountButton);
+    fireEvent.click(addCredentialButton);
 
     await waitFor(() => {
       expect(oAuthLoginMock).toHaveBeenCalledWith(
@@ -257,11 +262,12 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /add account/i }),
+      await screen.findByRole("button", { name: /add credential/i }),
     );
     await waitFor(() => expect(mockOpenOAuthPopup).toHaveBeenCalled());
 
@@ -293,11 +299,12 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /add account/i }),
+      await screen.findByRole("button", { name: /add credential/i }),
     );
 
     await waitFor(() =>
@@ -329,11 +336,12 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /add account/i }),
+      await screen.findByRole("button", { name: /add credential/i }),
     );
 
     // The failure happens before openOAuthPopup adopts the window, so the
@@ -367,11 +375,12 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /add account/i }),
+      await screen.findByRole("button", { name: /add credential/i }),
     );
     await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalled());
 
@@ -429,17 +438,18 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
-    const addAccountButton = await screen.findByRole("button", {
-      name: /add account/i,
+    const addCredentialButton = await screen.findByRole("button", {
+      name: /add credential/i,
     });
 
     // Flow A starts, then flow B supersedes it while A's request is pending.
-    fireEvent.click(addAccountButton);
+    fireEvent.click(addCredentialButton);
     await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalledTimes(1));
-    fireEvent.click(addAccountButton);
+    fireEvent.click(addCredentialButton);
     await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalledTimes(2));
 
     // Starting B closes A's still-pending pre-opened window.

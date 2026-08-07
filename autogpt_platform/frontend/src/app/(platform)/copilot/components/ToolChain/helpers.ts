@@ -71,9 +71,7 @@ export function isLiftedSetupRow(row: ChainRow): boolean {
   if (row.tool === "run_mcp_tool") return false;
   const data = asObject(row.output);
   return (
-    !!data &&
-    data.type === "setup_requirements" &&
-    !!asObject(data.setup_info)
+    !!data && data.type === "setup_requirements" && !!asObject(data.setup_info)
   );
 }
 

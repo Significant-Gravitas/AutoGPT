@@ -29,12 +29,13 @@ function toolPart(
 }
 
 describe("buildChainSegments", () => {
-  it("groups consecutive tool and reasoning parts around text", () => {
+  it("groups consecutive tool and reasoning parts around long text", () => {
+    // Long text is a real answer, not progress narration — it splits chains.
     const parts = [
       { type: "step-start" } as MessagePart,
       { type: "reasoning", text: "Plan", state: "done" } as MessagePart,
       toolPart("web_search"),
-      textPart("Result"),
+      textPart("Result. ".repeat(30)),
       toolPart("web_fetch"),
     ];
 
@@ -42,6 +43,18 @@ describe("buildChainSegments", () => {
       { kind: "chain", parts: [parts[1], parts[2]], index: 1 },
       { kind: "part", part: parts[3], index: 3 },
       { kind: "chain", parts: [parts[4]], index: 4 },
+    ]);
+  });
+
+  it("folds short narration between tool calls into the chain", () => {
+    const parts = [
+      toolPart("web_search"),
+      textPart("Now fetching the page."),
+      toolPart("web_fetch"),
+    ];
+
+    expect(buildChainSegments(parts)).toEqual([
+      { kind: "chain", parts, index: 0 },
     ]);
   });
 

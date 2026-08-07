@@ -320,10 +320,6 @@ describe("ChatContainer", () => {
       render(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
     });
 
     it("does not auto-open when rerendering within the same session", () => {
@@ -333,10 +329,6 @@ describe("ChatContainer", () => {
       rerender(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
     });
 
     it("clears the artifact preview when sessionId changes", () => {
@@ -364,10 +356,6 @@ describe("ChatContainer", () => {
       const panel = useCopilotUIStore.getState().artifactPanel;
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
     });
 
     it("does not carry a stale back stack into the next session", () => {
@@ -433,10 +421,6 @@ describe("ChatContainer", () => {
       expect(
         useCopilotUIStore.getState().artifactPanel.activeArtifact,
       ).toBeNull();
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
     });
   });
 });

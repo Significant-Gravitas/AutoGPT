@@ -17,6 +17,8 @@ describe("ChainMessageParts", () => {
   afterEach(cleanup);
 
   it("marks the final chain as streaming when a regular part follows it", () => {
+    // Long text is a real answer — short text would fold into the chain
+    // as progress narration while streaming.
     const parts = [
       {
         type: "tool-web_search",
@@ -24,7 +26,7 @@ describe("ChainMessageParts", () => {
         toolCallId: "search",
         input: {},
       },
-      { type: "text", text: "partial response" },
+      { type: "text", text: "partial response. ".repeat(20) },
     ] as MessagePart[];
 
     render(

@@ -9,8 +9,8 @@ import type {
 
 /** One user-actionable card (credential setup, clarifying questions) inside
  *  a tool chain. Cards register themselves instead of rendering their own
- *  Proceed/Answer buttons; the chain renders a single Proceed as its last
- *  step and sends every card's message in one go. */
+ *  Proceed/Answer buttons; the chain renders a single Proceed that drafts
+ *  every card's message into the chat input in one go. */
 export interface ChainActionEntry {
   id: string;
   ready: boolean;

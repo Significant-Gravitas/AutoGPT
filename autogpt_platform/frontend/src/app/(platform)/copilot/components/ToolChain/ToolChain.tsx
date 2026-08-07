@@ -15,8 +15,8 @@ import {
 import { useCallback, useContext, useId, useMemo, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
-import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
@@ -44,11 +44,11 @@ export function ToolChain({ parts, isStreaming }: Props) {
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
-  const chatActions = useContext(CopilotChatActionsContext);
+  const { setInitialPrompt } = useCopilotUIStore();
 
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
-  // renders one Proceed as its final step and sends everything at once.
+  // renders one Proceed that drafts everything into the chat input at once.
   const [actionEntries, setActionEntries] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
@@ -136,15 +136,17 @@ export function ToolChain({ parts, isStreaming }: Props) {
   const allActionsReady =
     pendingActions.length > 0 && pendingActions.every((entry) => entry.ready);
 
+  // Proceed never sends: it drafts the combined reply into the chat input
+  // so the user reviews/edits and presses send themselves. Cards stay
+  // registered (no onSent) until the message actually goes out.
   function handleProceed() {
-    if (!chatActions || !allActionsReady) return;
+    if (!allActionsReady) return;
     const message = pendingActions
       .map((entry) => entry.buildMessage())
       .filter(Boolean)
       .join("\n\n");
     if (!message) return;
-    pendingActions.forEach((entry) => entry.onSent?.());
-    chatActions.onSend(message);
+    setInitialPrompt(message);
   }
 
   return (
@@ -155,102 +157,104 @@ export function ToolChain({ parts, isStreaming }: Props) {
             <button
               type="button"
               onClick={() => setManualExpanded(!open)}
-          aria-expanded={open}
-          aria-controls={panelId}
-          className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-zinc-100"
-        >
-          <SwapText
-            text={heading}
-            shimmer={isStreaming && !expanded}
-            className={
-              "min-w-0 text-sm font-normal " +
-              (hasError && !isStreaming ? "text-red-500" : "text-zinc-700")
-            }
-          />
-          <Icon
-            icon={ArrowDown01Icon}
-            size={12}
-            className={
-              "shrink-0 text-zinc-400 transition-transform duration-300 ease-out-quint " +
-              (open ? "rotate-180" : "")
-            }
-          />
-        </button>
-        <div className={ACCORDION_PANEL + " " + accordionState(panelOpen)}>
-          <div
-            id={panelId}
-            aria-hidden={!panelOpen}
-            inert={panelOpen ? undefined : ("" as unknown as boolean)}
-            className="min-h-0 overflow-hidden"
-          >
-            <div
-              className={
-                "flex flex-col pl-0.5 pt-2.5" +
-                (panelOpen && !windowMode ? " " + PANEL_REVEAL : "")
-              }
+              aria-expanded={open}
+              aria-controls={panelId}
+              className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-zinc-100"
             >
-              <AnimatePresence mode="popLayout">
-                {visible.map((row, i) => (
-                  <m.div
-                    key={row.key}
-                    layout={!reducedMotion}
-                    initial={
-                      reducedMotion ? false : { opacity: 0, y: 8, scale: 0.985 }
-                    }
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={
-                      reducedMotion
-                        ? undefined
-                        : { opacity: 0, y: -6, scale: 0.985 }
-                    }
-                    transition={{
-                      opacity: {
-                        duration: reducedMotion ? 0 : 0.18,
-                        delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                        ease: [0.22, 1, 0.36, 1],
-                      },
-                      y: {
-                        duration: reducedMotion ? 0 : 0.22,
-                        delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                        ease: [0.22, 1, 0.36, 1],
-                      },
-                      scale: {
-                        duration: reducedMotion ? 0 : 0.22,
-                        delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                        ease: [0.22, 1, 0.36, 1],
-                      },
-                      layout: {
-                        duration: reducedMotion ? 0 : 0.22,
-                        ease: [0.22, 1, 0.36, 1],
-                      },
-                    }}
-                  >
-                    <ChainActionsContext.Provider value={chainActions}>
-                      <ChainRowView
-                        row={row}
-                        isLast={i === visible.length - 1 && !showDone}
-                      />
-                    </ChainActionsContext.Provider>
-                  </m.div>
-                ))}
-              </AnimatePresence>
-              {showDone && (
-                <div className="flex items-stretch gap-2.5">
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-                    <Icon
-                      icon={Tick02Icon}
-                      size={14}
-                      className="text-zinc-600"
-                    />
-                  </div>
-                  <div className="flex h-7 items-center text-sm text-zinc-600">
-                    Done
-                  </div>
+              <SwapText
+                text={heading}
+                shimmer={isStreaming && !expanded}
+                className={
+                  "min-w-0 text-sm font-normal " +
+                  (hasError && !isStreaming ? "text-red-500" : "text-zinc-700")
+                }
+              />
+              <Icon
+                icon={ArrowDown01Icon}
+                size={12}
+                className={
+                  "shrink-0 text-zinc-400 transition-transform duration-300 ease-out-quint " +
+                  (open ? "rotate-180" : "")
+                }
+              />
+            </button>
+            <div className={ACCORDION_PANEL + " " + accordionState(panelOpen)}>
+              <div
+                id={panelId}
+                aria-hidden={!panelOpen}
+                inert={panelOpen ? undefined : ("" as unknown as boolean)}
+                className="min-h-0 overflow-hidden"
+              >
+                <div
+                  className={
+                    "flex flex-col pl-0.5 pt-2.5" +
+                    (panelOpen && !windowMode ? " " + PANEL_REVEAL : "")
+                  }
+                >
+                  <AnimatePresence mode="popLayout">
+                    {visible.map((row, i) => (
+                      <m.div
+                        key={row.key}
+                        layout={!reducedMotion}
+                        initial={
+                          reducedMotion
+                            ? false
+                            : { opacity: 0, y: 8, scale: 0.985 }
+                        }
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={
+                          reducedMotion
+                            ? undefined
+                            : { opacity: 0, y: -6, scale: 0.985 }
+                        }
+                        transition={{
+                          opacity: {
+                            duration: reducedMotion ? 0 : 0.18,
+                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                          y: {
+                            duration: reducedMotion ? 0 : 0.22,
+                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                          scale: {
+                            duration: reducedMotion ? 0 : 0.22,
+                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                          layout: {
+                            duration: reducedMotion ? 0 : 0.22,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                        }}
+                      >
+                        <ChainActionsContext.Provider value={chainActions}>
+                          <ChainRowView
+                            row={row}
+                            isLast={i === visible.length - 1 && !showDone}
+                          />
+                        </ChainActionsContext.Provider>
+                      </m.div>
+                    ))}
+                  </AnimatePresence>
+                  {showDone && (
+                    <div className="flex items-stretch gap-2.5">
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+                        <Icon
+                          icon={Tick02Icon}
+                          size={14}
+                          className="text-zinc-600"
+                        />
+                      </div>
+                      <div className="flex h-7 items-center text-sm text-zinc-600">
+                        Done
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
           </>
         )}
 
