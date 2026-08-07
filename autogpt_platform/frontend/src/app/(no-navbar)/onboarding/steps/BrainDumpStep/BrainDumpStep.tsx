@@ -20,7 +20,12 @@ import { ringProgress } from "./helpers";
 import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";
 
 const FAILURE_HEADLINE = "That didn't go through.";
-const INSUFFICIENT_HEADLINE = "We didn't catch enough of that.";
+// "Catch" fits a mishearing, not a typed answer — the typed reject asks
+// for more instead of implying the system misheard.
+const INSUFFICIENT_HEADLINES = {
+  voice: "We didn't catch enough of that.",
+  typed: "Tell us a bit more.",
+} as const;
 const TIME_LIMIT_CAPTION =
   "That's 30 minutes — the most we record in one go. Saving all of it…";
 
@@ -104,7 +109,7 @@ export function BrainDumpStep() {
         >
           <RevealItem>
             <Text variant="h4">
-              {stateHeadline(dump.screen, dump.headline)}
+              {stateHeadline(dump.screen, dump.headline, dump.insufficientMode)}
             </Text>
           </RevealItem>
           {showSubline && (
@@ -201,6 +206,7 @@ export function BrainDumpStep() {
         {dump.screen === "insufficient" && (
           <RevealItem>
             <InsufficientState
+              mode={dump.insufficientMode}
               canRecord={!dump.isMicBlocked}
               onRecordAgain={dump.handleRestart}
               onTypeInstead={dump.showTyping}
@@ -277,9 +283,14 @@ function toOrbScreen(screen: ScreenState): OrbScreen | null {
   return screen;
 }
 
-function stateHeadline(screen: ScreenState, restHeadline: string) {
+function stateHeadline(
+  screen: ScreenState,
+  restHeadline: string,
+  insufficientMode: "voice" | "typed",
+) {
   if (screen === "failed") return FAILURE_HEADLINE;
-  if (screen === "insufficient") return INSUFFICIENT_HEADLINE;
+  if (screen === "insufficient")
+    return INSUFFICIENT_HEADLINES[insufficientMode];
   return restHeadline;
 }
 

@@ -10,14 +10,13 @@ fallback when Langfuse is unconfigured or unreachable.
 """
 
 import asyncio
-import json
 import logging
 import os
-import re
 
 from langfuse import get_client
 
 from backend.api.features.onboarding_dump.models import SuggestedPrompt
+from backend.api.features.onboarding_dump.parsing import parse_response_json
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 
@@ -156,7 +155,7 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )
-            data = _parse_response_json(response.choices[0].message.content or "")
+            data = parse_response_json(response.choices[0].message.content or "")
         except Exception as e:  # degrades to the template below
             logger.warning(
                 "Brain dump greeting generation failed (attempt %s): %s",
@@ -203,31 +202,6 @@ async def _fetch_langfuse_prompt() -> str | None:
     except Exception as e:  # local prompt is the fallback
         logger.warning("Brain dump greeting: Langfuse prompt fetch failed: %s", e)
         return None
-
-
-def _parse_response_json(content: str) -> dict | None:
-    """Parse the model's JSON, tolerating markdown fences and preamble.
-
-    Anthropic models have no OpenAI-style JSON mode, so the contract is
-    prompt-level ("return ONLY valid JSON") and the parser forgives the
-    two ways that commonly bends: a ```json fence around the object, or
-    stray prose before/after it.
-    """
-    text = content.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end <= start:
-            return None
-        try:
-            data = json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
-            return None
-    return data if isinstance(data, dict) else None
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:

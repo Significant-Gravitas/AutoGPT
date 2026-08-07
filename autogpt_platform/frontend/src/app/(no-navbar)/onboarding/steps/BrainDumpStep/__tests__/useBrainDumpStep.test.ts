@@ -559,13 +559,10 @@ describe("useBrainDumpStep — insufficient content", () => {
     });
 
     expect(result.current.screen).toBe("insufficient");
-    expect(trackBrainDump).toHaveBeenCalledWith(
-      "Brain Dump Transcription Failed",
-      {
-        error_code: "no_usable_speech",
-        attempt: 0,
-      },
-    );
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Quality Rejected", {
+      error_code: "no_usable_speech",
+      attempt: 0,
+    });
     // No accidental advance, and nothing personalized to advance to.
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();

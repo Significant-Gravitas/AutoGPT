@@ -132,6 +132,67 @@ async def test_spaceless_script_dump_passes_on_characters(llm):
     client_factory.assert_not_called()
 
 
+# --- threshold seams: exact boundaries route correctly --------------------
+
+# 45 distinct natural words, sliced to sit exactly on CLEAR_PASS_WORDS.
+_DISTINCT_WORDS = (
+    "my bakery ships fresh sourdough daily while managing wholesale orders "
+    "refunds invoices suppliers deliveries roster payroll marketing newsletters "
+    "customers complaints reviews inventory flour butter yeast ovens repairs "
+    "budget taxes accounting spreadsheets emails scheduling drivers routes "
+    "packaging labels promotions seasonal catering events quarterly forecasts "
+    "vendors contracts"
+).split()
+
+
+@pytest.mark.asyncio
+async def test_exactly_clear_pass_words_passes_without_llm(llm):
+    client_factory = llm(_llm_client('{"usable": false}'))
+    text = " ".join(_DISTINCT_WORDS[: quality.CLEAR_PASS_WORDS])
+    assert await quality.check_transcript_quality(text) is None
+    client_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_one_word_below_clear_pass_still_asks_the_llm(llm):
+    llm(_llm_client('{"usable": false}'))
+    text = " ".join(_DISTINCT_WORDS[: quality.CLEAR_PASS_WORDS - 1])
+    assert await quality.check_transcript_quality(text) == quality.INSUFFICIENT_CONTENT
+
+
+@pytest.mark.asyncio
+async def test_unique_ratio_just_below_threshold_rejects(llm):
+    client_factory = llm(_llm_client('{"usable": true}'))
+    # 20 words, 5 unique → 0.25, just under MIN_UNIQUE_WORD_RATIO.
+    text = " ".join(["ab", "cd", "ef", "gh", "ij"] * 4)
+    assert await quality.check_transcript_quality(text) == quality.NO_USABLE_SPEECH
+    client_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_unique_ratio_at_threshold_is_not_a_repetition_reject(llm):
+    llm(_llm_client('{"usable": true}'))
+    # 20 words, 6 unique → exactly 0.3: the check is strictly-less-than,
+    # so this falls through to the LLM instead of rejecting.
+    text = " ".join(["ab", "cd", "ef", "gh", "ij", "kl"] * 3 + ["ab", "cd"])
+    assert await quality.check_transcript_quality(text) is None
+
+
+@pytest.mark.asyncio
+async def test_compression_seam_separates_looping_from_prose(llm):
+    llm(_llm_client('{"usable": false}'))
+    looping = "banana" * 20
+    prose = (
+        "Automate the weekly refund emails my Shopify store keeps sending "
+        "to unhappy overseas customers every single Monday."
+    )
+    # Self-check the fixtures actually straddle the threshold.
+    assert quality._compression_ratio(looping) > quality.MAX_COMPRESSION_RATIO
+    assert quality._compression_ratio(prose) <= quality.MAX_COMPRESSION_RATIO
+    assert await quality.check_transcript_quality(looping) == quality.NO_USABLE_SPEECH
+    assert await quality.check_transcript_quality(prose) == quality.INSUFFICIENT_CONTENT
+
+
 # --- the ambiguous middle: one LLM call decides ---------------------------
 
 

@@ -36,6 +36,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from backend.api.features.onboarding_dump.brain_dump_gate_eval import GATE_MANIFEST_NAME
+
 SOURCE_URL = "https://www.openslr.org/resources/31/dev-clean-2.tar.gz"
 CACHE_DIR = Path.home() / ".cache" / "brain-dump-eval"
 
@@ -51,7 +53,6 @@ LOUD_NOISE_CLIPS = 6
 MODERATE_SNR_DB = 15.0
 LOUD_SNR_DB = 5.0
 
-GATE_MANIFEST_NAME = "gate_manifest.json"
 
 # Every filename states what the file tests. The speech clips measure STT
 # accuracy (WER) at a given noise level and must pass the quality gate;

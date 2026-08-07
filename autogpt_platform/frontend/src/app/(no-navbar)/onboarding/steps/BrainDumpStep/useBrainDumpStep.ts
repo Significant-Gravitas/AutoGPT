@@ -32,6 +32,11 @@ export function useBrainDumpStep() {
   const recorder = useBrainDumpRecorder();
 
   const [screen, setScreen] = useState<ScreenState>("rest");
+  // Which submission the quality gate last rejected — the recovery
+  // screen's copy and primary action adapt to how the user got there.
+  const [insufficientMode, setInsufficientMode] = useState<"voice" | "typed">(
+    "voice",
+  );
   const [typedText, setTypedText] = useState("");
   const [reachedTimeLimit, setReachedTimeLimit] = useState(false);
 
@@ -204,15 +209,25 @@ export function useBrainDumpStep() {
       if (response.status !== 200 || response.data.status === "failed") {
         const errorCode =
           response.status === 200 ? response.data.error_code : response.status;
-        trackBrainDump("Brain Dump Transcription Failed", {
-          error_code: errorCode,
-          attempt: retryCountRef.current,
-        });
+        const rejected = isInsufficientDump(errorCode);
+        // A gate rejection is a successful transcription of an unusable
+        // dump — tracked apart from true STT failures so the funnel can
+        // tell the two outcomes apart.
+        trackBrainDump(
+          rejected
+            ? "Brain Dump Quality Rejected"
+            : "Brain Dump Transcription Failed",
+          {
+            error_code: errorCode,
+            attempt: retryCountRef.current,
+          },
+        );
         // The recording itself went through — it just didn't carry enough
         // to personalize from, so the recovery screen offers a fresh take
         // instead of a retry of this one. Nothing is cleared until the
         // user picks their next move.
-        setScreen(isInsufficientDump(errorCode) ? "insufficient" : "failed");
+        if (rejected) setInsufficientMode("voice");
+        setScreen(rejected ? "insufficient" : "failed");
         return;
       }
     } catch {
@@ -301,9 +316,17 @@ export function useBrainDumpStep() {
       if (response.status !== 200 || response.data.status === "failed") {
         const errorCode =
           response.status === 200 ? response.data.error_code : undefined;
+        const rejected = isInsufficientDump(errorCode);
+        if (rejected) {
+          trackBrainDump("Brain Dump Quality Rejected", {
+            error_code: errorCode,
+            input_mode: "typed",
+          });
+          setInsufficientMode("typed");
+        }
         // The typed text stays in the composer, so "Type instead" from
         // the recovery screen reopens it with nothing lost.
-        setScreen(isInsufficientDump(errorCode) ? "insufficient" : "failed");
+        setScreen(rejected ? "insufficient" : "failed");
         return;
       }
     } catch {
@@ -450,6 +473,7 @@ export function useBrainDumpStep() {
   return {
     headline: headline(name),
     screen,
+    insufficientMode,
     typedText,
     setTypedText,
     elapsedSeconds: recorder.elapsedSeconds,

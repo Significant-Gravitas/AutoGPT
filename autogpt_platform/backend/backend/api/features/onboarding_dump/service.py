@@ -188,16 +188,8 @@ async def finalize_voice_dump(
     # decides whether the personalized pipeline below may run on it.
     quality_error = await quality.check_transcript_quality(result.text)
     if quality_error is not None:
-        logger.info(
-            "Brain dump rejected by quality gate for user %s (%s)",
-            user_id,
-            quality_error,
-        )
-        await db.mark_failed(user_id, recording_id, quality_error)
-        return FinalizeResponse(
-            status=BrainDumpStatus.failed,
-            input_mode=BrainDumpInputMode.voice,
-            error_code=quality_error,
+        return await _quality_rejection(
+            user_id, recording_id, quality_error, BrainDumpInputMode.voice
         )
     # Finalize only does the audio work. Extraction and the Sonnet
     # greeting are LLM calls that can outlive the frontend proxy's 30s
@@ -275,16 +267,8 @@ async def finalize_typed_dump(
     # so concurrent retries never run duplicate quality checks.
     quality_error = await quality.check_transcript_quality(text)
     if quality_error is not None:
-        logger.info(
-            "Typed brain dump rejected by quality gate for user %s (%s)",
-            user_id,
-            quality_error,
-        )
-        await db.mark_failed(user_id, recording_id, quality_error)
-        return FinalizeResponse(
-            status=BrainDumpStatus.failed,
-            input_mode=BrainDumpInputMode.typed,
-            error_code=quality_error,
+        return await _quality_rejection(
+            user_id, recording_id, quality_error, BrainDumpInputMode.typed
         )
 
     background_tasks.add_task(
@@ -296,6 +280,29 @@ async def finalize_typed_dump(
     )
     return _pipeline_response(
         BrainDumpStatus.transcribed, text.strip(), BrainDumpInputMode.typed
+    )
+
+
+async def _quality_rejection(
+    user_id: str,
+    recording_id: str,
+    error_code: str,
+    input_mode: BrainDumpInputMode,
+) -> FinalizeResponse:
+    """Mark the row failed with the gate's verdict and build the response.
+
+    Shared by the voice and typed paths so the reject contract (log, mark
+    failed, surface the error code) cannot drift between them.
+    """
+    logger.info(
+        f"Brain dump ({input_mode}) rejected by quality gate "
+        f"for user {user_id} ({error_code})"
+    )
+    await db.mark_failed(user_id, recording_id, error_code)
+    return FinalizeResponse(
+        status=BrainDumpStatus.failed,
+        input_mode=input_mode,
+        error_code=error_code,
     )
 
 

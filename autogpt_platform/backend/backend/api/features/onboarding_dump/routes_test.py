@@ -458,7 +458,7 @@ def test_quality_rejected_voice_finalize_reports_the_error_code(
 
 
 def test_quality_rejected_typed_finalize_reports_the_error_code(
-    dumps: DumpStore, quality_gate: AsyncMock
+    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
 ):
     quality_gate.return_value = "insufficient_content"
 
@@ -468,6 +468,7 @@ def test_quality_rejected_typed_finalize_reports_the_error_code(
     body = response.json()
     assert body["status"] == BrainDumpStatus.failed
     assert body["error_code"] == "insufficient_content"
+    extraction["upsert_business_understanding"].assert_not_awaited()
 
 
 def test_a_duration_past_the_ceiling_is_rejected(stt_create: AsyncMock):

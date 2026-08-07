@@ -29,7 +29,7 @@ import os
 import zlib
 from typing import Literal
 
-from backend.api.features.onboarding_dump.intro import _parse_response_json
+from backend.api.features.onboarding_dump.parsing import parse_response_json
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,12 @@ INSUFFICIENT_CONTENT = "insufficient_content"
 QUALITY_ERROR_CODES = frozenset({NO_USABLE_SPEECH, INSUFFICIENT_CONTENT})
 
 _MODEL = os.environ.get("BRAIN_DUMP_QUALITY_MODEL", "anthropic/claude-haiku-4-5")
-_TIMEOUT_SECONDS = 15
+# The gate runs inside the finalize request, after transcription already
+# spent part of the frontend proxy's 30s budget. A 100-token Haiku verdict
+# typically lands in a couple of seconds; a stalled provider must degrade
+# to the recoverable reject quickly instead of eating the rest of the
+# request budget.
+_TIMEOUT_SECONDS = 8
 
 # Above this many words a transcript is clearly substantial and skips the
 # LLM entirely — the vast majority of real dumps land here, which is what
@@ -112,8 +117,9 @@ def _deterministic_verdict(text: str) -> Literal["pass", "reject", "ambiguous"]:
         unique_ratio = len({w.lower() for w in words}) / len(words)
         if unique_ratio < MIN_UNIQUE_WORD_RATIO:
             return "reject"
-    if len(text) >= COMPRESSION_MIN_CHARS and _compression_ratio(text) > (
-        MAX_COMPRESSION_RATIO
+    if (
+        len(text) >= COMPRESSION_MIN_CHARS
+        and _compression_ratio(text) > MAX_COMPRESSION_RATIO
     ):
         return "reject"
 
@@ -162,7 +168,7 @@ async def _semantic_verdict(text: str) -> str | None:
         logger.warning("Brain dump quality check failed: %s", e)
         return INSUFFICIENT_CONTENT
 
-    data = _parse_response_json(content)
+    data = parse_response_json(content)
     if not isinstance(data, dict) or not isinstance(data.get("usable"), bool):
         logger.warning("Brain dump quality check: malformed verdict")
         return INSUFFICIENT_CONTENT

@@ -191,7 +191,7 @@ describe("capability cards seen", () => {
 
 describe("unavailable session storage", () => {
   it("setting a flag never throws, so the action it decorates proceeds", () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    vi.spyOn(window.sessionStorage, "setItem").mockImplementation(() => {
       throw new Error("storage disabled");
     });
 
@@ -201,7 +201,7 @@ describe("unavailable session storage", () => {
   });
 
   it("taking a flag falls back to false instead of throwing", () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    vi.spyOn(window.sessionStorage, "getItem").mockImplementation(() => {
       throw new Error("storage disabled");
     });
 

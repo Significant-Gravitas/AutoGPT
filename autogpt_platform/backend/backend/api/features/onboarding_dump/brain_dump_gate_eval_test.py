@@ -204,3 +204,28 @@ async def test_evaluate_transcript_compares_outcome_to_expectation(
 
     assert result.outcome == "pass"
     assert result.correct is outcome_correct
+
+
+# --- shipped corpus consistency (pure filesystem, no credentials) ---------
+
+EVAL_DATA_DIR = Path(__file__).parent / "eval_data"
+
+
+def test_shipped_corpus_matches_its_manifest():
+    """Corpus drift (renamed/removed audio, a clip the manifest forgot,
+    a reference file on a garbage clip) must fail CI without needing an
+    LLM or STT credential."""
+    manifest = brain_dump_gate_eval.load_manifest(EVAL_DATA_DIR)
+    assert manifest, "shipped corpus must carry a gate manifest"
+
+    audio = {path.stem for path in EVAL_DATA_DIR.glob("*.ogg")}
+    references = {path.stem for path in EVAL_DATA_DIR.glob("*.txt")}
+
+    assert set(manifest) == audio, "manifest keys and audio files must match 1:1"
+    for stem in sorted(audio):
+        if stem.startswith("gate-reject-"):
+            assert manifest[stem] == "reject"
+            assert stem not in references, f"{stem} must not carry a reference"
+        else:
+            assert manifest[stem] == "pass"
+            assert stem in references, f"{stem} needs a .txt reference"

@@ -56,6 +56,9 @@ type BrainDumpEvent =
   | "Intro Prompt Clicked"
   | "Intro Transcript Copied"
   | "Brain Dump Transcription Failed"
+  // The gate judged a *successful* transcription unusable — a different
+  // outcome from an STT failure, and the number the gate lives or dies by.
+  | "Brain Dump Quality Rejected"
   | "Intro Path Assigned"
   // The user's first real message after seeing the intro card — the
   // signal that the card actually started a conversation. The suggested
