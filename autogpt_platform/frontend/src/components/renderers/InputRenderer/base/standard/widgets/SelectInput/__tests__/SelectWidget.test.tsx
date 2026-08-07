@@ -1,7 +1,7 @@
 import type { WidgetProps } from "@rjsf/utils";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { SelectWidget } from "../SelectWidget";
 
 interface SelectMockProps {
@@ -19,45 +19,60 @@ interface MultiSelectorMockProps {
 const selectSpy = vi.fn();
 const multiSelectorSpy = vi.fn();
 
-vi.mock("@/components/atoms/Select/Select", () => ({
-  Select: (props: SelectMockProps) => {
-    selectSpy(props);
-    return <div data-testid="select-widget-select" />;
-  },
-}));
+function SelectMock(props: SelectMockProps) {
+  selectSpy(props);
+  return <div data-testid="select-widget-select" />;
+}
 
-vi.mock("@/components/__legacy__/ui/multiselect", () => ({
-  MultiSelector: (props: MultiSelectorMockProps) => {
-    multiSelectorSpy(props);
-    return <div data-testid="multi-selector">{props.children}</div>;
-  },
-  MultiSelectorContent: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  MultiSelectorInput: ({ placeholder }: { placeholder?: string }) => (
-    <input data-testid="multi-selector-input" placeholder={placeholder} />
-  ),
-  MultiSelectorItem: ({
-    children,
-    value,
-  }: {
-    children: ReactNode;
-    value: string;
-  }) => (
+function MultiSelectorMock(props: MultiSelectorMockProps) {
+  multiSelectorSpy(props);
+  return <div data-testid="multi-selector">{props.children}</div>;
+}
+
+function MultiSelectorContentMock({ children }: { children: ReactNode }) {
+  return <div>{children}</div>;
+}
+
+function MultiSelectorInputMock({ placeholder }: { placeholder?: string }) {
+  return <input data-testid="multi-selector-input" placeholder={placeholder} />;
+}
+
+function MultiSelectorItemMock({
+  children,
+  value,
+}: {
+  children: ReactNode;
+  value: string;
+}) {
+  return (
     <div data-testid="multi-selector-item" data-value={value}>
       {children}
     </div>
-  ),
-  MultiSelectorList: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  MultiSelectorTrigger: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
+  );
+}
+
+function MultiSelectorListMock({ children }: { children: ReactNode }) {
+  return <div>{children}</div>;
+}
+
+function MultiSelectorTriggerMock({ children }: { children: ReactNode }) {
+  return <div>{children}</div>;
+}
+
+vi.mock("@/components/atoms/Select/Select", () => ({
+  Select: SelectMock,
+}));
+
+vi.mock("@/components/__legacy__/ui/multiselect", () => ({
+  MultiSelector: MultiSelectorMock,
+  MultiSelectorContent: MultiSelectorContentMock,
+  MultiSelectorInput: MultiSelectorInputMock,
+  MultiSelectorItem: MultiSelectorItemMock,
+  MultiSelectorList: MultiSelectorListMock,
+  MultiSelectorTrigger: MultiSelectorTriggerMock,
 }));
 
 afterEach(() => {
-  cleanup();
   selectSpy.mockClear();
   multiSelectorSpy.mockClear();
   vi.unstubAllEnvs();
@@ -198,6 +213,9 @@ describe("SelectWidget", () => {
         dropped: 1,
       },
     );
+    expect(selectSpy.mock.calls[0][0]).toMatchObject({
+      options: [{ value: "0", label: "Red" }],
+    });
   });
 
   it("maps selected indexes back to enum option values for single-select changes", () => {

@@ -141,8 +141,8 @@ export const EnumField: Story = {
   ),
 };
 
-export const EnumWithEmptyStringValue: Story = {
-  render: () => (
+function EnumWithEmptyStringValueRender() {
+  return (
     <FormRendererStory
       jsonSchema={{
         type: "object",
@@ -155,7 +155,11 @@ export const EnumWithEmptyStringValue: Story = {
         },
       }}
     />
-  ),
+  );
+}
+
+export const EnumWithEmptyStringValue: Story = {
+  render: EnumWithEmptyStringValueRender,
 };
 
 export const EnumWithDefault: Story = {
