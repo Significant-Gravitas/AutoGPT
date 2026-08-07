@@ -80,6 +80,8 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
     setIsDryRun: vi.fn(),
     initialPrompt: mockInitialPrompt,
     setInitialPrompt: mockSetInitialPrompt,
+    sentMessageCount: 0,
+    notifyMessageSent: vi.fn(),
   }),
 }));
 

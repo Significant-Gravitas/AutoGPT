@@ -12,7 +12,15 @@ import {
   m,
   useReducedMotion,
 } from "framer-motion";
-import { useCallback, useContext, useId, useMemo, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
@@ -44,7 +52,11 @@ export function ToolChain({ parts, isStreaming }: Props) {
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
-  const { setInitialPrompt } = useCopilotUIStore();
+  const { setInitialPrompt, sentMessageCount } = useCopilotUIStore();
+  // Ids drafted by the last Proceed, plus the send count at that moment.
+  // Proceed only fills the composer, so the cards' onSent callbacks fire
+  // when the user actually sends — not when the draft is written.
+  const draftedRef = useRef<{ ids: string[]; sentAt: number } | null>(null);
 
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
@@ -70,6 +82,16 @@ export function ToolChain({ parts, isStreaming }: Props) {
   const chainActions = useMemo(
     () => ({ register, unregister }),
     [register, unregister],
+  );
+
+  useEffect(
+    function notifyDraftedCardsOnSend() {
+      const drafted = draftedRef.current;
+      if (!drafted || sentMessageCount <= drafted.sentAt) return;
+      draftedRef.current = null;
+      drafted.ids.forEach((id) => actionEntries.get(id)?.onSent?.());
+    },
+    [sentMessageCount, actionEntries],
   );
 
   const rows = useMemo(
@@ -143,15 +165,19 @@ export function ToolChain({ parts, isStreaming }: Props) {
   // Proceed never sends: it drafts the combined reply of every READY card
   // into the chat input so the user reviews/edits and presses send
   // themselves. Unready cards (e.g. an unconnected MCP server) are left
-  // out instead of blocking the ready ones. Cards stay registered (no
-  // onSent) until the message actually goes out.
+  // out instead of blocking the ready ones. Cards stay registered until
+  // the message actually goes out, at which point their onSent fires.
   function handleProceed() {
-    const message = pendingActions
-      .filter((entry) => entry.ready)
+    const readyActions = pendingActions.filter((entry) => entry.ready);
+    const message = readyActions
       .map((entry) => entry.buildMessage())
       .filter(Boolean)
       .join("\n\n");
     if (!message) return;
+    draftedRef.current = {
+      ids: readyActions.map((entry) => entry.id),
+      sentAt: sentMessageCount,
+    };
     setInitialPrompt(message);
   }
 
