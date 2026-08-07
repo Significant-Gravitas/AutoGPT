@@ -9,7 +9,13 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from prisma.enums import ReviewStatus
-from prisma.models import AgentNodeExecution, PendingHumanReview
+from prisma.models import (
+    AgentGraphExecution,
+    AgentNodeExecution,
+    ChatSession,
+    LibraryAgent,
+    PendingHumanReview,
+)
 from prisma.types import PendingHumanReviewUpdateInput
 from pydantic import BaseModel
 
@@ -18,6 +24,7 @@ from backend.api.features.executions.review.model import (
     SafeJsonData,
 )
 from backend.copilot.constants import (
+    COPILOT_SESSION_PREFIX,
     is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
 )
@@ -371,12 +378,9 @@ async def get_pending_reviews_for_user(
         page_size: Number of reviews per page
 
     Returns:
-        List of pending review models with node_id included
+        List of pending review models, enriched with node_id and (where
+        resolvable) expert/agent attribution.
     """
-    # Local import to avoid event loop conflicts in tests
-    from backend.data.execution import get_node_execution
-
-    # Calculate offset for pagination
     offset = (page - 1) * page_size
 
     reviews = await PendingHumanReview.prisma().find_many(
@@ -386,13 +390,105 @@ async def get_pending_reviews_for_user(
         take=page_size,
     )
 
-    # Fetch node_id for each review from NodeExecution
-    result = []
-    for review in reviews:
-        node_id = await _resolve_node_id(review.nodeExecId, get_node_execution)
-        result.append(PendingHumanReviewModel.from_db(review, node_id=node_id))
+    models = [PendingHumanReviewModel.from_db(review, node_id="") for review in reviews]
+    return await _enrich_pending_reviews(user_id, models)
 
-    return result
+
+async def _enrich_pending_reviews(
+    user_id: str, reviews: list[PendingHumanReviewModel]
+) -> list[PendingHumanReviewModel]:
+    """Batch-resolve node_id and attach expert/agent attribution.
+
+    Replaces per-row ``get_node_execution`` calls with a single batched
+    query, and additionally resolves, in a fixed number of batched
+    queries:
+      - expert attribution (from the graph execution, or from the chat
+        session for CoPilot run_block reviews)
+      - the requesting agent's display name and library agent id
+      - the chat session id, for CoPilot run_block reviews
+
+    Mutates and returns the given models in place.
+    """
+    real_exec_ids = [
+        r.graph_exec_id for r in reviews if not is_copilot_synthetic_id(r.graph_exec_id)
+    ]
+    session_ids = [
+        r.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+        for r in reviews
+        if r.graph_exec_id.startswith(COPILOT_SESSION_PREFIX)
+    ]
+    real_node_exec_ids = [
+        r.node_exec_id for r in reviews if not is_copilot_synthetic_id(r.node_exec_id)
+    ]
+
+    node_execs = (
+        await AgentNodeExecution.prisma().find_many(
+            where={"id": {"in": real_node_exec_ids}}
+        )
+        if real_node_exec_ids
+        else []
+    )
+    node_id_by_exec = {ne.id: ne.agentNodeId for ne in node_execs}
+
+    executions = (
+        await AgentGraphExecution.prisma().find_many(
+            where={"id": {"in": real_exec_ids}},
+            include={"Expert": True, "AgentGraph": True},
+        )
+        if real_exec_ids
+        else []
+    )
+    exec_by_id = {e.id: e for e in executions}
+
+    graph_ids = list({e.agentGraphId for e in executions})
+    lib_agents = (
+        await LibraryAgent.prisma().find_many(
+            where={"userId": user_id, "agentGraphId": {"in": graph_ids}}
+        )
+        if graph_ids
+        else []
+    )
+    lib_by_graph = {a.agentGraphId: a for a in lib_agents}
+
+    sessions = (
+        await ChatSession.prisma().find_many(
+            where={"id": {"in": session_ids}}, include={"Expert": True}
+        )
+        if session_ids
+        else []
+    )
+    session_by_id = {s.id: s for s in sessions}
+
+    for r in reviews:
+        if is_copilot_synthetic_id(r.node_exec_id):
+            r.node_id = parse_node_id_from_exec_id(r.node_exec_id)
+        else:
+            r.node_id = node_id_by_exec.get(r.node_exec_id, r.node_exec_id)
+
+        execution = exec_by_id.get(r.graph_exec_id)
+        if execution:
+            r.expert_id = execution.expertId
+            if execution.Expert:
+                r.expert_name = execution.Expert.name
+                r.expert_avatar_url = execution.Expert.avatarUrl
+
+            lib_agent = lib_by_graph.get(execution.agentGraphId)
+            if lib_agent:
+                r.library_agent_id = lib_agent.id
+            r.agent_name = (lib_agent.name if lib_agent else None) or (
+                execution.AgentGraph.name if execution.AgentGraph else None
+            )
+        elif r.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
+            session_id = r.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+            r.session_id = session_id
+            session = session_by_id.get(session_id)
+            if session:
+                r.expert_id = session.expertId
+                if session.Expert:
+                    r.expert_name = session.Expert.name
+                    r.expert_avatar_url = session.Expert.avatarUrl
+
+    return reviews
 
 
 async def get_pending_reviews_for_execution(
