@@ -85,7 +85,7 @@ const unconfiguredSelfHosted: ChatTransportResponse = {
 const codexTransport: ChatTransportResponse = {
   auth_provider: "codex",
   credential_id: codexCredential.id,
-  label: "ChatGPT/Codex",
+  label: "ChatGPT",
   available: true,
   default: false,
 };
@@ -148,10 +148,10 @@ describe("LlmRouteSelector", () => {
 
     await user.click(screen.getByLabelText(/AI connection: AutoGPT Platform/i));
     expect(screen.getAllByText("AutoGPT Platform").length).toBeGreaterThan(0);
-    expect(screen.getByText("ChatGPT/Codex")).toBeTruthy();
+    expect(screen.getByText("ChatGPT")).toBeTruthy();
     expect(screen.getByText(/Personal ChatGPT/)).toBeTruthy();
 
-    await user.click(screen.getByText("ChatGPT/Codex"));
+    await user.click(screen.getByText("ChatGPT"));
     expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
       authProvider: "codex",
       credentialId: codexCredential.id,
@@ -199,7 +199,7 @@ describe("LlmRouteSelector", () => {
 
     await user.click(screen.getByLabelText(/AI connection: Self-hosted chat/i));
     expect(screen.getAllByText("Self-hosted chat").length).toBeGreaterThan(0);
-    expect(screen.getByText("ChatGPT/Codex")).toBeTruthy();
+    expect(screen.getByText("ChatGPT")).toBeTruthy();
   });
 
   it("automatically selects sole Codex on a keyless self-host", async () => {

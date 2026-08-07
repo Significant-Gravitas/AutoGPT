@@ -72,7 +72,7 @@ const unconfiguredSelfHosted: ChatTransportResponse = {
 const codexTransport: ChatTransportResponse = {
   auth_provider: "codex",
   credential_id: "codex-credential-1",
-  label: "ChatGPT/Codex",
+  label: "ChatGPT",
   available: true,
   default: false,
 };

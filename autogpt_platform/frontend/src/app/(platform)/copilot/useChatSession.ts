@@ -241,7 +241,7 @@ export function useChatSession({
         variant: "destructive",
         title: "AutoPilot needs an AI connection",
         description:
-          "Connect ChatGPT/Codex in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Sign in with ChatGPT under OpenAI in Settings → Integrations, or configure a chat API or local model on this server.",
       });
       throw new Error("chat_transport_not_configured");
     }

@@ -885,7 +885,7 @@ def test_list_chat_transports_hosted_defaults_to_platform_with_codex(
             {
                 "auth_provider": "codex",
                 "credential_id": "cred-codex",
-                "label": "ChatGPT/Codex",
+                "label": "ChatGPT",
                 "available": True,
                 "default": False,
             },
@@ -955,7 +955,7 @@ def test_list_chat_transports_self_hosted_codex_is_default_without_deployment(
         {
             "auth_provider": "codex",
             "credential_id": "cred-codex",
-            "label": "ChatGPT/Codex",
+            "label": "ChatGPT",
             "available": True,
             "default": True,
         },
@@ -985,7 +985,7 @@ def test_list_chat_transports_self_hosted_deployment_stays_default_with_codex(
     assert codex == {
         "auth_provider": "codex",
         "credential_id": "cred-codex",
-        "label": "ChatGPT/Codex",
+        "label": "ChatGPT",
         "available": True,
         "default": False,
     }

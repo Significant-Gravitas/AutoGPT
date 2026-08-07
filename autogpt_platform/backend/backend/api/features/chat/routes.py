@@ -529,7 +529,7 @@ async def _get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
         ChatTransportResponse(
             auth_provider="codex",
             credential_id=credentials.id,
-            label="ChatGPT/Codex",
+            label="ChatGPT",
             available=True,
             default=codex_is_default,
         )
