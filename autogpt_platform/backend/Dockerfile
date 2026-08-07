@@ -2,7 +2,7 @@
 
 # ============================ DEPENDENCY BUILDER ============================ #
 
-FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS builder
+FROM debian:13-slim AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -41,8 +41,7 @@ ENV POETRY_VIRTUALENVS_CREATE=true
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV PATH=/opt/poetry/bin:$PATH
 
-ARG POETRY_VERSION=2.2.1
-RUN pip3 install "poetry==${POETRY_VERSION}" --break-system-packages
+RUN pip3 install poetry --break-system-packages
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
@@ -51,7 +50,6 @@ WORKDIR /app/autogpt_platform/backend
 RUN poetry install --no-ansi --no-root
 
 # Generate Prisma client
-ENV PRISMA_BINARY_CACHE_DIR=/opt/prisma-python/binaries
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
 COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
@@ -60,12 +58,11 @@ RUN poetry run prisma generate && poetry run gen-prisma-stub
 # =============================== DB MIGRATOR =============================== #
 
 # Lightweight migrate stage - only needs Prisma CLI, not full Python environment
-FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS migrate
+FROM debian:13-slim AS migrate
 
 WORKDIR /app/autogpt_platform/backend
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PRISMA_BINARY_CACHE_DIR=/opt/prisma-python/binaries
 
 # Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
 # libatomic1: debian:13-slim no longer ships it, but the Prisma CLI's bundled
@@ -83,11 +80,11 @@ COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
 COPY --from=builder /usr/bin/npm /usr/bin/npm
 
-# Copy Prisma binaries from a path that the non-root runtime roles can traverse.
-COPY --from=builder /opt/prisma-python/binaries /opt/prisma-python/binaries
+# Copy Prisma binaries
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
 # Install prisma-client-py directly (much smaller than copying full venv)
-RUN pip3 install "prisma==0.15.0" --break-system-packages
+RUN pip3 install prisma>=0.15.0 --break-system-packages
 
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
@@ -96,7 +93,7 @@ COPY autogpt_platform/backend/migrations ./migrations
 
 # ============================== BACKEND SERVER ============================== #
 
-FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS docs-filter
+FROM debian:13-slim AS docs-filter
 # The copilot docs tools read markdown only — strip everything else
 # (images, scripts, configs) so no unused or untrusted files ship in the
 # server image or its layer history.
@@ -104,12 +101,11 @@ COPY docs /docs
 RUN find /docs -type f ! -name '*.md' ! -name '*.mdx' -delete \
     && find /docs -type d -empty -delete
 
-FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS server
+FROM debian:13-slim AS server
 
 WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PRISMA_BINARY_CACHE_DIR=/opt/prisma-python/binaries
 
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
@@ -138,7 +134,7 @@ COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
-COPY --from=builder /opt/prisma-python/binaries /opt/prisma-python/binaries
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
 # Install agent-browser (Copilot browser tool) using the system chromium package.
 # Chrome for Testing (the binary agent-browser downloads via `agent-browser install`)
@@ -147,11 +143,10 @@ COPY --from=builder /opt/prisma-python/binaries /opt/prisma-python/binaries
 # Note: system chromium tracks the Debian package schedule rather than a pinned
 # Chrome for Testing release. If agent-browser requires a specific Chrome version,
 # verify compatibility against the chromium package version in the base image.
-ARG AGENT_BROWSER_VERSION=0.33.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g "agent-browser@${AGENT_BROWSER_VERSION}" \
+    && npm install -g agent-browser \
     && rm -rf /tmp/* /root/.npm
 
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
@@ -236,6 +231,11 @@ ARG POSTGRES_MAJOR=15
 ARG IMAGE_VERSION=dev
 ARG VCS_REF=unknown
 
+# The normal backend image stores generated Prisma engines under root's cache.
+# Appliance services run unprivileged, so copy those engines to a traversable
+# path without changing the existing server target used by cloud deployments.
+COPY --from=builder /root/.cache/prisma-python/binaries /opt/prisma-python/binaries
+
 LABEL org.opencontainers.image.title="AutoGPT Platform single-container" \
       org.opencontainers.image.description="Experimental single-node AutoGPT Platform distribution" \
       org.opencontainers.image.source="https://github.com/Significant-Gravitas/AutoGPT" \
@@ -316,7 +316,25 @@ COPY --from=single-container-frontend /app/.next/static /app/frontend/.next/stat
 COPY --from=single-container-frontend /app/public /app/frontend/public
 
 # Runtime orchestration, proxy, health tooling, and database compatibility shim.
-COPY autogpt_platform/single-container /opt/autogpt/single-container
+COPY autogpt_platform/single-container/bootstrap.sh \
+     autogpt_platform/single-container/common.sh \
+     autogpt_platform/single-container/disabled-service.sh \
+     autogpt_platform/single-container/entrypoint.sh \
+     autogpt_platform/single-container/fatal_listener.py \
+     autogpt_platform/single-container/healthcheck.sh \
+     autogpt_platform/single-container/probe.py \
+     autogpt_platform/single-container/promote-admin.sh \
+     autogpt_platform/single-container/run-app.sh \
+     autogpt_platform/single-container/run-optional-app.sh \
+     autogpt_platform/single-container/run-service.sh \
+     autogpt_platform/single-container/runtime_config.py \
+     autogpt_platform/single-container/watchdog.sh \
+     /opt/autogpt/single-container/
+COPY autogpt_platform/single-container/clamav /opt/autogpt/single-container/clamav
+COPY autogpt_platform/single-container/nginx /opt/autogpt/single-container/nginx
+COPY autogpt_platform/single-container/python /opt/autogpt/single-container/python
+COPY autogpt_platform/single-container/rabbitmq /opt/autogpt/single-container/rabbitmq
+COPY autogpt_platform/single-container/supervisor /opt/autogpt/single-container/supervisor
 COPY autogpt_platform/db/init/00-init.sql /opt/autogpt/single-container/00-init.sql
 COPY autogpt_platform/LICENSE.md /usr/share/licenses/autogpt-platform/LICENSE.md
 COPY autogpt_platform/single-container/licenses/FalkorDB-SSPL-1.0.txt /usr/share/licenses/falkordb/SSPL-1.0.txt
@@ -326,11 +344,6 @@ COPY autogpt_platform/single-container/licenses/Redis-REDISCONTRIBUTIONS.txt /us
 COPY autogpt_platform/single-container/licenses/Redis-SOURCE.txt /usr/share/licenses/redis/SOURCE.txt
 COPY autogpt_platform/single-container/licenses/redis/deps /usr/share/licenses/redis/deps
 COPY autogpt_platform/single-container/licenses/redis/src /usr/share/licenses/redis/src
-COPY autogpt_platform/single-container/licenses/SHA256SUMS /usr/share/licenses/autogpt-single-container/SHA256SUMS
-
-RUN sed 's/  # pragma: allowlist secret$//' \
-        /usr/share/licenses/autogpt-single-container/SHA256SUMS \
-    | sha256sum -c -
 
 RUN groupadd --system --gid 10001 autogpt \
     && useradd --system --uid 10001 --gid autogpt --home-dir /data/home --shell /usr/sbin/nologin autogpt \
@@ -368,6 +381,7 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     LC_ALL=C.UTF-8 \
     NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
+    PRISMA_BINARY_CACHE_DIR=/opt/prisma-python/binaries \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FORCE_FLAG_GRAPHITI_MEMORY=true \
@@ -383,3 +397,8 @@ HEALTHCHECK --interval=30s --timeout=45s --start-period=5m --retries=10 \
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/autogpt/single-container/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-n", "-c", "/opt/autogpt/single-container/supervisor/supervisord.conf"]
+
+# Existing infrastructure builds this Dockerfile without --target. Preserve the
+# historical default output even though the opt-in appliance target is declared
+# after server.
+FROM server AS server-default

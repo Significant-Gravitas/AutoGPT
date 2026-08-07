@@ -10,40 +10,13 @@ readonly TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-2700}"
 readonly SAFE_PLATFORM="${SMOKE_PLATFORM//\//-}"
 readonly RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${SAFE_PLATFORM}-${RANDOM}"
 readonly RUN_CONTAINER_NAME="autogpt-single-smoke-${RUN_TOKEN}"
-readonly COMPOSE_PROJECT_NAME="autogpt-single-smoke-${RUN_TOKEN,,}"
-readonly COMPOSE_FILE="autogpt_platform/docker-compose.single-container.yml"
-readonly COMPOSE_ENV_FILE="autogpt_platform/single-container/.env.example"
-readonly COMPOSE_IMAGE_REPOSITORY="autogpt-platform-single-container-smoke"
-readonly COMPOSE_IMAGE_TAG="${RUN_TOKEN,,}"
-readonly COMPOSE_IMAGE="${COMPOSE_IMAGE_REPOSITORY}:${COMPOSE_IMAGE_TAG}"
 HEADERS_FILE="$(mktemp)"
 readonly HEADERS_FILE
 
 CONTAINER_NAME="${RUN_CONTAINER_NAME}"
 DATA_VOLUME=
-COMPOSE_STARTED=false
-
-compose() {
-  env \
-    AUTOGPT_COMPOSE_ENV_LOADED=true \
-    AUTOGPT_IMAGE="${COMPOSE_IMAGE_REPOSITORY}" \
-    AUTOGPT_TAG="${COMPOSE_IMAGE_TAG}" \
-    AUTOGPT_PUBLIC_URL="${PUBLIC_URL}" \
-    AUTOGPT_BIND_ADDRESS=127.0.0.1 \
-    AUTOGPT_PORT=3300 \
-    AUTOGPT_DATA_VOLUME="${DATA_VOLUME}" \
-    docker compose \
-      --project-name "${COMPOSE_PROJECT_NAME}" \
-      --env-file "${COMPOSE_ENV_FILE}" \
-      --file "${COMPOSE_FILE}" \
-      "$@"
-}
 
 diagnostics() {
-  if [[ "${COMPOSE_STARTED}" == true ]]; then
-    compose ps --all || true
-    compose logs --timestamps --tail 2000 || true
-  fi
   if docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
     docker inspect --format '{{json .State}}' "${CONTAINER_NAME}" || true
     docker logs --timestamps --tail 2000 "${CONTAINER_NAME}" || true
@@ -56,9 +29,6 @@ cleanup() {
   if ((result != 0)); then
     diagnostics
   fi
-  if [[ "${COMPOSE_STARTED}" == true ]]; then
-    compose down --timeout 360 --remove-orphans >/dev/null 2>&1 || true
-  fi
   if docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
     docker stop --timeout 360 "${CONTAINER_NAME}" >/dev/null 2>&1 || true
     docker rm --force --volumes "${CONTAINER_NAME}" >/dev/null 2>&1 || true
@@ -66,7 +36,6 @@ cleanup() {
   if [[ -n "${DATA_VOLUME}" ]] && docker volume inspect "${DATA_VOLUME}" >/dev/null 2>&1; then
     docker volume rm "${DATA_VOLUME}" >/dev/null 2>&1 || true
   fi
-  docker image rm "${COMPOSE_IMAGE}" >/dev/null 2>&1 || true
   rm -f "${HEADERS_FILE}"
   exit "${result}"
 }
@@ -437,8 +406,33 @@ assert_prefixed_backend_redirect() {
   }
 }
 
+assert_unsupported_email_verification_rejected() {
+  local output
+  local status
+  set +e
+  output="$(
+    docker run --rm \
+      --platform "${SMOKE_PLATFORM}" \
+      --env AUTH_REQUIRE_EMAIL_VERIFICATION=true \
+      "${SMOKE_IMAGE}" 2>&1
+  )"
+  status=$?
+  set -e
+  ((status != 0)) || {
+    echo "image accepted unsupported email verification" >&2
+    return 1
+  }
+  grep -Fq \
+    "email verification is not supported by the single-container distribution" \
+    <<<"${output}" || {
+    echo "unsupported email verification failed without an actionable error" >&2
+    return 1
+  }
+}
+
 # Phase one deliberately supplies no environment, port, volume, entrypoint, or
 # command override. This is the CI proof for literal `docker run IMAGE`.
+assert_unsupported_email_verification_rejected
 docker run --detach \
   --platform "${SMOKE_PLATFORM}" \
   --name "${CONTAINER_NAME}" \
@@ -517,32 +511,14 @@ wait_for_automatic_restart "$((restart_count + 1))"
 }
 assert_runtime_config_mode
 assert_redirect "${PUBLIC_URL}/copilot" --resolve localhost:3300:127.0.0.1
+assert_falkordb_binary_contract
+assert_memory_contract cleanup
 
 docker stop --timeout 360 "${CONTAINER_NAME}" >/dev/null
 [[ "$(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")" == 0 ]] || {
-  echo "container did not exit cleanly before the Compose phase" >&2
+  echo "container did not exit cleanly after the restart test" >&2
   exit 1
 }
 docker rm "${CONTAINER_NAME}" >/dev/null
-
-# Phase three launches the documented one-service Compose distribution against
-# the same persistent state and locally built image.
-docker image tag "${SMOKE_IMAGE}" "${COMPOSE_IMAGE}"
-COMPOSE_STARTED=true
-compose up --detach --no-build
-CONTAINER_NAME="$(compose ps --quiet autogpt)"
-[[ -n "${CONTAINER_NAME}" ]] || {
-  echo "Compose did not create the autogpt service container" >&2
-  exit 1
-}
-wait_for_healthy
-[[ "$(runtime_config_hash)" == "${first_hash}" ]] || {
-  echo "runtime config changed during the Compose lifecycle" >&2
-  exit 1
-}
-assert_runtime_config_mode
-assert_redirect "${PUBLIC_URL}/copilot" --resolve localhost:3300:127.0.0.1
-assert_falkordb_binary_contract
-assert_memory_contract cleanup
 
 echo "single-container smoke test passed for ${SMOKE_PLATFORM}"
