@@ -1,6 +1,5 @@
 "use client";
 
-import { ExpertProfileSheet } from "@/app/(platform)/marketplace/components/ExpertsSection/components/ExpertProfileSheet/ExpertProfileSheet";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -21,15 +20,13 @@ export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     hiredExperts,
+    schedulesForExpert,
     isLoading,
     isError,
     refetch,
     installWorkflow,
     pickerExpertId,
     closeWorkflowPicker,
-    profileExpert,
-    openProfile,
-    closeProfile,
   } = useTeamPage({ enabled: Boolean(enabled) && ready });
 
   if (!ready) {
@@ -69,8 +66,8 @@ export default function TeamPage() {
               <ExpertTeamCard
                 key={expert.id}
                 expert={expert}
+                schedules={schedulesForExpert(expert)}
                 onInstallWorkflow={installWorkflow}
-                onOpenProfile={openProfile}
               />
             ))}
       </div>
@@ -89,11 +86,6 @@ export default function TeamPage() {
         expertId={pickerExpertId ?? undefined}
         open={pickerExpertId !== null}
         onClose={closeWorkflowPicker}
-      />
-      <ExpertProfileSheet
-        expert={profileExpert}
-        onClose={closeProfile}
-        presentation="drawer"
       />
     </main>
   );

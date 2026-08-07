@@ -2,7 +2,6 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
-import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { getEarnRows, TaskGroup } from "../helpers";
 import {
@@ -14,7 +13,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   groups: TaskGroup[];
-  completedSteps: OnboardingStep[] | undefined;
+  completedSteps: string[] | undefined;
   formattedCredits: string;
   onAddCredits: () => void;
 }

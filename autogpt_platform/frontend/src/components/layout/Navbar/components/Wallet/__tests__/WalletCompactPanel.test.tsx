@@ -20,7 +20,7 @@ const groups: TaskGroup[] = [
     details: "",
     tasks: [
       {
-        id: "VISIT_COPILOT",
+        id: "ONBOARDING_COMPLETE",
         name: "Complete onboarding",
         amount: 3,
         details: "",
@@ -54,7 +54,7 @@ const groups: TaskGroup[] = [
 ];
 
 const completedSteps: OnboardingStep[] = [
-  "VISIT_COPILOT",
+  "ONBOARDING_COMPLETE",
   "MARKETPLACE_ADD_AGENT",
 ];
 
@@ -88,7 +88,7 @@ describe("getEarnRows", () => {
     const rows = getEarnRows(groups, ["SCHEDULE_AGENT"]);
 
     expect(rows.map((row) => row.key)).toEqual([
-      "VISIT_COPILOT",
+      "ONBOARDING_COMPLETE",
       "MARKETPLACE_ADD_AGENT",
       "SCHEDULE_AGENT",
       "RUN_3_DAYS",
@@ -100,7 +100,7 @@ describe("getEarnRows", () => {
     const rows = getEarnRows(groups, undefined);
 
     expect(rows.map((row) => row.key)).toEqual([
-      "VISIT_COPILOT",
+      "ONBOARDING_COMPLETE",
       "MARKETPLACE_ADD_AGENT",
       "SCHEDULE_AGENT",
       "RUN_3_DAYS",
