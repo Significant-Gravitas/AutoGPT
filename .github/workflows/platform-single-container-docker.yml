@@ -56,21 +56,21 @@ jobs:
             image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
       - name: Build image without publishing
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
         with:
-          context: .
-          file: autogpt_platform/backend/Dockerfile
-          target: single-container
-          platforms: ${{ matrix.platform }}
-          load: true
-          push: false
-          tags: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=LicenseRef-PolyForm-Shield-1.0.0 AND SSPL-1.0
-          cache-from: type=gha,scope=platform-single-container-${{ matrix.suffix }}
-          cache-to: type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max
+          source: .
+          files: autogpt_platform/single-container/docker-bake.hcl
+          targets: single-container
+          set: |
+            *.platform=${{ matrix.platform }}
+            backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
+            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max
+            single-container.args.IMAGE_VERSION=${{ github.sha }}
+            single-container.args.VCS_REF=${{ github.sha }}
+            single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
+            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max
+            single-container.output=type=docker
+            single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
 
       - name: Smoke-test the complete image
         shell: bash

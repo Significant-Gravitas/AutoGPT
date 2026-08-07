@@ -1,12 +1,7 @@
-# This Dockerfile builds backend and single-container targets. Keep its context
-# independent from the root .dockerignore, whose frontend image intentionally
-# accepts deployment env files at build time. No env file belongs in this
-# Dockerfile's context or exported BuildKit cache.
+# This image combines frontend and appliance files. The backend target has its
+# own Bake context. No env file belongs in this context or exported cache.
 *
 
-!docs/
-!autogpt_platform/autogpt_libs/
-!autogpt_platform/backend/
 !autogpt_platform/frontend/
 !autogpt_platform/single-container/
 !autogpt_platform/db/init/00-init.sql

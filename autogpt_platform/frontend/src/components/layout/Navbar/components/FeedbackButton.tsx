@@ -1,14 +1,12 @@
 "use client";
 
-import { useTallyPopupContext } from "@/components/molecules/TallyPoup/TallyPopup";
+import { useTallyPopup } from "@/components/molecules/TallyPoup/useTallyPopup";
 import { Chatting01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function FeedbackButton() {
-  const popup = useTallyPopupContext();
+  const { state } = useTallyPopup();
 
-  if (!popup?.enabled) return null;
-  const { state } = popup;
   if (state.isFormVisible) return null;
 
   return (

@@ -49,6 +49,13 @@ trap 'exit 143' TERM
   exit 2
 }
 
+appliance_is_healthy_and_armed() {
+  docker exec "${CONTAINER_NAME}" \
+    /usr/bin/test -f /run/autogpt/watchdog-armed >/dev/null 2>&1 &&
+    docker exec "${CONTAINER_NAME}" \
+      /usr/local/bin/autogpt-healthcheck >/dev/null 2>&1
+}
+
 wait_for_healthy() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local state
@@ -62,7 +69,9 @@ wait_for_healthy() {
     )
     case "${state}:${health}" in
       running:healthy)
-        return 0
+        if appliance_is_healthy_and_armed; then
+          return 0
+        fi
         ;;
       exited:* | dead:* | removing:* | *:unhealthy)
         echo "container failed while waiting for health: state=${state} health=${health} exit=${exit_code}" >&2
@@ -88,7 +97,8 @@ wait_for_automatic_restart() {
         "${CONTAINER_NAME}"
     )
     if [[ "${state}:${health}" == running:healthy ]] &&
-      ((restart_count >= minimum_restart_count)); then
+      ((restart_count >= minimum_restart_count)) &&
+      appliance_is_healthy_and_armed; then
       return 0
     fi
     case "${state}" in
@@ -337,21 +347,15 @@ wait_for_falkordb_restart() {
   local previous_pid="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local current_pid
-  local health
   while ((SECONDS < deadline)); do
     current_pid="$(
       docker exec "${CONTAINER_NAME}" \
         supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
         pid falkordb 2>/dev/null || true
     )"
-    health="$(
-      docker inspect \
-        --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' \
-        "${CONTAINER_NAME}" 2>/dev/null || true
-    )"
     if [[ "${current_pid}" =~ ^[0-9]+$ ]] &&
       [[ "${current_pid}" != "${previous_pid}" ]] &&
-      [[ "${health}" == healthy ]]; then
+      appliance_is_healthy_and_armed; then
       return 0
     fi
     sleep 5
@@ -495,9 +499,18 @@ falkordb_pid="$(
     pid falkordb
 )"
 [[ "${falkordb_pid}" =~ ^[0-9]+$ ]]
+falkordb_restart_count="$(
+  docker inspect --format '{{.RestartCount}}' "${CONTAINER_NAME}"
+)"
 docker exec "${CONTAINER_NAME}" kill -TERM "${falkordb_pid}"
 wait_for_falkordb_restart "${falkordb_pid}"
+[[ "$(docker inspect --format '{{.RestartCount}}' "${CONTAINER_NAME}")" == \
+  "${falkordb_restart_count}" ]] || {
+  echo "FalkorDB recovery unexpectedly restarted the whole container" >&2
+  exit 1
+}
 assert_memory_contract verify
+wait_for_healthy
 
 restart_count="$(docker inspect --format '{{.RestartCount}}' "${CONTAINER_NAME}")"
 docker exec "${CONTAINER_NAME}" \
