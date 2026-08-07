@@ -15,13 +15,14 @@ import {
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { useCopilotUIStore } from "../../../../store";
 import { downloadArtifact } from "../../../ArtifactPanel/downloadArtifact";
 import { DeleteFileDialog } from "./components/DeleteFileDialog";
 import { FileRow } from "./components/FileRow";
 import { downloadFilesAsZip, fileItemToArtifactRef } from "./helpers";
 import { useSessionFiles, type SessionFile } from "./useSessionFiles";
+import { Download04Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   sessionId: string | null;
@@ -132,7 +133,7 @@ export function FilesTab({ sessionId }: Props) {
           aria-label="Download all"
           className="h-7 !min-w-0 !p-1"
         >
-          <DownloadSimpleIcon size={16} />
+          <Icon icon={Download04Icon} size={16} />
         </Button>
       </TooltipTrigger>
       <TooltipContent>Download all</TooltipContent>

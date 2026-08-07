@@ -8,13 +8,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { ChartBarIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatTierLabel, TIER_BADGE_CLASS_NAME } from "../../usageHelpers";
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsagePopover } from "./useUsagePopover";
+import { Chart01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   trigger?: ReactNode;
@@ -34,7 +35,7 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
       <PopoverTrigger asChild>
         {trigger ?? (
           <Button variant="ghost" size="icon" aria-label="Usage limits">
-            <ChartBarIcon className="!size-5" weight="light" />
+            <Icon icon={Chart01Icon} className="!size-5" />
           </Button>
         )}
       </PopoverTrigger>

@@ -25,6 +25,8 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    Expert,
+    LibraryAgent,
     SharedExecutionFile,
     UserWorkspace,
     UserWorkspaceFile,
@@ -114,6 +116,10 @@ class ExecutionContext(BaseModel):
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
 
+    # Expert attribution: carried at runtime so billing can meter per-expert
+    # spend and the executor can post run results into the expert's thread.
+    expert_id: Optional[str] = None
+
 
 # -------------------------- Models -------------------------- #
 
@@ -197,6 +203,10 @@ class GraphExecutionMeta(BaseDbModel):
     # paths where the caller doesn't re-supply them.
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
+
+    # Expert attribution, surfaced from the DB row for the same
+    # resume/requeue recovery reason as org/team above.
+    expert_id: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -328,6 +338,7 @@ class GraphExecutionMeta(BaseDbModel):
             is_dry_run=stats.is_dry_run if stats else False,
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
+            expert_id=_graph_exec.expertId,
         )
 
 
@@ -875,12 +886,23 @@ async def create_graph_execution(
     is_dry_run: bool = False,
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
+    expert_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
     Returns:
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
+    # Defense in depth: attribution must never cross users, even if a
+    # caller forgets its ownership check. Only costs a query on the rare
+    # expert-attributed path.
+    if expert_id:
+        expert = await Expert.prisma().find_first(
+            where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}
+        )
+        if expert is None:
+            raise ValueError(f"Expert #{expert_id} does not belong to user #{user_id}")
+
     result = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph_id,
@@ -912,6 +934,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
+            **({"expertId": expert_id} if expert_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),
@@ -919,6 +942,26 @@ async def create_graph_execution(
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
+
+    # Advance lastRunAt only forward (using this execution's creation time), so a
+    # delayed older execution can't overwrite a newer run's timestamp.
+    run_time = result.createdAt
+    try:
+        await LibraryAgent.prisma().update_many(
+            where={
+                "agentGraphId": graph_id,
+                "userId": user_id,
+                "OR": [
+                    {"lastRunAt": None},
+                    {"lastRunAt": {"lt": run_time}},
+                ],
+            },
+            data={"lastRunAt": run_time},
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to update LibraryAgent lastRunAt for graph {graph_id}: {e}"
+        )
 
     return GraphExecutionWithNodes.from_db(result)
 

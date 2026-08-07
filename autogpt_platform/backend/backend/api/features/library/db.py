@@ -189,7 +189,12 @@ async def list_library_agents(
 
     # Build search filter if applicable
     if search_term:
+        # Match both the snapshotted marketplace name/description (shown on the
+        # card for downloaded agents) and the underlying graph's own values, so
+        # searching the displayed title always finds the agent.
         where_clause["OR"] = [
+            {"name": {"contains": search_term, "mode": "insensitive"}},
+            {"description": {"contains": search_term, "mode": "insensitive"}},
             {
                 "AgentGraph": {
                     "is": {"name": {"contains": search_term, "mode": "insensitive"}}
@@ -204,12 +209,27 @@ async def list_library_agents(
             },
         ]
 
-    order_by: prisma.types.LibraryAgentOrderByInput | None = None
+    order_by: (
+        prisma.types.LibraryAgentOrderByInput
+        | list[prisma.types.LibraryAgentOrderByInput]
+        | None
+    ) = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
         order_by = {"createdAt": "asc"}
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
+    elif sort_by == library_model.LibraryAgentSort.LAST_RUN:
+        # lastRunAt desc with never-run agents last, ordered by updatedAt among
+        # themselves. Prisma Python's types omit the nulls option, but the query
+        # engine honors it at runtime.
+        order_by = cast(
+            list[prisma.types.LibraryAgentOrderByInput],
+            [
+                {"lastRunAt": {"sort": "desc", "nulls": "last"}},
+                {"updatedAt": "desc"},
+            ],
+        )
 
     library_agents = await prisma.models.LibraryAgent.prisma().find_many(
         where=where_clause,
@@ -449,6 +469,15 @@ async def get_library_agent_by_store_version_id(
         return None
     schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
     return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+
+
+async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str | None:
+    """Id-only lookup for building deep links (e.g. the expert run post) —
+    no relation includes, no schedule info, unlike the full getter below."""
+    agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"agentGraphId": graph_id, "userId": user_id, "isDeleted": False},
+    )
+    return agent.id if agent else None
 
 
 async def get_library_agent_by_graph_id(
@@ -814,6 +843,11 @@ async def update_graph_in_library(
 
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
+        # This path is only reached from the CoPilot/AutoPilot agent-update
+        # flow, which has no user-facing channel for skipped-preset warnings,
+        # so the migration result is intentionally discarded here. Skipped
+        # presets are surfaced on the interactive graph-activation endpoints
+        # (update_graph / set_graph_active_version) instead.
         if created_graph.webhook_input_node:
             await migrate_webhook_presets_to_new_version(
                 user_id=user_id,
@@ -1136,10 +1170,10 @@ async def add_store_agent_to_library(
         f"Adding agent from store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
-    graph_model = await resolve_graph_for_library(
+    graph_model, store_listing_version = await resolve_graph_for_library(
         store_listing_version_id, user_id, admin=False
     )
-    return await add_graph_to_library(store_listing_version_id, graph_model, user_id)
+    return await add_graph_to_library(graph_model, user_id, store_listing_version)
 
 
 async def add_store_agent_to_library_as_admin(
@@ -1153,10 +1187,10 @@ async def add_store_agent_to_library_as_admin(
         f"ADMIN adding agent from store listing version "
         f"#{store_listing_version_id} to library for user #{user_id}"
     )
-    graph_model = await resolve_graph_for_library(
+    graph_model, store_listing_version = await resolve_graph_for_library(
         store_listing_version_id, user_id, admin=True
     )
-    return await add_graph_to_library(store_listing_version_id, graph_model, user_id)
+    return await add_graph_to_library(graph_model, user_id, store_listing_version)
 
 
 ##############################################
@@ -1906,6 +1940,7 @@ async def create_preset(
     preset: library_model.LibraryAgentPresetCreatable,
     *,
     webhook_id: str | None = None,
+    expert_id: str | None = None,
 ) -> library_model.LibraryAgentPreset:
     """
     Creates a new AgentPreset for a user.
@@ -1916,6 +1951,9 @@ async def create_preset(
         webhook_id: Internal-only; not part of the public request model. Only
             trusted callers (the setup-trigger flow, legacy migration) pass a
             webhook they provisioned for the caller.
+        expert_id: Expert attribution, resolved by the route layer (this
+            module cannot import experts_db without a cycle). Runs fired by
+            the preset inherit it.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -1969,6 +2007,8 @@ async def create_preset(
         create_input["organizationId"] = graph.organization_id
     if graph.team_id:
         create_input["teamId"] = graph.team_id
+    if expert_id:
+        create_input["expertId"] = expert_id
     new_preset = await prisma.models.AgentPreset.prisma().create(
         data=create_input,
         include=AGENT_PRESET_INCLUDE,
@@ -2031,6 +2071,8 @@ async def create_preset_from_graph_execution(
             description=create_request.description,
             is_active=create_request.is_active,
         ),
+        # A preset built from an expert-attributed run keeps the attribution.
+        expert_id=graph_execution.expert_id,
     )
 
 
@@ -2143,7 +2185,7 @@ async def set_preset_webhook(
 async def migrate_webhook_presets_to_new_version(
     user_id: str,
     new_graph: graph_db.GraphModel,
-) -> int:
+) -> library_model.WebhookPresetMigrationResult:
     """
     Migrates webhook-attached presets for a graph to a newly activated version.
 
@@ -2178,12 +2220,13 @@ async def migrate_webhook_presets_to_new_version(
         new_graph: The newly activated graph version to migrate presets to.
 
     Returns:
-        The number of presets migrated.
+        The migration outcome: the number of presets migrated and the presets
+        that were skipped (left pinned) because the new trigger is incompatible.
     """
     new_trigger_node = new_graph.webhook_input_node
     if not (new_trigger_node and new_trigger_node.block.webhook_config):
         # New version has no webhook trigger to migrate presets onto.
-        return 0
+        return library_model.WebhookPresetMigrationResult()
 
     candidates = await prisma.models.AgentPreset.prisma().find_many(
         where={
@@ -2195,7 +2238,7 @@ async def migrate_webhook_presets_to_new_version(
         },
     )
     if not candidates:
-        return 0
+        return library_model.WebhookPresetMigrationResult()
 
     # Resolve the trigger block of each pinned version once. A preset is
     # compatible only if its pinned version uses the same trigger block as the
@@ -2215,6 +2258,7 @@ async def migrate_webhook_presets_to_new_version(
         == new_trigger_node.block_id
     }
 
+    skipped_presets: list[library_model.SkippedWebhookPreset] = []
     for preset in candidates:
         if preset.id in compatible_ids:
             continue
@@ -2226,9 +2270,18 @@ async def migrate_webhook_presets_to_new_version(
             f"Preset left pinned to v{preset.agentGraphVersion}; trigger needs "
             f"reconfiguration."
         )
+        skipped_presets.append(
+            library_model.SkippedWebhookPreset(
+                id=preset.id,
+                name=preset.name,
+                pinned_version=preset.agentGraphVersion,
+            )
+        )
 
     if not compatible_ids:
-        return 0
+        return library_model.WebhookPresetMigrationResult(
+            skipped_presets=skipped_presets
+        )
 
     # Preserve candidate order for a deterministic query. Re-assert userId and
     # the version guard so a concurrent activation that already bumped a preset
@@ -2249,7 +2302,10 @@ async def migrate_webhook_presets_to_new_version(
             f"Migrated {count} webhook preset(s) for graph #{new_graph.id} "
             f"to version {new_graph.version} (user #{user_id})"
         )
-    return count
+    return library_model.WebhookPresetMigrationResult(
+        migrated_count=count,
+        skipped_presets=skipped_presets,
+    )
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

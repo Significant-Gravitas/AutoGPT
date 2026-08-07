@@ -1,7 +1,7 @@
 import { IconRefresh, IconType } from "@/components/__legacy__/ui/icons";
 import { describe, expect, it } from "vitest";
 
-import { getAccountMenuPhosphorIcon } from "../components/AccountMenu/helpers";
+import { getAccountMenuIcon } from "../components/AccountMenu/helpers";
 import { getAccountMenuItems, getAccountMenuOptionIcon } from "../helpers";
 
 describe("account menu changelog entry", () => {
@@ -11,27 +11,23 @@ describe("account menu changelog entry", () => {
 
     expect(changelog).toBeDefined();
     expect(changelog?.external).toBe(true);
-    expect(changelog?.href).toBe(
-      "https://agpt.co/docs/platform/changelog/changelog/",
-    );
-    expect(changelog?.icon).toBe(IconType.Changelog);
+    expect(changelog?.href).toBe("https://agpt.co/changelog");
+    expect(changelog?.icon).toBe(IconType.WhatsNew);
 
     const changelogIndex = items.findIndex((i) => i.text === "Changelog");
     const helpIndex = items.findIndex((i) => i.text === "Help & Docs");
     expect(changelogIndex).toBeLessThan(helpIndex);
   });
 
-  it("maps the Changelog icon to a phosphor icon", () => {
-    expect(getAccountMenuPhosphorIcon(IconType.Changelog)).not.toBeNull();
+  it("maps the Changelog icon in the account menu", () => {
+    expect(getAccountMenuIcon(IconType.WhatsNew)).not.toBeNull();
   });
 
   it("maps the Changelog icon in the mobile menu (not the fallback)", () => {
-    // Mobile renders via getAccountMenuOptionIcon; it must handle Changelog
-    // explicitly rather than falling through to the default refresh icon.
-    const changelogIcon = getAccountMenuOptionIcon(IconType.Changelog);
+    const changelogIcon = getAccountMenuOptionIcon(IconType.WhatsNew);
     const helpIcon = getAccountMenuOptionIcon(IconType.Help);
 
     expect(changelogIcon.type).not.toBe(IconRefresh);
-    expect(changelogIcon.type).not.toBe(helpIcon.type);
+    expect(changelogIcon.props.icon).not.toBe(helpIcon.props.icon);
   });
 });

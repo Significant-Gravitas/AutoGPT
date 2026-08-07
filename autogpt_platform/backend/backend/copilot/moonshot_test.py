@@ -22,7 +22,8 @@ class TestIsMoonshotModel:
             "moonshotai/kimi-k2-thinking",
             "moonshotai/kimi-k2.5",
             "moonshotai/kimi-k2",
-            "moonshotai/kimi-k3.0",  # Future SKU must match transparently.
+            "moonshotai/kimi-k3",
+            "moonshotai/kimi-k4",  # Future SKU must match transparently.
         ],
     )
     def test_moonshot_slugs_match(self, model: str) -> None:
@@ -50,15 +51,20 @@ class TestIsMoonshotModel:
 
 
 class TestRateCardUsd:
-    """Rate card defaults to the shared Moonshot price for every SKU."""
+    """Shared K2.x default plus per-slug overrides for split-priced SKUs."""
 
     def test_moonshot_default_rate(self) -> None:
         assert rate_card_usd("moonshotai/kimi-k2.6") == (0.60, 2.80)
 
+    def test_kimi_k3_premium_override(self) -> None:
+        # K3 is split-priced ($3/$15 per Mtok) — the override must win
+        # over the shared K2.x default.
+        assert rate_card_usd("moonshotai/kimi-k3") == (3.00, 15.00)
+
     def test_future_moonshot_sku_inherits_default(self) -> None:
         # Verifies the prefix-based fallback — new SKUs don't need a code
         # edit to get a reasonable rate card.
-        assert rate_card_usd("moonshotai/kimi-k3.0") == (0.60, 2.80)
+        assert rate_card_usd("moonshotai/kimi-k4") == (0.60, 2.80)
 
     def test_non_moonshot_returns_none(self) -> None:
         assert rate_card_usd("anthropic/claude-sonnet-4.6") is None

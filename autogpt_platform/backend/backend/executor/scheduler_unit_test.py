@@ -19,8 +19,11 @@ from backend.executor.scheduler import (
     GraphExecutionJobArgs,
     GraphExecutionJobInfo,
     Scheduler,
+    _best_effort_unschedule,
     _build_trigger,
+    _cleanup_old_schedules_without_id,
     _execute_copilot_turn,
+    _execute_graph,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
@@ -350,6 +353,56 @@ async def test_self_delete_copilot_turn_swallows_errors():
 
 
 # ---------------------------------------------------------------------------
+# _best_effort_unschedule / _cleanup_old_schedules_without_id
+# ---------------------------------------------------------------------------
+
+
+def _schedule_info(schedule_id: str | None, job_id: str) -> MagicMock:
+    info = MagicMock()
+    info.schedule_id = schedule_id
+    info.id = job_id
+    return info
+
+
+@pytest.mark.asyncio
+async def test_unschedule_without_id_runs_targeted_graph_cleanup():
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules.return_value = [
+        _schedule_info(None, "legacy-job"),
+        _schedule_info("sched-9", "valid-job"),
+    ]
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _best_effort_unschedule(None, "graph-1", "user-1", reason="test")
+    # Only the schedule_id-less legacy job is deleted; valid ones survive.
+    mock_client.delete_schedule.assert_awaited_once_with(
+        schedule_id="legacy-job", user_id="user-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_unschedule_without_id_or_graph_is_a_no_op():
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _best_effort_unschedule(None, None, "user-1", reason="test")
+    mock_client.delete_schedule.assert_not_awaited()
+    mock_client.get_execution_schedules.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_schedules_swallows_per_schedule_delete_errors():
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules.return_value = [
+        _schedule_info(None, "legacy-1"),
+        _schedule_info(None, "legacy-2"),
+    ]
+    mock_client.delete_schedule.side_effect = [RuntimeError("boom"), None]
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        # Must not raise, and must still attempt the second delete.
+        await _cleanup_old_schedules_without_id("graph-1", user_id="user-1")
+    assert mock_client.delete_schedule.await_count == 2
+
+
+# ---------------------------------------------------------------------------
 # _reschedule_one_shot_after_cap
 # ---------------------------------------------------------------------------
 
@@ -417,6 +470,50 @@ def test_graph_args_defaults_kind_to_graph():
         input_credentials={},
     )
     assert args.kind == "graph"
+
+
+def test_graph_args_expert_id_defaults_to_none():
+    """Legacy persisted job kwargs predate expert attribution; they must
+    deserialize with ``expert_id=None``."""
+    args = GraphExecutionJobArgs(
+        user_id="u",
+        graph_id="g",
+        graph_version=1,
+        cron="* * * * *",
+        input_data={},
+        input_credentials={},
+    )
+    assert args.expert_id is None
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_forwards_expert_id():
+    """An expert-attributed schedule must stamp its expert_id onto the
+    execution it creates, so any surface can answer "who ran this"."""
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+        expert_id="expert-1",
+    )
+    mock_add = AsyncMock(return_value=MagicMock(id="exec-1"))
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
 
 
 def test_copilot_turn_args_cap_retry_count_defaults_to_zero():

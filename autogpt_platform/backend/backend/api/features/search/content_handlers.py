@@ -18,8 +18,10 @@ from typing import TYPE_CHECKING, Any, get_args, get_origin
 from prisma.enums import ContentType
 
 from backend.blocks import get_blocks
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
+from backend.copilot.db import exclude_dream_sessions_sql
 from backend.data.db import query_raw_with_schema
+from backend.util.docs import get_docs_root
 from backend.util.text import split_camelcase
 
 if TYPE_CHECKING:
@@ -362,9 +364,9 @@ def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentIt
         for provider in info.provider
     ]
 
-    # Check if block has LlmModel field in input schema
+    # Check if block has LLMModel field in input schema
     has_llm_model_field = any(
-        _contains_type(field.annotation, LlmModel)
+        _contains_type(field.annotation, LLMModel)
         for field in block.input_schema.model_fields.values()
     )
 
@@ -404,20 +406,12 @@ class DocumentationHandler(ContentHandler):
     def content_type(self) -> ContentType:
         return ContentType.DOCUMENTATION
 
-    def _get_docs_root(self) -> Path:
-        """Get the documentation root directory."""
-        # content_handlers.py is at: backend/backend/api/features/store/content_handlers.py
-        # Need to go up to project root then into docs/
-        # In container: /app/autogpt_platform/backend/backend/api/features/store -> /app/docs
-        # In development: /repo/autogpt_platform/backend/backend/api/features/store -> /repo/docs
-        this_file = Path(
-            __file__
-        )  # .../backend/backend/api/features/store/content_handlers.py
-        project_root = (
-            this_file.parent.parent.parent.parent.parent.parent.parent
-        )  # -> /app or /repo
-        docs_root = project_root / "docs"
-        return docs_root
+    def _get_docs_root(self) -> Path | None:
+        """Get the documentation root directory (shared with the copilot
+        docs tools so indexed paths and page reads always agree), or None
+        when this deployment didn't bundle the docs — the indexer degrades
+        to empty results instead of crashing."""
+        return get_docs_root()
 
     def _extract_doc_title(self, file_path: Path) -> str:
         """Extract the document title from a markdown file."""
@@ -577,8 +571,8 @@ class DocumentationHandler(ContentHandler):
         """
         docs_root = self._get_docs_root()
 
-        if not docs_root.exists():
-            logger.warning(f"Documentation root not found: {docs_root}")
+        if docs_root is None:
+            logger.warning("Documentation root not found")
             return []
 
         # Find all .md and .mdx files
@@ -682,7 +676,7 @@ class DocumentationHandler(ContentHandler):
         """
         docs_root = self._get_docs_root()
 
-        if not docs_root.exists():
+        if docs_root is None:
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
         # Get all section content IDs
@@ -714,7 +708,7 @@ class DocumentationHandler(ContentHandler):
         # or removed section drops from this set and its embedding gets
         # cleaned up.
         docs_root = self._get_docs_root()
-        if not docs_root.exists():
+        if docs_root is None:
             return set()
         # Filesystem walk is sync; keep it off the event loop.
         return await asyncio.to_thread(self._get_all_section_content_ids, docs_root)
@@ -958,6 +952,9 @@ class ChatSessionHandler(ContentHandler):
         return ContentType.CHAT_SESSION
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
+        # Dream-pass sessions are titled but are pipeline artifacts, not
+        # user chats — keep them out of the embedding backfill (same
+        # null-safe predicate as the sidebar list in copilot/db.py).
         missing = await query_raw_with_schema(
             """
             SELECT
@@ -971,6 +968,9 @@ class ChatSessionHandler(ContentHandler):
               AND uce."userId" = cs."userId"
             WHERE cs.title IS NOT NULL
               AND btrim(cs.title) <> ''
+              AND """
+            + exclude_dream_sessions_sql("cs.metadata")
+            + """
               AND uce."contentId" IS NULL
             LIMIT $1
             """,
@@ -999,7 +999,8 @@ class ChatSessionHandler(ContentHandler):
             SELECT COUNT(*) as count
             FROM {schema_prefix}"ChatSession"
             WHERE title IS NOT NULL AND btrim(title) <> ''
-            """
+              AND """
+            + exclude_dream_sessions_sql()
         )
         total = total_result[0]["count"] if total_result else 0
 
@@ -1012,7 +1013,8 @@ class ChatSessionHandler(ContentHandler):
               AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
               AND uce."userId" = cs."userId"
             WHERE cs.title IS NOT NULL AND btrim(cs.title) <> ''
-            """
+              AND """
+            + exclude_dream_sessions_sql("cs.metadata")
         )
         with_embeddings = with_result[0]["count"] if with_result else 0
 
@@ -1025,13 +1027,16 @@ class ChatSessionHandler(ContentHandler):
     async def get_valid_content_ids(self) -> set[str]:
         # Mirrors ``get_missing_items``: sessions without a non-empty
         # title aren't embedded; a session that was deleted or had its
-        # title cleared should have its embedding cleaned up.
+        # title cleared should have its embedding cleaned up. Excluding
+        # dream sessions here also makes the cleanup sweep delete any
+        # dream-session embeddings that were created before the filter.
         rows = await query_raw_with_schema(
             """
             SELECT id
             FROM {schema_prefix}"ChatSession"
             WHERE title IS NOT NULL AND btrim(title) <> ''
-            """,
+              AND """
+            + exclude_dream_sessions_sql(),
         )
         return {row["id"] for row in rows}
 

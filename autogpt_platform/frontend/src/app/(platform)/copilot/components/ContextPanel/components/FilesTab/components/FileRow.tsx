@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { DownloadSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { classifyArtifact } from "../../../../ArtifactPanel/helpers";
 import {
   formatFileSize,
@@ -13,6 +12,8 @@ import {
   isUploadedFile,
 } from "../helpers";
 import type { SessionFile } from "../useSessionFiles";
+import { Delete02Icon, Download04Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   file: SessionFile;
@@ -23,7 +24,7 @@ interface Props {
 
 export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
   const { item } = file;
-  const Icon = classifyArtifact(item.mime_type ?? null, item.name).icon;
+  const fileIcon = classifyArtifact(item.mime_type ?? null, item.name).icon;
   const canDelete = !isUploadedFile(item);
 
   return (
@@ -35,7 +36,7 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
         title={item.name}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <Icon size={16} className="shrink-0 text-black" />
+          <Icon icon={fileIcon} size={16} className="shrink-0 text-black" />
           <OverflowText
             variant="body"
             value={item.name}
@@ -56,7 +57,7 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
               onClick={() => onDownload(file)}
               aria-label={`Download ${item.name}`}
             >
-              <DownloadSimpleIcon size={16} />
+              <Icon icon={Download04Icon} size={16} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Download</TooltipContent>
@@ -70,7 +71,7 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
                 onClick={() => onRequestDelete(file)}
                 aria-label={`Delete ${item.name}`}
               >
-                <TrashIcon size={16} />
+                <Icon icon={Delete02Icon} size={16} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Delete</TooltipContent>

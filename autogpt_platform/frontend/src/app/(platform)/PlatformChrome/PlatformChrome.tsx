@@ -6,6 +6,7 @@ import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/Tou
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
+import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
   SidebarInset,
@@ -13,6 +14,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
@@ -26,10 +28,15 @@ interface Props {
 export function PlatformChrome({ children }: Props) {
   const {
     showNewLayout,
+    isNewLayoutActive,
+    isLayoutReady,
     showTourSidebar,
     overlayInsetHeader,
     hasInsetHeaderTitle,
+    isSettingsRoute,
   } = usePlatformChrome();
+  // The collapsed-by-default sidebar ships with the brain-dump experience.
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
 
   const content = (
     <TopUpPromptProvider>
@@ -55,7 +62,10 @@ export function PlatformChrome({ children }: Props) {
 
   if (showNewLayout) {
     return (
-      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
+      <SidebarProvider
+        defaultOpen={!isBrainDumpEnabled}
+        style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
+      >
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
           <header
@@ -85,9 +95,23 @@ export function PlatformChrome({ children }: Props) {
     );
   }
 
+  // Settings renders its own sidebar shell (with a Back link) — no top Navbar.
+  // Only the new layout drops the Navbar here; classic users keep it below so
+  // they don't lose global nav (wallet, account menu) or a way back on mobile.
+  if (isSettingsRoute && isNewLayoutActive) {
+    return (
+      <main className="flex h-screen w-full flex-col">
+        <AdminImpersonationBanner />
+        <GlobalSearchOverlay />
+        <section className="flex-1">{content}</section>
+      </main>
+    );
+  }
+
   return (
     <main className="flex h-screen w-full flex-col">
       <Navbar />
+      {isLayoutReady && !isNewLayoutActive ? <ChangelogPopup /> : null}
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

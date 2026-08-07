@@ -1840,7 +1840,7 @@ export enum IconType {
   Chat,
   Billing,
   Help,
-  Changelog,
+  WhatsNew,
 }
 
 export function getIconForSocial(

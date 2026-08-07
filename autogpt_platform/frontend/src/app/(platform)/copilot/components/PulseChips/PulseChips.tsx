@@ -1,15 +1,16 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  ArrowRightIcon,
-  EyeIcon,
-  ChatCircleDotsIcon,
-} from "@phosphor-icons/react";
 import NextLink from "next/link";
 import { StatusBadge } from "@/app/(platform)/library/components/StatusBadge/StatusBadge";
 import styles from "./PulseChips.module.css";
 import type { PulseChipData } from "./types";
+import {
+  ArrowRight02Icon,
+  Chatting01Icon,
+  EyeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   chips: PulseChipData[];
@@ -31,7 +32,7 @@ export function PulseChips({ chips, onChipClick }: Props) {
           href="/library"
           className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-700"
         >
-          View all <ArrowRightIcon size={12} />
+          View all <Icon icon={ArrowRight02Icon} size={12} />
         </NextLink>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300">
@@ -83,7 +84,7 @@ function PulseChip({ chip, onAsk }: ChipProps) {
           href={`/library/agents/${chip.agentID}`}
           className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
         >
-          <EyeIcon size={14} />
+          <Icon icon={EyeIcon} size={14} />
           See
         </NextLink>
         <button
@@ -91,7 +92,7 @@ function PulseChip({ chip, onAsk }: ChipProps) {
           onClick={handleAsk}
           className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
         >
-          <ChatCircleDotsIcon size={14} />
+          <Icon icon={Chatting01Icon} size={14} />
           Ask
         </button>
       </div>

@@ -2,7 +2,7 @@ import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
 } from "@/lib/constants";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -10,11 +10,28 @@ import {
   fetchWorkspaceDownloadWithRetry,
   getWorkspaceDownloadErrorMessage,
   isWorkspaceDownloadRequest,
+  watchResponseStart,
 } from "./route.helpers";
 
 // 5 minutes for large uploads. Most calls finish in well under a second.
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
+
+// Hard ceiling on the backend hop so a stalled connection becomes a definite
+// 504 instead of an eternal spinner. Sized just under `maxDuration` so it never
+// interrupts a legitimate large upload/download that fits the function budget —
+// it only converts a true stall (which would otherwise hit Vercel's opaque
+// function timeout) into a clean error response.
+const BACKEND_FETCH_TIMEOUT_MS = 290_000;
+
+function isTimeoutError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name: unknown }).name === "TimeoutError"
+  );
+}
 
 const FORWARDED_REQUEST_HEADERS: ReadonlyArray<string> = [
   "content-type",
@@ -197,15 +214,30 @@ async function handler(
     const headers = buildForwardHeaders(req, token);
     const hasBody = !METHODS_WITHOUT_BODY.has(method);
 
-    const backendResponse = await fetch(backendUrl, {
-      method,
-      headers,
-      body: hasBody ? req.body : undefined,
-      // `duplex: "half"` is required by Node's fetch when sending a
-      // ReadableStream body. Cast because TS lib types haven't caught up.
-      ...(hasBody ? ({ duplex: "half" } as RequestInit) : {}),
-      redirect: "manual",
-    });
+    // Two-phase timeout: the overall ceiling covers the whole hop, while the
+    // much tighter response-start watch arms only once the request body has
+    // been fully uploaded — a multi-minute upload is legitimate, a backend
+    // that stays silent after receiving everything is stalled.
+    const responseStart = watchResponseStart(hasBody ? req.body : null);
+
+    let backendResponse: Response;
+    try {
+      backendResponse = await fetch(backendUrl, {
+        method,
+        headers,
+        body: responseStart.body,
+        // `duplex: "half"` is required by Node's fetch when sending a
+        // ReadableStream body. Cast because TS lib types haven't caught up.
+        ...(responseStart.body ? ({ duplex: "half" } as RequestInit) : {}),
+        redirect: "manual",
+        signal: AbortSignal.any([
+          AbortSignal.timeout(BACKEND_FETCH_TIMEOUT_MS),
+          responseStart.signal,
+        ]),
+      });
+    } finally {
+      responseStart.clear();
+    }
 
     return new NextResponse(backendResponse.body, {
       status: backendResponse.status,
@@ -213,13 +245,14 @@ async function handler(
       headers: filterResponseHeaders(backendResponse.headers),
     });
   } catch (error) {
+    const timedOut = isTimeoutError(error);
     console.error(`Proxy error for ${method} /${path.join("/")}:`, error);
     return NextResponse.json(
       {
-        error: "Proxy request failed",
+        error: timedOut ? "Proxy request timed out" : "Proxy request failed",
         detail: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 502 },
+      { status: timedOut ? 504 : 502 },
     );
   }
 }

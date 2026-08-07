@@ -1,7 +1,12 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowSquareOut, Sparkle, X } from "@phosphor-icons/react";
+import {
+  ArrowUpRight01Icon,
+  Cancel01Icon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
 import { useChangelog } from "./useChangelog";
 
 export function ChangelogPopup() {
@@ -39,7 +44,7 @@ export function ChangelogPopup() {
       <div className="overflow-hidden rounded-xl border border-border bg-background shadow-2xl shadow-black/10">
         <div className="flex items-center justify-between bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-5 py-3">
           <div className="flex items-center gap-2">
-            <Sparkle className="h-4 w-4 text-white/90" weight="fill" />
+            <Icon icon={SparklesIcon} className="h-4 w-4 text-white/90" />
             <Text
               variant="body-medium"
               as="span"
@@ -53,7 +58,7 @@ export function ChangelogPopup() {
             className="rounded-md p-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Dismiss changelog"
           >
-            <X className="h-4 w-4" weight="bold" />
+            <Icon icon={Cancel01Icon} className="h-4 w-4" />
           </button>
         </div>
 
@@ -85,7 +90,7 @@ export function ChangelogPopup() {
             className="flex items-center gap-1 text-xs font-medium text-accent transition-colors hover:text-accent/80"
           >
             View changelog
-            <ArrowSquareOut className="h-3 w-3" />
+            <Icon icon={ArrowUpRight01Icon} className="h-3 w-3" />
           </a>
         </div>
       </div>

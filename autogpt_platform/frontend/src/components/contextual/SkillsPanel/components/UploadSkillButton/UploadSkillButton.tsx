@@ -6,8 +6,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
 import { useUploadSkillButton } from "./useUploadSkillButton";
+import { Upload03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onUploaded?: (name: string) => void;
@@ -36,7 +37,7 @@ export function UploadSkillButton({ onUploaded }: Props) {
             loading={isUploading}
             data-testid="skill-upload-button"
           >
-            <UploadSimpleIcon className="mr-1 h-4 w-4" />
+            <Icon icon={Upload03Icon} className="mr-1 h-4 w-4" />
             Upload skill
           </Button>
         </TooltipTrigger>
