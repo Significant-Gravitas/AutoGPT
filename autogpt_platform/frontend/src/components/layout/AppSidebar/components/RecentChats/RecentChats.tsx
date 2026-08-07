@@ -85,6 +85,8 @@ export function RecentChats() {
                 ? expertsById.get(group.expertId)
                 : null;
               return (
+                // Keyed by expert id so each group's collapse/reveal state
+                // survives the session list's periodic refetch.
                 <ExpertChatGroup
                   key={group.expertId ?? "autopilot"}
                   label={

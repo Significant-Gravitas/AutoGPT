@@ -47,7 +47,9 @@ export function ExpertChatGroup({
       >
         <Avatar className="h-5 w-5">
           {avatarUrl ? <AvatarImage src={avatarUrl} alt={label} /> : null}
-          <AvatarFallback className="text-[9px]">{label}</AvatarFallback>
+          <AvatarFallback className="text-[9px]">
+            {label.charAt(0).toUpperCase()}
+          </AvatarFallback>
         </Avatar>
         <span className="truncate">{label}</span>
         {role ? (
@@ -71,6 +73,7 @@ export function ExpertChatGroup({
           {hasHiddenSessions && (
             <button
               type="button"
+              aria-label={`Load more ${label} chats`}
               onClick={() =>
                 setVisibleCount((count) => count + EXPERT_GROUP_PREVIEW_COUNT)
               }
