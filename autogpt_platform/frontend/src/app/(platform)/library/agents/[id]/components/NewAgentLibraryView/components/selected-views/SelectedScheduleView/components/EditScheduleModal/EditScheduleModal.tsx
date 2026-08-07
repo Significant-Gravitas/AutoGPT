@@ -14,9 +14,14 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 type Props = {
   graphId: string;
   schedule: GraphExecutionJobInfo;
+  triggerClassName?: string;
 };
 
-export function EditScheduleModal({ graphId, schedule }: Props) {
+export function EditScheduleModal({
+  graphId,
+  schedule,
+  triggerClassName,
+}: Props) {
   const {
     isOpen,
     setIsOpen,
@@ -45,7 +50,7 @@ export function EditScheduleModal({ graphId, schedule }: Props) {
         <Button
           variant="ghost"
           size="small"
-          className="absolute -right-2 -top-2"
+          className={triggerClassName ?? "absolute -right-2 -top-2"}
         >
           <Icon icon={PencilIcon} className="size-4" /> Edit schedule
         </Button>
