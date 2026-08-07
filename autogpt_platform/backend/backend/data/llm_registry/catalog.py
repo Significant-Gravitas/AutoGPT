@@ -185,6 +185,35 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=563.0,
                 ),
             ),
+            CatalogModel(
+                slug="claude-sonnet-5",
+                display_name="Claude Sonnet 5",
+                provider="anthropic",
+                creator="anthropic",
+                # True window is 1M; capped at 200K like every Anthropic
+                # entry until the Claude-5 tokenizer correction factor has
+                # soaked (the family tokenizes ~30% denser than 4.x, so
+                # estimate-based compaction targets need the margin).
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Sticker price ($3/$15 per Mtok; intro pricing $2/$10 ends
+                # 2026-08-31 — pricing at sticker avoids a repricing PR).
+                # Credits at the standard 1.5x margin; cache read $0.30,
+                # cache write (5m) $3.75.
+                cost=CatalogModelCost(
+                    run_credits=9,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
+                    cache_read_credits_per_1m=45.0,
+                    cache_creation_credits_per_1m=563.0,
+                    provider_input_usd_per_1m=3.00,
+                    provider_output_usd_per_1m=15.00,
+                ),
+            ),
             # ----- Groq -----
             CatalogModel(
                 slug="llama-3.1-8b-instant",

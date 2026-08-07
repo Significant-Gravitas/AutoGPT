@@ -78,7 +78,7 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
-from . import billing
+from . import billing, expert_posts
 from .activity_status_generator import generate_activity_status_for_execution
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
@@ -973,6 +973,9 @@ class ExecutionProcessor:
         finally:
             # Communication handling
             billing.handle_agent_run_notif(db_client, graph_exec, exec_stats)
+            expert_posts.handle_expert_run_post(
+                db_client, graph_exec, exec_meta.status, exec_stats
+            )
 
             update_graph_execution_state(
                 db_client=db_client,
@@ -1468,7 +1471,15 @@ class ExecutionManager(AppProcess):
 
         pool_size_gauge.set(self.pool_size)
         self._update_prompt_metrics()
-        start_http_server(settings.config.execution_manager_port)
+        # Deliberate reuse of pyro_host: despite the legacy name it is the
+        # bind address for every service's internal listener (see
+        # backend.util.service). Metrics follow the same interface as the RPC
+        # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
+        # cross-container scraping), loopback in the single-container runtime.
+        start_http_server(
+            settings.config.execution_manager_port,
+            addr=settings.config.pyro_host,
+        )
 
         self.cancel_thread.start()
         self.run_thread.start()

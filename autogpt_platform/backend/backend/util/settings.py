@@ -205,6 +205,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
     )
+    expert_weekly_credit_budget_default: int = Field(
+        default=500,
+        ge=0,
+        description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
+    )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
         description="Email address to send refund notifications to.",

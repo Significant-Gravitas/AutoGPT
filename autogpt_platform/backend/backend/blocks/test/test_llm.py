@@ -1605,3 +1605,61 @@ class TestLLMModelMissingHandler:
                 f"OpenRouter alias missing for {member.value} — expected slug "
                 f"{slug!r} to resolve back to {member.name}"
             )
+
+
+class TestClaude5ModelThreading:
+    """The Claude-5 correction only works if ``llm_call`` threads the
+    selected model into BOTH token paths: compaction (``compress_context``)
+    and budget sizing (``estimate_token_count``). These pin the wiring —
+    the estimator behavior itself is covered in ``util/prompt_test.py``."""
+
+    @pytest.mark.asyncio
+    async def test_llm_call_threads_model_into_both_token_paths(self):
+        mock_response = MagicMock()
+        mock_response.output_text = "ok"
+        mock_response.output = []
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+
+        compress_result = MagicMock()
+        compress_result.error = None
+        compress_result.messages = [{"role": "user", "content": "hi"}]
+
+        with (
+            patch(
+                "backend.blocks.llm.compress_context",
+                new=AsyncMock(return_value=compress_result),
+            ) as mock_compress,
+            patch(
+                "backend.blocks.llm.estimate_token_count", return_value=100
+            ) as mock_estimate,
+            patch("openai.AsyncOpenAI") as mock_openai,
+        ):
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(return_value=mock_response)
+
+            await llm.llm_call(
+                credentials=llm.TEST_CREDENTIALS,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "hi"}],
+                max_tokens=100,
+                compress_prompt_to_fit=True,
+            )
+
+        expected_model = llm.DEFAULT_LLM_MODEL.value
+        assert mock_compress.call_args.kwargs["model"] == expected_model
+        assert mock_estimate.call_args.kwargs["model"] == expected_model
+
+    @pytest.mark.asyncio
+    async def test_available_tokens_shrink_for_claude_5(self):
+        """Same context window, same prompt: the Claude-5 estimate must be
+        larger than the 4.6 estimate, shrinking max_tokens headroom."""
+        from backend.util.prompt import estimate_token_count
+
+        prompt = [{"role": "user", "content": "hello world " * 500}]
+        m46 = llm.LLMModel.CLAUDE_4_6_SONNET
+        m5 = llm.LLMModel.CLAUDE_5_SONNET
+        est_46 = estimate_token_count(prompt, model=m46.value)
+        est_5 = estimate_token_count(prompt, model=m5.value)
+        assert est_5 == int(est_46 * 1.5)
+        assert (m5.context_window - est_5) < (m46.context_window - est_46)
