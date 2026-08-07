@@ -21,8 +21,8 @@ import {
 import {
   fetchGooglePickerPublicConfig,
   GOOGLE_PICKER_PUBLIC_CONFIG_QUERY_KEY,
-  hasCompleteGooglePickerConfig,
   resolveGooglePickerConfig,
+  resolveGooglePickerConfigForLoad,
 } from "./publicConfig";
 import {
   type EnvironmentDrivenGoogleConfig,
@@ -96,11 +96,10 @@ export function useGoogleDrivePicker(options: Props) {
     onError,
   } = options || {};
   const environmentConfig = readEnvGoogleConfig();
-  const configuredGoogleConfig: EnvironmentDrivenGoogleConfig = {
-    developerKey: options.developerKey || environmentConfig.developerKey,
-    clientId: options.clientId || environmentConfig.clientId,
-    appId: options.appId || environmentConfig.appId,
-  };
+  const configuredGoogleConfig = resolveGooglePickerConfig(
+    options,
+    environmentConfig,
+  );
 
   const requestedScopes = options?.scopes || defaultScopes;
   const [isLoading, setIsLoading] = useState(false);
@@ -113,7 +112,9 @@ export function useGoogleDrivePicker(options: Props) {
   const tokenClientRef = useRef<TokenClient | null>(null);
   const pickerReadyRef = useRef(false);
   const usedCredentialIdRef = useRef<string | undefined>(undefined);
-  const resolvedGoogleConfigRef = useRef(configuredGoogleConfig);
+  const resolvedGoogleConfigRef = useRef<
+    Required<EnvironmentDrivenGoogleConfig> | undefined
+  >(undefined);
   const credentials = useCredentials(getCredentialsSchema(requestedScopes));
   const queryClient = useQueryClient();
   const isReady = pickerReadyRef.current && !!tokenClientRef.current;
@@ -248,22 +249,15 @@ export function useGoogleDrivePicker(options: Props) {
       try {
         setIsLoading(true);
 
-        const configPromise = hasCompleteGooglePickerConfig(
+        const configPromise = resolveGooglePickerConfigForLoad(
           configuredGoogleConfig,
-        )
-          ? Promise.resolve(configuredGoogleConfig)
-          : queryClient
-              .fetchQuery({
-                queryKey: GOOGLE_PICKER_PUBLIC_CONFIG_QUERY_KEY,
-                queryFn: fetchGooglePickerPublicConfig,
-                staleTime: Infinity,
-              })
-              .then((runtimeConfig) =>
-                resolveGooglePickerConfig(
-                  configuredGoogleConfig,
-                  runtimeConfig,
-                ),
-              );
+          () =>
+            queryClient.fetchQuery({
+              queryKey: GOOGLE_PICKER_PUBLIC_CONFIG_QUERY_KEY,
+              queryFn: fetchGooglePickerPublicConfig,
+              staleTime: Infinity,
+            }),
+        );
 
         const [resolvedGoogleConfig] = await Promise.all([
           configPromise,
@@ -271,7 +265,6 @@ export function useGoogleDrivePicker(options: Props) {
           loadGoogleIdentityServices(),
         ]);
 
-        assertCompleteGooglePickerConfig(resolvedGoogleConfig);
         resolvedGoogleConfigRef.current = resolvedGoogleConfig;
         tokenClientRef.current =
           window.google!.accounts!.oauth2!.initTokenClient({
@@ -324,24 +317,12 @@ export function useGoogleDrivePicker(options: Props) {
   }
 
   function buildAndShowPicker(accessToken: string): void {
-    const { developerKey, appId } = resolvedGoogleConfigRef.current;
-    if (!developerKey) {
-      const error = new Error(
-        "Missing Google Drive Picker Configuration: developer key is not set",
-      );
-      console.error("[useGoogleDrivePicker]", error.message);
-      onError(error);
+    const resolvedGoogleConfig = resolvedGoogleConfigRef.current;
+    if (!resolvedGoogleConfig) {
+      onError(new Error("Google Drive Picker configuration is not loaded"));
       return;
     }
-
-    if (!appId) {
-      const error = new Error(
-        "Missing Google Drive Picker Configuration: app ID is not set",
-      );
-      console.error("[useGoogleDrivePicker]", error.message);
-      onError(error);
-      return;
-    }
+    const { developerKey, appId } = resolvedGoogleConfig;
 
     const gp = window.google!.picker!;
 
@@ -431,14 +412,4 @@ export function useGoogleDrivePicker(options: Props) {
     setSelectedCredential,
     usedCredentialId: usedCredentialIdRef.current,
   };
-}
-
-function assertCompleteGooglePickerConfig(
-  config: EnvironmentDrivenGoogleConfig,
-): asserts config is Required<EnvironmentDrivenGoogleConfig> {
-  if (!config.clientId) throw new Error("Google OAuth client ID is not set");
-  if (!config.developerKey) {
-    throw new Error("Google Drive Picker developer key is not set");
-  }
-  if (!config.appId) throw new Error("Google Drive Picker app ID is not set");
 }

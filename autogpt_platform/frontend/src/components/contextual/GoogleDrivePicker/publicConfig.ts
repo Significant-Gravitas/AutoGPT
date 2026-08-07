@@ -39,6 +39,28 @@ export function hasCompleteGooglePickerConfig(
   return Boolean(config.clientId && config.developerKey && config.appId);
 }
 
+export function assertCompleteGooglePickerConfig(
+  config: EnvironmentDrivenGoogleConfig,
+): asserts config is Required<EnvironmentDrivenGoogleConfig> {
+  if (hasCompleteGooglePickerConfig(config)) return;
+  if (!config.clientId) throw new Error("Google OAuth client ID is not set");
+  if (!config.developerKey) {
+    throw new Error("Google Drive Picker developer key is not set");
+  }
+  throw new Error("Google Drive Picker app ID is not set");
+}
+
+export async function resolveGooglePickerConfigForLoad(
+  configured: EnvironmentDrivenGoogleConfig,
+  fetchRuntimeConfig: () => Promise<EnvironmentDrivenGoogleConfig>,
+) {
+  const resolved = hasCompleteGooglePickerConfig(configured)
+    ? configured
+    : resolveGooglePickerConfig(configured, await fetchRuntimeConfig());
+  assertCompleteGooglePickerConfig(resolved);
+  return resolved;
+}
+
 function parseGooglePickerPublicConfig(
   value: unknown,
 ): EnvironmentDrivenGoogleConfig {

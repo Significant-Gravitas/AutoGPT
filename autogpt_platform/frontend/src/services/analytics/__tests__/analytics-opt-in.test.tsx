@@ -17,7 +17,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/script", () => ({
-  default: ({ id }: { id?: string }) => <script data-testid={id} />,
+  default: ({ id, src }: { id?: string; src?: string }) => (
+    <script data-testid={id || "external-analytics"} data-src={src} />
+  ),
 }));
 
 vi.mock("@vercel/analytics/next", () => ({
@@ -46,9 +48,34 @@ describe("self-hosted analytics opt-in", () => {
     );
 
     await waitFor(() => {
+      expect(screen.queryByTestId("_custom-ga-init")).toBeNull();
       expect(screen.queryByTestId("_custom-ga")).toBeNull();
+      expect(screen.queryByTestId("external-analytics")).toBeNull();
       expect(screen.queryByTestId("vercel-analytics")).toBeNull();
       expect(screen.queryByTestId("speed-insights")).toBeNull();
+    });
+  });
+
+  it("renders consented analytics when the operator enabled them", async () => {
+    render(
+      <>
+        <SetupAnalytics
+          enabled
+          host="platform.agpt.co"
+          ga={{ gaId: "G-AUTOGPT" }}
+        />
+        <VercelAnalyticsWrapper enabled />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("_custom-ga-init")).toBeDefined();
+      expect(screen.getByTestId("_custom-ga")).toBeDefined();
+      expect(
+        screen.getByTestId("external-analytics").getAttribute("data-src"),
+      ).toBe("https://datafa.st/js/script.js");
+      expect(screen.getByTestId("vercel-analytics")).toBeDefined();
+      expect(screen.getByTestId("speed-insights")).toBeDefined();
     });
   });
 });

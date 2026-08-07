@@ -15,15 +15,10 @@ import { environment } from "@/services/environment";
 import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
+import { resolveRuntimeControls } from "./runtimeControls";
 
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
-const telemetryEnabled =
-  !isLocal || process.env.AUTOGPT_TELEMETRY_ENABLED === "true";
-const feedbackEnabled =
-  !isLocal || process.env.AUTOGPT_FEEDBACK_ENABLED === "true";
-const developerUiEnabled =
-  isDev || process.env.AUTOGPT_DEVELOPER_UI_ENABLED === "true";
 
 const faviconPath = isDev
   ? "/favicon-dev.ico"
@@ -47,7 +42,21 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const headersList = await headers();
-  const host = headersList.get("host") || "";
+  const host =
+    headersList.get("x-forwarded-host") || headersList.get("host") || "";
+  const runtimeControls = resolveRuntimeControls({
+    host,
+    isDev,
+    env: {
+      AUTOGPT_TELEMETRY_ENABLED: process.env.AUTOGPT_TELEMETRY_ENABLED,
+      AUTOGPT_FEEDBACK_ENABLED: process.env.AUTOGPT_FEEDBACK_ENABLED,
+      AUTOGPT_DEVELOPER_UI_ENABLED: process.env.AUTOGPT_DEVELOPER_UI_ENABLED,
+      AUTOGPT_GA_MEASUREMENT_ID: process.env.AUTOGPT_GA_MEASUREMENT_ID,
+      NEXT_PUBLIC_GA_MEASUREMENT_ID: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
+      NEXT_PUBLIC_REACT_QUERY_DEVTOOL:
+        process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL,
+    },
+  });
 
   return (
     <html
@@ -64,33 +73,33 @@ export default async function RootLayout({
             // enableSystem
             disableTransitionOnChange
           >
-            <TallyPopupProvider enabled={feedbackEnabled}>
+            <TallyPopupProvider enabled={runtimeControls.feedbackEnabled}>
               <SetupAnalytics
-                enabled={telemetryEnabled}
+                enabled={runtimeControls.telemetryEnabled}
                 host={host}
-                ga={{
-                  gaId:
-                    process.env.AUTOGPT_GA_MEASUREMENT_ID ||
-                    process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ||
-                    "G-FH2XK2W4GN",
-                }}
+                ga={
+                  runtimeControls.gaMeasurementId
+                    ? { gaId: runtimeControls.gaMeasurementId }
+                    : undefined
+                }
               />
               <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
                 {children}
-                <VercelAnalyticsWrapper enabled={telemetryEnabled} />
+                <VercelAnalyticsWrapper
+                  enabled={runtimeControls.telemetryEnabled}
+                />
 
-                {/* React Query DevTools is only available in development */}
-                {developerUiEnabled &&
-                  process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL === "true" && (
-                    <ReactQueryDevtools
-                      initialIsOpen={false}
-                      buttonPosition={"bottom-left"}
-                    />
-                  )}
+                {/* Operator-controlled and available only with developer UI. */}
+                {runtimeControls.reactQueryDevtoolsEnabled && (
+                  <ReactQueryDevtools
+                    initialIsOpen={false}
+                    buttonPosition={"bottom-left"}
+                  />
+                )}
               </div>
               <Toaster />
               <CookieConsentBanner />
-              {developerUiEnabled && <AgentationDevtool />}
+              {runtimeControls.developerUiEnabled && <AgentationDevtool />}
             </TallyPopupProvider>
           </Providers>
         </ErrorBoundary>

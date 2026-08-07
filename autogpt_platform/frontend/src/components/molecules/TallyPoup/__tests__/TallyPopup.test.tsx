@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FeedbackButton } from "@/components/layout/Navbar/components/FeedbackButton";
@@ -37,5 +37,25 @@ describe("TallyPopupProvider", () => {
     expect(
       document.querySelector('script[src="https://tally.so/widgets/embed.js"]'),
     ).toBeNull();
+  });
+
+  it("loads Tally, inspects the user, and renders feedback when enabled", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({
+      user: { id: "user-1", email: "user@example.com" },
+    } as Awaited<ReturnType<typeof getCurrentUser>>);
+
+    render(
+      <TallyPopupProvider enabled>
+        <FeedbackButton />
+      </TallyPopupProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /give feedback/i }),
+    ).toBeDefined();
+    await waitFor(() => expect(getCurrentUser).toHaveBeenCalled());
+    expect(
+      document.querySelector('script[src="https://tally.so/widgets/embed.js"]'),
+    ).not.toBeNull();
   });
 });

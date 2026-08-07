@@ -25,13 +25,16 @@ let currDataLayerName: string | undefined = undefined;
 
 type SetupProps = {
   enabled?: boolean;
-  ga: GAParams;
+  ga?: GAParams;
   host: string;
 };
 
 export function SetupAnalytics(props: SetupProps) {
   const { enabled = true, ga, host } = props;
-  const { gaId, debugMode, dataLayerName = "dataLayer", nonce } = ga;
+  const gaId = ga?.gaId;
+  const debugMode = ga?.debugMode;
+  const dataLayerName = ga?.dataLayerName ?? "dataLayer";
+  const nonce = ga?.nonce;
   const isProductionDomain = host.includes("platform.agpt.co");
 
   // Check for user consent
@@ -55,6 +58,7 @@ export function SetupAnalytics(props: SetupProps) {
   // BUT only with consent
   const googleAnalyticsEnabled =
     enabled &&
+    Boolean(gaId) &&
     (environment.isLocal() || isProductionDomain) &&
     hasAnalyticsConsent;
 
@@ -76,7 +80,7 @@ export function SetupAnalytics(props: SetupProps) {
   return (
     <>
       {/* Google Analytics */}
-      {googleAnalyticsEnabled ? (
+      {googleAnalyticsEnabled && gaId ? (
         <>
           <Script
             id="_custom-ga-init"

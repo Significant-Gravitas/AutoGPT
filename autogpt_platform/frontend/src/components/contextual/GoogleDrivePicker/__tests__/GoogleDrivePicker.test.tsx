@@ -351,6 +351,53 @@ describe("GoogleDrivePicker – click-to-open flow", () => {
     expect(build).not.toHaveBeenCalled();
   });
 
+  it("reports an incomplete runtime config without building the picker", async () => {
+    const { build } = setupGoogleGlobals();
+    const savedCred = makeCred({
+      id: "incomplete-config-cred",
+      scopes: ["drive.file", "drive.metadata"],
+    });
+    mockUseCredentials.mockReturnValue({
+      provider: "google",
+      providerName: "Google",
+      savedCredentials: [savedCred],
+      upgradeableCredentials: [],
+      supportsOAuth2: true,
+      supportsApiKey: false,
+      supportsUserPassword: false,
+      supportsHostScoped: false,
+      isLoading: false,
+      isSystemProvider: false,
+    });
+    vi.mocked(fetch).mockResolvedValue(
+      Response.json({
+        clientId: "runtime-client-id",
+        developerKey: "runtime-developer-key",
+        appId: null,
+      }),
+    );
+
+    const { onError } = renderPicker({
+      clientId: undefined,
+      developerKey: undefined,
+      appId: undefined,
+    });
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /choose file\(s\) from google drive/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Google Drive Picker app ID is not set",
+        }),
+      );
+    });
+    expect(build).not.toHaveBeenCalled();
+  });
+
   it("shows insufficient scopes toast and calls onError when credential lacks required scopes", async () => {
     const { build } = setupGoogleGlobals();
 
