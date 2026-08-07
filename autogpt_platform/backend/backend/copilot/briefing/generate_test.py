@@ -11,7 +11,7 @@ from backend.copilot.briefing.generate import (
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
 
 
-def make_expert(id="exp-1", name="Ana", avatar="https://a/x.png"):
+def make_expert(id="exp-1", name="Ana", avatar="https://a/x.png", workflows=None):
     # Build a minimal backend.api.features.experts.models.Expert
     from backend.api.features.experts.models import Expert
 
@@ -27,7 +27,7 @@ def make_expert(id="exp-1", name="Ana", avatar="https://a/x.png"):
         is_template=False,
         source_template_id=None,
         is_archived=False,
-        workflows=[],
+        workflows=workflows or [],
     )
 
 
@@ -318,3 +318,85 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         "message_id": expected_message_id,
         "metadata": {"kind": "morning_briefing", "briefing_id": "briefing-1"},
     }
+
+
+@pytest.mark.asyncio
+async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id(
+    monkeypatch,
+):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.api.features.experts.models import ExpertWorkflowRef
+    from backend.copilot.briefing import generate
+
+    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+    fake_datetime = MagicMock(wraps=datetime)
+    fake_datetime.now.return_value = fixed_now
+    monkeypatch.setattr(generate, "datetime", fake_datetime)
+
+    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+
+    user = MagicMock()
+    user.timezone = "UTC"
+    monkeypatch.setattr(
+        generate,
+        "user_db",
+        lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+    )
+
+    briefing_record = MagicMock(id="briefing-1")
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=briefing_record),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+    )
+    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+
+    # The workflow shares "g-1" with the library agent below but carries no
+    # library_agent_id of its own — the merge must not clobber the
+    # library-derived id with None.
+    workflow = ExpertWorkflowRef(
+        id="wf-1",
+        store_listing_version_id=None,
+        library_agent_id=None,
+        graph_id="g-1",
+        name="Lead Finder Workflow",
+        description=None,
+    )
+    expert = make_expert(workflows=[workflow])
+    execution = make_exec()
+    monkeypatch.setattr(
+        generate,
+        "experts_db",
+        lambda: MagicMock(list_experts=AsyncMock(return_value=[expert])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "execution_db",
+        lambda: MagicMock(get_graph_executions=AsyncMock(return_value=[execution])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "review_db",
+        lambda: MagicMock(get_pending_reviews_for_user=AsyncMock(return_value=[])),
+    )
+    library_agent = MagicMock(graph_id="g-1", id="lib-1")
+    library_agent.name = "Lead Finder"
+    monkeypatch.setattr(
+        generate,
+        "library_db",
+        lambda: MagicMock(
+            list_library_agents=AsyncMock(
+                return_value=MagicMock(agents=[library_agent])
+            )
+        ),
+    )
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+    assert result["status"] == "delivered"
+
+    content_dict = client.create_briefing.await_args.args[2]
+    run_item = content_dict["run_items"][0]
+    assert run_item["library_agent_id"] == "lib-1"
+    assert run_item["link"] == "/library/agents/lib-1?executionId=run-1"
+    assert run_item["agent_name"] == "Lead Finder Workflow"
