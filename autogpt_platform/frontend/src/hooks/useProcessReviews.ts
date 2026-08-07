@@ -14,7 +14,7 @@ export function useProcessReviews({
 
   async function processReviews(items: ReviewItem[], graphExecId: string) {
     try {
-      await mutateAsync({ data: { reviews: items } });
+      return await mutateAsync({ data: { reviews: items } });
     } finally {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetPendingReviewsQueryKey(),
