@@ -58,6 +58,7 @@ Both installers share the same flags:
 | Specific release | `--release=TAG` | `-Release TAG` |
 | Local LLM, no cloud keys | `--with-ollama` | `-WithOllama` |
 | Just check my machine | `--preflight-only` | `-PreflightOnly` |
+| Resolve version without installing | `--resolve-only` | `-ResolveOnly` |
 | Custom install dir | `--dir=PATH` | `-Dir PATH` |
 
 Example (dev branch + local LLM):

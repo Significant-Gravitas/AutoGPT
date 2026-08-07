@@ -128,6 +128,9 @@ check_prerequisites() {
 }
 
 detect_repo() {
+    # install.sh deliberately enters the fetched checkout before invoking this
+    # script. Keep the repo-root PWD branch in sync with that bootstrap handoff;
+    # the disposable handoff smoke test exercises this contract in CI.
     if [[ "$PWD" == */autogpt_platform/installer ]]; then
         if [[ -d "../../.git" ]]; then
             REPO_DIR="$(cd ../..; pwd)"

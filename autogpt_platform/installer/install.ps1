@@ -19,6 +19,7 @@
 #   -OllamaHost <url>    use an existing Ollama at this URL (implies -WithOllama)
 #   -SkipPreflight       skip the capability checks (not recommended)
 #   -PreflightOnly       check the machine and install nothing
+#   -ResolveOnly         print the selected branch/tag and install nothing
 #   -Help
 # ============================================================================
 [CmdletBinding()]
@@ -32,6 +33,7 @@ param(
   [string]$OllamaHost,
   [switch]$SkipPreflight,
   [switch]$PreflightOnly,
+  [switch]$ResolveOnly,
   [switch]$Help
 )
 
@@ -54,12 +56,21 @@ function Refresh-Path {
   $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
 }
 
+function Test-TrustedInstaller([string]$Path, [string]$PublisherPattern) {
+  if (-not (Test-Path $Path)) { return $false }
+  try {
+    $signature = Get-AuthenticodeSignature $Path
+    $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { '' }
+    return ($signature.Status -eq 'Valid' -and $subject -match $PublisherPattern)
+  } catch {
+    return $false
+  }
+}
+
 function Assert-TrustedInstaller([string]$Path, [string]$PublisherPattern) {
-  $signature = Get-AuthenticodeSignature $Path
-  $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { '' }
-  if ($signature.Status -ne 'Valid' -or $subject -notmatch $PublisherPattern) {
+  if (-not (Test-TrustedInstaller $Path $PublisherPattern)) {
     Remove-Item -Force $Path -ErrorAction SilentlyContinue
-    Die "Installer signature verification failed for $Path (status: $($signature.Status), signer: $subject)."
+    Die "Installer signature verification failed for $Path."
   }
 }
 
@@ -180,10 +191,15 @@ function Install-Git {
   $asset = (Invoke-RestMethod "https://api.github.com/repos/git-for-windows/git/releases/latest" -UseBasicParsing).assets |
     Where-Object { $_.name -match $gitArchPattern -and $_.name -notmatch 'Portable' } | Select-Object -First 1
   if (-not $asset) { Die "Couldn't find a Git for Windows installer in the latest release. Install it from https://git-scm.com and re-run." }
-  $exe = "$env:TEMP\git-install.exe"
-  Info "Downloading $($asset.name)..."
-  Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $exe
-  Assert-TrustedInstaller $exe 'Git for Windows|Johannes Schindelin'
+  $exe = Join-Path $env:TEMP $asset.name
+  if (Test-TrustedInstaller $exe 'Git for Windows|Johannes Schindelin') {
+    Info "Reusing verified $($asset.name) download."
+  } else {
+    Remove-Item -Force $exe -ErrorAction SilentlyContinue
+    Info "Downloading $($asset.name)..."
+    Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $exe
+    Assert-TrustedInstaller $exe 'Git for Windows|Johannes Schindelin'
+  }
   Info "Installing silently..."
   $proc = Start-Process $exe -ArgumentList '/VERYSILENT','/NORESTART','/NOCANCEL','/SP-','/SUPPRESSMSGBOXES' -Wait -PassThru
   if ($proc.ExitCode -ne 0) { Die "Git for Windows installer exited with code $($proc.ExitCode)." }
@@ -210,14 +226,19 @@ function Install-Docker {
   Info "Ensuring WSL2 is available (needs admin)..."
   try { wsl.exe --install --no-distribution 2>&1 | Out-Null } catch {}
   try { wsl.exe --update --web-download 2>&1 | Out-Null } catch {}
-  $exe = "$env:TEMP\DockerDesktopInstaller.exe"
   # Docker Desktop ships separate x64 and ARM64 builds; the amd64 installer
   # won't run on ARM64 Windows (Snapdragon etc.). PROCESSOR_ARCHITEW6432 covers
   # the case where this is a 32-bit PowerShell on a 64-bit/ARM64 OS.
   $dockerArch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { 'arm64' } else { 'amd64' }
-  Info "Downloading Docker Desktop ($dockerArch, ~700 MB)..."
-  Invoke-WebRequest -UseBasicParsing "https://desktop.docker.com/win/main/$dockerArch/Docker%20Desktop%20Installer.exe" -OutFile $exe
-  Assert-TrustedInstaller $exe 'Docker'
+  $exe = "$env:TEMP\DockerDesktop-$dockerArch-Installer.exe"
+  if (Test-TrustedInstaller $exe 'Docker') {
+    Info "Reusing verified Docker Desktop download ($dockerArch)."
+  } else {
+    Remove-Item -Force $exe -ErrorAction SilentlyContinue
+    Info "Downloading Docker Desktop ($dockerArch, ~700 MB)..."
+    Invoke-WebRequest -UseBasicParsing "https://desktop.docker.com/win/main/$dockerArch/Docker%20Desktop%20Installer.exe" -OutFile $exe
+    Assert-TrustedInstaller $exe 'Docker'
+  }
   Info "Installing silently (WSL2 backend, license accepted)..."
   $proc = Start-Process $exe -ArgumentList 'install','--quiet','--accept-license','--backend=wsl-2' -Wait -PassThru
   # 0 = success, 3010 = success but reboot required. Anything else failed — bail
@@ -237,10 +258,10 @@ function Install-Docker {
 
 function Wait-Docker {
   Step "Waiting for the Docker engine (first start can take a few minutes)"
-  for ($i=0; $i -lt 60; $i++) {
+  for ($i=1; $i -le 60; $i++) {
     if (Test-DockerReady) { Ok "Docker engine is up"; return }
     Start-Sleep 10
-    if ($i -eq 11) { Warn "Still waiting - if Docker Desktop is asking you to reboot/sign in, do that, then re-run this installer (it'll resume)." }
+    if ($i -eq 12) { Warn "Still waiting - if Docker Desktop is asking you to reboot/sign in, do that, then re-run this installer (it'll resume)." }
   }
   Die "Docker engine didn't come up. Reboot, start Docker Desktop once, then re-run this installer."
 }
@@ -301,6 +322,13 @@ function Invoke-Setup {
 # ============================================================================
 # MAIN
 # ============================================================================
+if ($ResolveOnly) {
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Die "-ResolveOnly needs git." }
+  $ver = Resolve-Version
+  Assert-VersionRef $ver
+  Info "Selected version -> $($ver.kind): $($ver.ref)"
+  exit 0
+}
 if (-not $SkipPreflight) { Invoke-Preflight } else { Warn "Pre-flight skipped (-SkipPreflight)." }
 if ($PreflightOnly) { Say "`n(-PreflightOnly: stopping before any install.)"; exit 0 }
 Install-Git

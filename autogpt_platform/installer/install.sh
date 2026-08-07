@@ -20,6 +20,7 @@
 #   --ollama-host URL    use an existing Ollama at this URL (implies --with-ollama)
 #   --skip-preflight     skip the capability checks (not recommended)
 #   --preflight-only     check the machine and install nothing
+#   --resolve-only       print the selected branch/tag and install nothing
 #   --help
 # ============================================================================
 set -euo pipefail
@@ -33,7 +34,7 @@ DOCKER_INSTALL_SHA256='b991f2806186f7287bb9e53362060c382e906d154599b2fb0982f3424
 
 DEV=false; BRANCH=''; RELEASE=''; DIR="$HOME/AutoGPT"
 WITH_OLLAMA=false; OLLAMA_MODEL=''; OLLAMA_HOST=''
-SKIP_PREFLIGHT=false; PREFLIGHT_ONLY=false
+SKIP_PREFLIGHT=false; PREFLIGHT_ONLY=false; RESOLVE_ONLY=false
 
 # ---- tiny UI helpers (parity vocabulary with install.ps1) ----
 if [ -t 1 ]; then C_G=$'\033[0;32m'; C_Y=$'\033[1;33m'; C_R=$'\033[0;31m'; C_C=$'\033[0;36m'; C_0=$'\033[0m'; else C_G=; C_Y=; C_R=; C_C=; C_0=; fi
@@ -41,7 +42,7 @@ say()  { printf '%s\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
 ok()   { printf '  %s[ OK ]%s %s\n' "$C_G" "$C_0" "$*"; }
 warn() { printf '  %s[WARN]%s %s\n' "$C_Y" "$C_0" "$*"; }
-efail(){ printf '  %s[FAIL]%s %s\n' "$C_R" "$C_0" "$*"; }
+fail() { printf '  %s[FAIL]%s %s\n' "$C_R" "$C_0" "$*"; }
 step() { printf '\n%s==> %s%s\n' "$C_C" "$*" "$C_0"; }
 die()  { printf '\n%sError: %s%s\n' "$C_R" "$*" "$C_0" >&2; exit 1; }
 
@@ -69,6 +70,7 @@ Flags (parity with install.ps1):
   --ollama-host URL    use an existing Ollama at this URL (implies --with-ollama)
   --skip-preflight     skip the capability checks (not recommended)
   --preflight-only     check the machine and install nothing
+  --resolve-only       print the selected branch/tag and install nothing
   --help
 EOF
   exit 0
@@ -93,6 +95,7 @@ while [ $# -gt 0 ]; do
     --ollama-host)      need_val "$1" "${2:-}"; OLLAMA_HOST="$2";  WITH_OLLAMA=true; shift ;;
     --skip-preflight)   SKIP_PREFLIGHT=true ;;
     --preflight-only)   PREFLIGHT_ONLY=true ;;
+    --resolve-only)     RESOLVE_ONLY=true ;;
     -h|--help)          print_help ;;
     *) die "Unknown flag: $1 (try --help)" ;;
   esac
@@ -184,7 +187,7 @@ preflight() {
   [ -d "$target_dir" ] || target_dir="$HOME"
   free_gb=$(df -Pk "$target_dir" 2>/dev/null | awk 'NR==2{print int($4/1024/1024)}')
   if [ "${free_gb:-0}" -lt "$MIN_DISK_GB" ]; then
-    efail "Only ${free_gb} GB free; AutoGPT images + stack need ~${MIN_DISK_GB} GB."
+    fail "Only ${free_gb} GB free; AutoGPT images + stack need ~${MIN_DISK_GB} GB."
     info "Fix: free up space and re-run."
     hard_fail=true
   else ok "${free_gb} GB free (>= ${MIN_DISK_GB} GB)"; fi
@@ -193,7 +196,7 @@ preflight() {
     # Docker on Linux is native (no hypervisor needed). Just sanity-check.
     ok "Linux: Docker runs natively (no CPU virtualization required)"
     if [ "$(id -u)" -ne 0 ] && ! command -v sudo >/dev/null 2>&1; then
-      efail "Not root and 'sudo' is unavailable - can't install Docker/git."
+      fail "Not root and 'sudo' is unavailable - can't install Docker/git."
       info "Fix: run as root, or install sudo."
       hard_fail=true
     else ok "Have root or sudo for package installs"; fi
@@ -213,6 +216,17 @@ preflight() {
 # ============================================================================
 # PREREQS
 # ============================================================================
+pkg_install() {
+  local package="$1"
+  if   command -v apt-get >/dev/null 2>&1; then $SUDO apt-get update -y && $SUDO apt-get install -y "$package"
+  elif command -v dnf     >/dev/null 2>&1; then $SUDO dnf install -y "$package"
+  elif command -v yum     >/dev/null 2>&1; then $SUDO yum install -y "$package"
+  elif command -v pacman  >/dev/null 2>&1; then $SUDO pacman -Sy --noconfirm "$package"
+  elif command -v zypper  >/dev/null 2>&1; then $SUDO zypper install -y "$package"
+  else die "No supported package manager found - install $package manually and re-run."
+  fi
+}
+
 install_git() {
   if command -v git >/dev/null 2>&1; then ok "git already installed"; return; fi
   step "Installing git"
@@ -222,12 +236,7 @@ install_git() {
     else info "Triggering Apple Command Line Tools (git) install..."; xcode-select --install 2>/dev/null || true
          die "Finish the Command Line Tools popup, then re-run this installer."; fi
   else
-    if   command -v apt-get >/dev/null 2>&1; then $SUDO apt-get update -y && $SUDO apt-get install -y git
-    elif command -v dnf     >/dev/null 2>&1; then $SUDO dnf install -y git
-    elif command -v yum     >/dev/null 2>&1; then $SUDO yum install -y git
-    elif command -v pacman  >/dev/null 2>&1; then $SUDO pacman -Sy --noconfirm git
-    elif command -v zypper  >/dev/null 2>&1; then $SUDO zypper install -y git
-    else die "No supported package manager found - install git manually and re-run."; fi
+    pkg_install git
   fi
   command -v git >/dev/null 2>&1 && ok "git installed" || die "git install failed."
 }
@@ -239,12 +248,7 @@ install_curl() {
   if [ "$OS_FAMILY" = macos ]; then
     die "curl not found (it normally ships with macOS). Install it (e.g. 'brew install curl') and re-run."
   fi
-  if   command -v apt-get >/dev/null 2>&1; then $SUDO apt-get update -y && $SUDO apt-get install -y curl
-  elif command -v dnf     >/dev/null 2>&1; then $SUDO dnf install -y curl
-  elif command -v yum     >/dev/null 2>&1; then $SUDO yum install -y curl
-  elif command -v pacman  >/dev/null 2>&1; then $SUDO pacman -Sy --noconfirm curl
-  elif command -v zypper  >/dev/null 2>&1; then $SUDO zypper install -y curl
-  else die "No supported package manager found - install curl manually and re-run."; fi
+  pkg_install curl
   command -v curl >/dev/null 2>&1 && ok "curl installed" || die "curl install failed."
 }
 
@@ -295,7 +299,7 @@ install_docker() {
     # first probe. docker_ready uses non-sudo `docker info`; also accept the
     # sudo path since group membership needs a fresh login this run.
     local i=0
-    while ! { docker info >/dev/null 2>&1 || $SUDO docker info >/dev/null 2>&1; }; do
+    while ! $SUDO docker info >/dev/null 2>&1; do
       i=$((i+1))
       if [ "$i" -ge 12 ]; then die "Docker installed but the daemon isn't running after ~60s. Start it (e.g. 'sudo systemctl start docker') and re-run."; fi
       sleep 5
@@ -307,14 +311,23 @@ install_docker() {
     elif command -v brew >/dev/null 2>&1; then info "Installing via Homebrew..."; brew install --cask docker
     else
       local download_dir dmg
-      download_dir="$(mktemp -d)" || die "Could not create a private download directory."
+      download_dir="${XDG_CACHE_HOME:-$HOME/Library/Caches}/AutoGPT"
+      mkdir -p "$download_dir" || die "Could not create the private installer cache."
       chmod 700 "$download_dir"
-      dmg="$download_dir/Docker.dmg"
       local dmg_arch url mounted=false
       dmg_arch="$([ "$ARCH" = arm64 ] && echo arm64 || echo amd64)"
+      dmg="$download_dir/Docker-$dmg_arch.dmg"
       url="https://desktop.docker.com/mac/main/$dmg_arch/Docker.dmg"
-      info "Downloading Docker Desktop..."; curl -fsSL "$url" -o "$dmg"
-      hdiutil verify "$dmg" -quiet || die "Docker Desktop disk image failed integrity verification."
+      if [ -f "$dmg" ] && hdiutil verify "$dmg" -quiet; then
+        info "Reusing verified Docker Desktop download."
+      else
+        info "Downloading Docker Desktop (resuming a partial download when possible)..."
+        if ! curl --continue-at - -fsSL "$url" -o "$dmg"; then
+          rm -f "$dmg"
+          curl -fsSL "$url" -o "$dmg" || die "Docker Desktop download failed."
+        fi
+        hdiutil verify "$dmg" -quiet || die "Docker Desktop disk image failed integrity verification."
+      fi
       info "Mounting + copying to /Applications (needs your password)..."
       hdiutil attach "$dmg" -nobrowse -quiet
       mounted=true
@@ -399,6 +412,14 @@ invoke_setup() {
 # ============================================================================
 # MAIN
 # ============================================================================
+if [ "$RESOLVE_ONLY" = true ]; then
+  command -v curl >/dev/null 2>&1 || die "--resolve-only needs curl."
+  command -v git >/dev/null 2>&1 || die "--resolve-only needs git."
+  resolve_version
+  validate_version_ref
+  info "Selected version -> $VER_KIND: $VER_REF"
+  exit 0
+fi
 if [ "$SKIP_PREFLIGHT" = true ]; then warn "Pre-flight skipped (--skip-preflight)."; else preflight; fi
 if [ "$PREFLIGHT_ONLY" = true ]; then say ""; say "(--preflight-only: stopping before any install.)"; exit 0; fi
 install_curl   # resolve_version + get.docker.com both rely on curl

@@ -54,6 +54,12 @@ jobs:
             $errors | Format-List
             exit 1
           }
+      - name: Exercise side-effect-free version selection
+        shell: pwsh
+        run: >-
+          ./autogpt_platform/installer/install.ps1
+          -ResolveOnly
+          -Release autogpt-installer-ci-test-v1
       - name: Exercise batch help parser
         shell: cmd
         run: autogpt_platform\installer\setup-autogpt.bat /help | findstr /C:"/single-container"
