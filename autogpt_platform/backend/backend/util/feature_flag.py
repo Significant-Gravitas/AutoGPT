@@ -92,6 +92,11 @@ class Flag(str, Enum):
     # only.
     DREAM_PASS_ENABLED = "dream-pass-enabled"
 
+    # Gates the scheduled morning-briefing job end-to-end: schedule
+    # registration, generation, and delivery. Off by default; opt-in
+    # canary rollout.
+    MORNING_BRIEFING = "morning-briefing"
+
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
     # facts ride the ratification loop as tentative. Off on the
