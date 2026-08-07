@@ -1175,9 +1175,10 @@ class GraphExecutionJobArgs(BaseModel):
     organization_id: str = ""
     team_id: str | None = None
     # Expert attribution: set when the schedule belongs to a hired expert
-    # (install-time schedule or manual schedule of an expert-installed
-    # workflow). Stamped onto every execution this schedule fires. Optional
-    # for backward compat with rows persisted before expert attribution.
+    # (install-time schedule, manual schedule of an expert-installed
+    # workflow, or a schedule created from the expert's chat). Stamped onto
+    # every execution this schedule fires. Optional for backward compat
+    # with rows persisted before expert attribution.
     expert_id: str | None = None
 
 
