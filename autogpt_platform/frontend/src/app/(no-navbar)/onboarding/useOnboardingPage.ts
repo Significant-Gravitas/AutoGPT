@@ -216,14 +216,15 @@ export function useOnboardingPage() {
         `Onboarding ${onboardingStepDisplayName(prevName)} Completed`,
         {
           step: prevName,
-        ...(stepViewedAt.current !== null && {
-          duration_ms: Math.round(performance.now() - stepViewedAt.current),
-        }),
-        ...getStepCompletionProps(
-          prevName,
-          useOnboardingWizardStore.getState(),
-        ),
-      });
+          ...(stepViewedAt.current !== null && {
+            duration_ms: Math.round(performance.now() - stepViewedAt.current),
+          }),
+          ...getStepCompletionProps(
+            prevName,
+            useOnboardingWizardStore.getState(),
+          ),
+        },
+      );
     }
     trackedStep.current = currentStep;
     stepViewedAt.current = performance.now();

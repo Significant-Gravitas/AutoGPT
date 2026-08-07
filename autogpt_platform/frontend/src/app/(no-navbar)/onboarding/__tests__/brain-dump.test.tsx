@@ -806,7 +806,9 @@ describe("onboarding brain dump — insufficient content", () => {
 
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
-    await userEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start talking" }),
+    );
     await waitFor(() => expect(partUploads).toHaveLength(1));
     await userEvent.click(
       await screen.findByRole("button", { name: "Send recording" }),

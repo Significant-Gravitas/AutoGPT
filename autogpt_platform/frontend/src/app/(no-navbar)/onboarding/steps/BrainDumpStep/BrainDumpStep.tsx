@@ -103,7 +103,9 @@ export function BrainDumpStep() {
           )}
         >
           <RevealItem>
-            <Text variant="h4">{stateHeadline(dump.screen, dump.headline)}</Text>
+            <Text variant="h4">
+              {stateHeadline(dump.screen, dump.headline)}
+            </Text>
           </RevealItem>
           {showSubline && (
             <RevealItem>

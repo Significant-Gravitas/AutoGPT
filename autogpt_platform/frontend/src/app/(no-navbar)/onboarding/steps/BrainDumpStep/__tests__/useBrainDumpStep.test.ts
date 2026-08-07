@@ -501,10 +501,13 @@ describe("useBrainDumpStep — finishing a take", () => {
     });
 
     expect(result.current.screen).toBe("failed");
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Transcription Failed", {
-      error_code: "transcription_error",
-      attempt: 0,
-    });
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "Brain Dump Transcription Failed",
+      {
+        error_code: "transcription_error",
+        attempt: 0,
+      },
+    );
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
   });
 
@@ -518,10 +521,13 @@ describe("useBrainDumpStep — finishing a take", () => {
     });
 
     expect(result.current.screen).toBe("failed");
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Transcription Failed", {
-      error_code: 500,
-      attempt: 0,
-    });
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "Brain Dump Transcription Failed",
+      {
+        error_code: 500,
+        attempt: 0,
+      },
+    );
   });
 
   it("fails rather than throwing when finalize rejects", async () => {
@@ -553,10 +559,13 @@ describe("useBrainDumpStep — insufficient content", () => {
     });
 
     expect(result.current.screen).toBe("insufficient");
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Transcription Failed", {
-      error_code: "no_usable_speech",
-      attempt: 0,
-    });
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "Brain Dump Transcription Failed",
+      {
+        error_code: "no_usable_speech",
+        attempt: 0,
+      },
+    );
     // No accidental advance, and nothing personalized to advance to.
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();

@@ -217,7 +217,10 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     );
     expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBeNull();
     expect(window.sessionStorage.getItem(LATER_DUMP_KEY)).toBeNull();
-    expect(capture).not.toHaveBeenCalledWith("Intro Path Assigned", expect.anything());
+    expect(capture).not.toHaveBeenCalledWith(
+      "Intro Path Assigned",
+      expect.anything(),
+    );
     expect(urls).toEqual([]);
   });
 
@@ -233,7 +236,10 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
       "A",
     );
-    expect(capture).not.toHaveBeenCalledWith("Intro Path Assigned", expect.anything());
+    expect(capture).not.toHaveBeenCalledWith(
+      "Intro Path Assigned",
+      expect.anything(),
+    );
   });
 
   it("shows no overlay for a user who did not just come out of onboarding", async () => {
@@ -243,7 +249,10 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
     expect(result.current.isWelcomeOpen).toBe(false);
-    expect(capture).not.toHaveBeenCalledWith("Intro Path Assigned", expect.anything());
+    expect(capture).not.toHaveBeenCalledWith(
+      "Intro Path Assigned",
+      expect.anything(),
+    );
   });
 
   it("keeps the overlay up across a refresh via the pending flag", async () => {
