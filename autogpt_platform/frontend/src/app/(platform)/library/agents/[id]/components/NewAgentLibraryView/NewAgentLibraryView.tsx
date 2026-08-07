@@ -5,7 +5,6 @@ import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/Pub
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { AgentSettingsModal } from "./components/modals/AgentSettingsModal/AgentSettingsModal";
@@ -29,6 +28,8 @@ import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRun
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NewAgentLibraryView() {
   const {
@@ -240,7 +241,7 @@ export function NewAgentLibraryView() {
                   className="w-full"
                   disabled={isTemplateLoading && activeTab === "templates"}
                 >
-                  <PlusIcon size={16} /> New agent task
+                  <Icon icon={PlusSignIcon} size={16} /> New agent task
                 </Button>
               }
               agent={agent}

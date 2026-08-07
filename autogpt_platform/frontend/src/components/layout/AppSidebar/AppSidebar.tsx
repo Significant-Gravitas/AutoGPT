@@ -16,15 +16,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import {
-  CaretDownIcon,
-  FlowArrowIcon,
-  FolderIcon,
-  type Icon,
-  NotePencilIcon,
-  SquaresFourIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
@@ -38,21 +30,32 @@ import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
+import {
+  ArrowDown01Icon,
+  FlowIcon,
+  Folder01Icon,
+  GridViewIcon,
+  NoteEditIcon,
+  Store01Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type NavLink = {
   name: string;
   href: string;
-  icon: Icon;
+  icon: IconSvgElement;
 };
 
 const MAIN_LINKS: NavLink[] = [
-  { name: "Agents", href: "/library", icon: SquaresFourIcon },
-  { name: "Marketplace", href: "/marketplace", icon: StorefrontIcon },
-  { name: "Build", href: "/build", icon: FlowArrowIcon },
+  { name: "Agents", href: "/library", icon: GridViewIcon },
+  { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
+  { name: "Build", href: "/build", icon: FlowIcon },
 ];
 
 const WORKSPACE_LINKS: NavLink[] = [
-  { name: "Files", href: "/artifacts", icon: FolderIcon },
+  { name: "Files", href: "/artifacts", icon: Folder01Icon },
 ];
 
 function isLinkActive(pathname: string | null, href: string) {
@@ -70,7 +73,7 @@ function NavLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-zinc-500"
+      className="ml-auto !size-4 shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:!size-4.5"
     />
   );
 }
@@ -81,16 +84,39 @@ function NewTaskIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
-    return <LoadingSpinner size="small" className="shrink-0" />;
+    return (
+      <LoadingSpinner
+        size="small"
+        className="!size-4 shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:!size-4.5"
+      />
+    );
   }
 
-  return <NotePencilIcon className="size-5" />;
+  return (
+    <Icon
+      icon={NoteEditIcon}
+      className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+    />
+  );
+}
+
+// The stronger active state + grey shell ship with the brain-dump
+// experience; off keeps the original white sidebar.
+function useNavItemClassName() {
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  return cn(
+    "h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5",
+    isBrainDumpEnabled
+      ? "data-[active=true]:!bg-zinc-200 data-[active=true]:hover:!bg-zinc-200"
+      : "data-[active=true]:!bg-zinc-100",
+  );
 }
 
 // New Task shares the nav-item styling with the main links so it sits in the
 // same section with a uniform gap, instead of being a standalone CTA button.
 function NewTaskItem() {
   const pathname = usePathname();
+  const navItemClassName = useNavItemClassName();
 
   return (
     <SidebarMenuItem>
@@ -98,7 +124,7 @@ function NewTaskItem() {
         asChild
         tooltip="New Task"
         isActive={isLinkActive(pathname, "/copilot")}
-        className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+        className={navItemClassName}
       >
         <Link href="/copilot">
           <NewTaskIcon />
@@ -118,6 +144,7 @@ function NavMenu({
   leading?: ReactNode;
 }) {
   const pathname = usePathname();
+  const navItemClassName = useNavItemClassName();
 
   return (
     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
@@ -128,10 +155,13 @@ function NavMenu({
             asChild
             tooltip={link.name}
             isActive={isLinkActive(pathname, link.href)}
-            className="h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-5"
+            className={navItemClassName}
           >
             <Link href={link.href}>
-              <link.icon className="size-5" />
+              <Icon
+                icon={link.icon}
+                className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+              />
               <span className="truncate">{link.name}</span>
               <NavLinkLoader />
             </Link>
@@ -168,9 +198,9 @@ function CollapsibleNavGroup({
         >
           <CollapsibleTrigger>
             {label}
-            <CaretDownIcon
-              weight="bold"
-              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
+            <Icon
+              icon={ArrowDown01Icon}
+              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
@@ -201,6 +231,14 @@ export function AppSidebar(props: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
+  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const mainLinks = isHireExpertsEnabled
+    ? MAIN_LINKS.filter((link) => link.href !== "/library")
+    : MAIN_LINKS;
+  const workspaceLinks = isHireExpertsEnabled
+    ? [{ name: "Team", href: "/team", icon: UserGroupIcon }, ...WORKSPACE_LINKS]
+    : WORKSPACE_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
@@ -222,7 +260,11 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
+      className={
+        isBrainDumpEnabled
+          ? "[&_[data-sidebar=sidebar]]:bg-[#F4F4F4]"
+          : "[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
+      }
     >
       <AppSidebarHeader />
 
@@ -237,7 +279,7 @@ export function AppSidebar(props: Props) {
             <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
                 <NavMenu
-                  links={MAIN_LINKS}
+                  links={mainLinks}
                   leading={
                     <>
                       <NewTaskItem />
@@ -251,7 +293,7 @@ export function AppSidebar(props: Props) {
 
           <motion.div variants={itemVariants}>
             <CollapsibleNavGroup label="Workspace">
-              <NavMenu links={WORKSPACE_LINKS} />
+              <NavMenu links={workspaceLinks} />
             </CollapsibleNavGroup>
           </motion.div>
 

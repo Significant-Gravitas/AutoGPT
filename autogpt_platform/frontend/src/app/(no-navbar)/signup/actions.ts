@@ -2,13 +2,16 @@
 
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { auth } from "@/lib/auth/auth";
+import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import {
   scheduleAccountCreatedGoal,
   wasAccountCreated,
 } from "@/services/analytics/datafast-server";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
+import { APIError } from "better-auth/api";
+import { headers } from "next/headers";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
 
 export async function signup(
@@ -32,34 +35,42 @@ export async function signup(
       };
     }
 
-    const supabase = await getServerSupabase();
-    if (!supabase) {
-      return {
-        success: false,
-        error: "Authentication service unavailable",
-      };
-    }
+    try {
+      // The session cookie is set automatically by the nextCookies plugin.
+      await auth.api.signUpEmail({
+        body: {
+          email: parsed.data.email,
+          password: parsed.data.password,
+          name: parsed.data.email.split("@")[0],
+        },
+        headers: await headers(),
+      });
+    } catch (error) {
+      if (error instanceof APIError) {
+        // Match on the body message ("Signups are not allowed."), not
+        // error.message — the latter is the status ("FORBIDDEN"), which never
+        // matches the waitlist patterns, so rejections would slip through as a
+        // generic error.
+        if (isWaitlistError(error.body?.code, error.body?.message)) {
+          logWaitlistError("Signup", error.message);
+          return { success: false, error: "not_allowed" };
+        }
 
-    const { data, error } = await supabase.auth.signUp(parsed.data);
+        // Better Auth's email sign-up throws USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL;
+        // accept the legacy code too in case the adapter version changes.
+        if (
+          error.body?.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" ||
+          error.body?.code === "USER_ALREADY_EXISTS"
+        ) {
+          return { success: false, error: "user_already_exists" };
+        }
 
-    if (error) {
-      if (isWaitlistError(error?.code, error?.message)) {
-        logWaitlistError("Signup", error.message);
-        return { success: false, error: "not_allowed" };
+        return {
+          success: false,
+          error: error.body?.message || error.message,
+        };
       }
-
-      if ((error as any).code === "user_already_exists") {
-        return { success: false, error: "user_already_exists" };
-      }
-
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
-    if (data.session) {
-      await supabase.auth.setSession(data.session);
+      throw error;
     }
 
     try {
@@ -70,6 +81,9 @@ export async function signup(
     } catch (createUserError) {
       console.error("Error creating user during signup:", createUserError);
       Sentry.captureException(createUserError);
+      // The session cookie is already set; revoke it so the browser's auth
+      // state matches the failure the UI is about to show.
+      await rollbackSession();
       return {
         success: false,
         error: "Failed to complete account setup. Please try again.",

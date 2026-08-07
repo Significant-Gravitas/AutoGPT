@@ -17,10 +17,10 @@ import {
   TooltipTrigger as SidebarTooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 export function SidebarUserActions() {
-  const { user, isLoggedIn, isUserLoading } = useSupabase();
+  const { user, isLoggedIn, isUserLoading } = useAuth();
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const logoutInProgress = isLogoutInProgress();
@@ -43,6 +43,7 @@ export function SidebarUserActions() {
   const accountMenu = (
     <AccountMenu
       userName={profile?.name || profile?.username}
+      userHandle={profile?.username}
       userEmail={user?.email}
       avatarSrc={profile?.avatar_url ?? ""}
       menuItemGroups={dynamicMenuItems}

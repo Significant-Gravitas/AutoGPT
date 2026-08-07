@@ -16,11 +16,11 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ArrowUpIcon } from "@phosphor-icons/react";
 import {
   ChangeEvent,
   ClipboardEvent,
   KeyboardEvent,
+  ReactNode,
   useEffect,
   useState,
 } from "react";
@@ -32,6 +32,7 @@ import {
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
 import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
+import { ComposerTray } from "./components/ComposerTray";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
@@ -44,7 +45,10 @@ import { useCopilotUIStore } from "../../store";
 import { getFilesFromClipboard } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
+import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
 import { useVoiceRecording } from "./useVoiceRecording";
+import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onSend: (
@@ -67,6 +71,10 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  /** When true, the submit button is hidden until there is something to send. */
+  hideSubmitWhenEmpty?: boolean;
+  /** Recipient picker chip rendered before the mode chips (new-task state). */
+  recipientPicker?: ReactNode;
 }
 
 export function ChatInput({
@@ -82,6 +90,8 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  hideSubmitWhenEmpty = false,
+  recipientPicker,
 }: Props) {
   const {
     copilotChatMode,
@@ -214,6 +224,15 @@ export function ChatInput({
     isStreaming,
   });
 
+  const { isGlowing: isMicGlowing, dismissGlow } = useOnboardingMicGlow({
+    isTranscribing,
+  });
+
+  // The composer restyle (flat card, chips relocated into the tray
+  // below) ships with the brain-dump experience; off keeps the original
+  // glowing composer with pill toggles in the footer.
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     if (isRecording) return;
     baseHandleChange(e);
@@ -238,6 +257,9 @@ export function ChatInput({
     : isTranscribing
       ? "Transcribing..."
       : placeholder;
+
+  const hasTrayItems =
+    (showModeToggle && !isStreaming) || (showDryRunToggle && !hasSession);
 
   const canSend =
     !disabled &&
@@ -290,10 +312,16 @@ export function ChatInput({
       )}
       <InputGroup
         className={cn(
-          "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
-          "shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_36px_-4px_rgba(99,102,241,0.45)]",
+          isBrainDumpEnabled
+            ? "relative z-10 overflow-hidden border-neutral-200 shadow-none has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0"
+            : [
+                "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+                "shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_36px_-4px_rgba(99,102,241,0.45)]",
+              ],
           isRecording &&
-            "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
+            (isBrainDumpEnabled
+              ? "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400"
+              : "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400"),
         )}
       >
         <FileChips
@@ -335,28 +363,25 @@ export function ChatInput({
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
             />
-            {/* Mode and model are per-message settings sent with each stream request,
-                so they can be freely changed between turns in an existing session.
-                Hide only while actively streaming (too late to change for that turn). */}
-            {showModeToggle && !isStreaming && (
-              <ModeToggleButton
-                mode={copilotChatMode}
-                onToggle={handleToggleMode}
-                pinned={copilotModePinned}
-              />
+            {recipientPicker}
+            {!isBrainDumpEnabled && showModeToggle && !isStreaming && (
+              <>
+                <ModeToggleButton
+                  variant="pill"
+                  mode={copilotChatMode}
+                  onToggle={handleToggleMode}
+                  pinned={copilotModePinned}
+                />
+                <ModelToggleButton
+                  variant="pill"
+                  model={copilotLlmModel}
+                  onToggle={handleToggleModel}
+                />
+              </>
             )}
-            {showModeToggle && !isStreaming && (
-              <ModelToggleButton
-                model={copilotLlmModel}
-                onToggle={handleToggleModel}
-              />
-            )}
-            {/* DryRun button only on new chats: once a session exists its
-                dry_run flag is locked and should be read from session metadata
-                (sessionDryRun in useCopilotPage), not toggled here. The banner
-                in CopilotPage.tsx reflects the actual session state. */}
-            {showDryRunToggle && !hasSession && (
+            {!isBrainDumpEnabled && showDryRunToggle && !hasSession && (
               <DryRunToggleButton
+                variant="pill"
                 isDryRun={isDryRun}
                 onToggle={handleToggleDryRun}
               />
@@ -370,7 +395,11 @@ export function ChatInput({
                 isTranscribing={isTranscribing}
                 isStreaming={isStreaming}
                 disabled={disabled || isTranscribing || isStreaming}
-                onClick={toggleRecording}
+                highlight={isMicGlowing}
+                onClick={() => {
+                  dismissGlow();
+                  toggleRecording();
+                }}
               />
             )}
             {isStreaming && canSend && onEnqueue && (
@@ -394,7 +423,7 @@ export function ChatInput({
                 }}
                 className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
               >
-                <ArrowUpIcon className="size-4" weight="bold" />
+                <Icon icon={ArrowUp02Icon} className="size-4" />
               </PromptInputButton>
             )}
             {isStreaming ? (
@@ -404,12 +433,42 @@ export function ChatInput({
                 </TooltipTrigger>
                 <TooltipContent side="top">Stop</TooltipContent>
               </Tooltip>
-            ) : (
+            ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit disabled={!canSend} />
             )}
           </div>
         </PromptInputFooter>
       </InputGroup>
+
+      {/* Mode and model are per-message settings sent with each stream request,
+          so they can be freely changed between turns in an existing session.
+          Hide only while actively streaming (too late to change for that turn).
+          DryRun is new-chat only: once a session exists its dry_run flag is
+          locked and read from session metadata (sessionDryRun in useCopilotPage),
+          with the banner in CopilotPage.tsx reflecting the actual state. */}
+      {Boolean(isBrainDumpEnabled) && hasTrayItems && (
+        <ComposerTray>
+          {showModeToggle && !isStreaming && (
+            <>
+              <ModeToggleButton
+                mode={copilotChatMode}
+                onToggle={handleToggleMode}
+                pinned={copilotModePinned}
+              />
+              <ModelToggleButton
+                model={copilotLlmModel}
+                onToggle={handleToggleModel}
+              />
+            </>
+          )}
+          {showDryRunToggle && !hasSession && (
+            <DryRunToggleButton
+              isDryRun={isDryRun}
+              onToggle={handleToggleDryRun}
+            />
+          )}
+        </ComposerTray>
+      )}
 
       {showWorkspaceFiles && (
         <WorkspaceFilePicker

@@ -1,7 +1,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { getRouteTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
@@ -25,7 +25,7 @@ export function usePlatformChrome() {
   const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
   // Also initializes the auth store — required here because the tour shell
   // replaces the Navbar, which is what normally kicks off the session check.
-  const { isLoggedIn, isUserLoading } = useSupabase();
+  const { isLoggedIn, isUserLoading } = useAuth();
 
   // The LaunchDarkly flag is client-side data that can resolve differently on
   // the server vs the client's first render. Switching the whole layout shell

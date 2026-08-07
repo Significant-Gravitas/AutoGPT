@@ -147,6 +147,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
     )
+    expert_weekly_credit_budget_default: int = Field(
+        default=500,
+        ge=0,
+        description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
+    )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
         description="Email address to send refund notifications to.",
@@ -335,6 +340,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    trusted_frontend_origins: List[str] = Field(
+        default=[],
+        description="Extra frontend origins (in addition to frontend_base_url) "
+        "that transactional auth-email action links may point at. Entries are "
+        'full origins ("https://host[:port]") or "regex:"-prefixed patterns, '
+        "same format as backend_cors_allow_origins. Self-hosting needs nothing "
+        "here (frontend_base_url is trusted implicitly); cloud sets a tight "
+        "preview pattern instead of a blanket wildcard.",
     )
 
     platform_link_base_url: str = Field(
@@ -590,6 +605,28 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
     )
 
+    @field_validator("trusted_frontend_origins")
+    @classmethod
+    def validate_trusted_frontend_origins(cls, v: List[str]) -> List[str]:
+        """Reject unusable entries at startup rather than at send time.
+
+        These patterns are compiled per request in the auth-email route, so a
+        malformed one would otherwise boot fine and then 500 every password
+        reset and verification email.
+        """
+        for raw_origin in v:
+            origin = raw_origin.strip()
+            if not origin.startswith("regex:"):
+                continue
+            pattern = origin[len("regex:") :]
+            if not pattern:
+                raise ValueError("Invalid regex pattern: pattern cannot be empty")
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"Invalid regex pattern '{pattern}': {exc}") from exc
+        return v
+
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
@@ -661,11 +698,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
-
-    supabase_url: str = Field(default="", description="Supabase URL")
-    supabase_service_role_key: str = Field(
-        default="", description="Supabase service role key"
-    )
 
     encryption_key: str = Field(default="", description="Encryption key")
 
