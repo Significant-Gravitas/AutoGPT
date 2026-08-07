@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from backend.copilot.briefing.generate import (
     AgentInfo,
     compose_briefing,
@@ -181,3 +183,138 @@ def test_markdown_has_three_sections_and_links():
     md = render_briefing_markdown(content)
     assert "What ran" in md and "What was found" in md and "Needs your decision" in md
     assert "(/library/agents/lib-1?executionId=run-1)" in md
+
+
+@pytest.mark.asyncio
+async def test_generate_skips_when_flag_off(monkeypatch):
+    from backend.copilot.briefing import generate
+
+    async def flag_off(*a, **kw):
+        return False
+
+    monkeypatch.setattr(generate, "is_feature_enabled", flag_off)
+    result = await generate.generate_and_deliver_briefing("user-1")
+    assert result == {"status": "skipped", "reason": "flag_disabled"}
+
+
+@pytest.mark.asyncio
+async def test_generate_skips_when_already_delivered(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+    user = MagicMock()
+    user.timezone = "UTC"
+    monkeypatch.setattr(
+        generate,
+        "user_db",
+        lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+    )
+    client = MagicMock(get_briefing_for_date=AsyncMock(return_value=MagicMock()))
+    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+    assert result == {"status": "skipped", "reason": "already_delivered"}
+
+
+@pytest.mark.asyncio
+async def test_generate_delivers_and_composes_briefing(monkeypatch):
+    import uuid
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+    fake_datetime = MagicMock(wraps=datetime)
+    fake_datetime.now.return_value = fixed_now
+    monkeypatch.setattr(generate, "datetime", fake_datetime)
+
+    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+
+    user = MagicMock()
+    user.timezone = "UTC"
+    monkeypatch.setattr(
+        generate,
+        "user_db",
+        lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+    )
+
+    briefing_record = MagicMock(id="briefing-1")
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=briefing_record),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+    )
+    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+
+    expert = make_expert()
+    execution = make_exec()
+    review = make_review()
+    monkeypatch.setattr(
+        generate,
+        "experts_db",
+        lambda: MagicMock(list_experts=AsyncMock(return_value=[expert])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "execution_db",
+        lambda: MagicMock(get_graph_executions=AsyncMock(return_value=[execution])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "review_db",
+        lambda: MagicMock(
+            get_pending_reviews_for_user=AsyncMock(return_value=[review])
+        ),
+    )
+    library_agent = MagicMock(graph_id="g-1", id="lib-1")
+    library_agent.name = "Lead Finder"
+    monkeypatch.setattr(
+        generate,
+        "library_db",
+        lambda: MagicMock(
+            list_library_agents=AsyncMock(
+                return_value=MagicMock(agents=[library_agent])
+            )
+        ),
+    )
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    assert result == {
+        "status": "delivered",
+        "briefing_id": "briefing-1",
+        "session_id": "session-1",
+    }
+
+    expected_content = compose_briefing(
+        experts=[expert],
+        executions=[execution],
+        reviews=[review],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=fixed_now,
+        tz_name="UTC",
+    )
+    assert expected_content is not None
+
+    create_call = client.create_briefing.await_args
+    assert create_call.args == (
+        "user-1",
+        fixed_now.date(),
+        expected_content.model_dump(mode="json"),
+    )
+
+    expected_message_id = str(
+        uuid.uuid5(
+            generate._BRIEFING_NAMESPACE,
+            f"morning-briefing:user-1:{fixed_now.date().isoformat()}",
+        )
+    )
+    append_call = client.append_plain_session_message.await_args
+    assert append_call.kwargs == {
+        "user_id": "user-1",
+        "content": render_briefing_markdown(expected_content),
+        "message_id": expected_message_id,
+        "metadata": {"kind": "morning_briefing", "briefing_id": "briefing-1"},
+    }

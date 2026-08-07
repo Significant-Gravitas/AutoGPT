@@ -1,10 +1,23 @@
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from typing import NamedTuple
+from zoneinfo import ZoneInfo
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
+from backend.data.db_accessors import (
+    execution_db,
+    experts_db,
+    library_db,
+    review_db,
+    user_db,
+)
 from backend.data.execution import GraphExecutionMeta
+from backend.util.clients import get_database_manager_async_client
+from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
 
@@ -126,3 +139,81 @@ def render_briefing_markdown(content: BriefingContent) -> str:
         lines.append(f"**Needs your decision ({len(content.decision_items)})**")
         lines.extend(f"- [{d.title}]({d.link})" for d in content.decision_items)
     return "\n".join(lines).strip()
+
+
+# Fixed namespace so the same (user, local calendar date) always derives the
+# same message id — retries and double-fires of the scheduler job dedupe via
+# append_plain_session_message's message_id uniqueness check.
+_BRIEFING_NAMESPACE = uuid.UUID("7f1c2d3e-9a4b-4c5d-8e6f-0a1b2c3d4e5f")
+
+
+def _merge_agent_info(agent_info: dict[str, AgentInfo], experts: list[Expert]) -> None:
+    for expert in experts:
+        for wf in expert.workflows:
+            if not wf.graph_id:
+                continue
+            existing = agent_info.get(wf.graph_id)
+            agent_info[wf.graph_id] = AgentInfo(
+                wf.name or (existing.name if existing else "Agent"),
+                wf.library_agent_id
+                or (existing.library_agent_id if existing else None),
+            )
+
+
+async def generate_and_deliver_briefing(user_id: str) -> dict:
+    if not await is_feature_enabled(Flag.MORNING_BRIEFING, user_id, default=False):
+        return {"status": "skipped", "reason": "flag_disabled"}
+
+    user = await user_db().get_user_by_id(user_id)
+    tz_name = get_user_timezone_or_utc(user.timezone)
+    now_local = datetime.now(ZoneInfo(tz_name))
+    briefing_date = now_local.date()
+
+    client = get_database_manager_async_client()
+    if await client.get_briefing_for_date(user_id, briefing_date):
+        return {"status": "skipped", "reason": "already_delivered"}
+
+    window_start = (now_local - timedelta(hours=24)).astimezone(dt_timezone.utc)
+    experts = await experts_db().list_experts(user_id)
+    executions = await execution_db().get_graph_executions(
+        user_id=user_id, created_time_gte=window_start
+    )
+    reviews = await review_db().get_pending_reviews_for_user(user_id, 1, 100)
+
+    library = await library_db().list_library_agents(user_id, page_size=100)
+    agent_info: dict[str, AgentInfo] = {
+        agent.graph_id: AgentInfo(agent.name, agent.id) for agent in library.agents
+    }
+    _merge_agent_info(agent_info, experts)
+
+    content = compose_briefing(
+        experts=experts,
+        executions=executions,
+        reviews=reviews,
+        agent_info_by_graph_id=agent_info,
+        generated_at=now_local,
+        tz_name=tz_name,
+    )
+    if content is None:
+        return {"status": "skipped", "reason": "nothing_to_say"}
+
+    record = await client.create_briefing(
+        user_id, briefing_date, content.model_dump(mode="json")
+    )
+    message_id = str(
+        uuid.uuid5(
+            _BRIEFING_NAMESPACE,
+            f"morning-briefing:{user_id}:{briefing_date.isoformat()}",
+        )
+    )
+    session_id = await client.append_plain_session_message(
+        user_id=user_id,
+        content=render_briefing_markdown(content),
+        message_id=message_id,
+        metadata={"kind": "morning_briefing", "briefing_id": record.id},
+    )
+    return {
+        "status": "delivered",
+        "briefing_id": record.id,
+        "session_id": session_id,
+    }
