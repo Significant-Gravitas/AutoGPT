@@ -26,6 +26,7 @@
 
 * [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
+* [AutoPilot on a self-hosted LLM (no API keys)](copilot-local-llm.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
 
@@ -33,3 +34,7 @@
 
 * [API Introduction](integrating/api-guide.md)
 * [OAuth & SSO](integrating/oauth-guide.md)
+
+## Contributing
+
+* [Managing LLM Models](contributing/managing-llm-models.md)

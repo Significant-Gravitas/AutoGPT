@@ -45,7 +45,6 @@ trafilatura = "^2.0"
 # LLM providers
 anthropic = "^0.45.0"
 groq = "^0.8.0"
-litellm = "^1.17.9"
 openai = "^1.50.0"
 tiktoken = ">=0.7.0,<1.0.0"
 
@@ -66,7 +65,6 @@ toml = "^0.10.2"
 
 # Database & storage
 boto3 = "^1.33.6"
-chromadb = "^1.4.0"
 google-cloud-logging = "^3.8.0"
 google-cloud-storage = "^2.13.0"
 sqlalchemy = "^2.0.19"

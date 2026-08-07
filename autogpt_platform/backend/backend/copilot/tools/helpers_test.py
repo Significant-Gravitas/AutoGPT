@@ -13,6 +13,7 @@ from backend.copilot.tools.helpers import (
     check_hitl_review,
     execute_block,
     prepare_block_for_execution,
+    require_library_check,
 )
 from backend.copilot.tools.models import (
     BlockOutputResponse,
@@ -21,6 +22,8 @@ from backend.copilot.tools.models import (
     ReviewRequiredResponse,
     SetupRequirementsResponse,
 )
+
+from ._test_data import make_session
 
 _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
@@ -1043,6 +1046,142 @@ async def test_prepare_block_file_ref_expansion_error() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Null credential-field normalisation tests
+# ---------------------------------------------------------------------------
+
+
+def _make_block_with_cred_field(
+    field_name: str = "credentials",
+) -> MagicMock:
+    """Simple block that declares one credential-typed input field."""
+    block = _make_simple_block(
+        required=["term"],
+        properties={
+            "term": {"type": "string"},
+            field_name: {"type": "object"},
+        },
+    )
+    block.input_schema.get_credentials_fields.return_value = {field_name: MagicMock()}
+    return block
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_null_credentials_field_stripped() -> None:
+    """Passing credentials=None is equivalent to omitting the field entirely."""
+    block = _make_block_with_cred_field()
+    excl_ids, excl_types = _patch_excluded()
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            AsyncMock(return_value=({}, [])),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.expand_file_refs_in_args",
+            AsyncMock(side_effect=lambda d, *a, **kw: d),
+        ),
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={"term": "hello", "credentials": None},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+            dry_run=False,
+        )
+    assert isinstance(result, BlockPreparation)
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_null_credentials_same_as_absent() -> None:
+    """credentials=None and no credentials key produce identical results."""
+    block = _make_block_with_cred_field()
+    excl_ids, excl_types = _patch_excluded()
+
+    async def _run(input_data: dict):
+        with (
+            patch("backend.copilot.tools.helpers.get_block", return_value=block),
+            excl_ids,
+            excl_types,
+            patch(
+                "backend.copilot.tools.helpers.resolve_block_credentials",
+                AsyncMock(return_value=({}, [])),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.expand_file_refs_in_args",
+                AsyncMock(side_effect=lambda d, *a, **kw: d),
+            ),
+        ):
+            return await prepare_block_for_execution(
+                block_id="blk-1",
+                input_data=input_data,
+                user_id=_PREP_USER,
+                session=_make_prep_session(),
+                session_id=_PREP_SESSION,
+                dry_run=False,
+            )
+
+    result_absent = await _run({"term": "hello"})
+    result_null = await _run({"term": "hello", "credentials": None})
+    assert type(result_absent) is type(result_null)
+    assert isinstance(result_absent, BlockPreparation)
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_null_non_credential_field_not_stripped() -> None:
+    """Null on a regular (non-credential) field is left intact."""
+    block = _make_block_with_cred_field()
+    # Override schema to also include a non-credential nullable field
+    block.input_schema.jsonschema.return_value = {
+        "type": "object",
+        "properties": {
+            "term": {"type": "string"},
+            "optional_note": {"type": ["string", "null"]},
+            "credentials": {"type": "object"},
+        },
+        "required": ["term"],
+    }
+    excl_ids, excl_types = _patch_excluded()
+    captured: list[dict] = []
+
+    async def _capture_resolve(user_id, block, input_data):
+        captured.append(dict(input_data))
+        return {}, []
+
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            side_effect=_capture_resolve,
+        ),
+        patch(
+            "backend.copilot.tools.helpers.expand_file_refs_in_args",
+            AsyncMock(side_effect=lambda d, *a, **kw: d),
+        ),
+    ):
+        await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={"term": "hello", "optional_note": None, "credentials": None},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+            dry_run=False,
+        )
+
+    assert len(captured) == 1
+    seen = captured[0]
+    # credentials (credential field) should have been stripped
+    assert "credentials" not in seen
+    # optional_note (non-credential field) must remain
+    assert "optional_note" in seen
+    assert seen["optional_note"] is None
+
+
+# ---------------------------------------------------------------------------
 # Auto-credentials (Google Drive picker) regression tests for execute_block
 # ---------------------------------------------------------------------------
 
@@ -1330,3 +1469,82 @@ class TestExecuteBlockAutoCredentials:
         assert isinstance(result, ErrorResponse)
         assert "Insufficient credits" in result.message
         mock_lock.release.assert_awaited_once()
+
+
+class TestRequireLibraryCheck:
+    """Tests for the library-similarity gate. The gate is turn-scoped:
+    only the current turn's in-flight find_library_agent calls satisfy
+    it, so a stale call from an earlier turn (against an unrelated
+    goal_summary) cannot pass create_agent through."""
+
+    def test_inflight_with_args_satisfies(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": "summarise emails"},
+        )
+        assert require_library_check(session, "create_agent") is None
+
+    def test_inflight_with_empty_goal_summary_does_not_satisfy(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": ""},
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_inflight_with_for_creation_false_does_not_satisfy(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": False, "goal_summary": "x"},
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_inflight_name_only_does_not_satisfy(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call("find_library_agent")
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_history_only_call_does_not_satisfy(self):
+        """A find_library_agent call recorded in session.messages from a
+        prior turn must NOT satisfy the gate — it was almost certainly
+        against an unrelated goal_summary."""
+        from backend.copilot.model import ChatMessage
+
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "function": {
+                            "name": "find_library_agent",
+                            "arguments": (
+                                '{"for_creation": true, '
+                                '"goal_summary": "summarise emails"}'
+                            ),
+                        }
+                    }
+                ],
+            )
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_returns_error_when_not_called(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+        assert "find_library_agent" in result.message
+        assert "for_creation" in result.message
+        assert "library_check_ack" in result.message
+
+    def test_bypassed_in_builder_context(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.metadata.builder_graph_id = "some-graph-id"
+        assert require_library_check(session, "create_agent") is None

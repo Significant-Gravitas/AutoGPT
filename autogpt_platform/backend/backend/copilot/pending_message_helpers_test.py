@@ -10,10 +10,12 @@ from backend.copilot import pending_message_helpers as helpers_module
 from backend.copilot.pending_message_helpers import (
     PENDING_CALL_LIMIT,
     QueuePendingMessageResponse,
+    StreamRegistryUnavailable,
     check_pending_call_rate,
     combine_pending_with_current,
     drain_pending_safe,
     insert_pending_before_last,
+    is_turn_in_flight,
     persist_session_safe,
     queue_pending_for_http,
 )
@@ -47,6 +49,119 @@ async def test_check_pending_call_rate_fails_open_on_redis_error(
 
     result = await check_pending_call_rate("user-1")
     assert result == 0
+
+
+# ── is_turn_in_flight: fail-closed on Redis errors ────────────────────
+
+
+def _mock_chat_db(
+    monkeypatch: pytest.MonkeyPatch, *, status: str | None = "idle"
+) -> None:
+    """Stub ``chat_db()`` so the ``is_turn_in_flight`` fallthrough that
+    reads ``ChatSession.chatStatus`` doesn't hit a real DB connection."""
+    db = MagicMock()
+    db.get_chat_session_status = AsyncMock(return_value=status)
+    monkeypatch.setattr(helpers_module, "chat_db", lambda: db)
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_returns_false_when_no_active_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redis says no active stream AND ChatSession is idle → not in flight."""
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(return_value=None),
+    )
+    _mock_chat_db(monkeypatch, status="idle")
+    assert await is_turn_in_flight("sess-1") is False
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_returns_true_when_queued(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Queued sessions are also in flight even though the Redis stream
+    registry has no entry — the dispatcher hasn't claimed the row yet."""
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(return_value=None),
+    )
+    _mock_chat_db(monkeypatch, status="queued")
+    assert await is_turn_in_flight("sess-1") is True
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_returns_true_when_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active = MagicMock()
+    active.status = "running"
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(return_value=active),
+    )
+    _mock_chat_db(monkeypatch, status="running")
+    assert await is_turn_in_flight("sess-1") is True
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_raises_on_redis_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redis brown-out must NOT bubble as an unhandled 500. The helper
+    raises a typed ``StreamRegistryUnavailable`` so the chat-route
+    pre-flight chain can map it to 503 + Retry-After (matching the
+    ``RateLimitUnavailable`` mapping for the next pre-flight step)."""
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    )
+    with pytest.raises(StreamRegistryUnavailable):
+        await is_turn_in_flight("sess-1")
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_raises_on_redis_cluster_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``RedisClusterException`` (e.g. ``SlotNotCoveredError`` during a
+    GKE rolling restart) does NOT inherit from ``RedisError`` — verify it
+    is caught explicitly by the same fail-closed branch."""
+    from redis.exceptions import RedisClusterException
+
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(side_effect=RedisClusterException("slot not covered")),
+    )
+    with pytest.raises(StreamRegistryUnavailable):
+        await is_turn_in_flight("sess-1")
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_raises_when_chat_status_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DB-side ``get_chat_session_status`` failure must surface as the
+    same typed ``StreamRegistryUnavailable`` the Redis branch raises so
+    the HTTP layer's existing 503 + Retry-After mapping covers it.
+    Without this the Prisma error would bubble as a raw 500."""
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(return_value=None),
+    )
+    db = MagicMock()
+    db.get_chat_session_status = AsyncMock(side_effect=RuntimeError("db down"))
+    monkeypatch.setattr(helpers_module, "chat_db", lambda: db)
+
+    with pytest.raises(StreamRegistryUnavailable):
+        await is_turn_in_flight("sess-1")
 
 
 # ── queue_pending_for_http: gate-then-bump ordering ───────────────────

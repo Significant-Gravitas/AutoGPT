@@ -5,13 +5,15 @@ import { useRouter } from "next/navigation";
 import { emptyModalState } from "./helpers";
 import {
   useGetV2GetMyAgents,
+  useGetV2GetUserProfile,
   useGetV2ListMySubmissions,
   getGetV2ListMySubmissionsQueryKey,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
+import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -31,6 +33,7 @@ export interface Props {
   trigger?: React.ReactNode;
   targetState?: PublishState;
   onStateChange?: (state: PublishState) => void;
+  onRequestEdit?: (submission: StoreSubmission) => void;
   preSelectedAgentId?: string;
   preSelectedAgentVersion?: number;
   showTrigger?: boolean;
@@ -69,7 +72,7 @@ export function usePublishAgentModal({
 
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
 
   // Fetch agent data for pre-populating form when agent is pre-selected
   const { data: myAgents } = useGetV2GetMyAgents(undefined, {
@@ -82,6 +85,13 @@ export function usePublishAgentModal({
       enabled: isLoggedIn,
     },
   });
+  const { data: profile } = useGetV2GetUserProfile({
+    query: {
+      select: (x) => x.data as ProfileDetails,
+      enabled: isLoggedIn,
+    },
+  });
+  const creatorUsername = profile?.username;
 
   // Sync currentState with targetState when it changes from outside
   useEffect(() => {
@@ -150,7 +160,7 @@ export function usePublishAgentModal({
             ...new Set(publishedSubmissionData.image_urls || []),
           ].filter(Boolean) as string[],
           category: publishedSubmissionData.categories?.[0] || "",
-          thumbnailSrc: agent.agent_image || "https://picsum.photos/300/200",
+          thumbnailSrc: agent.agent_image || "",
           slug: publishedSubmissionData.slug,
           recommendedScheduleCron: agent.recommended_schedule_cron || "",
           changesSummary: publishedSubmissionData.changes_summary || "",
@@ -160,7 +170,7 @@ export function usePublishAgentModal({
           agent_id: preSelectedAgentId,
           title: agent.agent_name,
           description: agent.description || "",
-          thumbnailSrc: agent.agent_image || "https://picsum.photos/300/200",
+          thumbnailSrc: agent.agent_image || "",
           slug: agent.agent_name.replace(/ /g, "-"),
           recommendedScheduleCron: agent.recommended_schedule_cron || "",
         };
@@ -269,6 +279,14 @@ export function usePublishAgentModal({
 
   function handleBack() {
     if (currentState.step === "info") {
+      // When the modal was opened pre-scoped to a specific agent (e.g. from
+      // the builder or library), there is no upstream picker to go back to —
+      // close the modal instead of surfacing a picker the caller intentionally
+      // skipped.
+      if (preSelectedAgentId) {
+        handleClose();
+        return;
+      }
       updateState({
         ...currentState,
         step: "select",
@@ -282,7 +300,7 @@ export function usePublishAgentModal({
   }
 
   function handleGoToDashboard() {
-    router.push("/profile/dashboard");
+    router.push("/settings/creator-dashboard");
     handleClose();
   }
 
@@ -306,5 +324,6 @@ export function usePublishAgentModal({
     initialData,
     selectedAgentId,
     selectedAgentVersion,
+    creatorUsername,
   };
 }

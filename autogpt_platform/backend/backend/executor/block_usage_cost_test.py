@@ -13,7 +13,7 @@ from backend.blocks.code_executor import (
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.search import SearchTheWebBlock
-from backend.blocks.llm import AITextGeneratorBlock, LlmModel
+from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.data.block_cost_config import (
     BLOCK_COSTS,
     MODEL_COST,
@@ -21,6 +21,7 @@ from backend.data.block_cost_config import (
     TokenRate,
 )
 from backend.data.model import NodeExecutionStats
+from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
     anthropic_credentials,
@@ -29,6 +30,18 @@ from backend.integrations.credentials_store import (
     fal_credentials,
     openai_credentials,
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_preflight_estimate(monkeypatch):
+    """Force `get_preflight_estimate` to return 0 in this module's tests so
+    they don't accidentally couple to a populated
+    `block_preflight_estimates.json` once the admin export tool seeds it.
+    Tests that want a non-zero estimate (e.g.
+    `test_preflight_uses_historical_estimate_for_dynamic_cost_types`) override
+    this themselves on `executor_utils.get_preflight_estimate`.
+    """
+    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 0)
 
 
 @pytest.fixture
@@ -123,6 +136,52 @@ def test_cost_usd_zero_when_no_stats(tmp_block_costs_override):
     assert cost == 0
 
 
+def test_preflight_estimate_disabled_for_no_reconciliation_callers(
+    tmp_block_costs_override, monkeypatch
+):
+    """The direct block-execute API endpoints bypass the executor manager
+    and have no post-flight reconciliation. They MUST pass
+    `use_preflight_estimate=False` so dynamic-cost blocks return 0 instead
+    of locking in an unreconciled estimate as the final charge.
+    """
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=1, cost_type=BlockCostType.SECOND, cost_divisor=10)]
+    )
+    block = SearchTheWebBlock()
+
+    # Even with a registered estimate, the flag wins.
+    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 999)
+
+    cost, _ = block_usage_cost(block, {}, use_preflight_estimate=False)
+    assert cost == 0
+
+    # Sanity: with the flag default-True, the same call returns the estimate.
+    cost_with_estimate, _ = block_usage_cost(block, {})
+    assert cost_with_estimate == 999
+
+
+def test_preflight_uses_historical_estimate_for_dynamic_cost_types(
+    tmp_block_costs_override, monkeypatch
+):
+    """When stats is None and run_time=0, dynamic-cost branches return the
+    registered historical-average estimate instead of 0 — so the post-flight
+    reconciliation only settles a small delta and a billing leak is bounded
+    by that delta rather than the full execution cost."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=1, cost_type=BlockCostType.SECOND, cost_divisor=10)]
+    )
+    block = SearchTheWebBlock()
+
+    monkeypatch.setattr(
+        executor_utils,
+        "get_preflight_estimate",
+        lambda block_id: 5 if block_id == block.id else 0,
+    )
+
+    cost, _ = block_usage_cost(block, {})
+    assert cost == 5
+
+
 def test_cost_usd_ignores_non_usd_provider_cost(tmp_block_costs_override):
     """provider_cost_type='items' should not be mistaken for dollars."""
     tmp_block_costs_override(
@@ -141,7 +200,7 @@ def test_tokens_cost_type_uses_token_rate_table(tmp_block_costs_override, monkey
     # 2000 credits/1M output.
     monkeypatch.setitem(
         TOKEN_COST,
-        LlmModel.GPT4O_MINI,
+        LLMModel.GPT4O_MINI,
         TokenRate(input=1000, output=2000),
     )
     block = SearchTheWebBlock()
@@ -151,7 +210,7 @@ def test_tokens_cost_type_uses_token_rate_table(tmp_block_costs_override, monkey
     )
     cost, _ = block_usage_cost(
         block,
-        {"model": LlmModel.GPT4O_MINI.value},
+        {"model": LLMModel.GPT4O_MINI.value},
         stats=stats,
     )
     # 0.5 * 1000 + 0.25 * 2000 = 500 + 500 = 1000 credits.
@@ -164,7 +223,7 @@ def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(
     tmp_block_costs_override([BlockCost(cost_amount=0, cost_type=BlockCostType.TOKENS)])
     block = SearchTheWebBlock()
     # Ollama models aren't in TOKEN_COST but are in MODEL_COST.
-    ollama_model = LlmModel.OLLAMA_LLAMA3_2
+    ollama_model = LLMModel.OLLAMA_LLAMA3_2
     expected = MODEL_COST[ollama_model]
     cost, _ = block_usage_cost(
         block,
@@ -237,14 +296,14 @@ def test_llm_block_charges_per_token_post_flight():
     """AITextGeneratorBlock with Claude 4.6 Sonnet bills by real token counts."""
     block = AITextGeneratorBlock()
     input_data = {
-        "model": LlmModel.CLAUDE_4_6_SONNET,
+        "model": LLMModel.CLAUDE_4_6_SONNET,
         "credentials": {
             "id": anthropic_credentials.id,
             "provider": anthropic_credentials.provider,
             "type": anthropic_credentials.type,
         },
     }
-    rate = TOKEN_COST[LlmModel.CLAUDE_4_6_SONNET]
+    rate = TOKEN_COST[LLMModel.CLAUDE_4_6_SONNET]
     stats = NodeExecutionStats(
         input_token_count=200_000,
         output_token_count=50_000,
@@ -264,7 +323,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
     cost, _ = block_usage_cost(
         block,
         {
-            "model": LlmModel.GPT5,
+            "model": LLMModel.GPT5,
             "credentials": {
                 "id": openai_credentials.id,
                 "provider": openai_credentials.provider,
@@ -272,7 +331,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
             },
         },
     )
-    assert cost == MODEL_COST[LlmModel.GPT5]
+    assert cost == MODEL_COST[LLMModel.GPT5]
 
 
 def test_run_cost_type_remains_unchanged(tmp_block_costs_override):

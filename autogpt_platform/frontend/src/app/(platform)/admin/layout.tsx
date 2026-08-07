@@ -1,15 +1,18 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import {
-  Users,
-  CurrencyDollar,
-  MagnifyingGlass,
-  Gauge,
-  Receipt,
-  FileText,
-  Heartbeat,
-} from "@phosphor-icons/react/dist/ssr";
-
 import { IconSliders } from "@/components/__legacy__/ui/icons";
+import {
+  BrainIcon,
+  Calculator01Icon,
+  DollarSignIcon,
+  File02Icon,
+  GaugeIcon,
+  Pulse01Icon,
+  ReceiptTextIcon,
+  Robot01Icon,
+  Search01Icon,
+  UserMultipleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const sidebarLinkGroups = [
   {
@@ -17,37 +20,52 @@ const sidebarLinkGroups = [
       {
         text: "Marketplace Management",
         href: "/admin/marketplace",
-        icon: <Users className="h-6 w-6" />,
+        icon: <Icon icon={UserMultipleIcon} className="h-6 w-6" />,
       },
       {
         text: "User Spending",
         href: "/admin/spending",
-        icon: <CurrencyDollar className="h-6 w-6" />,
+        icon: <Icon icon={DollarSignIcon} className="h-6 w-6" />,
       },
       {
         text: "System Diagnostics",
         href: "/admin/diagnostics",
-        icon: <Heartbeat className="h-6 w-6" />,
+        icon: <Icon icon={Pulse01Icon} className="h-6 w-6" />,
       },
       {
         text: "User Impersonation",
         href: "/admin/impersonation",
-        icon: <MagnifyingGlass className="h-6 w-6" />,
+        icon: <Icon icon={Search01Icon} className="h-6 w-6" />,
       },
       {
         text: "Rate Limits",
         href: "/admin/rate-limits",
-        icon: <Gauge className="h-6 w-6" />,
+        icon: <Icon icon={GaugeIcon} className="h-6 w-6" />,
       },
       {
         text: "Platform Costs",
         href: "/admin/platform-costs",
-        icon: <Receipt className="h-6 w-6" />,
+        icon: <Icon icon={ReceiptTextIcon} className="h-6 w-6" />,
       },
       {
         text: "Execution Analytics",
         href: "/admin/execution-analytics",
-        icon: <FileText className="h-6 w-6" />,
+        icon: <Icon icon={File02Icon} className="h-6 w-6" />,
+      },
+      {
+        text: "Bot Analytics",
+        href: "/admin/bots",
+        icon: <Icon icon={Robot01Icon} className="h-6 w-6" />,
+      },
+      {
+        text: "Block Cost Estimates",
+        href: "/admin/block-cost-estimates",
+        icon: <Icon icon={Calculator01Icon} className="h-6 w-6" />,
+      },
+      {
+        text: "Memory Inspector",
+        href: "/admin/memory",
+        icon: <Icon icon={BrainIcon} className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",
@@ -64,7 +82,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen w-full flex-col lg:flex-row">
+    <div className="flex h-full w-full flex-col lg:flex-row">
       <Sidebar linkGroups={sidebarLinkGroups} />
       <div className="flex-1 pl-4">{children}</div>
     </div>

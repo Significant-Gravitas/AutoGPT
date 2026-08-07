@@ -10,7 +10,14 @@ import {
   IconType,
   IconUploadCloud,
 } from "@/components/__legacy__/ui/icons";
-import { ChatsIcon, StorefrontIcon } from "@phosphor-icons/react";
+import {
+  CreditCardIcon,
+  MessageMultiple02Icon,
+  NewsIcon,
+  QuestionIcon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Link = {
   name: string;
@@ -41,6 +48,7 @@ export type MenuItemGroup = {
     icon: IconType;
     text: string;
     href?: string;
+    external?: boolean;
     onClick?: () => void;
   }[];
 };
@@ -50,8 +58,8 @@ export const accountMenuItems: MenuItemGroup[] = [
     items: [
       {
         icon: IconType.Edit,
-        text: "Edit profile",
-        href: "/profile",
+        text: "Account",
+        href: "/settings/account",
       },
     ],
   },
@@ -60,7 +68,7 @@ export const accountMenuItems: MenuItemGroup[] = [
       {
         icon: IconType.LayoutDashboard,
         text: "Creator Dashboard",
-        href: "/profile/dashboard",
+        href: "/settings/creator-dashboard",
       },
       {
         icon: IconType.UploadCloud,
@@ -73,7 +81,7 @@ export const accountMenuItems: MenuItemGroup[] = [
       {
         icon: IconType.Settings,
         text: "Settings",
-        href: "/profile/settings",
+        href: "/settings",
       },
     ],
   },
@@ -87,33 +95,106 @@ export const accountMenuItems: MenuItemGroup[] = [
   },
 ];
 
-export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
+export function getAccountMenuItems(
+  userRole?: string,
+  newLayout = false,
+): MenuItemGroup[] {
+  return newLayout
+    ? getNewLayoutAccountMenuItems(userRole)
+    : getClassicAccountMenuItems(userRole);
+}
+
+// New sidebar layout grouping — gated behind the AUTOGPT_NEW_LAYOUT flag.
+function getNewLayoutAccountMenuItems(userRole?: string): MenuItemGroup[] {
+  const footerItems: MenuItemGroup["items"] = [
+    {
+      icon: IconType.WhatsNew,
+      text: "What's new",
+      href: "https://agpt.co/changelog",
+      external: true,
+    },
+    {
+      icon: IconType.Help,
+      text: "Help & Docs",
+      href: "https://agpt.co/docs",
+      external: true,
+    },
+  ];
+
+  if (userRole === "admin") {
+    footerItems.push({
+      icon: IconType.Sliders,
+      text: "Admin",
+      href: "/admin/marketplace",
+    });
+  }
+
+  footerItems.push({
+    icon: IconType.LogOut,
+    text: "Log out",
+  });
+
+  return [
+    {
+      items: [
+        {
+          icon: IconType.Edit,
+          text: "Profile",
+          href: "/settings/profile",
+        },
+        {
+          icon: IconType.Settings,
+          text: "Settings",
+          href: "/settings/account",
+        },
+        {
+          icon: IconType.Billing,
+          text: "Billing",
+          href: "/settings/billing",
+        },
+      ],
+    },
+    {
+      items: footerItems,
+    },
+  ];
+}
+
+// Classic Navbar grouping (unchanged, pre-new-layout).
+function getClassicAccountMenuItems(userRole?: string): MenuItemGroup[] {
   const baseMenuItems: MenuItemGroup[] = [
     {
       items: [
         {
           icon: IconType.Edit,
-          text: "Edit profile",
-          href: "/profile",
+          text: "Profile",
+          href: "/settings/profile",
         },
-      ],
-    },
-    {
-      items: [
+        {
+          icon: IconType.Settings,
+          text: "Settings",
+          href: "/settings/account",
+        },
+        {
+          icon: IconType.Billing,
+          text: "Billing",
+          href: "/settings/billing",
+        },
         {
           icon: IconType.LayoutDashboard,
           text: "Creator Dashboard",
-          href: "/profile/dashboard",
+          href: "/settings/creator-dashboard",
         },
         {
-          icon: IconType.UploadCloud,
-          text: "Publish an agent",
+          icon: IconType.Help,
+          text: "Help & Docs",
+          href: "https://agpt.co/docs",
+          external: true,
         },
       ],
     },
   ];
 
-  // Add admin menu item for admin users
   if (userRole === "admin") {
     baseMenuItems.push({
       items: [
@@ -126,26 +207,14 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
     });
   }
 
-  // Add settings and logout
-  baseMenuItems.push(
-    {
-      items: [
-        {
-          icon: IconType.Settings,
-          text: "Settings",
-          href: "/profile/settings",
-        },
-      ],
-    },
-    {
-      items: [
-        {
-          icon: IconType.LogOut,
-          text: "Log out",
-        },
-      ],
-    },
-  );
+  baseMenuItems.push({
+    items: [
+      {
+        icon: IconType.LogOut,
+        text: "Log out",
+      },
+    ],
+  });
 
   return baseMenuItems;
 }
@@ -154,7 +223,7 @@ export function getAccountMenuOptionIcon(icon: IconType) {
   const iconClass = "size-4";
   switch (icon) {
     case IconType.LayoutDashboard:
-      return <StorefrontIcon className={iconClass} />;
+      return <Icon icon={Store01Icon} className={iconClass} />;
     case IconType.UploadCloud:
       return <IconUploadCloud className={iconClass} />;
     case IconType.Edit:
@@ -172,7 +241,13 @@ export function getAccountMenuOptionIcon(icon: IconType) {
     case IconType.Sliders:
       return <IconSliders className={iconClass} />;
     case IconType.Chat:
-      return <ChatsIcon className={iconClass} />;
+      return <Icon icon={MessageMultiple02Icon} className={iconClass} />;
+    case IconType.Billing:
+      return <Icon icon={CreditCardIcon} className={iconClass} />;
+    case IconType.Help:
+      return <Icon icon={QuestionIcon} className={iconClass} />;
+    case IconType.WhatsNew:
+      return <Icon icon={NewsIcon} className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }

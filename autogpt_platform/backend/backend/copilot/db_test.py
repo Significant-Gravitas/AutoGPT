@@ -7,13 +7,17 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from prisma.enums import ResourceVisibility
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
     PaginatedMessages,
     get_chat_messages_paginated,
+    get_user_chat_sessions,
     set_turn_duration,
+    update_chat_message_tool_calls,
+    update_chat_session_pinned,
     update_message_content_by_sequence,
 )
 from backend.copilot.model import ChatMessage as CopilotChatMessage
@@ -61,6 +65,15 @@ def _make_session(
         totalCompletionTokens=0,
         title=None,
         metadata={},
+        chatStatus="idle",
+        isPinned=False,
+        # Sharing fields added by the chat-sharing PR — even with
+        # ``model_construct`` Pydantic v2 still validates required
+        # non-optional columns, so the mock needs them explicitly.
+        isShared=False,
+        shareToken=None,
+        sharedAt=None,
+        autoShareExecutions=False,
         Messages=messages or [],
     )
     return session
@@ -608,3 +621,495 @@ async def test_update_message_content_by_sequence_sanitizes_content():
         where={"sessionId": "sess-1", "sequence": 0},
         data={"content": "sanitized"},
     )
+
+
+# ---------- update_chat_session_pinned ----------
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_pinned_success():
+    """Returns True and writes isPinned scoped to (session_id, user_id)."""
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        result = await update_chat_session_pinned("sess-1", "user-abc", True)
+
+    assert result is True
+    update_many.assert_called_once_with(
+        where={"id": "sess-1", "userId": "user-abc"},
+        data={"isPinned": True},
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_pinned_not_found():
+    """Returns False when no row matches (session missing or wrong user)."""
+    update_many = AsyncMock(return_value=0)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        result = await update_chat_session_pinned("sess-1", "user-abc", False)
+
+    assert result is False
+
+
+# ---------- get_user_chat_sessions ordering ----------
+
+
+@pytest.mark.asyncio
+async def test_get_user_chat_sessions_orders_pinned_first():
+    """Pinned sessions must be ordered ahead of unpinned, then by recency.
+
+    The list uses raw SQL (Prisma's ``JsonFilter`` can't express the dream
+    ``metadata->>'kind'`` exclusion), so the ordering lives in the ``ORDER
+    BY`` clause rather than a Prisma ``order`` argument.
+    """
+    raw = AsyncMock(return_value=[])
+    with patch("backend.copilot.db.db.query_raw_with_schema", raw):
+        await get_user_chat_sessions("user-abc", limit=10, offset=0)
+
+    query = raw.call_args.args[0]
+    assert 'ORDER BY "isPinned" DESC, "updatedAt" DESC' in query
+
+
+# NOTE: previously this file had a separate suite for ``db.get_chat_session``
+# (windowed eager-load). That function was removed in favour of going through
+# ``get_chat_messages_paginated`` directly — see ``model._get_session_from_db``.
+# Cap-hit + tool-pair boundary behaviour is now covered by the paginated tests
+# above and the integration coverage in ``model_test.py``.
+
+
+# ChatSession lifecycle primitives + add_chat_message.
+
+
+@pytest.mark.asyncio
+async def test_count_chat_sessions_by_status_filters_by_user_and_status() -> None:
+    from backend.copilot.db import count_chat_sessions_by_status
+
+    count = AsyncMock(return_value=3)
+    with patch.object(PrismaChatSession, "prisma", return_value=AsyncMock(count=count)):
+        result = await count_chat_sessions_by_status(user_id="u1", status="running")
+    assert result == 3
+    where = count.call_args.kwargs["where"]
+    assert where == {"userId": "u1", "chatStatus": "running"}
+
+
+@pytest.mark.asyncio
+async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() -> None:
+    """Returns RPC-safe ``ChatSessionInfo`` rows (not raw Prisma) so the
+    function can serve the dispatcher across the DatabaseManager RPC
+    boundary from the CoPilotExecutor subprocess."""
+    from backend.copilot.db import list_chat_sessions_by_status
+
+    now = datetime.now(UTC)
+    rows = [
+        PrismaChatSession(
+            id="s1",
+            userId="u1",
+            chatStatus="queued",
+            createdAt=now,
+            updatedAt=now,
+            credentials="{}",
+            successfulAgentRuns="{}",
+            successfulAgentSchedules="{}",
+            metadata="{}",
+            totalPromptTokens=0,
+            totalCompletionTokens=0,
+            isPinned=False,
+            isShared=False,
+            shareToken=None,
+            sharedAt=None,
+            autoShareExecutions=False,
+            visibility=ResourceVisibility.PRIVATE,
+        ),
+        PrismaChatSession(
+            id="s2",
+            userId="u1",
+            chatStatus="queued",
+            createdAt=now,
+            updatedAt=now,
+            credentials="{}",
+            successfulAgentRuns="{}",
+            successfulAgentSchedules="{}",
+            metadata="{}",
+            totalPromptTokens=0,
+            totalCompletionTokens=0,
+            isPinned=False,
+            isShared=False,
+            shareToken=None,
+            sharedAt=None,
+            autoShareExecutions=False,
+            visibility=ResourceVisibility.PRIVATE,
+        ),
+    ]
+    find_many = AsyncMock(return_value=rows)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(find_many=find_many)
+    ):
+        result = await list_chat_sessions_by_status(user_id="u1", status="queued")
+    assert [r.session_id for r in result] == ["s1", "s2"]
+    assert all(r.chat_status == "queued" for r in result)
+    kwargs = find_many.call_args.kwargs
+    assert kwargs["where"] == {"userId": "u1", "chatStatus": "queued"}
+    assert kwargs["order"] == {"updatedAt": "asc"}
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_owner_gated_returns_true_on_match() -> None:
+    """User-initiated transition (cancel) gates on both ``chatStatus``
+    AND ``userId`` — both guards in one atomic update."""
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        ok = await update_chat_session_status(
+            session_id="s1",
+            expect_status="queued",
+            status="idle",
+            user_id="u1",
+        )
+    assert ok is True
+    kwargs = update_many.call_args.kwargs
+    assert kwargs["where"] == {"id": "s1", "chatStatus": "queued", "userId": "u1"}
+    assert kwargs["data"] == {"chatStatus": "idle"}
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_returns_false_when_cas_fails() -> None:
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=0)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        ok = await update_chat_session_status(
+            session_id="s1", expect_status="queued", status="idle"
+        )
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_dispatcher_path_omits_user_gate() -> None:
+    """Dispatcher-initiated transitions (claim / restore / release) don't
+    pass ``user_id`` — they act on the session regardless of owner."""
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        await update_chat_session_status(
+            session_id="s1", expect_status="queued", status="running"
+        )
+    where = update_many.call_args.kwargs["where"]
+    assert "userId" not in where
+    assert where == {"id": "s1", "chatStatus": "queued"}
+
+
+@pytest.mark.asyncio
+async def test_add_chat_message_serialises_metadata_via_safejson() -> None:
+    from backend.copilot.db import add_chat_message
+
+    create = AsyncMock(return_value=_make_msg(sequence=1))
+    session_update = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(create=create)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(update=session_update)
+        ),
+    ):
+        await add_chat_message(
+            message_id="m1",
+            session_id="s1",
+            role="user",
+            content="hi",
+            sequence=1,
+            metadata={"mode": "extended_thinking"},
+        )
+    data = create.call_args.kwargs["data"]
+    assert data["id"] == "m1"
+    metadata = data["metadata"]
+    inner = getattr(metadata, "data", metadata)
+    assert inner == {"mode": "extended_thinking"}
+
+
+@pytest.mark.asyncio
+async def test_add_chat_message_omits_metadata_when_none() -> None:
+    from backend.copilot.db import add_chat_message
+
+    create = AsyncMock(return_value=_make_msg(sequence=1))
+    session_update = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(create=create)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(update=session_update)
+        ),
+    ):
+        await add_chat_message(
+            message_id="m1",
+            session_id="s1",
+            role="user",
+            content="hi",
+            sequence=1,
+            metadata=None,
+        )
+    data = create.call_args.kwargs["data"]
+    assert "metadata" not in data
+
+
+# ---------- update_chat_message_tool_calls ----------
+
+_TOOL_CALLS = [
+    {
+        "id": "c1",
+        "type": "function",
+        "function": {"name": "web_search", "arguments": "{}"},
+    }
+]
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_success():
+    """Returns True when the unique-keyed update finds the row."""
+    with patch.object(PrismaChatMessage, "prisma") as mock_prisma:
+        mock_prisma.return_value.update = AsyncMock(return_value=object())
+
+        result = await update_chat_message_tool_calls("sess-1", 7, _TOOL_CALLS)
+
+    assert result is True
+    where = mock_prisma.return_value.update.call_args.kwargs["where"]
+    assert where == {"sessionId_sequence": {"sessionId": "sess-1", "sequence": 7}}
+    payload = mock_prisma.return_value.update.call_args.kwargs["data"]["toolCalls"]
+    assert payload.data == _TOOL_CALLS
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_tool_calls_not_found():
+    """Returns False (so the caller's pending-save flag stays set) when no row matches."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update = AsyncMock(return_value=None)
+
+        result = await update_chat_message_tool_calls("sess-1", 99, _TOOL_CALLS)
+
+    assert result is False
+    mock_logger.warning.assert_called_once()
+
+
+# ---------- Stamping columns: the Prisma persistence boundary ----------
+
+
+@pytest.mark.asyncio
+async def test_batch_persist_maps_stamp_columns_to_prisma_names():
+    """The snake_case message fields must land on the camelCase Prisma
+    columns — a mapping typo here silently stops analytics populating."""
+    from backend.copilot.db import add_chat_messages_batch
+
+    captured: dict = {}
+
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_msg,
+        patch.object(PrismaChatSession, "prisma") as mock_sess,
+        patch("backend.copilot.db.db.transaction") as mock_tx,
+    ):
+        mock_tx.return_value.__aenter__ = AsyncMock(return_value=None)
+        mock_tx.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        async def _capture(data):
+            captured["rows"] = data
+
+        mock_msg.return_value.create_many = AsyncMock(side_effect=_capture)
+        mock_msg.return_value.find_first = AsyncMock(return_value=None)
+        mock_sess.return_value.update = AsyncMock()
+
+        await add_chat_messages_batch(
+            session_id=SESSION_ID,
+            start_sequence=0,
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": "hi",
+                    "model": "claude-sonnet-4-6",
+                    "routing_source": "catalog",
+                }
+            ],
+        )
+
+    (row,) = captured["rows"]
+    assert row["model"] == "claude-sonnet-4-6"
+    assert row["routingSource"] == "catalog"
+    assert "routing_source" not in row
+
+
+def test_from_db_restores_stamp_columns():
+    """Prisma camelCase columns come back as the snake_case message fields."""
+    from backend.copilot.model import ChatMessage
+
+    prisma_msg = PrismaChatMessage.model_construct(
+        id="m-1",
+        sessionId=SESSION_ID,
+        sequence=1,
+        role="assistant",
+        content="hi",
+        model="claude-sonnet-4-6",
+        routingSource="catalog",
+        createdAt=datetime.now(UTC),
+    )
+    restored = ChatMessage.from_db(prisma_msg)
+    assert restored.model == "claude-sonnet-4-6"
+    assert restored.routing_source == "catalog"
+
+
+def test_from_db_null_stamps_stay_null():
+    """Pre-feature rows (NULL columns) must not grow phantom values."""
+    from backend.copilot.model import ChatMessage
+
+    prisma_msg = PrismaChatMessage.model_construct(
+        id="m-2",
+        sessionId=SESSION_ID,
+        sequence=2,
+        role="assistant",
+        content="old",
+        model=None,
+        routingSource=None,
+        createdAt=datetime.now(UTC),
+    )
+    restored = ChatMessage.from_db(prisma_msg)
+    assert restored.model is None
+    assert restored.routing_source is None
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_stamps_maps_prisma_columns():
+    """The stamp back-fill writes the camelCase Prisma columns."""
+    from backend.copilot.db import update_chat_message_stamps
+
+    with patch.object(PrismaChatMessage, "prisma") as mock_msg:
+        update = AsyncMock(return_value=object())
+        mock_msg.return_value.update = update
+
+        ok = await update_chat_message_stamps(
+            session_id=SESSION_ID,
+            sequence=7,
+            model="claude-sonnet-4-6",
+            routing_source="fallback",
+        )
+
+    assert ok is True
+    kwargs = update.call_args.kwargs
+    assert kwargs["data"] == {
+        "model": "claude-sonnet-4-6",
+        "routingSource": "fallback",
+    }
+    assert kwargs["where"]["sessionId_sequence"]["sequence"] == 7
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_stamps_not_found_returns_false():
+    """No matching row → False (the back-fill loop logs and keeps going)."""
+    from backend.copilot.db import update_chat_message_stamps
+
+    with patch.object(PrismaChatMessage, "prisma") as mock_msg:
+        mock_msg.return_value.update = AsyncMock(return_value=None)
+        ok = await update_chat_message_stamps(
+            session_id=SESSION_ID,
+            sequence=99,
+            model="claude-sonnet-4-6",
+            routing_source="env",
+        )
+    assert ok is False
+
+
+# ---------- append_expert_run_message ----------
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_dedupes_on_message_id() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=_make_msg(sequence=1))
+    add_message = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result is None
+    add_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_uses_latest_expert_session() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=None)
+    find_first = AsyncMock(return_value=_make_session(session_id="sess-latest"))
+    add_message = AsyncMock()
+    create_session = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(find_first=find_first)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+        patch("backend.copilot.db.create_chat_session", new=create_session),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=7)),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result == "sess-latest"
+    create_session.assert_not_awaited()
+    call_kwargs = add_message.call_args.kwargs
+    assert call_kwargs["session_id"] == "sess-latest"
+    assert call_kwargs["role"] == "assistant"
+    assert call_kwargs["sequence"] == 7
+    assert call_kwargs["message_id"] == "m1"
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_creates_session_when_none_exists() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=None)
+    find_first = AsyncMock(return_value=None)
+    add_message = AsyncMock()
+    created = AsyncMock()
+    created_info = AsyncMock()
+    created_info.session_id = "sess-new"
+    created.return_value = created_info
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(find_first=find_first)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+        patch("backend.copilot.db.create_chat_session", new=created),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=0)),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result == "sess-new"
+    assert created.call_args.kwargs["expert_id"] == "e1"
+    assert add_message.call_args.kwargs["session_id"] == "sess-new"

@@ -1,5 +1,7 @@
 """Tests for notification error handling in NotificationManager."""
 
+import asyncio
+import threading
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -324,11 +326,7 @@ class TestNotificationErrorHandling:
                 data = kwargs.get("data", {}).get("notifications", [])
                 if data and len(data) == 1:
                     # Check notification content to identify index 3
-                    if any(
-                        "Test Agent 3" in str(n.data)
-                        for n in data
-                        if hasattr(n, "data")
-                    ):
+                    if any("Test Agent 3" in str(n.data) for n in data):
                         # Return oversized message for index 3
                         return ("subject", "x" * 5_000_000)  # Over 4.5MB limit
                 return ("subject", "normal sized content")
@@ -345,11 +343,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification was sent based on content
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             successful_indices.append(i)
                             return None
                     return None
@@ -448,11 +442,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification based on content
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             # Index 1 has generic API error
                             if i == 1:
                                 failed_indices.append(i)
@@ -559,11 +549,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification was sent
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             successful_indices.append(i)
                             return None
                     return None  # Success
@@ -598,3 +584,574 @@ class TestNotificationErrorHandling:
             # Info message about successful sends should be logged
             info_calls = [call[0][0] for call in mock_logger.info.call_args_list]
             assert any("sent and removed" in call.lower() for call in info_calls)
+
+
+def test_run_service_retains_background_future():
+    """The RabbitMQ task must remain strongly referenced while it is pending."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.shared_event_loop = MagicMock()
+    scheduled_future = MagicMock()
+
+    with patch(
+        "backend.notifications.notifications.asyncio.run_coroutine_threadsafe",
+        return_value=scheduled_future,
+    ) as run_coroutine_threadsafe, patch(
+        "backend.notifications.notifications.AppService.run_service"
+    ) as parent_run_service:
+        manager.run_service()
+
+    wrapper_coroutine = run_coroutine_threadsafe.call_args.args[0]
+    wrapper_coroutine.close()
+    assert manager._run_service_future is scheduled_future
+    parent_run_service.assert_called_once_with()
+
+
+def test_cleanup_awaits_background_task_before_disconnect():
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    events = []
+    manager._run_service_future = MagicMock()
+    # Explicitly mark the scheduling proxy done so the wait loop in
+    # _shutdown_service is skipped intentionally, not via a truthy MagicMock.
+    manager._run_service_future.done.return_value = True
+    manager._run_service_task = None
+    manager.shared_event_loop = MagicMock()
+    manager.shared_event_loop.is_closed.return_value = False
+    manager.shared_event_loop.is_running.return_value = True
+    manager.rabbitmq_service = MagicMock()
+    manager.rabbitmq_service.disconnect = AsyncMock(
+        side_effect=lambda: events.append("disconnect")
+    )
+    manager.run_and_wait = MagicMock(
+        side_effect=lambda coro, timeout=None: asyncio.run(coro)
+    )
+
+    with patch(
+        "backend.notifications.notifications.AppService.cleanup",
+        side_effect=lambda: events.append("parent"),
+    ):
+        manager.cleanup()
+
+    assert manager.running is False
+    assert events == ["disconnect", "parent"]
+    manager.rabbitmq_service.disconnect.assert_awaited_once_with()
+    manager.run_and_wait.assert_called_once()
+    assert manager._run_service_future is None
+
+
+def test_shutdown_tolerates_cancelled_disconnect_task():
+    """A disconnect that ends up cancelled must not crash _shutdown_service.
+
+    Task.exception() raises CancelledError (rather than returning it) on a
+    cancelled task, so the error-logging branch must skip cancelled tasks.
+    """
+    manager = NotificationManager.__new__(NotificationManager)
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.rabbitmq_service = MagicMock()
+
+    async def cancelled_disconnect():
+        raise asyncio.CancelledError()
+
+    manager.rabbitmq_service.disconnect = cancelled_disconnect
+
+    # Must complete without propagating CancelledError.
+    asyncio.run(manager._shutdown_service())
+
+
+def test_cleanup_handles_shutdown_before_rabbitmq_startup():
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager.rabbitmq_service = None
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.shared_event_loop = MagicMock()
+    manager.shared_event_loop.is_closed.return_value = False
+    manager.shared_event_loop.is_running.return_value = True
+    manager.run_and_wait = MagicMock(
+        side_effect=lambda coro, timeout=None: asyncio.run(coro)
+    )
+
+    with patch(
+        "backend.notifications.notifications.AppService.cleanup"
+    ) as parent_cleanup:
+        manager.cleanup()
+
+    assert manager.running is False
+    manager.run_and_wait.assert_called_once()
+    parent_cleanup.assert_called_once_with()
+
+
+def test_cleanup_waits_for_consumer_task_cancellation_to_finish():
+    """The event loop must not close while notification tasks are still pending."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.shared_event_loop = asyncio.new_event_loop()
+    service_started = threading.Event()
+    service_finished = threading.Event()
+    events = []
+
+    async def slow_to_cancel_service():
+        service_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            # Model async context-manager cleanup that needs several loop turns.
+            for _ in range(5):
+                await asyncio.sleep(0)
+            service_finished.set()
+            events.append("service-finished")
+
+    manager._run_service = slow_to_cancel_service
+    manager.rabbitmq_service = MagicMock()
+    manager.rabbitmq_service.disconnect = AsyncMock(
+        side_effect=lambda: events.append("disconnect")
+    )
+    loop_thread = threading.Thread(
+        target=manager.shared_event_loop.run_forever,
+        daemon=True,
+    )
+    loop_thread.start()
+    scheduled_future = asyncio.run_coroutine_threadsafe(
+        manager._run_service_with_task_reference(), manager.shared_event_loop
+    )
+    manager._run_service_future = scheduled_future
+    assert service_started.wait(timeout=2)
+
+    def stop_parent_loop():
+        manager.shared_event_loop.call_soon_threadsafe(manager.shared_event_loop.stop)
+
+    try:
+        with patch(
+            "backend.notifications.notifications.AppService.cleanup",
+            side_effect=stop_parent_loop,
+        ):
+            manager.cleanup()
+        loop_thread.join(timeout=2)
+
+        assert service_finished.is_set()
+        assert events == ["service-finished", "disconnect"]
+        assert not loop_thread.is_alive()
+        assert scheduled_future.done()
+        assert not asyncio.all_tasks(manager.shared_event_loop)
+    finally:
+        if loop_thread.is_alive():
+            manager.shared_event_loop.call_soon_threadsafe(
+                manager.shared_event_loop.stop
+            )
+            loop_thread.join(timeout=2)
+        manager.shared_event_loop.close()
+
+
+def test_cleanup_gives_up_on_service_task_that_ignores_cancellation():
+    """A consumer stuck unwinding must not hang cleanup past the timeout."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager.rabbitmq_service = None
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.shared_event_loop = asyncio.new_event_loop()
+    service_started = threading.Event()
+
+    async def uncancellable_service():
+        service_started.set()
+        while True:
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                # Model a task wedged in unwinding (e.g. awaiting a broker
+                # reply on a dead connection) that never finishes cancelling.
+                continue
+
+    manager._run_service = uncancellable_service
+    loop_thread = threading.Thread(
+        target=manager.shared_event_loop.run_forever,
+        daemon=True,
+    )
+    loop_thread.start()
+    scheduled_future = asyncio.run_coroutine_threadsafe(
+        manager._run_service_with_task_reference(), manager.shared_event_loop
+    )
+    manager._run_service_future = scheduled_future
+    assert service_started.wait(timeout=2)
+
+    def stop_parent_loop():
+        manager.shared_event_loop.call_soon_threadsafe(manager.shared_event_loop.stop)
+
+    try:
+        with patch(
+            "backend.notifications.notifications.SHUTDOWN_TIMEOUT_SECONDS", 0.1
+        ), patch(
+            "backend.notifications.notifications.AppService.cleanup",
+            side_effect=stop_parent_loop,
+        ):
+            manager.cleanup()
+        loop_thread.join(timeout=2)
+
+        assert not loop_thread.is_alive()
+        assert manager._run_service_future is None
+        assert manager._run_service_task is None
+    finally:
+        if loop_thread.is_alive():
+            manager.shared_event_loop.call_soon_threadsafe(
+                manager.shared_event_loop.stop
+            )
+            loop_thread.join(timeout=2)
+        manager.shared_event_loop.close()
+
+
+def test_cleanup_handles_shutdown_before_service_task_first_loop_turn():
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager.rabbitmq_service = None
+    manager._run_service_task = None
+    manager.shared_event_loop = asyncio.new_event_loop()
+    service_finished = threading.Event()
+
+    async def slow_to_cancel_service():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            for _ in range(3):
+                await asyncio.sleep(0)
+            service_finished.set()
+
+    manager._run_service = slow_to_cancel_service
+    scheduled_future = asyncio.run_coroutine_threadsafe(
+        manager._run_service_with_task_reference(), manager.shared_event_loop
+    )
+    manager._run_service_future = scheduled_future
+
+    try:
+        with patch("backend.notifications.notifications.AppService.cleanup"):
+            manager.cleanup()
+        manager.shared_event_loop.run_until_complete(asyncio.sleep(0))
+
+        assert service_finished.is_set()
+        assert scheduled_future.done()
+        assert not asyncio.all_tasks(manager.shared_event_loop)
+    finally:
+        manager.shared_event_loop.close()
+
+
+def test_cleanup_skips_shutdown_when_loop_already_closed():
+    """A crashed-and-closed loop must not turn cleanup into a RuntimeError."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager.rabbitmq_service = MagicMock()
+    manager.rabbitmq_service.disconnect = AsyncMock()
+    manager._run_service_future = MagicMock()
+    manager._run_service_future.done.return_value = True
+    manager._run_service_task = None
+    manager.shared_event_loop = asyncio.new_event_loop()
+    manager.shared_event_loop.close()
+
+    # Unpatched parent cleanup: BaseAppService.cleanup must also survive the
+    # closed loop instead of raising from call_soon_threadsafe(loop.stop).
+    manager.cleanup()
+
+    assert manager.running is False
+    manager.rabbitmq_service.disconnect.assert_not_awaited()
+    assert manager._run_service_future is None
+    assert manager._run_service_task is None
+
+
+def test_cleanup_survives_loop_closing_between_check_and_schedule():
+    """A loop that closes right after the checks must not crash cleanup."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager.rabbitmq_service = None
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.shared_event_loop = MagicMock()
+    manager.shared_event_loop.is_closed.return_value = False
+    manager.shared_event_loop.is_running.return_value = True
+    manager.run_and_wait = MagicMock(side_effect=RuntimeError("Event loop is closed"))
+
+    with patch(
+        "backend.notifications.notifications.AppService.cleanup"
+    ) as parent_cleanup:
+        manager.cleanup()
+
+    parent_cleanup.assert_called_once_with()
+    assert manager._run_service_future is None
+    assert manager._run_service_task is None
+
+
+def test_cleanup_gives_up_when_loop_never_services_the_barrier():
+    """cleanup() must not block forever if the loop never runs the barrier."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.running = True
+    manager.rabbitmq_service = None
+    manager._run_service_future = None
+    manager._run_service_task = None
+    manager.shared_event_loop = asyncio.new_event_loop()
+    loop_hogged = threading.Event()
+    release_loop = threading.Event()
+
+    def hog_the_loop():
+        # Keep the loop stuck in one callback so the shutdown barrier
+        # scheduled by cleanup() never gets serviced before the deadline.
+        loop_hogged.set()
+        release_loop.wait(timeout=5)
+
+    loop_thread = threading.Thread(
+        target=manager.shared_event_loop.run_forever,
+        daemon=True,
+    )
+    loop_thread.start()
+    manager.shared_event_loop.call_soon_threadsafe(hog_the_loop)
+    assert loop_hogged.wait(timeout=2)
+
+    def stop_parent_loop():
+        manager.shared_event_loop.call_soon_threadsafe(manager.shared_event_loop.stop)
+
+    try:
+        with patch(
+            "backend.notifications.notifications.CLEANUP_TIMEOUT_SECONDS", 0.1
+        ), patch(
+            "backend.notifications.notifications.AppService.cleanup",
+            side_effect=stop_parent_loop,
+        ):
+            manager.cleanup()
+
+        # cleanup() returned while the loop was still wedged, so the outer
+        # deadline fired instead of blocking on Future.result() forever.
+        assert not release_loop.is_set()
+        assert manager._run_service_future is None
+        assert manager._run_service_task is None
+    finally:
+        release_loop.set()
+        loop_thread.join(timeout=2)
+        # Drain the abandoned barrier task so closing the loop does not leak
+        # a pending task or a never-awaited coroutine.
+        manager.shared_event_loop.run_until_complete(asyncio.sleep(0))
+        manager.shared_event_loop.close()
+
+
+class TestConsumerRetryWithBackoff:
+    """Verify _process_message_with_retry retries transient failures and only DLQs after exhausting attempts."""
+
+    @pytest.fixture
+    def manager(self):
+        # Build a NotificationManager without invoking __init__ side effects
+        # (RabbitMQ connections, threads). We only exercise the
+        # _process_message_with_retry method.
+        m = NotificationManager.__new__(NotificationManager)
+        return m
+
+    def _make_message(self, body: bytes = b"{}"):
+        msg = MagicMock()
+        msg.body = body
+        msg.ack = AsyncMock()
+        msg.reject = AsyncMock()
+        return msg
+
+    @pytest.mark.asyncio
+    async def test_acks_on_success(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(return_value=True)
+        await manager._process_message_with_retry(msg, process, "test_q")
+        assert process.call_count == 1
+        msg.ack.assert_awaited_once()
+        msg.reject.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_process_returns_false_no_retry(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(return_value=False)
+        await manager._process_message_with_retry(msg, process, "test_q")
+        # Explicit False = unrecoverable, do not retry
+        assert process.call_count == 1
+        msg.reject.assert_awaited_once_with(requeue=False)
+        msg.ack.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_retries_transient_then_succeeds(self, manager):
+        msg = self._make_message()
+        # Fail twice, succeed on 3rd attempt
+        process = AsyncMock(
+            side_effect=[RuntimeError("blip"), RuntimeError("blip"), True]
+        )
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", new=AsyncMock()
+        ) as sleep:
+            await manager._process_message_with_retry(msg, process, "test_q")
+        assert process.call_count == 3
+        assert sleep.await_count == 2  # backoff sleeps before attempts 2 and 3
+        msg.ack.assert_awaited_once()
+        msg.reject.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dlqs_after_exhausting_retries(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(side_effect=RuntimeError("permanent boom"))
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", new=AsyncMock()
+        ):
+            await manager._process_message_with_retry(msg, process, "test_q")
+        # Defaults: 3 attempts total
+        assert process.call_count == 3
+        msg.reject.assert_awaited_once_with(requeue=False)
+        msg.ack.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_backoff_doubles_per_attempt(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(side_effect=RuntimeError("boom"))
+        sleeps = []
+
+        async def fake_sleep(s):
+            sleeps.append(s)
+
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", side_effect=fake_sleep
+        ):
+            await manager._process_message_with_retry(msg, process, "test_q")
+        # CONSUMER_RETRY_BACKOFF_SECONDS = 2, so delays are 2*(2**0)=2, 2*(2**1)=4
+        assert sleeps == [2, 4]
+
+    @pytest.mark.asyncio
+    async def test_inner_process_raises_so_retry_triggers(self, manager):
+        """Regression: the four `_process_*` methods must let transient
+        exceptions propagate so `_process_message_with_retry` can retry them.
+        If they swallow exceptions and return False instead, the retry loop
+        treats it as a permanent failure and DLQs on the first attempt.
+        """
+        # Stand up just enough state for _process_immediate to reach the
+        # email_sender call (mocked) and raise.
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock(
+            side_effect=RuntimeError("postmark 502")
+        )
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=True)
+
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link",
+            return_value="unsub",
+        ):
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            event = MagicMock()
+            event.user_id = "u1"
+            event.type = MagicMock()
+            # _process_immediate uses self._parse_message
+            manager._parse_message = MagicMock(return_value=event)
+
+            with pytest.raises(RuntimeError, match="postmark 502"):
+                await manager._process_immediate("{}")
+
+    @pytest.mark.asyncio
+    async def test_admin_message_returns_true_on_send(self, manager):
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock()
+        event = MagicMock()
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        result = await manager._process_admin_message("{}")
+        assert result is True
+        manager.email_sender.send_templated.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_admin_message_returns_false_on_unparseable(self, manager):
+        manager._parse_message = MagicMock(return_value=None)
+        result = await manager._process_admin_message("garbage")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_admin_message_propagates_send_failure(self, manager):
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock(
+            side_effect=RuntimeError("postmark 502")
+        )
+        event = MagicMock()
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        with pytest.raises(RuntimeError, match="postmark 502"):
+            await manager._process_admin_message("{}")
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_false_on_unparseable(self, manager):
+        manager._parse_message = MagicMock(return_value=None)
+        result = await manager._process_immediate("garbage")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_false_when_no_email(self, manager):
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value=None)
+            mock_db_client.return_value = mock_db
+            result = await manager._process_immediate("{}")
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_true_when_user_opted_out(self, manager):
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=False)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            result = await manager._process_immediate("{}")
+            # Opted-out = "delivered" from queue's POV, no retry needed
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_undecodable_body_dlqs_without_retry(self, manager):
+        """Decode failure must reject-to-DLQ, not crash the consumer task."""
+        msg = MagicMock()
+        # Lone continuation byte — not valid UTF-8.
+        msg.body = b"\xff\xfe\x00"
+        msg.ack = AsyncMock()
+        msg.reject = AsyncMock()
+        process = AsyncMock()
+        await manager._process_message_with_retry(msg, process, "test_q")
+        process.assert_not_called()
+        msg.ack.assert_not_called()
+        msg.reject.assert_awaited_once_with(requeue=False)
+
+    @pytest.mark.asyncio
+    async def test_summary_unparseable_returns_false_not_raise(self, manager):
+        """_process_summary must return False (DLQ) on parse failure,
+        not raise a ValidationError that triggers retry-with-backoff.
+        """
+        result = await manager._process_summary("{not json")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_batch_not_old_enough_acks(self, manager):
+        """When the batch isn't ready to flush, the trigger message must be
+        acked — the notification is already persisted. Returning False would
+        DLQ the trigger and silently drop a future delivery.
+        """
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=True)
+        manager._should_batch = AsyncMock(return_value=False)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            result = await manager._process_batch("{}")
+            assert result is True

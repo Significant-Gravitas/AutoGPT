@@ -130,7 +130,10 @@ export async function AdminUserGrantHistory({
                     {transaction.admin_email}
                   </TableCell>
                   <TableCell className="font-medium text-green-600">
-                    ${(transaction.running_balance + -transaction.amount) / 100}
+                    $
+                    {((transaction.running_balance ?? 0) +
+                      -transaction.amount) /
+                      100}
                   </TableCell>
                   <TableCell>
                     {formatAmount(
@@ -139,7 +142,7 @@ export async function AdminUserGrantHistory({
                     )}
                   </TableCell>
                   <TableCell className="font-medium text-green-600">
-                    ${transaction.running_balance / 100}
+                    ${(transaction.running_balance ?? 0) / 100}
                   </TableCell>
                   {/* <TableCell className="font-medium text-green-600">
                     ${transaction.current_balance / 100}

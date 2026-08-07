@@ -3,15 +3,47 @@
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { environment } from "@/services/environment";
 import { useFlags } from "launchdarkly-react-client-sdk";
+import { useEffect, useState } from "react";
 
 export enum Flag {
   BETA_BLOCKS = "beta-blocks",
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
   ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
   ARTIFACTS = "artifacts",
+  ARTIFACTS_PAGE = "artifacts-page",
   CHAT_MODE_OPTION = "chat-mode-option",
   BUILDER_CHAT_PANEL = "builder-chat-panel",
   AGENT_BRIEFING = "agent-briefing",
+  GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
+  CHAT_SEARCH = "chat-search",
+  CHAT_SHARING = "chat-sharing",
+  AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
+  CHAT_WORKSPACE_FILES = "chat-workspace-files",
+  CHAT_PINNING = "chat-pinning",
+  TASK_PROGRESS_BAR = "task-progress-bar",
+  HIRE_EXPERTS = "hire-experts",
+  // Replaces the onboarding pillbox step with the voice brain dump.
+  // Mirror of the backend ``Flag`` enum — the endpoints 404 when off, so
+  // both sides must agree. Off renders the pillbox flow untouched.
+  ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump",
+  // Graphiti memory + dream-system gates. Mirror of the backend
+  // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
+  // them when memory/dream-related UI surfaces ship (P6+ on the
+  // dream-system roadmap). They default false below to match the
+  // backend's fail-closed gating (default=False, opt-in only) — a
+  // LaunchDarkly outage or missing flag key must not switch the
+  // feature on. Use ``NEXT_PUBLIC_FORCE_FLAG_*`` env overrides to
+  // enable the stack for local-dev / Playwright runs.
+  GRAPHITI_MEMORY = "graphiti-memory",
+  GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
+  DREAM_PASS_ENABLED = "dream-pass-enabled",
+  DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
+  DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
+  // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
+  // Bots settings page. Lets ops hide a platform (e.g. Slack while its
+  // Marketplace review is pending) without a deploy. Missing keys default to
+  // visible — only an explicit ``false`` hides a card.
+  COPILOT_BOT_PLATFORMS = "copilot-bot-platforms",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -21,9 +53,29 @@ const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
   [Flag.ARTIFACTS]: false,
+  [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.BUILDER_CHAT_PANEL]: false,
-  [Flag.AGENT_BRIEFING]: false,
+  [Flag.AGENT_BRIEFING]: true,
+  [Flag.GENERIC_TRIGGER_AGENTS]: false,
+  [Flag.CHAT_SEARCH]: false,
+  [Flag.CHAT_SHARING]: false,
+  [Flag.AUTOGPT_NEW_LAYOUT]: false,
+  [Flag.CHAT_WORKSPACE_FILES]: false,
+  [Flag.CHAT_PINNING]: false,
+  [Flag.TASK_PROGRESS_BAR]: false,
+  [Flag.HIRE_EXPERTS]: false,
+  // Off by default: with no LaunchDarkly key (local dev, CI, Playwright)
+  // the wizard falls back to this map, and a ``true`` here renders the
+  // brain dump for everyone — which is what the backend 404s are meant to
+  // prevent. Use NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP locally.
+  [Flag.ONBOARDING_BRAIN_DUMP]: false,
+  [Flag.GRAPHITI_MEMORY]: false,
+  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
+  [Flag.DREAM_PASS_ENABLED]: false,
+  [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
+  [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -38,13 +90,80 @@ type FlagValues = typeof defaultFlags;
  *
  * Note: ``NEXT_PUBLIC_*`` env vars are baked into the bundle at build
  * time, so the frontend image must be rebuilt after changing them.
+ *
+ * Each flag is mapped via a literal ``process.env.NEXT_PUBLIC_FORCE_FLAG_X``
+ * lookup so Next.js / Turbopack can statically inline the value into the
+ * client bundle. A dynamic ``process.env[envName]`` lookup compiles to a
+ * runtime read of the browser-side polyfilled ``process.env`` object,
+ * which is always empty — so the override silently no-ops in dev.
  */
+function readEnvOverride(flag: Flag): string | undefined {
+  switch (flag) {
+    case Flag.BETA_BLOCKS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS;
+    case Flag.MARKETPLACE_SEARCH_TERMS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
+    case Flag.ENABLE_PLATFORM_PAYMENT:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
+    case Flag.ARTIFACTS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS;
+    case Flag.ARTIFACTS_PAGE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS_PAGE;
+    case Flag.CHAT_MODE_OPTION:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
+    case Flag.BUILDER_CHAT_PANEL:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL;
+    case Flag.AGENT_BRIEFING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_AGENT_BRIEFING;
+    case Flag.GENERIC_TRIGGER_AGENTS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
+    case Flag.CHAT_SEARCH:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
+    case Flag.CHAT_SHARING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
+    case Flag.AUTOGPT_NEW_LAYOUT:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
+    case Flag.CHAT_WORKSPACE_FILES:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
+    case Flag.CHAT_PINNING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_PINNING;
+    case Flag.TASK_PROGRESS_BAR:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
+    case Flag.HIRE_EXPERTS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
+    case Flag.ONBOARDING_BRAIN_DUMP:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP;
+    case Flag.GRAPHITI_MEMORY:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
+    case Flag.GRAPHITI_COMMUNITIES_ENABLED:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_COMMUNITIES_ENABLED;
+    case Flag.DREAM_PASS_ENABLED:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
+    case Flag.DREAM_PASS_WEB_FACT_CHECK:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
+    case Flag.DREAM_PASS_INVALIDATE_ENTITY:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.COPILOT_BOT_PLATFORMS:
+      return undefined;
+  }
+}
+
+// Array-typed flags (e.g. ``BETA_BLOCKS``, ``MARKETPLACE_SEARCH_TERMS``)
+// cannot be meaningfully overridden through a single boolean string env
+// var — returning ``true`` / ``false`` would clash with the array type
+// callers expect.  These flags are still subject to LaunchDarkly + the
+// ``defaultFlags`` fallback; the env override path just skips them.
+const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
+  Flag.BETA_BLOCKS,
+  Flag.MARKETPLACE_SEARCH_TERMS,
+  Flag.COPILOT_BOT_PLATFORMS,
+]);
+
 export function envFlagOverride<T extends Flag>(
   flag: T,
 ): FlagValues[T] | undefined {
-  const envName =
-    "NEXT_PUBLIC_FORCE_FLAG_" + flag.toUpperCase().replace(/-/g, "_");
-  const raw = process.env[envName];
+  if (ARRAY_TYPED_FLAGS.has(flag)) return undefined;
+  const raw = readEnvOverride(flag);
   if (raw === undefined) return undefined;
   const normalized = raw.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) {
@@ -71,4 +190,44 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
   }
 
   return flagValue ?? defaultFlags[flag];
+}
+
+const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
+
+/**
+ * Same as ``useGetFlag`` but also surfaces whether LaunchDarkly has
+ * actually answered for this flag. Callers that gate a whole route on a
+ * flag should branch on ``ready`` first — short-circuiting to
+ * ``notFound()`` before LD responds 404s users that actually have the
+ * flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS`` so
+ * a flag key that LD never registers doesn't spin forever.
+ */
+export function useFlagStatus<T extends Flag>(
+  flag: T,
+): { enabled: FlagValues[T]; ready: boolean } {
+  const currentFlags = useFlags<FlagValues>();
+  const areFlagsEnabled = environment.areFeatureFlagsEnabled();
+  const override = envFlagOverride(flag);
+
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setTimedOut(true),
+      FLAG_RESOLUTION_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (override !== undefined) {
+    return { enabled: override, ready: true };
+  }
+  if (!areFlagsEnabled || isPwMockEnabled) {
+    return { enabled: defaultFlags[flag], ready: true };
+  }
+
+  const ldResponded = flag in currentFlags;
+  return {
+    enabled: (currentFlags[flag] ?? defaultFlags[flag]) as FlagValues[T],
+    ready: ldResponded || timedOut,
+  };
 }

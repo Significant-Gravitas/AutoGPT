@@ -7,7 +7,6 @@ import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteS
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
-import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   AnimatePresence,
@@ -17,11 +16,15 @@ import {
 } from "framer-motion";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
+import { LibraryEmptyState } from "../LibraryEmptyState/LibraryEmptyState";
 import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
+import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
+import { ArrowLeft02Icon, FavouriteIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // cancels the current spring and starts a new one from current state.
 const containerVariants = {
@@ -134,6 +137,17 @@ export function LibraryAgentList({
 
   const agentStatusMap = useAgentStatusMap(agents);
 
+  const hasNoFolders =
+    !showFolders || (foldersData?.folders?.length ?? 0) === 0;
+  const isPristineEmpty =
+    !agentLoading &&
+    !isFavoritesTab &&
+    agents.length === 0 &&
+    hasNoFolders &&
+    !searchTerm &&
+    !selectedFolderId &&
+    statusFilter === "all";
+
   return (
     <>
       {isAgentBriefingEnabled &&
@@ -164,6 +178,11 @@ export function LibraryAgentList({
       )}
 
       <div className="pt-4">
+        {!selectedFolderId && activeTab === "all" && (
+          <div className="mb-4">
+            <LowCreditBanner />
+          </div>
+        )}
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
             <button
@@ -171,7 +190,7 @@ export function LibraryAgentList({
               onClick={() => onFolderSelect(null)}
               className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900"
             >
-              <ArrowLeftIcon className="h-4 w-4" />
+              <Icon icon={ArrowLeft02Icon} className="h-4 w-4" />
               My Library
             </button>
             {currentFolder && (
@@ -192,9 +211,11 @@ export function LibraryAgentList({
           </div>
         ) : isFavoritesTab && agents.length === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-zinc-500">
-            <HeartIcon className="h-10 w-10" />
+            <Icon icon={FavouriteIcon} className="h-10 w-10" />
             <Text variant="body">No favorite agents yet</Text>
           </div>
+        ) : isPristineEmpty ? (
+          <LibraryEmptyState />
         ) : (
           <InfiniteScroll
             isFetchingNextPage={isFetchingNextPage}
@@ -206,7 +227,7 @@ export function LibraryAgentList({
               <AnimatePresence mode="popLayout">
                 <motion.div
                   key={`${activeTab}-${selectedFolderId || "all"}`}
-                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                  className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(21rem,1fr))]"
                   variants={activeContainerVariants}
                   initial="hidden"
                   animate="show"

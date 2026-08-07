@@ -8,6 +8,7 @@ from tiktoken import encoding_for_model
 from backend.util import json
 from backend.util.prompt import (
     DEFAULT_TOKEN_THRESHOLD,
+    MAIN_OBJECTIVE_PREFIX,
     CompressResult,
     _ensure_tool_pairs_intact,
     _msg_tokens,
@@ -16,6 +17,7 @@ from backend.util.prompt import (
     _truncate_tool_message_content,
     compress_context,
     estimate_token_count,
+    estimate_token_count_str,
     get_compression_target,
     get_context_window,
 )
@@ -747,6 +749,107 @@ class TestCompressContext:
         assert result.messages_summarized == 0
 
     @pytest.mark.asyncio
+    async def test_final_tool_trim_updates_token_count(self):
+        """Keep incremental accounting accurate when Step 5 trims a tool result."""
+        enc = encoding_for_model("gpt-4o")
+        messages = [
+            {
+                "type": "function_call",
+                "call_id": "call_x",
+                "name": "lookup",
+                "arguments": "{}",
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_x",
+                "output": "tool result " * 100,
+            },
+        ]
+
+        result = await compress_context(
+            messages,
+            target_tokens=40,
+            client=None,
+            reserve=0,
+            model="gpt-4o",
+            start_cap=20,
+            floor_cap=20,
+        )
+
+        assert result.was_compacted is True
+        assert result.messages_dropped == 0
+        assert result.error is None
+        assert len(enc.encode(result.messages[-1]["output"])) < len(
+            enc.encode(messages[-1]["output"])
+        )
+        assert result.token_count == sum(
+            _msg_tokens(message, enc) for message in result.messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_large_history_middle_out_deletion_stays_correct(self):
+        """Guard incremental token accounting in compress_context."""
+        enc = encoding_for_model("gpt-4o")
+        target = 4000
+        reserve = 256
+
+        messages = [{"role": "system", "content": "You are a helpful assistant."}]
+        messages.append(
+            {
+                "role": "user",
+                "content": MAIN_OBJECTIVE_PREFIX + " keep this objective intact.",
+            }
+        )
+        for i in range(150):
+            role = "user" if i % 2 == 0 else "assistant"
+            body = (
+                f"item{i} " + "lorem ipsum dolor sit amet consectetur " * 15
+            ).strip()
+            messages.append({"role": role, "content": body})
+        messages.append(
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_x",
+                        "type": "function",
+                        "function": {"name": "f", "arguments": "{}"},
+                    }
+                ],
+            }
+        )
+        messages.append(
+            {"role": "tool", "tool_call_id": "call_x", "content": "tool result " * 50}
+        )
+
+        result = await compress_context(
+            messages, target_tokens=target, client=None, reserve=reserve, model="gpt-4o"
+        )
+
+        assert result.was_compacted is True
+        assert result.messages_dropped > 0
+        assert result.error is None
+        assert result.token_count + reserve <= target
+        assert result.token_count == sum(_msg_tokens(m, enc) for m in result.messages)
+
+        assert result.messages[0]["role"] == "system"
+        assert any(
+            isinstance(m.get("content"), str)
+            and m["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            for m in result.messages
+        )
+
+        tool_call_ids = {
+            tc["id"] for m in result.messages for tc in (m.get("tool_calls") or [])
+        }
+        tool_response_ids = {
+            m["tool_call_id"] for m in result.messages if m.get("tool_call_id")
+        }
+        assert tool_response_ids <= tool_call_ids
+
+        assert result.messages_dropped == 113
+
+    @pytest.mark.asyncio
     async def test_with_mocked_llm_client(self):
         """Test summarization with mocked LLM client."""
         # Create many messages to trigger summarization
@@ -981,10 +1084,10 @@ class TestCompressResultDataclass:
 
 class TestGetContextWindow:
     def test_claude_opus(self) -> None:
-        assert get_context_window("claude-opus-4-20250514") == 200_000
+        assert get_context_window("claude-opus-4-7") == 200_000
 
     def test_claude_sonnet(self) -> None:
-        assert get_context_window("claude-sonnet-4-20250514") == 200_000
+        assert get_context_window("claude-sonnet-4-6") == 200_000
 
     def test_openrouter_prefix(self) -> None:
         assert get_context_window("anthropic/claude-opus-4-6") == 200_000
@@ -1017,3 +1120,96 @@ class TestGetCompressionTarget:
     def test_small_model_returns_default(self) -> None:
         # Unknown models fall back to DEFAULT_TOKEN_THRESHOLD
         assert get_compression_target("some-tiny-model") == DEFAULT_TOKEN_THRESHOLD
+
+
+class TestClaude5TokenFactor:
+    """The Claude 5 family tokenizes ~30% denser than 4.x and ships no
+    local tokenizer — estimates get the conservative correction factor."""
+
+    def test_sonnet_5_estimate_is_scaled(self):
+        text = "hello world " * 200
+        base = estimate_token_count_str(text, model="claude-sonnet-4-6")
+        scaled = estimate_token_count_str(text, model="claude-sonnet-5")
+        # Literal 1.5, not CLAUDE_5_TOKEN_FACTOR: importing the constant
+        # under test would let a wrong magnitude pass unnoticed.
+        assert scaled == int(base * 1.5)
+
+    @pytest.mark.parametrize(
+        "prefixed",
+        [
+            "anthropic/claude-sonnet-5",
+            "anthropic.claude-sonnet-5",
+            "openrouter/anthropic/claude-sonnet-5",
+            "us.anthropic.claude-sonnet-5",
+        ],
+    )
+    def test_factor_applies_through_vendor_prefix(self, prefixed: str):
+        text = "hello world " * 200
+        assert estimate_token_count_str(
+            text, model=prefixed
+        ) == estimate_token_count_str(text, model="claude-sonnet-5")
+
+    def test_unknown_gpt_model_falls_back_to_default_encoding(self):
+        """A GPT-named model tiktoken doesn't know (newer than its mapping
+        table) must fall back to the default encoding, not KeyError — this
+        is the llm_call path for every catalog default."""
+        text = "hello world " * 200
+        assert estimate_token_count_str(
+            text, model="gpt-5.6-terra"
+        ) == estimate_token_count_str(text, model="gpt-4o")
+
+    @pytest.mark.parametrize("model", ["claude-sonnet-4-6", "claude-opus-4-6"])
+    def test_pre_4_7_generation_unscaled(self, model: str):
+        text = "hello world " * 200
+        assert estimate_token_count_str(text, model=model) == estimate_token_count_str(
+            text, model="gpt-4o"
+        )
+
+    @pytest.mark.parametrize("model", ["claude-opus-4-7", "claude-opus-4-8"])
+    def test_opus_4_7_generation_shares_the_new_tokenizer(self, model: str):
+        text = "hello world " * 200
+        assert estimate_token_count_str(text, model=model) == estimate_token_count_str(
+            text, model="claude-sonnet-5"
+        )
+
+
+class TestClaude5FactorOnMessagePaths:
+    """The factor must reach the paths that gate real behavior: the
+    messages-based estimator (max_tokens sizing) and compaction totals."""
+
+    def _messages(self):
+        return [
+            {"role": "user", "content": "hello world " * 300},
+            {"role": "assistant", "content": "reply text " * 300},
+        ]
+
+    def test_estimate_token_count_messages_scaled(self):
+        base = estimate_token_count(self._messages(), model="claude-sonnet-4-6")
+        scaled = estimate_token_count(self._messages(), model="claude-sonnet-5")
+        assert scaled == int(base * 1.5)
+
+    @pytest.mark.asyncio
+    async def test_compaction_measures_in_corrected_space(self):
+        """A history under the nominal target in raw tiktoken space but
+        over it in corrected space must trigger compaction for Sonnet 5
+        (and must NOT for 4.6)."""
+        msgs = self._messages()
+        raw = estimate_token_count(msgs, model="claude-sonnet-4-6")
+        target = int(raw * 1.2)  # between raw (1.0x) and corrected (1.5x)
+
+        r46 = await compress_context(
+            messages=msgs,
+            model="claude-sonnet-4-6",
+            target_tokens=target,
+            reserve=0,
+        )
+        assert r46.was_compacted is False
+
+        r5 = await compress_context(
+            messages=msgs,
+            model="claude-sonnet-5",
+            target_tokens=target,
+            reserve=0,
+        )
+        assert r5.was_compacted is True
+        assert r5.original_token_count > target

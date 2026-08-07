@@ -5,27 +5,29 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCopilotUIStore } from "../../store";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
-import {
-  UsageLimitReachedCard,
-  useIsUsageLimitReached,
-} from "../UsageLimits/UsageLimitReachedCard";
+import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
+import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
+import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import type { ExpertIdentity } from "../../useExpertMap";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   status: string;
   error: Error | undefined;
   sessionId: string | null;
+  sessionChatStatus?: string;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -42,7 +44,11 @@ export interface ChatContainerProps {
    * flips immediately regardless of AI SDK's status timing. */
   isUserStopping?: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -58,12 +64,20 @@ export interface ChatContainerProps {
   onDroppedFilesConsumed?: () => void;
   /** Per-message stats (durationMs, createdAt), keyed by message ID. */
   turnStats?: TurnStatsMap;
+  /** Expert identity for expert-scoped sessions (thread header + assistant
+   * avatar/name). Null = default header. */
+  expertIdentity?: ExpertIdentity | null;
+  /** True while a `?expertId=` deep link may still swap this view for the
+   * expert's latest thread — the composer stays locked so a draft can't be
+   * lost to that navigation. */
+  isAdoptingExpertSession?: boolean;
 }
 export const ChatContainer = ({
   messages,
   status,
   error,
   sessionId,
+  sessionChatStatus,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -84,14 +98,17 @@ export const ChatContainer = ({
   droppedFiles,
   onDroppedFilesConsumed,
   turnStats,
+  expertIdentity,
+  isAdoptingExpertSession,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
-  // When the flag is off we must not auto-open artifacts or let the panel's
-  // open state drive layout width; an artifact generated in a stale session
-  // state would otherwise shrink the chat column with no panel rendered.
-  const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
-  useAutoOpenArtifacts({ sessionId });
+  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
+  useAutoOpenArtifacts({
+    sessionId,
+    messages,
+    isLoadingSession,
+    isArtifactsEnabled,
+  });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
   // can type and queue their next message. ``isUserStopping`` force-flips
@@ -150,14 +167,9 @@ export const ChatContainer = ({
   return (
     <CopilotChatActionsProvider onSend={onSend}>
       <LayoutGroup id="copilot-2-chat-layout">
-        <div className="flex h-full min-h-0 w-full flex-col bg-[#f8f8f9] px-2 lg:px-0">
+        <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
           {sessionId ? (
-            <div
-              className={cn(
-                "mx-auto flex h-full min-h-0 w-full flex-col",
-                !isArtifactOpen && "max-w-3xl",
-              )}
-            >
+            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa]">
               <ChatMessagesContainer
                 messages={messages}
                 status={status}
@@ -167,6 +179,7 @@ export const ChatContainer = ({
                 restoreStatusMessage={restoreStatusMessage}
                 activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
                 hasMoreMessages={hasMoreMessages}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
@@ -174,14 +187,14 @@ export const ChatContainer = ({
                 turnStats={turnStats}
                 queuedMessages={queuedMessages}
                 bottomContentPadding={usageCardHeight}
+                expertIdentity={expertIdentity}
               />
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
-                className="relative px-3 pb-2 pt-2"
+                className="relative px-3 pb-6 pt-2"
               >
-                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#f8f8f9]" />
                 {isLimitReached && (
                   <div
                     ref={usageCardRef}
@@ -190,14 +203,23 @@ export const ChatContainer = ({
                     <div
                       aria-hidden="true"
                       data-testid="usage-limit-backdrop"
-                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(248,248,249,0.96)_0%,rgba(248,248,249,0.9)_42%,rgba(248,248,249,0.58)_68%,rgba(248,248,249,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
                     >
-                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#f8f8f9]/80 blur-2xl" />
+                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
                       <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                     </div>
                     <div className="pointer-events-auto relative px-3">
                       <UsageLimitReachedCard />
                     </div>
+                  </div>
+                )}
+                <SharedChatNotice sessionId={sessionId} />
+                {isTaskBarEnabled && (
+                  <div className="relative z-10">
+                    <TaskProgressBar
+                      todos={getLatestTaskList(messages) ?? []}
+                      isStreaming={isStreaming}
+                    />
                   </div>
                 )}
                 <Tooltip open={isLimitReached ? undefined : false}>
@@ -219,8 +241,8 @@ export const ChatContainer = ({
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-sm">
-                    You&apos;ve reached your usage limit. Reset your daily limit
-                    or wait for it to refresh before sending more messages.
+                    You&apos;ve reached your usage limit. Wait for it to refresh
+                    or upgrade your plan to continue sending messages.
                   </TooltipContent>
                 </Tooltip>
               </motion.div>
@@ -234,6 +256,7 @@ export const ChatContainer = ({
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
+              isAdoptingExpertSession={isAdoptingExpertSession}
             />
           )}
         </div>

@@ -1,17 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import {
-  CheckSquareIcon,
-  DotsThreeVerticalIcon,
-  EyeIcon,
-  ImageBrokenIcon,
-  PencilSimpleIcon,
-  SquareIcon,
-  StarIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-
+import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { Button } from "@/components/atoms/Button/Button";
@@ -27,76 +18,85 @@ import {
 
 import { formatRuns, formatSubmittedAt, getStatusVisual } from "../../helpers";
 import { useSubmissionItem } from "./useSubmissionItem";
+import {
+  Delete02Icon,
+  EyeIcon,
+  ImageNotFound01Icon,
+  LinkSquare01Icon,
+  MoreVerticalIcon,
+  PencilIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
 interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
+  store_listing_version_id: string;
   graph_id: string;
 }
 
 interface Props {
   submission: StoreSubmission;
-  selected: boolean;
-  onToggleSelected: () => void;
+  rowIndex?: number;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
+  creatorUsername?: string;
 }
+
+const ROW_EASE = [0.16, 1, 0.3, 1] as const;
+const ROW_STAGGER = 0.025;
+const ROW_STAGGER_CAP = 6;
+const ROW_DURATION = 0.22;
 
 export function SubmissionItem({
   submission,
-  selected,
-  onToggleSelected,
+  rowIndex = 0,
   onView,
   onEdit,
   onDelete,
+  creatorUsername,
 }: Props) {
+  const reduceMotion = useReducedMotion();
   const {
     canModify,
+    marketplaceUrl,
     handleView,
     handleEdit,
     confirmDeleteOpen,
     setConfirmDeleteOpen,
     isDeleting,
     handleConfirmDelete,
-  } = useSubmissionItem({ submission, onView, onEdit, onDelete });
+  } = useSubmissionItem({
+    submission,
+    onView,
+    onEdit,
+    onDelete,
+    creatorUsername,
+  });
 
   const visual = getStatusVisual(submission.status);
-  const StatusIcon = visual.Icon;
   const thumbnail = submission.image_urls?.[0];
 
   return (
-    <tr
+    <motion.tr
       data-testid="submission-row"
       data-agent-id={submission.graph_id}
       data-submission-id={submission.listing_version_id}
-      data-selected={selected}
-      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-zinc-100 transition-colors duration-150 last:border-b-0 data-[selected=true]:bg-zinc-100 hover:bg-zinc-50/60"
+      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={
+        reduceMotion
+          ? undefined
+          : {
+              duration: ROW_DURATION,
+              ease: ROW_EASE,
+              delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
+            }
+      }
+      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-zinc-100 transition-colors duration-150 last:border-b-0 hover:bg-zinc-50/60"
     >
-      <td className="w-[48px] px-3 py-3 align-middle">
-        {canModify ? (
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={selected}
-            aria-label={`Select ${submission.name}`}
-            onClick={onToggleSelected}
-            className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 ${
-              selected
-                ? "text-zinc-800 hover:text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-700"
-            }`}
-          >
-            {selected ? (
-              <CheckSquareIcon size={20} weight="fill" />
-            ) : (
-              <SquareIcon size={20} />
-            )}
-          </button>
-        ) : null}
-      </td>
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
-          <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-[8px] bg-zinc-100">
+          <div className="relative aspect-video w-20 shrink-0 select-none overflow-hidden rounded-[8px] bg-zinc-100">
             {thumbnail ? (
               <Image
                 src={thumbnail}
@@ -104,22 +104,52 @@ export function SubmissionItem({
                 fill
                 sizes="80px"
                 style={{ objectFit: "cover" }}
+                draggable={false}
+                className="pointer-events-none"
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center">
-                <ImageBrokenIcon size={20} className="text-zinc-400" />
+                <UIIcon
+                  icon={ImageNotFound01Icon}
+                  size={20}
+                  className="pointer-events-none text-zinc-400"
+                />
               </div>
             )}
           </div>
           <div className="flex min-w-0 flex-col">
             <div className="flex min-w-0 items-center gap-2">
-              <Text
-                variant="body-medium"
-                as="span"
-                className="truncate text-textBlack"
-              >
-                {submission.name}
-              </Text>
+              {marketplaceUrl ? (
+                <Link
+                  href={marketplaceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-w-0 items-center gap-1 truncate text-textBlack hover:underline"
+                  data-testid="submission-marketplace-link"
+                >
+                  <Text
+                    variant="body-medium"
+                    as="span"
+                    className="truncate text-textBlack"
+                  >
+                    {submission.name}
+                  </Text>
+                  <UIIcon
+                    icon={LinkSquare01Icon}
+                    size={14}
+                    className="shrink-0 text-zinc-500"
+                    aria-hidden
+                  />
+                </Link>
+              ) : (
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="truncate text-textBlack"
+                >
+                  {submission.name}
+                </Text>
+              )}
               <Text
                 variant="small"
                 as="span"
@@ -143,7 +173,7 @@ export function SubmissionItem({
         <span
           className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${visual.pillClass}`}
         >
-          <StatusIcon size={12} weight="fill" />
+          <UIIcon icon={visual.Icon} size={12} />
           {visual.label}
         </span>
       </td>
@@ -156,17 +186,6 @@ export function SubmissionItem({
         {formatRuns(submission.run_count ?? 0)}
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm text-zinc-700">
-        {submission.review_avg_rating && submission.review_avg_rating > 0 ? (
-          <span className="inline-flex items-center justify-end gap-1 tabular-nums">
-            {submission.review_avg_rating.toFixed(1)}
-            <StarIcon size={12} weight="fill" className="text-amber-500" />
-          </span>
-        ) : (
-          <span className="text-zinc-400">—</span>
-        )}
-      </td>
-
       <td className="px-2 py-3 text-right align-middle">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -176,7 +195,7 @@ export function SubmissionItem({
               data-testid="submission-actions"
               className="ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
-              <DotsThreeVerticalIcon size={18} weight="bold" />
+              <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -189,7 +208,7 @@ export function SubmissionItem({
                 onSelect={handleEdit}
                 className="flex cursor-pointer items-center gap-2"
               >
-                <PencilSimpleIcon size={14} />
+                <UIIcon icon={PencilIcon} size={14} />
                 Edit details
               </DropdownMenuItem>
             ) : (
@@ -197,10 +216,24 @@ export function SubmissionItem({
                 onSelect={handleView}
                 className="flex cursor-pointer items-center gap-2"
               >
-                <EyeIcon size={14} />
+                <UIIcon icon={EyeIcon} size={14} />
                 View submission
               </DropdownMenuItem>
             )}
+            {marketplaceUrl ? (
+              <DropdownMenuItem asChild>
+                <Link
+                  href={marketplaceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex cursor-pointer items-center gap-2"
+                  data-testid="submission-marketplace-menu-link"
+                >
+                  <UIIcon icon={LinkSquare01Icon} size={14} />
+                  View on marketplace
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
             {canModify ? (
               <>
                 <DropdownMenuSeparator />
@@ -208,7 +241,7 @@ export function SubmissionItem({
                   onSelect={() => setConfirmDeleteOpen(true)}
                   className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
                 >
-                  <TrashIcon size={14} />
+                  <UIIcon icon={Delete02Icon} size={14} />
                   Delete
                 </DropdownMenuItem>
               </>
@@ -250,6 +283,6 @@ export function SubmissionItem({
           </Dialog.Content>
         </Dialog>
       </td>
-    </tr>
+    </motion.tr>
   );
 }

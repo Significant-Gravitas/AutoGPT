@@ -11,7 +11,7 @@ import {
 } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Clock } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
@@ -26,16 +26,25 @@ import {
   type MessagePart,
   type RenderSegment,
   parseSpecialMarkers,
+  shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
+import type { ExpertIdentity } from "../../useExpertMap";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
+import { ExpertAvatar } from "./components/ExpertAvatar/ExpertAvatar";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { QueueBadge } from "./components/QueueBadge";
+import { ReasoningGroup } from "./components/ReasoningGroup";
 import { StepsCollapse } from "./components/StepsCollapse";
+import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -49,6 +58,10 @@ interface Props {
    *  zero on every fresh mount. */
   activeStreamStartedAt?: string | null;
   sessionID?: string | null;
+  /** Session-level lifecycle: ``"idle" | "queued" | "running"``.
+   *  The Queued badge anchors on the latest user message iff this is
+   *  ``"queued"``. */
+  sessionChatStatus?: string;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -60,16 +73,50 @@ interface Props {
    *  overlays pinned above the input area (e.g. the usage-limit card) can
    *  sit over the last message without permanently obscuring it. */
   bottomContentPadding?: number;
+  /** Public-viewer mode: render messages exactly as the owner sees them,
+   *  but hide every interactive affordance that depends on auth — feedback
+   *  buttons, TTS, queue/streaming indicators, load-more, retry, pending-
+   *  review banners, queued-message strip.  Anonymous viewers of a shared
+   *  chat get the rich renderer without any controls that would 401. */
+  readOnly?: boolean;
+  /** URL→file-ID matcher used to decide whether a ``FileUIPart`` becomes
+   *  an ArtifactCard.  Owner side defaults to the workspace-file URL
+   *  shape; the public viewer passes a per-token pattern so its file
+   *  URLs match without loosening the default. */
+  filePattern?: RegExp;
+  /** Override the URL emitted when rewriting ``workspace://`` references
+   *  in markdown prose AND when building inline artifact source URLs.
+   *  The public viewer passes a token-aware builder. */
+  fileUrlBuilder?: (fileId: string) => string;
+  /** Expert identity for expert-scoped sessions: drives the thread header
+   *  and the assistant avatar/name. Null/undefined = default header. */
+  expertIdentity?: ExpertIdentity | null;
+}
+
+interface RenderSegmentOptions {
+  onRetry?: () => void;
+  fileUrlBuilder?: (fileId: string) => string;
+  forceArtifacts?: boolean;
+  readOnly?: boolean;
 }
 
 function renderSegments(
   segments: RenderSegment[],
   messageID: string,
-  onRetry?: () => void,
+  options: RenderSegmentOptions = {},
 ): React.ReactNode[] {
+  const { onRetry, fileUrlBuilder, forceArtifacts, readOnly } = options;
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
+    }
+    if (seg.kind === "reasoning-group") {
+      return (
+        <ReasoningGroup
+          key={`${messageID}-reasoning-${seg.index}`}
+          parts={seg.parts}
+        />
+      );
     }
     return (
       <MessagePartRenderer
@@ -78,6 +125,9 @@ function renderSegments(
         messageID={messageID}
         partIndex={seg.index}
         onRetry={onRetry}
+        fileUrlBuilder={fileUrlBuilder}
+        forceArtifacts={forceArtifacts}
+        readOnly={readOnly}
       />
     );
   });
@@ -267,6 +317,7 @@ export function ChatMessagesContainer({
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
+  sessionChatStatus,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
@@ -274,7 +325,26 @@ export function ChatMessagesContainer({
   turnStats,
   queuedMessages,
   bottomContentPadding,
+  readOnly = false,
+  filePattern,
+  fileUrlBuilder,
+  expertIdentity,
 }: Props) {
+  // The in-chat "progress in the sidebar" notice only applies to the old
+  // sidebar surface — hide it entirely when the task bar is on.
+  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
+  const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
+  // Bubble restyle ships with the brain-dump experience.
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const isChatStreaming = status === "streaming" || status === "submitted";
+  const hasActiveTaskList =
+    !isTaskBarEnabled &&
+    shouldShowTaskListNotice({
+      isContextPanelEnabled,
+      isChatStreaming,
+      latestTaskList: getLatestTaskList(messages),
+    });
+
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -322,7 +392,10 @@ export function ChatMessagesContainer({
     // data-status is transient copy for the Thinking indicator; neither
     // counts as "real" content that hides the indicator.
     const parts = lastMessage.parts.filter(
-      (p) => p.type !== "data-cursor" && p.type !== "data-status",
+      (p) =>
+        p.type !== "data-cursor" &&
+        p.type !== "data-status" &&
+        p.type !== "data-dream-operations",
     );
     if (parts.length === 0) return false;
 
@@ -363,6 +436,7 @@ export function ChatMessagesContainer({
     for (let i = lastMessage.parts.length - 1; i >= 0; i--) {
       const part = lastMessage.parts[i];
       if (part.type === "data-cursor") continue;
+      if (part.type === "data-dream-operations") continue;
       if (part.type === "data-status") {
         const data = (part as { data?: { message?: unknown } }).data;
         return typeof data?.message === "string" ? data.message : null;
@@ -427,7 +501,7 @@ export function ChatMessagesContainer({
   return (
     <Conversation
       key={sessionID ?? "new"}
-      resize={settled ? "smooth" : "instant"}
+      resize="instant"
       className={
         "min-h-0 flex-1 " +
         (hideForScroll
@@ -436,14 +510,28 @@ export function ChatMessagesContainer({
       }
     >
       <ConversationContent
-        className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6"
+        className="flex min-h-full flex-1 flex-col gap-6 px-6 py-4"
         style={
           bottomContentPadding
             ? { paddingBottom: bottomContentPadding + 24 }
             : undefined
         }
       >
-        {hasMoreMessages && onLoadMore && (
+        {expertIdentity && (
+          <div
+            data-testid="expert-thread-header"
+            className="flex items-center gap-2 border-b border-zinc-200/60 pb-3"
+          >
+            <ExpertAvatar
+              name={expertIdentity.name}
+              avatarUrl={expertIdentity.avatarUrl}
+            />
+            <span className="text-sm font-medium text-zinc-800">
+              {expertIdentity.name}
+            </span>
+          </div>
+        )}
+        {!readOnly && hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
             hasMore={hasMoreMessages}
             isLoading={!!isLoadingMore}
@@ -519,26 +607,53 @@ export function ChatMessagesContainer({
             : null;
 
           return (
-            <Message from={message.role} key={message.id}>
+            <Message
+              from={message.role}
+              key={message.id}
+              data-message-id={message.id}
+              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+            >
+              {isAssistant && expertIdentity && (
+                <div
+                  data-testid="expert-assistant-identity"
+                  className="mb-1 flex items-center gap-1.5"
+                >
+                  <ExpertAvatar
+                    name={expertIdentity.name}
+                    avatarUrl={expertIdentity.avatarUrl}
+                    size="small"
+                  />
+                  <span className="text-xs font-medium text-zinc-500">
+                    {expertIdentity.name}
+                  </span>
+                </div>
+              )}
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +
-                  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+                  (isBrainDumpEnabled
+                    ? "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] "
+                    : "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ") +
                   "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
               >
                 {hasReasoning && reasoningSegments && (
                   <StepsCollapse>
-                    {renderSegments(reasoningSegments, message.id)}
+                    {renderSegments(reasoningSegments, message.id, {
+                      fileUrlBuilder,
+                      forceArtifacts: readOnly,
+                      readOnly,
+                    })}
                   </StepsCollapse>
                 )}
                 {responseSegments
-                  ? renderSegments(
-                      responseSegments,
-                      message.id,
-                      isLastAssistant ? onRetry : undefined,
-                    )
+                  ? renderSegments(responseSegments, message.id, {
+                      onRetry: isLastAssistant ? onRetry : undefined,
+                      fileUrlBuilder,
+                      forceArtifacts: readOnly,
+                      readOnly,
+                    })
                   : renderableParts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
@@ -546,6 +661,9 @@ export function ChatMessagesContainer({
                         messageID={message.id}
                         partIndex={i}
                         onRetry={isLastAssistant ? onRetry : undefined}
+                        fileUrlBuilder={fileUrlBuilder}
+                        forceArtifacts={readOnly}
+                        readOnly={readOnly}
                       />
                     ))}
                 {isLastInTurn && !isCurrentlyStreaming && (
@@ -561,6 +679,23 @@ export function ChatMessagesContainer({
                 )}
                 {isLastAssistant && showIndicator && indicator}
               </MessageContent>
+              {!readOnly &&
+                message.role === "user" &&
+                sessionChatStatus === "queued" &&
+                (() => {
+                  const stats = turnStats?.get(message.id);
+                  if (!stats?.isLatestUserMessage) {
+                    return null;
+                  }
+                  return (
+                    <MessageActions
+                      className="mt-1 items-center justify-end gap-1.5"
+                      data-testid="queue-status-row"
+                    >
+                      <QueueBadge sessionID={sessionID ?? null} />
+                    </MessageActions>
+                  );
+                })()}
               {message.role === "user" && textParts.length > 0 && (
                 <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                   {(() => {
@@ -584,25 +719,41 @@ export function ChatMessagesContainer({
                 <MessageAttachments
                   files={fileParts}
                   isUser={message.role === "user"}
+                  forceArtifacts={readOnly}
+                  filePattern={filePattern}
+                  readOnly={readOnly}
                 />
               )}
-              {showActions && (
+              {!readOnly && showActions && (
                 <AssistantMessageActions
                   message={message}
                   sessionID={sessionID ?? null}
                 />
               )}
+              {readOnly && showActions && (
+                <MessageActions className="mt-1 items-center justify-start gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <CopyButton text={textParts.map((p) => p.text).join("\n")} />
+                </MessageActions>
+              )}
             </Message>
           );
         })}
-        {showIndicator && lastMessage?.role !== "assistant" && (
-          <Message from="assistant">
+        {!readOnly && hasActiveTaskList && (
+          <div className="px-1">
+            <TaskListNotice />
+          </div>
+        )}
+        {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
+          <Message
+            from="assistant"
+            className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+          >
             <MessageContent className="text-[1rem] leading-relaxed">
               {indicator}
             </MessageContent>
           </Message>
         )}
-        {isRestoringActiveSession && (
+        {!readOnly && isRestoringActiveSession && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
               {showRestoreFallback ? (
@@ -627,19 +778,28 @@ export function ChatMessagesContainer({
             </MessageContent>
           </Message>
         )}
-        {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
-        {queuedMessages?.map((msg, idx) => (
-          <Message key={idx} from="user">
-            <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
-              <span>{msg}</span>
-              <span className="flex items-center gap-1 text-xs text-slate-500">
-                <Clock className="size-3" weight="bold" />
-                Queued
-              </span>
-            </MessageContent>
-          </Message>
-        ))}
-        {error && !lastAssistantHasErrorMarker && (
+        {!readOnly && graphExecId && (
+          <CopilotPendingReviews graphExecId={graphExecId} />
+        )}
+        {!readOnly &&
+          queuedMessages?.map((msg, idx) => (
+            <Message key={idx} from="user">
+              <MessageContent
+                className={
+                  isBrainDumpEnabled
+                    ? "flex flex-col gap-1 rounded-3xl border border-dashed border-[#b18aff] bg-gradient-to-br from-[#f3edff] to-[#e4d4ff] px-4 py-3 text-[1rem] leading-relaxed text-[#3b1e75] opacity-60 [border-bottom-right-radius:0.5rem]"
+                    : "flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]"
+                }
+              >
+                <span>{msg}</span>
+                <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <Icon icon={Clock01Icon} className="size-3" />
+                  Queued
+                </span>
+              </MessageContent>
+            </Message>
+          ))}
+        {!readOnly && error && !lastAssistantHasErrorMarker && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
               The assistant encountered an error. Please try sending your

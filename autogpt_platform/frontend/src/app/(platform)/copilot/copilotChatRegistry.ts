@@ -1,6 +1,7 @@
 import { Chat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { create } from "zustand";
+import { useConnectedProvidersStore } from "./connectedProvidersStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   createCopilotTransport,
@@ -17,6 +18,7 @@ interface CopilotChatRuntime {
     isAbort?: boolean;
   }) => void | Promise<void>;
   onError?: (error: Error) => void;
+  onData?: (dataPart: { type: string; data?: unknown }) => void;
 }
 
 interface CopilotChatRuntimeStore {
@@ -77,7 +79,8 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   const copilotModelRef: MutableValue<CopilotLlmModel | undefined> = {
     current: undefined,
   };
-  const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError"> = {};
+  const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError" | "onData"> =
+    {};
   const chat = new Chat<UIMessage>({
     id: sessionId,
     transport: createCopilotTransport({
@@ -97,11 +100,20 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
       }
       return callbacks.onError?.(error);
     },
+    onData: (dataPart) => {
+      callbacks.onData?.(dataPart);
+    },
   });
   const runtime = {
     chat,
     copilotModeRef,
     copilotModelRef,
+    get onData() {
+      return callbacks.onData;
+    },
+    set onData(value: CopilotChatRuntime["onData"]) {
+      callbacks.onData = value;
+    },
     get onFinish() {
       return callbacks.onFinish;
     },
@@ -131,6 +143,7 @@ export function shouldReloadCopilotChatRuntime(sessionId: string) {
 export function resetCopilotChatRuntime(sessionId: string) {
   copilotChatRuntimes.delete(sessionId);
   useCopilotStreamStore.getState().clearSession(sessionId);
+  useConnectedProvidersStore.getState().clearSession(sessionId);
   useCopilotChatRuntimeStore.getState().clearNeedsReload(sessionId);
 }
 

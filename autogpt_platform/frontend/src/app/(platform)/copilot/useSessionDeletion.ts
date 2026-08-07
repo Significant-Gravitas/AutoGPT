@@ -1,11 +1,9 @@
-import {
-  getGetV2ListSessionsQueryKey,
-  useDeleteV2DeleteSession,
-} from "@/app/api/__generated__/endpoints/chat/chat";
+import { useDeleteV2DeleteSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCopilotUIStore } from "./store";
+import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
 /**
  * Session deletion flow: reads the pending `sessionToDelete` from the store,
@@ -25,7 +23,7 @@ export function useSessionDeletion() {
       mutation: {
         onSuccess: (_data, variables) => {
           queryClient.invalidateQueries({
-            queryKey: getGetV2ListSessionsQueryKey(),
+            queryKey: SESSION_LIST_QUERY_KEY,
           });
           // Use the mutation's own `variables` — not the closed-over store
           // value — so a rapid open/cancel/open-different sequence can't

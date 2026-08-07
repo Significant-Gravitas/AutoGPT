@@ -242,3 +242,56 @@ def test_resolve_sandbox_path_tmp_escape_raises():
 def test_resolve_sandbox_path_tmp_prefix_collision_raises():
     with pytest.raises(ValueError):
         resolve_sandbox_path("/tmp_evil/malicious.txt")
+
+
+class TestSdkToolResultRedirectHint:
+    """``sdk_tool_result_redirect_hint`` builds the "Offending fragment"
+    line from the path-shaped token in *path_or_command*, not from the
+    command's executable. Regression coverage for the case where
+    ``cat /…/tool-results/foo.json | jq`` previously echoed
+    ``Offending fragment: 'cat'`` — useless to the model."""
+
+    def test_absolute_sdk_path_in_bash_command(self):
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        cmd = (
+            "cat /root/.claude/projects/-tmp-abc/def/tool-results/"
+            "toolu_x.json | jq ."
+        )
+        msg = sdk_tool_result_redirect_hint(cmd)
+        assert (
+            "Offending fragment: '/root/.claude/projects/-tmp-abc/def/"
+            "tool-results/toolu_x.json'"
+        ) in msg
+        assert "'cat'" not in msg
+
+    def test_quoted_path_unwraps_quotes(self):
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        cmd = 'cat "/root/.claude/projects/-a/b/tool-results/x.json"'
+        msg = sdk_tool_result_redirect_hint(cmd)
+        assert (
+            "Offending fragment: '/root/.claude/projects/-a/b/tool-results/x.json'"
+            in msg
+        )
+
+    def test_relative_shorthand(self):
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        msg = sdk_tool_result_redirect_hint("cat tool-outputs/toolu_x.json | head")
+        assert "Offending fragment: 'tool-outputs/toolu_x.json'" in msg
+
+    def test_bare_path_input(self):
+        # ``read_workspace_file`` passes a bare path, not a command.
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        msg = sdk_tool_result_redirect_hint("tool-outputs/toolu_y.json")
+        assert "Offending fragment: 'tool-outputs/toolu_y.json'" in msg
+
+    def test_empty_input_fragment(self):
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        # Defensive: never crash on an empty input; the message just
+        # echoes an empty fragment.
+        msg = sdk_tool_result_redirect_hint("")
+        assert "Offending fragment: ''" in msg

@@ -1,9 +1,9 @@
 "use client";
-
-import { Flask } from "@phosphor-icons/react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
+import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   droppedFiles: File[];
@@ -45,6 +45,9 @@ export function CopilotChatHost({
     rateLimitMessage,
     dismissRateLimit,
     sessionDryRun,
+    sessionChatStatus,
+    expertIdentity,
+    isAdoptingExpertSession,
   } = useCopilotPage();
 
   return (
@@ -54,16 +57,17 @@ export function CopilotChatHost({
           (which only predicts future sessions). */}
       {sessionId && sessionDryRun && (
         <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
-          <Flask size={13} weight="bold" />
+          <Icon icon={FlaskConicalIcon} size={13} />
           Test mode — this session runs agents as simulation
         </div>
       )}
-      <div className="flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <ChatContainer
           messages={messages}
           status={status}
           error={error}
           sessionId={sessionId}
+          sessionChatStatus={sessionChatStatus}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
@@ -84,6 +88,8 @@ export function CopilotChatHost({
           droppedFiles={droppedFiles}
           onDroppedFilesConsumed={onDroppedFilesConsumed}
           turnStats={turnStats}
+          expertIdentity={expertIdentity}
+          isAdoptingExpertSession={isAdoptingExpertSession}
         />
       </div>
       <RateLimitGate

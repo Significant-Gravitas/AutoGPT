@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
   getGetV2GetUserProfileQueryKey,
   useGetV2GetUserProfile,
   usePostV2UpdateUserProfile,
-  usePostV2UploadSubmissionMedia,
 } from "@/app/api/__generated__/endpoints/store/store";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import {
+  isFileTooLarge,
+  SUBMISSION_MEDIA_MAX_SIZE_MB,
+  uploadSubmissionMediaDirect,
+} from "@/lib/direct-upload";
+import { ApiError, isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 import {
   isFormDirty,
@@ -32,7 +36,7 @@ const EMPTY_FORM: ProfileFormState = {
 };
 
 export function useProfilePage() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const logoutInProgress = isLogoutInProgress();
 
@@ -48,27 +52,69 @@ export function useProfilePage() {
     },
   });
 
-  const initialState: ProfileFormState = useMemo(
-    () =>
-      profileQuery.data ? profileToFormState(profileQuery.data) : EMPTY_FORM,
-    [profileQuery.data],
-  );
+  // A 404 means the user simply has no marketplace profile yet — a valid state,
+  // not an error. Treat it as "empty profile" so the page renders the form
+  // (rather than an error card), letting the user create one on Save.
+  const isProfileNotFound =
+    profileQuery.isError &&
+    profileQuery.error instanceof ApiError &&
+    profileQuery.error.status === 404;
 
   const [formState, setFormState] = useState<ProfileFormState>(EMPTY_FORM);
+  // Pristine baseline for dirty detection + Discard. Held as state (not a
+  // ref) so dirty re-derives when it changes; pinned to the current
+  // formState's link IDs on every sync so Discard never swaps IDs and
+  // triggers an AnimatePresence flash.
+  const [pristineState, setPristineState] =
+    useState<ProfileFormState>(EMPTY_FORM);
+  const formStateRef = useRef<ProfileFormState>(EMPTY_FORM);
+  const lastSyncedRef = useRef<ProfileFormState>(EMPTY_FORM);
+  const hasHydratedRef = useRef(false);
+
+  useEffect(() => {
+    formStateRef.current = formState;
+  }, [formState]);
 
   useEffect(
     function syncFormStateOnDataLoad() {
-      if (profileQuery.data) {
-        setFormState(profileToFormState(profileQuery.data));
+      if (!profileQuery.data) return;
+      const incoming = profileToFormState(profileQuery.data);
+      const prev = formStateRef.current;
+
+      // First load always hydrates — even when the server returns an empty
+      // profile, we need the padded link slots in formState to render.
+      if (!hasHydratedRef.current) {
+        hasHydratedRef.current = true;
+        lastSyncedRef.current = incoming;
+        setFormState(incoming);
+        setPristineState(incoming);
+        return;
       }
+      // Refetch returned the same content as the local form — keep prev to
+      // preserve link IDs (avoids a row exit/enter flash) and refresh the
+      // synced snapshot so future dirty checks compare against the latest.
+      if (!isFormDirty(incoming, prev)) {
+        lastSyncedRef.current = incoming;
+        // Pin the pristine baseline to the current formState (with its
+        // existing link IDs) so a subsequent Discard restores the same
+        // rows — not freshly-keyed copies that would re-trigger animations.
+        setPristineState(prev);
+        return;
+      }
+      // User has edits relative to the last synced snapshot — never clobber.
+      if (isFormDirty(lastSyncedRef.current, prev)) return;
+      // Form pristine, server data changed — hydrate with the new snapshot.
+      lastSyncedRef.current = incoming;
+      setFormState(incoming);
+      setPristineState(incoming);
     },
     [profileQuery.data],
   );
 
   const validation = useMemo(() => validateForm(formState), [formState]);
   const dirty = useMemo(
-    () => isFormDirty(initialState, formState),
-    [initialState, formState],
+    () => isFormDirty(pristineState, formState),
+    [pristineState, formState],
   );
 
   function patchField<K extends keyof ProfileFormState>(
@@ -103,31 +149,32 @@ export function useProfilePage() {
   }
 
   function discardChanges() {
-    setFormState(initialState);
+    setFormState(pristineState);
   }
 
-  const uploadMutation = usePostV2UploadSubmissionMedia({
-    mutation: {
-      onError: (err) => {
-        toast({
-          title: "Failed to upload photo",
-          description: err instanceof Error ? err.message : undefined,
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   async function uploadAvatar(file: File): Promise<string | null> {
+    if (
+      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
+    )
+      return null;
+
+    setIsUploadingAvatar(true);
     try {
-      const res = await uploadMutation.mutateAsync({ data: { file } });
-      if (res.status !== 200) return null;
-      const url = String(res.data ?? "").trim();
+      const url = (await uploadSubmissionMediaDirect(file)).trim();
       if (!url) return null;
       patchField("avatar_url", url);
       return url;
-    } catch {
+    } catch (err) {
+      toast({
+        title: "Failed to upload photo",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
       return null;
+    } finally {
+      setIsUploadingAvatar(false);
     }
   }
 
@@ -168,18 +215,17 @@ export function useProfilePage() {
   return {
     user,
     isLoading: profileQuery.isLoading,
-    isError: profileQuery.isError,
+    isError: profileQuery.isError && !isProfileNotFound,
     error: profileQuery.error,
     refetch: profileQuery.refetch,
     formState,
-    initialState,
     patchField,
     setLink,
     addLink,
     removeLink,
     discardChanges,
     uploadAvatar,
-    isUploading: uploadMutation.isPending,
+    isUploading: isUploadingAvatar,
     saveProfile,
     isSaving: updateMutation.isPending,
     dirty,

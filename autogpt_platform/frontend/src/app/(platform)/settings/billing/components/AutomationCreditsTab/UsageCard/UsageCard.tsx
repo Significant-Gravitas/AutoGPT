@@ -11,40 +11,44 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
-import { EASE_OUT } from "../../../helpers";
+import { EASE_OUT, getSectionMotionProps } from "../../../helpers";
 import { useUsageCard, type DailyUsageRow } from "./useUsageCard";
 
 interface Props {
   index?: number;
 }
 
+const Y_TICK_COUNT = 4;
+
 export function UsageCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
   const { usage, isLoading } = useUsageCard();
 
+  const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
+
   if (isLoading) {
-    return <Skeleton className="h-[260px] rounded-[18px]" />;
+    return (
+      <motion.div {...sectionMotion}>
+        <Skeleton className="h-[260px] rounded-[18px]" />
+      </motion.div>
+    );
   }
 
-  const max = Math.max(...usage.map((d) => d.amount), 0.01);
+  const displayMax = Math.max(...usage.map((d) => d.amount), 0);
+  const normalizedMax = Math.max(displayMax, 0.01);
   const totalSpent = usage.reduce((sum, d) => sum + d.amount, 0);
   const totalRuns = usage.reduce((sum, d) => sum + d.runs, 0);
+  const yTicks = Array.from({ length: Y_TICK_COUNT + 1 }, (_, i) => {
+    const value = (displayMax / Y_TICK_COUNT) * (Y_TICK_COUNT - i);
+    return { value, label: `$${value.toFixed(2)}` };
+  });
 
-  const first = usage[0];
-  const middle = usage[Math.floor(usage.length / 2)];
-  const last = usage[usage.length - 1];
+  const firstDate = usage.at(0)?.date ?? "—";
+  const middleDate = usage[Math.floor(usage.length / 2)]?.date ?? "—";
+  const lastDate = usage.at(-1)?.date ?? "—";
 
   return (
-    <motion.section
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      transition={
-        reduceMotion
-          ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
-      }
-      className="flex w-full flex-col gap-2"
-    >
+    <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="px-4">
         <Text variant="body-medium" as="span" className="text-textBlack">
           Usage
@@ -71,30 +75,52 @@ export function UsageCard({ index = 0 }: Props) {
         </div>
 
         <TooltipProvider delayDuration={150}>
-          <div className="flex h-44 items-end gap-1">
-            {usage.map((day, i) => (
-              <UsageBar
-                key={day.date}
-                day={day}
-                index={i}
-                max={max}
-                reduceMotion={Boolean(reduceMotion)}
-              />
-            ))}
+          <div className="flex gap-3">
+            <div
+              className="flex h-44 w-10 flex-col justify-between text-right"
+              aria-hidden="true"
+            >
+              {yTicks.map((tick, i) => (
+                <Text
+                  key={i}
+                  variant="small"
+                  as="span"
+                  className="tabular-nums text-zinc-400"
+                >
+                  {tick.label}
+                </Text>
+              ))}
+            </div>
+
+            <div className="flex flex-1 flex-col gap-2">
+              <div className="relative">
+                <div className="relative flex h-44 items-end gap-1 border-b border-l border-zinc-300 pl-1">
+                  {usage.map((day, i) => (
+                    <UsageBar
+                      key={day.date}
+                      day={day}
+                      index={i}
+                      max={normalizedMax}
+                      reduceMotion={Boolean(reduceMotion)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-between pl-1">
+                <Text variant="small" as="span" className="text-zinc-500">
+                  {firstDate}
+                </Text>
+                <Text variant="small" as="span" className="text-zinc-500">
+                  {middleDate}
+                </Text>
+                <Text variant="small" as="span" className="text-zinc-500">
+                  {lastDate}
+                </Text>
+              </div>
+            </div>
           </div>
         </TooltipProvider>
-
-        <div className="flex justify-between">
-          <Text variant="small" as="span" className="text-zinc-500">
-            {first.date}
-          </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
-            {middle.date}
-          </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
-            {last.date}
-          </Text>
-        </div>
       </div>
     </motion.section>
   );
@@ -112,31 +138,40 @@ function UsageBar({
   reduceMotion: boolean;
 }) {
   const heightPercent = (day.amount / max) * 100;
+  const isEmpty = day.amount <= 0;
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label={`${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`}
+          aria-label={
+            isEmpty
+              ? `${day.date}: $0.00, 0 runs`
+              : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
+          }
           className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
         >
-          <motion.div
-            initial={
-              reduceMotion ? { height: `${heightPercent}%` } : { height: 0 }
-            }
-            animate={{ height: `${heightPercent}%` }}
-            transition={
-              reduceMotion
-                ? undefined
-                : {
-                    duration: 0.5,
-                    ease: EASE_OUT,
-                    delay: 0.15 + index * 0.015,
-                  }
-            }
-            className="w-full cursor-help rounded-[3px] bg-zinc-200 transition-colors group-hover:bg-zinc-300"
-          />
+          {isEmpty ? (
+            <div className="h-px w-full bg-transparent" />
+          ) : (
+            <motion.div
+              initial={
+                reduceMotion ? { height: `${heightPercent}%` } : { height: 0 }
+              }
+              animate={{ height: `${heightPercent}%` }}
+              transition={
+                reduceMotion
+                  ? undefined
+                  : {
+                      duration: 0.5,
+                      ease: EASE_OUT,
+                      delay: 0.15 + index * 0.015,
+                    }
+              }
+              className="w-full cursor-help rounded-t-[3px] border-t-2 border-purple-500 bg-purple-500/30 transition-colors group-hover:bg-purple-500/50"
+            />
+          )}
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">

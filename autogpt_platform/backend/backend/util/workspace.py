@@ -15,7 +15,7 @@ from prisma.errors import UniqueViolationError
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import workspace_db
-from backend.data.workspace import WorkspaceFile, get_workspace_total_size
+from backend.data.workspace import WorkspaceFile
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
@@ -224,7 +224,7 @@ class WorkspaceManager:
         # with a same-size or smaller file is not rejected near the cap.
         storage_limit, current_usage = await asyncio.gather(
             get_workspace_storage_limit_bytes(self.user_id),
-            get_workspace_total_size(self.workspace_id),
+            workspace_db().get_workspace_total_size(self.workspace_id),
         )
         if overwrite:
             db = workspace_db()
@@ -326,6 +326,21 @@ class WorkspaceManager:
             f"at path {path}, size={len(content)} bytes"
         )
 
+        # Fire-and-forget: index this file in the hybrid-search store so
+        # the user can find it from /search/global by name. No-ops cheaply
+        # when the existing embedding's text is unchanged.
+        try:
+            from backend.api.features.workspace.embeddings import (
+                schedule_workspace_file_embedding,
+            )
+
+            schedule_workspace_file_embedding(
+                file_id=file.id, user_id=self.user_id, name=file.name, path=file.path
+            )
+        except Exception as e:
+            # Embedding is purely a search-quality concern — never block writes.
+            logger.warning(f"Failed to schedule file embedding for {file.id}: {e}")
+
         return file
 
     async def list_files(
@@ -334,6 +349,12 @@ class WorkspaceManager:
         limit: Optional[int] = None,
         offset: int = 0,
         include_all_sessions: bool = False,
+        name_contains: Optional[str] = None,
+        path_not_starts_with: Optional[str] = None,
+        metadata_equals: Optional[dict] = None,
+        metadata_not_equals: Optional[dict] = None,
+        folder_id: Optional[str] = None,
+        root_only: bool = False,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -347,6 +368,17 @@ class WorkspaceManager:
             offset: Number of files to skip
             include_all_sessions: If True, list files from all sessions.
                                   If False (default), only list current session's files.
+            name_contains: Case-insensitive substring filter on the file name.
+            path_not_starts_with: Optional path prefix to exclude from results.
+                Generic path filter; origin-based filtering for the Artifacts
+                page is handled separately via ``metadata_equals`` /
+                ``metadata_not_equals``.
+            metadata_equals: Match files whose ``metadata`` equals this object
+                exactly (Artifacts "Uploaded" filter).
+            metadata_not_equals: Match files whose ``metadata`` does not equal
+                this object (Artifacts "Generated" filter).
+            folder_id: If set, only return files in this folder.
+            root_only: If True, only return root-level files (folderId IS NULL).
 
         Returns:
             List of WorkspaceFile instances
@@ -357,8 +389,14 @@ class WorkspaceManager:
         return await db.list_workspace_files(
             workspace_id=self.workspace_id,
             path_prefix=effective_path,
+            path_not_starts_with=path_not_starts_with,
             limit=limit,
             offset=offset,
+            name_contains=name_contains,
+            metadata_equals=metadata_equals,
+            metadata_not_equals=metadata_not_equals,
+            folder_id=folder_id,
+            root_only=root_only,
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -386,6 +424,21 @@ class WorkspaceManager:
 
         # Soft-delete database record
         result = await db.soft_delete_workspace_file(file_id, self.workspace_id)
+
+        # Best-effort cleanup of the search index so deleted files don't
+        # keep showing up in /search/global hits.
+        if result is not None:
+            try:
+                from backend.api.features.workspace.embeddings import (
+                    delete_workspace_file_embedding,
+                )
+
+                await delete_workspace_file_embedding(
+                    file_id=file_id, user_id=self.user_id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to delete file embedding for {file_id}: {e}")
+
         return result is not None
 
     async def get_download_url(self, file_id: str, expires_in: int = 3600) -> str:

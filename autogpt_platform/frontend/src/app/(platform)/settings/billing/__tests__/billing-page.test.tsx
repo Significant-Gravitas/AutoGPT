@@ -160,6 +160,51 @@ describe("Settings billing page (integration)", () => {
     );
   });
 
+  it("activates the Automation Credits tab when a Stripe topup redirect lands on the page", async () => {
+    useDefaultBillingHandlers();
+    server.use(
+      http.patch("*/api/credits/fulfill_checkout", () =>
+        HttpResponse.json({}, { status: 200 }),
+      ),
+    );
+    // Topup flow originates from the Automation Credits tab; the redirect
+    // back from Stripe must NOT bounce the user to Subscription.
+    mockSearchParams.current = new URLSearchParams({ topup: "success" });
+
+    render(<SettingsBillingPage />);
+
+    const automationCreditsTab = await screen.findByRole("tab", {
+      name: /automation credits/i,
+    });
+    expect(automationCreditsTab.getAttribute("data-state")).toBe("active");
+  });
+
+  it("activates the requested tab when ?tab=automation-credits is present (deep-link)", async () => {
+    useDefaultBillingHandlers();
+    mockSearchParams.current = new URLSearchParams({
+      tab: "automation-credits",
+    });
+
+    render(<SettingsBillingPage />);
+
+    const automationCreditsTab = await screen.findByRole("tab", {
+      name: /automation credits/i,
+    });
+    expect(automationCreditsTab.getAttribute("data-state")).toBe("active");
+  });
+
+  it("ignores an unknown ?tab= value and falls back to the Subscription default", async () => {
+    useDefaultBillingHandlers();
+    mockSearchParams.current = new URLSearchParams({ tab: "bogus" });
+
+    render(<SettingsBillingPage />);
+
+    const subscriptionTab = await screen.findByRole("tab", {
+      name: "Subscription",
+    });
+    expect(subscriptionTab.getAttribute("data-state")).toBe("active");
+  });
+
   it("AutomationCreditsTab renders the ErrorCard when the balance fetch fails", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", SUBSCRIPTION_RESPONSE),

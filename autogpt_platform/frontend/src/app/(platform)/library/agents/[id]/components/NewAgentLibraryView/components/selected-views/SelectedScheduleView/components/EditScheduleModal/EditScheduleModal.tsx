@@ -3,13 +3,13 @@
 import React from "react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import { Select } from "@/components/atoms/Select/Select";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useEditScheduleModal } from "./useEditScheduleModal";
-import { PencilSimpleIcon } from "@phosphor-icons/react";
+import { PencilIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   graphId: string;
@@ -37,6 +37,7 @@ export function EditScheduleModal({ graphId, schedule }: Props) {
 
   return (
     <Dialog
+      title="Edit Schedule"
       controlled={{ isOpen, set: setIsOpen }}
       styling={{ maxWidth: "22rem" }}
     >
@@ -46,12 +47,11 @@ export function EditScheduleModal({ graphId, schedule }: Props) {
           size="small"
           className="absolute -right-2 -top-2"
         >
-          <PencilSimpleIcon className="size-4" /> Edit schedule
+          <Icon icon={PencilIcon} className="size-4" /> Edit schedule
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-6">
-          <Text variant="h3">Edit schedule</Text>
           <Input
             id="schedule-name"
             label="Name"

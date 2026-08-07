@@ -5,9 +5,13 @@ import { Card } from "@/components/atoms/Card/Card";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { ChatTeardropDotsIcon, CheckCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import {
+  Chatting01Icon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   questions: ClarifyingQuestion[];
@@ -107,7 +111,10 @@ export function ClarificationQuestionsCard({
         <div className="flex w-full max-w-3xl gap-3">
           <div className="flex-shrink-0">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-green-500">
-              <CheckCircleIcon className="h-4 w-4 text-white" weight="bold" />
+              <Icon
+                icon={CheckmarkCircle02Icon}
+                className="h-4 w-4 text-white"
+              />
             </div>
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
@@ -137,7 +144,7 @@ export function ClarificationQuestionsCard({
           <Card className="space-y-6 p-8">
             <div>
               <div className="flex gap-3">
-                <ChatTeardropDotsIcon className="size-6" />
+                <Icon icon={Chatting01Icon} className="size-6" />
                 <Text variant="h4" className="mb-1 text-slate-900">
                   I need more information
                 </Text>
@@ -163,10 +170,10 @@ export function ClarificationQuestionsCard({
                   >
                     <div className="mb-2 flex items-start gap-2">
                       {hasAnswer ? (
-                        <CheckCircleIcon
+                        <Icon
+                          icon={CheckmarkCircle02Icon}
                           size={20}
                           className="mt-0.5 text-green-500"
-                          weight="bold"
                         />
                       ) : (
                         <div className="mt-0 flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 font-mono">

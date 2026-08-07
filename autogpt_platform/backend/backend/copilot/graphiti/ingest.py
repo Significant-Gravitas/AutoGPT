@@ -14,6 +14,7 @@ from graphiti_core.nodes import EpisodeType
 
 from .client import derive_group_id, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
+from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,73 @@ def _get_loop_state() -> _LoopIngestState:
 # Idle workers are cleaned up after this many seconds of inactivity.
 _WORKER_IDLE_TIMEOUT = 60
 
+
+class IngestionCompletion:
+    """Tracks completion of a specific set of enqueued episodes.
+
+    The per-user ingestion queue is SHARED between live-chat ingestion and
+    dream-pass writes. A caller that must wait for only its own episodes to
+    land (dream-pass apply) creates one of these, passes it to each
+    ``enqueue_episode`` it makes, and awaits it. Unrelated activity on the
+    same queue — chat episodes enqueued before, during, or after — never
+    registers on this tracker, so it cannot extend the wait.
+
+    Single-loop discipline: ``register`` (caller side) and ``complete_one``
+    (worker side) both run on the one event loop the queue is bound to, so
+    the counters need no locking. Counts are monotonic (registered /
+    completed) rather than a single decrementing balance, so a transient
+    interleave can never drive the outstanding count negative.
+    """
+
+    __slots__ = ("_registered", "_completed", "_event")
+
+    def __init__(self) -> None:
+        self._registered = 0
+        self._completed = 0
+        self._event = asyncio.Event()
+        self._event.set()  # nothing outstanding yet
+
+    @property
+    def registered(self) -> int:
+        return self._registered
+
+    def register(self) -> None:
+        """Record one more episode this tracker is waiting on."""
+        self._registered += 1
+        self._event.clear()
+
+    def complete_one(self) -> None:
+        """Called by the worker once an episode has been fully processed."""
+        self._completed += 1
+        if self._completed >= self._registered:
+            self._event.set()
+
+    async def wait(self, timeout_seconds: float) -> bool:
+        """Block until every registered episode is processed, or timeout.
+
+        Returns ``True`` when all registered episodes completed (or none
+        were registered), ``False`` on timeout. On timeout nothing is
+        cancelled — the outstanding episodes keep processing
+        fire-and-forget.
+        """
+        if self._completed >= self._registered:
+            return True
+        try:
+            await asyncio.wait_for(self._event.wait(), timeout_seconds)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+
+# Hard cap on a single episode body accepted by ``enqueue_episode``.
+# Dream-pass writers queue ``MemoryEnvelope.model_dump_json()`` built from
+# unvalidated LLM output, so the only other bound is the indirect
+# whole-response token budget (~64KB). Oversized bodies are rejected (not
+# truncated) — callers already handle the ``False`` return, and a truncated
+# JSON envelope would fail parsing downstream anyway. Mirrors the read-side
+# clamp (``dream/fetch.py:MAX_SESSION_BODY_BYTES``).
+MAX_EPISODE_BODY_BYTES = 64 * 1024
+
 CUSTOM_EXTRACTION_INSTRUCTIONS = """
 - Do not extract "User", "Assistant", "AI", "System", "CoPilot", or "human" as entity nodes.
 - Do not extract software tool names, block names, API endpoint names, or internal system identifiers as entities.
@@ -57,6 +125,111 @@ CUSTOM_EXTRACTION_INSTRUCTIONS = """
 - Focus on real-world entities: people, companies, products, projects, concepts, and preferences.
 - Use canonical names: if the speaker says "my company" and context reveals it is "Acme Corp", use "Acme Corp".
 """
+
+
+# Cypher that overwrites exactly the five envelope-sourced MemoryFact
+# props on a known set of edge uuids. group_id predicate is tenant
+# defense-in-depth (mirrors apply._apply_demotions).
+_STAMP_EDGE_METADATA_QUERY = """
+MATCH ()-[e:RELATES_TO]->()
+WHERE e.uuid IN $uuids AND e.group_id = $gid
+SET e.status = $status,
+    e.source_kind = $source_kind,
+    e.scope = $scope,
+    e.confidence = $confidence,
+    e.provenance = $provenance
+"""
+
+
+def _is_past(timestamp: datetime | None, *, now: datetime) -> bool:
+    """True if a temporal-validity timestamp marks an edge already retired.
+
+    ``invalid_at`` is graphiti's scheduled end-of-validity and can be
+    FUTURE-dated (a fact true now with a known end date) — such an edge is
+    still live. Only a past/now timestamp means the edge is already out of
+    validity. Mirrors the backfill migration's deliberate "don't treat
+    future invalid_at as retired" reasoning.
+    """
+    return timestamp is not None and timestamp <= now
+
+
+async def _stamp_edge_metadata(
+    client,
+    group_id: str,
+    result,
+    edge_metadata: dict,
+    user_id: str,
+) -> None:
+    """Deterministically write dream-envelope metadata onto the edges a
+    dream episode just created.
+
+    Safety invariant (verified against graphiti-core 0.28.2): a freshly
+    EXTRACTED edge is built with ``episodes == [episode.uuid]``
+    (edge_operations.create path). When graphiti instead DEDUPES the
+    extracted fact into a pre-existing edge, it appends our uuid to that
+    edge's ``episodes`` (so ``len >= 2``); invalidated edges predate this
+    episode entirely. Therefore ``episodes == [episode_uuid]`` selects
+    ONLY edges solely sourced by this dream write — never a user-authored
+    edge a dream fact happened to merge into. That is what prevents
+    clobbering ``source_kind='user_asserted'`` provenance on real user
+    facts. Anything not matching is left exactly as graphiti wrote it.
+
+    Best-effort: a stamp failure must not fail ingestion — the edge still
+    exists with graphiti's defaults; only the dream metadata is missing.
+    """
+    episode_uuid = result.episode.uuid
+    now = datetime.now(timezone.utc)
+    targets = [
+        edge.uuid
+        for edge in result.edges
+        # Sole-sourced by THIS episode (newly created, not a dedup-merge or
+        # an invalidated pre-existing edge) AND temporally live: graphiti can
+        # self-expire a brand-new edge within the same add_episode — a newer
+        # contradicting fact sets ``expired_at``, and a past ``invalid_at``
+        # marks it already out of validity. Stamping a live status onto a
+        # retired edge would contradict its temporal fields, so skip those.
+        # A FUTURE ``invalid_at`` is still live (true now, ends later) and
+        # MUST be stamped, or its dream status/source_kind/provenance never
+        # land and ratification filters miss it.
+        if list(edge.episodes) == [episode_uuid]
+        and edge.expired_at is None
+        and not _is_past(edge.invalid_at, now=now)
+    ]
+    if not targets:
+        return
+    # The sole producer (``dream/apply._edge_metadata``) always supplies
+    # these three from a ``MemoryEnvelope`` whose fields are non-null by
+    # default. Guard anyway so a future partial payload skips the stamp
+    # loudly instead of silently NULL-clobbering required edge fields.
+    required = ("status", "source_kind", "scope")
+    missing = [key for key in required if edge_metadata.get(key) is None]
+    if missing:
+        logger.warning(
+            "Incomplete edge_metadata for user %s (missing %s) — skipping "
+            "stamp; edges keep graphiti defaults",
+            user_id[:12],
+            ",".join(missing),
+        )
+        return
+    try:
+        await client.driver.execute_query(
+            _STAMP_EDGE_METADATA_QUERY,
+            uuids=targets,
+            gid=group_id,
+            status=edge_metadata["status"],
+            source_kind=edge_metadata["source_kind"],
+            scope=edge_metadata["scope"],
+            confidence=edge_metadata.get("confidence"),
+            provenance=edge_metadata.get("provenance"),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to stamp dream edge metadata for user %s (%d edges) — "
+            "edges keep graphiti defaults",
+            user_id[:12],
+            len(targets),
+            exc_info=True,
+        )
 
 
 async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
@@ -78,10 +251,38 @@ async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
             except asyncio.TimeoutError:
                 break  # idle — clean up below
 
+            # Sidecar completion tracker — present only when the enqueuer
+            # (dream-pass apply) needs to await this specific episode. Popped
+            # up front so it is signalled in the finally below even if the
+            # graph write raises. See ``IngestionCompletion``.
+            completion: IngestionCompletion | None = payload.pop("_completion", None)
             try:
                 group_id = derive_group_id(user_id)
                 client = await get_graphiti_client(group_id)
-                await client.add_episode(**payload)
+                # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) —
+                # pop it before the **payload spread. Present only for dream
+                # writes; None for conversation turns / memory-store calls.
+                edge_metadata = payload.pop("_edge_metadata", None)
+                # Pass custom entity + edge types so MemoryEnvelope metadata
+                # (status, confidence, source_kind, scope, provenance) lives
+                # on :RELATES_TO edges and not only inside :Episodic.content.
+                # Single point of wire-in for every caller of this worker.
+                result = await client.add_episode(
+                    **payload,
+                    entity_types=ENTITY_TYPES,
+                    edge_types=EDGE_TYPES,
+                    edge_type_map=EDGE_TYPE_MAP,
+                )
+                # graphiti's attribute extraction fills MemoryFact fields from
+                # the episode text, not the envelope, so dream metadata
+                # (source_kind/provenance/exact status) doesn't survive. Stamp
+                # it deterministically onto the edges THIS episode newly
+                # created — see ``_stamp_edge_metadata`` for the dedup-safety
+                # invariant that prevents clobbering user-authored edges.
+                if edge_metadata:
+                    await _stamp_edge_metadata(
+                        client, group_id, result, edge_metadata, user_id
+                    )
             except Exception:
                 logger.warning(
                     "Graphiti ingestion failed for user %s",
@@ -90,6 +291,11 @@ async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
                 )
             finally:
                 queue.task_done()
+                # Signal completion for the enqueuer's drain barrier even on
+                # failure — a failed write is still "no longer pending", and
+                # leaving it outstanding would hang the caller's wait.
+                if completion is not None:
+                    completion.complete_one()
     except asyncio.CancelledError:
         logger.debug("Ingestion worker cancelled for user %s", user_id[:12])
         raise
@@ -193,6 +399,8 @@ async def enqueue_episode(
     episode_body: str,
     source_description: str = "Conversation memory",
     is_json: bool = False,
+    edge_metadata: dict | None = None,
+    completion: IngestionCompletion | None = None,
 ) -> bool:
     """Enqueue an arbitrary episode for background ingestion.
 
@@ -203,8 +411,23 @@ async def enqueue_episode(
         is_json: When ``True``, ingest as ``EpisodeType.json`` (for
             structured ``MemoryEnvelope`` payloads).  Otherwise uses
             ``EpisodeType.text``.
+        edge_metadata: Optional ``{status, source_kind, scope, confidence,
+            provenance}`` (Cypher-serializable scalars) stamped onto the
+            edges this episode newly creates, AFTER ingestion. Dream
+            writes pass this so their envelope metadata lands on the edge
+            deterministically (graphiti's extractor can't recover it from
+            the episode text). ``None`` (conversation turns / memory-store)
+            leaves edges at MemoryFact defaults — no behavior change.
+        completion: Optional ``IngestionCompletion`` the worker signals once
+            this episode is processed. Dream-pass apply passes one so it can
+            await ONLY its own episodes (scoped drain), not everything on the
+            shared per-user queue. ``None`` for chat / memory-store writes
+            that are pure fire-and-forget.
 
     Returns ``True`` if the episode was queued, ``False`` if it was dropped.
+    The caller registers the episode on ``completion`` iff this returns
+    ``True`` — a dropped episode is never enqueued and the worker never
+    completes it.
     """
     if not user_id:
         return False
@@ -213,6 +436,15 @@ async def enqueue_episode(
         group_id = derive_group_id(user_id)
     except ValueError:
         logger.warning("Invalid user_id for episode ingestion: %s", user_id[:12])
+        return False
+
+    body_bytes = len(episode_body.encode("utf-8"))
+    if body_bytes > MAX_EPISODE_BODY_BYTES:
+        logger.warning(
+            f"Episode body for user {user_id[:12]} exceeds size cap "
+            f"({body_bytes} > {MAX_EPISODE_BODY_BYTES} bytes) — "
+            f"rejecting episode {name!r}"
+        )
         return False
 
     queue = await _ensure_worker(user_id)
@@ -229,6 +461,12 @@ async def enqueue_episode(
                 "reference_time": datetime.now(timezone.utc),
                 "group_id": group_id,
                 "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
+                # Sidecar — popped by the worker before the add_episode
+                # spread; carries dream metadata for post-write stamping.
+                "_edge_metadata": edge_metadata,
+                # Sidecar — the worker calls ``complete_one`` on it after
+                # processing so a scoped-drain caller can await this episode.
+                "_completion": completion,
             }
         )
         return True
@@ -240,14 +478,48 @@ async def enqueue_episode(
         return False
 
 
+async def wait_for_ingestion(
+    completion: IngestionCompletion, timeout_seconds: float
+) -> bool:
+    """Block until a specific set of enqueued episodes have all landed.
+
+    ``enqueue_episode`` returning ``True`` only proves the episode reached
+    the in-process queue; the real graph write (LLM extraction + embedding
+    inside ``_ingestion_worker``) happens later. Callers that must not
+    report success while their own writes are still pending (dream-pass
+    apply) register each episode on ``completion`` and await this.
+
+    Scoped to exactly the episodes registered on ``completion`` — the
+    per-user queue is shared with live-chat ingestion, so waiting on the
+    whole queue would let unrelated chat activity extend (or never resolve)
+    the wait. ``IngestionCompletion`` decouples the barrier from queue
+    ordering: it resolves as soon as the caller's own episodes are done,
+    even while other items remain queued.
+
+    Returns ``True`` when the caller's episodes drained (or none were
+    registered — vacuously drained), ``False`` on timeout. On timeout
+    nothing is cancelled: pending items keep processing fire-and-forget.
+    """
+    return await completion.wait(timeout_seconds)
+
+
 async def _ensure_worker(user_id: str) -> asyncio.Queue:
     """Create a queue and worker for *user_id* if one doesn't exist.
 
     Returns the queue directly so callers don't need to look it up from
     the state dict (which avoids a TOCTOU race if the worker times out
     and cleans up between this call and the put_nowait).
+
+    Also fires the auto-registration of the user's dream-system
+    schedules (community rebuild + dream pass + ratification pass) the
+    first time we see them in this process — lazy on first memory write,
+    per-job flag-gated, per-job idempotent. See
+    ``copilot/dream/scheduling.py:ensure_dream_system_scheduled``.
+    Fire-and-forget; failures are swallowed inside the helper so
+    ingestion is never affected.
     """
     state = _get_loop_state()
+    is_new_user_for_this_process = False
     async with state.workers_lock:
         if user_id not in state.user_queues:
             q: asyncio.Queue = asyncio.Queue(maxsize=100)
@@ -256,7 +528,22 @@ async def _ensure_worker(user_id: str) -> asyncio.Queue:
                 _ingestion_worker(user_id, q),
                 name=f"graphiti-ingest-{user_id[:12]}",
             )
-        return state.user_queues[user_id]
+            is_new_user_for_this_process = True
+        queue = state.user_queues[user_id]
+
+    if is_new_user_for_this_process:
+        # Fire-and-forget; per-job Redis SETNX inside the helper
+        # provides cross-process / cross-restart idempotency. Done
+        # outside the workers_lock so the scheduler RPC can't
+        # deadlock ingestion.
+        from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+
+        asyncio.create_task(
+            ensure_dream_system_scheduled(user_id),
+            name=f"dream-system-register-{user_id[:12]}",
+        )
+
+    return queue
 
 
 async def _resolve_user_name(user_id: str) -> str:

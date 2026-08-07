@@ -54,6 +54,7 @@ async def fix_validate_and_save(
     save_message: str | None = None,
     library_agents: list[dict[str, Any]] | None = None,
     folder_id: str | None = None,
+    is_hidden: bool = False,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -172,7 +173,11 @@ async def fix_validate_and_save(
 
     try:
         created_graph, library_agent = await save_agent_to_library(
-            agent_json, user_id, is_update=is_update, folder_id=folder_id
+            agent_json,
+            user_id,
+            is_update=is_update,
+            folder_id=folder_id,
+            is_hidden=is_hidden,
         )
         return AgentSavedResponse(
             message=(

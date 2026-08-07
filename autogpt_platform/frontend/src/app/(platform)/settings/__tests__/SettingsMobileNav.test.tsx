@@ -58,7 +58,7 @@ describe("SettingsMobileNav", () => {
     expect(trigger.textContent).toContain("Billing");
   });
 
-  it("opens popover listing all 7 sections on click", async () => {
+  it("opens popover listing all 6 sections on click", async () => {
     render(<SettingsMobileNav />);
 
     fireEvent.click(
@@ -67,12 +67,11 @@ describe("SettingsMobileNav", () => {
 
     const labels = [
       "Profile",
-      "Creator Dashboard",
+      "Account",
       "Billing",
       "Integrations",
-      "Preferences",
       "AutoGPT API Keys",
-      "OAuth Apps",
+      "Creator Dashboard",
     ];
     for (const label of labels) {
       expect(

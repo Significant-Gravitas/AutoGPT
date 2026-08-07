@@ -124,17 +124,20 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
+    enable_subscription_credit_grant: bool = Field(
+        default=False,
+        description=(
+            "If True, every paid Stripe subscription invoice grants AutoGPT"
+            " credits equal to invoice.amount_paid. OFF by default — there is"
+            " no product mandate for '$ paid == $ in credits', and prorated"
+            " upgrade invoices each produce a separate grant (distinct"
+            " invoice ids slip past the per-invoice idempotency key). Flip on"
+            " per environment intentionally if/when product wants that UX."
+        ),
+    )
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
-    )
-    enable_beta_monthly_credit: bool = Field(
-        default=True,
-        description="If beta monthly credits accounting is enabled or not",
-    )
-    num_user_credits_refill: int = Field(
-        default=1500,
-        description="Number of credits to refill for each user",
     )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
@@ -143,6 +146,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     low_balance_threshold: int = Field(
         default=500,
         description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
+    )
+    expert_weekly_credit_budget_default: int = Field(
+        default=500,
+        ge=0,
+        description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
@@ -182,6 +190,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of concurrent graph executions allowed per user per graph.",
     )
+    max_inflight_copilot_turns_per_user: int = Field(
+        default=15,
+        ge=1,
+        le=1000,
+        description=(
+            "Hard cap on in-flight (running + queued) AutoPilot/CoPilot "
+            "chat turns per user. Once running >= "
+            "``max_running_copilot_turns_per_user`` and the queue brings the "
+            "total to this number, ``POST /chat/stream`` returns 429. "
+            "Reached from the chat HTTP route, the AutoPilotBlock, and "
+            "run_sub_session — all funnel through schedule_chat_turn / "
+            "schedule_turn and share this cap."
+        ),
+    )
+    max_running_copilot_turns_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "Soft cap on concurrently *running* AutoPilot/CoPilot chat "
+            "turns per user. Tasks submitted while the user is at this cap "
+            "are queued in ``CopilotTaskQueue`` (FIFO) up to "
+            "``max_inflight_copilot_turns_per_user`` total in-flight. "
+            "Must be <= the in-flight cap; default 5 keeps shared-infra "
+            "concurrency predictable while letting users batch-submit."
+        ),
+    )
 
     block_error_rate_threshold: float = Field(
         default=0.5,
@@ -200,6 +235,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_accuracy_check_interval_hours: int = Field(
         default=24,
         description="Interval in hours between execution accuracy alert checks.",
+    )
+
+    # Embeddings
+    store_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description=(
+            "Embedding model used by the unified content embeddings service. "
+            "Overridable so deployments with a compatible backend (vLLM, "
+            "LiteLLM proxy, Ollama with an embedding model pulled, Azure "
+            "OpenAI, ...) can swap models without code changes. Model MUST "
+            "emit 1536-dim vectors to match the hardcoded pgvector column."
+        ),
     )
 
     model_config = SettingsConfigDict(
@@ -270,6 +317,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "service daemon to run on",
     )
 
+    batch_executor_port: int = Field(
+        default=8011,
+        description="The port for the BatchExecutor subprocess to run on. "
+        "The service has no inbound RPC surface today — callers interact via "
+        "the Redis-backed pending queue — but AppService requires every "
+        "subprocess to expose /health_check on a port for supervision.",
+    )
+
     otto_api_url: str = Field(
         default="",
         description="The URL for the Otto API service",
@@ -285,6 +340,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    trusted_frontend_origins: List[str] = Field(
+        default=[],
+        description="Extra frontend origins (in addition to frontend_base_url) "
+        "that transactional auth-email action links may point at. Entries are "
+        'full origins ("https://host[:port]") or "regex:"-prefixed patterns, '
+        "same format as backend_cors_allow_origins. Self-hosting needs nothing "
+        "here (frontend_base_url is trusted implicitly); cloud sets a tight "
+        "preview pattern instead of a blanket wildcard.",
     )
 
     platform_link_base_url: str = Field(
@@ -427,6 +492,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between failed push subscription cleanup runs (1-168 hours)",
     )
 
+    platform_link_token_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
+    stripe_tier_reconcile_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description=(
+            "Hours between periodic Stripe subscription-tier reconciliation "
+            "sweeps (1-168 hours)"
+        ),
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
@@ -523,6 +605,28 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
     )
 
+    @field_validator("trusted_frontend_origins")
+    @classmethod
+    def validate_trusted_frontend_origins(cls, v: List[str]) -> List[str]:
+        """Reject unusable entries at startup rather than at send time.
+
+        These patterns are compiled per request in the auth-email route, so a
+        malformed one would otherwise boot fine and then 500 every password
+        reset and verification email.
+        """
+        for raw_origin in v:
+            origin = raw_origin.strip()
+            if not origin.startswith("regex:"):
+                continue
+            pattern = origin[len("regex:") :]
+            if not pattern:
+                raise ValueError("Invalid regex pattern: pattern cannot be empty")
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"Invalid regex pattern '{pattern}': {exc}") from exc
+        return v
+
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
@@ -594,11 +698,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
-
-    supabase_url: str = Field(default="", description="Supabase URL")
-    supabase_service_role_key: str = Field(
-        default="", description="Supabase service role key"
-    )
 
     encryption_key: str = Field(default="", description="Encryption key")
 
@@ -682,12 +781,61 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     medium_api_key: str = Field(default="", description="Medium API key")
     medium_author_id: str = Field(default="", description="Medium author ID")
     did_api_key: str = Field(default="", description="D-ID API Key")
-    revid_api_key: str = Field(default="", description="revid.ai API key")
     discord_bot_token: str = Field(default="", description="Discord bot token")
     autopilot_bot_discord_token: str = Field(
         default="",
         description="Discord bot token for the CoPilot chat bridge. When set, "
         "the bridge enables its Discord adapter.",
+    )
+    autopilot_bot_discord_client_id: str = Field(
+        default="",
+        description="Discord application client ID for the CoPilot bot. Used "
+        "to build the 'Add to server' invite URL on the Bots settings page; "
+        "the bot itself doesn't need it.",
+    )
+    autopilot_bot_discord_permissions: str = Field(
+        default="",
+        description="Discord permissions bitfield for the 'Add to server' "
+        "invite URL. Overrides the built-in default when non-empty.",
+    )
+    autopilot_bot_slack_token: str = Field(
+        default="",
+        description="Slack bot (xoxb-) token for the CoPilot chat bridge. When "
+        "set together with the signing secret, the bridge mounts its Slack "
+        "webhook adapter (Events API) on the main backend API.",
+    )
+    autopilot_bot_slack_signing_secret: str = Field(
+        default="",
+        description="Slack app signing secret — verifies inbound Slack request "
+        "signatures (HMAC-SHA256). Required alongside the token to enable the "
+        "Slack adapter.",
+    )
+    autopilot_bot_slack_client_id: str = Field(
+        default="",
+        description="Slack app OAuth client ID. Set together with the client "
+        "secret to enable the multi-workspace 'Add to Slack' install flow; each "
+        "workspace's bot token is then obtained via OAuth and stored per team.",
+    )
+    autopilot_bot_slack_client_secret: str = Field(
+        default="",
+        description="Slack app OAuth client secret — exchanged with the auth "
+        "code on the install callback for a per-workspace bot token.",
+    )
+    autopilot_bot_telegram_token: str = Field(
+        default="",
+        description="Telegram bot token (from @BotFather). Set together with "
+        "the webhook secret to mount the Telegram adapter on the main API.",
+    )
+    autopilot_bot_telegram_webhook_secret: str = Field(
+        default="",
+        description="Secret registered with Telegram's setWebhook; Telegram "
+        "echoes it in the X-Telegram-Bot-Api-Secret-Token header and inbound "
+        "updates are rejected unless it matches.",
+    )
+    autopilot_bot_telegram_username: str = Field(
+        default="",
+        description="The bot's public @username (without the @) — used to "
+        "build the t.me add-to-group link on the Bots settings page.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
@@ -703,7 +851,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
     ideogram_api_key: str = Field(default="", description="Ideogram API Key")
     jina_api_key: str = Field(default="", description="Jina API Key")
-    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
 
     fal_api_key: str = Field(default="", description="FAL API key")
     exa_api_key: str = Field(default="", description="Exa API key")

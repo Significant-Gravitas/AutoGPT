@@ -82,7 +82,11 @@ async def test_merge_pr_error_path():
         "credentials": TEST_CREDENTIALS_INPUT,
     }
     with pytest.raises(BlockExecutionError, match="PR not mergeable"):
-        async for _ in block.execute(input_data, credentials=TEST_CREDENTIALS):
+        async for _ in block.execute(
+            input_data,
+            credentials=TEST_CREDENTIALS,
+            execution_context=ExecutionContext(),
+        ):
             pass
 
 

@@ -175,6 +175,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    last_run_at: datetime.datetime | None = None
 
     name: str
     description: str
@@ -212,6 +213,8 @@ class LibraryAgent(pydantic.BaseModel):
     is_favorite: bool
     folder_id: str | None = None
     folder_name: str | None = None  # Denormalized for display
+
+    is_hidden: bool = False
 
     recommended_schedule_cron: str | None = None
     is_scheduled: bool = pydantic.Field(
@@ -345,8 +348,17 @@ class LibraryAgent(pydantic.BaseModel):
             status=status,
             created_at=created_at,
             updated_at=updated_at,
-            name=graph.name,
-            description=graph.description,
+            last_run_at=agent.lastRunAt,
+            # Prefer the marketplace title/description snapshotted at download
+            # time; fall back to the graph's own values for user-created agents
+            # (which have no snapshot). `is not None` so an intentionally empty
+            # published value is preserved rather than replaced by the graph's.
+            name=agent.name if agent.name is not None else graph.name,
+            description=(
+                agent.description
+                if agent.description is not None
+                else graph.description
+            ),
             instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
@@ -365,6 +377,7 @@ class LibraryAgent(pydantic.BaseModel):
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
+            is_hidden=agent.isHidden,
             folder_id=agent.folderId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
@@ -433,6 +446,10 @@ class LibraryAgentResponse(pydantic.BaseModel):
 class LibraryAgentPresetCreatable(pydantic.BaseModel):
     """
     Request model used when creating a new preset for a library agent.
+
+    A preset's webhook is never caller-specified here; webhook-triggered presets
+    are created through ``POST /presets/setup-trigger``, which provisions a
+    webhook owned by the caller server-side.
     """
 
     graph_id: str
@@ -445,8 +462,6 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     description: str
 
     is_active: bool = True
-
-    webhook_id: Optional[str] = None
 
 
 class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
@@ -497,7 +512,31 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
+    # Resource-follows-parent tenancy: presets are tagged with the parent
+    # graph's org/team at creation. Executions of the preset attribute to
+    # THIS org/team, not the caller's active header context.
+    organization_id: str | None = None
+    team_id: str | None = None
+
+    # Read-only in responses; set server-side via the setup-trigger flow only.
+    webhook_id: Optional[str] = None
     webhook: "Webhook | None"
+
+    # Expert attribution, resolved server-side at creation; every run this
+    # preset fires inherits it.
+    expert_id: Optional[str] = None
+
+    @pydantic.field_serializer("webhook")
+    def _redact_webhook_signing_material(
+        self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
+    ):
+        # Never expose a webhook's signing secret / provider webhook id to API
+        # clients; callers only need the ingress URL and non-sensitive metadata.
+        if webhook is None:
+            return None
+        return webhook.model_dump(
+            mode=info.mode, exclude={"secret", "provider_webhook_id"}
+        )
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
@@ -533,8 +572,11 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             is_active=preset.isActive,
             inputs=input_data,
             credentials=input_credentials,
+            organization_id=preset.organizationId,
+            team_id=preset.teamId,
             webhook_id=preset.webhookId,
             webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            expert_id=preset.expertId,
         )
 
 
@@ -543,6 +585,23 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
 
     presets: list[LibraryAgentPreset]
     pagination: Pagination
+
+
+class SkippedWebhookPreset(pydantic.BaseModel):
+    """A webhook preset that was left pinned to its old version because the
+    newly activated version swaps or reconfigures the trigger block. The user
+    needs to reconfigure the trigger on the new version for it to fire."""
+
+    id: str
+    name: str
+    pinned_version: int
+
+
+class WebhookPresetMigrationResult(pydantic.BaseModel):
+    """Outcome of migrating webhook-attached presets to a new graph version."""
+
+    migrated_count: int = 0
+    skipped_presets: list[SkippedWebhookPreset] = pydantic.Field(default_factory=list)
 
 
 class LibraryAgentFilter(str, Enum):
@@ -557,6 +616,7 @@ class LibraryAgentSort(str, Enum):
 
     CREATED_AT = "createdAt"
     UPDATED_AT = "updatedAt"
+    LAST_RUN = "lastRunAt"
 
 
 class LibraryAgentUpdateRequest(pydantic.BaseModel):
@@ -578,6 +638,10 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
+    )
+    is_hidden: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether to hide the agent from the library listing",
     )
     settings: Optional[GraphSettings] = pydantic.Field(
         default=None, description="User-specific settings for this library agent"
