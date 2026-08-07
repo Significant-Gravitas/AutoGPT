@@ -1,7 +1,11 @@
 from typing import Any
 
 from backend.blocks.dataforb2b._config import DataForB2BCredentials
-from backend.util.request import Requests
+from backend.util.request import HTTPClientError, HTTPServerError, Requests
+
+
+def api_error_message(error: HTTPClientError | HTTPServerError, operation: str) -> str:
+    return f"DataForB2B {operation} failed with HTTP status {error.status_code}."
 
 
 class DataForB2BClient:

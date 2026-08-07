@@ -7,7 +7,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.dataforb2b._api import DataForB2BClient
+from backend.blocks.dataforb2b._api import DataForB2BClient, api_error_message
 from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -111,10 +111,10 @@ class SearchFilterTypeaheadBlock(Block):
                 input_data.filter_type.value, query, limit, credentials
             )
         except HTTPClientError as e:
-            yield "error", f"Client error ({e.status_code}) resolving typeahead: {e}"
+            yield "error", api_error_message(e, "typeahead")
             return
         except HTTPServerError as e:
-            yield "error", f"Server error ({e.status_code}) resolving typeahead: {e}"
+            yield "error", api_error_message(e, "typeahead")
             return
         results = data.get("results", []) or []
         yield "result", data
