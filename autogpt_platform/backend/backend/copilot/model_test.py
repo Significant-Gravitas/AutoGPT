@@ -1573,3 +1573,69 @@ async def test_backfill_partial_failure_clears_only_successes(
     assert m2.tool_calls_pending_save is True
     assert m3.tool_calls_pending_save is True
     assert mock_db.update_chat_message_tool_calls.await_count == 3
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
+    mocker: MockerFixture,
+) -> None:
+    """An assistant row flushed before end-of-turn stamping gets its
+    model/routingSource back-filled on the next save, flag cleared."""
+    flushed = ChatMessage(
+        role="assistant",
+        content="answer",
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        stamps_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_stamps = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    mock_db.update_chat_message_stamps.assert_awaited_once_with(
+        session_id=session.session_id,
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="env",
+    )
+    assert flushed.stamps_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_stamp_backfill_failure_keeps_flag(
+    mocker: MockerFixture,
+) -> None:
+    """A failed stamp back-fill keeps the flag set so any later save
+    retries — mirror of the tool_calls failure semantics."""
+    flushed = ChatMessage(
+        role="assistant",
+        content="answer",
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="catalog",
+        stamps_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_stamps = mocker.AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    assert flushed.stamps_pending_save is True

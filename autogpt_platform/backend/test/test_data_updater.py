@@ -333,7 +333,7 @@ async def main():
     )
     print("\nTop 5 agents by run count:")
     for row in sample_runs:
-        print(f"  - Agent {row['agentGraphId'][:8]}...: {row['run_count']} runs")
+        print(f"  - Agent {row['graph_id'][:8]}...: {row['run_count']} runs")
 
     sample_reviews = await db.query_raw(
         "SELECT * FROM mv_review_stats ORDER BY avg_rating DESC NULLS LAST LIMIT 5"

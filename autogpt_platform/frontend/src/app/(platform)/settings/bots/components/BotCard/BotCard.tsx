@@ -1,8 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { PlusIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
@@ -11,6 +9,8 @@ import type { BotPlatformInfo } from "@/app/api/__generated__/models/botPlatform
 import { BotCardDmTile } from "./BotCardDmTile";
 import { BotCardServerList } from "./BotCardServerList";
 import { useBotCard } from "./useBotCard";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   platform: BotPlatformInfo;
@@ -43,7 +43,7 @@ export function BotCard({ platform }: Props) {
             rel="noopener noreferrer"
             variant="primary"
             size="small"
-            leftIcon={<PlusIcon size={16} />}
+            leftIcon={<Icon icon={PlusSignIcon} size={16} />}
           >
             Add bot to {platform.display_name}
           </Button>

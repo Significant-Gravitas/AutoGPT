@@ -6,13 +6,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { CaretRightIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { AccountMenuOrgList } from "./AccountMenuOrgList";
 import { InitialAvatar } from "./InitialAvatar";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   userName?: string;
+  userHandle?: string;
   userEmail?: string;
   avatarSrc?: string;
   isLoading?: boolean;
@@ -20,6 +22,7 @@ interface Props {
 
 export function AccountMenuHeader({
   userName,
+  userHandle,
   userEmail,
   avatarSrc,
   isLoading = false,
@@ -36,7 +39,12 @@ export function AccountMenuHeader({
           aria-haspopup="true"
           data-testid="account-menu-org-trigger"
         >
-          <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+            className="h-8 w-8"
+          />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             {isLoading || !userName || !userEmail ? (
               <>
@@ -57,10 +65,10 @@ export function AccountMenuHeader({
               </>
             )}
           </div>
-          <CaretRightIcon
+          <Icon
+            icon={ArrowRight01Icon}
             className="shrink-0 text-neutral-700"
             size={16}
-            weight="regular"
             aria-hidden="true"
           />
         </button>

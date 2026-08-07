@@ -109,9 +109,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
                   alt={`${agent.creator} creator avatar`}
                 />
               )}
-              <AvatarFallback size={20}>
-                {agent.creator.charAt(0)}
-              </AvatarFallback>
+              <AvatarFallback size={20}>{agent.creator}</AvatarFallback>
             </Avatar>
             <span className="truncate text-[13px] text-zinc-500">
               by {agent.creator}

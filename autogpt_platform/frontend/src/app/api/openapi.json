@@ -5554,6 +5554,84 @@
         }
       }
     },
+    "/api/experts/{expert_id}/detach-preview": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Detach Preview",
+        "description": "What archiving this expert would pause — schedules and triggers —\nso the client can show a clear confirmation prompt.",
+        "operationId": "get_expert_detach_preview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertDetachPreview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/schedules/resume": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Resume Expert Schedules",
+        "description": "One-click reversal of a budget/archive pause.",
+        "operationId": "resume_expert_schedules",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/workflows": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -8929,6 +9007,238 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump": {
+      "delete": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Discard Brain Dump",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
+        "operationId": "discard_brain_dump",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "recording_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+                { "type": "null" }
+              ],
+              "title": "Recording Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onboarding/brain-dump/finalize": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Finalize Brain Dump",
+        "description": "Close out a take: assemble, scan, store, transcribe.\n\nExtraction and greeting generation continue in the background after\nthis responds — the preparing step polls ``/status`` until\n``greeting_ready``. Idempotent per ``recording_id`` — a client that\nretries after a timeout gets the stored result rather than a second\ntranscription.",
+        "operationId": "finalize_brain_dump",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FinalizeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FinalizeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Intro",
+        "description": "Content for the copilot home's onboarding greeting.\n\nPre-generated during finalize, so this is a plain row read — the\ncopilot home never waits on a model to render its first screen.\n``greeting_done=true`` means the client should show nothing and cache\nthat locally.",
+        "operationId": "get_brain_dump_intro",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IntroCardResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro/complete": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Complete Brain Dump Greeting",
+        "description": "Mark the greeting as done — called when the first message is sent.\n\nPermanent and content-preserving: the flag flips, the stored greeting\nstays in the row.",
+        "operationId": "complete_brain_dump_greeting",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreetingDoneResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/parts": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Upload Brain Dump Part",
+        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.",
+        "operationId": "upload_brain_dump_part",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_brain_dump_part"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadPartResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recommended-providers": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Recommended Providers",
+        "description": "Provider picks for the welcome dialog's \"Connect your tools\" panel.\n\nWritten by a background job that runs beside the greeting one; a plain\nrow read here. ``ready=false`` means keep polling.",
+        "operationId": "get_brain_dump_recommended_providers",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recording": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Download Brain Dump Recording",
+        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "operationId": "download_brain_dump_recording",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/status": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Status",
+        "description": "Polled by the loading screen while the pipeline runs.",
+        "operationId": "get_brain_dump_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
@@ -9028,8 +9338,9 @@
                 "AGENT_NEW_RUN",
                 "AGENT_INPUT",
                 "CONGRATS",
-                "VISIT_COPILOT",
-                "BUILDER_OPEN"
+                "ONBOARDING_COMPLETE",
+                "BUILDER_OPEN",
+                "CAPABILITY_CARDS"
               ],
               "type": "string",
               "title": "Step"
@@ -14638,6 +14949,24 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "Body_upload_brain_dump_part": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" },
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
+          "part_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Part Index"
+          }
+        },
+        "type": "object",
+        "required": ["file", "recording_id", "part_index"],
+        "title": "Body_upload_brain_dump_part"
+      },
       "BotAnalyticsSummary": {
         "properties": {
           "platform": {
@@ -14780,6 +15109,23 @@
         "type": "object",
         "required": ["date", "messages", "replies", "errors"],
         "title": "BotTimeseriesPoint"
+      },
+      "BrainDumpInputMode": {
+        "type": "string",
+        "enum": ["voice", "typed", "skipped"],
+        "title": "BrainDumpInputMode"
+      },
+      "BrainDumpStatus": {
+        "type": "string",
+        "enum": [
+          "recording_uploaded",
+          "transcribing",
+          "transcribed",
+          "extracting",
+          "completed",
+          "failed"
+        ],
+        "title": "BrainDumpStatus"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -16178,6 +16524,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dream Session Id"
           },
+          "ingestion_drain_status": {
+            "$ref": "#/components/schemas/IngestionDrainStatus",
+            "default": "drained"
+          },
           "operations": {
             "anyOf": [
               { "$ref": "#/components/schemas/DreamOperationsSnapshot" },
@@ -16249,6 +16599,38 @@
         "type": "object",
         "title": "DreamPassUsage",
         "description": "Aggregate usage across all phases of one dream pass.\n\nSurfaced on ``DreamPassResult.usage`` so eval / admin UI / billing\ncan read tokens + cost without recomputing. Written to\n``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;\ncharged against the user's rate-limit window via\n``persist_and_record_usage`` so dream-pass spend rolls into the\nsame daily/weekly subscription tier budget as chat-execution\noverage."
+      },
+      "DumpStatusResponse": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpStatus" },
+              { "type": "null" }
+            ]
+          },
+          "input_mode": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpInputMode" },
+              { "type": "null" }
+            ]
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          },
+          "has_audio": {
+            "type": "boolean",
+            "title": "Has Audio",
+            "default": false
+          },
+          "greeting_ready": {
+            "type": "boolean",
+            "title": "Greeting Ready",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "DumpStatusResponse"
       },
       "EnableShareRequest": {
         "properties": {
@@ -16739,6 +17121,33 @@
             "items": { "$ref": "#/components/schemas/ExpertWorkflowRef" },
             "type": "array",
             "title": "Workflows"
+          },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
+          },
+          "last_run_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Run Status"
+          },
+          "weekly_budget": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Weekly Budget"
+          },
+          "weekly_spend": {
+            "type": "integer",
+            "title": "Weekly Spend",
+            "default": 0
+          },
+          "schedules_paused_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Schedules Paused At"
           }
         },
         "type": "object",
@@ -16757,6 +17166,24 @@
           "workflows"
         ],
         "title": "Expert"
+      },
+      "ExpertDetachPreview": {
+        "properties": {
+          "schedule_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Schedule Names"
+          },
+          "trigger_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Trigger Names"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_names", "trigger_names"],
+        "title": "ExpertDetachPreview",
+        "description": "What archiving the expert would pause — drives the confirm dialog."
       },
       "ExpertWorkflowRef": {
         "properties": {
@@ -16780,6 +17207,14 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Cron"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
           }
         },
         "type": "object",
@@ -16910,6 +17345,58 @@
         "required": ["executions", "total"],
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
+      },
+      "FinalizeRequest": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
+          "input_mode": {
+            "$ref": "#/components/schemas/BrainDumpInputMode",
+            "default": "voice"
+          },
+          "duration_secs": {
+            "anyOf": [
+              { "type": "number", "maximum": 14400.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Duration Secs"
+          },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "text": {
+            "anyOf": [
+              { "type": "string", "maxLength": 20000 },
+              { "type": "null" }
+            ],
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "FinalizeRequest",
+        "description": "Finalize one take.\n\n``text`` is the typed fallback: when set, no audio is expected and the\ndump is stored with ``input_mode=typed``. ``input_mode=skipped``\nrecords the deliberate skip so Path B can be chosen server-side."
+      },
+      "FinalizeResponse": {
+        "properties": {
+          "status": { "$ref": "#/components/schemas/BrainDumpStatus" },
+          "input_mode": { "$ref": "#/components/schemas/BrainDumpInputMode" },
+          "transcript_preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript Preview"
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": ["status", "input_mode"],
+        "title": "FinalizeResponse"
       },
       "FolderCreateRequest": {
         "properties": {
@@ -17178,6 +17665,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -17246,6 +17737,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -17351,6 +17846,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -17451,6 +17950,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           },
           "stats": {
             "anyOf": [
@@ -17856,6 +18359,14 @@
         "required": ["provider", "config_schema", "credentials_input_name"],
         "title": "GraphTriggerInfo"
       },
+      "GreetingDoneResponse": {
+        "properties": {
+          "greeting_done": { "type": "boolean", "title": "Greeting Done" }
+        },
+        "type": "object",
+        "required": ["greeting_done"],
+        "title": "GreetingDoneResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -17947,6 +18458,12 @@
         "required": ["image_url"],
         "title": "ImageURLResponse"
       },
+      "IngestionDrainStatus": {
+        "type": "string",
+        "enum": ["drained", "skipped", "timed_out"],
+        "title": "IngestionDrainStatus",
+        "description": "Fate of a dream pass's enqueued graph writes at the moment the pass\nwas reported complete.\n\nThree distinct states, so consumers (and a future Memory Visualizer)\ncan tell a healthy by-design skip from a real failure:\n\n  * ``drained`` — the pass's own episodes were confirmed landed in the\n    graph before the pass returned (sync path), or the pass enqueued\n    nothing to drain. Healthy.\n  * ``skipped`` — the drain was intentionally not run to avoid stalling\n    a shared serial loop (batch path). The episodes process\n    fire-and-forget; healthy by design, NOT a failure signal.\n  * ``timed_out`` — the sync-path drain was attempted but did not finish\n    within its budget. The reported write/proposal counts include\n    episodes still queued in-process, which are lost if the worker's pod\n    restarts. This is the only value that warrants an operator warning."
+      },
       "InputValidationErrorResponse": {
         "properties": {
           "type": {
@@ -17994,6 +18511,31 @@
         "type": "object",
         "required": ["store_listing_version_id"],
         "title": "InstallWorkflowRequest"
+      },
+      "IntroCardResponse": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "greeting": { "type": "string", "title": "Greeting" },
+          "prompts": {
+            "items": { "$ref": "#/components/schemas/SuggestedPrompt" },
+            "type": "array",
+            "title": "Prompts",
+            "default": []
+          },
+          "greeting_done": {
+            "type": "boolean",
+            "title": "Greeting Done",
+            "default": false
+          },
+          "transcript": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript"
+          }
+        },
+        "type": "object",
+        "required": ["path", "greeting"],
+        "title": "IntroCardResponse",
+        "description": "Content for the copilot home's onboarding greeting.\n\n``path`` is \"A\" when we have something to reflect back and \"B\" when\nthe greeting's job is to invite a recording instead. ``greeting_done``\nis the server-side \"already seen it\" flag — when true the client\nshows nothing and caches the fact locally."
       },
       "InvitationCreateResponse": {
         "properties": {
@@ -18366,6 +18908,10 @@
               { "$ref": "#/components/schemas/Webhook" },
               { "type": "null" }
             ]
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
@@ -18961,12 +19507,34 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Failed Uuids"
+          },
+          "failures": {
+            "items": { "$ref": "#/components/schemas/MemoryForgetFailure" },
+            "type": "array",
+            "title": "Failures"
           }
         },
         "type": "object",
         "required": ["message"],
         "title": "MemoryForgetConfirmResponse",
         "description": "Response after deleting specific memory edges."
+      },
+      "MemoryForgetFailure": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "code": { "$ref": "#/components/schemas/MemoryForgetFailureCode" },
+          "reason": { "type": "string", "title": "Reason" }
+        },
+        "type": "object",
+        "required": ["uuid", "code", "reason"],
+        "title": "MemoryForgetFailure",
+        "description": "One edge that could not be deleted, with an actionable reason.\n\nSurfaced so the assistant (and user) can tell *why* a delete failed —\ne.g. the edge was not found vs. the query itself errored — instead of a\nbare \"N failed\" count that gives the model nothing to act on."
+      },
+      "MemoryForgetFailureCode": {
+        "type": "string",
+        "enum": ["no_match", "query_error"],
+        "title": "MemoryForgetFailureCode",
+        "description": "Stable, machine-switchable reason a forget delete failed.\n\nThe frontend/model can branch on this code (retry vs. give up) without\nparsing the free-text ``reason``. New codes may be added over time, so\nconsumers must tolerate unknown values."
       },
       "MemoryOverview": {
         "properties": {
@@ -19681,11 +20249,11 @@
           "AGENT_NEW_RUN",
           "AGENT_INPUT",
           "CONGRATS",
-          "VISIT_COPILOT",
+          "ONBOARDING_COMPLETE",
           "GET_RESULTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
-          "MARKETPLACE_RUN_AGENT",
+          "LIBRARY_RUN_AGENT",
           "BUILDER_SAVE_AGENT",
           "RE_RUN_AGENT",
           "SCHEDULE_AGENT",
@@ -19695,9 +20263,11 @@
           "RUN_14_DAYS",
           "RUN_AGENTS_100",
           "BUILDER_OPEN",
-          "BUILDER_RUN_AGENT"
+          "BUILDER_RUN_AGENT",
+          "CAPABILITY_CARDS"
         ],
-        "title": "OnboardingStep"
+        "title": "OnboardingStep",
+        "description": "Application-level onboarding step identifiers."
       },
       "OrgAliasResponse": {
         "properties": {
@@ -21072,6 +21642,31 @@
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
       },
+      "RecommendedProvider": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
+        },
+        "type": "object",
+        "required": ["provider"],
+        "title": "RecommendedProvider",
+        "description": "One provider Claude picked from the transcript.\n\n``provider`` is a registry id (validated against the live provider\nlist before storage); ``reason`` is the one-liner shown under it in\nthe welcome dialog's Recommended section."
+      },
+      "RecommendedProvidersResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "providers": {
+            "items": { "$ref": "#/components/schemas/RecommendedProvider" },
+            "type": "array",
+            "title": "Providers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["ready"],
+        "title": "RecommendedProvidersResponse",
+        "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -21424,6 +22019,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Timezone",
             "description": "User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC."
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id",
+            "description": "Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow."
           }
         },
         "type": "object",
@@ -23034,6 +23634,17 @@
         "required": ["message", "suggested_goal"],
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
+      },
+      "SuggestedPrompt": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "prompt": { "type": "string", "title": "Prompt" },
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" }
+        },
+        "type": "object",
+        "required": ["title", "prompt"],
+        "title": "SuggestedPrompt",
+        "description": "One pickable prompt under the greeting.\n\n``title`` is the short line the user sees; ``prompt`` is the full\nmessage that gets sent when they pick it. ``icon`` is a Phosphor icon\nslug from ``intro.PROMPT_ICONS`` — the frontend maps it to the actual\nicon component and falls back to a sparkle for anything unknown."
       },
       "SuggestedPromptsResponse": {
         "properties": {
@@ -24938,6 +25549,22 @@
         "required": ["content"],
         "title": "UploadCopilotSkillRequest",
         "description": "Body for the library UI's \"upload skill\" action.\n\nCarries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the\nuser picked from disk; the server parses + validates it so the upload and\nthe copilot's ``store_skill`` tool share one source of truth."
+      },
+      "UploadPartResponse": {
+        "properties": {
+          "recording_id": { "type": "string", "title": "Recording Id" },
+          "part_index": { "type": "integer", "title": "Part Index" },
+          "received_bytes": { "type": "integer", "title": "Received Bytes" },
+          "total_bytes": { "type": "integer", "title": "Total Bytes" }
+        },
+        "type": "object",
+        "required": [
+          "recording_id",
+          "part_index",
+          "received_bytes",
+          "total_bytes"
+        ],
+        "title": "UploadPartResponse"
       },
       "UsageWindowPublic": {
         "properties": {

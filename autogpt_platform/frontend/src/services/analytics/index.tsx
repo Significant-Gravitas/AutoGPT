@@ -10,7 +10,6 @@ import { consent } from "@/services/consent/cookies";
 import { usePathname } from "next/navigation";
 import Script from "next/script";
 import { useEffect, useState } from "react";
-import { environment } from "../environment";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
 
@@ -24,15 +23,17 @@ declare global {
 let currDataLayerName: string | undefined = undefined;
 
 type SetupProps = {
+  dataFastEnabled?: boolean;
   enabled?: boolean;
-  ga: GAParams;
-  host: string;
+  ga?: GAParams;
 };
 
 export function SetupAnalytics(props: SetupProps) {
-  const { enabled = true, ga, host } = props;
-  const { gaId, debugMode, dataLayerName = "dataLayer", nonce } = ga;
-  const isProductionDomain = host.includes("platform.agpt.co");
+  const { dataFastEnabled = false, enabled = true, ga } = props;
+  const gaId = ga?.gaId;
+  const debugMode = ga?.debugMode;
+  const dataLayerName = ga?.dataLayerName ?? "dataLayer";
+  const nonce = ga?.nonce;
 
   // Check for user consent
   const [hasAnalyticsConsent, setHasAnalyticsConsent] = useState(false);
@@ -49,14 +50,10 @@ export function SetupAnalytics(props: SetupProps) {
   const isPublicTourPage = isTourPath(pathname);
 
   // Datafa.st journey analytics only on production AND with consent
-  const dataFastEnabled =
-    enabled && isProductionDomain && (hasAnalyticsConsent || isPublicTourPage);
-  // We collect analytics too for open source developers running the platform locally
-  // BUT only with consent
+  const shouldLoadDataFast =
+    enabled && dataFastEnabled && (hasAnalyticsConsent || isPublicTourPage);
   const googleAnalyticsEnabled =
-    enabled &&
-    (environment.isLocal() || isProductionDomain) &&
-    hasAnalyticsConsent;
+    enabled && Boolean(gaId) && hasAnalyticsConsent;
 
   if (currDataLayerName === undefined) {
     currDataLayerName = dataLayerName;
@@ -76,7 +73,7 @@ export function SetupAnalytics(props: SetupProps) {
   return (
     <>
       {/* Google Analytics */}
-      {googleAnalyticsEnabled ? (
+      {googleAnalyticsEnabled && gaId ? (
         <>
           <Script
             id="_custom-ga-init"
@@ -102,7 +99,7 @@ export function SetupAnalytics(props: SetupProps) {
       ) : null}
       {/* Datafa.st — onLoad is load-bearing: it delivers the events that were
           queued before the script finished loading */}
-      {dataFastEnabled ? (
+      {shouldLoadDataFast ? (
         <Script
           strategy="afterInteractive"
           data-website-id="dfid_g5wtBIiHUwSkWKcGz80lu"

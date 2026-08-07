@@ -14,16 +14,11 @@ import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrap
 import { environment } from "@/services/environment";
 import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { headers } from "next/headers";
+import { connection } from "next/server";
+import { resolveRuntimeControls } from "./runtimeControls";
 
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
-const telemetryEnabled =
-  !isLocal || process.env.AUTOGPT_TELEMETRY_ENABLED === "true";
-const feedbackEnabled =
-  !isLocal || process.env.AUTOGPT_FEEDBACK_ENABLED === "true";
-const developerUiEnabled =
-  isDev || process.env.AUTOGPT_DEVELOPER_UI_ENABLED === "true";
 
 const faviconPath = isDev
   ? "/favicon-dev.ico"
@@ -46,8 +41,19 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const headersList = await headers();
-  const host = headersList.get("host") || "";
+  await connection();
+  const runtimeControls = resolveRuntimeControls({
+    publicOrigin:
+      process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL,
+    isDev: isDev || environment.isDevelopmentBuild(),
+    env: {
+      AUTOGPT_TELEMETRY_ENABLED: process.env.AUTOGPT_TELEMETRY_ENABLED,
+      AUTOGPT_FEEDBACK_ENABLED: process.env.AUTOGPT_FEEDBACK_ENABLED,
+      AUTOGPT_DEVELOPER_UI_ENABLED: process.env.AUTOGPT_DEVELOPER_UI_ENABLED,
+      AUTOGPT_GA_MEASUREMENT_ID: process.env.AUTOGPT_GA_MEASUREMENT_ID,
+      NEXT_PUBLIC_GA_MEASUREMENT_ID: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
+    },
+  });
 
   return (
     <html
@@ -64,33 +70,32 @@ export default async function RootLayout({
             // enableSystem
             disableTransitionOnChange
           >
-            <TallyPopupProvider enabled={feedbackEnabled}>
+            <TallyPopupProvider enabled={runtimeControls.feedbackEnabled}>
               <SetupAnalytics
-                enabled={telemetryEnabled}
-                host={host}
-                ga={{
-                  gaId:
-                    process.env.AUTOGPT_GA_MEASUREMENT_ID ||
-                    process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ||
-                    "G-FH2XK2W4GN",
-                }}
+                enabled={runtimeControls.telemetryEnabled}
+                dataFastEnabled={runtimeControls.hostedPlatform}
+                ga={
+                  runtimeControls.gaMeasurementId
+                    ? { gaId: runtimeControls.gaMeasurementId }
+                    : undefined
+                }
               />
               <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
                 {children}
-                <VercelAnalyticsWrapper enabled={telemetryEnabled} />
+                <VercelAnalyticsWrapper
+                  enabled={runtimeControls.hostedPlatform}
+                />
 
-                {/* React Query DevTools is only available in development */}
-                {developerUiEnabled &&
-                  process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL === "true" && (
-                    <ReactQueryDevtools
-                      initialIsOpen={false}
-                      buttonPosition={"bottom-left"}
-                    />
-                  )}
+                {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL === "true" && (
+                  <ReactQueryDevtools
+                    initialIsOpen={false}
+                    buttonPosition={"bottom-left"}
+                  />
+                )}
               </div>
               <Toaster />
               <CookieConsentBanner />
-              {developerUiEnabled && <AgentationDevtool />}
+              {runtimeControls.developerUiEnabled && <AgentationDevtool />}
             </TallyPopupProvider>
           </Providers>
         </ErrorBoundary>

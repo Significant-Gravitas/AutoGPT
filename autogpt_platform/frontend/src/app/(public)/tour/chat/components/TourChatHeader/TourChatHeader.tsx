@@ -3,19 +3,17 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import type { Icon } from "@phosphor-icons/react";
-import { CheckIcon, LinkSimpleIcon } from "@phosphor-icons/react";
 import { useTourChatHeader } from "./useTourChatHeader";
+import { Link02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   scenarioLabel: string;
-  scenarioIcon: Icon;
+  scenarioIcon: IconSvgElement;
 }
 
-export function TourChatHeader({
-  scenarioLabel,
-  scenarioIcon: ScenarioIcon,
-}: Props) {
+export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
   const { isCopied, handleShare } = useTourChatHeader();
 
   return (
@@ -26,7 +24,7 @@ export function TourChatHeader({
         <div className="md:hidden">
           <SidebarTrigger />
         </div>
-        <ScenarioIcon className="size-4 shrink-0 text-violet-600" />
+        <Icon icon={scenarioIcon} className="size-4 shrink-0 text-violet-600" />
         <Text
           variant="body-medium"
           className="truncate bg-gradient-to-r from-violet-600 to-indigo-500 bg-clip-text text-transparent"
@@ -40,14 +38,14 @@ export function TourChatHeader({
         onClick={handleShare}
         leftIcon={
           isCopied ? (
-            <CheckIcon className="size-4 text-emerald-600" weight="bold" />
+            <Icon icon={Tick02Icon} className="size-4 text-emerald-600" />
           ) : (
-            <LinkSimpleIcon className="size-4" />
+            <Icon icon={Link02Icon} className="size-4" />
           )
         }
         className="shrink-0"
       >
-        {isCopied ? "Link copied" : "Share this demo"}
+        <span>{isCopied ? "Link copied" : "Share this demo"}</span>
       </Button>
     </header>
   );

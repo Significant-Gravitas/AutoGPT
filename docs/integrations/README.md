@@ -298,6 +298,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
 | [Search The Web](block-integrations/jina/search.md#search-the-web) | This block searches the internet for the given search query |
+| [Tavily Crawl](block-integrations/tavily/crawl.md#tavily-crawl) | Crawls a website with Tavily, following links from the root URL and extracting page content |
+| [Tavily Extract](block-integrations/tavily/extract.md#tavily-extract) | Extracts page content from one or more URLs using Tavily, optimized for LLM consumption |
+| [Tavily Map](block-integrations/tavily/map.md#tavily-map) | Maps a website's structure with Tavily, discovering its URLs without extracting content |
+| [Tavily Search](block-integrations/tavily/search.md#tavily-search) | Searches the web using Tavily's AI-native search API |
 | [Validate Emails](block-integrations/zerobounce/validate_emails.md#validate-emails) | Validate emails |
 
 ## Social Media and Content

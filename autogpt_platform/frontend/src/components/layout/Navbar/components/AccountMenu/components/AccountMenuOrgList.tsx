@@ -4,9 +4,14 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { CheckIcon, GearSixIcon, PlusIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useOrgTeamSwitcher } from "../../OrgTeamSwitcher/useOrgTeamSwitcher";
+import {
+  PlusSignIcon,
+  Settings02Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function AccountMenuOrgList() {
   const { orgs, teams, activeOrg, activeTeam, switchOrg, switchTeam } =
@@ -29,7 +34,7 @@ export function AccountMenuOrgList() {
       data-testid="create-organization-button"
     >
       <span className="flex h-5 w-5 items-center justify-center">
-        <PlusIcon size={14} />
+        <Icon icon={PlusSignIcon} size={14} />
       </span>
       <span className="flex-1 truncate text-left">Create organization</span>
     </button>
@@ -70,7 +75,7 @@ export function AccountMenuOrgList() {
               <span className="text-xs text-neutral-400">Personal</span>
             )}
             {org.id === activeOrg?.id && (
-              <CheckIcon size={14} className="text-green-600" />
+              <Icon icon={Tick02Icon} size={14} className="text-green-600" />
             )}
           </button>
         ))}
@@ -96,7 +101,11 @@ export function AccountMenuOrgList() {
                   <span className="text-xs text-neutral-400">Private</span>
                 )}
                 {team.id === activeTeam?.id && (
-                  <CheckIcon size={14} className="text-green-600" />
+                  <Icon
+                    icon={Tick02Icon}
+                    size={14}
+                    className="text-green-600"
+                  />
                 )}
               </button>
             ))}
@@ -104,7 +113,7 @@ export function AccountMenuOrgList() {
               href="/org/teams"
               className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
             >
-              <GearSixIcon size={14} />
+              <Icon icon={Settings02Icon} size={14} />
               <span>Manage teams</span>
             </Link>
           </div>
