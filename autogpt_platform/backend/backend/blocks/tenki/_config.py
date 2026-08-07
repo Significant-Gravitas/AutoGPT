@@ -1,4 +1,4 @@
-from tenki_sandbox import AsyncClient
+from tenki import AsyncClient
 
 from backend.sdk import APIKeyCredentials, ProviderBuilder, SecretStr
 

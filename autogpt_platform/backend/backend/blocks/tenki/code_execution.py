@@ -4,7 +4,7 @@ import time
 import uuid
 
 from pydantic import BaseModel
-from tenki_sandbox import AsyncClient, AsyncSandbox, CommandResult
+from tenki import AsyncClient, AsyncSandbox, CommandResult
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -42,14 +42,6 @@ class TenkiRunCodeBlock(Block):
             description="Shell command to run in a fresh Tenki sandbox",
             placeholder="python3 -c \"print('hello from Tenki')\"",
             min_length=1,
-        )
-        project_id: str = SchemaField(
-            description=(
-                "Tenki project ID. Leave empty when the API key has access to "
-                "exactly one project."
-            ),
-            default="",
-            advanced=True,
         )
         working_directory: str = SchemaField(
             description="Sandbox working directory; empty uses /home/tenki",
@@ -152,11 +144,9 @@ class TenkiRunCodeBlock(Block):
         client = _client(credentials)
         sandbox: AsyncSandbox | None = None
         try:
-            project_id = await self._resolve_project_id(client, input_data.project_id)
             started_at = time.monotonic()
             sandbox = await client.create(
                 name=f"autogpt-{uuid.uuid4().hex[:12]}",
-                project_id=project_id,
                 wait=False,
                 allow_inbound=False,
                 max_duration=(
@@ -185,23 +175,6 @@ class TenkiRunCodeBlock(Block):
             )
         finally:
             await self._cleanup(client, sandbox)
-
-    @staticmethod
-    async def _resolve_project_id(client: AsyncClient, project_id: str) -> str:
-        if project_id := project_id.strip():
-            return project_id
-
-        identity = await client.who_am_i()
-        projects = [
-            project
-            for workspace in identity.workspaces
-            for project in workspace.projects
-        ]
-        if len(projects) == 1:
-            return projects[0].id
-        if not projects:
-            raise ValueError("No Tenki project is available for this API key")
-        raise ValueError("Multiple Tenki projects found; set the Tenki project ID")
 
     @staticmethod
     async def _cleanup(client: AsyncClient, sandbox: AsyncSandbox | None) -> None:

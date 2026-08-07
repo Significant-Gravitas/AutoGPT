@@ -10,7 +10,7 @@ Run a shell command in a fresh Tenki cloud sandbox. The sandbox is always termin
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block creates a fresh sandbox with inbound access disabled, waits for it to become ready, and runs the command in `/home/tenki` unless another working directory is provided. If the API key has access to one project, the block selects it automatically; otherwise, provide the project ID.
+The block creates a fresh sandbox with inbound access disabled, waits for it to become ready, and runs the command in `/home/tenki` unless another working directory is provided.
 
 Each sandbox has a hard lifetime limit equal to the startup timeout, command timeout, and a 60-second cleanup margin. The block also terminates the sandbox after success, command failure, timeout, or workflow cancellation, then returns command output and timing details. See the [Tenki documentation](https://www.tenki.cloud/docs) for API key and sandbox concepts.
 <!-- END MANUAL -->
@@ -20,7 +20,6 @@ Each sandbox has a hard lifetime limit equal to the startup timeout, command tim
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | command | Shell command to run in a fresh Tenki sandbox | str | Yes |
-| project_id | Tenki project ID. Leave empty when the API key has access to exactly one project. | str | No |
 | working_directory | Sandbox working directory; empty uses /home/tenki | str | No |
 | environment | Environment variables passed only to the command | Dict[str, str] | No |
 | timeout_seconds | Maximum command runtime in seconds | int | No |

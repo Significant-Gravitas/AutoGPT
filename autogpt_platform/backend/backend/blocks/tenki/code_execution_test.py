@@ -1,5 +1,4 @@
 import asyncio
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -65,21 +64,11 @@ class FakeSandbox:
 
 
 class FakeClient:
-    def __init__(self, sandbox: FakeSandbox, project_count: int = 1):
+    def __init__(self, sandbox: FakeSandbox):
         self.sandbox = sandbox
-        self.project_count = project_count
         self.create_kwargs: dict = {}
         self.closed = False
         self.close_error: BaseException | None = None
-
-    async def who_am_i(self):
-        projects = [
-            SimpleNamespace(id=f"project-{index}")
-            for index in range(self.project_count)
-        ]
-        return SimpleNamespace(
-            workspaces=[SimpleNamespace(projects=projects)] if projects else []
-        )
 
     async def create(self, **kwargs):
         self.create_kwargs = kwargs
@@ -131,24 +120,8 @@ async def test_success_uses_ephemeral_lifecycle(monkeypatch):
 
     assert outputs[0:3] == [("stdout", "hello"), ("stderr", ""), ("exit_code", 0)]
     assert client.create_kwargs["wait"] is False
-    assert client.create_kwargs["project_id"] == "project-0"
     assert client.create_kwargs["allow_inbound"] is False
     assert client.create_kwargs["max_duration"] == 360
-    assert sandbox.close_calls == 1
-    assert client.closed
-
-
-async def test_explicit_project_id_skips_discovery(monkeypatch):
-    sandbox = FakeSandbox()
-    client = FakeClient(sandbox, project_count=0)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
-
-    outputs = await _outputs(
-        TenkiRunCodeBlock(), _input(project_id="  explicit-project  ")
-    )
-
-    assert outputs[0:3] == [("stdout", "hello"), ("stderr", ""), ("exit_code", 0)]
-    assert client.create_kwargs["project_id"] == "explicit-project"
     assert sandbox.close_calls == 1
     assert client.closed
 
@@ -276,40 +249,4 @@ async def test_cancellation_closes(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert sandbox.close_calls == 1
-    assert client.closed
-
-
-async def test_multiple_projects_requires_explicit_project_id(monkeypatch):
-    sandbox = FakeSandbox()
-    client = FakeClient(sandbox, project_count=2)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
-
-    outputs = await _outputs(TenkiRunCodeBlock())
-
-    assert outputs == [
-        (
-            "error",
-            "Tenki sandbox execution failed: Multiple Tenki projects found; set the Tenki project ID",
-        )
-    ]
-    assert not client.create_kwargs
-    assert sandbox.close_calls == 0
-    assert client.closed
-
-
-async def test_no_projects_reports_error_and_closes_client(monkeypatch):
-    sandbox = FakeSandbox()
-    client = FakeClient(sandbox, project_count=0)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
-
-    outputs = await _outputs(TenkiRunCodeBlock())
-
-    assert outputs == [
-        (
-            "error",
-            "Tenki sandbox execution failed: No Tenki project is available for this API key",
-        )
-    ]
-    assert not client.create_kwargs
-    assert sandbox.close_calls == 0
     assert client.closed
