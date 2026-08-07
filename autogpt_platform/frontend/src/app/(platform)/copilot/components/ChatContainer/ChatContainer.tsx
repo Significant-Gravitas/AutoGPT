@@ -14,7 +14,8 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
-import { QuestionDock } from "../QuestionDock/QuestionDock";
+import { getPendingQuestions } from "../QuestionDock/helpers";
+import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
@@ -222,10 +223,21 @@ export const ChatContainer = ({
 
   return (
     <CopilotChatActionsProvider onSend={guardedOnSend}>
-      <LayoutGroup id="copilot-2-chat-layout">
+      <PendingQuestionsContext.Provider
+        value={isNewToolUI ? getPendingQuestions(messages) : null}
+      >
+        <LayoutGroup id="copilot-2-chat-layout">
         <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
           {sessionId ? (
-            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa]">
+            <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
+              {isTaskBarEnabled && (
+                <div className="absolute right-4 top-4 z-20 w-80">
+                  <TaskProgressBar
+                    todos={getLatestTaskList(messages) ?? []}
+                    isStreaming={isStreaming}
+                  />
+                </div>
+              )}
               <ChatMessagesContainer
                 messages={messages}
                 status={status}
@@ -255,7 +267,7 @@ export const ChatContainer = ({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
-                  className="relative px-3 pb-6 pt-2"
+                  className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
                 >
                   {isLimitReached && (
                     <div
@@ -276,19 +288,6 @@ export const ChatContainer = ({
                     </div>
                   )}
                   <SharedChatNotice sessionId={sessionId} />
-                  {isTaskBarEnabled && (
-                    <div className="relative z-10">
-                      <TaskProgressBar
-                        todos={getLatestTaskList(messages) ?? []}
-                        isStreaming={isStreaming}
-                      />
-                    </div>
-                  )}
-                  {isNewToolUI && (
-                    <div className="relative z-10">
-                      <QuestionDock messages={messages} />
-                    </div>
-                  )}
                   <Tooltip open={isLimitReached ? undefined : false}>
                     <TooltipTrigger asChild>
                       <div>
@@ -330,7 +329,8 @@ export const ChatContainer = ({
             />
           )}
         </div>
-      </LayoutGroup>
+        </LayoutGroup>
+      </PendingQuestionsContext.Provider>
     </CopilotChatActionsProvider>
   );
 };

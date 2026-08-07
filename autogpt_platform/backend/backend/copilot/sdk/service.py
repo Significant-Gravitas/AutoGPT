@@ -4486,6 +4486,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         sdk_options = ClaudeAgentOptions(
             system_prompt=system_prompt_value,
             mcp_servers={"copilot": mcp_server},
+            # Never load the host machine's ~/.claude settings (hooks,
+            # skills, plugins) or filesystem MCP servers into the CoPilot
+            # subprocess.  On developer machines a personal Claude Code
+            # setup can inject hundreds of MCP tool schemas, inflating the
+            # static prompt past the autocompact threshold and causing
+            # compaction thrash on the very first turn.  Prod containers
+            # have a clean HOME, so this is a no-op there.
+            setting_sources=[],
+            extra_args={"strict-mcp-config": None},
             allowed_tools=allowed,
             disallowed_tools=disallowed,
             hooks=security_hooks,

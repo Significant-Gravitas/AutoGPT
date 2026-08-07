@@ -22,7 +22,11 @@ export function ChainMessageParts({
   forceArtifacts,
   readOnly,
 }: Props) {
-  const segments = buildChainSegments(parts, isChainableToolPart);
+  const segments = buildChainSegments(
+    parts,
+    isChainableToolPart,
+    isCurrentlyStreaming,
+  );
   const lastChainSegmentIndex = segments.findLastIndex(
     (segment) => segment.kind === "chain",
   );

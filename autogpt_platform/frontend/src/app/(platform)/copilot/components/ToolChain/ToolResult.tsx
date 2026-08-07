@@ -1,6 +1,9 @@
 "use client";
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { useContext } from "react";
+import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
+import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
 import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
 import {
@@ -379,6 +382,20 @@ interface Props {
 
 export function ToolResult({ row }: Props) {
   const output = asObject(row.output);
+  const pendingQuestions = useContext(PendingQuestionsContext);
+
+  // The latest unanswered clarifying questions render as an interactive
+  // answer form right on their chain row (older ones keep the read-only
+  // card from toolCard).
+  if (pendingQuestions?.callIds.includes(row.key)) {
+    return (
+      <QuestionsForm
+        key={pendingQuestions.dockId}
+        dockId={pendingQuestions.dockId}
+        questions={pendingQuestions.questions}
+      />
+    );
+  }
 
   if (!output && isDiffText(row.output)) {
     const input = asObject(row.input);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  AiEditingIcon,
   AlertDiamondIcon,
   BookBookmarkIcon,
   BookOpenIcon,
@@ -51,6 +52,8 @@ export function RowIcon({ row }: RowIconProps) {
   }
   const cls = "text-zinc-600";
   switch (row.category) {
+    case "narration":
+      return <Icon icon={AiEditingIcon} size={16} className={cls} />;
     case "reasoning":
       return <Icon icon={BrainIcon} size={16} className={cls} />;
     case "bash":

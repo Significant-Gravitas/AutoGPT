@@ -8,6 +8,9 @@ import {
 export interface PendingQuestions {
   dockId: string;
   questions: ClarifyingQuestion[];
+  /** Tool-call ids of the ask_question parts the questions came from —
+   *  lets the tool chain render the answer form on the matching rows. */
+  callIds: string[];
 }
 
 type Message = UIMessage<unknown, UIDataTypes, UITools>;
@@ -55,6 +58,7 @@ export function getPendingQuestions(
   return {
     dockId: `${last.id}:${callIds.join("+")}`,
     questions: normalizeClarifyingQuestions(questions),
+    callIds,
   };
 }
 

@@ -4,6 +4,7 @@ import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
+import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
@@ -48,12 +49,23 @@ interface Props {
 export function ChainRowView({ row, isLast }: Props) {
   const [open, setOpen] = useState(row.requiresAction === true);
   const isReasoning = row.category === "reasoning";
+  const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+
+  // Browser steps carry the page screenshots the artifact panel shows —
+  // auto-expand them while the panel is open so the steps are visible
+  // from the start.
+  useEffect(() => {
+    if (row.category === "browser" && artifactPanelOpen) setOpen(true);
+  }, [row.category, artifactPanelOpen]);
   const liveReasoning =
     isReasoning && row.state === "running" && !!row.reasoningText;
   const hasContent = isReasoning
     ? !!row.reasoningText
     : row.output !== undefined;
-  const showContent = liveReasoning || (open && hasContent);
+  // Action-required cards (credential setup, review, login) must stay on
+  // screen until resolved — the row cannot be collapsed.
+  const forcedOpen = row.requiresAction === true && hasContent;
+  const showContent = liveReasoning || forcedOpen || (open && hasContent);
   const rowText = (
     <SwapText
       text={row.text}
@@ -87,7 +99,7 @@ export function ChainRowView({ row, isLast }: Props) {
         )}
       </div>
       <div className={cn("min-w-0 flex-1", isLast ? "pb-0" : "pb-3")}>
-        {hasContent ? (
+        {hasContent && !forcedOpen ? (
           <button
             type="button"
             onClick={() => setOpen(!open)}

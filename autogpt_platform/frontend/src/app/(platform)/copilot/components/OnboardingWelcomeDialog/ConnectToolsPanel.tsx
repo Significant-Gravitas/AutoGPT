@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { ConnectMethodView } from "./ConnectMethodView";
+import { ConnectMethodView } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView";
 import { ConnectProviderRow } from "./ConnectProviderRow";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Plug01Icon, Search01Icon } from "@hugeicons/core-free-icons";

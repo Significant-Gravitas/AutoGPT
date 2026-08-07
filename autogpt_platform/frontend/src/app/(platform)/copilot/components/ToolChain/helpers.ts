@@ -22,6 +22,10 @@ export interface ChainRow {
   output?: unknown;
   reasoningText?: string;
   requiresAction?: boolean;
+  /** The row's user-facing work (connectors, inputs, questions) renders in
+   *  the card below the chain — the row is hidden but stays mounted so the
+   *  card keeps its registration. */
+  lifted?: boolean;
 }
 
 const ACTION_RESPONSE_TYPES = new Set([
@@ -60,6 +64,19 @@ function actionLabel(output: unknown): string | null {
     : "Action required";
 }
 
+/** Setup-requirements rows whose card registers with the chain and renders
+ *  outside it. run_mcp_tool's card has its own OAuth flow and does not
+ *  register, so it must keep rendering inline. */
+export function isLiftedSetupRow(row: ChainRow): boolean {
+  if (row.tool === "run_mcp_tool") return false;
+  const data = asObject(row.output);
+  return (
+    !!data &&
+    data.type === "setup_requirements" &&
+    !!asObject(data.setup_info)
+  );
+}
+
 function getProviderIconSrc(tool: ToolUIPart): string | undefined {
   for (const source of [tool.input, tool.output]) {
     if (source && typeof source === "object" && "provider" in source) {
@@ -76,7 +93,29 @@ export function isChainPart(part: MessagePart): boolean {
   return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
+// Short assistant text sandwiched between tool calls is progress narration
+// ("Now searching for hotels."), not an answer — fold it into the chain so
+// back-to-back tool calls collapse into one group instead of splitting on
+// every sentence.
+const NARRATION_MAX_CHARS = 200;
+
+function narrationText(part: MessagePart): string | null {
+  if (part.type !== "text") return null;
+  const text = typeof part.text === "string" ? part.text.trim() : "";
+  if (!text || text.length > NARRATION_MAX_CHARS) return null;
+  return text;
+}
+
 export function toChainRow(part: MessagePart, index: number): ChainRow | null {
+  const narration = narrationText(part);
+  if (narration !== null) {
+    return {
+      key: `narration-${index}`,
+      category: "narration",
+      text: narration,
+      state: "done",
+    };
+  }
   if (part.type === "reasoning") {
     const isStreaming = "state" in part && part.state === "streaming";
     return {
@@ -177,6 +216,7 @@ const CATEGORY_SUMMARY: Record<ChainRow["category"], string> = {
   feature: "handled feature requests",
   question: "asked you questions",
   info: "checked your account",
+  narration: "",
   other: "used tools",
 };
 
@@ -192,12 +232,15 @@ export function getChainHeading(
   }
   const error = rows.findLast((row) => row.state === "error");
   if (error) return error.detail ?? error.text;
-  const requiredAction = rows.findLast((row) => row.requiresAction);
+  const requiredAction = rows.findLast(
+    (row) => row.requiresAction && !row.lifted,
+  );
   if (requiredAction) return requiredAction.text;
 
   const phrases: string[] = [];
   const seenPhrases = new Set<string>();
   for (const row of rows) {
+    if (row.category === "narration") continue;
     const phrase = CATEGORY_SUMMARY[row.category];
     if (!seenPhrases.has(phrase)) {
       seenPhrases.add(phrase);
@@ -216,9 +259,21 @@ export type ChainSegment =
 export function buildChainSegments(
   parts: MessagePart[],
   isChainable: (part: MessagePart) => boolean = isChainPart,
+  isStreaming = false,
 ): ChainSegment[] {
   const segments: ChainSegment[] = [];
   let chain: Extract<ChainSegment, { kind: "chain" }> | null = null;
+
+  const hasChainableAhead = (from: number): boolean => {
+    for (let i = from; i < parts.length; i++) {
+      const part = parts[i];
+      if (part.type === "step-start") continue;
+      if (isChainable(part)) return true;
+      if (narrationText(part) !== null) continue;
+      return false;
+    }
+    return false;
+  };
 
   parts.forEach((part, index) => {
     if (part.type === "step-start") return;
@@ -227,6 +282,19 @@ export function buildChainSegments(
         chain = { kind: "chain", parts: [], index };
         segments.push(chain);
       }
+      chain.parts.push(part);
+      return;
+    }
+    // Fold short progress narration into the surrounding chain.  While
+    // streaming, fold optimistically so the text lands inside the chain
+    // from the first token; once settled, keep it only when another tool
+    // call follows, so the turn's final answer (even a short one) always
+    // renders as regular message text.
+    if (
+      chain &&
+      narrationText(part) !== null &&
+      (isStreaming || hasChainableAhead(index + 1))
+    ) {
       chain.parts.push(part);
       return;
     }

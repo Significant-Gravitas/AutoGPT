@@ -527,7 +527,7 @@ export function ChatMessagesContainer({
       }
     >
       <ConversationContent
-        className="flex min-h-full flex-1 flex-col gap-6 px-6 py-4"
+        className="mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-4"
         style={
           bottomContentPadding
             ? { paddingBottom: bottomContentPadding + 24 }

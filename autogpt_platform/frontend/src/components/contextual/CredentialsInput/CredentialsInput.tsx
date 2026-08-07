@@ -7,7 +7,9 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
+import { useState } from "react";
 import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
+import { ConnectCredentialDialog } from "./components/ConnectCredentialDialog/ConnectCredentialDialog";
 import { CredentialsFlatView } from "./components/CredentialsFlatView/CredentialsFlatView";
 import { CredentialTypeSelector } from "./components/CredentialTypeSelector/CredentialTypeSelector";
 import { DeleteConfirmationModal } from "./components/DeleteConfirmationModal/DeleteConfirmationModal";
@@ -60,6 +62,7 @@ export function CredentialsInput({
     readOnly,
     isOptional,
   });
+  const [isConnectDialogOpen, setConnectDialogOpen] = useState(false);
 
   if (!isLoaded(hookData)) {
     return null;
@@ -84,7 +87,6 @@ export function CredentialsInput({
     isOAuth2FlowInProgress,
     oAuthPopupBlocked,
     cancelOAuthFlow,
-    actionButtonText,
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
@@ -120,9 +122,12 @@ export function CredentialsInput({
         selectedCredential={selectedCredential}
         onSelectCredential={handleCredentialSelect}
         onClearCredential={() => onSelectCredential(undefined)}
-        onAddCredential={handleActionButtonClick}
+        onAddCredential={
+          variant === "default"
+            ? () => setConnectDialogOpen(true)
+            : handleActionButtonClick
+        }
         onDeleteCredential={readOnly ? undefined : handleDeleteCredential}
-        actionButtonText={actionButtonText}
         isOptional={isOptional}
         showTitle={showTitle}
         readOnly={readOnly}
@@ -131,6 +136,13 @@ export function CredentialsInput({
 
       {!readOnly && (
         <>
+          <ConnectCredentialDialog
+            schema={schema}
+            provider={provider}
+            displayName={displayName}
+            open={isConnectDialogOpen}
+            onClose={() => setConnectDialogOpen(false)}
+          />
           {hasMultipleCredentialTypes && (
             <CredentialTypeSelector
               schema={schema}

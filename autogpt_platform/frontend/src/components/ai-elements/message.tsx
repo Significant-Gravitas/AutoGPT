@@ -46,8 +46,12 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
-      "group-[.is-user]:w-fit",
+      // User bubbles clip to their rounded corners; assistant messages stay
+      // overflow-visible so hover pills with negative margins (ToolChain
+      // heading) aren't cut at the container edge. Wide assistant content
+      // (code, tables) scrolls via its own overflow-x-auto wrappers.
+      "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 text-sm",
+      "group-[.is-user]:w-fit group-[.is-user]:overflow-hidden",
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-neutral-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-neutral-950",
       "group-[.is-assistant]:text-neutral-950",
       className,
@@ -355,7 +359,7 @@ export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
+        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_li]:py-0 [&_pre]:!bg-white",
         "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
         // Raycast/Linear-style markdown tables — clean borders, subtle row
         // separators, light header, no outer-corner artifacts.

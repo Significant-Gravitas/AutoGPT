@@ -18,7 +18,8 @@ export type ChainCategory =
   | "integration"
   | "feature"
   | "question"
-  | "info";
+  | "info"
+  | "narration";
 
 export type ToolInput = Record<string, unknown>;
 

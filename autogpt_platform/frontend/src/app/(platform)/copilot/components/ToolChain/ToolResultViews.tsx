@@ -8,6 +8,7 @@ import {
   ImageIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ChainRow } from "./helpers";
 import { CARD, HALF } from "./ResultCards";
 import {
@@ -38,14 +39,54 @@ interface ValueProps {
   value: unknown;
 }
 
+function ResultFavicon({ domain }: { domain: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!domain || failed) {
+    return (
+      <Icon icon={GlobeIcon} size={14} className="shrink-0 text-zinc-400" />
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`}
+      alt=""
+      width={14}
+      height={14}
+      className="size-3.5 shrink-0 rounded-[3px]"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function ClampedAnswer({ answer }: { answer: string }) {
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const [clamped, setClamped] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (el) setClamped(el.scrollHeight > el.clientHeight + 1);
+  }, [answer]);
+
+  return (
+    <div className="relative">
+      <p
+        ref={textRef}
+        className="line-clamp-3 px-3 py-2 text-[13px] leading-5 text-zinc-600"
+      >
+        {answer}
+      </p>
+      {clamped && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent" />
+      )}
+    </div>
+  );
+}
+
 export function SearchResults({ items, answer }: SearchResultsProps) {
   return (
     <div className={CARD + " divide-y divide-zinc-100"}>
-      {answer && (
-        <p className="line-clamp-3 px-3 py-2 text-[13px] leading-5 text-zinc-600">
-          {answer}
-        </p>
-      )}
+      {answer && <ClampedAnswer answer={answer} />}
       {items.map((item, i) => {
         const url = str(item, "url", "link");
         const domain = url ? safeHostname(url) : null;
@@ -55,11 +96,7 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             key={resultItemKey(item, i)}
             className="flex items-center gap-2.5 px-3 py-2"
           >
-            <Icon
-              icon={GlobeIcon}
-              size={14}
-              className="shrink-0 text-zinc-400"
-            />
+            <ResultFavicon domain={domain} />
             {url ? (
               <a
                 href={url}
