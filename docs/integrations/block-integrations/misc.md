@@ -860,7 +860,7 @@ The block returns the original `post_id` plus the resulting `locked` state, whic
 ## Mod Queue
 
 ### What it is
-Fetches the mod queue for a subreddit. Requires moderator access.
+Fetches the mod queue for a subreddit. Scalar outputs fan out once per queued post or comment; items emits the full batch once. Requires moderator access.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -888,7 +888,7 @@ The block emits every queue entry individually for fan-out workflows and also em
 | author | Username of the author | str |
 | permalink | Full Reddit permalink | str |
 | reason | Mod queue reason (if any) | str |
-| items | All queued items as a list | List[Dict[str, Any]] |
+| items | All queued items as a list. Emitted exactly once; an empty list signals that the queue was checked and had no items. | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

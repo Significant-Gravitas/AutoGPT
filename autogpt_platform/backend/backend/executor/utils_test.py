@@ -608,6 +608,7 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = "org-rpc"
+    mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-rpc"
     mock_graph_exec.id = "exec-id-rpc"
     mock_graph_exec.node_executions = []
@@ -1996,6 +1997,7 @@ def _mock_add_graph_execution_create_path(
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = org_id
+    mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = team_id
     mock_graph_exec.id = "exec-id"
     mock_graph_exec.node_executions = []
@@ -2014,6 +2016,9 @@ def _mock_add_graph_execution_create_path(
         return_value=mock_graph_exec
     )
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
+
+    mock_odb = mocker.patch("backend.executor.utils.onboarding_db")
+    mock_odb.increment_onboarding_runs = mocker.AsyncMock()
 
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
 
