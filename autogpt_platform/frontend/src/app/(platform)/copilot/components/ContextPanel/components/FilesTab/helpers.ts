@@ -15,7 +15,8 @@ export function isUploadedFile(item: WorkspaceFileItem): boolean {
 // create_agent/edit_agent call writes to pass to itself) — internal and
 // technical, not something the user created or asked to see.
 export function isInternalFile(item: WorkspaceFileItem): boolean {
-  return (item.metadata as Record<string, unknown> | undefined)?.internal === true;
+  const metadata = item.metadata as Record<string, unknown> | undefined;
+  return metadata?.internal === true;
 }
 
 export function fileItemToArtifactRef(item: WorkspaceFileItem): ArtifactRef {
