@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from prisma.errors import UniqueViolationError
-from prisma.models import User
+from prisma.models import ChatMessage, Expert, User
 
 from backend.copilot import db as copilot_db
 from backend.util.test import SpinTestServer
@@ -28,8 +28,10 @@ async def _create_user(user_id: str) -> None:
 
 async def _cleanup(user_id: str) -> None:
     try:
-        # ChatSession -> User and ChatMessage -> ChatSession are both
-        # onDelete: Cascade, so deleting the user sweeps everything.
+        # ChatSession -> User, ChatMessage -> ChatSession, and Expert.ownerUserId
+        # -> User are all onDelete: Cascade, so deleting the user sweeps
+        # everything created for it, including any expert + expert-scoped
+        # session set up for the discrimination check below.
         await User.prisma().delete_many(where={"id": user_id})
     except Exception as exc:
         logger.warning("cleanup for %s failed: %s", user_id, exc)
@@ -65,5 +67,34 @@ async def test_append_plain_session_message_creates_session_and_dedupes(
             user_id=user_id, content="## Briefing 2", message_id=str(uuid4())
         )
         assert second == session_id
+
+        # An expert-scoped session that is the MOST RECENTLY updated session
+        # for this user must still be skipped -- the {"expertId": None}
+        # filter has to actively discriminate, not just "reuse whatever's
+        # newest." Without the filter this would wrongly post into the
+        # expert's thread.
+        expert = await Expert.prisma().create(
+            data={
+                "ownerUserId": user_id,
+                "name": "Test Expert",
+                "role": "assistant",
+                "identity": "test",
+            }
+        )
+        expert_session = await copilot_db.create_chat_session(
+            session_id=str(uuid4()), user_id=user_id, expert_id=expert.id
+        )
+        assert expert_session.session_id != session_id
+
+        third = await copilot_db.append_plain_session_message(
+            user_id=user_id, content="## Briefing 3", message_id=str(uuid4())
+        )
+        assert third == session_id
+        assert third != expert_session.session_id
+
+        expert_messages = await ChatMessage.prisma().find_many(
+            where={"sessionId": expert_session.session_id}
+        )
+        assert expert_messages == []
     finally:
         await _cleanup(user_id)
