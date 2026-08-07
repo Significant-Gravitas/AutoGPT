@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { useOnboardingWizardStore } from "../../store";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
-import { headline, SILENCE_NUDGE_SECONDS } from "./helpers";
+import { headline, isInsufficientDump, SILENCE_NUDGE_SECONDS } from "./helpers";
 import {
   clearRecording,
   getMetaById,
@@ -22,7 +22,8 @@ export type ScreenState =
   | "processing"
   | "typing"
   | "recovery"
-  | "failed";
+  | "failed"
+  | "insufficient";
 
 export function useBrainDumpStep() {
   const name = useOnboardingWizardStore((s) => s.name);
@@ -63,7 +64,7 @@ export function useBrainDumpStep() {
       if (parts.length === 0) return;
       setRecoverable(meta);
       setScreen("recovery");
-      trackBrainDump("brain_dump_recovery_shown", { parts: parts.length });
+      trackBrainDump("Brain Dump Recovery Shown", { parts: parts.length });
     }
     void checkForRecovery();
     // Recovery is a mount-time question only — re-asking mid-recording
@@ -76,7 +77,7 @@ export function useBrainDumpStep() {
   useEffect(() => {
     if (!recorder.permissionDenied) return;
     setScreen("typing");
-    trackBrainDump("brain_dump_typed_fallback", {
+    trackBrainDump("Brain Dump Typed Fallback", {
       reason: "permission_denied",
     });
   }, [recorder.permissionDenied]);
@@ -130,7 +131,7 @@ export function useBrainDumpStep() {
       ? claimTakeAction(recordingId, "discard")
       : null;
     if (recordingId && !actionToken) return;
-    trackBrainDump("brain_dump_canceled");
+    trackBrainDump("Brain Dump Canceled");
     try {
       try {
         await recorder.stop();
@@ -195,18 +196,23 @@ export function useBrainDumpStep() {
         duration_secs: durationSecs,
         mime_type: recorder.mimeType,
       });
-      trackBrainDump("finalize_latency_ms", {
+      trackBrainDump("Brain Dump Finalize Latency", {
         ms: Math.round(performance.now() - startedAt),
         input_mode: "voice",
+        attempt: retryCountRef.current,
       });
       if (response.status !== 200 || response.data.status === "failed") {
-        trackBrainDump("transcription_failed", {
-          error_code:
-            response.status === 200
-              ? response.data.error_code
-              : response.status,
+        const errorCode =
+          response.status === 200 ? response.data.error_code : response.status;
+        trackBrainDump("Brain Dump Transcription Failed", {
+          error_code: errorCode,
+          attempt: retryCountRef.current,
         });
-        setScreen("failed");
+        // The recording itself went through — it just didn't carry enough
+        // to personalize from, so the recovery screen offers a fresh take
+        // instead of a retry of this one. Nothing is cleared until the
+        // user picks their next move.
+        setScreen(isInsufficientDump(errorCode) ? "insufficient" : "failed");
         return;
       }
     } catch {
@@ -214,7 +220,7 @@ export function useBrainDumpStep() {
       return;
     }
 
-    trackBrainDump("brain_dump_completed", {
+    trackBrainDump("Brain Dump Completed", {
       duration_secs: Math.round(durationSecs),
       input_mode: "voice",
     });
@@ -230,7 +236,7 @@ export function useBrainDumpStep() {
       ? claimTakeAction(previousId, "discard")
       : null;
     if (previousId && !actionToken) return;
-    trackBrainDump("brain_dump_restarted");
+    trackBrainDump("Brain Dump Restarted");
     let started = false;
     try {
       try {
@@ -251,7 +257,7 @@ export function useBrainDumpStep() {
 
   async function handleRetry() {
     retryCountRef.current += 1;
-    trackBrainDump("brain_dump_retry", { attempt: retryCountRef.current });
+    trackBrainDump("Brain Dump Retry", { attempt: retryCountRef.current });
     setScreen("processing");
     const recordingId = recorder.recordingId;
     if (recordingId) await recorder.resendAllParts(recordingId);
@@ -262,7 +268,7 @@ export function useBrainDumpStep() {
 
   function handleShowTyping() {
     setScreen("typing");
-    trackBrainDump("brain_dump_typed_fallback", { reason: "chose_to_type" });
+    trackBrainDump("Brain Dump Typed Fallback", { reason: "chose_to_type" });
   }
 
   function handleShowRecording() {
@@ -293,14 +299,18 @@ export function useBrainDumpStep() {
       // the voice path — advancing on it would hand the user a copilot
       // home built from nothing.
       if (response.status !== 200 || response.data.status === "failed") {
-        setScreen("failed");
+        const errorCode =
+          response.status === 200 ? response.data.error_code : undefined;
+        // The typed text stays in the composer, so "Type instead" from
+        // the recovery screen reopens it with nothing lost.
+        setScreen(isInsufficientDump(errorCode) ? "insufficient" : "failed");
         return;
       }
     } catch {
       setScreen("failed");
       return;
     }
-    trackBrainDump("brain_dump_completed", {
+    trackBrainDump("Brain Dump Completed", {
       input_mode: "typed",
       chars: text.length,
     });
@@ -311,7 +321,7 @@ export function useBrainDumpStep() {
     // A skip that lands while the dump is being submitted would advance
     // the wizard a second time behind `completeAndAdvance`.
     if (isSubmittingRef.current) return;
-    trackBrainDump("brain_dump_skipped");
+    trackBrainDump("Brain Dump Skipped");
     const recordedId = recorder.recordingId;
     // Best effort: a failed skip-record still has to let the user
     // through — being unable to say "no thanks" would be absurd.
@@ -366,7 +376,7 @@ export function useBrainDumpStep() {
 
   async function handleResumeRecovered() {
     if (!recoverable) return;
-    trackBrainDump("brain_dump_recovery_used");
+    trackBrainDump("Brain Dump Recovery Used");
     setScreen("processing");
     await recorder.adoptRecovered(
       recoverable.recordingId,
@@ -422,7 +432,7 @@ export function useBrainDumpStep() {
   async function handleDownloadRecording() {
     const recordingId = recorder.recordingId;
     if (!recordingId) return;
-    trackBrainDump("brain_dump_download");
+    trackBrainDump("Brain Dump Downloaded");
     const parts = await getParts(recordingId).catch(() => []);
     if (parts.length === 0) return;
     const blob = new Blob(

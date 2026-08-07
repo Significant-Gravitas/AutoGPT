@@ -117,7 +117,7 @@ export function useBrainDumpRecorder() {
     } catch (error) {
       if (isPermissionDenied(error)) {
         setPermissionDenied(true);
-        trackBrainDump("brain_dump_permission_denied");
+        trackBrainDump("Brain Dump Permission Denied");
       }
       return false;
     }
@@ -156,7 +156,7 @@ export function useBrainDumpRecorder() {
 
     timerRef.current = setInterval(tick, 250);
     setPhase("recording");
-    trackBrainDump("brain_dump_started");
+    trackBrainDump("Brain Dump Started");
     return true;
   }
 

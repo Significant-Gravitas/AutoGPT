@@ -5,6 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { FailureState } from "./components/FailureState";
+import { InsufficientState } from "./components/InsufficientState";
 import { DEFAULT_GLASS_PARAMS } from "@/components/molecules/GlassOrb/GlassSurface";
 import { ElapsedTime } from "./components/ElapsedTime";
 import { MicButton, OrbScreen } from "./components/MicButton";
@@ -19,6 +20,7 @@ import { ringProgress } from "./helpers";
 import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";
 
 const FAILURE_HEADLINE = "That didn't go through.";
+const INSUFFICIENT_HEADLINE = "We didn't catch enough of that.";
 const TIME_LIMIT_CAPTION =
   "That's 30 minutes — the most we record in one go. Saving all of it…";
 
@@ -29,7 +31,10 @@ export function BrainDumpStep() {
   const isProcessing = dump.screen === "processing";
   const isMicScreen = dump.screen === "rest" || isRecording;
   const isTyping = dump.screen === "typing";
-  const showSubline = dump.screen !== "failed" && dump.screen !== "recovery";
+  const showSubline =
+    dump.screen !== "failed" &&
+    dump.screen !== "recovery" &&
+    dump.screen !== "insufficient";
   // rest → recording → processing all share one orb, so it is never
   // unmounted between them: only the glyph and the ring change.
   const orbScreen = toOrbScreen(dump.screen);
@@ -98,9 +103,7 @@ export function BrainDumpStep() {
           )}
         >
           <RevealItem>
-            <Text variant="h4">
-              {dump.screen === "failed" ? FAILURE_HEADLINE : dump.headline}
-            </Text>
+            <Text variant="h4">{stateHeadline(dump.screen, dump.headline)}</Text>
           </RevealItem>
           {showSubline && (
             <RevealItem>
@@ -193,6 +196,17 @@ export function BrainDumpStep() {
           </RevealItem>
         )}
 
+        {dump.screen === "insufficient" && (
+          <RevealItem>
+            <InsufficientState
+              canRecord={!dump.isMicBlocked}
+              onRecordAgain={dump.handleRestart}
+              onTypeInstead={dump.showTyping}
+              onSkip={dump.handleSkip}
+            />
+          </RevealItem>
+        )}
+
         {dump.screen === "typing" && (
           <RevealItem className="w-full">
             <TypedFallback
@@ -254,8 +268,17 @@ export function BrainDumpStep() {
 }
 
 function toOrbScreen(screen: ScreenState): OrbScreen | null {
-  if (screen === "typing" || screen === "recovery") return null;
+  // "insufficient" gets no orb: the orb's failed state retries the same
+  // take, and re-submitting a rejected take can only be rejected again.
+  if (screen === "typing" || screen === "recovery" || screen === "insufficient")
+    return null;
   return screen;
+}
+
+function stateHeadline(screen: ScreenState, restHeadline: string) {
+  if (screen === "failed") return FAILURE_HEADLINE;
+  if (screen === "insufficient") return INSUFFICIENT_HEADLINE;
+  return restHeadline;
 }
 
 function OrbCaption({

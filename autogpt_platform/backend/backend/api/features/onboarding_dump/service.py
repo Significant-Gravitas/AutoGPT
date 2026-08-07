@@ -17,6 +17,7 @@ from backend.api.features.onboarding_dump import (
     db,
     intro,
     prompts,
+    quality,
     recommend,
     storage,
     transcription,
@@ -182,6 +183,22 @@ async def finalize_voice_dump(
         transcript=result.text,
         transcriptLang=result.language,
     )
+    # The transcript is stored *before* the gate so a rejected dump keeps
+    # its text (and audio) for recovery and debugging — the gate only
+    # decides whether the personalized pipeline below may run on it.
+    quality_error = await quality.check_transcript_quality(result.text)
+    if quality_error is not None:
+        logger.info(
+            "Brain dump rejected by quality gate for user %s (%s)",
+            user_id,
+            quality_error,
+        )
+        await db.mark_failed(user_id, recording_id, quality_error)
+        return FinalizeResponse(
+            status=BrainDumpStatus.failed,
+            input_mode=BrainDumpInputMode.voice,
+            error_code=quality_error,
+        )
     # Finalize only does the audio work. Extraction and the Sonnet
     # greeting are LLM calls that can outlive the frontend proxy's 30s
     # request timeout, so they run after this response is sent — the
@@ -251,6 +268,24 @@ async def finalize_typed_dump(
                 error_code="superseded",
             )
         return _pipeline_response(current.status, current.transcript, current.inputMode)
+
+    # Typed dumps skip transcription but not the gate: a keyboard can
+    # produce "asdf asdf asdf" just as easily as a silent mic produces a
+    # hallucinated transcript. Only the claim winner reaches this point,
+    # so concurrent retries never run duplicate quality checks.
+    quality_error = await quality.check_transcript_quality(text)
+    if quality_error is not None:
+        logger.info(
+            "Typed brain dump rejected by quality gate for user %s (%s)",
+            user_id,
+            quality_error,
+        )
+        await db.mark_failed(user_id, recording_id, quality_error)
+        return FinalizeResponse(
+            status=BrainDumpStatus.failed,
+            input_mode=BrainDumpInputMode.typed,
+            error_code=quality_error,
+        )
 
     background_tasks.add_task(
         _run_background_jobs,
@@ -502,6 +537,11 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         dump is None
         or dump.inputMode == BrainDumpInputMode.skipped
         or not (dump.transcript or "").strip()
+        # A quality-rejected dump keeps its transcript on the row for
+        # recovery, but that text is by definition not worth reflecting
+        # back — falling through to Path A here would greet the user with
+        # a fallback built from the very content the gate refused.
+        or dump.errorCode in quality.QUALITY_ERROR_CODES
     ):
         return IntroCardResponse(
             path="B",

@@ -787,6 +787,70 @@ describe("onboarding brain dump — failure", () => {
   });
 });
 
+describe("onboarding brain dump — insufficient content", () => {
+  async function recordAndSend() {
+    const partUploads: string[] = [];
+    server.use(
+      getUploadBrainDumpPartMockHandler200(() => {
+        partUploads.push("part");
+        return {
+          recording_id: "r",
+          part_index: 0,
+          received_bytes: 9,
+          total_bytes: 9,
+        };
+      }),
+    );
+    mockFlags = { "onboarding-brain-dump": true };
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Start talking" }));
+    await waitFor(() => expect(partUploads).toHaveLength(1));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Send recording" }),
+    );
+  }
+
+  it("shows the recovery choices without advancing or losing the take", async () => {
+    finalizeReturns({ status: "failed", error_code: "insufficient_content" });
+
+    await recordAndSend();
+
+    expect(
+      await screen.findByText("We didn't catch enough of that."),
+    ).toBeDefined();
+    // Its own copy, not the transcription-failure screen's.
+    expect(screen.queryByText("That didn't go through.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Record again" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Continue without it" }),
+    ).toBeDefined();
+    // No accidental advance to the personalized greeting...
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
+    // ...and the local parts survive until the user picks a next move.
+    expect(recordingStoreState.parts).toHaveLength(1);
+  });
+
+  it("opens the typed composer from the recovery screen", async () => {
+    finalizeReturns({ status: "failed", error_code: "no_usable_speech" });
+
+    await recordAndSend();
+    await screen.findByText("We didn't catch enough of that.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect(
+      await screen.findByPlaceholderText(
+        "What repeats every week? What would you hand off first?",
+      ),
+    ).toBeDefined();
+  });
+});
+
 describe("onboarding step map integrity", () => {
   it("keeps the step constants identical regardless of the brain-dump flag", () => {
     expect(PAYWALL_FIRST_STEPS).toEqual({

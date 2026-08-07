@@ -33,6 +33,20 @@ export function takeIntroAwaitingFollowup() {
   return takeFlag(AWAITING_FOLLOWUP_KEY);
 }
 
+// Set by a suggested-prompt click on the intro card, consumed by the
+// followup tracker so "Intro Followup Sent" can say whether the first
+// message was a suggestion or typed free-form. The click and the send
+// are separate components on the same page; the flag bridges them.
+const PROMPT_CLICKED_KEY = "autogpt:onboarding-intro-prompt-clicked";
+
+export function setIntroPromptClicked() {
+  setFlag(PROMPT_CLICKED_KEY);
+}
+
+export function takeIntroPromptClicked() {
+  return takeFlag(PROMPT_CLICKED_KEY);
+}
+
 // Path B only: the user skipped the dump, so AutoPilot invited them to
 // record one from the copilot composer instead. Consumed the first time
 // they finish a voice message there.

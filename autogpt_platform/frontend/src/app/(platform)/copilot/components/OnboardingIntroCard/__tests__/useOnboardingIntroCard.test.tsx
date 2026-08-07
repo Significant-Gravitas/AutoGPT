@@ -180,7 +180,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     );
     expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBe("1");
     expect(window.sessionStorage.getItem(FOLLOWUP_KEY)).toBe("1");
-    expect(capture).toHaveBeenCalledWith("intro_path", { path: "A" });
+    expect(capture).toHaveBeenCalledWith("Intro Path Assigned", { path: "A" });
     // Path A already dumped — nothing to point the mic at.
     expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBeNull();
   });
@@ -196,7 +196,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     // The invitation AutoPilot just issued: the first voice message in the
     // composer is the dump this user skipped, and is reported as such.
     expect(window.sessionStorage.getItem(LATER_DUMP_KEY)).toBe("1");
-    expect(capture).toHaveBeenCalledWith("intro_path", { path: "B" });
+    expect(capture).toHaveBeenCalledWith("Intro Path Assigned", { path: "B" });
   });
 
   it("drops the handoff instead of running it when the flag is off", async () => {
@@ -217,7 +217,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     );
     expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBeNull();
     expect(window.sessionStorage.getItem(LATER_DUMP_KEY)).toBeNull();
-    expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
+    expect(capture).not.toHaveBeenCalledWith("Intro Path Assigned", expect.anything());
     expect(urls).toEqual([]);
   });
 
@@ -233,7 +233,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
       "A",
     );
-    expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
+    expect(capture).not.toHaveBeenCalledWith("Intro Path Assigned", expect.anything());
   });
 
   it("shows no overlay for a user who did not just come out of onboarding", async () => {
@@ -243,7 +243,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
     expect(result.current.isWelcomeOpen).toBe(false);
-    expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
+    expect(capture).not.toHaveBeenCalledWith("Intro Path Assigned", expect.anything());
   });
 
   it("keeps the overlay up across a refresh via the pending flag", async () => {
@@ -284,7 +284,7 @@ describe("useOnboardingIntroCard — closing the welcome overlay", () => {
 
     act(() => result.current.closeWelcome());
 
-    expect(capture).toHaveBeenCalledWith("welcome_dialog_closed", {});
+    expect(capture).toHaveBeenCalledWith("Welcome Dialog Closed", {});
     expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
     expect(window.localStorage.getItem(CAPABILITY_CARDS_KEY)).toBe("user-1");
 

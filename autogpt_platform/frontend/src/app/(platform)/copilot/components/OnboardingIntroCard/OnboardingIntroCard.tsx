@@ -7,6 +7,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
+import { setIntroPromptClicked } from "@/services/onboarding/brain-dump-handoff";
 import {
   Tooltip,
   TooltipContent,
@@ -141,6 +143,7 @@ export function OnboardingIntroCard({
       });
       return;
     }
+    trackBrainDump("Intro Transcript Copied", {});
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   }
@@ -234,7 +237,14 @@ export function OnboardingIntroCard({
                   // Sends the full prompt as the user's first message —
                   // which also creates the session and retires the greeting
                   // via the regular first-send path in useCopilotPage.
-                  onClick={() => onSelectPrompt(prompt.prompt)}
+                  onClick={() => {
+                    trackBrainDump("Intro Prompt Clicked", {
+                      prompt_index: index,
+                      prompt_title: prompt.title,
+                    });
+                    setIntroPromptClicked();
+                    onSelectPrompt(prompt.prompt);
+                  }}
                   className="group flex w-full cursor-pointer items-center gap-4 px-5 py-4 text-left transition-colors duration-150 hover:bg-violet-50/60 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
                 >
                   <Icon

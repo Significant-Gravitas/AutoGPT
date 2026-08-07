@@ -179,7 +179,7 @@ describe("useBrainDumpStep — recording", () => {
       await result.current.handleStop();
     });
 
-    expect(events()).toContain("brain_dump_canceled");
+    expect(events()).toContain("Brain Dump Canceled");
     expect(clearRecording).toHaveBeenCalledWith("rec-1");
     expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
     expect(result.current.screen).toBe("rest");
@@ -412,7 +412,7 @@ describe("useBrainDumpStep — finishing a take", () => {
       duration_secs: 64.5,
       mime_type: "audio/webm",
     });
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Completed", {
       duration_secs: 65,
       input_mode: "voice",
     });
@@ -501,8 +501,9 @@ describe("useBrainDumpStep — finishing a take", () => {
     });
 
     expect(result.current.screen).toBe("failed");
-    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Transcription Failed", {
       error_code: "transcription_error",
+      attempt: 0,
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
   });
@@ -517,8 +518,9 @@ describe("useBrainDumpStep — finishing a take", () => {
     });
 
     expect(result.current.screen).toBe("failed");
-    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Transcription Failed", {
       error_code: 500,
+      attempt: 0,
     });
   });
 
@@ -532,6 +534,118 @@ describe("useBrainDumpStep — finishing a take", () => {
     });
 
     expect(result.current.screen).toBe("failed");
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+  });
+});
+
+describe("useBrainDumpStep — insufficient content", () => {
+  function insufficient(code = "insufficient_content") {
+    return { status: 200, data: { status: "failed", error_code: code } };
+  }
+
+  it("shows the recovery screen instead of the failure one", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(insufficient("no_usable_speech"));
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Transcription Failed", {
+      error_code: "no_usable_speech",
+      attempt: 0,
+    });
+    // No accidental advance, and nothing personalized to advance to.
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
+    // The local parts are the user's backup until they pick a next move.
+    expect(clearRecording).not.toHaveBeenCalled();
+    expect(discardBrainDump).not.toHaveBeenCalled();
+  });
+
+  it("keeps a normal transcription failure on the failure screen", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce({
+      status: 200,
+      data: { status: "failed", error_code: "transcription_failed" },
+    });
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("failed");
+  });
+
+  it("recovers into a fresh take when the user records again", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(insufficient());
+    const { result } = await renderStep();
+    await act(async () => {
+      await result.current.handleDone();
+    });
+    expect(result.current.screen).toBe("insufficient");
+
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+
+    // The rejected take is discarded only now — after the user chose.
+    expect(clearRecording).toHaveBeenCalledWith("rec-1");
+    expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    expect(result.current.screen).toBe("recording");
+  });
+
+  it("opens the composer when the user types instead", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(insufficient());
+    const { result } = await renderStep();
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    act(() => {
+      result.current.showTyping();
+    });
+
+    expect(result.current.screen).toBe("typing");
+  });
+
+  it("still lets the user skip through to the generic path", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(insufficient());
+    const { result } = await renderStep();
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+  });
+
+  it("returns a typed dump to recovery with the text preserved", async () => {
+    finalizeBrainDump.mockResolvedValueOnce(insufficient());
+    const { result } = await renderStep();
+    act(() => {
+      result.current.showTyping();
+    });
+    act(() => {
+      result.current.setTypedText("hello hello testing");
+    });
+
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.typedText).toBe("hello hello testing");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
   });
 });
@@ -554,7 +668,7 @@ describe("useBrainDumpStep — restart", () => {
       recording_id: "rec-old",
     });
     expect(recorderState.start).toHaveBeenCalled();
-    expect(events()).toContain("brain_dump_restarted");
+    expect(events()).toContain("Brain Dump Restarted");
   });
 
   it("survives a failed discard and still starts the new take", async () => {
@@ -631,7 +745,7 @@ describe("useBrainDumpStep — retry", () => {
       recording_id: "rec-1",
       duration_secs: 212.4,
     });
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_retry", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Retry", {
       attempt: 1,
     });
   });
@@ -648,7 +762,7 @@ describe("useBrainDumpStep — retry", () => {
       await result.current.handleRetry();
     });
 
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_retry", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Retry", {
       attempt: 2,
     });
   });
@@ -673,7 +787,7 @@ describe("useBrainDumpStep — typing", () => {
 
     expect(result.current.screen).toBe("typing");
     expect(result.current.isMicBlocked).toBe(true);
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Typed Fallback", {
       reason: "permission_denied",
     });
   });
@@ -685,7 +799,7 @@ describe("useBrainDumpStep — typing", () => {
       result.current.showTyping();
     });
     expect(result.current.screen).toBe("typing");
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Typed Fallback", {
       reason: "chose_to_type",
     });
 
@@ -725,7 +839,7 @@ describe("useBrainDumpStep — typing", () => {
       input_mode: "typed",
       text: "invoices every friday",
     });
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Completed", {
       input_mode: "typed",
       chars: "invoices every friday".length,
     });
@@ -899,7 +1013,7 @@ describe("useBrainDumpStep — recovery", () => {
 
     await waitFor(() => expect(result.current.screen).toBe("recovery"));
     expect(result.current.recoverable).toEqual(recovered);
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_recovery_shown", {
+    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Recovery Shown", {
       parts: 2,
     });
   });
@@ -914,7 +1028,7 @@ describe("useBrainDumpStep — recovery", () => {
 
     expect(result.current.screen).toBe("rest");
     expect(result.current.recoverable).toBeNull();
-    expect(events()).not.toContain("brain_dump_recovery_shown");
+    expect(events()).not.toContain("Brain Dump Recovery Shown");
   });
 
   it("stays silent when the parts cannot be read at all", async () => {
@@ -948,7 +1062,7 @@ describe("useBrainDumpStep — recovery", () => {
       duration_secs: 95,
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
-    expect(events()).toContain("brain_dump_recovery_used");
+    expect(events()).toContain("Brain Dump Recovery Used");
   });
 
   it("does not leave recovery while its submission owns the take", async () => {
@@ -1042,7 +1156,7 @@ describe("useBrainDumpStep — download", () => {
     expect(blob.size).toBe(part(0).blob.size + part(1).blob.size);
     // Revoked in the same turn so the object URL does not leak.
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:dump");
-    expect(events()).toContain("brain_dump_download");
+    expect(events()).toContain("Brain Dump Downloaded");
   });
 
   it("downloads nothing when there is nothing stored", async () => {
@@ -1069,6 +1183,6 @@ describe("useBrainDumpStep — download", () => {
     });
 
     expect(getParts).not.toHaveBeenCalled();
-    expect(events()).not.toContain("brain_dump_download");
+    expect(events()).not.toContain("Brain Dump Downloaded");
   });
 });

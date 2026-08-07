@@ -93,8 +93,9 @@ describe("OnboardingWelcomeDialog — deck", () => {
       await screen.findByText("It works inside your tools."),
     ).toBeDefined();
     expect(screen.getByText("2 of 4")).toBeDefined();
-    expect(capture).toHaveBeenCalledWith("capability_card_viewed", {
+    expect(capture).toHaveBeenCalledWith("Capability Card Viewed", {
       card_index: 1,
+      card_title: "It works inside your tools.",
     });
 
     await user.click(screen.getByRole("button", { name: "Previous card" }));
@@ -127,7 +128,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
-    expect(capture).toHaveBeenCalledWith("capability_cards_completed", {
+    expect(capture).toHaveBeenCalledWith("Capability Cards Completed", {
       card_index: 3,
     });
   });
@@ -144,7 +145,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
-    expect(capture).toHaveBeenCalledWith("capability_cards_skipped", {
+    expect(capture).toHaveBeenCalledWith("Capability Cards Skipped", {
       card_index: 1,
     });
   });
@@ -160,7 +161,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
-    expect(capture).toHaveBeenCalledWith("capability_cards_skipped", {
+    expect(capture).toHaveBeenCalledWith("Capability Cards Skipped", {
       card_index: 0,
     });
   });
@@ -234,7 +235,7 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(steps).toEqual([]);
     expect(capture).not.toHaveBeenCalledWith(
-      "capability_cards_skipped",
+      "Capability Cards Skipped",
       expect.anything(),
     );
 

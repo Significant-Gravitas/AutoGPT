@@ -11,17 +11,17 @@ beforeEach(() => {
 
 describe("trackBrainDump", () => {
   it("forwards the event name and properties to posthog", () => {
-    trackBrainDump("brain_dump_completed", { duration_secs: 42 });
+    trackBrainDump("Brain Dump Completed", { duration_secs: 42 });
 
-    expect(capture).toHaveBeenCalledWith("brain_dump_completed", {
+    expect(capture).toHaveBeenCalledWith("Brain Dump Completed", {
       duration_secs: 42,
     });
   });
 
   it("passes undefined properties through rather than inventing an object", () => {
-    trackBrainDump("brain_dump_started");
+    trackBrainDump("Brain Dump Started");
 
-    expect(capture).toHaveBeenCalledWith("brain_dump_started", undefined);
+    expect(capture).toHaveBeenCalledWith("Brain Dump Started", undefined);
   });
 
   it("swallows a throwing analytics host so a recording is never interrupted", () => {
@@ -29,7 +29,7 @@ describe("trackBrainDump", () => {
       throw new Error("posthog host blocked");
     });
 
-    expect(() => trackBrainDump("brain_dump_permission_denied")).not.toThrow();
+    expect(() => trackBrainDump("Brain Dump Permission Denied")).not.toThrow();
   });
 
   it("keeps capturing after a failed capture", () => {
@@ -37,11 +37,11 @@ describe("trackBrainDump", () => {
       throw new Error("posthog host blocked");
     });
 
-    trackBrainDump("brain_dump_retry");
-    trackBrainDump("intro_followup_sent", { source: "suggestion" });
+    trackBrainDump("Brain Dump Retry");
+    trackBrainDump("Intro Followup Sent", { source: "suggestion" });
 
     expect(capture).toHaveBeenCalledTimes(2);
-    expect(capture).toHaveBeenLastCalledWith("intro_followup_sent", {
+    expect(capture).toHaveBeenLastCalledWith("Intro Followup Sent", {
       source: "suggestion",
     });
   });
