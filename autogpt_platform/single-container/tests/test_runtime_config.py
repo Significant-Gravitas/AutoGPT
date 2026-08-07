@@ -105,6 +105,29 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertLess(events.index(("fsync", False)), events.index(("replace",)))
         self.assertLess(events.index(("replace",)), events.index(("fsync", True)))
 
+    def test_first_boot_closes_descriptor_when_fdopen_fails(self) -> None:
+        real_close = runtime_config.os.close
+        closed_descriptors: list[int] = []
+
+        def record_close(descriptor: int) -> None:
+            closed_descriptors.append(descriptor)
+            real_close(descriptor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            with (
+                mock.patch.object(
+                    runtime_config.os, "fdopen", side_effect=MemoryError("test")
+                ),
+                mock.patch.object(runtime_config.os, "close", side_effect=record_close),
+                self.assertRaisesRegex(MemoryError, "test"),
+            ):
+                runtime_config.ensure_runtime_config(path, {})
+
+            self.assertEqual(len(closed_descriptors), 1)
+            self.assertFalse(path.exists())
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_existing_config_rejects_secret_rotation_by_environment(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "runtime.env"

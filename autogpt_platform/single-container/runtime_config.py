@@ -264,7 +264,12 @@ def _write_config(path: Path, values: dict[str, str]) -> None:
         flags |= os.O_NOFOLLOW
     descriptor = os.open(temporary, flags, 0o600)
     try:
-        with os.fdopen(descriptor, "w", encoding="ascii") as stream:
+        try:
+            stream = os.fdopen(descriptor, "w", encoding="ascii")
+        except BaseException:
+            os.close(descriptor)
+            raise
+        with stream:
             os.fchmod(stream.fileno(), 0o600)
             stream.write("# Generated once by the AutoGPT all-in-one image.\n")
             for name, value in values.items():
