@@ -126,6 +126,49 @@ def test_copilot_review_links_to_session():
     assert content.decision_items[0].link == "/copilot?sessionId=abc123"
 
 
+def test_failed_runs_sort_before_completed():
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[
+            make_exec(id="run-1", status="COMPLETED"),
+            make_exec(id="run-2", status="FAILED"),
+        ],
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+    assert [i.status for i in content.run_items] == ["FAILED", "COMPLETED"]
+
+
+def test_run_items_capped_at_ten():
+    executions = [make_exec(id=f"run-{i}", status="COMPLETED") for i in range(12)]
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=executions,
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+    assert len(content.run_items) == 10
+
+
+def test_review_without_agent_info_falls_back_to_library_link():
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec()],
+        reviews=[make_review(graph_id="g-unknown")],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+    assert content.decision_items[0].link == "/library"
+
+
 def test_markdown_has_three_sections_and_links():
     content = compose_briefing(
         experts=[make_expert()],

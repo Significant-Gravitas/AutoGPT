@@ -1,6 +1,10 @@
+from datetime import datetime
 from typing import NamedTuple
 
+from backend.api.features.executions.review.model import PendingHumanReviewModel
+from backend.api.features.experts.models import Expert
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
+from backend.data.execution import GraphExecutionMeta
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
 
@@ -19,7 +23,7 @@ def _run_link(info: AgentInfo | None, execution_id: str) -> str | None:
     return None
 
 
-def _activity_summary(stats) -> str | None:
+def _activity_summary(stats: GraphExecutionMeta.Stats | dict | None) -> str | None:
     """Pull the AI-generated activity summary off an execution's stats.
 
     ``GraphExecutionMeta.stats`` is a ``Stats`` pydantic model in
@@ -31,7 +35,13 @@ def _activity_summary(stats) -> str | None:
 
 
 def compose_briefing(
-    *, experts, executions, reviews, agent_info_by_graph_id, generated_at, tz_name
+    *,
+    experts: list[Expert],
+    executions: list[GraphExecutionMeta],
+    reviews: list[PendingHumanReviewModel],
+    agent_info_by_graph_id: dict[str, AgentInfo],
+    generated_at: datetime,
+    tz_name: str,
 ) -> BriefingContent | None:
     experts_by_id = {e.id: e for e in experts}
     zero_expert_fallback = not experts
