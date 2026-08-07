@@ -371,7 +371,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
             <Button
               variant="secondary"
               size="small"
-              onClick={handleManualToken}
+              onClick={() => handleManualToken()}
               disabled={loading || !manualToken.trim()}
             >
               Use Token

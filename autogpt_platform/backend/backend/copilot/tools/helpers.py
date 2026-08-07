@@ -6,7 +6,7 @@ import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from typing import Any
 
 from pydantic_core import PydanticUndefined
@@ -169,19 +169,6 @@ async def _charge_block_credits(
         # BILLING_LEAK log above is the signal for reconciliation.
 
 
-@lru_cache(maxsize=None)
-def _get_input_schema_provider(input_schema: type[BlockSchemaInput]) -> str | None:
-    infos = input_schema.get_credentials_fields_info()
-    providers = {
-        ProviderName(provider).value
-        for info in infos.values()
-        for provider in info.provider
-    }
-    if len(providers) != 1:
-        return None
-    return next(iter(providers))
-
-
 def get_block_provider(block: AnyBlockSchema) -> str | None:
     """Sole integration provider slug for a block, or None when the block
     uses zero or multiple providers."""
@@ -194,6 +181,19 @@ def get_block_provider(block: AnyBlockSchema) -> str | None:
             exc_info=True,
         )
         return None
+
+
+@cache
+def _get_input_schema_provider(input_schema: type[BlockSchemaInput]) -> str | None:
+    infos = input_schema.get_credentials_fields_info()
+    providers = {
+        ProviderName(provider).value
+        for info in infos.values()
+        for provider in info.provider
+    }
+    if len(providers) != 1:
+        return None
+    return next(iter(providers))
 
 
 async def execute_block(

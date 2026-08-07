@@ -163,7 +163,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
             <button
               type="button"
               onClick={() => setManualExpanded(!open)}
-              aria-expanded={open}
+              aria-expanded={panelOpen}
               aria-controls={panelId}
               className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-zinc-100"
             >

@@ -26,7 +26,7 @@ export function StreamingText({ text }: { text: string }) {
         aria-hidden
         className={
           "ml-0.5 inline-block h-[1.05em] w-2 bg-zinc-900 align-text-bottom motion-reduce:animate-none " +
-          (streaming ? "" : "animate-caret-blink")
+          (streaming ? "animate-caret-blink" : "")
         }
       />
     </p>

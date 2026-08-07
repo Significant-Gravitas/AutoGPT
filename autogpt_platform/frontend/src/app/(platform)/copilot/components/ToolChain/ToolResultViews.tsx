@@ -49,11 +49,12 @@ function ResultFavicon({ domain }: { domain: string | null }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`}
+      src={`https://${encodeURIComponent(domain)}/favicon.ico`}
       alt=""
       width={14}
       height={14}
       className="size-3.5 shrink-0 rounded-[3px]"
+      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
   );
