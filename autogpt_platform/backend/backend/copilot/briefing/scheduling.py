@@ -168,7 +168,7 @@ async def ensure_morning_briefing_scheduled(user_id: str) -> None:
     try:
         if not user_id:
             return
-        if not await is_feature_enabled(Flag.MORNING_BRIEFING, user_id, default=False):
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
             return
 
         tz = await _resolve_user_timezone(user_id)

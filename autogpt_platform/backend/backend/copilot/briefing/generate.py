@@ -166,7 +166,7 @@ def _merge_agent_info(agent_info: dict[str, AgentInfo], experts: list[Expert]) -
 
 
 async def generate_and_deliver_briefing(user_id: str) -> dict:
-    if not await is_feature_enabled(Flag.MORNING_BRIEFING, user_id, default=False):
+    if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
         return {"status": "skipped", "reason": "flag_disabled"}
 
     user = await user_db().get_user_by_id(user_id)

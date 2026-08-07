@@ -92,10 +92,13 @@ class Flag(str, Enum):
     # only.
     DREAM_PASS_ENABLED = "dream-pass-enabled"
 
-    # Gates the scheduled morning-briefing job end-to-end: schedule
-    # registration, generation, and delivery. Off by default; opt-in
-    # canary rollout.
-    MORNING_BRIEFING = "morning-briefing"
+    # Mirror of the frontend `hire-experts` flag (same LaunchDarkly key,
+    # so both sides evaluate one cohort switch). Gates the experts
+    # surface, including the scheduled morning-briefing job end-to-end:
+    # schedule registration, generation, and delivery. Deliberately no
+    # independent briefing kill switch — briefings ship to exactly the
+    # experts cohort.
+    HIRE_EXPERTS = "hire-experts"
 
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
