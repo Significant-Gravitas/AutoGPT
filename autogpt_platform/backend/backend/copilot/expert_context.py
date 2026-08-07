@@ -144,6 +144,7 @@ def _team_line(expert: Expert) -> str:
     if not workflow_names:
         workflow_names = "none installed"
     return (
-        f"- {escape_prompt_xml_tags(expert.name)} — {expert.role} (expert id: {expert.id}); "
+        f"- {escape_prompt_xml_tags(expert.name)} — "
+        f"{escape_prompt_xml_tags(expert.role)} (expert id: {expert.id}); "
         f"installed workflows: {workflow_names}"
     )
