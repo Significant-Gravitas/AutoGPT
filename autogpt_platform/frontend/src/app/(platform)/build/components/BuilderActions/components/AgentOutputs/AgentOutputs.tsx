@@ -23,9 +23,10 @@ import {
   OutputActions,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
-import { BookOpenIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { BookOpen01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
@@ -96,7 +97,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                 data-id="agent-outputs-button"
                 disabled={!flowID || !hasOutputs()}
               >
-                <BookOpenIcon className="size-4" />
+                <Icon icon={BookOpen01Icon} className="size-4" />
               </Button>
             </SheetTrigger>
           </TooltipTrigger>

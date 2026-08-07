@@ -1,6 +1,7 @@
 "use client";
 
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   value: string;
@@ -11,7 +12,8 @@ interface Props {
 export function IntegrationsSearch({ value, onChange, disabled }: Props) {
   return (
     <div className="relative w-full">
-      <MagnifyingGlassIcon
+      <Icon
+        icon={Search01Icon}
         size={20}
         className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#83838C]"
       />

@@ -31,40 +31,59 @@ cache-control gating don't handle on their own:
   site; see ``baseline/service.py::_supports_prompt_cache_markers``.)
 
 Detection is prefix-based (``moonshotai/``).  Moonshot routes every Kimi
-SKU through the same Anthropic-compat surface and currently prices them
-identically, so a new ``moonshotai/kimi-k3.0`` slug transparently
+SKU through the same Anthropic-compat surface, so a new slug transparently
 inherits both the rate card and the cache-control gate without editing
-this file.  Per-slug overrides are in :data:`_RATE_OVERRIDES_USD_PER_MTOK`
-for when Moonshot eventually splits prices.
+this file.  SKUs priced off the shared K2.x default (Kimi K3 broke the
+uniform pricing at 5x) carry per-slug entries in
+:data:`_RATE_OVERRIDES_USD_PER_MTOK`.
 """
 
 from __future__ import annotations
 
-# All Moonshot slugs share these rates as of April 2026 — Moonshot prices
-# every Kimi K2.x SKU at $0.60/$2.80 per million (input/output) via
-# OpenRouter.  Cache-read / cache-write discounts are NOT applied here:
+from backend.data.llm_registry.catalog import get_catalog
+
+# Every Kimi K2.x SKU shares these rates — $0.60/$2.80 per million
+# (input/output) via OpenRouter as of April 2026.
+# Cache-read / cache-write discounts are NOT applied here:
 # OpenRouter currently exposes only a single input price per Moonshot
 # endpoint; the real billed amount (with cache savings) lands via the
 # reconcile path.  Keep in sync with https://platform.moonshot.ai/docs/pricing.
 _DEFAULT_MOONSHOT_RATE_USD_PER_MTOK: tuple[float, float] = (0.60, 2.80)
 
-# Per-slug overrides for when Moonshot splits pricing across SKUs.  Empty
-# today — every slug matching ``moonshotai/`` falls back to
-# :data:`_DEFAULT_MOONSHOT_RATE_USD_PER_MTOK`.
-_RATE_OVERRIDES_USD_PER_MTOK: dict[str, tuple[float, float]] = {}
 
 # Vendor prefix — matches any OpenRouter slug Moonshot ships.  Keep as a
 # module constant so the prefix check stays in exactly one place.
 _MOONSHOT_PREFIX = "moonshotai/"
 
 
+def _overrides_from_catalog() -> dict[str, tuple[float, float]]:
+    """Per-slug USD overrides for SKUs priced off the shared K2.x default.
+
+    Authored in the catalog (``provider_*_usd_per_1m`` on the model's cost
+    entry — e.g. Kimi K3's $3/$15); slugs without them fall back to
+    :data:`_DEFAULT_MOONSHOT_RATE_USD_PER_MTOK`.
+    """
+    return {
+        m.slug: (m.cost.provider_input_usd_per_1m, m.cost.provider_output_usd_per_1m)
+        for m in get_catalog().models
+        if m.slug.startswith(_MOONSHOT_PREFIX)
+        and m.cost is not None
+        and m.cost.provider_input_usd_per_1m is not None
+        and m.cost.provider_output_usd_per_1m is not None
+    }
+
+
+# Import-time snapshot is safe: the catalog is immutable within a process
+# (the file only changes at deploy), same lifecycle as every projection.
+_RATE_OVERRIDES_USD_PER_MTOK: dict[str, tuple[float, float]] = _overrides_from_catalog()
+
+
 def is_moonshot_model(model: str | None) -> bool:
     """True when *model* is a Moonshot OpenRouter slug.
 
-    Prefix match against ``moonshotai/`` covers every Kimi SKU Moonshot
-    ships today (``kimi-k2``, ``kimi-k2.5``, ``kimi-k2.6``,
-    ``kimi-k2-thinking``) plus any future SKU Moonshot publishes under
-    the same namespace.  Used by both pricing and cache-control gating.
+    Prefix match against ``moonshotai/`` covers every Kimi SKU under that
+    namespace — present and future — with no per-SKU roster to maintain.
+    Used by both pricing and cache-control gating.
     """
     return isinstance(model, str) and model.startswith(_MOONSHOT_PREFIX)
 

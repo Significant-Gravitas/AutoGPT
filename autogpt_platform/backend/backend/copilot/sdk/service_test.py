@@ -11,6 +11,7 @@ import pytest
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
@@ -572,15 +573,16 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-abc", user_id="user-1"
             )
 
         # Fallback == tier-specific config default (thinking_standard_model
-        # normalised to hyphen-form for direct-Anthropic mode).
-        assert resolved == "claude-sonnet-4-6"
+        # normalised to hyphen-form for direct-Anthropic mode) — an env
+        # fallback, so the routing source must NOT claim "ld".
+        assert resolved == ("claude-sonnet-4-6", "env")
 
     @pytest.mark.asyncio
     async def test_openrouter_mode_accepts_ld_kimi_value(
@@ -600,12 +602,12 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-abc", user_id="user-1"
             )
-        assert resolved == "moonshotai/kimi-k2.6"
+        assert resolved == ("moonshotai/kimi-k2.6", "ld")
 
     @pytest.mark.asyncio
     async def test_advanced_tier_fallback_uses_advanced_default_not_standard(
@@ -630,14 +632,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv", user_id="user-1"
             )
 
         # Direct-Anthropic normalises anthropic/claude-opus-4.7 → claude-opus-4-7
-        assert resolved == "claude-opus-4-7"
+        assert resolved == ("claude-opus-4-7", "env")
 
     @pytest.mark.asyncio
     async def test_standard_ld_override_wins_over_subscription(
@@ -666,14 +668,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std-sub", user_id="user-1"
             )
         # Kimi can't be served by the subscription CLI; fail-soft to
-        # the tier default normalised for the active transport.
-        assert resolved == "claude-sonnet-4-6"
+        # the tier default normalised for the active transport (env source).
+        assert resolved == ("claude-sonnet-4-6", "env")
 
     @pytest.mark.asyncio
     async def test_standard_subscription_survives_trailing_whitespace_in_env(
@@ -698,12 +700,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-ws", user_id="user-1"
             )
-        assert resolved is None, (
+        assert resolved == (None, "env"), (
             "LD value semantically matches the whitespace-padded config "
             "default — subscription mode must still win and return None"
         )
@@ -730,12 +734,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std-nop", user_id="user-1"
             )
-        assert resolved is None
+        assert resolved == (None, "env")
 
     @pytest.mark.asyncio
     async def test_advanced_tier_consults_ld_under_subscription(
@@ -761,12 +767,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-opus-4.7"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv-sub", user_id="user-1"
             )
-        assert resolved == "claude-opus-4-7"
+        assert resolved == ("claude-opus-4-7", "ld")
 
 
 # ---------------------------------------------------------------------------
