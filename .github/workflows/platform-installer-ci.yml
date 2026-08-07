@@ -56,10 +56,10 @@ jobs:
           }
       - name: Exercise side-effect-free version selection
         shell: pwsh
-        run: >-
-          ./autogpt_platform/installer/install.ps1
-          -ResolveOnly
-          -Release autogpt-installer-ci-test-v1
+        run: ./autogpt_platform/installer/install.ps1 -ResolveOnly
+      - name: Exercise Windows preflight without installing
+        shell: pwsh
+        run: ./autogpt_platform/installer/install.ps1 -PreflightOnly
       - name: Exercise batch help parser
         shell: cmd
         run: autogpt_platform\installer\setup-autogpt.bat /help | findstr /C:"/single-container"
