@@ -425,7 +425,6 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.briefings.routes.router,
-    tags=["briefings"],
     prefix="/api",
 )
 app.include_router(

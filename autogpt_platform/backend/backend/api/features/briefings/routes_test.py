@@ -9,7 +9,7 @@ route handles content that fails to validate against BriefingContent.
 """
 
 import datetime
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest

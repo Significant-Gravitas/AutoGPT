@@ -2875,7 +2875,7 @@
     },
     "/api/briefings/latest": {
       "get": {
-        "tags": ["briefings", "briefings"],
+        "tags": ["briefings"],
         "summary": "Get Latest Briefing",
         "description": "Return the user's most recent briefing, or None if none exists yet.\n\nStored content that fails to validate against the current BriefingContent\nshape (e.g. written by an older/newer version of the composer) is treated\nas if no briefing exists, rather than 500ing the request.",
         "operationId": "getBriefingsGet latest briefing",

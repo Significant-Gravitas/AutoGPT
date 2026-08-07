@@ -1,7 +1,7 @@
 """Integration tests for the briefing data layer."""
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from uuid import uuid4
 
 import pytest
@@ -76,7 +76,13 @@ async def test_get_latest_briefing_orders_by_briefing_date_not_created_at(
         earlier = await briefing.create_briefing(
             user_id, date(2026, 8, 5), {"which": "earlier-date-inserted-second"}
         )
-        assert earlier.created_at > later.created_at  # inserted out of order
+        # Force the out-of-order insertion the test depends on: createdAt has
+        # millisecond precision, so back-to-back inserts can tie and make an
+        # `earlier.created_at > later.created_at` assertion flaky.
+        await UserBriefing.prisma().update(
+            where={"id": earlier.id},
+            data={"createdAt": later.created_at + timedelta(seconds=1)},
+        )
 
         latest = await briefing.get_latest_briefing(user_id)
         assert latest is not None
