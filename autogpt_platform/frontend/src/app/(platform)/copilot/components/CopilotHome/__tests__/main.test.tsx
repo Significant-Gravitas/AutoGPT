@@ -7,6 +7,9 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetBriefingsGetLatestBriefingMockHandler200 } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
+import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import type { Expert } from "@/app/api/__generated__/models/expert";
 import { CopilotHome } from "../CopilotHome";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
@@ -47,6 +50,46 @@ function mockPulseStripAgent() {
       },
     }),
     getGetV1ListAllExecutionsMockHandler([]),
+  );
+}
+
+const healthyExpert: Expert = {
+  id: "expert-healthy",
+  name: "Sales Scout",
+  avatar_url: null,
+  role: "Sales Researcher",
+  bio: null,
+  skills: [],
+  tagline: "Finds leads while you sleep",
+  identity: "You are a senior sales researcher.",
+  is_template: false,
+  source_template_id: null,
+  is_archived: false,
+  workflows: [],
+  last_run_at: new Date("2026-08-06T10:00:00Z"),
+  last_run_status: "COMPLETED",
+};
+
+const pausedExpert: Expert = {
+  id: "expert-paused",
+  name: "Support Bot",
+  avatar_url: null,
+  role: "Support Triager",
+  bio: null,
+  skills: [],
+  tagline: "Triages tickets",
+  identity: "You are a support triager.",
+  is_template: false,
+  source_template_id: null,
+  is_archived: false,
+  workflows: [],
+  schedules_paused_at: new Date("2026-08-05T10:00:00Z"),
+};
+
+function mockTeamStrip() {
+  server.use(
+    getListExpertsMockHandler200([healthyExpert, pausedExpert]),
+    getGetV1ListExecutionSchedulesForAUserMockHandler([]),
   );
 }
 
@@ -129,4 +172,21 @@ test("renders briefing sections when a briefing is available", async () => {
   expect(decisionLink.getAttribute("href")).toBe(
     "/library/agents/lib-1/runs/exec-1?node=node-1",
   );
+});
+
+test("renders the team strip with hired experts", async () => {
+  mockPulseStripAgent();
+  server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
+  mockTeamStrip();
+  render(<CopilotHome {...baseProps} />);
+
+  expect(await screen.findByText("Sales Scout")).toBeDefined();
+  expect(screen.getByText("Support Bot")).toBeDefined();
+  expect(screen.getByText("Paused")).toBeDefined();
+
+  const chatLinks = screen
+    .getAllByRole("link", { name: "Chat" })
+    .map((link) => link.getAttribute("href"));
+  expect(chatLinks).toContain("/copilot?expertId=expert-healthy");
+  expect(chatLinks).toContain("/copilot?expertId=expert-paused");
 });

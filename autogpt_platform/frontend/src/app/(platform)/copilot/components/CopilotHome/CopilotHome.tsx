@@ -9,6 +9,7 @@ import { getGreetingName } from "../EmptySession/helpers";
 import { PulseChips } from "../PulseChips/PulseChips";
 import { usePulseChips } from "../PulseChips/usePulseChips";
 import { BriefingCard } from "./components/BriefingCard/BriefingCard";
+import { TeamStrip } from "./components/TeamStrip/TeamStrip";
 import { useCopilotHome } from "./useCopilotHome";
 
 interface Props {
@@ -67,7 +68,7 @@ export function CopilotHome({
 
           {/* Needs-attention slot (Task 6) */}
 
-          {/* Team strip slot (Task 5) */}
+          <TeamStrip />
 
           <div className="mb-6">
             <motion.div
