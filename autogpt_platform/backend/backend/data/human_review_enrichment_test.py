@@ -13,8 +13,11 @@ import pytest
 from prisma.enums import ReviewStatus
 from prisma.errors import UniqueViolationError
 from prisma.models import (
+    AgentBlock,
     AgentGraph,
     AgentGraphExecution,
+    AgentNode,
+    AgentNodeExecution,
     ChatSession,
     Expert,
     LibraryAgent,
@@ -213,3 +216,66 @@ async def test_plain_run_review_has_null_expert(server: SpinTestServer):
         assert plain.agent_name is not None
     finally:
         await _cleanup(user_id, graph_ids, [])
+
+
+async def test_enrichment_never_resolves_foreign_node_executions(
+    server: SpinTestServer,
+):
+    """A review pointing at a node execution owned by another user must not
+    resolve that user's node id — the lookup is user-scoped, so node_id
+    falls back to the raw exec id."""
+    user_id = f"review-enrich-scope-{uuid4()}"
+    other_user_id = f"review-enrich-scope-other-{uuid4()}"
+    other_graph_id = str(uuid4())
+    other_exec_id = str(uuid4())
+
+    await _create_user(user_id)
+    await _create_user(other_user_id)
+    try:
+        await _create_graph(other_graph_id, other_user_id, "Their Agent")
+
+        block = await AgentBlock.prisma().find_first()
+        assert block is not None, "test DB should have seeded blocks"
+        node = await AgentNode.prisma().create(
+            data={
+                "agentBlockId": block.id,
+                "agentGraphId": other_graph_id,
+                "agentGraphVersion": 1,
+            }
+        )
+        await AgentGraphExecution.prisma().create(
+            data={
+                "id": other_exec_id,
+                "agentGraphId": other_graph_id,
+                "agentGraphVersion": 1,
+                "userId": other_user_id,
+            }
+        )
+        foreign_node_exec = await AgentNodeExecution.prisma().create(
+            data={
+                "agentGraphExecutionId": other_exec_id,
+                "agentNodeId": node.id,
+            }
+        )
+
+        await PendingHumanReview.prisma().create(
+            data={
+                "nodeExecId": foreign_node_exec.id,
+                "userId": user_id,
+                "graphExecId": other_exec_id,
+                "graphId": other_graph_id,
+                "graphVersion": 1,
+                "payload": SafeJson({"foo": "bar"}),
+                "editable": True,
+                "status": ReviewStatus.WAITING,
+            }
+        )
+
+        reviews = await get_pending_reviews_for_user(user_id, 1, 25)
+        crossed = next(r for r in reviews if r.node_exec_id == foreign_node_exec.id)
+        assert crossed.node_id == foreign_node_exec.id  # fallback, not node.id
+        assert crossed.expert_id is None
+        assert crossed.agent_name is None
+    finally:
+        await _cleanup(user_id, [], [])
+        await _cleanup(other_user_id, [other_graph_id], [])

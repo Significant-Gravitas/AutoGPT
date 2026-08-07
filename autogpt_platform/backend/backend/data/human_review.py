@@ -423,7 +423,13 @@ async def _enrich_pending_reviews(
 
     node_execs = (
         await AgentNodeExecution.prisma().find_many(
-            where={"id": {"in": real_node_exec_ids}}
+            where={
+                "id": {"in": real_node_exec_ids},
+                # Callers pass ids from user-filtered PendingHumanReview rows,
+                # but scope here too so this helper can never leak another
+                # user's node executions if a future caller slips.
+                "GraphExecution": {"is": {"userId": user_id}},
+            }
         )
         if real_node_exec_ids
         else []
