@@ -1,6 +1,7 @@
 "use client";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { NeedsAttentionList } from "@/components/organisms/NeedsAttentionList/NeedsAttentionList";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion } from "framer-motion";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
@@ -66,7 +67,7 @@ export function CopilotHome({
             <PulseChips chips={pulseChips} onChipClick={onSend} />
           )}
 
-          {/* Needs-attention slot (Task 6) */}
+          <NeedsAttentionList />
 
           <TeamStrip />
 

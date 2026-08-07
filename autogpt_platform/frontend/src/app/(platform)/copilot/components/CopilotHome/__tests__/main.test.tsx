@@ -9,7 +9,9 @@ import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/en
 import { getGetBriefingsGetLatestBriefingMockHandler200 } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import { getGetV2GetPendingReviewsMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
+import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { CopilotHome } from "../CopilotHome";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
@@ -33,7 +35,9 @@ const baseProps = {
 
 // Guarantees the pulse strip has at least one chip regardless of faker's
 // random defaults — an agent with an external trigger always produces a
-// "listening" sitrep item.
+// "listening" sitrep item. Also pins pending reviews to empty since the
+// generated mock otherwise returns 1-10 random reviews by default, which
+// would make the needs-attention slot non-deterministic across tests.
 function mockPulseStripAgent() {
   const base = getGetV2ListLibraryAgentsResponseMock();
   server.use(
@@ -50,8 +54,29 @@ function mockPulseStripAgent() {
       },
     }),
     getGetV1ListAllExecutionsMockHandler([]),
+    getGetV2GetPendingReviewsMockHandler200([]),
   );
 }
+
+const pendingReview: PendingHumanReviewModel = {
+  node_exec_id: "ne-1",
+  node_id: "n-1",
+  user_id: "u-1",
+  graph_exec_id: "run-1",
+  graph_id: "g-1",
+  graph_version: 1,
+  payload: { to: "x@y.com" },
+  instructions: "Approve outreach email",
+  editable: true,
+  status: "WAITING",
+  expert_id: "exp-1",
+  expert_name: "Ana",
+  expert_avatar_url: null,
+  agent_name: "Lead Finder",
+  library_agent_id: "lib-1",
+  session_id: null,
+  created_at: new Date(),
+};
 
 const healthyExpert: Expert = {
   id: "expert-healthy",
@@ -227,4 +252,27 @@ test("uses singular grammar for a single workflow needing setup", async () => {
   render(<CopilotHome {...baseProps} />);
 
   expect(await screen.findByText("1 workflow needs setup")).toBeDefined();
+});
+
+test("renders a needs-attention row when a review is pending", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200(null),
+    getGetV2GetPendingReviewsMockHandler200([pendingReview]),
+  );
+  render(<CopilotHome {...baseProps} />);
+
+  expect(await screen.findByText("Approve outreach email")).toBeDefined();
+});
+
+test("does not render the needs-attention slot when there are no pending reviews", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200(null),
+    getGetV2GetPendingReviewsMockHandler200([]),
+  );
+  render(<CopilotHome {...baseProps} />);
+
+  await screen.findByText("What's happening with your agents");
+  expect(screen.queryByText(/Needs your attention/)).toBeNull();
 });
