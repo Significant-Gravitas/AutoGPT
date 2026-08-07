@@ -4,6 +4,7 @@ import { createContext } from "react";
 import type {
   ConnectorRequest,
   InputsRequest,
+  McpConnectorRequest,
   QuestionRequest,
 } from "../ChainActionCard/helpers";
 
@@ -19,6 +20,9 @@ export interface ChainActionEntry {
   /** Credentials this card needs. The chain merges every entry's request
    *  into the single connectors table it renders underneath itself. */
   connectors?: ConnectorRequest;
+  /** MCP server this card needs connected — rendered as a row in the same
+   *  connectors table, driven by the hidden MCPSetupCard's state machine. */
+  mcp?: McpConnectorRequest;
   /** Editable run inputs this card collects, rendered in the same card as
    *  the connectors instead of inside the chain rows. */
   inputs?: InputsRequest;

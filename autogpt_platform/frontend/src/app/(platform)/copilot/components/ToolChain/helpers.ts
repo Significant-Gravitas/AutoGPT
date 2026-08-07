@@ -65,10 +65,9 @@ function actionLabel(output: unknown): string | null {
 }
 
 /** Setup-requirements rows whose card registers with the chain and renders
- *  outside it. run_mcp_tool's card has its own OAuth flow and does not
- *  register, so it must keep rendering inline. */
+ *  outside it — including run_mcp_tool, whose hidden MCPSetupCard registers
+ *  an MCP row into the same connectors table. */
 export function isLiftedSetupRow(row: ChainRow): boolean {
-  if (row.tool === "run_mcp_tool") return false;
   const data = asObject(row.output);
   return (
     !!data && data.type === "setup_requirements" && !!asObject(data.setup_info)

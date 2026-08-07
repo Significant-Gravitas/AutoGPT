@@ -123,6 +123,9 @@ export function ToolChain({ parts, isStreaming }: Props) {
   const connectorRequests = pendingActions
     .map((entry) => entry.connectors)
     .filter((request) => request !== undefined);
+  const mcpRequests = pendingActions
+    .map((entry) => entry.mcp)
+    .filter((request) => request !== undefined);
   const inputRequests = pendingActions
     .map((entry) => entry.inputs)
     .filter((request) => request !== undefined);
@@ -131,17 +134,20 @@ export function ToolChain({ parts, isStreaming }: Props) {
     .filter((request) => request !== undefined);
   const hasCardWork =
     connectorRequests.length > 0 ||
+    mcpRequests.length > 0 ||
     inputRequests.length > 0 ||
     questionRequests.length > 0;
   const allActionsReady =
     pendingActions.length > 0 && pendingActions.every((entry) => entry.ready);
 
-  // Proceed never sends: it drafts the combined reply into the chat input
-  // so the user reviews/edits and presses send themselves. Cards stay
-  // registered (no onSent) until the message actually goes out.
+  // Proceed never sends: it drafts the combined reply of every READY card
+  // into the chat input so the user reviews/edits and presses send
+  // themselves. Unready cards (e.g. an unconnected MCP server) are left
+  // out instead of blocking the ready ones. Cards stay registered (no
+  // onSent) until the message actually goes out.
   function handleProceed() {
-    if (!allActionsReady) return;
     const message = pendingActions
+      .filter((entry) => entry.ready)
       .map((entry) => entry.buildMessage())
       .filter(Boolean)
       .join("\n\n");
@@ -276,6 +282,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
         {hasCardWork && (
           <ChainActionCard
             connectors={connectorRequests}
+            mcp={mcpRequests}
             inputs={inputRequests}
             questions={questionRequests}
             isReady={allActionsReady}

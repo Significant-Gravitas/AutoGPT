@@ -39,6 +39,21 @@ export function formatInputsTitle(name: string): string {
   return spaced || name;
 }
 
+/** One MCP server's ask. Unlike ConnectorRequest, MCP servers aren't
+ *  platform providers — the hidden MCPSetupCard keeps the OAuth/token state
+ *  machine and hands the table row its state + callbacks. */
+export interface McpConnectorRequest {
+  id: string;
+  service: string;
+  serverUrl: string;
+  connected: boolean;
+  loading: boolean;
+  error: string | null;
+  showManualToken: boolean;
+  onConnect: () => void;
+  onUseToken: (token: string) => void;
+}
+
 /** One setup card's ask, handed to the chain so every card in the chain can
  *  be answered from a single connectors table. */
 export interface ConnectorRequest {
