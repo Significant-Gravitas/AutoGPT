@@ -92,19 +92,24 @@ def compose_briefing(
     for r in reviews:
         if r.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
             link = f"/copilot?sessionId={r.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)}"
-            expert = None
         else:
             info = agent_info_by_graph_id.get(r.graph_id)
             link = _run_link(info, r.graph_exec_id) or "/library"
-            expert = experts_by_id.get(expert_id_by_exec.get(r.graph_exec_id) or "")
+        # _enrich_pending_reviews already resolved expert attribution on the
+        # review model (including copilot-session reviews and executions older
+        # than the 24h window); the local lookup only backfills gaps.
+        fallback = experts_by_id.get(
+            r.expert_id or expert_id_by_exec.get(r.graph_exec_id) or ""
+        )
         decision_items.append(
             BriefingDecisionItem(
                 node_exec_id=r.node_exec_id,
                 graph_exec_id=r.graph_exec_id,
                 title=r.instructions or "Review needed",
-                expert_id=expert.id if expert else None,
-                expert_name=expert.name if expert else None,
-                expert_avatar_url=expert.avatar_url if expert else None,
+                expert_id=r.expert_id or (fallback.id if fallback else None),
+                expert_name=r.expert_name or (fallback.name if fallback else None),
+                expert_avatar_url=r.expert_avatar_url
+                or (fallback.avatar_url if fallback else None),
                 link=link,
             )
         )

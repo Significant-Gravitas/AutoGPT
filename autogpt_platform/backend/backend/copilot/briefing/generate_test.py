@@ -52,6 +52,9 @@ def make_review(
     graph_exec_id="run-1",
     graph_id="g-1",
     instructions="Approve outreach email",
+    expert_id=None,
+    expert_name=None,
+    expert_avatar_url=None,
 ):
     from unittest.mock import MagicMock
 
@@ -62,6 +65,11 @@ def make_review(
         instructions,
     )
     r.graph_id = graph_id
+    # Explicit None defaults matter: MagicMock auto-attributes are truthy and
+    # would short-circuit compose_briefing's enriched-attribution preference.
+    r.expert_id = expert_id
+    r.expert_name = expert_name
+    r.expert_avatar_url = expert_avatar_url
     return r
 
 
@@ -126,6 +134,44 @@ def test_copilot_review_links_to_session():
         tz_name="UTC",
     )
     assert content.decision_items[0].link == "/copilot?sessionId=abc123"
+
+
+def test_decision_prefers_enriched_expert_attribution():
+    """A review raised inside an expert's copilot session carries attribution
+    resolved by _enrich_pending_reviews; compose must not discard it."""
+    content = compose_briefing(
+        experts=[make_expert()],  # exp-1 "Ana" — not the enriched expert
+        executions=[],
+        reviews=[
+            make_review(
+                graph_exec_id="copilot-session-abc123",
+                expert_id="exp-2",
+                expert_name="Bob",
+                expert_avatar_url="https://a/b.png",
+            )
+        ],
+        agent_info_by_graph_id={},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    decision = content.decision_items[0]
+    assert (decision.expert_id, decision.expert_name) == ("exp-2", "Bob")
+    assert decision.expert_avatar_url == "https://a/b.png"
+
+
+def test_decision_backfills_display_fields_from_expert_id():
+    """Enriched expert_id without name/avatar falls back to the local expert
+    lookup for the display fields."""
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[],
+        reviews=[make_review(expert_id="exp-1")],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    decision = content.decision_items[0]
+    assert (decision.expert_id, decision.expert_name) == ("exp-1", "Ana")
 
 
 def test_failed_runs_sort_before_completed():
