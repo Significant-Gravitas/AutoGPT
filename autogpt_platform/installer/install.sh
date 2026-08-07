@@ -4,7 +4,7 @@
 # ----------------------------------------------------------------------------
 # Zero-prerequisite bootstrap: checks whether your machine CAN run AutoGPT,
 # installs git + Docker if missing, fetches the repo at the version you pick,
-# then hands off to setup-autogpt.sh to bring the stack up.
+# then hands off to setup-autogpt.sh to bring the single-container appliance up.
 #
 # One-liner:
 #   curl -fsSL https://setup.agpt.co/install.sh | bash
@@ -19,6 +19,7 @@
 #   --ollama-model NAME  model to pull (implies --with-ollama)
 #   --ollama-host URL    use an existing Ollama at this URL (implies --with-ollama)
 #   --skip-preflight     skip the capability checks (not recommended)
+#   --preflight-only     check the machine and install nothing
 #   --help
 # ============================================================================
 set -euo pipefail
@@ -27,6 +28,8 @@ REPO_URL='https://github.com/Significant-Gravitas/AutoGPT.git'
 REPO_API='https://api.github.com/repos/Significant-Gravitas/AutoGPT'
 MIN_RAM_GB=8
 MIN_DISK_GB=25
+DOCKER_INSTALL_COMMIT='5ce20f2eef3615d08fea941eda5a109e949e8ebf' # pragma: allowlist secret
+DOCKER_INSTALL_SHA256='b991f2806186f7287bb9e53362060c382e906d154599b2fb0982f34246bacfd4' # pragma: allowlist secret
 
 DEV=false; BRANCH=''; RELEASE=''; DIR="$HOME/AutoGPT"
 WITH_OLLAMA=false; OLLAMA_MODEL=''; OLLAMA_HOST=''
@@ -50,7 +53,7 @@ AutoGPT Platform - Ultimate Installer (Linux + macOS)
 
 Zero-prerequisite bootstrap: checks whether your machine CAN run AutoGPT,
 installs git + Docker if missing, fetches the repo at the version you pick,
-then hands off to setup-autogpt.sh to bring the stack up.
+then hands off to setup-autogpt.sh to bring the single-container appliance up.
 
 One-liner:
   curl -fsSL https://setup.agpt.co/install.sh | bash
@@ -65,6 +68,7 @@ Flags (parity with install.ps1):
   --ollama-model NAME  model to pull (implies --with-ollama)
   --ollama-host URL    use an existing Ollama at this URL (implies --with-ollama)
   --skip-preflight     skip the capability checks (not recommended)
+  --preflight-only     check the machine and install nothing
   --help
 EOF
   exit 0
@@ -109,7 +113,21 @@ say "      AutoGPT Platform - Ultimate Installer"
 say "============================================="
 
 SUDO=''
-need_sudo() { if [ "$(id -u)" -ne 0 ]; then SUDO='sudo'; fi; }
+need_sudo() {
+  if [ "$(id -u)" -eq 0 ]; then return; fi
+  command -v sudo >/dev/null 2>&1 || die "This step needs root access, but sudo is unavailable."
+  # A curl-piped script consumes stdin, so explicitly authenticate through the
+  # controlling terminal. Passwordless sudo continues to work without a TTY.
+  if ! sudo -n true 2>/dev/null; then
+    if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+      info "Administrator access is required; sudo may prompt on this terminal."
+      sudo -v </dev/tty || die "sudo authentication failed. Re-run from an interactive terminal."
+    else
+      die "sudo needs a password, but no terminal is available. Re-run interactively or configure passwordless sudo."
+    fi
+  fi
+  SUDO='sudo'
+}
 
 # ---- resolve which version to install ----
 VER_KIND=''; VER_REF=''
@@ -124,6 +142,13 @@ resolve_version() {
   else die "Couldn't determine the latest AutoGPT release (GitHub API unreachable?). Re-run when you're back online, or pass --dev for the development branch (or --release <tag> for a specific version)."; fi
 }
 
+validate_version_ref() {
+  local namespace
+  [ "$VER_KIND" = tag ] && namespace=tags || namespace=heads
+  git check-ref-format "refs/$namespace/$VER_REF" >/dev/null 2>&1 \
+    || die "Invalid $VER_KIND name: $VER_REF"
+}
+
 # ============================================================================
 # PRE-FLIGHT: "will AutoGPT actually run on this machine?"
 # ============================================================================
@@ -134,13 +159,16 @@ preflight() {
   info "OS: $OS_FAMILY ($ARCH)"
 
   # RAM
-  local ram_gb=0
+  local ram_gb=0 ram_value=''
   if [ "$OS_FAMILY" = linux ]; then
-    ram_gb=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 / 1024 ))
+    ram_value="$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || true)"
+    [[ "$ram_value" =~ ^[0-9]+$ ]] && ram_gb=$((ram_value / 1024 / 1024))
   else
-    ram_gb=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
+    ram_value="$(sysctl -n hw.memsize 2>/dev/null || true)"
+    [[ "$ram_value" =~ ^[0-9]+$ ]] && ram_gb=$((ram_value / 1024 / 1024 / 1024))
   fi
-  if [ "$ram_gb" -lt "$MIN_RAM_GB" ]; then warn "Only ${ram_gb} GB RAM; the stack wants >= ${MIN_RAM_GB} GB. It may be slow / OOM."
+  if [ "$ram_gb" -eq 0 ]; then warn "Could not determine installed RAM; Docker startup remains the authoritative check."
+  elif [ "$ram_gb" -lt "$MIN_RAM_GB" ]; then warn "Only ${ram_gb} GB RAM; the stack wants >= ${MIN_RAM_GB} GB. It may be slow / OOM."
   else ok "${ram_gb} GB RAM (>= ${MIN_RAM_GB} GB)"; fi
 
   # Disk (free GB on the install target's filesystem). df -Pk is POSIX on
@@ -222,6 +250,31 @@ install_curl() {
 
 docker_ready() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 
+install_docker_engine() {
+  local installer actual_sha
+  installer="$(mktemp)" || die "Could not create a temporary Docker installer file."
+  curl -fsSL \
+    "https://raw.githubusercontent.com/docker/docker-install/$DOCKER_INSTALL_COMMIT/install.sh" \
+    -o "$installer" || { rm -f "$installer"; die "Docker installer download failed."; }
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_sha="$(sha256sum "$installer" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_sha="$(shasum -a 256 "$installer" | awk '{print $1}')"
+  else
+    rm -f "$installer"
+    die "Cannot verify the Docker installer: sha256sum/shasum is unavailable."
+  fi
+  if [ "$actual_sha" != "$DOCKER_INSTALL_SHA256" ]; then
+    rm -f "$installer"
+    die "Docker installer checksum mismatch; refusing to execute it as root."
+  fi
+  if ! $SUDO sh "$installer"; then
+    rm -f "$installer"
+    die "Docker Engine installation failed."
+  fi
+  rm -f "$installer"
+}
+
 install_docker() {
   if docker_ready; then ok "Docker is installed and running"; return; fi
   if [ "$OS_FAMILY" = linux ]; then
@@ -232,11 +285,11 @@ install_docker() {
       step "Starting the Docker daemon"
       $SUDO systemctl enable --now docker 2>/dev/null || $SUDO service docker start 2>/dev/null || true
     else
-      step "Installing Docker Engine (get.docker.com)"
-      curl -fsSL https://get.docker.com | $SUDO sh
+      step "Installing Docker Engine (pinned official installer)"
+      install_docker_engine
       $SUDO systemctl enable --now docker 2>/dev/null || $SUDO service docker start 2>/dev/null || true
       if [ "$(id -u)" -ne 0 ]; then $SUDO usermod -aG docker "$USER" 2>/dev/null || true
-        warn "Added you to the 'docker' group - a fresh login is needed for non-sudo docker. setup-autogpt.sh will use sudo as needed this run."; fi
+        warn "Added you to the root-equivalent 'docker' group. A fresh login is needed for non-sudo Docker; setup uses sudo for this run."; fi
     fi
     # Poll for the daemon — a slow systemd/service start isn't ready on the
     # first probe. docker_ready uses non-sudo `docker info`; also accept the
@@ -253,20 +306,32 @@ install_docker() {
     if [ -d "/Applications/Docker.app" ]; then info "Docker Desktop already installed."
     elif command -v brew >/dev/null 2>&1; then info "Installing via Homebrew..."; brew install --cask docker
     else
-      local dmg="$HOME/Downloads/Docker.dmg"
-      local dmg_arch url
+      local download_dir dmg
+      download_dir="$(mktemp -d)" || die "Could not create a private download directory."
+      chmod 700 "$download_dir"
+      dmg="$download_dir/Docker.dmg"
+      local dmg_arch url mounted=false
       dmg_arch="$([ "$ARCH" = arm64 ] && echo arm64 || echo amd64)"
       url="https://desktop.docker.com/mac/main/$dmg_arch/Docker.dmg"
       info "Downloading Docker Desktop..."; curl -fsSL "$url" -o "$dmg"
+      hdiutil verify "$dmg" -quiet || die "Docker Desktop disk image failed integrity verification."
       info "Mounting + copying to /Applications (needs your password)..."
       hdiutil attach "$dmg" -nobrowse -quiet
+      mounted=true
+      codesign --verify --deep --strict "/Volumes/Docker/Docker.app" 2>/dev/null \
+        || { hdiutil detach "/Volumes/Docker" -quiet || true; die "Docker.app signature verification failed."; }
+      spctl --assess --type execute "/Volumes/Docker/Docker.app" 2>/dev/null \
+        || { hdiutil detach "/Volumes/Docker" -quiet || true; die "Docker.app failed macOS trust assessment."; }
+      need_sudo
       # Always detach the mounted volume, even if the copy fails (set -e would
       # otherwise exit before the detach line and leave /Volumes/Docker mounted).
-      if ! { $SUDO cp -R "/Volumes/Docker/Docker.app" /Applications/ 2>/dev/null || cp -R "/Volumes/Docker/Docker.app" /Applications/; }; then
+      if ! $SUDO cp -R "/Volumes/Docker/Docker.app" /Applications/; then
         hdiutil detach "/Volumes/Docker" -quiet || true
         die "Failed to copy Docker.app to /Applications. Install Docker Desktop manually from https://www.docker.com/products/docker-desktop and re-run."
       fi
-      hdiutil detach "/Volumes/Docker" -quiet || true
+      [ "$mounted" = false ] || hdiutil detach "/Volumes/Docker" -quiet || true
+      rm -f "$dmg"
+      rmdir "$download_dir" 2>/dev/null || true
     fi
     info "Starting Docker Desktop..."; open -a Docker || true
     wait_docker
@@ -303,15 +368,18 @@ get_repo() {
     die "$DIR exists but is not a git checkout (leftover from an interrupted run?). Remove it and re-run:  rm -rf \"$DIR\""
   else
     mkdir -p "$(dirname "$DIR")"
-    git clone --depth 1 --branch "$VER_REF" "$REPO_URL" "$DIR"
+    git clone --depth 1 --branch "$VER_REF" -- "$REPO_URL" "$DIR"
   fi
-  [ -f "$DIR/autogpt_platform/installer/setup-autogpt.sh" ] || die "Clone/checkout failed - $DIR has no installer."
+  [ -f "$DIR/autogpt_platform/installer/setup-autogpt.sh" ] \
+    && [ -f "$DIR/autogpt_platform/docker-compose.single-container.yml" ] \
+    && [ -f "$DIR/autogpt_platform/single-container/.env.example" ] \
+    || die "Clone/checkout failed - $DIR does not contain the single-container installer artifacts."
   ok "Repo ready at $DIR"
 }
 
 invoke_setup() {
-  step "Handing off to setup-autogpt.sh (builds + starts the stack)"
-  local args=()
+  step "Building + starting the single-container appliance"
+  local args=(--single-container)
   [ "$WITH_OLLAMA" = true ] && args+=(--with-ollama)
   [ -n "$OLLAMA_MODEL" ] && args+=("--ollama-model=$OLLAMA_MODEL")
   [ -n "$OLLAMA_HOST" ]  && args+=("--ollama-host=$OLLAMA_HOST")
@@ -336,6 +404,7 @@ if [ "$PREFLIGHT_ONLY" = true ]; then say ""; say "(--preflight-only: stopping b
 install_curl   # resolve_version + get.docker.com both rely on curl
 install_git
 resolve_version
+validate_version_ref
 info "Selected version -> $VER_KIND: $VER_REF"
 install_docker
 get_repo

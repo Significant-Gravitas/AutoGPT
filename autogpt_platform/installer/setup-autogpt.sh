@@ -8,8 +8,11 @@
 # Windows users: see setup-autogpt.bat.
 #
 # Optional flags:
+#   --single-container      Build and run the self-contained appliance instead
+#                           of the development multi-container stack.
 #   --with-ollama          Also install Ollama, pull a default chat model, and
-#                          wire backend/.env so AutoPilot runs without any
+#                          wire the selected distribution's .env so AutoPilot
+#                          runs without any
 #                          cloud API keys (CHAT_USE_LOCAL=true). See
 #                          docs/platform/copilot-local-llm.md.
 #   --ollama-model=NAME    Model to pull (default: hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M).
@@ -33,6 +36,7 @@ DOCKER_CMD="docker"
 DOCKER_COMPOSE_CMD="docker compose"
 LOG_FILE=""
 WITH_OLLAMA=false
+SINGLE_CONTAINER=false
 OLLAMA_MODEL="hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
 OLLAMA_HOST_URL=""
 
@@ -51,10 +55,11 @@ esac
 
 for arg in "$@"; do
     case "$arg" in
+        --single-container)   SINGLE_CONTAINER=true ;;
         --with-ollama)        WITH_OLLAMA=true ;;
         --ollama-model=*)     OLLAMA_MODEL="${arg#*=}"; WITH_OLLAMA=true ;;
         --ollama-host=*)      OLLAMA_HOST_URL="${arg#*=}"; WITH_OLLAMA=true ;;
-        -h|--help)            sed -n '4,19p' "$0"; exit 0 ;;
+        -h|--help)            sed -n '4,22p' "$0"; exit 0 ;;
         *) echo "Unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -326,12 +331,22 @@ _bootstrap_ollama_macos() {
 }
 
 write_local_env() {
-    # Wire backend/.env so the new ChatConfig.local transport activates and
+    # Wire the selected distribution's .env so ChatConfig.local activates and
     # AutoPilot routes through Ollama with no cloud API keys. Uses the host
     # LAN IP (or the explicit --ollama-host URL) so containers on Linux
     # can reach Ollama without docker-compose extra_hosts gymnastics.
-    cd "$REPO_DIR/autogpt_platform/backend" || handle_error "no backend dir"
-    [ -f .env ] || cp .env.default .env
+    local env_dir env_template env_label
+    if [ "$SINGLE_CONTAINER" = true ]; then
+        env_dir="$REPO_DIR/autogpt_platform/single-container"
+        env_template=".env.example"
+        env_label="single-container/.env"
+    else
+        env_dir="$REPO_DIR/autogpt_platform/backend"
+        env_template=".env.default"
+        env_label="backend/.env"
+    fi
+    cd "$env_dir" || handle_error "missing environment directory: $env_dir"
+    [ -f .env ] || install -m 600 "$env_template" .env
     local host_url
     if [ -n "$OLLAMA_HOST_URL" ]; then
         # ``bootstrap_ollama`` already stripped the trailing slash + any
@@ -418,7 +433,7 @@ write_local_env() {
         echo "$END_MARKER"
     } >> .env
     cd ..
-    print_color "GREEN" "✓ wrote backend/.env (CHAT_USE_LOCAL=true, Ollama at $host_url)"
+    print_color "GREEN" "✓ wrote $env_label (CHAT_USE_LOCAL=true, Ollama at $host_url)"
 }
 
 run_docker() {
@@ -431,7 +446,26 @@ run_docker() {
     mkdir -p logs
     LOG_FILE="$REPO_DIR/autogpt_platform/logs/docker_setup.log"
     
-    if $DOCKER_COMPOSE_CMD up -d > "$LOG_FILE" 2>&1; then
+    if [ "$SINGLE_CONTAINER" = true ] && [ ! -f single-container/.env ]; then
+        install -m 600 single-container/.env.example single-container/.env \
+            || handle_error "Failed to create single-container/.env"
+    fi
+
+    local compose_ok=false
+    if [ "$SINGLE_CONTAINER" = true ]; then
+        if $DOCKER_COMPOSE_CMD \
+            --env-file single-container/.env \
+            -f docker-compose.single-container.yml \
+            up --build --detach --wait --wait-timeout 900 \
+            > "$LOG_FILE" 2>&1; then
+            compose_ok=true
+        fi
+    else
+        if $DOCKER_COMPOSE_CMD up -d > "$LOG_FILE" 2>&1; then
+            compose_ok=true
+        fi
+    fi
+    if [ "$compose_ok" = true ]; then
         print_color "GREEN" "✓ Services started successfully!"
     else
         print_color "RED" "Docker compose failed. Check log file for details: $LOG_FILE"
@@ -463,7 +497,11 @@ main() {
     print_color "GREEN" "============================="
     echo
     print_color "BLUE" "🚀 Access AutoGPT at: http://localhost:3000"
-    print_color "BLUE" "📡 API available at: http://localhost:8006"
+    if [ "$SINGLE_CONTAINER" = true ]; then
+        print_color "BLUE" "📡 API is available through the same origin: http://localhost:3000/_agpt"
+    else
+        print_color "BLUE" "📡 API available at: http://localhost:8006"
+    fi
     if [ "$WITH_OLLAMA" = true ]; then
         echo
         print_color "BLUE" "🦙 AutoPilot wired to Ollama (model: $OLLAMA_MODEL)"
@@ -472,8 +510,13 @@ main() {
         print_color "YELLOW" "  docs/platform/copilot-local-llm.md."
     fi
     echo
-    print_color "YELLOW" "To stop services: docker compose down"
-    print_color "YELLOW" "To view logs: docker compose logs -f"
+    if [ "$SINGLE_CONTAINER" = true ]; then
+        print_color "YELLOW" "To stop services: docker compose --env-file single-container/.env -f docker-compose.single-container.yml down"
+        print_color "YELLOW" "To view logs: docker compose --env-file single-container/.env -f docker-compose.single-container.yml logs -f"
+    else
+        print_color "YELLOW" "To stop services: docker compose down"
+        print_color "YELLOW" "To view logs: docker compose logs -f"
+    fi
     echo
     print_color "YELLOW" "All commands should be run in: $REPO_DIR/autogpt_platform"
 }

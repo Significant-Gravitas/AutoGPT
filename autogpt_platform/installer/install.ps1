@@ -3,7 +3,8 @@
 # ----------------------------------------------------------------------------
 # Zero-prerequisite bootstrap: checks whether your machine CAN run AutoGPT,
 # installs git + Docker Desktop if missing, fetches the repo at the version
-# you pick, then hands off to setup-autogpt.bat to bring the stack up.
+# you pick, then hands off to setup-autogpt.bat to bring the single-container
+# appliance up.
 #
 # One-liner:
 #   powershell -ExecutionPolicy Bypass -Command "iwr https://setup.agpt.co/install.ps1 -OutFile install.ps1; ./install.ps1"
@@ -17,6 +18,7 @@
 #   -OllamaModel <name>  model to pull (implies -WithOllama)
 #   -OllamaHost <url>    use an existing Ollama at this URL (implies -WithOllama)
 #   -SkipPreflight       skip the capability checks (not recommended)
+#   -PreflightOnly       check the machine and install nothing
 #   -Help
 # ============================================================================
 [CmdletBinding()]
@@ -48,6 +50,19 @@ function Fail  ($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red }
 function Step  ($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 function Die   ($m) { Write-Host "`nError: $m" -ForegroundColor Red; exit 1 }
 
+function Refresh-Path {
+  $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+}
+
+function Assert-TrustedInstaller([string]$Path, [string]$PublisherPattern) {
+  $signature = Get-AuthenticodeSignature $Path
+  $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { '' }
+  if ($signature.Status -ne 'Valid' -or $subject -notmatch $PublisherPattern) {
+    Remove-Item -Force $Path -ErrorAction SilentlyContinue
+    Die "Installer signature verification failed for $Path (status: $($signature.Status), signer: $subject)."
+  }
+}
+
 if ($Help) {
   # Print the contiguous leading comment header (stop at the first non-# line),
   # stripping the leading "# ".
@@ -74,6 +89,12 @@ function Resolve-Version {
     if ($tag) { return @{ kind='tag'; ref=$tag } }
   } catch { }
   Die "Couldn't determine the latest AutoGPT release (GitHub API unreachable?). Re-run when you're back online, or pass -Dev for the development branch (or -Release <tag> for a specific version)."
+}
+
+function Assert-VersionRef($ver) {
+  $namespace = if ($ver.kind -eq 'tag') { 'tags' } else { 'heads' }
+  & git check-ref-format "refs/$namespace/$($ver.ref)" *> $null
+  if ($LASTEXITCODE -ne 0) { Die "Invalid $($ver.kind) name: $($ver.ref)" }
 }
 
 # ---- privilege check ----
@@ -155,15 +176,18 @@ function Invoke-Preflight {
 function Install-Git {
   if (Get-Command git -ErrorAction SilentlyContinue) { Ok "git already installed"; return }
   Step "Installing Git for Windows"
+  $gitArchPattern = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { '-arm64\.exe$' } else { '-64-bit\.exe$' }
   $asset = (Invoke-RestMethod "https://api.github.com/repos/git-for-windows/git/releases/latest" -UseBasicParsing).assets |
-    Where-Object { $_.name -match '-64-bit\.exe$' -and $_.name -notmatch 'Portable' } | Select-Object -First 1
+    Where-Object { $_.name -match $gitArchPattern -and $_.name -notmatch 'Portable' } | Select-Object -First 1
   if (-not $asset) { Die "Couldn't find a Git for Windows installer in the latest release. Install it from https://git-scm.com and re-run." }
   $exe = "$env:TEMP\git-install.exe"
   Info "Downloading $($asset.name)..."
   Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $exe
+  Assert-TrustedInstaller $exe 'Git for Windows|Johannes Schindelin'
   Info "Installing silently..."
-  Start-Process $exe -ArgumentList '/VERYSILENT','/NORESTART','/NOCANCEL','/SP-','/SUPPRESSMSGBOXES' -Wait
-  $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+  $proc = Start-Process $exe -ArgumentList '/VERYSILENT','/NORESTART','/NOCANCEL','/SP-','/SUPPRESSMSGBOXES' -Wait -PassThru
+  if ($proc.ExitCode -ne 0) { Die "Git for Windows installer exited with code $($proc.ExitCode)." }
+  Refresh-Path
   if (Get-Command git -ErrorAction SilentlyContinue) { Ok "git installed" } else { Die "git install failed - install it from https://git-scm.com and re-run." }
 }
 
@@ -193,6 +217,7 @@ function Install-Docker {
   $dockerArch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { 'arm64' } else { 'amd64' }
   Info "Downloading Docker Desktop ($dockerArch, ~700 MB)..."
   Invoke-WebRequest -UseBasicParsing "https://desktop.docker.com/win/main/$dockerArch/Docker%20Desktop%20Installer.exe" -OutFile $exe
+  Assert-TrustedInstaller $exe 'Docker'
   Info "Installing silently (WSL2 backend, license accepted)..."
   $proc = Start-Process $exe -ArgumentList 'install','--quiet','--accept-license','--backend=wsl-2' -Wait -PassThru
   # 0 = success, 3010 = success but reboot required. Anything else failed — bail
@@ -203,7 +228,7 @@ function Install-Docker {
   try { Add-LocalGroupMember -Group 'docker-users' -Member $env:USERNAME -ErrorAction SilentlyContinue } catch {}
   # Refresh PATH so the freshly-installed `docker` CLI is visible to
   # Test-DockerReady in this session (mirrors Install-Git).
-  $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+  Refresh-Path
   Warn "Docker Desktop installed. Windows usually needs a REBOOT before the engine starts."
   $dd = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
   if (Test-Path $dd) { Start-Process $dd }
@@ -230,9 +255,9 @@ function Get-Repo($ver) {
     # Fetch the fully-qualified ref: a bare name resolves remote branches only,
     # so default/-Release installs (which are tags) would otherwise fail to update.
     $fetchRef = if ($ver.kind -eq 'tag') { "refs/tags/$($ver.ref)" } else { "refs/heads/$($ver.ref)" }
-    git -C $Dir fetch --depth 1 origin $fetchRef 2>&1 | Out-Null
+    & git -C $Dir fetch --depth 1 origin $fetchRef *> $null
     if ($LASTEXITCODE -ne 0) { Die "git fetch failed for '$($ver.ref)'. Check the branch/tag name and your network, then re-run." }
-    git -C $Dir checkout FETCH_HEAD 2>&1 | Out-Null
+    & git -C $Dir checkout FETCH_HEAD *> $null
     if ($LASTEXITCODE -ne 0) { Die "git checkout failed in $Dir. Resolve the repo state (or remove $Dir) and re-run." }
   } elseif ((Test-Path $Dir) -and (Get-ChildItem -Force $Dir -ErrorAction SilentlyContinue | Select-Object -First 1)) {
     # Non-empty but not a git checkout — usually a half-finished clone from an
@@ -243,19 +268,23 @@ function Get-Repo($ver) {
     # the parent when there is one.
     $parent = Split-Path $Dir -Parent
     if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-    git clone --depth 1 --branch $ver.ref $REPO_URL $Dir 2>&1 | Out-Null
+    & git clone --depth 1 --branch $ver.ref -- $REPO_URL $Dir *> $null
     if ($LASTEXITCODE -ne 0) { Die "git clone failed (branch/tag '$($ver.ref)'). Check the name and your network, then re-run." }
   }
-  if (-not (Test-Path (Join-Path $Dir 'autogpt_platform\installer\setup-autogpt.bat'))) {
-    Die "Clone/checkout failed - $Dir doesn't contain the installer."
+  if (
+    -not (Test-Path (Join-Path $Dir 'autogpt_platform\installer\setup-autogpt.bat')) -or
+    -not (Test-Path (Join-Path $Dir 'autogpt_platform\docker-compose.single-container.yml')) -or
+    -not (Test-Path (Join-Path $Dir 'autogpt_platform\single-container\.env.example'))
+  ) {
+    Die "Clone/checkout failed - $Dir doesn't contain the single-container installer artifacts."
   }
   Ok "Repo ready at $Dir"
 }
 
 function Invoke-Setup {
-  Step "Handing off to setup-autogpt.bat (builds + starts the stack)"
+  Step "Building + starting the single-container appliance"
   $bat = Join-Path $Dir 'autogpt_platform\installer\setup-autogpt.bat'
-  $setupArgs = @()
+  $setupArgs = @('/single-container')
   if ($WithOllama -or $OllamaModel -or $OllamaHost) { $setupArgs += '/with-ollama' }
   if ($OllamaModel) { $setupArgs += "/ollama-model=$OllamaModel" }
   if ($OllamaHost)  { $setupArgs += "/ollama-host=$OllamaHost" }
@@ -277,6 +306,7 @@ if ($PreflightOnly) { Say "`n(-PreflightOnly: stopping before any install.)"; ex
 Install-Git
 # Resolve the version after pre-flight so -PreflightOnly never needs the network.
 $ver = Resolve-Version
+Assert-VersionRef $ver
 Info "Selected version -> $($ver.kind): $($ver.ref)"
 Install-Docker
 Get-Repo $ver

@@ -9,9 +9,9 @@ The **bootstrap installer** (`install.sh` / `install.ps1`) is a zero-prerequisit
 1. **Pre-flight check** — verifies your machine can actually run AutoGPT (OS/version, CPU virtualization, RAM, free disk, admin rights) and **tells you up front, with a fix,** if something is a hard blocker (e.g. virtualization disabled in BIOS) — *before* installing anything.
 2. **Installs prerequisites** — git and Docker if they're missing (Docker Engine on Linux, Docker Desktop on Windows/macOS). Already-present tools are detected and skipped.
 3. **Fetches the repo** at the version you choose — the latest release (default), the `dev` branch, or a custom branch/tag.
-4. **Hands off** to `setup-autogpt.{sh,bat}`, which builds the Docker stack, optionally wires a local LLM, and starts everything.
+4. **Builds and starts the single-container appliance**, optionally wiring a local LLM. The web app, API, databases, queues, and workers run behind one public port with persistent state in a named Docker volume.
 
-> Already have git + Docker and just want the platform setup? Run `setup-autogpt.{sh,bat}` directly (see [Manual Installation](#manual-installation)).
+> Already have git + Docker and just want the appliance setup? Run `setup-autogpt.{sh,bat}` directly in single-container mode (see [Manual Installation](#manual-installation)).
 
 ## Prerequisites
 
@@ -20,6 +20,8 @@ The **bootstrap installer** (`install.sh` / `install.ps1`) is a zero-prerequisit
 - **CPU virtualization** available/enabled — Docker needs it on Windows/macOS (WSL2 / Apple Hypervisor). On Linux, Docker is native and this isn't required.
 - **~25 GB free disk** and **8 GB+ RAM** for the full stack.
 - **Admin / sudo** to install Docker and enable WSL2 (Windows).
+
+On a fresh Mac without Homebrew, the installer opens Apple's Command Line Tools installer for git. Finish that system dialog, then re-run the same command; the bootstrap resumes without reinstalling completed prerequisites.
 
 ## Quick One-Liner Installation
 
@@ -40,6 +42,9 @@ flags reach the script (not `bash`), e.g.
 ```powershell
 powershell -ExecutionPolicy Bypass -Command "iwr https://setup.agpt.co/install.ps1 -OutFile install.ps1; ./install.ps1"
 ```
+
+Append flags to the downloaded script invocation. For example, to install the
+development branch: `...; ./install.ps1 -Dev`.
 
 ### Options
 
@@ -69,12 +74,23 @@ If you prefer, you can manually download and run the installer scripts:
 - **Windows:** `setup-autogpt.bat`
 
 These scripts are located in the `autogpt_platform/installer/` directory.
+Pass `--single-container` on Linux/macOS or `/single-container` on Windows:
+
+```bash
+cd AutoGPT
+./autogpt_platform/installer/setup-autogpt.sh --single-container
+```
+
+```cmd
+cd AutoGPT
+autogpt_platform\installer\setup-autogpt.bat /single-container
+```
 
 ## Running fully offline with a local LLM (Ollama)
 
 Both installer scripts accept an opt-in flag that installs
 [Ollama](https://ollama.com), pulls a default chat model, and wires
-`backend/.env` so AutoPilot runs **without any cloud API keys**. This
+the selected distribution's `.env` so AutoPilot runs **without any cloud API keys**. This
 is useful for air-gapped or privacy-sensitive deployments — see
 [Running AutoPilot on a self-hosted LLM](copilot-local-llm.md) for the
 full reference.
@@ -82,8 +98,8 @@ full reference.
 ### Linux / macOS
 
 ```bash
-cd autogpt_platform/installer
-./setup-autogpt.sh --with-ollama
+cd AutoGPT
+./autogpt_platform/installer/setup-autogpt.sh --single-container --with-ollama
 # Optional overrides:
 #   --ollama-model=qwen3:14b-instruct-q4_K_M
 #   --ollama-host=http://gpu-rig.lab:11434   # use an existing Ollama
@@ -92,8 +108,8 @@ cd autogpt_platform/installer
 ### Windows
 
 ```cmd
-cd autogpt_platform\installer
-setup-autogpt.bat /with-ollama
+cd AutoGPT
+autogpt_platform\installer\setup-autogpt.bat /single-container /with-ollama
 REM Optional overrides:
 REM   /ollama-model=qwen3:14b-instruct-q4_K_M
 REM   /ollama-host=http://gpu-rig.lab:11434
@@ -104,24 +120,31 @@ The installer:
 1. Installs Ollama (skipped if already present, or if `--ollama-host` points at an existing one).
 2. Configures `OLLAMA_HOST=0.0.0.0:11434` + `OLLAMA_CONTEXT_LENGTH=32768` so containers can reach it and so AutoPilot's ~8 k system prompt isn't truncated by Ollama's 4 k default.
 3. Pulls the chat model (default `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`).
-4. Appends a marker-bounded block to `autogpt_platform/backend/.env` with `CHAT_USE_LOCAL=true` plus the `CHAT_BASE_URL` / `CHAT_API_KEY` / `CHAT_*_MODEL` overrides.
+4. Appends a marker-bounded block to `autogpt_platform/single-container/.env` with `CHAT_USE_LOCAL=true` plus the `CHAT_BASE_URL` / `CHAT_API_KEY` / `CHAT_*_MODEL` overrides.
 
 Re-running with `--with-ollama` is idempotent — the wiring block is rewritten in place.
 
 ## After Installation
 
 Once the installation is complete:
-- The backend services will be running in Docker containers
-- The frontend application will be available at http://localhost:3000
+
+- The complete appliance will be running in one Docker container.
+- The frontend and same-origin API will be available at http://localhost:3000.
+- Persistent application state will be stored in the `autogpt-platform-data` Docker volume.
 
 ## Stopping the Services
 
-To stop the services, press Ctrl+C in the terminal where the frontend is running, then run:
+To stop the appliance without deleting its persistent volume, run:
 
 ```bash
 cd AutoGPT/autogpt_platform
-docker compose down
+docker compose \
+  --env-file single-container/.env \
+  -f docker-compose.single-container.yml \
+  down
 ```
+
+Do not add `--volumes` unless you intend to delete the installation's data.
 
 ## Troubleshooting
 
@@ -130,4 +153,4 @@ If you encounter any issues during installation:
 1. Make sure all prerequisites are correctly installed
 2. Check that Docker is running
 3. Ensure you have a stable internet connection
-4. Verify you have sufficient permissions to create directories and run Docker 
+4. Verify you have sufficient permissions to create directories and run Docker

@@ -7,8 +7,10 @@ REM ----------------------------------------------------------------------------
 REM Sets up AutoGPT on Windows.  Linux/macOS users: setup-autogpt.sh.
 REM
 REM Optional flags:
+REM   /single-container       Build and run the self-contained appliance instead
+REM                           of the development multi-container stack.
 REM   /with-ollama           Install Ollama (via winget), pull a default chat
-REM                          model, and wire backend\.env so AutoPilot runs
+REM                          model, and wire the selected distribution's .env
 REM                          without any cloud API keys (CHAT_USE_LOCAL=true).
 REM                          See docs/platform/copilot-local-llm.md.
 REM   /ollama-model=NAME     Model to pull (default: hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M).
@@ -24,6 +26,7 @@ set REPO_DIR=%SCRIPT_DIR%..\..
 set CLONE_NEEDED=0
 set LOG_FILE=
 set WITH_OLLAMA=0
+set SINGLE_CONTAINER=0
 set OLLAMA_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 set OLLAMA_HOST_URL=
 
@@ -38,7 +41,9 @@ REM "--ollama-model=foo" as a single word.)
 :parse_args
 if "%~1"=="" goto args_done
 set ARG=%~1
-if /I "%ARG%"=="/with-ollama" (
+if /I "%ARG%"=="/single-container" (
+    set SINGLE_CONTAINER=1
+) else if /I "%ARG%"=="/with-ollama" (
     set WITH_OLLAMA=1
 ) else if /I "%ARG:~0,14%"=="/ollama-model=" (
     set OLLAMA_MODEL=%ARG:~14%
@@ -74,6 +79,7 @@ goto parse_args
 echo AutoGPT Windows Setup
 echo.
 echo Optional flags:
+echo   /single-container       Build + run the self-contained appliance
 echo   /with-ollama           Install Ollama + pull default chat model + wire .env
 echo   /ollama-model=NAME     Model tag to pull (default: %OLLAMA_MODEL%)
 echo   /ollama-host=URL       Use existing Ollama at URL instead of installing
@@ -163,7 +169,12 @@ echo Starting AutoGPT services with Docker Compose...
 echo This may take a few minutes on first run...
 echo.
 set LOG_FILE=%REPO_DIR%\autogpt_platform\logs\docker_setup.log
-docker compose up -d > "%LOG_FILE%" 2>&1
+if "%SINGLE_CONTAINER%"=="1" (
+    if not exist single-container\.env copy /Y single-container\.env.example single-container\.env >nul
+    docker compose --env-file single-container\.env -f docker-compose.single-container.yml up --build -d --wait --wait-timeout 900 > "%LOG_FILE%" 2>&1
+) else (
+    docker compose up -d > "%LOG_FILE%" 2>&1
+)
 if errorlevel 1 (
     echo Docker compose failed. Check log file for details: %LOG_FILE%
     echo.
@@ -180,7 +191,11 @@ echo      Setup Complete!
 echo =============================
 echo.
 echo Access AutoGPT at: http://localhost:3000
-echo API available at: http://localhost:8006
+if "%SINGLE_CONTAINER%"=="1" (
+    echo API is available through the same origin: http://localhost:3000/_agpt
+) else (
+    echo API available at: http://localhost:8006
+)
 if "%WITH_OLLAMA%"=="1" (
     echo.
     echo AutoPilot wired to Ollama ^(model: %OLLAMA_MODEL%^)
@@ -188,11 +203,18 @@ if "%WITH_OLLAMA%"=="1" (
     echo Anthropic's wire protocol. See docs/platform/copilot-local-llm.md.
 )
 echo.
-echo To stop services: docker compose down
-echo To view logs: docker compose logs -f
+if "%SINGLE_CONTAINER%"=="1" (
+    echo To stop services: docker compose --env-file single-container\.env -f docker-compose.single-container.yml down
+    echo To view logs: docker compose --env-file single-container\.env -f docker-compose.single-container.yml logs -f
+) else (
+    echo To stop services: docker compose down
+    echo To view logs: docker compose logs -f
+)
 echo.
-echo Press any key to exit ^(services will keep running^)...
-pause >nul
+if "%SINGLE_CONTAINER%"=="0" (
+    echo Press any key to exit ^(services will keep running^)...
+    pause >nul
+)
 exit /b 0
 
 REM ============================================================================
@@ -332,7 +354,7 @@ exit /b 0
 
 
 :write_local_env
-REM Write backend\.env wiring for the local transport. We use
+REM Write the selected distribution's .env wiring for the local transport. We use
 REM host.docker.internal rather than 127.0.0.1 because Docker Desktop
 REM on Windows auto-injects it in every container's /etc/hosts —
 REM 127.0.0.1 inside a container points at the container, not the host.
@@ -342,12 +364,21 @@ REM lines and nothing else. We use a PowerShell one-liner instead of a
 REM batch sed-loop because batch's line editing is genuinely painful
 REM ^(no in-place edit, no regex address ranges^), and PowerShell ships
 REM with every supported Windows.
-cd /d "%REPO_DIR%\autogpt_platform\backend"
+if "%SINGLE_CONTAINER%"=="1" (
+    set ENV_DIR=%REPO_DIR%\autogpt_platform\single-container
+    set ENV_TEMPLATE=.env.example
+    set ENV_LABEL=single-container\.env
+) else (
+    set ENV_DIR=%REPO_DIR%\autogpt_platform\backend
+    set ENV_TEMPLATE=.env.default
+    set ENV_LABEL=backend\.env
+)
+cd /d "%ENV_DIR%"
 if errorlevel 1 (
-    echo no backend dir
+    echo missing environment directory: %ENV_DIR%
     exit /b 1
 )
-if not exist .env copy /Y .env.default .env >nul
+if not exist .env copy /Y "%ENV_TEMPLATE%" .env >nul
 
 set HOST_URL=
 if not "%OLLAMA_HOST_URL%"=="" (
@@ -385,6 +416,6 @@ echo CHAT_FAST_ADVANCED_MODEL=%OLLAMA_MODEL%>>.env
 echo OLLAMA_HOST=%HOST_URL%>>.env
 echo %END_MARKER%>>.env
 
-echo   wrote backend\.env ^(CHAT_USE_LOCAL=true, Ollama at %HOST_URL%^)
+echo   wrote %ENV_LABEL% ^(CHAT_USE_LOCAL=true, Ollama at %HOST_URL%^)
 cd /d "%REPO_DIR%"
 exit /b 0

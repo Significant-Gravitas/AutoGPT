@@ -1,0 +1,59 @@
+name: AutoGPT Platform - Installer CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/platform-installer-ci.yml"
+      - "autogpt_platform/installer/**"
+      - "autogpt_platform/docker-compose.single-container.yml"
+      - "autogpt_platform/single-container/.env.example"
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/platform-installer-ci.yml"
+      - "autogpt_platform/installer/**"
+      - "autogpt_platform/docker-compose.single-container.yml"
+      - "autogpt_platform/single-container/.env.example"
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: Bash and Compose syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Parse shell installers
+        run: bash -n autogpt_platform/installer/*.sh
+      - name: Smoke-test single-container handoff
+        run: bash autogpt_platform/installer/test-single-container-handoff.sh
+      - name: Validate single-container Compose interpolation
+        run: >-
+          docker compose
+          --env-file autogpt_platform/single-container/.env.example
+          -f autogpt_platform/docker-compose.single-container.yml
+          config --quiet
+
+  windows:
+    name: PowerShell and batch syntax
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Parse PowerShell installer
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "autogpt_platform/installer/install.ps1",
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count) {
+            $errors | Format-List
+            exit 1
+          }
+      - name: Exercise batch help parser
+        shell: cmd
+        run: autogpt_platform\installer\setup-autogpt.bat /help | findstr /C:"/single-container"
