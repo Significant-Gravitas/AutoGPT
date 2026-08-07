@@ -1,10 +1,12 @@
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 import {
   getGetV2GetPendingReviewsMockHandler200,
   getPostV2ProcessReviewActionMockHandler200,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { NeedsAttentionList } from "../NeedsAttentionList";
@@ -52,7 +54,9 @@ test("renders attributed rows and approves in one tap", async () => {
 });
 
 test("skip sends a rejection", async () => {
-  let actionBody: { reviews: Array<{ approved: boolean }> } | undefined;
+  let actionBody:
+    | { reviews: Array<{ approved: boolean; message?: string }> }
+    | undefined;
   server.use(
     getGetV2GetPendingReviewsMockHandler200([review]),
     getPostV2ProcessReviewActionMockHandler200(async (info) => {
@@ -64,8 +68,33 @@ test("skip sends a rejection", async () => {
   render(<NeedsAttentionList />);
   await userEvent.click(await screen.findByRole("button", { name: /skip/i }));
   await waitFor(() =>
-    expect(actionBody?.reviews[0]).toMatchObject({ approved: false }),
+    expect(actionBody?.reviews[0]).toMatchObject({
+      approved: false,
+      message: "Skipped from home",
+    }),
   );
+});
+
+test("shows a destructive toast when approve fails", async () => {
+  server.use(
+    getGetV2GetPendingReviewsMockHandler200([review]),
+    http.post(
+      "/api/proxy/api/review/action",
+      () => new HttpResponse(null, { status: 500 }),
+    ),
+  );
+
+  render(
+    <>
+      <NeedsAttentionList />
+      <Toaster />
+    </>,
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: /approve/i }),
+  );
+
+  expect(await screen.findByText("Failed to approve review")).toBeDefined();
 });
 
 test("renders nothing when there are no pending reviews", async () => {
