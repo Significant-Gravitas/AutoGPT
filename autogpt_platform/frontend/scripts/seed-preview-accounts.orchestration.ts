@@ -27,6 +27,11 @@ interface SeedOptions {
   schema: string;
   identityTable: string;
   accountTable: string;
+  userTable: string;
+  profileTable: string;
+  onboardingTable: string;
+  subscriptionTierType: string;
+  onboardingStepType: string;
   password: string;
 }
 
@@ -144,19 +149,45 @@ export async function seedPreviewAccounts(
   const client = await pool.connect();
   try {
     const seed = dependencies.seedRoster ?? seedRosterDefault;
-    const { createdIdentities, createdAccounts } = await runInTransaction(
+    const result = await runInTransaction(
       client,
-      () => seed(client, { identityTable, accountTable, passwordHash }),
+      () =>
+        seed(client, {
+          identityTable: options.identityTable,
+          accountTable: options.accountTable,
+          userTable: options.userTable,
+          profileTable: options.profileTable,
+          onboardingTable: options.onboardingTable,
+          subscriptionTierType: options.subscriptionTierType,
+          onboardingStepType: options.onboardingStepType,
+          passwordHash,
+        }),
       reportError,
     );
-    if (createdIdentities === 0 && createdAccounts === 0) {
+    const {
+      createdIdentities,
+      createdAccounts,
+      createdUsers,
+      updatedUsers,
+      createdProfiles,
+      changedOnboarding,
+    } = result;
+    const productChanges =
+      createdUsers + updatedUsers + createdProfiles + changedOnboarding;
+    if (
+      createdIdentities === 0 &&
+      createdAccounts === 0 &&
+      productChanges === 0
+    ) {
       reportLog(
-        "Preview accounts are now up to date; no new identities or credential accounts created.",
+        "Preview accounts are now up to date; no auth or product account changes needed.",
       );
     } else {
       reportLog(
         `Seeded preview accounts: ${createdIdentities} identities and ` +
-          `${createdAccounts} credential accounts created.`,
+          `${createdAccounts} credential accounts created; ` +
+          `${createdUsers} users and ${createdProfiles} profiles created; ` +
+          `${updatedUsers} users and ${changedOnboarding} onboarding records converged.`,
       );
     }
     return SEEDED_EXIT_CODE;

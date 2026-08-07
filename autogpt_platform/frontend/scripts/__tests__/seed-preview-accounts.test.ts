@@ -31,6 +31,42 @@ describe("preview account roster", () => {
       "preview-admin@previews.agpt.co",
     ]);
   });
+
+  it("defines the product state for every preview persona", () => {
+    expect(
+      PREVIEW_ACCOUNTS.map((account) => ({
+        name: account.name,
+        subscriptionTier: account.subscriptionTier,
+        onboardingComplete: account.onboardingComplete,
+      })),
+    ).toEqual([
+      {
+        name: "preview-admin",
+        subscriptionTier: "NO_TIER",
+        onboardingComplete: true,
+      },
+      {
+        name: "preview-existing",
+        subscriptionTier: "NO_TIER",
+        onboardingComplete: true,
+      },
+      {
+        name: "preview-clean",
+        subscriptionTier: "NO_TIER",
+        onboardingComplete: false,
+      },
+      {
+        name: "preview-pro",
+        subscriptionTier: "PRO",
+        onboardingComplete: true,
+      },
+      {
+        name: "preview-enterprise",
+        subscriptionTier: "ENTERPRISE",
+        onboardingComplete: true,
+      },
+    ]);
+  });
 });
 
 describe("deterministicUserID", () => {
@@ -100,6 +136,11 @@ describe("closePool", () => {
 const TABLES = {
   identityTable: '"platform"."UserAuthIdentity"',
   accountTable: '"platform"."UserAuthAccount"',
+  userTable: '"platform"."User"',
+  profileTable: '"platform"."Profile"',
+  onboardingTable: '"platform"."UserOnboarding"',
+  subscriptionTierType: '"platform"."SubscriptionTier"',
+  onboardingStepType: '"platform"."OnboardingStep"',
   passwordHash: "$2a$10$fakehashfakehashfakehashfa",
 };
 
@@ -118,6 +159,7 @@ interface Call {
 function fakeClient(behavior: {
   existingByEmail?: Record<string, string | null>;
   existingCredentials?: Set<string>;
+  productUserIDsByEmail?: Record<string, string | null>;
 }): { client: QueryExecutor; calls: Call[] } {
   const calls: Call[] = [];
   const client: QueryExecutor = {
@@ -147,6 +189,56 @@ function fakeClient(behavior: {
         const has = behavior.existingCredentials?.has(userID) ?? false;
         return { rows: [], rowCount: has ? 0 : 1 };
       }
+      if (text.includes("INSERT INTO") && text.includes('"platform"."User"')) {
+        const email = params[1] as string;
+        const preexisting =
+          behavior.productUserIDsByEmail?.[email] !== undefined ||
+          behavior.existingByEmail?.[email] !== undefined;
+        return { rows: [], rowCount: preexisting ? 0 : 1 };
+      }
+      if (
+        text.includes("SELECT id") &&
+        text.includes('"platform"."User"') &&
+        !text.includes("UserAuthIdentity")
+      ) {
+        const email = params[0] as string;
+        const configured = behavior.productUserIDsByEmail?.[email];
+        if (configured !== undefined) {
+          return {
+            rows: configured === null ? [] : [{ id: configured }],
+            rowCount: configured === null ? 0 : 1,
+          };
+        }
+        const id = behavior.existingByEmail?.[email];
+        if (id !== undefined) {
+          return { rows: id === null ? [] : [{ id }], rowCount: id ? 1 : 0 };
+        }
+        return { rows: [{ id: deterministicUserID(email) }], rowCount: 1 };
+      }
+      if (text.includes("UPDATE") && text.includes('"platform"."User"')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (
+        text.includes("INSERT INTO") &&
+        text.includes('"platform"."Profile"')
+      ) {
+        const preexisting = Object.values(
+          behavior.productUserIDsByEmail ?? behavior.existingByEmail ?? {},
+        ).includes(params[0] as string);
+        return { rows: [], rowCount: preexisting ? 0 : 1 };
+      }
+      if (text.includes("SELECT id") && text.includes('"platform"."Profile"')) {
+        return { rows: [{ id: "profile-id" }], rowCount: 1 };
+      }
+      if (
+        text.includes("INSERT INTO") &&
+        text.includes('"platform"."UserOnboarding"')
+      ) {
+        const preexisting = Object.values(
+          behavior.productUserIDsByEmail ?? behavior.existingByEmail ?? {},
+        ).includes(params[0] as string);
+        return { rows: [], rowCount: preexisting ? 0 : 1 };
+      }
       throw new Error(`Unscripted statement: ${text.slice(0, 60)}`);
     },
   };
@@ -154,13 +246,39 @@ function fakeClient(behavior: {
 }
 
 describe("seedRoster", () => {
+  it("pre-creates an app user for every persona without writing Stripe customer ids", async () => {
+    const { client, calls } = fakeClient({});
+
+    await seedRoster(client, TABLES);
+
+    const userWrites = calls.filter(
+      (call) =>
+        call.text.includes("INSERT INTO") &&
+        call.text.includes('"platform"."User"'),
+    );
+    expect(userWrites).toHaveLength(PREVIEW_ACCOUNTS.length);
+    expect(userWrites.map((write) => write.params[3])).toEqual(
+      PREVIEW_ACCOUNTS.map((account) => account.subscriptionTier),
+    );
+    for (const write of userWrites) {
+      expect(write.text).not.toContain("stripeCustomerId");
+    }
+  });
+
   it("creates all five identities and credentials on a fresh database", async () => {
     const { client, calls } = fakeClient({});
     const result = await seedRoster(client, TABLES);
-    expect(result).toEqual({ createdIdentities: 5, createdAccounts: 5 });
-    expect(calls.filter((call) => call.text.includes("UPDATE"))).toHaveLength(
-      0,
-    );
+    expect(result).toEqual({
+      createdIdentities: 5,
+      createdAccounts: 5,
+      createdUsers: 5,
+      updatedUsers: 0,
+      createdProfiles: 5,
+      changedOnboarding: 5,
+    });
+    expect(
+      calls.filter((call) => call.text.trimStart().startsWith("UPDATE")),
+    ).toHaveLength(0);
   });
 
   it("is idempotent: a second run creates nothing and never rewrites a credential", async () => {
@@ -175,7 +293,14 @@ describe("seedRoster", () => {
 
     const result = await seedRoster(client, TABLES);
 
-    expect(result).toEqual({ createdIdentities: 0, createdAccounts: 0 });
+    expect(result).toEqual({
+      createdIdentities: 0,
+      createdAccounts: 0,
+      createdUsers: 0,
+      updatedUsers: 0,
+      createdProfiles: 0,
+      changedOnboarding: 0,
+    });
     // The credential statement stays a guarded INSERT — nothing ever issues
     // an UPDATE against the account table, so passwords cannot be rewritten.
     const accountWrites = calls.filter((c) =>
@@ -216,6 +341,71 @@ describe("seedRoster", () => {
     );
     expect(convergence).toBeDefined();
     expect(convergence?.params[1]).toBe("admin");
+  });
+
+  it("completes onboarding for established personas but leaves clean incomplete", async () => {
+    const { client, calls } = fakeClient({});
+
+    await seedRoster(client, TABLES);
+
+    const onboardingWrites = calls.filter((call) =>
+      call.text.includes('"platform"."UserOnboarding"'),
+    );
+    expect(onboardingWrites).toHaveLength(PREVIEW_ACCOUNTS.length);
+    const cleanID = deterministicUserID("preview-clean@previews.agpt.co");
+    const cleanWrite = onboardingWrites.find(
+      (call) => call.params[0] === cleanID,
+    );
+    expect(cleanWrite?.text).toContain("array_remove");
+    expect(cleanWrite?.text).not.toContain("array_append");
+    for (const account of PREVIEW_ACCOUNTS.filter(
+      (candidate) => candidate.onboardingComplete,
+    )) {
+      const userID = deterministicUserID(account.email);
+      expect(
+        onboardingWrites.find((call) => call.params[0] === userID)?.text,
+      ).toContain("array_append");
+    }
+  });
+
+  it("never writes a Stripe customer id and only converges tiers without one", async () => {
+    const existingByEmail = Object.fromEntries(
+      PREVIEW_ACCOUNTS.map((account) => [
+        account.email,
+        deterministicUserID(account.email),
+      ]),
+    );
+    const { client, calls } = fakeClient({ existingByEmail });
+
+    await seedRoster(client, TABLES);
+
+    const productWrites = calls.filter(
+      (call) =>
+        call.text.includes('"platform"."User"') &&
+        !call.text.includes("UserAuthIdentity"),
+    );
+    for (const write of productWrites) {
+      expect(write.text).not.toMatch(/SET\s+"stripeCustomerId"/);
+    }
+    const tierConvergence = productWrites.find((call) =>
+      call.text.includes("SET name = $2"),
+    );
+    expect(tierConvergence?.text).toContain('WHEN "stripeCustomerId" IS NULL');
+    expect(tierConvergence?.text).toContain('ELSE "subscriptionTier"');
+  });
+
+  it("refuses an auth and platform user id mismatch for the same email", async () => {
+    const email = "preview-admin@previews.agpt.co";
+    const { client } = fakeClient({
+      existingByEmail: { [email]: deterministicUserID(email) },
+      productUserIDsByEmail: {
+        [email]: "00000000-0000-0000-0000-000000000001",
+      },
+    });
+
+    await expect(seedRoster(client, TABLES)).rejects.toThrow(
+      /auth identity has id/,
+    );
   });
 
   it("refuses to attach a credential when the deterministic id is taken by a different user", async () => {
