@@ -104,7 +104,7 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  const isBriefingHomeEnabled = useGetFlag(Flag.BRIEFING_HOME);
+  const isBriefingHomeEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   useAutoOpenArtifacts({
     sessionId,
     messages,

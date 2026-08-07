@@ -21,8 +21,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.BRIEFING_HOME || flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
   };
 });
 
