@@ -6,14 +6,15 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.dataforb2b._api import DataForB2BClient
-from backend.blocks.dataforb2b._auth import (
+from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     DataForB2BCredentials,
-    DataForB2BCredentialsField,
     DataForB2BCredentialsInput,
+    dataforb2b,
 )
 from backend.data.model import SchemaField
+from backend.util.request import HTTPClientError, HTTPServerError
 
 ENRICH_FLAGS = (
     "enrich_profile",
@@ -23,12 +24,7 @@ ENRICH_FLAGS = (
 )
 
 
-async def _enrich(payload: dict, credentials: DataForB2BCredentials) -> dict:
-    client = DataForB2BClient(credentials)
-    return await client.enrich_profile(payload)
-
-
-class LinkedinProfileEnrichmentBlock(Block):
+class ProfileEnrichmentBlock(Block):
     """Enrich a LinkedIn profile with DataForB2B (full profile + email, phone, GitHub)."""
 
     class Input(BlockSchemaInput):
@@ -52,7 +48,9 @@ class LinkedinProfileEnrichmentBlock(Block):
         enrich_github: bool = SchemaField(
             description="Find the GitHub profile", default=False, advanced=True
         )
-        credentials: DataForB2BCredentialsInput = DataForB2BCredentialsField()
+        credentials: DataForB2BCredentialsInput = dataforb2b.credentials_field(
+            description="DataForB2B API key"
+        )
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Full enrichment response")
@@ -66,14 +64,14 @@ class LinkedinProfileEnrichmentBlock(Block):
             description=(
                 "Look up and enrich a professional profile from a LinkedIn URL using "
                 "DataForB2B's B2B database — returns the full profile (current role, "
-                "experience, skills) plus work email, personal email and GitHub. Works "
-                "as an email finder for lead enrichment, contact enrichment, cold "
-                "outreach and CRM. Toggle the enrich_work_email flag to fetch only an "
-                "email."
+                "experience and skills) plus work email, personal email and GitHub. "
+                "Works as an email finder for lead enrichment, contact enrichment, "
+                "cold outreach and CRM. Disable enrich_profile if you only need the "
+                "email/GitHub lookups."
             ),
             categories={BlockCategory.SOCIAL, BlockCategory.DATA, BlockCategory.CRM},
-            input_schema=LinkedinProfileEnrichmentBlock.Input,
-            output_schema=LinkedinProfileEnrichmentBlock.Output,
+            input_schema=ProfileEnrichmentBlock.Input,
+            output_schema=ProfileEnrichmentBlock.Output,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -97,15 +95,17 @@ class LinkedinProfileEnrichmentBlock(Block):
 
     @staticmethod
     async def enrich_profile(payload: dict, credentials: DataForB2BCredentials) -> dict:
-        return await _enrich(payload, credentials)
+        client = DataForB2BClient(credentials)
+        return await client.enrich_profile(payload)
 
     async def run(
         self, input_data: Input, *, credentials: DataForB2BCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.profile_identifier:
+        profile_identifier = input_data.profile_identifier.strip()
+        if not profile_identifier:
             raise ValueError("'profile_identifier' is required.")
 
-        payload: dict = {"profile_identifier": input_data.profile_identifier}
+        payload: dict = {"profile_identifier": profile_identifier}
         any_flag = False
         for flag in ENRICH_FLAGS:
             value = bool(getattr(input_data, flag, False))
@@ -114,7 +114,15 @@ class LinkedinProfileEnrichmentBlock(Block):
         if not any_flag:
             payload["enrich_profile"] = True
 
-        yield "result", await self.enrich_profile(payload, credentials)
+        try:
+            result = await self.enrich_profile(payload, credentials)
+        except HTTPClientError as e:
+            yield "error", f"Client error ({e.status_code}) enriching profile: {e}"
+            return
+        except HTTPServerError as e:
+            yield "error", f"Server error ({e.status_code}) enriching profile: {e}"
+            return
+        yield "result", result
 
 
 class CompanyEnrichmentBlock(Block):
@@ -125,7 +133,9 @@ class CompanyEnrichmentBlock(Block):
             description="Company domain, name, or LinkedIn URL to enrich",
             advanced=False,
         )
-        credentials: DataForB2BCredentialsInput = DataForB2BCredentialsField()
+        credentials: DataForB2BCredentialsInput = dataforb2b.credentials_field(
+            description="DataForB2B API key"
+        )
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Full company enrichment response")
@@ -171,8 +181,15 @@ class CompanyEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: DataForB2BCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.company_identifier:
+        company_identifier = input_data.company_identifier.strip()
+        if not company_identifier:
             raise ValueError("'company_identifier' is required.")
-        yield "result", await self.enrich_company(
-            input_data.company_identifier, credentials
-        )
+        try:
+            result = await self.enrich_company(company_identifier, credentials)
+        except HTTPClientError as e:
+            yield "error", f"Client error ({e.status_code}) enriching company: {e}"
+            return
+        except HTTPServerError as e:
+            yield "error", f"Server error ({e.status_code}) enriching company: {e}"
+            return
+        yield "result", result

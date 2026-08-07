@@ -1,6 +1,6 @@
-# Dataforb2B Enrich
+# DataForB2B Enrich
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for enriching companies and LinkedIn profiles using DataForB2B's B2B database — firmographics, headcount, work/personal email, phone, and GitHub discovery.
 <!-- END MANUAL -->
 
 ## Company Enrichment
@@ -10,7 +10,7 @@ Look up and enrich a company using DataForB2B's B2B database — firmographics, 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block trims the provided `company_identifier` and rejects empty values before sending it to DataForB2B's company enrichment endpoint. The API resolves the identifier (domain, name, or LinkedIn company URL) against its B2B database and returns firmographic data such as industry, headcount, funding, and social profiles. Client and server errors from the API are caught and surfaced via the `error` output instead of raising an exception; identifiers that cannot be resolved may return an empty result.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -28,19 +28,23 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Account Enrichment**: Enrich inbound leads or CRM records with firmographic data before routing them to sales.
+
+**Target Account Research**: Pull company size, industry, and funding stage to qualify accounts for an ABM campaign.
+
+**CRM Cleanup**: Resolve a company domain or LinkedIn URL into current firmographic data before deduplicating records.
 <!-- END MANUAL -->
 
 ---
 
-## Linkedin Profile Enrichment
+## Profile Enrichment
 
 ### What it is
-Look up and enrich a professional profile from a LinkedIn URL using DataForB2B's B2B database — returns the full profile (current role, experience, skills) plus work email, personal email and GitHub. Works as an email finder for lead enrichment, contact enrichment, cold outreach and CRM. Toggle the enrich_work_email flag to fetch only an email.
+Look up and enrich a professional profile from a LinkedIn URL using DataForB2B's B2B database — returns the full profile (current role, experience and skills) plus work email, personal email and GitHub. Works as an email finder for lead enrichment, contact enrichment, cold outreach and CRM. Disable enrich_profile if you only need the email/GitHub lookups.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block trims the provided `profile_identifier` (a LinkedIn profile URL or id) and rejects empty values before sending it to DataForB2B's profile enrichment endpoint along with the requested `enrich_*` flags. `enrich_profile` is enabled by default and returns the full profile; when every flag is false, the block enables `enrich_profile` so the API still receives a valid request. Client and server errors from the API are caught and surfaced via the `error` output instead of raising an exception; unavailable contact fields may be absent from the result.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -62,7 +66,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Email Finder**: Resolve a work or personal email address from a LinkedIn profile URL for cold outreach.
+
+**Lead Enrichment**: Enrich a prospect list with current role, experience, and skills pulled straight from LinkedIn.
+
+**Contact Verification**: Refresh a saved contact from a LinkedIn profile URL before routing it into an outreach sequence.
 <!-- END MANUAL -->
 
 ---

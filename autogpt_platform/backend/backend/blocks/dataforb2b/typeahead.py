@@ -1,3 +1,5 @@
+from pydantic import BaseModel, ConfigDict, Field
+
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -6,21 +8,36 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.dataforb2b._api import DataForB2BClient
-from backend.blocks.dataforb2b._auth import (
+from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     DataForB2BCredentials,
-    DataForB2BCredentialsField,
     DataForB2BCredentialsInput,
+    dataforb2b,
 )
+from backend.blocks.dataforb2b._enums import TypeaheadType
 from backend.data.model import SchemaField
+from backend.util.request import HTTPClientError, HTTPServerError
+
+
+class TypeaheadSuggestion(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    value: str
+
+
+class TypeaheadResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    results: list[TypeaheadSuggestion] = Field(default_factory=list)
 
 
 class SearchFilterTypeaheadBlock(Block):
     """Resolve the exact filter value for LinkedIn searches with DataForB2B."""
 
     class Input(BlockSchemaInput):
-        type: str = SchemaField(
+        filter_type: TypeaheadType = SchemaField(
+            title="Filter Type",
             description="Filter type to resolve (company, industry, title, skill, school, investor, location, category)",
             advanced=False,
         )
@@ -28,14 +45,16 @@ class SearchFilterTypeaheadBlock(Block):
         limit: int = SchemaField(
             description="Max suggestions (1-20)", default=20, advanced=False
         )
-        credentials: DataForB2BCredentialsInput = DataForB2BCredentialsField()
+        credentials: DataForB2BCredentialsInput = dataforb2b.credentials_field(
+            description="DataForB2B API key"
+        )
 
     class Output(BlockSchemaOutput):
-        result: dict = SchemaField(description="Full typeahead response")
-        results: list = SchemaField(
+        result: TypeaheadResponse = SchemaField(description="Full typeahead response")
+        results: list[TypeaheadSuggestion] = SchemaField(
             description="List of suggestions", default_factory=list
         )
-        values: list = SchemaField(
+        values: list[str] = SchemaField(
             description="Resolved stored values", default_factory=list
         )
         error: str = SchemaField(
@@ -47,7 +66,8 @@ class SearchFilterTypeaheadBlock(Block):
             id="554b0945-a2f7-4ee0-bee5-1ffb298a2e30",
             description=(
                 "Resolve the exact filter value (company, industry, job title, skill, "
-                "school, location) for people and company searches with DataForB2B."
+                "school, investor, location, category) for people and company searches "
+                "with DataForB2B."
             ),
             categories={BlockCategory.SEARCH, BlockCategory.SOCIAL},
             input_schema=SearchFilterTypeaheadBlock.Input,
@@ -55,7 +75,7 @@ class SearchFilterTypeaheadBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "type": "company",
+                "filter_type": "company",
                 "q": "google",
                 "limit": 3,
             },
@@ -81,13 +101,21 @@ class SearchFilterTypeaheadBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: DataForB2BCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.type:
-            raise ValueError("'type' is required.")
-        if not input_data.q:
+        query = input_data.q.strip()
+        if not query:
             raise ValueError("'q' (query) is required.")
 
-        limit = max(1, min(int(input_data.limit or 20), 20))
-        data = await self.typeahead(input_data.type, input_data.q, limit, credentials)
+        limit = max(1, min(int(input_data.limit), 20))
+        try:
+            data = await self.typeahead(
+                input_data.filter_type.value, query, limit, credentials
+            )
+        except HTTPClientError as e:
+            yield "error", f"Client error ({e.status_code}) resolving typeahead: {e}"
+            return
+        except HTTPServerError as e:
+            yield "error", f"Server error ({e.status_code}) resolving typeahead: {e}"
+            return
         results = data.get("results", []) or []
         yield "result", data
         yield "results", results

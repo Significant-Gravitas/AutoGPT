@@ -71,6 +71,9 @@ class PeopleColumn(str, Enum):
 
 class CompanyColumn(str, Enum):
     # Basic
+    # Member is named `company_name` (rather than `name`) for a clearer,
+    # unambiguous dropdown label; the value is the DataForB2B API's actual
+    # column identifier ("name") and must not change.
     company_name = "name"
     tagline = "tagline"
     description = "description"
@@ -103,3 +106,23 @@ class CompanyColumn(str, Enum):
     last_funding_date = "last_funding_date"
     funding_stage_normalized = "funding_stage_normalized"
     has_funding = "has_funding"
+
+
+class TypeaheadType(str, Enum):
+    """Closed set of resolvable filter-value categories for the typeahead
+    endpoint. Using an enum (rather than free text) prevents silent
+    no-result typos and renders as a dropdown in the builder."""
+
+    COMPANY = "company"
+    INDUSTRY = "industry"
+    TITLE = "title"
+    SKILL = "skill"
+    SCHOOL = "school"
+    INVESTOR = "investor"
+    LOCATION = "location"
+    CATEGORY = "category"
+
+
+class SearchCategory(str, Enum):
+    PEOPLE = "people"
+    COMPANY = "company"

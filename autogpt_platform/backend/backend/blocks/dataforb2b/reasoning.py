@@ -6,14 +6,19 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.dataforb2b._api import DataForB2BClient
-from backend.blocks.dataforb2b._auth import (
+from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     DataForB2BCredentials,
-    DataForB2BCredentialsField,
     DataForB2BCredentialsInput,
+    dataforb2b,
 )
+from backend.blocks.dataforb2b._enums import SearchCategory
 from backend.data.model import SchemaField
+from backend.util.request import HTTPClientError, HTTPServerError
+
+# Conservative safety ceiling for `max_results`, mirroring search.py's MAX_COUNT.
+MAX_RESULTS = 100
 
 
 class SmartSearchBlock(Block):
@@ -25,9 +30,9 @@ class SmartSearchBlock(Block):
             default="",
             advanced=False,
         )
-        category: str = SchemaField(
+        category: SearchCategory = SchemaField(
             description="What to search for: 'people' or 'company'",
-            default="people",
+            default=SearchCategory.PEOPLE,
             advanced=False,
         )
         session_id: str = SchemaField(
@@ -41,14 +46,18 @@ class SmartSearchBlock(Block):
             advanced=True,
         )
         max_results: int = SchemaField(
-            description="Maximum results to return", default=25, advanced=False
+            description=f"Maximum results to return (1-{MAX_RESULTS})",
+            default=25,
+            advanced=False,
         )
         enrich_live: bool = SchemaField(
             description="Fetch fresh live data (uses more credits)",
             default=False,
             advanced=True,
         )
-        credentials: DataForB2BCredentialsInput = DataForB2BCredentialsField()
+        credentials: DataForB2BCredentialsInput = dataforb2b.credentials_field(
+            description="DataForB2B API key"
+        )
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Full reasoning-search response")
@@ -66,13 +75,13 @@ class SmartSearchBlock(Block):
         applied_filters: dict = SchemaField(
             description=(
                 "The structured filters the search applied. Feed this into "
-                "Linkedin People/Company Search 'filters_json' with an offset to "
+                "People Search or Company Search 'filters_json' with an offset to "
                 "paginate beyond the first page."
             ),
             default_factory=dict,
         )
         category: str = SchemaField(
-            description="Category searched ('people' or 'companies') — route pagination to the matching search block",
+            description="Category searched ('people' or 'company', echoed from the input) — route pagination to the matching search block",
             default="",
         )
         error: str = SchemaField(
@@ -129,29 +138,46 @@ class SmartSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: DataForB2BCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.query and not (input_data.session_id and input_data.answers):
+        query = input_data.query.strip()
+        session_id = input_data.session_id.strip()
+        has_continuation_data = bool(session_id or input_data.answers)
+        if has_continuation_data:
+            if query or not session_id or not input_data.answers:
+                raise ValueError(
+                    "Provide either 'query' or both 'session_id' and 'answers'."
+                )
+        elif not query:
             raise ValueError(
                 "Provide 'query' (first call) or 'session_id' + 'answers' (to "
                 "resolve a needs_input turn)."
             )
 
+        category = input_data.category
+        max_results = max(1, min(int(input_data.max_results), MAX_RESULTS))
         payload: dict = {
-            "category": input_data.category or "people",
-            "max_results": int(input_data.max_results or 25),
+            "category": category.value,
+            "max_results": max_results,
             "enrich_live": bool(input_data.enrich_live),
         }
-        if input_data.query:
-            payload["query"] = input_data.query
-        if input_data.session_id:
-            payload["session_id"] = input_data.session_id
+        if query:
+            payload["query"] = query
+        if session_id:
+            payload["session_id"] = session_id
         if input_data.answers:
             payload["answers"] = input_data.answers
 
-        data = await self.reasoning_search(payload, credentials)
+        try:
+            data = await self.reasoning_search(payload, credentials)
+        except HTTPClientError as e:
+            yield "error", f"Client error ({e.status_code}) in smart search: {e}"
+            return
+        except HTTPServerError as e:
+            yield "error", f"Server error ({e.status_code}) in smart search: {e}"
+            return
         yield "result", data
         yield "status", data.get("status", "ok")
         yield "results", data.get("results", []) or []
         yield "questions", data.get("questions", []) or []
         yield "session_id", data.get("session_id", "") or ""
         yield "applied_filters", data.get("applied_filters", {}) or {}
-        yield "category", input_data.category or "people"
+        yield "category", category.value

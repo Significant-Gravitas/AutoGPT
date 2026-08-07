@@ -1,25 +1,25 @@
-# Dataforb2B Search
+# DataForB2B Search
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for searching companies and people by structured filters using DataForB2B's B2B database — build target-account and prospect lists for sales, recruiting, and account-based marketing.
 <!-- END MANUAL -->
 
-## Linkedin Company Search
+## Company Search
 
 ### What it is
 Search companies and accounts by structured filters — industry, headcount/size, location, funding, keywords — using DataForB2B's database. Build target-account lists for B2B sales and account-based marketing. Accepts LinkedIn URLs as identifiers.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Up to five filter slots (`filter_1_column`/`filter_1_operator`/`filter_1_value` through `filter_5_*`) are validated and combined with `and`/`or` per `match`, or you can pass a raw `filters_json` (optionally the `applied_filters` output from Smart Search) which is merged with the slot filters via AND. Numeric, boolean, and text columns reject incompatible operators; `between` requires exactly two comma-separated values. Results are paginated with `count` (clamped to 1-100) and non-negative `offset`. Client and server errors are surfaced via `error`, while a valid search with no matches returns an empty `results` list.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| filters_json | Raw filter JSON {op, conditions:[{column,type,value,value2?}]}. Paste 'applied_filters' from Linkedin Smart Search and set 'offset' to paginate beyond the first page. Used alone, or merged (AND) with the filter slots above. | Dict[str, Any] | No |
+| filters_json | Raw filter JSON {op, conditions:[{column,type,value,value2?}]}. Paste 'applied_filters' from Smart Search and set 'offset' to paginate beyond the first page. Used alone, or merged (AND) with the filter slots above. | Dict[str, Any] | No |
 | match | Combine slot conditions with 'and' or 'or' | str | No |
-| count | Number of results to return | int | No |
+| count | Number of results to return (1-100) | int | No |
 | offset | Pagination offset — 0 for page 1, then 25, 50, … to page through results | int | No |
 | enrich_live | Fetch fresh live data (uses more credits) | bool | No |
 | filter_1_column | Filter 1 column | "name" \| "tagline" \| "description" \| "domain" \| "universal_name" \| "keyword" \| "industry" \| "employee_count" \| "country_iso_code" \| "city" \| "region" \| "office_country" \| "office_city" \| "office_region" \| "employee_growth_1m" \| "employee_growth_6m" \| "employee_growth_12m" \| "recent_hires_count" \| "founded_year" \| "company_type" \| "follower_count" \| "page_verified" \| "category" \| "last_funding_amount_usd" \| "last_funding_date" \| "funding_stage_normalized" \| "has_funding" | No |
@@ -49,28 +49,32 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Target Account Lists**: Build a list of companies matching industry, size, and location criteria for account-based marketing.
+
+**Market Sizing**: Estimate the number of companies matching a given ICP before launching an outbound campaign.
+
+**Funding Research**: Find companies at a particular funding stage or backed by a target investor.
 <!-- END MANUAL -->
 
 ---
 
-## Linkedin People Search
+## People Search
 
 ### What it is
 Search people and B2B leads by structured filters — job title, company, location, industry, seniority, skills — using DataForB2B's database. Find employees at a company, people by job title, who works where, decision-makers and key contacts (owners, founders, C-suite, VPs, directors), and build a prospect or lead list. Accepts LinkedIn URLs as identifiers. The lead-sourcing step of a prospecting or outreach workflow.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Up to five filter slots (`filter_1_column`/`filter_1_operator`/`filter_1_value` through `filter_5_*`) are validated and combined with `and`/`or` per `match`, or you can pass a raw `filters_json` (optionally the `applied_filters` output from Smart Search) which is merged with the slot filters via AND. Numeric, boolean, and text columns reject incompatible operators; `between` requires exactly two comma-separated values. Results are paginated with `count` (clamped to 1-100) and non-negative `offset`. Client and server errors are surfaced via `error`, while a valid search with no matches returns an empty `results` list.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| filters_json | Raw filter JSON {op, conditions:[{column,type,value,value2?}]}. Paste 'applied_filters' from Linkedin Smart Search and set 'offset' to paginate beyond the first page. Used alone, or merged (AND) with the filter slots above. | Dict[str, Any] | No |
+| filters_json | Raw filter JSON {op, conditions:[{column,type,value,value2?}]}. Paste 'applied_filters' from Smart Search and set 'offset' to paginate beyond the first page. Used alone, or merged (AND) with the filter slots above. | Dict[str, Any] | No |
 | match | Combine slot conditions with 'and' or 'or' | str | No |
-| count | Number of results to return | int | No |
+| count | Number of results to return (1-100) | int | No |
 | offset | Pagination offset — 0 for page 1, then 25, 50, … to page through results | int | No |
 | enrich_live | Fetch fresh live data (uses more credits) | bool | No |
 | filter_1_column | Filter 1 column | "first_name" \| "last_name" \| "profile_location" \| "profile_country" \| "profile_industry" \| "follower_count" \| "keyword" \| "current_company" \| "current_title" \| "current_job_location" \| "current_company_industry" \| "current_company_category" \| "current_company_size" \| "current_company_id" \| "current_employment_type" \| "years_in_current_position" \| "years_at_current_company" \| "current_company_has_funding" \| "current_company_funding_stage" \| "current_company_investor" \| "past_company" \| "past_title" \| "past_job_location" \| "past_company_industry" \| "past_company_size" \| "past_company_id" \| "past_employment_type" \| "years_at_past_company" \| "skill" \| "school" \| "degree" \| "degree_level" \| "field_of_study" \| "language" \| "language_iso" \| "language_proficiency" \| "certification" \| "certification_authority" \| "years_of_experience" \| "num_total_jobs" \| "is_currently_employed" | No |
@@ -100,7 +104,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Prospecting**: Find employees at target companies by job title, seniority, or skill for outbound sales.
+
+**Recruiting**: Search for candidates with a specific title, location, or company background.
+
+**Org Mapping**: Identify decision-makers and key contacts across selected target accounts.
 <!-- END MANUAL -->
 
 ---

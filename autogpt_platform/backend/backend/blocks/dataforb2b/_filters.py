@@ -1,7 +1,6 @@
 """Filter-building helpers for DataForB2B search blocks.
 
-Mirrors the logic of the Dify integration so the two stay in parity. A search
-filter is ``{op, conditions: [{column, type, value, value2?}]}``.
+A search filter is ``{op, conditions: [{column, type, value, value2?}]}``.
 """
 
 from enum import Enum
@@ -36,7 +35,7 @@ def build_slot_condition(column: Any, operator: Any, raw: Any) -> Optional[dict]
     """Build one filter condition from a (column, operator, value) slot.
 
     Returns None when the slot is empty.
-    - ``in``      -> value is a comma-separated list
+    - ``in``/``not_in`` -> value is a comma-separated list
     - ``between`` -> value is "min,max"
     - ``like``    -> raw string kept as-is (text pattern)
     - others      -> single value, coerced to bool/number when applicable
@@ -46,22 +45,22 @@ def build_slot_condition(column: Any, operator: Any, raw: Any) -> Optional[dict]
     column = _to_str(column)
     op = (_to_str(operator).strip() if operator else "=") or "="
 
-    if op == "in":
+    if op in ("in", "not_in"):
         items = [x.strip() for x in str(raw).split(",") if x.strip()]
         if not items:
             return None
         return {
             "column": column,
-            "type": "in",
+            "type": op,
             "value": [coerce_scalar(x) for x in items],
         }
 
     if op == "between":
         parts = [x.strip() for x in str(raw).split(",") if x.strip()]
-        if len(parts) < 2:
+        if len(parts) != 2:
             raise ValueError(
-                f"Operator 'between' on '{column}' needs two comma-separated "
-                "values, e.g. 3,7"
+                f"Operator 'between' on '{column}' needs exactly two "
+                f"comma-separated values, e.g. 3,7 (got {len(parts)})"
             )
         return {
             "column": column,

@@ -296,7 +296,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Person Detail](block-integrations/apollo/person.md#get-person-detail) | Get detailed person data with Apollo API, including email reveal |
 | [Get Wikipedia Summary](block-integrations/search.md#get-wikipedia-summary) | This block fetches the summary of a given topic from Wikipedia |
 | [Google Maps Search](block-integrations/search.md#google-maps-search) | This block searches for local businesses using Google Maps API |
-| [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, location) for people and company searches with DataForB2B |
+| [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
 | [Search The Web](block-integrations/jina/search.md#search-the-web) | This block searches the internet for the given search query |
@@ -634,12 +634,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Add Lead To Campaign](block-integrations/smartlead/campaign.md#add-lead-to-campaign) | Add a lead to a campaign in SmartLead |
 | [Company Enrichment](block-integrations/dataforb2b/enrich.md#company-enrichment) | Look up and enrich a company using DataForB2B's B2B database — firmographics, headcount/size, industry, domain and social profiles from a company domain, name or LinkedIn URL |
+| [Company Search](block-integrations/dataforb2b/search.md#company-search) | Search companies and accounts by structured filters — industry, headcount/size, location, funding, keywords — using DataForB2B's database |
 | [Create Campaign](block-integrations/smartlead/campaign.md#create-campaign) | Create a campaign in SmartLead |
 | [Hub Spot Company](block-integrations/hubspot/company.md#hub-spot-company) | Manages HubSpot companies - create, update, and retrieve company information |
 | [Hub Spot Contact](block-integrations/hubspot/contact.md#hub-spot-contact) | Manages HubSpot contacts - create, update, and retrieve contact information |
-| [Linkedin Company Search](block-integrations/dataforb2b/search.md#linkedin-company-search) | Search companies and accounts by structured filters — industry, headcount/size, location, funding, keywords — using DataForB2B's database |
-| [Linkedin People Search](block-integrations/dataforb2b/search.md#linkedin-people-search) | Search people and B2B leads by structured filters — job title, company, location, industry, seniority, skills — using DataForB2B's database |
-| [Linkedin Profile Enrichment](block-integrations/dataforb2b/enrich.md#linkedin-profile-enrichment) | Look up and enrich a professional profile from a LinkedIn URL using DataForB2B's B2B database — returns the full profile (current role, experience, skills) plus work email, personal email and GitHub |
+| [People Search](block-integrations/dataforb2b/search.md#people-search) | Search people and B2B leads by structured filters — job title, company, location, industry, seniority, skills — using DataForB2B's database |
+| [Profile Enrichment](block-integrations/dataforb2b/enrich.md#profile-enrichment) | Look up and enrich a professional profile from a LinkedIn URL using DataForB2B's B2B database — returns the full profile (current role, experience and skills) plus work email, personal email and GitHub |
 | [Save Campaign Sequences](block-integrations/smartlead/campaign.md#save-campaign-sequences) | Save sequences within a campaign |
 
 ## AI Safety

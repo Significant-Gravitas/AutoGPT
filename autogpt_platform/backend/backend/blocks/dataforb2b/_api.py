@@ -1,10 +1,7 @@
-import logging
 from typing import Any
 
-from backend.blocks.dataforb2b._auth import DataForB2BCredentials
+from backend.blocks.dataforb2b._config import DataForB2BCredentials
 from backend.util.request import Requests
-
-logger = logging.getLogger(name=__name__)
 
 
 class DataForB2BClient:
