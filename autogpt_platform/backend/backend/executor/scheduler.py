@@ -556,6 +556,29 @@ def execute_community_rebuild(user_id: str):
         )
 
 
+def execute_morning_briefing(user_id: str) -> None:
+    """Per-user morning briefing cron body.
+
+    Sync wrapper around the async ``generate_and_deliver_briefing`` so it
+    can run on the APScheduler thread pool. Unlike
+    ``execute_community_rebuild``, the coroutine does not guarantee it
+    swallows every failure internally (DB / LLM calls can raise), so this
+    wrapper must catch failures itself — an exception escaping a job body
+    is fatal to that run, and one user's briefing must never affect
+    scheduler health.
+    """
+    from backend.copilot.briefing.generate import generate_and_deliver_briefing
+
+    try:
+        result = run_async(
+            generate_and_deliver_briefing(user_id),
+            timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+        )
+        logger.info("Morning briefing for user %s: %s", user_id[:12], result)
+    except Exception as e:
+        logger.error("Morning briefing failed for user %s: %s", user_id[:12], e)
+
+
 def execute_nightly_batch_sync(user_id: str):
     """Per-user nightly batch-family fan-out cron body.
 
@@ -2092,6 +2115,49 @@ class Scheduler(AppService):
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
 
+    # --- Morning briefing (Task A7) ---
+    #
+    # Daily per-user cron at user-local 09:00. The job body's flag gate and
+    # idempotency (per local calendar date) live inside
+    # ``generate_and_deliver_briefing`` itself, so — unlike community
+    # rebuild — there's no registration-time flag check here.
+
+    @expose
+    def add_morning_briefing_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register a daily morning briefing for one user."""
+        if not user_timezone:
+            user_timezone = "UTC"
+
+        job_id = f"morning_briefing_{user_id}"
+        job = self.scheduler.add_job(
+            execute_morning_briefing,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab("0 9 * * *", timezone=user_timezone),
+            id=job_id,
+            name=f"Morning briefing for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered morning briefing job %s for user %s in tz %s",
+            job.id,
+            user_id[:12],
+            user_timezone,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "user_timezone": user_timezone,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
     # --- Dream nightly batch (P-0.2 + P-0.4 consolidated) ---
     #
     # ONE per-user cron at user-local 03:00 fans out all batch-family
@@ -2308,6 +2374,10 @@ class SchedulerClient(AppServiceClient):
     )
     execute_community_rebuild_pass = endpoint_to_async(
         Scheduler.execute_community_rebuild_pass
+    )
+
+    add_morning_briefing_schedule = endpoint_to_async(
+        Scheduler.add_morning_briefing_schedule
     )
 
     add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)
