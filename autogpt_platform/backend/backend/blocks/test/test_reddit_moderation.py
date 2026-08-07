@@ -2,12 +2,15 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from praw.models import Comment, Submission
 from pydantic import ValidationError
+from pydantic.fields import FieldInfo
 
 from backend.blocks.reddit import (
     REDDIT_BASE_SCOPES,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    RedditCredentialsField,
 )
 from backend.blocks.reddit_moderation import (
     BAN_MAX_DURATION_DAYS,
@@ -20,12 +23,19 @@ from backend.blocks.reddit_moderation import (
     SendModMailBlock,
     UnbanSubredditUserBlock,
     _get_moderated_thing,
+    _get_thing_type,
 )
 
 
 def _patch_praw(mocker) -> MagicMock:
     client = MagicMock()
     mocker.patch("backend.blocks.reddit_moderation.get_praw", return_value=client)
+    return client
+
+
+def _mock_praw_client() -> MagicMock:
+    client = MagicMock()
+    client.config.kinds = {"comment": "t1", "submission": "t3"}
     return client
 
 
@@ -57,6 +67,15 @@ def test_moderation_blocks_declare_least_privilege_scopes(block_cls, elevated_sc
     assert declared == REDDIT_BASE_SCOPES | {elevated_scope}
     # Never request scopes no block consumes (e.g. modlog).
     assert "modlog" not in declared
+
+
+def test_explicit_empty_reddit_scopes_still_include_the_baseline():
+    field = RedditCredentialsField(required_scopes=set())
+    assert isinstance(field, FieldInfo)
+    extra = field.json_schema_extra
+    assert isinstance(extra, dict)
+
+    assert set(extra["credentials_scopes"]) == REDDIT_BASE_SCOPES
 
 
 def test_get_mod_queue_uses_modqueue_and_submission_fullnames(mocker):
@@ -119,6 +138,59 @@ def test_get_mod_queue_preserves_comment_fullnames(mocker):
     assert items[0]["author"] == "[deleted]"
 
 
+@pytest.mark.parametrize(
+    ("queued_item", "expected_id", "expected_type"),
+    [
+        (
+            Comment(
+                _mock_praw_client(),
+                _data={
+                    "id": "xyz789",
+                    "author": "queued-user",
+                    "permalink": "/r/test/comments/abc123/comment/xyz789/",
+                    "mod_reason_title": None,
+                },
+            ),
+            "t1_xyz789",
+            "comment",
+        ),
+        (
+            Submission(
+                _mock_praw_client(),
+                _data={
+                    "id": "abc123",
+                    "author": "queued-user",
+                    "permalink": "/r/test/comments/abc123/queued_title/",
+                    "mod_reason_title": None,
+                    "title": "Queued title",
+                },
+            ),
+            "t3_abc123",
+            "submission",
+        ),
+    ],
+)
+def test_get_mod_queue_uses_hydrated_praw_fields_without_fetching(
+    mocker, queued_item, expected_id, expected_type
+):
+    fetch = mocker.patch.object(queued_item, "_fetch")
+    sub = MagicMock()
+    sub.mod.modqueue.return_value = [queued_item]
+    client = _patch_praw(mocker)
+    client.subreddit.return_value = sub
+
+    items = ModQueueBlock.get_mod_queue(
+        TEST_CREDENTIALS,
+        subreddit="test",
+        limit=5,
+        only=None,
+    )
+
+    assert items[0]["id"] == expected_id
+    assert items[0]["type"] == expected_type
+    fetch.assert_not_called()
+
+
 def test_get_mod_queue_returns_empty_list_for_empty_queue(mocker):
     sub = MagicMock()
     sub.mod.modqueue.return_value = []
@@ -157,6 +229,52 @@ def test_get_moderated_thing_rejects_ambiguous_ids(mocker, thing_id):
 
     client.comment.assert_not_called()
     client.submission.assert_not_called()
+
+
+def test_get_thing_type_rejects_unknown_prefixes():
+    with pytest.raises(ValueError, match="Unsupported Reddit thing ID"):
+        _get_thing_type("t5_subreddit")
+
+
+@pytest.mark.asyncio
+async def test_mod_queue_run_fans_out_every_item_and_emits_one_batch(mocker):
+    items = [
+        {
+            "id": "t3_first",
+            "type": "submission",
+            "title": "First",
+            "author": "alice",
+            "permalink": "/r/test/comments/first/",
+            "reason": "",
+        },
+        {
+            "id": "t1_second",
+            "type": "comment",
+            "title": "[comment]",
+            "author": "bob",
+            "permalink": "/r/test/comments/first/_/second/",
+            "reason": "Rule 1",
+        },
+    ]
+    block = ModQueueBlock()
+    mocker.patch.object(block, "get_mod_queue", return_value=items)
+    input_data = block.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "subreddit": "test",
+            "limit": 2,
+        }
+    )
+
+    outputs = [
+        output async for output in block.run(input_data, credentials=TEST_CREDENTIALS)
+    ]
+
+    assert [output for output in outputs if output[0] == "post_id"] == [
+        ("post_id", "t3_first"),
+        ("post_id", "t1_second"),
+    ]
+    assert outputs[-1] == ("items", items)
 
 
 def test_remove_post_targets_comment_with_mod_note(mocker):
@@ -378,9 +496,26 @@ def test_moderator_free_text_inputs_are_length_bounded():
 
     with pytest.raises(ValidationError):
         _input(
+            BanSubredditUserBlock,
+            subreddit="test",
+            username="u",
+            reason="x" * 101,
+        )
+
+    with pytest.raises(ValidationError):
+        _input(
             SendModMailBlock,
             subreddit="test",
             to_username="someuser",
             subject="x" * 101,
             body="hello",
+        )
+
+    with pytest.raises(ValidationError):
+        _input(
+            SendModMailBlock,
+            subreddit="test",
+            to_username="someuser",
+            subject="hello",
+            body="x" * 10001,
         )

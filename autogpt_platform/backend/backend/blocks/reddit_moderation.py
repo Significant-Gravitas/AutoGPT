@@ -19,10 +19,12 @@ from backend.blocks.reddit import (
     RedditCredentialsField,
     RedditCredentialsInput,
     get_praw,
-    settings,
     strip_reddit_prefix,
 )
 from backend.data.model import SchemaField
+from backend.util.settings import Settings
+
+settings = Settings()
 
 REMOVE_MOD_NOTE_MAX_LENGTH = 250
 BAN_REASON_MAX_LENGTH = 100
@@ -67,18 +69,22 @@ def _get_moderated_thing(
 
 
 def _get_thing_id(item: Comment | Submission) -> str:
-    fullname = getattr(item, "fullname", None)
-    if fullname:
-        return fullname
-    if isinstance(item, Comment):
-        return f"{COMMENT_PREFIX}{item.id}"
-    return f"{SUBMISSION_PREFIX}{item.id}"
+    return item.fullname
 
 
 def _get_thing_type(thing_id: str) -> Literal["comment", "submission"]:
     if thing_id.startswith(COMMENT_PREFIX):
         return "comment"
-    return "submission"
+    if thing_id.startswith(SUBMISSION_PREFIX):
+        return "submission"
+    raise ValueError(f"Unsupported Reddit thing ID prefix: {thing_id!r}")
+
+
+def _reddit_disabled() -> bool:
+    return (
+        not settings.secrets.reddit_client_id
+        or not settings.secrets.reddit_client_secret
+    )
 
 
 class ModQueueBlock(Block):
@@ -115,18 +121,22 @@ class ModQueueBlock(Block):
         permalink: str = SchemaField(description="Full Reddit permalink")
         reason: str = SchemaField(description="Mod queue reason (if any)")
         items: list[dict[str, Any]] = SchemaField(
-            description="All queued items as a list"
+            description=(
+                "All queued items as a list. Emitted exactly once; an empty list "
+                "signals that the queue was checked and had no items."
+            )
         )
 
     def __init__(self):
         super().__init__(
             id="166f3083-51da-4cfc-9f7a-57f47b1ba590",
-            description="Fetches the mod queue for a subreddit. Requires moderator access.",
-            categories={BlockCategory.SOCIAL},
-            disabled=(
-                not settings.secrets.reddit_client_id
-                or not settings.secrets.reddit_client_secret
+            description=(
+                "Fetches the mod queue for a subreddit. Scalar outputs fan out once "
+                "per queued post or comment; items emits the full batch once. "
+                "Requires moderator access."
             ),
+            categories={BlockCategory.SOCIAL},
+            disabled=_reddit_disabled(),
             input_schema=ModQueueBlock.Input,
             output_schema=ModQueueBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -206,6 +216,7 @@ class ModQueueBlock(Block):
             only=input_data.only,
         )
         for item in items:
+            # Scalar pins intentionally fan out; the aggregate pin below emits once.
             yield "post_id", item["id"]
             yield "item_type", item["type"]
             yield "post_title", item["title"]
@@ -242,10 +253,7 @@ class RemoveRedditPostBlock(Block):
             id="f75643df-0a1a-4240-aa5b-9b2a1b20dcdd",
             description="Removes a Reddit post or comment as a moderator. Requires 'modposts' scope.",
             categories={BlockCategory.SOCIAL},
-            disabled=(
-                not settings.secrets.reddit_client_id
-                or not settings.secrets.reddit_client_secret
-            ),
+            disabled=_reddit_disabled(),
             input_schema=RemoveRedditPostBlock.Input,
             output_schema=RemoveRedditPostBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -307,10 +315,7 @@ class ApproveRedditPostBlock(Block):
             id="ae695fcf-e1bf-4900-b06c-3ae21d6edf70",
             description="Approves a Reddit post or comment from the mod queue. Requires 'modposts' scope.",
             categories={BlockCategory.SOCIAL},
-            disabled=(
-                not settings.secrets.reddit_client_id
-                or not settings.secrets.reddit_client_secret
-            ),
+            disabled=_reddit_disabled(),
             input_schema=ApproveRedditPostBlock.Input,
             output_schema=ApproveRedditPostBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -362,10 +367,7 @@ class LockRedditPostBlock(Block):
             id="1deaf67c-0407-457f-989d-323198073f74",
             description="Locks or unlocks a Reddit post or comment to prevent or allow replies. Requires 'modposts' scope.",
             categories={BlockCategory.SOCIAL},
-            disabled=(
-                not settings.secrets.reddit_client_id
-                or not settings.secrets.reddit_client_secret
-            ),
+            disabled=_reddit_disabled(),
             input_schema=LockRedditPostBlock.Input,
             output_schema=LockRedditPostBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -451,10 +453,7 @@ class BanSubredditUserBlock(Block):
             id="428d56d4-52d0-47d9-8544-836d13d196c0",
             description="Bans a user from a subreddit. Requires 'modcontributors' scope.",
             categories={BlockCategory.SOCIAL},
-            disabled=(
-                not settings.secrets.reddit_client_id
-                or not settings.secrets.reddit_client_secret
-            ),
+            disabled=_reddit_disabled(),
             input_schema=BanSubredditUserBlock.Input,
             output_schema=BanSubredditUserBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -539,10 +538,7 @@ class UnbanSubredditUserBlock(Block):
             id="90979f47-605e-4478-a417-39da3d7184ef",
             description="Unbans a user from a subreddit. Requires 'modcontributors' scope.",
             categories={BlockCategory.SOCIAL},
-            disabled=(
-                not settings.secrets.reddit_client_id
-                or not settings.secrets.reddit_client_secret
-            ),
+            disabled=_reddit_disabled(),
             input_schema=UnbanSubredditUserBlock.Input,
             output_schema=UnbanSubredditUserBlock.Output,
             test_credentials=TEST_CREDENTIALS,
@@ -611,10 +607,7 @@ class SendModMailBlock(Block):
             id="168b919c-0e06-471d-bd46-eb354ed3d278",
             description="Sends a modmail message from a subreddit to a user. Requires 'modmail' scope.",
             categories={BlockCategory.SOCIAL},
-            disabled=(
-                not settings.secrets.reddit_client_id
-                or not settings.secrets.reddit_client_secret
-            ),
+            disabled=_reddit_disabled(),
             input_schema=SendModMailBlock.Input,
             output_schema=SendModMailBlock.Output,
             test_credentials=TEST_CREDENTIALS,

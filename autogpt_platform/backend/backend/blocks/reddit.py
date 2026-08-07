@@ -63,10 +63,13 @@ def RedditCredentialsField(
     them — without the merge, a moderation block would mint a token that can't even
     call `client.user.me()`.
     """
+    merged_scopes = (
+        set(REDDIT_BASE_SCOPES) | required_scopes
+        if required_scopes is not None
+        else set()
+    )
     return CredentialsField(
-        required_scopes=(
-            set(REDDIT_BASE_SCOPES) | required_scopes if required_scopes else set()
-        ),
+        required_scopes=merged_scopes,
         description="Connect your Reddit account to access Reddit features.",
     )
 

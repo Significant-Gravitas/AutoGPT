@@ -112,6 +112,29 @@ async def test_exchange_code_for_tokens_persists_granted_scopes(
 
 
 @pytest.mark.asyncio
+async def test_exchange_code_for_tokens_normalizes_comma_separated_scopes(
+    mocker: MockerFixture,
+):
+    _mock_token_response(
+        mocker,
+        {
+            "access_token": "access-token-value",
+            "refresh_token": "refresh-token-value",
+            "expires_in": 3600,
+            "scope": "identity,read",
+        },
+    )
+
+    creds = await _handler_with_mocked_username(mocker).exchange_code_for_tokens(
+        code="auth-code",
+        scopes=["identity", "read"],
+        code_verifier=None,
+    )
+
+    assert creds.scopes == ["identity", "read"]
+
+
+@pytest.mark.asyncio
 async def test_exchange_code_for_tokens_normalizes_wildcard_scope(
     mocker: MockerFixture,
 ):

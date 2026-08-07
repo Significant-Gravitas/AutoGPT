@@ -40,7 +40,6 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
-from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
