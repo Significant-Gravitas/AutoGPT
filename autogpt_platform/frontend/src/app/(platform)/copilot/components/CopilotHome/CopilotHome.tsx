@@ -1,6 +1,7 @@
 "use client";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { NeedsAttentionList } from "@/components/organisms/NeedsAttentionList/NeedsAttentionList";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion } from "framer-motion";
@@ -40,7 +41,13 @@ export function CopilotHome({
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const pulseChips = usePulseChips();
-  const { briefing, isLoadingBriefing, hasBriefing } = useCopilotHome();
+  const {
+    briefing,
+    isLoadingBriefing,
+    isBriefingError,
+    refetchBriefing,
+    hasBriefing,
+  } = useCopilotHome();
   const isComposerDisabled = isCreatingSession || !!isAdoptingExpertSession;
 
   return (
@@ -58,10 +65,19 @@ export function CopilotHome({
             isGreetingFlow={false}
           />
 
-          {/* Briefing card slot — falls back to the pulse strip while the
-              user has no briefing yet; nothing renders until load settles
-              so the strip doesn't flash for users who do have a briefing. */}
-          {isLoadingBriefing ? null : hasBriefing && briefing ? (
+          {/* Briefing card slot — falls back to the pulse strip only when a
+              successful fetch says there is no briefing yet; a failed fetch
+              shows the error card so it can't masquerade as "no briefing".
+              Nothing renders until load settles so the strip doesn't flash
+              for users who do have a briefing. */}
+          {isLoadingBriefing ? null : isBriefingError ? (
+            <ErrorCard
+              context="briefing"
+              httpError={{ message: "Failed to load your briefing" }}
+              onRetry={() => refetchBriefing()}
+              className="mb-5"
+            />
+          ) : hasBriefing && briefing ? (
             <BriefingCard briefing={briefing} />
           ) : (
             <PulseChips chips={pulseChips} onChipClick={onSend} />

@@ -4,7 +4,7 @@ import { useNeedsAttention } from "@/hooks/useNeedsAttention";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 
 export function useNeedsAttentionList() {
-  const { reviews, count, isLoading } = useNeedsAttention();
+  const { reviews, count, isLoading, isError, refetch } = useNeedsAttention();
   const { processReviews, isProcessing } = useProcessReviews();
   const { toast } = useToast();
 
@@ -18,7 +18,7 @@ export function useNeedsAttentionList() {
             auto_approve_future: false,
           },
         ],
-        review.graph_exec_id,
+        [review.graph_exec_id],
       );
     } catch (error) {
       toast({
@@ -41,7 +41,7 @@ export function useNeedsAttentionList() {
             auto_approve_future: false,
           },
         ],
-        review.graph_exec_id,
+        [review.graph_exec_id],
       );
     } catch (error) {
       toast({
@@ -53,5 +53,14 @@ export function useNeedsAttentionList() {
     }
   }
 
-  return { reviews, count, isLoading, isProcessing, approve, skip };
+  return {
+    reviews,
+    count,
+    isLoading,
+    isError,
+    refetch,
+    isProcessing,
+    approve,
+    skip,
+  };
 }

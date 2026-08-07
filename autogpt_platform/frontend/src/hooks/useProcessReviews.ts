@@ -12,16 +12,18 @@ export function useProcessReviews({
   const queryClient = useQueryClient();
   const { mutateAsync, isPending } = usePostV2ProcessReviewAction();
 
-  async function processReviews(items: ReviewItem[], graphExecId: string) {
+  async function processReviews(items: ReviewItem[], graphExecIds: string[]) {
     try {
       return await mutateAsync({ data: { reviews: items } });
     } finally {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetPendingReviewsQueryKey(),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetPendingReviewsForExecutionQueryKey(graphExecId),
-      });
+      for (const graphExecId of new Set(graphExecIds)) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetPendingReviewsForExecutionQueryKey(graphExecId),
+        });
+      }
       onSettled?.();
     }
   }

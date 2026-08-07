@@ -151,7 +151,7 @@ export function PendingReviewsList({
     try {
       const res = await submitReviewAction(
         reviewItems,
-        reviews[0].graph_exec_id,
+        reviews.map((review) => review.graph_exec_id),
       );
 
       if (res.status !== 200) {

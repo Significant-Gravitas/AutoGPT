@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
@@ -273,5 +274,34 @@ test("does not render the needs-attention slot when there are no pending reviews
   render(<CopilotHome {...baseProps} />);
 
   await screen.findByText("What's happening with your agents");
+  expect(screen.queryByText(/Needs your attention/)).toBeNull();
+});
+
+test("shows an error card instead of the pulse strip when the briefing fetch fails", async () => {
+  mockPulseStripAgent();
+  server.use(
+    http.get("/api/proxy/api/briefings/latest", () =>
+      HttpResponse.json({ detail: "boom" }, { status: 500 }),
+    ),
+  );
+  render(<CopilotHome {...baseProps} />);
+
+  expect(await screen.findByText("Failed to load your briefing")).toBeDefined();
+  expect(screen.queryByText("What's happening with your agents")).toBeNull();
+});
+
+test("shows an error card when the pending-reviews fetch fails", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200(null),
+    http.get("/api/proxy/api/review/pending", () =>
+      HttpResponse.json({ detail: "boom" }, { status: 500 }),
+    ),
+  );
+  render(<CopilotHome {...baseProps} />);
+
+  expect(
+    await screen.findByText("Failed to load pending reviews"),
+  ).toBeDefined();
   expect(screen.queryByText(/Needs your attention/)).toBeNull();
 });

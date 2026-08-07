@@ -10,12 +10,21 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { getReviewLink, getReviewTitle } from "./helpers";
 import { useNeedsAttentionList } from "./useNeedsAttentionList";
 
 export function NeedsAttentionList(): JSX.Element | null {
-  const { reviews, count, isLoading, isProcessing, approve, skip } =
-    useNeedsAttentionList();
+  const {
+    reviews,
+    count,
+    isLoading,
+    isError,
+    refetch,
+    isProcessing,
+    approve,
+    skip,
+  } = useNeedsAttentionList();
 
   if (isLoading) {
     return (
@@ -23,6 +32,16 @@ export function NeedsAttentionList(): JSX.Element | null {
         <Skeleton className="h-5 w-40" />
         <Skeleton className="h-16 w-full" />
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ErrorCard
+        context="pending reviews"
+        httpError={{ message: "Failed to load pending reviews" }}
+        onRetry={() => refetch()}
+      />
     );
   }
 
