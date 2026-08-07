@@ -14,7 +14,30 @@ const OPTIONS = {
   schema: "platform",
   identityTable: '"platform"."UserAuthIdentity"',
   accountTable: '"platform"."UserAuthAccount"',
+  userTable: '"platform"."User"',
+  profileTable: '"platform"."Profile"',
+  onboardingTable: '"platform"."UserOnboarding"',
+  subscriptionTierType: '"platform"."SubscriptionTier"',
+  onboardingStepType: '"platform"."OnboardingStep"',
   password: "twelve-chars", // pragma: allowlist secret
+};
+
+const FRESH_RESULT = {
+  createdIdentities: 5,
+  createdAccounts: 5,
+  createdUsers: 5,
+  updatedUsers: 0,
+  createdProfiles: 5,
+  changedOnboarding: 5,
+};
+
+const IDEMPOTENT_RESULT = {
+  createdIdentities: 0,
+  createdAccounts: 0,
+  createdUsers: 0,
+  updatedUsers: 0,
+  createdProfiles: 0,
+  changedOnboarding: 0,
 };
 
 function fakePool(tableState: "present" | "absent" | "identity-only") {
@@ -122,10 +145,7 @@ describe("seedPreviewAccounts", () => {
 
   it("returns exit 0 after a committed seed", async () => {
     const { pool, release, transactionQueries } = fakePool("present");
-    const seedRoster = vi.fn(async () => ({
-      createdIdentities: 5,
-      createdAccounts: 5,
-    }));
+    const seedRoster = vi.fn(async () => FRESH_RESULT);
     const reportLog = vi.fn();
 
     await expect(
@@ -138,7 +158,7 @@ describe("seedPreviewAccounts", () => {
     expect(transactionQueries).toEqual(["BEGIN", "COMMIT"]);
     expect(release).toHaveBeenCalledOnce();
     expect(reportLog).toHaveBeenCalledWith(
-      "Seeded preview accounts: 5 identities and 5 credential accounts created.",
+      "Seeded preview accounts: 5 identities and 5 credential accounts created; 5 users and 5 profiles created; 0 users and 5 onboarding records converged.",
     );
   });
 
@@ -149,15 +169,12 @@ describe("seedPreviewAccounts", () => {
     await expect(
       seedPreviewAccounts(pool, OPTIONS, {
         hashPassword: vi.fn(async () => "hash"),
-        seedRoster: vi.fn(async () => ({
-          createdIdentities: 0,
-          createdAccounts: 0,
-        })),
+        seedRoster: vi.fn(async () => IDEMPOTENT_RESULT),
         reportLog,
       }),
     ).resolves.toBe(SEEDED_EXIT_CODE);
     expect(reportLog).toHaveBeenCalledWith(
-      "Preview accounts are now up to date; no new identities or credential accounts created.",
+      "Preview accounts are now up to date; no auth or product account changes needed.",
     );
   });
 });

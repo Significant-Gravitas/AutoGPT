@@ -1,6 +1,6 @@
 /**
- * Seeds the shared preview-environment login accounts into the Better Auth
- * tables of a (branch) database.
+ * Seeds the shared preview-environment personas into the auth and product
+ * tables of a branch database.
  *
  * This lives in the platform repo — next to the schema — because the seed
  * must name real tables (`UserAuthIdentity` / `UserAuthAccount`) and hash
@@ -21,6 +21,9 @@
  *     emailVerified are converged to the roster), and an existing credential
  *     account is never overwritten — rotating PREVIEW_ACCOUNTS_PASSWORD only
  *     affects freshly seeded databases.
+ *   - App users, profiles, onboarding status, and manual subscription tiers
+ *     are converged to the roster. A non-null Stripe customer id makes Stripe
+ *     authoritative, so the seeder preserves that user's current tier.
  *   - Exit codes are the cross-repo contract with the preview CD pipeline —
  *     see the named constants in seed-preview-accounts.orchestration.ts.
  */
@@ -49,6 +52,11 @@ async function main() {
   const schema = assertSafeSchemaName(process.env.AUTH_DB_SCHEMA || "platform");
   const identityTable = `"${schema}"."UserAuthIdentity"`;
   const accountTable = `"${schema}"."UserAuthAccount"`;
+  const userTable = `"${schema}"."User"`;
+  const profileTable = `"${schema}"."Profile"`;
+  const onboardingTable = `"${schema}"."UserOnboarding"`;
+  const subscriptionTierType = `"${schema}"."SubscriptionTier"`;
+  const onboardingStepType = `"${schema}"."OnboardingStep"`;
 
   // Prisma-style URLs carry ?schema=/&pgbouncer= params that node-postgres
   // does not understand but tolerates; strip nothing, qualify tables instead.
@@ -68,6 +76,11 @@ async function main() {
         schema,
         identityTable,
         accountTable,
+        userTable,
+        profileTable,
+        onboardingTable,
+        subscriptionTierType,
+        onboardingStepType,
         password,
       },
       {

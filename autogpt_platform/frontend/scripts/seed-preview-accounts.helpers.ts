@@ -11,32 +11,45 @@ export const PREVIEW_ACCOUNTS = [
     email: "preview-admin@previews.agpt.co",
     name: "preview-admin",
     role: "admin",
+    subscriptionTier: "NO_TIER",
+    onboardingComplete: true,
   },
   {
     email: "preview-existing@previews.agpt.co",
     name: "preview-existing",
     role: "user",
+    subscriptionTier: "NO_TIER",
+    onboardingComplete: true,
   },
   {
     email: "preview-clean@previews.agpt.co",
     name: "preview-clean",
     role: "user",
+    subscriptionTier: "NO_TIER",
+    onboardingComplete: false,
   },
-  { email: "preview-pro@previews.agpt.co", name: "preview-pro", role: "user" },
+  {
+    email: "preview-pro@previews.agpt.co",
+    name: "preview-pro",
+    role: "user",
+    subscriptionTier: "PRO",
+    onboardingComplete: true,
+  },
   {
     email: "preview-enterprise@previews.agpt.co",
     name: "preview-enterprise",
     role: "user",
+    subscriptionTier: "ENTERPRISE",
+    onboardingComplete: true,
   },
 ] as const;
 
 /**
  * Deterministic user id for FRESH inserts: uuid-shaped truncation of
- * SHA-256(email). These are stable login handles only; product entitlements
- * are outside this auth seeder. Legacy branch databases may carry identities
- * whose IDs were derived with Postgres md5(email)::uuid. Re-seeding remains
- * safe because identities are matched by email before any ID is derived, so
- * the derivation only has to be stable, not backward-identical.
+ * SHA-256(email). Legacy branch databases may carry identities whose IDs were
+ * derived with Postgres md5(email)::uuid. Re-seeding remains safe because
+ * identities are matched by email before any ID is derived, so the derivation
+ * only has to be stable, not backward-identical.
  */
 export function deterministicUserID(email: string): string {
   // SHA-256 provides a stable mapping from public roster emails to IDs; this
@@ -99,11 +112,33 @@ export interface QueryExecutor {
  */
 export async function seedRoster(
   client: QueryExecutor,
-  opts: { identityTable: string; accountTable: string; passwordHash: string },
+  opts: {
+    identityTable: string;
+    accountTable: string;
+    userTable: string;
+    profileTable: string;
+    onboardingTable: string;
+    subscriptionTierType: string;
+    onboardingStepType: string;
+    passwordHash: string;
+  },
 ) {
-  const { identityTable, accountTable, passwordHash } = opts;
+  const {
+    identityTable,
+    accountTable,
+    userTable,
+    profileTable,
+    onboardingTable,
+    subscriptionTierType,
+    onboardingStepType,
+    passwordHash,
+  } = opts;
   let createdIdentities = 0;
   let createdAccounts = 0;
+  let createdUsers = 0;
+  let updatedUsers = 0;
+  let createdProfiles = 0;
+  let changedOnboarding = 0;
 
   for (const account of PREVIEW_ACCOUNTS) {
     // Bare ON CONFLICT DO NOTHING arbitrates on ANY constraint, so both
@@ -174,7 +209,134 @@ export async function seedRoster(
       [userID, passwordHash],
     );
     createdAccounts += insertedCredential.rowCount ?? 0;
+
+    const insertedUser = await client.query(
+      `INSERT INTO ${userTable}
+         (id, email, "emailVerified", name, "subscriptionTier", "createdAt", "updatedAt")
+       VALUES ($1, $2, true, $3, $4::${subscriptionTierType}, now(), now())
+       ON CONFLICT DO NOTHING`,
+      [userID, account.email, account.name, account.subscriptionTier],
+    );
+    createdUsers += insertedUser.rowCount ?? 0;
+
+    const productUser = await client.query(
+      `SELECT id
+       FROM ${userTable}
+       WHERE email = $1`,
+      [account.email],
+    );
+    const productUserID = productUser.rows[0]?.id;
+    if (!productUserID) {
+      throw new Error(
+        `Platform user for ${account.email} neither existed nor could be ` +
+          "created (its auth id is taken by a different user)",
+      );
+    }
+    if (productUserID !== userID) {
+      throw new Error(
+        `Platform user for ${account.email} has id ${productUserID}, but ` +
+          `the auth identity has id ${userID}`,
+      );
+    }
+
+    if (insertedUser.rowCount !== 1) {
+      const updatedUser = await client.query(
+        `UPDATE ${userTable}
+         SET name = $2,
+             "emailVerified" = true,
+             "subscriptionTier" = CASE
+               WHEN "stripeCustomerId" IS NULL THEN $3::${subscriptionTierType}
+               ELSE "subscriptionTier"
+             END,
+             "updatedAt" = now()
+         WHERE id = $1
+           AND (
+             name IS DISTINCT FROM $2
+             OR "emailVerified" IS DISTINCT FROM true
+             OR (
+               "stripeCustomerId" IS NULL
+               AND "subscriptionTier" IS DISTINCT FROM $3::${subscriptionTierType}
+             )
+           )`,
+        [userID, account.name, account.subscriptionTier],
+      );
+      updatedUsers += updatedUser.rowCount ?? 0;
+    }
+
+    const insertedProfile = await client.query(
+      `INSERT INTO ${profileTable}
+         (id, "userId", name, username, description, links, "avatarUrl", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid()::text, $1, $2, $3, 'I''m new here', ARRAY[]::text[], '', now(), now())
+       ON CONFLICT DO NOTHING`,
+      [userID, account.name, account.name],
+    );
+    createdProfiles += insertedProfile.rowCount ?? 0;
+
+    const profile = await client.query(
+      `SELECT id FROM ${profileTable} WHERE "userId" = $1`,
+      [userID],
+    );
+    if (!profile.rows[0]?.id) {
+      throw new Error(
+        `Profile for ${account.email} neither existed nor could be created ` +
+          `(the username ${account.name} is taken by a different user)`,
+      );
+    }
+
+    const onboarding = account.onboardingComplete
+      ? await client.query(
+          `INSERT INTO ${onboardingTable} AS current
+             (id, "userId", "completedSteps", "createdAt", "updatedAt")
+           VALUES (
+             gen_random_uuid()::text,
+             $1,
+             ARRAY['VISIT_COPILOT'::${onboardingStepType}],
+             now(),
+             now()
+           )
+           ON CONFLICT ("userId") DO UPDATE
+           SET "completedSteps" = array_append(
+                 current."completedSteps",
+                 'VISIT_COPILOT'::${onboardingStepType}
+               ),
+               "updatedAt" = now()
+           WHERE NOT (
+             'VISIT_COPILOT'::${onboardingStepType}
+             = ANY(current."completedSteps")
+           )`,
+          [userID],
+        )
+      : await client.query(
+          `INSERT INTO ${onboardingTable} AS current
+             (id, "userId", "completedSteps", "createdAt", "updatedAt")
+           VALUES (
+             gen_random_uuid()::text,
+             $1,
+             ARRAY[]::${onboardingStepType}[],
+             now(),
+             now()
+           )
+           ON CONFLICT ("userId") DO UPDATE
+           SET "completedSteps" = array_remove(
+                 current."completedSteps",
+                 'VISIT_COPILOT'::${onboardingStepType}
+               ),
+               "updatedAt" = now()
+           WHERE (
+             'VISIT_COPILOT'::${onboardingStepType}
+             = ANY(current."completedSteps")
+           )`,
+          [userID],
+        );
+    changedOnboarding += onboarding.rowCount ?? 0;
   }
 
-  return { createdIdentities, createdAccounts };
+  return {
+    createdIdentities,
+    createdAccounts,
+    createdUsers,
+    updatedUsers,
+    createdProfiles,
+    changedOnboarding,
+  };
 }
