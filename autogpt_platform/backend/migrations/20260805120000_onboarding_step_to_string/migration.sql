@@ -37,11 +37,20 @@ WHERE c.relkind = 'v'
           AND d.refobjsubid > 0
       );
 
+-- Read the ACL from the catalog rather than information_schema, whose
+-- role_table_grants view only shows grants involving roles the current user
+-- belongs to and would silently drop the rest.
 CREATE TEMP TABLE _onboarding_dep_view_grants AS
-SELECT g.table_schema, g.table_name, g.grantee, g.privilege_type
-FROM information_schema.role_table_grants g
-JOIN _onboarding_dep_views v
-  ON v.schema_name = g.table_schema AND v.view_name = g.table_name;
+SELECT v.schema_name,
+       v.view_name,
+       CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+            ELSE quote_ident(pg_get_userbyid(a.grantee)) END AS grantee_name,
+       a.privilege_type,
+       a.is_grantable
+FROM _onboarding_dep_views v
+JOIN pg_class c ON c.relname = v.view_name
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = v.schema_name
+CROSS JOIN LATERAL aclexplode(c.relacl) AS a;
 
 DO $$
 DECLARE v record;
@@ -77,18 +86,29 @@ BEGIN
     FOR v IN SELECT * FROM _onboarding_dep_views LOOP
         EXECUTE format('CREATE VIEW %I.%I AS %s',
                        v.schema_name, v.view_name, v.definition);
-        EXECUTE format('ALTER VIEW %I.%I OWNER TO %I',
-                       v.schema_name, v.view_name, v.view_owner);
+        -- Ownership is cosmetic for readers; if the migration role isn't a
+        -- member of the original owner it can't reassign. Warn rather than
+        -- abort, so a privilege quirk can't strand the migration half-applied.
+        BEGIN
+            EXECUTE format('ALTER VIEW %I.%I OWNER TO %I',
+                           v.schema_name, v.view_name, v.view_owner);
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING 'could not restore owner % on %.%: %',
+                          v.view_owner, v.schema_name, v.view_name, SQLERRM;
+        END;
     END LOOP;
 
     FOR g IN SELECT * FROM _onboarding_dep_view_grants LOOP
-        IF upper(g.grantee) = 'PUBLIC' THEN
-            EXECUTE format('GRANT %s ON %I.%I TO PUBLIC',
-                           g.privilege_type, g.table_schema, g.table_name);
-        ELSE
-            EXECUTE format('GRANT %s ON %I.%I TO %I',
-                           g.privilege_type, g.table_schema, g.table_name, g.grantee);
-        END IF;
+        BEGIN
+            EXECUTE format('GRANT %s ON %I.%I TO %s%s',
+                           g.privilege_type, g.schema_name, g.view_name,
+                           g.grantee_name,
+                           CASE WHEN g.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING 'could not restore % on %.% to %: %',
+                          g.privilege_type, g.schema_name, g.view_name,
+                          g.grantee_name, SQLERRM;
+        END;
     END LOOP;
 END $$;
 
