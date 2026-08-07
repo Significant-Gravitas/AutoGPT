@@ -25,7 +25,7 @@ export function getTaskGroups(state: UserOnboarding | null): TaskGroup[] {
       details: "Kickstart your journey with quick wins.",
       tasks: [
         {
-          id: "VISIT_COPILOT",
+          id: "ONBOARDING_COMPLETE",
           name: "Complete onboarding",
           amount: 3,
           details: "",
@@ -39,7 +39,7 @@ export function getTaskGroups(state: UserOnboarding | null): TaskGroup[] {
           video: "/onboarding/marketplace-add.mp4",
         },
         {
-          id: "MARKETPLACE_RUN_AGENT",
+          id: "LIBRARY_RUN_AGENT",
           name: "Open the Library page and run an agent",
           amount: 1,
           details: "Go to the Library, open an agent you want, and run it",
@@ -125,8 +125,9 @@ export function getEarnRows(
   // The onboarding payload is typed as always carrying `completedSteps`, but
   // the rest of the wallet already guards against it being absent — do the same
   // here so a thin backend response degrades to "nothing claimed" and not a
-  // TypeError.
-  completedSteps: OnboardingStep[] | undefined,
+  // TypeError. Plain string[] (not OnboardingStep[]): stored rows may contain
+  // legacy step names; the typed task ids still get typo protection.
+  completedSteps: string[] | undefined,
 ): EarnRow[] {
   const claimed = completedSteps ?? [];
 

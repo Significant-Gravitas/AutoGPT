@@ -9366,7 +9366,7 @@
                 "AGENT_NEW_RUN",
                 "AGENT_INPUT",
                 "CONGRATS",
-                "VISIT_COPILOT",
+                "ONBOARDING_COMPLETE",
                 "BUILDER_OPEN",
                 "CAPABILITY_CARDS"
               ],
@@ -20406,11 +20406,11 @@
           "AGENT_NEW_RUN",
           "AGENT_INPUT",
           "CONGRATS",
-          "VISIT_COPILOT",
+          "ONBOARDING_COMPLETE",
           "GET_RESULTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
-          "MARKETPLACE_RUN_AGENT",
+          "LIBRARY_RUN_AGENT",
           "BUILDER_SAVE_AGENT",
           "RE_RUN_AGENT",
           "SCHEDULE_AGENT",
@@ -20423,7 +20423,8 @@
           "BUILDER_RUN_AGENT",
           "CAPABILITY_CARDS"
         ],
-        "title": "OnboardingStep"
+        "title": "OnboardingStep",
+        "description": "Application-level onboarding step identifiers."
       },
       "OrgAliasResponse": {
         "properties": {
