@@ -203,8 +203,10 @@ async def generate_and_deliver_briefing(user_id: str) -> dict:
     # An undelivered record means a prior run stored the briefing but the
     # session post failed — redeliver the stored content so the record and
     # the posted message can't diverge.
-    content = _stored_briefing_content(record.content) if record else None
-    if content is None:
+    stored = _stored_briefing_content(record.content) if record else None
+    if record is not None and stored is not None:
+        content = stored
+    else:
         window_start = (now_local - timedelta(hours=24)).astimezone(dt_timezone.utc)
         experts = await experts_db().list_experts(user_id)
         executions = await execution_db().get_graph_executions(
