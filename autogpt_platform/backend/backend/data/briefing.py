@@ -60,7 +60,10 @@ async def get_briefing_for_date(
 
 
 async def get_latest_briefing(user_id: str) -> BriefingRecord | None:
+    # Order by briefingDate, not createdAt: a backfill or retry can write an
+    # earlier date's briefing after a later date's already exists, and the
+    # "latest" briefing means the latest date it covers, not insertion order.
     row = await prisma.models.UserBriefing.prisma().find_first(
-        where={"userId": user_id}, order={"createdAt": "desc"}
+        where={"userId": user_id}, order={"briefingDate": "desc"}
     )
     return BriefingRecord.from_db(row) if row else None

@@ -58,3 +58,29 @@ async def test_create_and_get_briefing(server: SpinTestServer):
         assert (await briefing.get_latest_briefing(user_id)).id == record.id
     finally:
         await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_latest_briefing_orders_by_briefing_date_not_created_at(
+    server: SpinTestServer,
+):
+    """A backfill/retry can write an earlier date's briefing after a later
+    date's already exists; "latest" must mean the latest date covered, not
+    insertion order."""
+    user_id = f"briefing-order-{uuid4()}"
+    await _create_user(user_id)
+    try:
+        later = await briefing.create_briefing(
+            user_id, date(2026, 8, 10), {"which": "later-date"}
+        )
+        earlier = await briefing.create_briefing(
+            user_id, date(2026, 8, 5), {"which": "earlier-date-inserted-second"}
+        )
+        assert earlier.created_at > later.created_at  # inserted out of order
+
+        latest = await briefing.get_latest_briefing(user_id)
+        assert latest is not None
+        assert latest.id == later.id
+        assert latest.briefing_date == date(2026, 8, 10)
+    finally:
+        await _cleanup(user_id)
