@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Clock } from "@phosphor-icons/react";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
@@ -44,6 +43,8 @@ import { StepsCollapse } from "./components/StepsCollapse";
 import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -333,6 +334,8 @@ export function ChatMessagesContainer({
   // sidebar surface — hide it entirely when the task bar is on.
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
+  // Bubble restyle ships with the brain-dump experience.
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList =
     !isTaskBarEnabled &&
@@ -628,7 +631,9 @@ export function ChatMessagesContainer({
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +
-                  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+                  (isBrainDumpEnabled
+                    ? "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] "
+                    : "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ") +
                   "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
@@ -779,10 +784,16 @@ export function ChatMessagesContainer({
         {!readOnly &&
           queuedMessages?.map((msg, idx) => (
             <Message key={idx} from="user">
-              <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
+              <MessageContent
+                className={
+                  isBrainDumpEnabled
+                    ? "flex flex-col gap-1 rounded-3xl border border-dashed border-[#b18aff] bg-gradient-to-br from-[#f3edff] to-[#e4d4ff] px-4 py-3 text-[1rem] leading-relaxed text-[#3b1e75] opacity-60 [border-bottom-right-radius:0.5rem]"
+                    : "flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]"
+                }
+              >
                 <span>{msg}</span>
                 <span className="flex items-center gap-1 text-xs text-slate-500">
-                  <Clock className="size-3" weight="bold" />
+                  <Icon icon={Clock01Icon} className="size-3" />
                   Queued
                 </span>
               </MessageContent>

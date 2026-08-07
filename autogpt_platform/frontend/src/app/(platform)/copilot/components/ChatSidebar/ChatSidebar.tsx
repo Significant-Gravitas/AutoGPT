@@ -20,12 +20,6 @@ import {
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import {
-  FilesIcon,
-  MagnifyingGlassIcon,
-  PlusCircleIcon,
-  PlusIcon,
-} from "@phosphor-icons/react";
 import { ShareChatDialog } from "../../sharing/ShareChatDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -49,6 +43,13 @@ import { ChatSessionRow } from "./components/ChatSessionRow/ChatSessionRow";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
+import {
+  Files01Icon,
+  PlusSignCircleIcon,
+  PlusSignIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -365,7 +366,7 @@ export function ChatSidebar() {
                     onClick={handleNewChat}
                     style={{ minWidth: "auto", width: "auto" }}
                   >
-                    <PlusCircleIcon className="!size-5" />
+                    <Icon icon={PlusSignCircleIcon} className="!size-5" />
                     <span className="sr-only">New Chat</span>
                   </Button>
                 ) : null}
@@ -378,7 +379,7 @@ export function ChatSidebar() {
                     onClick={() => openSearch()}
                     className="rounded-full text-zinc-600 hover:bg-zinc-100"
                   >
-                    <MagnifyingGlassIcon className="!size-5" />
+                    <Icon icon={Search01Icon} className="!size-5" />
                   </ShadcnButton>
                 ) : null}
               </div>
@@ -407,7 +408,7 @@ export function ChatSidebar() {
                       onClick={() => openSearch()}
                       className="rounded-full text-zinc-600 hover:bg-zinc-100"
                     >
-                      <MagnifyingGlassIcon className="!size-5" />
+                      <Icon icon={Search01Icon} className="!size-5" />
                     </ShadcnButton>
                   ) : null}
                   {isArtifactsEnabled ? (
@@ -419,7 +420,7 @@ export function ChatSidebar() {
                       onClick={() => router.push("/artifacts")}
                       className="rounded-full text-zinc-600 hover:bg-zinc-100"
                     >
-                      <FilesIcon className="!size-5" />
+                      <Icon icon={Files01Icon} className="!size-5" />
                     </ShadcnButton>
                   ) : null}
                   <UsagePopover />
@@ -433,7 +434,7 @@ export function ChatSidebar() {
                   size="small"
                   onClick={handleNewChat}
                   className="w-full"
-                  leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
+                  leftIcon={<Icon icon={PlusSignIcon} className="h-4 w-4" />}
                 >
                   New Chat
                 </Button>

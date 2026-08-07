@@ -13,6 +13,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
@@ -32,6 +33,8 @@ export function PlatformChrome({ children }: Props) {
     hasInsetHeaderTitle,
     isSettingsRoute,
   } = usePlatformChrome();
+  // The collapsed-by-default sidebar ships with the brain-dump experience.
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
 
   const content = (
     <TopUpPromptProvider>
@@ -58,6 +61,7 @@ export function PlatformChrome({ children }: Props) {
   if (showNewLayout) {
     return (
       <SidebarProvider
+        defaultOpen={!isBrainDumpEnabled}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
         <AppSidebar />

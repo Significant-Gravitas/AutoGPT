@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,7 +23,13 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
+from .model import (
+    ChatMessage,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    _get_session_lock,
+    cache_chat_session,
+)
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
@@ -527,6 +534,11 @@ async def add_chat_messages_batch(
                     if msg.get("duration_ms") is not None:
                         data["durationMs"] = msg["duration_ms"]
 
+                    if msg.get("model") is not None:
+                        data["model"] = msg["model"]
+                    if msg.get("routing_source") is not None:
+                        data["routingSource"] = msg["routing_source"]
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
@@ -571,6 +583,35 @@ async def add_chat_messages_batch(
     raise RuntimeError(f"Failed to insert messages after {max_retries} attempts")
 
 
+# WHERE fragment shared by the user-facing session list and its count so
+# the sidebar list, its pagination total, and /search/global stay
+# consistent.
+#
+# ``IS DISTINCT FROM`` (not ``<>``) is load-bearing: sessions created
+# before ``ChatSessionMetadata.kind`` existed have no ``kind`` key in
+# their metadata JSON, so ``metadata->>'kind'`` evaluates to SQL NULL
+# for them. ``NULL <> 'dream'`` is NULL → WHERE drops the row → every
+# legacy chat would vanish from the sidebar. ``IS DISTINCT FROM`` treats
+# NULL as an ordinary comparable value, so missing-key / null-metadata
+# rows stay visible and only rows with ``kind = 'dream'`` are excluded.
+#
+# Raw SQL because the Python Prisma client's ``JsonFilter`` supports only
+# whole-value ``equals`` / ``not`` — it has no ``path`` access at all.
+#
+# ``exclude_dream_sessions_sql`` is the public form for OTHER ChatSession
+# listing surfaces (e.g. the search-embedding backfill in
+# ``api/features/search/content_handlers.py``) so the predicate can't
+# drift between them; ``column`` lets aliased queries pass
+# ``cs.metadata``.
+
+
+def exclude_dream_sessions_sql(column: str = "metadata") -> str:
+    return f"({column}->>'kind' IS DISTINCT FROM 'dream')"
+
+
+_EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
+
+
 async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
@@ -581,26 +622,40 @@ async def get_user_chat_sessions(
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
+    Dream-pass sessions (``metadata.kind == "dream"``) are hidden from
+    this LIST path — they are pipeline artifacts, not user chats, until
+    the UI grows a dedicated surface for them (P6). Fetch-by-id paths
+    (:func:`get_chat_session_metadata`, :func:`get_chat_messages_paginated`)
+    intentionally still return them.
+
     ``title_contains`` is a case-insensitive substring filter used by
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
     """
-    where: ChatSessionWhereInput = {"userId": user_id}
-    if org_scope := _own_org_scope(organization_id):
-        where["AND"] = org_scope
+    params: list[Any] = [user_id]
+    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if organization_id is not None:
+        params.append(organization_id)
+        conditions.append(
+            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
+        )
     if title_contains:
-        where["title"] = {"contains": title_contains, "mode": "insensitive"}
+        params.append(f"%{_escape_like(title_contains)}%")
+        conditions.append(f'"title" ILIKE ${len(params)}')
     if expert_id:
-        where["expertId"] = expert_id
-    prisma_sessions = await PrismaChatSession.prisma().find_many(
-        where=where,
-        order=[{"isPinned": "desc"}, {"updatedAt": "desc"}],
-        take=limit,
-        skip=offset,
+        params.append(expert_id)
+        conditions.append(f'"expertId" = ${len(params)}')
+    params.extend((limit, offset))
+    query = (
+        'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
+        + " AND ".join(conditions)
+        + ' ORDER BY "isPinned" DESC, "updatedAt" DESC '
+        + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
     )
-    return [ChatSessionInfo.from_db(s) for s in prisma_sessions]
+    sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
+    return [ChatSessionInfo.from_db(s) for s in sessions]
 
 
 async def get_user_session_count(
@@ -608,13 +663,37 @@ async def get_user_session_count(
     organization_id: str | None = None,
     expert_id: str | None = None,
 ) -> int:
-    """Get the total number of chat sessions for a user."""
-    where: ChatSessionWhereInput = {"userId": user_id}
-    if org_scope := _own_org_scope(organization_id):
-        where["AND"] = org_scope
+    """Get the total number of chat sessions for a user.
+
+    Applies the same dream-session exclusion, org scoping, and expert
+    filter as :func:`get_user_chat_sessions` so pagination totals always
+    match the visible list.
+    """
+    params: list[Any] = [user_id]
+    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if organization_id is not None:
+        params.append(organization_id)
+        conditions.append(
+            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
+        )
     if expert_id:
-        where["expertId"] = expert_id
-    return await PrismaChatSession.prisma().count(where=where)
+        params.append(expert_id)
+        conditions.append(f'"expertId" = ${len(params)}')
+    rows = await db.query_raw_with_schema(
+        'SELECT COUNT(*)::int AS "count" FROM {schema_prefix}"ChatSession" WHERE '
+        + " AND ".join(conditions),
+        *params,
+    )
+    return rows[0]["count"] if rows else 0
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so ``title_contains`` matches literally.
+
+    Parity with Prisma's ``contains`` filter, which escapes them too;
+    Postgres' default LIKE escape character is the backslash.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 async def delete_chat_session(
@@ -797,6 +876,32 @@ async def update_message_content_by_sequence(
         return False
 
 
+async def update_chat_message_stamps(
+    session_id: str,
+    sequence: int,
+    model: str | None,
+    routing_source: str | None,
+) -> bool:
+    """Back-fill model/routingSource on an already-persisted message row.
+
+    Mid-turn flushes persist assistant rows (assigning sequences) BEFORE
+    the end-of-turn stamping runs; this repairs those rows so the
+    analytics columns survive in the DB. Same mechanism and authorization
+    reasoning as ``update_chat_message_tool_calls``.
+    """
+    result = await PrismaChatMessage.prisma().update(
+        where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
+        data={"model": model, "routingSource": routing_source},
+    )
+    if not result:
+        logger.warning(
+            f"No message found to update stamps for session "
+            f"{session_id}, sequence {sequence}"
+        )
+        return False
+    return True
+
+
 async def update_chat_message_tool_calls(
     session_id: str,
     sequence: int,
@@ -937,3 +1042,61 @@ async def update_chat_session_status(
         where=where, data={"chatStatus": status}
     )
     return updated > 0
+
+
+async def append_expert_run_message(
+    user_id: str,
+    expert_id: str,
+    content: str,
+    message_id: str,
+) -> str | None:
+    """Post an assistant message into the expert's latest thread, creating a
+    thread when none exists — run results land in her workspace, not a void.
+
+    Deduplicates on *message_id* (deterministic per event at the caller), so
+    executor retries and double-fires never produce duplicate posts.
+    Returns the session id the message landed in, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    session = await PrismaChatSession.prisma().find_first(
+        where={"userId": user_id, "expertId": expert_id},
+        order={"updatedAt": "desc"},
+    )
+    if session is not None:
+        session_id = session.id
+    else:
+        created = await create_chat_session(
+            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+        )
+        session_id = created.session_id
+
+    # Same Redis NX lock as turn_queue.append_and_save_message: the
+    # sequence read + insert must not interleave with a concurrent turn
+    # writer picking the same sequence and PK-colliding on
+    # (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+    return session_id

@@ -301,6 +301,7 @@ export function useCopilotStream({
   }
 
   function resumeStreamFromStart() {
+    if (!chatRuntime) return;
     if (sessionId) {
       markCopilotChatRuntimeHealthy(sessionId);
     }

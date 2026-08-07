@@ -78,6 +78,12 @@ describe("customMutator — impersonation header", () => {
     expect(headers[IMPERSONATION_HEADER_NAME]).toBeUndefined();
   });
 
+  it("routes browser requests through the same-origin API proxy", async () => {
+    await customMutator("/test", { method: "GET" });
+
+    expect(fetch).toHaveBeenCalledWith("/api/proxy/test", expect.any(Object));
+  });
+
   it("coexists with pre-existing caller-supplied headers without overwriting them", async () => {
     mockGetSystemHeaders.mockReturnValue({
       [IMPERSONATION_HEADER_NAME]: "impersonated-user-abc",

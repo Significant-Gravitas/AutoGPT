@@ -76,6 +76,66 @@ class DreamInput(BaseModel):
     known_episode_uuids: set[str] = Field(default_factory=set)
 
 
+# Prefix stamped on every dream-authored episode name (see
+# ``apply._episode_name``: ``dream_{pass_id}_{phase}_{counter}``). Shared
+# so the novelty check and the writer can't drift.
+DREAM_EPISODE_NAME_PREFIX = "dream_"
+
+
+def parse_episode_timestamp(episode: EpisodeRow) -> datetime | None:
+    """Latest tz-aware timestamp for an episode row, for novelty checks.
+
+    Returns the *later* of ``valid_at`` (the ``reference_time`` set at
+    enqueue, which the episode fetch Cypher orders by) and ``created_at``
+    (graphiti's graph-node creation time). The two diverge when async
+    ingestion lags the gather query: an episode enqueued with a past
+    ``reference_time`` but materialized as a node only *after* a pass
+    stamped its marker has ``valid_at`` < marker yet is genuinely new.
+    Taking the max keeps it counted as new until a later pass consolidates
+    it, instead of silently dropping it once the marker moves past its
+    ``valid_at``. ``None`` means neither field parsed — callers must treat
+    that as "age unknown" and fail open.
+    """
+    parsed = [
+        ts
+        for raw in (episode.valid_at, episode.created_at)
+        if raw
+        if (ts := _parse_iso_timestamp(raw)) is not None
+    ]
+    return max(parsed) if parsed else None
+
+
+def is_dream_authored_episode(episode: EpisodeRow) -> bool:
+    """True for episodes written by the dream pipeline itself.
+
+    A productive pass enqueues its consolidations/proposals with
+    ``valid_at = now()`` — after the ``window_end`` the marker is stamped
+    with — so counting them as new activity would make every subsequent
+    nightly run a paid no-op that only re-reads its own output. They are
+    identifiable by the stable ``dream_`` name prefix
+    (:func:`apply._episode_name`); the ``dream-pass`` ``source_description``
+    is a secondary signal for robustness.
+    """
+    name = episode.name
+    if name is not None and name.startswith(DREAM_EPISODE_NAME_PREFIX):
+        return True
+    description = episode.source_description
+    return description is not None and description.startswith("dream-pass")
+
+
+def _parse_iso_timestamp(raw: str) -> datetime | None:
+    """ISO 8601 parse tolerating Cypher's ``toString(datetime)`` output
+    (trailing ``Z``); naive values are assumed UTC so the result always
+    compares safely against tz-aware datetimes."""
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
     return AutoGPTFalkorDriver(
         host=graphiti_config.falkordb_host,

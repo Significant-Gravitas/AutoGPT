@@ -5,12 +5,13 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { cn } from "@/lib/utils";
-import {
-  ArrowRightIcon,
-  CheckCircleIcon,
-  LightningIcon,
-} from "@phosphor-icons/react";
 import { getExpertAccent } from "../helpers";
+import {
+  ArrowRight02Icon,
+  CheckmarkCircle02Icon,
+  FlashIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   expert: Expert;
@@ -47,7 +48,7 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
               accent.pill,
             )}
           >
-            <accent.roleIcon size={14} weight="bold" />
+            <Icon icon={accent.roleIcon} size={14} />
             {expert.role}
           </span>
         </div>
@@ -88,21 +89,21 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
 
         <div className="mt-auto flex items-center justify-between pt-2">
           <span className="flex items-center gap-2 text-base text-zinc-500">
-            <LightningIcon size={18} weight="fill" className={accent.icon} />
+            <Icon icon={FlashIcon} size={18} className={accent.icon} />
             {expert.workflows.length}{" "}
             {expert.workflows.length === 1 ? "workflow" : "workflows"}
           </span>
           {isHired ? (
             <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
-              <CheckCircleIcon size={18} weight="fill" />
+              <Icon icon={CheckmarkCircle02Icon} size={18} />
               Hired
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
               Hire
-              <ArrowRightIcon
+              <Icon
+                icon={ArrowRight02Icon}
                 size={16}
-                weight="bold"
                 className="transition-transform duration-200 group-hover:translate-x-0.5"
               />
             </span>

@@ -144,6 +144,7 @@ model User {
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
   CoPilotUnderstanding  CoPilotUnderstanding?
+  OnboardingBrainDump   OnboardingBrainDump?
   BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
@@ -214,6 +215,9 @@ enum OnboardingStep {
   // No longer rewarded but exist for analytical purposes
   BUILDER_OPEN
   BUILDER_RUN_AGENT
+  // Copilot home first-run: the capability-cards modal was completed or
+  // skipped. Unrewarded; recorded so it shows only once per user.
+  CAPABILITY_CARDS
 }
 
 model UserOnboarding {
@@ -248,6 +252,67 @@ model CoPilotUnderstanding {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   data Json?
+
+  @@index([userId])
+}
+
+enum BrainDumpStatus {
+  recording_uploaded
+  transcribing
+  transcribed
+  extracting
+  completed
+  failed
+}
+
+enum BrainDumpInputMode {
+  voice
+  typed
+  skipped
+}
+
+/// Onboarding voice "brain dump": the raw recording plus its full
+/// transcript. The transcript is stored complete even when a shortened
+/// version is what gets injected into the copilot's first prompt —
+/// truncation is never silent, and the audio is never deleted on failure
+/// so the user can always re-run or download it.
+model OnboardingBrainDump {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Client-generated identifier that ties uploaded parts to one take and
+  /// makes `finalize` idempotent across retries.
+  recordingId String
+
+  status    BrainDumpStatus
+  inputMode BrainDumpInputMode
+
+  audioPath      String?
+  mimeType       String?
+  sizeBytes      Int?
+  durationSecs   Float?
+  transcript     String?
+  transcriptLang String?
+  errorCode      String?
+
+  /// Written once when the dump is processed, read by the copilot home's
+  /// greeting. Generated up-front rather than on page load so the greeting
+  /// is instant — the user has already waited through the loading screen.
+  greeting         String?
+  /// List of {title, prompt} objects the user can pick from under the
+  /// greeting. JSON so the shape can evolve without a migration.
+  suggestedPrompts Json    @default("[]")
+  /// True once the user has sent their first message. The greeting is
+  /// never shown again after this, but its content is kept.
+  greetingSeen     Boolean @default(false)
+  /// List of {provider, reason} objects Claude picks from the transcript
+  /// and the live provider registry. Null until the recommendation
+  /// background job (separate from the greeting one) writes its result.
+  recommendedProviders Json?
 
   @@index([userId])
 }
@@ -512,6 +577,15 @@ model ChatMessage {
   sequence   Int
   durationMs Int? // Wall-clock milliseconds for this assistant turn
 
+  // Which LLM served this assistant turn, and which routing layer picked it
+  // ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+  // overload fallback served a different model than the routed one).
+  // Product-intelligence mirrors these columns to
+  // segment quality judgments by model — model experiments are unmeasurable
+  // without them. Null on user/tool rows and rows predating this column.
+  model         String?
+  routingSource String?
+
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
   // request_arrival_at) on the user row that triggered a queued turn,
@@ -603,6 +677,17 @@ model AgentPreset {
   webhookId String?
   Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
 
+  // Expert attribution: set when the preset was created for a hired
+  // expert's installed workflow; every run it fires inherits it.
+  // Survives expert archival (soft delete), like ChatSession.expertId.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
+  // Set when detach-on-archive deactivated this preset, so re-hire
+  // reactivates only what archiving turned off — a preset the user had
+  // deliberately disabled beforehand stays off.
+  deactivatedByExpertArchive Boolean @default(false)
+
   isDeleted Boolean @default(false)
 
   // Tenancy
@@ -614,6 +699,7 @@ model AgentPreset {
   @@index([userId])
   @@index([agentGraphId, agentGraphVersion])
   @@index([webhookId])
+  @@index([expertId])
   @@index([teamId])
   @@index([organizationId])
 }
@@ -801,8 +887,19 @@ model Expert {
 
   isArchived Boolean @default(false)
 
-  Workflows    ExpertWorkflow[]
-  ChatSessions ChatSession[]
+  // Weekly credit guardrail: null = platform default from config.
+  // Spend is tracked per ISO week in Redis and reconciled from
+  // CreditTransaction via the execution's expertId.
+  weeklyBudget Int?
+  // Set when a budget breach (or archive) paused this expert's schedules
+  // and triggers. Chat is never paused. Cleared by the resume endpoint.
+  schedulesPausedAt DateTime?
+
+  Workflows       ExpertWorkflow[]
+  ChatSessions    ChatSession[]
+  GraphExecutions AgentGraphExecution[]
+  AgentPresets    AgentPreset[]
+  PauseEvents     ExpertPauseEvent[]
 
   // Tenancy
   organizationId String?
@@ -837,9 +934,31 @@ model ExpertWorkflow {
   libraryAgentId String?
   LibraryAgent   LibraryAgent? @relation(fields: [libraryAgentId], references: [id])
 
+  // Install-time scheduling: template rows carry the roster cadence; hire
+  // copies it and records the created schedule's id. A non-null cron with a
+  // null scheduleId means schedule creation failed at install time (e.g.
+  // missing credentials) — the workflow "needs setup".
+  scheduleCron String?
+  scheduleId   String?
+
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
   @@index([expertId])
+}
+
+// Audit log for expert schedule pauses (budget breach, archive). "All
+// pauses logged and reversible": resume stamps clearedAt on the open row.
+model ExpertPauseEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  reason    String
+  clearedAt DateTime?
+
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////
@@ -950,6 +1069,13 @@ model AgentGraphExecution {
   agentPresetId String?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
 
+  // Expert attribution: set when the run was started by/for a hired expert
+  // (install-time schedule, expert trigger, or manual schedule of an
+  // expert-installed workflow). Survives expert archival — archive is a
+  // soft delete, mirroring ChatSession.expertId semantics.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?
@@ -988,6 +1114,7 @@ model AgentGraphExecution {
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
   @@index([agentPresetId])
+  @@index([expertId, createdAt])
   @@index([shareToken])
   @@index([parentGraphExecutionId])
   @@index([teamId, isDeleted, createdAt])
@@ -2367,4 +2494,31 @@ model BotInstall {
 
   @@unique([platform, platformServerId])
   @@index([platform, revokedAt])
+}
+
+// Retirement records: which AgentNodes were rewritten when a model was
+// retired via the retirement CLI (backend.data.llm_registry.retire), so the
+// operation is observable and revertable. Slugs are plain strings validated
+// against the catalog file at write time — the catalog is not a DB table.
+// Per-install runtime state, unlike the catalog itself (catalog-as-code).
+model LlmModelMigration {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceModelSlug String // The retired model
+  targetModelSlug String // The model workflows were migrated to
+  reason          String?
+
+  // JSON array of rewritten AgentNode ids, for revert
+  migratedNodeIds Json @default("[]")
+  nodeCount       Int // DB constraint: >= 0
+
+  isReverted Boolean   @default(false)
+  revertedAt DateTime?
+
+  // Note: Partial unique index in migration SQL prevents multiple active
+  // migrations per source: UNIQUE (sourceModelSlug) WHERE isReverted = false
+  @@index([targetModelSlug])
+  @@index([sourceModelSlug, isReverted])
 }

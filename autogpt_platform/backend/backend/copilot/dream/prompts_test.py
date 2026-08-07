@@ -125,6 +125,18 @@ def test_sanitize_prompt_includes_known_fact_uuids_for_demotion_guard():
     assert str(MAX_WRITES_PER_PASS) in sys
 
 
+def test_sanitize_prompt_rejects_transient_intent_and_generic_knowledge():
+    """#13388: the sanitize prompt must instruct dropping transient-intent
+    ('user is asking…') and generic world-knowledge facts, while keeping
+    durable user goals."""
+    bundle = _build_bundle()
+    sys = build_sanitize_prompt(bundle, "{}", "{}")[0]["content"].lower()
+    assert "transient intent" in sys
+    assert "generic world knowledge" in sys
+    # Keeps goals — the rule explicitly carves them out.
+    assert "goal" in sys
+
+
 def test_sanitize_prompt_surfaces_stale_fact_candidates():
     """The staleness heuristics flag candidates for the sanitizer to
     judge. If this section drops out of the prompt, P0.3a fails
@@ -199,6 +211,23 @@ def test_sanitize_prompt_emits_no_stale_candidates_placeholder_when_clean():
     )
     msgs = build_sanitize_prompt(bundle, "{}", "{}")
     assert "(no stale-fact candidates flagged this pass)" in msgs[1]["content"]
+
+
+def test_sanitize_empty_result_example_models_non_empty_summary():
+    """The sanitizer's empty-result example must not show
+    ``"summary_for_user": ""`` — the literal empty string in the example
+    taught the model to emit empty summaries on no-op passes
+    (contradicting the summary rule), which rendered as blank dream
+    chats. The example carries a real sentence and an explicit
+    always-non-empty rule backs it up."""
+    from .prompts import SANITIZE_SYSTEM
+
+    assert '"summary_for_user": ""' not in SANITIZE_SYSTEM
+    assert (
+        '"summary_for_user": "Nothing new to consolidate tonight — '
+        'no memory changes made."' in SANITIZE_SYSTEM
+    )
+    assert "``summary_for_user`` MUST ALWAYS be non-empty" in SANITIZE_SYSTEM
 
 
 def test_prompts_tolerate_empty_inputs():
