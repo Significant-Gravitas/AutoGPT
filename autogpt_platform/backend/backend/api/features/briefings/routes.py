@@ -10,7 +10,11 @@ from backend.data import briefing as briefing_db
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/briefings", tags=["briefings"])
+router = APIRouter(
+    prefix="/briefings",
+    tags=["briefings"],
+    dependencies=[Security(autogpt_auth_lib.requires_user)],
+)
 
 
 class BriefingResponse(BaseModel):
