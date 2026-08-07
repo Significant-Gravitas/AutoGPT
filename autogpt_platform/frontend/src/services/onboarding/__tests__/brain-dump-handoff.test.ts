@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearWelcomePending,
   peekCapabilityCardsSeen,
@@ -9,11 +9,13 @@ import {
   setGreetingDone,
   setIntroAwaitingFollowup,
   setIntroPath,
+  setIntroPromptClicked,
   setMicGlow,
   setPendingLaterDump,
   setWelcomePending,
   takeIntroAwaitingFollowup,
   takeIntroPath,
+  takeIntroPromptClicked,
   takeMicGlow,
   takePendingLaterDump,
 } from "../brain-dump-handoff";
@@ -184,5 +186,27 @@ describe("capability cards seen", () => {
     setCapabilityCardsSeen("user-1");
 
     expect(peekGreetingDone("user-1")).toBe(false);
+  });
+});
+
+describe("unavailable session storage", () => {
+  it("setting a flag never throws, so the action it decorates proceeds", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage disabled");
+    });
+
+    expect(() => setIntroPromptClicked()).not.toThrow();
+
+    vi.restoreAllMocks();
+  });
+
+  it("taking a flag falls back to false instead of throwing", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage disabled");
+    });
+
+    expect(takeIntroPromptClicked()).toBe(false);
+
+    vi.restoreAllMocks();
   });
 });

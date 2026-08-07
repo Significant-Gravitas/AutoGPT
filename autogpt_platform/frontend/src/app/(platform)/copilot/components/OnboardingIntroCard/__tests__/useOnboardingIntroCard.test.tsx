@@ -9,7 +9,10 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const capture = vi.hoisted(() => vi.fn());
-vi.mock("posthog-js", () => ({ default: { capture } }));
+const registerForSession = vi.hoisted(() => vi.fn());
+vi.mock("posthog-js", () => ({
+  default: { capture, register_for_session: registerForSession },
+}));
 
 const authUser = vi.hoisted(() => ({
   current: { id: "user-1" } as { id: string } | null,

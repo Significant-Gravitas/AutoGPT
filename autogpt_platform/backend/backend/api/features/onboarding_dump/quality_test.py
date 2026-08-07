@@ -195,6 +195,19 @@ async def test_malformed_llm_verdict_rejects(llm, content: str):
 
 
 @pytest.mark.asyncio
+async def test_empty_choices_rejects(llm):
+    response = MagicMock()
+    response.choices = []
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=response)
+    llm(client)
+    assert (
+        await quality.check_transcript_quality("Automate my invoices.")
+        == quality.INSUFFICIENT_CONTENT
+    )
+
+
+@pytest.mark.asyncio
 async def test_llm_timeout_rejects(llm):
     client = MagicMock()
     client.chat.completions.create = AsyncMock(side_effect=asyncio.TimeoutError())

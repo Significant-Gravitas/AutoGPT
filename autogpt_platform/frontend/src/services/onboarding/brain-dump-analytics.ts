@@ -77,10 +77,12 @@ export function trackBrainDump(
 
 // Super properties ride on every subsequent event this session — how the
 // intro path (A/B) becomes filterable on the whole downstream funnel
-// instead of living only on the one intro_path event.
+// instead of living only on the one intro_path event. Session-scoped on
+// purpose: a persisted intro_path would keep classifying events long
+// after onboarding is over.
 export function registerBrainDumpContext(properties: Record<string, unknown>) {
   try {
-    posthog.register(properties);
+    posthog.register_for_session(properties);
   } catch {
     // Same rule: analytics failures stay invisible.
   }

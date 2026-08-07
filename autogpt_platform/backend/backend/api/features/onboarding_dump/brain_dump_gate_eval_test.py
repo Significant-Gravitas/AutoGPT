@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from backend.api.features.onboarding_dump import (
     brain_dump_eval,
@@ -47,8 +48,14 @@ def test_load_manifest_returns_none_without_a_file(tmp_path: Path):
     assert brain_dump_gate_eval.load_manifest(tmp_path) is None
 
 
-def test_load_manifest_drops_unknown_expectations(tmp_path: Path):
+def test_load_manifest_rejects_unknown_expectations(tmp_path: Path):
     _write_manifest(tmp_path, {"a": "pass", "b": "reject", "c": "maybe"})
+    with pytest.raises(ValidationError):
+        brain_dump_gate_eval.load_manifest(tmp_path)
+
+
+def test_load_manifest_accepts_valid_entries(tmp_path: Path):
+    _write_manifest(tmp_path, {"a": "pass", "b": "reject"})
     assert brain_dump_gate_eval.load_manifest(tmp_path) == {"a": "pass", "b": "reject"}
 
 
@@ -166,7 +173,9 @@ async def test_gate_only_transcription_failure_counts_as_empty_transcript(
     monkeypatch.setattr(
         transcription,
         "transcribe",
-        AsyncMock(side_effect=RuntimeError("audio too short")),
+        AsyncMock(
+            side_effect=transcription.TranscriptionFailedError("audio too short")
+        ),
     )
 
     async def check(transcript: str) -> str | None:

@@ -14,12 +14,11 @@ fails the whole eval run: a garbage dump that personalizes, or a real dump
 that bounces, are both release blockers.
 """
 
-import json
 import logging
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from backend.api.features.onboarding_dump import quality, transcription
 
@@ -53,12 +52,9 @@ def load_manifest(directory: Path) -> dict[str, GateExpectation] | None:
     path = directory / GATE_MANIFEST_NAME
     if not path.exists():
         return None
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    return {
-        name: expectation
-        for name, expectation in raw.items()
-        if expectation in ("pass", "reject")
-    }
+    return TypeAdapter(dict[str, GateExpectation]).validate_json(
+        path.read_text(encoding="utf-8")
+    )
 
 
 def build_report(
@@ -106,7 +102,11 @@ async def evaluate_gate_only(
             audio_path.read_bytes(), audio_path.name
         )
         transcript = result.text
-    except Exception as e:
+    except (
+        transcription.TranscriptionUnavailableError,
+        transcription.TranscriptionFailedError,
+        OSError,
+    ) as e:
         transcription_error = str(e)
         transcript = ""
         logger.warning("Gate-only transcription failed for %s: %s", audio_path.name, e)

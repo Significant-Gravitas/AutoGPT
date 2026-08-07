@@ -157,11 +157,12 @@ async def _semantic_verdict(text: str) -> str | None:
             ),
             timeout=_TIMEOUT_SECONDS,
         )
+        content = response.choices[0].message.content or ""
     except Exception as e:
         logger.warning("Brain dump quality check failed: %s", e)
         return INSUFFICIENT_CONTENT
 
-    data = _parse_response_json(response.choices[0].message.content or "")
+    data = _parse_response_json(content)
     if not isinstance(data, dict) or not isinstance(data.get("usable"), bool):
         logger.warning("Brain dump quality check: malformed verdict")
         return INSUFFICIENT_CONTENT

@@ -141,8 +141,27 @@ def download_and_extract(url: str, cache: Path) -> Path:
     if not root.exists():
         print(f"Extracting {tarball.name} ...")
         with tarfile.open(tarball) as archive:
-            archive.extractall(root, filter="data")
+            archive.extractall(root, members=_safe_members(archive, root))
     return root
+
+
+def _safe_members(archive: tarfile.TarFile, root: Path) -> list[tarfile.TarInfo]:
+    """Regular files that resolve inside ``root`` — nothing else.
+
+    Explicit validation instead of ``filter="data"``: the filter argument
+    only exists on Python 3.11.4+ while this package supports 3.10, and
+    the corpus needs no links, devices or directories anyway.
+    """
+    resolved_root = root.resolve()
+    members = []
+    for member in archive.getmembers():
+        if not member.isreg():
+            continue
+        target = (root / member.name).resolve()
+        if not target.is_relative_to(resolved_root):
+            raise ValueError(f"Unsafe path in archive: {member.name}")
+        members.append(member)
+    return members
 
 
 def collect_chapters(root: Path) -> list[list[Utterance]]:
@@ -325,7 +344,10 @@ def _ffmpeg(*args: str) -> None:
 
 def _ffmpeg_stderr(*args: str) -> str:
     result = subprocess.run(
-        ["ffmpeg", "-hide_banner", *args], capture_output=True, text=True
+        ["ffmpeg", "-hide_banner", *args],
+        check=False,
+        capture_output=True,
+        text=True,
     )
     return result.stderr
 

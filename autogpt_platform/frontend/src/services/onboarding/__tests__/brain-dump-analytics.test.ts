@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const capture = vi.hoisted(() => vi.fn());
-vi.mock("posthog-js", () => ({ default: { capture } }));
+const registerForSession = vi.hoisted(() => vi.fn());
+vi.mock("posthog-js", () => ({
+  default: { capture, register_for_session: registerForSession },
+}));
 
-import { trackBrainDump } from "../brain-dump-analytics";
+import {
+  registerBrainDumpContext,
+  trackBrainDump,
+} from "../brain-dump-analytics";
 
 beforeEach(() => {
   capture.mockReset();
+  registerForSession.mockReset();
 });
 
 describe("trackBrainDump", () => {
@@ -44,5 +51,21 @@ describe("trackBrainDump", () => {
     expect(capture).toHaveBeenLastCalledWith("Intro Followup Sent", {
       source: "suggestion",
     });
+  });
+});
+
+describe("registerBrainDumpContext", () => {
+  it("registers session-scoped super properties, not persistent ones", () => {
+    registerBrainDumpContext({ intro_path: "A" });
+
+    expect(registerForSession).toHaveBeenCalledWith({ intro_path: "A" });
+  });
+
+  it("swallows a throwing analytics host", () => {
+    registerForSession.mockImplementation(() => {
+      throw new Error("posthog host blocked");
+    });
+
+    expect(() => registerBrainDumpContext({ intro_path: "B" })).not.toThrow();
   });
 });
