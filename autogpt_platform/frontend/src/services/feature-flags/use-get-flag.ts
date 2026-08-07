@@ -22,6 +22,7 @@ export enum Flag {
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
   HIRE_EXPERTS = "hire-experts",
+  BRIEFING_HOME = "briefing-home",
   // Replaces the onboarding pillbox step with the voice brain dump.
   // Mirror of the backend ``Flag`` enum — the endpoints 404 when off, so
   // both sides must agree. Off renders the pillbox flow untouched.
@@ -65,6 +66,7 @@ const defaultFlags = {
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
+  [Flag.BRIEFING_HOME]: false,
   // Off by default: with no LaunchDarkly key (local dev, CI, Playwright)
   // the wizard falls back to this map, and a ``true`` here renders the
   // brain dump for everyone — which is what the backend 404s are meant to
@@ -131,6 +133,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
     case Flag.HIRE_EXPERTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
+    case Flag.BRIEFING_HOME:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_BRIEFING_HOME;
     case Flag.ONBOARDING_BRAIN_DUMP:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP;
     case Flag.GRAPHITI_MEMORY:
