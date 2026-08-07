@@ -57,8 +57,9 @@ def RedditCredentialsField(
     """
     Creates a Reddit credentials input on a block.
 
-    `required_scopes` declares any *elevated* scopes the block needs on top of the
-    baseline. The baseline is merged in because `BaseOAuthHandler.handle_default_scopes`
+    `required_scopes=None` preserves the legacy implicit-scope path, where the OAuth
+    handler supplies `DEFAULT_SCOPES`. Passing a set opts into explicit scope metadata;
+    the baseline is then merged because `BaseOAuthHandler.handle_default_scopes`
     *replaces* `DEFAULT_SCOPES` with a non-empty requested list rather than unioning
     them — without the merge, a moderation block would mint a token that can't even
     call `client.user.me()`.

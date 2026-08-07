@@ -78,6 +78,17 @@ def test_explicit_empty_reddit_scopes_still_include_the_baseline():
     assert set(extra["credentials_scopes"]) == REDDIT_BASE_SCOPES
 
 
+def test_default_reddit_scopes_remain_implicit_for_legacy_blocks():
+    field = RedditCredentialsField()
+    assert isinstance(field, FieldInfo)
+    extra = field.json_schema_extra
+    assert isinstance(extra, dict)
+
+    # The OAuth handler fills in DEFAULT_SCOPES for an absent scope list. Keeping
+    # this implicit avoids changing the credential contract of existing blocks.
+    assert "credentials_scopes" not in extra
+
+
 def test_get_mod_queue_uses_modqueue_and_submission_fullnames(mocker):
     queued_item = SimpleNamespace(
         id="abc123",
