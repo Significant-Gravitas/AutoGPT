@@ -1,10 +1,16 @@
 import {
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
+  getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
@@ -81,6 +87,20 @@ const hiredMaria: Expert = {
   ],
 };
 
+const scheduledMaria: Expert = {
+  ...hiredMaria,
+  last_run_at: new Date("2026-08-03T07:40:00Z"),
+  last_run_status: "COMPLETED",
+  workflows: [
+    {
+      ...hiredMaria.workflows[0],
+      schedule_cron: "40 7 * * *",
+      schedule_id: "sched-1",
+    },
+    hiredMaria.workflows[1],
+  ],
+};
+
 describe("TeamPage", () => {
   test("renders the Autopilot card first", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
@@ -123,6 +143,72 @@ describe("TeamPage", () => {
     expect(
       screen.getByRole("button", { name: "Install workflow" }),
     ).toBeDefined();
+  });
+
+  test("shows schedule summary and last-run status on the expert card", async () => {
+    server.use(getListExpertsMockHandler([scheduledMaria]));
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    expect(screen.getByText(/Every day at 07:40/)).toBeDefined();
+    expect(screen.getByText(/Last run succeeded/)).toBeDefined();
+  });
+
+  test("marks a scheduled workflow without a schedule as needing setup", async () => {
+    const needsSetupMaria: Expert = {
+      ...hiredMaria,
+      workflows: [
+        {
+          ...hiredMaria.workflows[0],
+          schedule_cron: "40 7 * * *",
+          schedule_id: null,
+        },
+      ],
+    };
+    server.use(getListExpertsMockHandler([needsSetupMaria]));
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    expect(screen.getByText(/Needs setup/)).toBeDefined();
+  });
+
+  test("shows weekly spend on the expert card", async () => {
+    const budgetMaria: Expert = {
+      ...hiredMaria,
+      weekly_budget: 50,
+      weekly_spend: 12,
+    };
+    server.use(getListExpertsMockHandler([budgetMaria]));
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    expect(screen.getByText(/12 of 50 credits this week/)).toBeDefined();
+  });
+
+  test("paused expert offers one-click resume", async () => {
+    const pausedMaria: Expert = {
+      ...hiredMaria,
+      schedules_paused_at: new Date("2026-08-03T12:00:00Z"),
+    };
+    const resumeSpy = vi.fn(() => ({
+      ...pausedMaria,
+      schedules_paused_at: null,
+    }));
+    server.use(
+      getListExpertsMockHandler([pausedMaria]),
+      getResumeExpertSchedulesMockHandler(resumeSpy),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    expect(screen.getByText(/Schedules paused/)).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume schedules" }));
+    await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
   });
 
   test("shows empty state linking to the marketplace when no experts are hired", async () => {

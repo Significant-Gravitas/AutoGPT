@@ -5,6 +5,7 @@ import {
   headline,
   isPermissionDenied,
   pickMimeType,
+  recordingFeedbackAt,
   RING_TARGET_SECONDS,
   ringProgress,
 } from "../helpers";
@@ -22,23 +23,50 @@ describe("headline", () => {
 describe("encouragementAt", () => {
   it("shows nothing before the first line is due", () => {
     expect(encouragementAt(0)).toBeNull();
-    expect(encouragementAt(9.9)).toBeNull();
+    expect(encouragementAt(19.9)).toBeNull();
   });
 
   it("shows a line for six seconds and then goes quiet", () => {
-    expect(encouragementAt(10)).toBe("Keep going, this is gold");
-    expect(encouragementAt(15.9)).toBe("Keep going, this is gold");
-    expect(encouragementAt(16)).toBeNull();
+    expect(encouragementAt(20)).toBe("Keep going, this is gold");
+    expect(encouragementAt(25.9)).toBe("Keep going, this is gold");
+    expect(encouragementAt(26)).toBeNull();
   });
 
-  // After the last line the screen stays quiet — a nag every 20s would
-  // turn encouragement into pressure.
-  it("stops encouraging after the last line", () => {
-    expect(encouragementAt(45)).toBe(
-      "You're building AutoPilot's memory right now",
-    );
-    expect(encouragementAt(51)).toBeNull();
+  it("uses twenty-second milestones through the second minute", () => {
+    expect(encouragementAt(40)).not.toBeNull();
+    expect(encouragementAt(60)).not.toBeNull();
+    expect(encouragementAt(80)).not.toBeNull();
+    expect(encouragementAt(100)).not.toBeNull();
+    expect(encouragementAt(120)).not.toBeNull();
+    expect(encouragementAt(126)).toBeNull();
+  });
+
+  it("uses thirty-second milestones after the second minute", () => {
+    expect(encouragementAt(149.9)).toBeNull();
+    expect(encouragementAt(150)).not.toBeNull();
+    expect(encouragementAt(180)).not.toBeNull();
+    expect(encouragementAt(240)).not.toBeNull();
+    expect(encouragementAt(360)).not.toBeNull();
+  });
+
+  it("stays quiet after the six-minute message", () => {
+    expect(encouragementAt(366)).toBeNull();
     expect(encouragementAt(600)).toBeNull();
+  });
+});
+
+describe("recordingFeedbackAt", () => {
+  it("shows duration guidance only after recording has settled in", () => {
+    expect(recordingFeedbackAt(3.9)).toBeNull();
+    expect(recordingFeedbackAt(4)).toBe("Most people talk for 2 to 3 minutes.");
+    expect(recordingFeedbackAt(9.9)).toBe(
+      "Most people talk for 2 to 3 minutes.",
+    );
+  });
+
+  it("shows the first encouragement at twenty seconds", () => {
+    expect(recordingFeedbackAt(10)).toBeNull();
+    expect(recordingFeedbackAt(20)).toBe("Keep going, this is gold");
   });
 });
 

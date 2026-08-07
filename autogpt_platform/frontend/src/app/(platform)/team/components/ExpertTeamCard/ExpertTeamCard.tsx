@@ -6,9 +6,17 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { MouseEvent } from "react";
+import { KeyboardEvent, MouseEvent } from "react";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+
+import {
+  getLastRunLabel,
+  getScheduleSummary,
+  getSpendLabel,
+  workflowNeedsSetup,
+} from "./helpers";
+import { useExpertTeamCard } from "./useExpertTeamCard";
 
 interface Props {
   expert: Expert;
@@ -22,10 +30,28 @@ export function ExpertTeamCard({
   onOpenProfile,
 }: Props) {
   const workflowCount = expert.workflows.length;
+  const { handleResume, isResuming } = useExpertTeamCard(expert.id);
+  const statusLine = [
+    getScheduleSummary(expert),
+    getLastRunLabel(expert),
+    getSpendLabel(expert),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const isPaused = Boolean(expert.schedules_paused_at);
 
   function handleInstallClick(event: MouseEvent) {
     event.stopPropagation();
     onInstallWorkflow(expert.id);
+  }
+
+  function handleResumeClick(event: MouseEvent) {
+    event.stopPropagation();
+    handleResume();
+  }
+
+  function handleResumeKeyDown(event: KeyboardEvent) {
+    event.stopPropagation();
   }
 
   return (
@@ -55,6 +81,27 @@ export function ExpertTeamCard({
           </Text>
         </div>
       </div>
+      {statusLine ? (
+        <Text variant="small" className="text-zinc-500">
+          {statusLine}
+        </Text>
+      ) : null}
+      {isPaused ? (
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
+          <Text variant="small" className="text-amber-700">
+            Schedules paused
+          </Text>
+          <Button
+            variant="secondary"
+            size="small"
+            loading={isResuming}
+            onClick={handleResumeClick}
+            onKeyDown={handleResumeKeyDown}
+          >
+            Resume schedules
+          </Button>
+        </div>
+      ) : null}
       {expert.skills && expert.skills.length > 0 ? (
         <div>
           <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
@@ -87,9 +134,14 @@ export function ExpertTeamCard({
               workflow.name ? (
                 <span
                   key={workflow.id}
-                  className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700"
+                  className={
+                    workflowNeedsSetup(workflow)
+                      ? "rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200"
+                      : "rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700"
+                  }
                 >
                   {workflow.name}
+                  {workflowNeedsSetup(workflow) ? " · Needs setup" : null}
                 </span>
               ) : null,
             )}
