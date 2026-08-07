@@ -11,6 +11,46 @@
 --     runs and is shown to users as a Library action, so the MARKETPLACE_ prefix
 --     was a misnomer).
 
+-- Postgres refuses to retype a column that a view depends on, and the
+-- analytics views (analytics.user_onboarding, analytics.user_onboarding_funnel)
+-- read these columns. They are applied out-of-band from analytics/queries/*.sql,
+-- so they exist in deployed databases but not in one built from migrations
+-- alone -- which is why this only fails on a real environment.
+--
+-- Capture whatever dependent views actually exist (definition + grants), drop
+-- them, retype, then recreate them verbatim. Reading the definition from the
+-- catalog rather than the repo means we restore exactly what was deployed, and
+-- picks up any view not tracked in this repo.
+CREATE TEMP TABLE _onboarding_dep_views AS
+SELECT n.nspname AS schema_name,
+       c.relname AS view_name,
+       pg_get_userbyid(c.relowner) AS view_owner,
+       rtrim(pg_get_viewdef(c.oid, true), E' \n;') AS definition
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind = 'v'
+  AND EXISTS (
+        SELECT 1
+        FROM pg_depend d
+        JOIN pg_rewrite r ON r.oid = d.objid AND r.ev_class = c.oid
+        WHERE d.refobjid = 'platform."UserOnboarding"'::regclass
+          AND d.refobjsubid > 0
+      );
+
+CREATE TEMP TABLE _onboarding_dep_view_grants AS
+SELECT g.table_schema, g.table_name, g.grantee, g.privilege_type
+FROM information_schema.role_table_grants g
+JOIN _onboarding_dep_views v
+  ON v.schema_name = g.table_schema AND v.view_name = g.table_name;
+
+DO $$
+DECLARE v record;
+BEGIN
+    FOR v IN SELECT * FROM _onboarding_dep_views LOOP
+        EXECUTE format('DROP VIEW %I.%I', v.schema_name, v.view_name);
+    END LOOP;
+END $$;
+
 -- Drop defaults so the column type cast doesn't trip on the default's enum type.
 ALTER TABLE "UserOnboarding" ALTER COLUMN "completedSteps" DROP DEFAULT;
 ALTER TABLE "UserOnboarding" ALTER COLUMN "notified" DROP DEFAULT;
@@ -26,6 +66,34 @@ ALTER TABLE "UserOnboarding"
 ALTER TABLE "UserOnboarding" ALTER COLUMN "completedSteps" SET DEFAULT '{}';
 ALTER TABLE "UserOnboarding" ALTER COLUMN "notified"       SET DEFAULT '{}';
 ALTER TABLE "UserOnboarding" ALTER COLUMN "rewardedFor"    SET DEFAULT '{}';
+
+-- Recreate the dependent views verbatim, restoring owner and grants. Their
+-- step columns come back as TEXT[] instead of "OnboardingStep"[]; the queries
+-- already cast with ::text, so consumers are unaffected.
+DO $$
+DECLARE v record;
+        g record;
+BEGIN
+    FOR v IN SELECT * FROM _onboarding_dep_views LOOP
+        EXECUTE format('CREATE VIEW %I.%I AS %s',
+                       v.schema_name, v.view_name, v.definition);
+        EXECUTE format('ALTER VIEW %I.%I OWNER TO %I',
+                       v.schema_name, v.view_name, v.view_owner);
+    END LOOP;
+
+    FOR g IN SELECT * FROM _onboarding_dep_view_grants LOOP
+        IF upper(g.grantee) = 'PUBLIC' THEN
+            EXECUTE format('GRANT %s ON %I.%I TO PUBLIC',
+                           g.privilege_type, g.table_schema, g.table_name);
+        ELSE
+            EXECUTE format('GRANT %s ON %I.%I TO %I',
+                           g.privilege_type, g.table_schema, g.table_name, g.grantee);
+        END IF;
+    END LOOP;
+END $$;
+
+DROP TABLE _onboarding_dep_views;
+DROP TABLE _onboarding_dep_view_grants;
 
 -- Rename retired step names in existing rows so users keep their progress:
 -- VISIT_COPILOT -> ONBOARDING_COMPLETE and MARKETPLACE_RUN_AGENT ->
