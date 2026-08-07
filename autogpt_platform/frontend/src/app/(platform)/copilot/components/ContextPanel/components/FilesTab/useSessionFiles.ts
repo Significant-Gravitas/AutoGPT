@@ -5,7 +5,7 @@ import type { ListFilesResponse } from "@/app/api/__generated__/models/listFiles
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
 import { getMessageArtifacts } from "../../../ChatMessagesContainer/helpers";
-import { isUploadedFile } from "./helpers";
+import { isInternalFile, isUploadedFile } from "./helpers";
 
 export interface SessionFile {
   item: WorkspaceFileItem;
@@ -36,10 +36,12 @@ export function useSessionFiles(sessionId: string | null) {
     }
   }
 
-  const files: SessionFile[] = (query.data?.files ?? []).map((item) => ({
-    item,
-    messageID: fileIdToMessageId.get(item.id) ?? null,
-  }));
+  const files: SessionFile[] = (query.data?.files ?? [])
+    .filter((item) => !isInternalFile(item))
+    .map((item) => ({
+      item,
+      messageID: fileIdToMessageId.get(item.id) ?? null,
+    }));
 
   const uploaded = files.filter((f) => isUploadedFile(f.item));
   const generated = files.filter((f) => !isUploadedFile(f.item));

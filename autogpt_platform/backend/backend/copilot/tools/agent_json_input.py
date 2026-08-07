@@ -243,7 +243,10 @@ async def write_agent_json_to_workspace(
             content=json.dumps(agent_json, indent=2).encode("utf-8"),
             filename=write_to,
             overwrite=True,
-            metadata={"origin": "agent-created"},
+            # `internal: True` marks this as a tool-to-tool handoff file (the
+            # agent JSON is never re-emitted inline), not a user-facing
+            # artifact — the CoPilot Files tab hides files with this flag.
+            metadata={"origin": "agent-created", "internal": True},
         )
     except Exception as e:
         logger.warning(f"Failed to write agent JSON to {write_to!r}: {e}")

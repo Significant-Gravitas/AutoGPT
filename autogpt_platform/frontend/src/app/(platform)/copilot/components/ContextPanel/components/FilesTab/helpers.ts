@@ -11,6 +11,13 @@ export function isUploadedFile(item: WorkspaceFileItem): boolean {
   return item.origin === "uploaded";
 }
 
+// Files written purely as tool-to-tool handoffs (e.g. the agent JSON a
+// create_agent/edit_agent call writes to pass to itself) — internal and
+// technical, not something the user created or asked to see.
+export function isInternalFile(item: WorkspaceFileItem): boolean {
+  return (item.metadata as Record<string, unknown> | undefined)?.internal === true;
+}
+
 export function fileItemToArtifactRef(item: WorkspaceFileItem): ArtifactRef {
   return {
     id: item.id,
