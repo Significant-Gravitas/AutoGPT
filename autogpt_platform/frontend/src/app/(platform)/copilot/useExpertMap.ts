@@ -3,6 +3,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useMemo } from "react";
 
 export interface ExpertIdentity {
+  id: string;
   name: string;
   avatarUrl: string | null;
   role: string | null;
@@ -32,6 +33,7 @@ export function useExpertMap() {
       experts.map((expert) => [
         expert.id,
         {
+          id: expert.id,
           name: expert.name,
           avatarUrl: expert.avatar_url ?? null,
           role: expert.role ?? null,
