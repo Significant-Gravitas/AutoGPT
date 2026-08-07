@@ -8,6 +8,7 @@ import { EmptyHero } from "../EmptySession/components/EmptyHero";
 import { getGreetingName } from "../EmptySession/helpers";
 import { PulseChips } from "../PulseChips/PulseChips";
 import { usePulseChips } from "../PulseChips/usePulseChips";
+import { BriefingCard } from "./components/BriefingCard/BriefingCard";
 import { useCopilotHome } from "./useCopilotHome";
 
 interface Props {
@@ -37,7 +38,7 @@ export function CopilotHome({
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const pulseChips = usePulseChips();
-  const { hasBriefing } = useCopilotHome();
+  const { briefing, isLoadingBriefing, hasBriefing } = useCopilotHome();
   const isComposerDisabled = isCreatingSession || !!isAdoptingExpertSession;
 
   return (
@@ -55,9 +56,12 @@ export function CopilotHome({
             isGreetingFlow={false}
           />
 
-          {/* Briefing card slot (Task 4) — falls back to the pulse strip
-              while the user has no briefing yet. */}
-          {hasBriefing ? null : (
+          {/* Briefing card slot — falls back to the pulse strip while the
+              user has no briefing yet; nothing renders until load settles
+              so the strip doesn't flash for users who do have a briefing. */}
+          {isLoadingBriefing ? null : hasBriefing && briefing ? (
+            <BriefingCard briefing={briefing} />
+          ) : (
             <PulseChips chips={pulseChips} onChipClick={onSend} />
           )}
 

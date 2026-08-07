@@ -64,3 +64,69 @@ test("falls back to pulse strip when there is no briefing", async () => {
     await screen.findByText("What's happening with your agents"),
   ).toBeDefined();
 });
+
+test("renders briefing sections when a briefing is available", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200({
+      id: "briefing-1",
+      briefing_date: new Date(),
+      created_at: new Date(),
+      content: {
+        generated_at: new Date(),
+        timezone: "UTC",
+        zero_expert_fallback: false,
+        run_items: [
+          {
+            expert_id: "expert-1",
+            expert_name: "Sales Scout",
+            expert_avatar_url: null,
+            agent_name: "Lead Finder",
+            graph_id: "graph-1",
+            execution_id: "exec-1",
+            library_agent_id: "lib-1",
+            status: "COMPLETED",
+            summary: "Found 3 leads",
+            link: "/library/agents/lib-1/runs/exec-1",
+          },
+          {
+            expert_id: "expert-2",
+            expert_name: "Support Bot",
+            expert_avatar_url: null,
+            agent_name: "Ticket Triager",
+            graph_id: "graph-2",
+            execution_id: "exec-2",
+            library_agent_id: "lib-2",
+            status: "FAILED",
+            summary: null,
+            link: "/library/agents/lib-2/runs/exec-2",
+          },
+        ],
+        decision_items: [
+          {
+            node_exec_id: "node-1",
+            graph_exec_id: "graph-exec-1",
+            title: "Approve outreach email",
+            expert_id: "expert-1",
+            expert_name: "Sales Scout",
+            expert_avatar_url: null,
+            link: "/library/agents/lib-1/runs/exec-1?node=node-1",
+          },
+        ],
+      },
+    }),
+  );
+  render(<CopilotHome {...baseProps} />);
+
+  expect(await screen.findByText("What ran")).toBeDefined();
+  expect(screen.getByText("What was found")).toBeDefined();
+  expect(screen.getByText("Needs your decision (1)")).toBeDefined();
+  expect(screen.getByText("Found 3 leads")).toBeDefined();
+
+  const decisionLink = screen.getByRole("link", {
+    name: /Approve outreach email/,
+  });
+  expect(decisionLink.getAttribute("href")).toBe(
+    "/library/agents/lib-1/runs/exec-1?node=node-1",
+  );
+});
