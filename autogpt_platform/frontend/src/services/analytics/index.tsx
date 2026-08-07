@@ -10,7 +10,6 @@ import { consent } from "@/services/consent/cookies";
 import { usePathname } from "next/navigation";
 import Script from "next/script";
 import { useEffect, useState } from "react";
-import { environment } from "../environment";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
 
@@ -57,10 +56,7 @@ export function SetupAnalytics(props: SetupProps) {
   // We collect analytics too for open source developers running the platform locally
   // BUT only with consent
   const googleAnalyticsEnabled =
-    enabled &&
-    Boolean(gaId) &&
-    (environment.isLocal() || isProductionDomain) &&
-    hasAnalyticsConsent;
+    enabled && Boolean(gaId) && hasAnalyticsConsent;
 
   if (currDataLayerName === undefined) {
     currDataLayerName = dataLayerName;

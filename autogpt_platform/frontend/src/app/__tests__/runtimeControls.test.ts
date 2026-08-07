@@ -50,6 +50,19 @@ describe("runtime controls", () => {
     });
   });
 
+  it("ignores a baked hosted GA ID for self-hosted deployments", () => {
+    expect(
+      resolveRuntimeControls({
+        host: "agents.example.com",
+        isDev: false,
+        env: {
+          AUTOGPT_TELEMETRY_ENABLED: "true",
+          NEXT_PUBLIC_GA_MEASUREMENT_ID: "G-HOSTED-BUILD",
+        },
+      }).gaMeasurementId,
+    ).toBeUndefined();
+  });
+
   it("accepts common truthy values for developer tools", () => {
     expect(
       resolveRuntimeControls({

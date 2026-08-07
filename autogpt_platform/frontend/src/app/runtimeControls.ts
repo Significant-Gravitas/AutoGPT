@@ -45,10 +45,11 @@ export function resolveRuntimeControls({
     developerUiEnabled,
     reactQueryDevtoolsEnabled:
       developerUiEnabled && isEnabled(env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL),
-    gaMeasurementId:
-      firstValue(
-        env.AUTOGPT_GA_MEASUREMENT_ID,
-        env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
-      ) || (isHosted ? HOSTED_GA_MEASUREMENT_ID : undefined),
+    gaMeasurementId: isHosted
+      ? firstValue(
+          env.AUTOGPT_GA_MEASUREMENT_ID,
+          env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
+        ) || HOSTED_GA_MEASUREMENT_ID
+      : firstValue(env.AUTOGPT_GA_MEASUREMENT_ID),
   };
 }

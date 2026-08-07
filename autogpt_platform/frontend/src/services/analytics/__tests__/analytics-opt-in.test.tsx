@@ -8,10 +8,6 @@ vi.mock("@/services/consent/cookies", () => ({
   consent: { hasConsentFor: vi.fn(() => true) },
 }));
 
-vi.mock("@/services/environment", () => ({
-  environment: { isLocal: vi.fn(() => true) },
-}));
-
 vi.mock("next/navigation", () => ({
   usePathname: () => "/library",
 }));
@@ -76,6 +72,22 @@ describe("self-hosted analytics opt-in", () => {
       ).toBe("https://datafa.st/js/script.js");
       expect(screen.getByTestId("vercel-analytics")).toBeDefined();
       expect(screen.getByTestId("speed-insights")).toBeDefined();
+    });
+  });
+
+  it("renders an operator-configured GA property on a self-hosted domain", async () => {
+    render(
+      <SetupAnalytics
+        enabled
+        host="agents.example.com"
+        ga={{ gaId: "G-OPERATOR" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("_custom-ga-init")).toBeDefined();
+      expect(screen.getByTestId("_custom-ga")).toBeDefined();
+      expect(screen.queryByTestId("external-analytics")).toBeNull();
     });
   });
 });

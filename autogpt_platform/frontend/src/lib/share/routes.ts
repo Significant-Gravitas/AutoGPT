@@ -7,11 +7,19 @@
 function getBaseURL(): string {
   if (typeof window !== "undefined") return window.location.origin;
 
-  return (
-    process.env.BETTER_AUTH_URL ||
-    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
-    "http://localhost:3000"
-  );
+  const configuredURL =
+    process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
+  if (configuredURL) {
+    try {
+      const url = new URL(configuredURL);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        return url.origin;
+      }
+    } catch {
+      // Fall through to the safe local default.
+    }
+  }
+  return "http://localhost:3000";
 }
 
 export function executionSharePath(token: string): string {

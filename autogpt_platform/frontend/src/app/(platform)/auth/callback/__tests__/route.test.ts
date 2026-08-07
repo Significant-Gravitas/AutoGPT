@@ -208,6 +208,22 @@ describe("auth callback GET — redirect target resolution", () => {
     expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
   });
 
+  it("uses the reverse proxy origin when no canonical URL is configured", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    loggedInWithCompletedSetup();
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?next=/marketplace", {
+        "x-forwarded-host": "agents.example.com",
+        "x-forwarded-proto": "https",
+      }),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "https://agents.example.com/marketplace",
+    );
+  });
+
   it("ignores an off-site next and cannot open-redirect via forwarded headers", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
