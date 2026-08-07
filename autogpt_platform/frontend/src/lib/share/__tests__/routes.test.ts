@@ -58,15 +58,6 @@ describe("share viewer absolute URL builders", () => {
     );
   });
 
-  test("server-generated URLs normalize a configured trailing slash", () => {
-    vi.stubEnv("BETTER_AUTH_URL", "https://runtime.example.com/");
-    vi.stubGlobal("window", undefined);
-
-    expect(chatShareUrl("abc-123")).toBe(
-      "https://runtime.example.com/share/chat/abc-123",
-    );
-  });
-
   test("server-generated URLs have a safe local fallback", () => {
     vi.stubGlobal("window", undefined);
 

@@ -14,7 +14,7 @@ import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrap
 import { environment } from "@/services/environment";
 import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { headers } from "next/headers";
+import { connection } from "next/server";
 import { resolveRuntimeControls } from "./runtimeControls";
 
 const isDev = environment.isDev();
@@ -41,20 +41,17 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const headersList = await headers();
-  const host =
-    headersList.get("x-forwarded-host") || headersList.get("host") || "";
+  await connection();
   const runtimeControls = resolveRuntimeControls({
-    host,
-    isDev,
+    publicOrigin:
+      process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL,
+    isDev: isDev || environment.isDevelopmentBuild(),
     env: {
       AUTOGPT_TELEMETRY_ENABLED: process.env.AUTOGPT_TELEMETRY_ENABLED,
       AUTOGPT_FEEDBACK_ENABLED: process.env.AUTOGPT_FEEDBACK_ENABLED,
       AUTOGPT_DEVELOPER_UI_ENABLED: process.env.AUTOGPT_DEVELOPER_UI_ENABLED,
       AUTOGPT_GA_MEASUREMENT_ID: process.env.AUTOGPT_GA_MEASUREMENT_ID,
       NEXT_PUBLIC_GA_MEASUREMENT_ID: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
-      NEXT_PUBLIC_REACT_QUERY_DEVTOOL:
-        process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL,
     },
   });
 
@@ -76,7 +73,7 @@ export default async function RootLayout({
             <TallyPopupProvider enabled={runtimeControls.feedbackEnabled}>
               <SetupAnalytics
                 enabled={runtimeControls.telemetryEnabled}
-                host={host}
+                dataFastEnabled={runtimeControls.hostedPlatform}
                 ga={
                   runtimeControls.gaMeasurementId
                     ? { gaId: runtimeControls.gaMeasurementId }
@@ -86,11 +83,10 @@ export default async function RootLayout({
               <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
                 {children}
                 <VercelAnalyticsWrapper
-                  enabled={runtimeControls.telemetryEnabled}
+                  enabled={runtimeControls.hostedPlatform}
                 />
 
-                {/* Operator-controlled and available only with developer UI. */}
-                {runtimeControls.reactQueryDevtoolsEnabled && (
+                {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL === "true" && (
                   <ReactQueryDevtools
                     initialIsOpen={false}
                     buttonPosition={"bottom-left"}

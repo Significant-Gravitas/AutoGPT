@@ -7,8 +7,9 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 export function FeedbackButton() {
   const popup = useTallyPopupContext();
 
-  if (!popup?.enabled || popup.state.isFormVisible) return null;
+  if (!popup?.enabled) return null;
   const { state } = popup;
+  if (state.isFormVisible) return null;
 
   return (
     <button

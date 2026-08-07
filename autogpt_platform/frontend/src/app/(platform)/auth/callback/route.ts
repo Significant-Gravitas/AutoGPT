@@ -15,49 +15,16 @@ import { NextResponse } from "next/server";
 // cookie, then redirects here because this is the `callbackURL` we hand it in
 // /api/auth/login/with-provider. So by the time we run, the session already
 // exists and we only provision the backend user and decide where to send them.
-function httpOrigin(value: string | null) {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? url.origin
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function getPublicOrigin(request: Request, requestOrigin: string) {
+function getPublicOrigin(requestOrigin: string) {
   const configuredURL =
     process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
-  const configuredOrigin = httpOrigin(configuredURL || null);
-  if (configuredOrigin) return configuredOrigin;
+  if (!configuredURL) return requestOrigin;
 
-  const forwardedHost = request.headers
-    .get("x-forwarded-host")
-    ?.split(",", 1)[0]
-    ?.trim();
-  const forwardedProto = request.headers
-    .get("x-forwarded-proto")
-    ?.split(",", 1)[0]
-    ?.trim();
-  if (!forwardedHost) return requestOrigin;
   try {
-    const protocol =
-      forwardedProto === "http" || forwardedProto === "https"
-        ? forwardedProto
-        : new URL(requestOrigin).protocol.slice(0, -1);
-    const forwardedURL = new URL(`${protocol}://${forwardedHost}`);
-    if (
-      forwardedURL.username ||
-      forwardedURL.password ||
-      forwardedURL.pathname !== "/" ||
-      forwardedURL.search ||
-      forwardedURL.hash
-    ) {
-      return requestOrigin;
-    }
-    return forwardedURL.origin;
+    const url = new URL(configuredURL);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.origin
+      : requestOrigin;
   } catch {
     return requestOrigin;
   }
@@ -65,7 +32,7 @@ function getPublicOrigin(request: Request, requestOrigin: string) {
 
 export async function GET(request: Request) {
   const { searchParams, origin: requestOrigin } = new URL(request.url);
-  const publicOrigin = getPublicOrigin(request, requestOrigin);
+  const publicOrigin = getPublicOrigin(requestOrigin);
 
   let next = "/copilot";
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  isHostedPlatformHost,
+  isHostedPlatformOrigin,
   resolveRuntimeControls,
 } from "../runtimeControls";
 
@@ -9,7 +9,7 @@ describe("runtime controls", () => {
   it("enables hosted integrations only on the canonical production host", () => {
     expect(
       resolveRuntimeControls({
-        host: "platform.agpt.co:443",
+        publicOrigin: "https://platform.agpt.co",
         isDev: false,
         env: {},
       }),
@@ -21,7 +21,7 @@ describe("runtime controls", () => {
 
     expect(
       resolveRuntimeControls({
-        host: "agents.example.com",
+        publicOrigin: "https://agents.example.com",
         isDev: false,
         env: {},
       }),
@@ -35,7 +35,7 @@ describe("runtime controls", () => {
   it("keeps self-hosted telemetry and feedback explicitly opt-in", () => {
     expect(
       resolveRuntimeControls({
-        host: "agents.example.com",
+        publicOrigin: "https://agents.example.com",
         isDev: false,
         env: {
           AUTOGPT_TELEMETRY_ENABLED: "yes",
@@ -50,34 +50,48 @@ describe("runtime controls", () => {
     });
   });
 
-  it("ignores a baked hosted GA ID for self-hosted deployments", () => {
+  it("uses the project GA property after a self-hosted operator opts in", () => {
     expect(
       resolveRuntimeControls({
-        host: "agents.example.com",
+        publicOrigin: "https://agents.example.com",
+        isDev: false,
+        env: { AUTOGPT_TELEMETRY_ENABLED: "true" },
+      }).gaMeasurementId,
+    ).toBe("G-FH2XK2W4GN");
+  });
+
+  it("does not use a baked hosted GA override for self-hosted deployments", () => {
+    expect(
+      resolveRuntimeControls({
+        publicOrigin: "https://agents.example.com",
         isDev: false,
         env: {
           AUTOGPT_TELEMETRY_ENABLED: "true",
           NEXT_PUBLIC_GA_MEASUREMENT_ID: "G-HOSTED-BUILD",
         },
       }).gaMeasurementId,
-    ).toBeUndefined();
+    ).toBe("G-FH2XK2W4GN");
   });
 
   it("accepts common truthy values for developer tools", () => {
     expect(
       resolveRuntimeControls({
-        host: "localhost:3000",
+        publicOrigin: "http://localhost:3000",
         isDev: false,
         env: {
           AUTOGPT_DEVELOPER_UI_ENABLED: "on",
-          NEXT_PUBLIC_REACT_QUERY_DEVTOOL: "yes",
         },
-      }).reactQueryDevtoolsEnabled,
+      }).developerUiEnabled,
     ).toBe(true);
   });
 
-  it("normalizes proxy host lists without matching suffix attacks", () => {
-    expect(isHostedPlatformHost("platform.agpt.co, proxy.internal")).toBe(true);
-    expect(isHostedPlatformHost("platform.agpt.co.evil.example")).toBe(false);
+  it("trusts only the configured canonical hosted origin", () => {
+    expect(isHostedPlatformOrigin("https://platform.agpt.co/")).toBe(true);
+    expect(
+      isHostedPlatformOrigin("https://platform.agpt.co.evil.example"),
+    ).toBe(false);
+    expect(isHostedPlatformOrigin("https://user@platform.agpt.co")).toBe(false);
+    expect(isHostedPlatformOrigin("https://platform.agpt.co/path")).toBe(false);
+    expect(isHostedPlatformOrigin("not a URL")).toBe(false);
   });
 });
