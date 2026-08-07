@@ -10,7 +10,6 @@ on:
       - "autogpt_platform/**"
       - "docs/**"
   pull_request:
-    branches: [dev]
     paths:
       - ".dockerignore"
       - ".github/scripts/platform-single-container-smoke.sh"

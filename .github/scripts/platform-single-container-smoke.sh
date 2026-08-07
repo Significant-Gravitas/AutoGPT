@@ -206,7 +206,7 @@ assert_pinned_topology_environment() {
     DATABASE_API_PORT=8005 AGENT_API_HOST=127.0.0.1 AGENT_API_PORT=8006 \
     NOTIFICATION_SERVICE_PORT=8007 COPILOT_EXECUTOR_PORT=8008 \
     PLATFORM_LINKING_SERVICE_PORT=8009 COPILOT_CHAT_BRIDGE_PORT=8010 \
-    BATCH_EXECUTOR_PORT=8011; do
+    BATCH_EXECUTOR_PORT=8011 FORCE_FLAG_GRAPHITI_MEMORY=true; do
     grep -Fxq "${expected}" <<<"${process_env}"
   done
 }
@@ -270,6 +270,127 @@ assert_runtime_config_mode() {
   }
 }
 
+assert_falkordb_binary_contract() {
+  local linkage
+  local listeners
+  linkage="$(
+    docker exec "${CONTAINER_NAME}" /bin/bash -Eeuo pipefail -c '
+      ldd /opt/falkordb/redis-server
+      ldd /opt/falkordb/falkordb.so
+    '
+  )"
+  if grep -F "not found" <<<"${linkage}" >/dev/null; then
+    echo "FalkorDB has an unresolved shared-library dependency" >&2
+    return 1
+  fi
+
+  listeners="$(docker exec "${CONTAINER_NAME}" ss -lnt)"
+  grep -Eq '127\.0\.0\.1:6380([[:space:]]|$)' <<<"${listeners}" || {
+    echo "FalkorDB is not listening on the private loopback address" >&2
+    return 1
+  }
+  if grep -Eq '(0\.0\.0\.0|\[::\]):6380([[:space:]]|$)' <<<"${listeners}"; then
+    echo "FalkorDB is listening on a public container interface" >&2
+    return 1
+  fi
+  if [[ -n "$(docker port "${CONTAINER_NAME}" 6380 2>/dev/null)" ]]; then
+    echo "FalkorDB port 6380 is published by Docker" >&2
+    return 1
+  fi
+}
+
+assert_memory_contract() {
+  local action="$1"
+  docker exec --interactive \
+    --workdir /app/autogpt_platform/backend \
+    "${CONTAINER_NAME}" \
+    /app/autogpt_platform/backend/.venv/bin/python - "${action}" <<'PY'
+import asyncio
+import shlex
+import sys
+from pathlib import Path
+
+from falkordb import FalkorDB
+from redis import Redis
+from redis.exceptions import AuthenticationError
+
+
+def runtime_value(name: str) -> str:
+    for line in Path("/data/config/runtime.env").read_text().splitlines():
+        if line.startswith(f"{name}="):
+            values = shlex.split(line.split("=", 1)[1])
+            if len(values) == 1:
+                return values[0]
+    raise AssertionError(f"missing {name} in runtime config")
+
+
+password = runtime_value("GRAPHITI_FALKORDB_PASSWORD")
+try:
+    Redis(host="127.0.0.1", port=6380, password="wrong-password").ping()
+except AuthenticationError:
+    pass
+else:
+    raise AssertionError("FalkorDB accepted an invalid password")
+
+redis = Redis(host="127.0.0.1", port=6380, password=password)
+assert redis.ping()
+assert "graph" in repr(redis.execute_command("MODULE", "LIST")).lower()
+for setting, expected in {
+    "MAX_QUEUED_QUERIES": "25",
+    "TIMEOUT": "1000",
+    "RESULTSET_SIZE": "10000",
+}.items():
+    configured = redis.execute_command("GRAPH.CONFIG", "GET", setting)
+    assert expected in repr(configured), (setting, configured)
+
+graph = FalkorDB(host="127.0.0.1", port=6380, password=password).select_graph(
+    "autogpt_single_container_smoke"
+)
+action = sys.argv[1]
+if action == "seed":
+    graph.query("CREATE (:MemorySmoke {id: 'persistent-memory'})")
+
+result = graph.query(
+    "MATCH (n:MemorySmoke {id: 'persistent-memory'}) RETURN count(n)"
+)
+assert int(result.result_set[0][0]) == 1, result.result_set
+
+from backend.copilot.graphiti.config import is_enabled_for_user
+
+assert asyncio.run(is_enabled_for_user("single-container-smoke")) is True
+
+if action == "cleanup":
+    redis.execute_command("GRAPH.DELETE", graph.name)
+PY
+}
+
+wait_for_falkordb_restart() {
+  local previous_pid="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local current_pid
+  local health
+  while ((SECONDS < deadline)); do
+    current_pid="$(
+      docker exec "${CONTAINER_NAME}" \
+        supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
+        pid falkordb 2>/dev/null || true
+    )"
+    health="$(
+      docker inspect \
+        --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' \
+        "${CONTAINER_NAME}" 2>/dev/null || true
+    )"
+    if [[ "${current_pid}" =~ ^[0-9]+$ ]] &&
+      [[ "${current_pid}" != "${previous_pid}" ]] &&
+      [[ "${health}" == healthy ]]; then
+      return 0
+    fi
+    sleep 5
+  done
+  echo "FalkorDB did not restart and return the container to healthy" >&2
+  return 1
+}
+
 assert_redirect() {
   local request_url="$1"
   shift
@@ -324,6 +445,8 @@ docker run --detach \
   "${SMOKE_IMAGE}" >/dev/null
 discover_data_volume
 wait_for_healthy
+assert_falkordb_binary_contract
+assert_memory_contract seed
 
 first_hash="$(runtime_config_hash)"
 [[ "${first_hash}" =~ ^[0-9a-f]{64}$ ]] || {
@@ -361,6 +484,8 @@ wait_for_healthy
 }
 assert_runtime_config_mode
 assert_pinned_topology_environment
+assert_falkordb_binary_contract
+assert_memory_contract verify
 curl --fail --silent --show-error "${PUBLIC_URL}/healthz" >/dev/null
 assert_redirect "${PUBLIC_URL}/copilot" --resolve localhost:3300:127.0.0.1
 assert_redirect http://127.0.0.1:3300/copilot \
@@ -369,6 +494,16 @@ assert_redirect http://127.0.0.1:3300/copilot \
 assert_prefixed_backend_redirect
 assert_internal_tooling_is_private
 assert_request_tokens_absent_from_logs
+
+falkordb_pid="$(
+  docker exec "${CONTAINER_NAME}" \
+    supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
+    pid falkordb
+)"
+[[ "${falkordb_pid}" =~ ^[0-9]+$ ]]
+docker exec "${CONTAINER_NAME}" kill -TERM "${falkordb_pid}"
+wait_for_falkordb_restart "${falkordb_pid}"
+assert_memory_contract verify
 
 restart_count="$(docker inspect --format '{{.RestartCount}}' "${CONTAINER_NAME}")"
 docker exec "${CONTAINER_NAME}" \
@@ -407,5 +542,7 @@ wait_for_healthy
 }
 assert_runtime_config_mode
 assert_redirect "${PUBLIC_URL}/copilot" --resolve localhost:3300:127.0.0.1
+assert_falkordb_binary_contract
+assert_memory_contract cleanup
 
 echo "single-container smoke test passed for ${SMOKE_PLATFORM}"
