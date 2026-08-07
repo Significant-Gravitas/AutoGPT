@@ -11,52 +11,57 @@
 --     runs and is shown to users as a Library action, so the MARKETPLACE_ prefix
 --     was a misnomer).
 
--- Postgres refuses to retype a column that a view depends on, and the
--- analytics views (analytics.user_onboarding, analytics.user_onboarding_funnel)
--- read these columns. They are applied out-of-band from analytics/queries/*.sql,
--- so they exist in deployed databases but not in one built from migrations
--- alone -- which is why this only fails on a real environment.
+-- Postgres refuses to retype a column that a view depends on, and the analytics
+-- views (analytics.user_onboarding, analytics.user_onboarding_funnel) read
+-- these columns. Those views are not part of the migration history: they are
+-- applied out-of-band by `poetry run analytics-views`
+-- (backend/scripts/generate_views.py) from analytics/queries/*.sql. They
+-- therefore exist in deployed databases and never in one built from migrations
+-- alone, which is why this only fails on a real environment.
 --
--- Capture whatever dependent views actually exist (definition + grants), drop
--- them, retype, then recreate them verbatim. Reading the definition from the
--- catalog rather than the repo means we restore exactly what was deployed, and
--- picks up any view not tracked in this repo.
-CREATE TEMP TABLE _onboarding_dep_views AS
-SELECT n.nspname AS schema_name,
-       c.relname AS view_name,
-       pg_get_userbyid(c.relowner) AS view_owner,
-       rtrim(pg_get_viewdef(c.oid, true), E' \n;') AS definition
-FROM pg_class c
-JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE c.relkind = 'v'
-  AND EXISTS (
-        SELECT 1
-        FROM pg_depend d
-        JOIN pg_rewrite r ON r.oid = d.objid AND r.ev_class = c.oid
-        WHERE d.refobjid = 'platform."UserOnboarding"'::regclass
-          AND d.refobjsubid > 0
-      );
+-- Drop the dependents and let that script recreate them. Deliberately NOT
+-- restoring them from the catalog here: the deployed definition of
+-- user_onboarding_funnel still hardcodes the pre-rename step grid, so
+-- recreating it verbatim would resurrect a funnel that reports 0 for the
+-- renamed steps. Re-running the script rebuilds every view from the repo,
+-- which already carries the new names, and re-grants analytics_readonly.
+--
+-- *** After deploying, run: poetry run analytics-views ***
+--
+-- Discovery is dynamic (and CASCADE'd) so views not tracked in this repo, and
+-- any view layered on top of these, are handled too.
 
--- Read the ACL from the catalog rather than information_schema, whose
--- role_table_grants view only shows grants involving roles the current user
--- belongs to and would silently drop the rest.
-CREATE TEMP TABLE _onboarding_dep_view_grants AS
-SELECT v.schema_name,
-       v.view_name,
-       CASE WHEN a.grantee = 0 THEN 'PUBLIC'
-            ELSE quote_ident(pg_get_userbyid(a.grantee)) END AS grantee_name,
-       a.privilege_type,
-       a.is_grantable
-FROM _onboarding_dep_views v
-JOIN pg_class c ON c.relname = v.view_name
-JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = v.schema_name
-CROSS JOIN LATERAL aclexplode(c.relacl) AS a;
+-- Fail fast rather than queue behind a long-running BI query holding a lock on
+-- these views; the deploy can retry.
+SET LOCAL lock_timeout = '30s';
 
 DO $$
 DECLARE v record;
 BEGIN
-    FOR v IN SELECT * FROM _onboarding_dep_views LOOP
-        EXECUTE format('DROP VIEW %I.%I', v.schema_name, v.view_name);
+    FOR v IN
+        SELECT n.nspname AS schema_name, c.relname AS rel_name, c.relkind
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('v', 'm')
+          AND EXISTS (
+                SELECT 1
+                FROM pg_depend d
+                JOIN pg_rewrite r ON r.oid = d.objid
+                WHERE d.classid = 'pg_rewrite'::regclass
+                  AND r.ev_class = c.oid
+                  AND d.refobjid = 'platform."UserOnboarding"'::regclass
+                  AND d.refobjsubid > 0
+              )
+    LOOP
+        RAISE NOTICE 'dropping dependent relation %.% (recreate with: poetry run analytics-views)',
+                     v.schema_name, v.rel_name;
+        IF v.relkind = 'm' THEN
+            EXECUTE format('DROP MATERIALIZED VIEW IF EXISTS %I.%I CASCADE',
+                           v.schema_name, v.rel_name);
+        ELSE
+            EXECUTE format('DROP VIEW IF EXISTS %I.%I CASCADE',
+                           v.schema_name, v.rel_name);
+        END IF;
     END LOOP;
 END $$;
 
@@ -75,45 +80,6 @@ ALTER TABLE "UserOnboarding"
 ALTER TABLE "UserOnboarding" ALTER COLUMN "completedSteps" SET DEFAULT '{}';
 ALTER TABLE "UserOnboarding" ALTER COLUMN "notified"       SET DEFAULT '{}';
 ALTER TABLE "UserOnboarding" ALTER COLUMN "rewardedFor"    SET DEFAULT '{}';
-
--- Recreate the dependent views verbatim, restoring owner and grants. Their
--- step columns come back as TEXT[] instead of "OnboardingStep"[]; the queries
--- already cast with ::text, so consumers are unaffected.
-DO $$
-DECLARE v record;
-        g record;
-BEGIN
-    FOR v IN SELECT * FROM _onboarding_dep_views LOOP
-        EXECUTE format('CREATE VIEW %I.%I AS %s',
-                       v.schema_name, v.view_name, v.definition);
-        -- Ownership is cosmetic for readers; if the migration role isn't a
-        -- member of the original owner it can't reassign. Warn rather than
-        -- abort, so a privilege quirk can't strand the migration half-applied.
-        BEGIN
-            EXECUTE format('ALTER VIEW %I.%I OWNER TO %I',
-                           v.schema_name, v.view_name, v.view_owner);
-        EXCEPTION WHEN OTHERS THEN
-            RAISE WARNING 'could not restore owner % on %.%: %',
-                          v.view_owner, v.schema_name, v.view_name, SQLERRM;
-        END;
-    END LOOP;
-
-    FOR g IN SELECT * FROM _onboarding_dep_view_grants LOOP
-        BEGIN
-            EXECUTE format('GRANT %s ON %I.%I TO %s%s',
-                           g.privilege_type, g.schema_name, g.view_name,
-                           g.grantee_name,
-                           CASE WHEN g.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
-        EXCEPTION WHEN OTHERS THEN
-            RAISE WARNING 'could not restore % on %.% to %: %',
-                          g.privilege_type, g.schema_name, g.view_name,
-                          g.grantee_name, SQLERRM;
-        END;
-    END LOOP;
-END $$;
-
-DROP TABLE _onboarding_dep_views;
-DROP TABLE _onboarding_dep_view_grants;
 
 -- Rename retired step names in existing rows so users keep their progress:
 -- VISIT_COPILOT -> ONBOARDING_COMPLETE and MARKETPLACE_RUN_AGENT ->
