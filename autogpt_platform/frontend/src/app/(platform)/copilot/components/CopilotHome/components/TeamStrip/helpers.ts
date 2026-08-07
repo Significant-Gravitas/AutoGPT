@@ -14,7 +14,9 @@ export function getExpertStatusLine(
 
   const needsSetup = getNeedsSetupCount(expert);
   if (needsSetup > 0) {
-    return `${needsSetup} workflow${needsSetup === 1 ? "" : "s"} need setup`;
+    const noun = needsSetup === 1 ? "workflow" : "workflows";
+    const verb = needsSetup === 1 ? "needs" : "need";
+    return `${needsSetup} ${noun} ${verb} setup`;
   }
 
   const lastRun = getLastRunLabel(expert);

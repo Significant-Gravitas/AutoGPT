@@ -86,6 +86,32 @@ const pausedExpert: Expert = {
   schedules_paused_at: new Date("2026-08-05T10:00:00Z"),
 };
 
+const needsSetupExpert: Expert = {
+  id: "expert-needs-setup",
+  name: "Ops Analyst",
+  avatar_url: null,
+  role: "Operations Analyst",
+  bio: null,
+  skills: [],
+  tagline: "Keeps the ops dashboard current",
+  identity: "You are an operations analyst.",
+  is_template: false,
+  source_template_id: null,
+  is_archived: false,
+  workflows: [
+    {
+      id: "wf-1",
+      store_listing_version_id: "slv-1",
+      library_agent_id: "lib-1",
+      graph_id: "graph-1",
+      name: "Daily Report",
+      description: null,
+      schedule_cron: "0 9 * * *",
+      schedule_id: null,
+    },
+  ],
+};
+
 function mockTeamStrip() {
   server.use(
     getListExpertsMockHandler200([healthyExpert, pausedExpert]),
@@ -189,4 +215,16 @@ test("renders the team strip with hired experts", async () => {
     .map((link) => link.getAttribute("href"));
   expect(chatLinks).toContain("/copilot?expertId=expert-healthy");
   expect(chatLinks).toContain("/copilot?expertId=expert-paused");
+});
+
+test("uses singular grammar for a single workflow needing setup", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200(null),
+    getListExpertsMockHandler200([needsSetupExpert]),
+    getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+  );
+  render(<CopilotHome {...baseProps} />);
+
+  expect(await screen.findByText("1 workflow needs setup")).toBeDefined();
 });
