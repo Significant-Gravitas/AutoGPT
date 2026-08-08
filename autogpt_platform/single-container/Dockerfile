@@ -130,6 +130,14 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
         valkey-server \
         valkey-tools \
     && rm -f /usr/sbin/policy-rc.d \
+        /etc/ssl/private/ssl-cert-snakeoil.key \
+        /etc/ssl/certs/ssl-cert-snakeoil.pem \
+    && find /etc/ssl/certs -maxdepth 1 -type l \
+        -lname '*ssl-cert-snakeoil.pem' -delete \
+    && test ! -e /etc/ssl/private/ssl-cert-snakeoil.key \
+    && test ! -e /etc/ssl/certs/ssl-cert-snakeoil.pem \
+    && test -z "$(find /etc/ssl/certs -maxdepth 1 -type l \
+        -lname '*ssl-cert-snakeoil.pem' -print -quit)" \
     && rm -rf /var/lib/apt/lists/* /var/lib/postgresql/15/main \
     && find /var/lib/clamav -mindepth 1 -maxdepth 1 -delete
 
