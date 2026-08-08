@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pytest_snapshot.plugin import Snapshot
 
-from backend.blocks.dataforb2b._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.dataforb2b._config import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_META_INPUT,
+)
 from backend.blocks.dataforb2b._enums import TypeaheadType
 from backend.blocks.dataforb2b.typeahead import SearchFilterTypeaheadBlock
 
@@ -29,7 +32,7 @@ async def test_missing_query_raises_value_error():
     """Thread ED6e: missing 'q' should raise a clear ValueError, not an API 400."""
     block = SearchFilterTypeaheadBlock()
     input_data = SearchFilterTypeaheadBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,
+        credentials=TEST_CREDENTIALS_META_INPUT,
         filter_type=TypeaheadType.COMPANY,
         q="",
         limit=5,
@@ -44,7 +47,7 @@ async def test_limit_clamped_to_upper_bound(snapshot: Snapshot):
     """Thread ED6e: limit above 20 must be clamped, not passed through raw."""
     block = SearchFilterTypeaheadBlock()
     input_data = SearchFilterTypeaheadBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,
+        credentials=TEST_CREDENTIALS_META_INPUT,
         filter_type=TypeaheadType.COMPANY,
         q="google",
         limit=999,
@@ -64,7 +67,7 @@ async def test_limit_clamped_to_lower_bound():
     """Thread ED6e: limit of 0 or negative must be clamped up to at least 1."""
     block = SearchFilterTypeaheadBlock()
     input_data = SearchFilterTypeaheadBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,
+        credentials=TEST_CREDENTIALS_META_INPUT,
         filter_type=TypeaheadType.COMPANY,
         q="google",
         limit=0,
@@ -79,7 +82,7 @@ async def test_type_is_validated_enum():
     with pytest.raises(ValueError):
         SearchFilterTypeaheadBlock.Input.model_validate(
             {
-                "credentials": TEST_CREDENTIALS_INPUT,
+                "credentials": TEST_CREDENTIALS_META_INPUT,
                 "filter_type": "not-a-real-type",
                 "q": "google",
             }

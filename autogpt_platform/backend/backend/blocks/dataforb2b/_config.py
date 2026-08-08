@@ -36,9 +36,10 @@ TEST_CREDENTIALS = APIKeyCredentials(
     title="Mock DataForB2B API key",
     expires_at=None,
 )
-TEST_CREDENTIALS_INPUT = DataForB2BCredentialsInput(
+TEST_CREDENTIALS_META_INPUT = DataForB2BCredentialsInput(
     provider=ProviderName("dataforb2b"),
     id=TEST_CREDENTIALS.id,
     type=TEST_CREDENTIALS.type,
     title=TEST_CREDENTIALS.title,
 )
+TEST_CREDENTIALS_INPUT = TEST_CREDENTIALS_META_INPUT.model_dump(mode="json")
