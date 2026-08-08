@@ -32,7 +32,7 @@ export function useOnboardingMicGlow({
     const justFinished = wasTranscribingRef.current && !isTranscribing;
     wasTranscribingRef.current = isTranscribing;
     if (justFinished && takePendingLaterDump()) {
-      trackBrainDump("Later Dump Completed");
+      trackBrainDump("later_dump_completed");
     }
   }, [isTranscribing]);
 

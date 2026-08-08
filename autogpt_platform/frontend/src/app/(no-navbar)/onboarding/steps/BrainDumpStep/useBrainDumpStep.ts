@@ -69,7 +69,7 @@ export function useBrainDumpStep() {
       if (parts.length === 0) return;
       setRecoverable(meta);
       setScreen("recovery");
-      trackBrainDump("Brain Dump Recovery Shown", { parts: parts.length });
+      trackBrainDump("brain_dump_recovery_shown", { parts: parts.length });
     }
     void checkForRecovery();
     // Recovery is a mount-time question only — re-asking mid-recording
@@ -82,7 +82,7 @@ export function useBrainDumpStep() {
   useEffect(() => {
     if (!recorder.permissionDenied) return;
     setScreen("typing");
-    trackBrainDump("Brain Dump Typed Fallback", {
+    trackBrainDump("brain_dump_typed_fallback", {
       reason: "permission_denied",
     });
   }, [recorder.permissionDenied]);
@@ -136,7 +136,7 @@ export function useBrainDumpStep() {
       ? claimTakeAction(recordingId, "discard")
       : null;
     if (recordingId && !actionToken) return;
-    trackBrainDump("Brain Dump Canceled");
+    trackBrainDump("brain_dump_canceled");
     try {
       try {
         await recorder.stop();
@@ -201,28 +201,15 @@ export function useBrainDumpStep() {
         duration_secs: durationSecs,
         mime_type: recorder.mimeType,
       });
-      trackBrainDump("Brain Dump Finalize Latency", {
+      trackBrainDump("finalize_latency_ms", {
         ms: Math.round(performance.now() - startedAt),
         input_mode: "voice",
-        attempt: retryCountRef.current,
       });
       if (response.status !== 200 || response.data.status === "failed") {
         const errorCode =
           response.status === 200 ? response.data.error_code : response.status;
         const rejected = isInsufficientDump(errorCode);
-        // A gate rejection is a successful transcription of an unusable
-        // dump — tracked apart from true STT failures so the funnel can
-        // tell the two outcomes apart.
-        trackBrainDump(
-          rejected
-            ? "Brain Dump Quality Rejected"
-            : "Brain Dump Transcription Failed",
-          {
-            error_code: errorCode,
-            input_mode: "voice",
-            attempt: retryCountRef.current,
-          },
-        );
+        trackBrainDump("transcription_failed", { error_code: errorCode });
         // The recording itself went through — it just didn't carry enough
         // to personalize from, so the recovery screen offers a fresh take
         // instead of a retry of this one. Nothing is cleared until the
@@ -236,7 +223,7 @@ export function useBrainDumpStep() {
       return;
     }
 
-    trackBrainDump("Brain Dump Completed", {
+    trackBrainDump("brain_dump_completed", {
       duration_secs: Math.round(durationSecs),
       input_mode: "voice",
     });
@@ -252,7 +239,7 @@ export function useBrainDumpStep() {
       ? claimTakeAction(previousId, "discard")
       : null;
     if (previousId && !actionToken) return;
-    trackBrainDump("Brain Dump Restarted");
+    trackBrainDump("brain_dump_restarted");
     let started = false;
     try {
       try {
@@ -273,7 +260,7 @@ export function useBrainDumpStep() {
 
   async function handleRetry() {
     retryCountRef.current += 1;
-    trackBrainDump("Brain Dump Retry", { attempt: retryCountRef.current });
+    trackBrainDump("brain_dump_retry", { attempt: retryCountRef.current });
     setScreen("processing");
     const recordingId = recorder.recordingId;
     if (recordingId) await recorder.resendAllParts(recordingId);
@@ -284,7 +271,7 @@ export function useBrainDumpStep() {
 
   function handleShowTyping() {
     setScreen("typing");
-    trackBrainDump("Brain Dump Typed Fallback", { reason: "chose_to_type" });
+    trackBrainDump("brain_dump_typed_fallback", { reason: "chose_to_type" });
   }
 
   function handleShowRecording() {
@@ -318,15 +305,6 @@ export function useBrainDumpStep() {
         const errorCode =
           response.status === 200 ? response.data.error_code : response.status;
         const rejected = isInsufficientDump(errorCode);
-        trackBrainDump(
-          rejected
-            ? "Brain Dump Quality Rejected"
-            : "Brain Dump Transcription Failed",
-          {
-            error_code: errorCode,
-            input_mode: "typed",
-          },
-        );
         if (rejected) setInsufficientMode("typed");
         // The typed text stays in the composer, so "Type instead" from
         // the recovery screen reopens it with nothing lost.
@@ -337,7 +315,7 @@ export function useBrainDumpStep() {
       setScreen("failed");
       return;
     }
-    trackBrainDump("Brain Dump Completed", {
+    trackBrainDump("brain_dump_completed", {
       input_mode: "typed",
       chars: text.length,
     });
@@ -348,7 +326,7 @@ export function useBrainDumpStep() {
     // A skip that lands while the dump is being submitted would advance
     // the wizard a second time behind `completeAndAdvance`.
     if (isSubmittingRef.current) return;
-    trackBrainDump("Brain Dump Skipped");
+    trackBrainDump("brain_dump_skipped");
     const recordedId = recorder.recordingId;
     // Best effort: a failed skip-record still has to let the user
     // through — being unable to say "no thanks" would be absurd.
@@ -403,7 +381,7 @@ export function useBrainDumpStep() {
 
   async function handleResumeRecovered() {
     if (!recoverable) return;
-    trackBrainDump("Brain Dump Recovery Used");
+    trackBrainDump("brain_dump_recovery_used");
     setScreen("processing");
     await recorder.adoptRecovered(
       recoverable.recordingId,
@@ -459,7 +437,7 @@ export function useBrainDumpStep() {
   async function handleDownloadRecording() {
     const recordingId = recorder.recordingId;
     if (!recordingId) return;
-    trackBrainDump("Brain Dump Downloaded");
+    trackBrainDump("brain_dump_download");
     const parts = await getParts(recordingId).catch(() => []);
     if (parts.length === 0) return;
     const blob = new Blob(

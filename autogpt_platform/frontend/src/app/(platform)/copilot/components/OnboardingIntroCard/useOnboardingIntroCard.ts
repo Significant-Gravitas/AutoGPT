@@ -1,10 +1,7 @@
 import { useGetBrainDumpIntro } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import {
-  registerBrainDumpContext,
-  trackBrainDump,
-} from "@/services/onboarding/brain-dump-analytics";
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   clearWelcomePending,
   peekCapabilityCardsSeen,
@@ -99,8 +96,7 @@ export function useOnboardingIntroCard() {
     // Measures whether the greeting actually started a conversation —
     // consumed by the first real message afterwards.
     setIntroAwaitingFollowup();
-    registerBrainDumpContext({ intro_path: path });
-    trackBrainDump("Intro Path Assigned", { path });
+    trackBrainDump("intro_path", { path });
     setWelcomePending();
     setIsWelcomeOpen(true);
   }, [isFlagReady, isBrainDumpEnabled]);
@@ -158,7 +154,7 @@ export function useOnboardingIntroCard() {
   }, [serverSaysDone, userId]);
 
   function closeWelcome() {
-    trackBrainDump("Welcome Dialog Closed", {});
+    trackBrainDump("welcome_dialog_closed", {});
     clearWelcomePending();
     setCapabilityCardsSeen(userId);
     setIsWelcomeOpen(false);

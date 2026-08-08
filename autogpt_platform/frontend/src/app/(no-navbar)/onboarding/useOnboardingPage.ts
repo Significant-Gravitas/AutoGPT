@@ -10,15 +10,9 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLDClient } from "launchdarkly-react-client-sdk";
-import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import {
-  getOnboardingStepName,
-  getStepCompletionProps,
-  normalizeOnboardingProfile,
-  onboardingStepDisplayName,
-} from "./helpers";
+import { normalizeOnboardingProfile } from "./helpers";
 import {
   NO_PAYWALL_STEPS,
   PAYWALL_FIRST_STEPS,
@@ -29,9 +23,10 @@ import {
 const LD_INIT_TIMEOUT_SECONDS = 5;
 
 // SessionStorage ceiling for the wizard. The backend's `completedSteps`
-// only records VISIT_COPILOT at the very end (the 5 in-wizard steps aren't
-// tracked individually), so resume / fast-forward guardrails are enforced
-// client-side: the user can only land on a step they've previously reached.
+// only records ONBOARDING_COMPLETE at the very end (the 5 in-wizard steps
+// aren't tracked individually), so resume / fast-forward guardrails are
+// enforced client-side: the user can only land on a step they've previously
+// reached.
 const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
 
 function parseStepParam(value: string | null, maxStep: number): Step | null {
@@ -109,7 +104,7 @@ export function useOnboardingPage() {
   const isBrainDumpEnabled = brainDumpEnabledSnapshot.current ?? false;
 
   // Skip the paywall for users already on a paid tier (admin grants or
-  // pre-VISIT_COPILOT accounts) so they aren't asked to pay again to escape.
+  // pre-ONBOARDING_COMPLETE accounts) so they aren't asked to pay again to escape.
   const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
     query: {
       enabled: isLoggedIn,
@@ -137,7 +132,6 @@ export function useOnboardingPage() {
     useState(true);
   const hasSubmitted = useRef(false);
   const hasInitialized = useRef(false);
-  const initTargetRef = useRef<Step | null>(null);
 
   // Initialise store from URL on mount, clamp ?step= to the highest step
   // the user has actually reached. No-step URL resumes from the highest
@@ -156,24 +150,12 @@ export function useOnboardingPage() {
     // paywall they just paid through.
     const isSubscriptionSuccess =
       searchParams.get("subscription") === "success";
-    // The Stripe redirect is a fresh page load, so the step-transition
-    // tracker below never sees the paywall being left — record it here.
-    if (isSubscriptionSuccess) {
-      trackBrainDump("Onboarding Subscription Completed", {
-        step: "subscription",
-        ...getStepCompletionProps(
-          "subscription",
-          useOnboardingWizardStore.getState(),
-        ),
-      });
-    }
     const ceiling = isSubscriptionSuccess
       ? steps.welcome
       : (Math.min(readHighestStep(), preparingStep) as Step);
     const target = (
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
-    initTargetRef.current = target;
     goToStep(target);
   }, [isReady, searchParams, goToStep, preparingStep, steps]);
 
@@ -189,67 +171,6 @@ export function useOnboardingPage() {
     }
   }, [isReady, currentStep, router, searchParams, preparingStep]);
 
-  // Step funnel: viewed on every step entry (first mount, next, back,
-  // resume), completed when a step is left forward. Waits for the same
-  // readiness gate as the page so the pre-init clamp to step 1 and the
-  // already-completed redirect never emit phantom views.
-  const trackedStep = useRef<Step | null>(null);
-  const stepViewedAt = useRef<number | null>(null);
-  useEffect(() => {
-    if (!isReady || isOnboardingStateLoading) return;
-    // The init effect's goToStep lands on the next render — tracking the
-    // stale pre-init step here would emit a phantom "welcome" view (and a
-    // phantom completion) for every user resuming mid-wizard.
-    if (initTargetRef.current !== null) {
-      if (currentStep !== initTargetRef.current) return;
-      initTargetRef.current = null;
-    }
-    const prev = trackedStep.current;
-    if (prev === currentStep) return;
-    if (prev !== null && currentStep > prev) {
-      const prevName = getOnboardingStepName({
-        step: prev,
-        steps,
-        isBrainDumpEnabled,
-      });
-      trackBrainDump(
-        `Onboarding ${onboardingStepDisplayName(prevName)} Completed`,
-        {
-          step: prevName,
-          ...(stepViewedAt.current !== null && {
-            duration_ms: Math.round(performance.now() - stepViewedAt.current),
-          }),
-          ...getStepCompletionProps(
-            prevName,
-            useOnboardingWizardStore.getState(),
-          ),
-        },
-      );
-    }
-    trackedStep.current = currentStep;
-    stepViewedAt.current = performance.now();
-    const currentName = getOnboardingStepName({
-      step: currentStep,
-      steps,
-      isBrainDumpEnabled,
-    });
-    trackBrainDump(
-      `Onboarding ${onboardingStepDisplayName(currentName)} Viewed`,
-      {
-        step: currentName,
-        step_index: currentStep,
-        total_steps: totalSteps,
-      },
-    );
-  }, [
-    isReady,
-    isOnboardingStateLoading,
-    currentStep,
-    steps,
-    isBrainDumpEnabled,
-    totalSteps,
-  ]);
-
   // Check if onboarding already completed
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -257,7 +178,7 @@ export function useOnboardingPage() {
     async function checkCompletion() {
       try {
         const onboarding = await resolveResponse(getV1OnboardingState());
-        if (onboarding.completedSteps.includes("VISIT_COPILOT")) {
+        if (onboarding.completedSteps.includes("ONBOARDING_COMPLETE")) {
           clearHighestStep();
           // Clear the persisted form data without touching in-memory state.
           // `reset()` would set currentStep=1 and trip the URL-sync effect
@@ -318,13 +239,9 @@ export function useOnboardingPage() {
   }, [currentStep, preparingStep, refreshSession]);
 
   async function handlePreparingComplete() {
-    trackBrainDump("Onboarding Completed", {
-      brain_dump_enabled: isBrainDumpEnabled,
-      payment_enabled: isPaymentEnabled,
-    });
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
+        await postV1CompleteOnboardingStep({ step: "ONBOARDING_COMPLETE" });
         clearHighestStep();
         useOnboardingWizardStore.persist.clearStorage();
         router.replace("/copilot");

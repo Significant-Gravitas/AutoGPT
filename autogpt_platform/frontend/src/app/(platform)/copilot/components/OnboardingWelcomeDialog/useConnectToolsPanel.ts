@@ -16,7 +16,6 @@ import {
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import { useState } from "react";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -95,10 +94,6 @@ export function useConnectToolsPanel() {
     .filter((provider) => provider !== null);
 
   function handleSelect(providerId: string) {
-    trackBrainDump("Connect Tools Provider Selected", {
-      provider: providerId,
-      recommended: recommendedProviders.some((p) => p.id === providerId),
-    });
     setDirection(1);
     setSelectedId(providerId);
     setSelectedMethod(null);
@@ -111,23 +106,15 @@ export function useConnectToolsPanel() {
     setSelectedMethod(null);
   }
 
-  function handleConnectSuccess(method: AuthMethod) {
-    trackBrainDump("Connect Tools Connected", {
-      provider: selectedProvider?.id,
-      method,
-    });
-    handleBackToList();
-  }
-
   // Completing a connection (OAuth or the API-key form) lands back on the
   // list so more tools can be wired up without leaving the dialog.
   const oauth = useOAuthConnect({
     provider: selectedProvider?.id ?? "",
-    onSuccess: () => handleConnectSuccess(AuthType.oauth2),
+    onSuccess: handleBackToList,
   });
   const apiKey = useApiKeyConnectForm({
     provider: selectedProvider?.id ?? "",
-    onSuccess: () => handleConnectSuccess(AuthType.api_key),
+    onSuccess: handleBackToList,
   });
 
   function handleContinue() {

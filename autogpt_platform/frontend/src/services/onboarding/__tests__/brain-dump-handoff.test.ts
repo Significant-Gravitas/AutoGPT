@@ -9,13 +9,11 @@ import {
   setGreetingDone,
   setIntroAwaitingFollowup,
   setIntroPath,
-  setIntroPromptClicked,
   setMicGlow,
   setPendingLaterDump,
   setWelcomePending,
   takeIntroAwaitingFollowup,
   takeIntroPath,
-  takeIntroPromptClicked,
   takeMicGlow,
   takePendingLaterDump,
 } from "../brain-dump-handoff";
@@ -195,7 +193,7 @@ describe("unavailable session storage", () => {
       throw new Error("storage disabled");
     });
 
-    expect(() => setIntroPromptClicked()).not.toThrow();
+    expect(() => setMicGlow()).not.toThrow();
 
     vi.restoreAllMocks();
   });
@@ -205,7 +203,7 @@ describe("unavailable session storage", () => {
       throw new Error("storage disabled");
     });
 
-    expect(takeIntroPromptClicked()).toBe(false);
+    expect(takeMicGlow()).toBe(false);
 
     vi.restoreAllMocks();
   });

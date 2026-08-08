@@ -11,61 +11,39 @@
 import posthog from "posthog-js";
 
 type BrainDumpEvent =
-  // Wizard funnel: every step actually seen (including back-nav and
-  // resume-after-refresh), each step left forward, and the whole wizard
-  // finished (VISIT_COPILOT posted). The step is in the event NAME
-  // ("Onboarding Role Viewed") so the activity feed reads without
-  // clicking into properties; the `step` property still rides along for
-  // breakdowns. Names are semantic — layouts shuffle indices when the
-  // paywall flag flips, names never do.
-  | `Onboarding ${string} Viewed`
-  | `Onboarding ${string} Completed`
-  | "Onboarding Completed"
-  | "Brain Dump Started"
-  | "Brain Dump Completed"
-  | "Brain Dump Canceled"
-  | "Brain Dump Skipped"
-  | "Brain Dump Recovery Shown"
-  | "Brain Dump Recovery Used"
-  | "Brain Dump Retry"
-  | "Brain Dump Restarted"
-  | "Brain Dump Downloaded"
-  | "Brain Dump Permission Denied"
-  | "Brain Dump Typed Fallback"
+  | "brain_dump_started"
+  | "brain_dump_completed"
+  | "brain_dump_canceled"
+  | "brain_dump_skipped"
+  | "brain_dump_recovery_shown"
+  | "brain_dump_recovery_used"
+  | "brain_dump_retry"
+  | "brain_dump_restarted"
+  | "brain_dump_download"
+  | "brain_dump_permission_denied"
+  | "brain_dump_typed_fallback"
   // Wall-clock of the whole finalize round trip — upload flush, virus
   // scan, storage, transcription and extraction. Named for what it
   // actually measures: the client cannot see the transcription step on
   // its own, so calling this "transcription latency" overstated it.
-  | "Brain Dump Finalize Latency"
-  | "Intro Card Dismissed"
+  | "finalize_latency_ms"
+  | "intro_card_dismissed"
   // The welcome dialog shown on first copilot landing was closed — the
   // greeting fetch and reveal animation start from this moment.
-  | "Welcome Dialog Closed"
+  | "welcome_dialog_closed"
   // Capability-cards first-run funnel: which cards were reached and how
   // the modal ended (finished the deck vs skipped at card_index).
-  | "Capability Card Viewed"
-  | "Capability Cards Completed"
-  | "Capability Cards Skipped"
-  // Connect-tools funnel inside the welcome dialog: CTA opened the
-  // picker, a provider row was chosen, a credential actually landed.
-  | "Connect Tools Opened"
-  | "Connect Tools Provider Selected"
-  | "Connect Tools Connected"
-  // Which suggested prompt row started the conversation — the generic
-  // intro_followup_sent can't tell the rows apart.
-  | "Intro Prompt Clicked"
-  | "Intro Transcript Copied"
-  | "Brain Dump Transcription Failed"
-  // The gate judged a *successful* transcription unusable — a different
-  // outcome from an STT failure, and the number the gate lives or dies by.
-  | "Brain Dump Quality Rejected"
-  | "Intro Path Assigned"
+  | "capability_card_viewed"
+  | "capability_cards_completed"
+  | "capability_cards_skipped"
+  | "transcription_failed"
+  | "intro_path"
   // The user's first real message after seeing the intro card — the
   // signal that the card actually started a conversation. The suggested
   // prompts rendered beneath it are personalised from the same dump, so
   // this covers both a suggestion click and a typed reply.
-  | "Intro Followup Sent"
-  | "Later Dump Completed";
+  | "intro_followup_sent"
+  | "later_dump_completed";
 
 export function trackBrainDump(
   event: BrainDumpEvent,
@@ -75,18 +53,5 @@ export function trackBrainDump(
     posthog.capture(event, properties);
   } catch {
     // Analytics is never worth a broken recording.
-  }
-}
-
-// Super properties ride on every subsequent event this session — how the
-// intro path (A/B) becomes filterable on the whole downstream funnel
-// instead of living only on the one intro_path event. Session-scoped on
-// purpose: a persisted intro_path would keep classifying events long
-// after onboarding is over.
-export function registerBrainDumpContext(properties: Record<string, unknown>) {
-  try {
-    posthog.register_for_session(properties);
-  } catch {
-    // Same rule: analytics failures stay invisible.
   }
 }

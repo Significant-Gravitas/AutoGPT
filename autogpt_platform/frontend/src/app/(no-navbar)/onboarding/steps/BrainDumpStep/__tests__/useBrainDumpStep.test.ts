@@ -179,7 +179,7 @@ describe("useBrainDumpStep — recording", () => {
       await result.current.handleStop();
     });
 
-    expect(events()).toContain("Brain Dump Canceled");
+    expect(events()).toContain("brain_dump_canceled");
     expect(clearRecording).toHaveBeenCalledWith("rec-1");
     expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
     expect(result.current.screen).toBe("rest");
@@ -412,7 +412,7 @@ describe("useBrainDumpStep — finishing a take", () => {
       duration_secs: 64.5,
       mime_type: "audio/webm",
     });
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Completed", {
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
       duration_secs: 65,
       input_mode: "voice",
     });
@@ -501,14 +501,9 @@ describe("useBrainDumpStep — finishing a take", () => {
     });
 
     expect(result.current.screen).toBe("failed");
-    expect(trackBrainDump).toHaveBeenCalledWith(
-      "Brain Dump Transcription Failed",
-      {
-        error_code: "transcription_error",
-        input_mode: "voice",
-        attempt: 0,
-      },
-    );
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      error_code: "transcription_error",
+    });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
   });
 
@@ -522,14 +517,9 @@ describe("useBrainDumpStep — finishing a take", () => {
     });
 
     expect(result.current.screen).toBe("failed");
-    expect(trackBrainDump).toHaveBeenCalledWith(
-      "Brain Dump Transcription Failed",
-      {
-        error_code: 500,
-        input_mode: "voice",
-        attempt: 0,
-      },
-    );
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      error_code: 500,
+    });
   });
 
   it("fails rather than throwing when finalize rejects", async () => {
@@ -561,10 +551,8 @@ describe("useBrainDumpStep — insufficient content", () => {
     });
 
     expect(result.current.screen).toBe("insufficient");
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Quality Rejected", {
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
       error_code: "no_usable_speech",
-      input_mode: "voice",
-      attempt: 0,
     });
     // No accidental advance, and nothing personalized to advance to.
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
@@ -677,7 +665,7 @@ describe("useBrainDumpStep — restart", () => {
       recording_id: "rec-old",
     });
     expect(recorderState.start).toHaveBeenCalled();
-    expect(events()).toContain("Brain Dump Restarted");
+    expect(events()).toContain("brain_dump_restarted");
   });
 
   it("survives a failed discard and still starts the new take", async () => {
@@ -754,7 +742,7 @@ describe("useBrainDumpStep — retry", () => {
       recording_id: "rec-1",
       duration_secs: 212.4,
     });
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Retry", {
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_retry", {
       attempt: 1,
     });
   });
@@ -771,7 +759,7 @@ describe("useBrainDumpStep — retry", () => {
       await result.current.handleRetry();
     });
 
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Retry", {
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_retry", {
       attempt: 2,
     });
   });
@@ -796,7 +784,7 @@ describe("useBrainDumpStep — typing", () => {
 
     expect(result.current.screen).toBe("typing");
     expect(result.current.isMicBlocked).toBe(true);
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Typed Fallback", {
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
       reason: "permission_denied",
     });
   });
@@ -808,7 +796,7 @@ describe("useBrainDumpStep — typing", () => {
       result.current.showTyping();
     });
     expect(result.current.screen).toBe("typing");
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Typed Fallback", {
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
       reason: "chose_to_type",
     });
 
@@ -848,7 +836,7 @@ describe("useBrainDumpStep — typing", () => {
       input_mode: "typed",
       text: "invoices every friday",
     });
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Completed", {
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
       input_mode: "typed",
       chars: "invoices every friday".length,
     });
@@ -1022,7 +1010,7 @@ describe("useBrainDumpStep — recovery", () => {
 
     await waitFor(() => expect(result.current.screen).toBe("recovery"));
     expect(result.current.recoverable).toEqual(recovered);
-    expect(trackBrainDump).toHaveBeenCalledWith("Brain Dump Recovery Shown", {
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_recovery_shown", {
       parts: 2,
     });
   });
@@ -1037,7 +1025,7 @@ describe("useBrainDumpStep — recovery", () => {
 
     expect(result.current.screen).toBe("rest");
     expect(result.current.recoverable).toBeNull();
-    expect(events()).not.toContain("Brain Dump Recovery Shown");
+    expect(events()).not.toContain("brain_dump_recovery_shown");
   });
 
   it("stays silent when the parts cannot be read at all", async () => {
@@ -1071,7 +1059,7 @@ describe("useBrainDumpStep — recovery", () => {
       duration_secs: 95,
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
-    expect(events()).toContain("Brain Dump Recovery Used");
+    expect(events()).toContain("brain_dump_recovery_used");
   });
 
   it("does not leave recovery while its submission owns the take", async () => {
@@ -1165,7 +1153,7 @@ describe("useBrainDumpStep — download", () => {
     expect(blob.size).toBe(part(0).blob.size + part(1).blob.size);
     // Revoked in the same turn so the object URL does not leak.
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:dump");
-    expect(events()).toContain("Brain Dump Downloaded");
+    expect(events()).toContain("brain_dump_download");
   });
 
   it("downloads nothing when there is nothing stored", async () => {
@@ -1192,6 +1180,6 @@ describe("useBrainDumpStep — download", () => {
     });
 
     expect(getParts).not.toHaveBeenCalled();
-    expect(events()).not.toContain("Brain Dump Downloaded");
+    expect(events()).not.toContain("brain_dump_download");
   });
 });

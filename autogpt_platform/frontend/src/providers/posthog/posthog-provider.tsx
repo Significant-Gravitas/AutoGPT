@@ -18,9 +18,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         defaults: "2025-11-30",
         capture_pageview: false,
         capture_pageleave: true,
-        // Named events cover the funnels; raw click capture was drowning
-        // them 2:1 in every export and insight.
-        autocapture: false,
+        autocapture: true,
       });
     }
   }, []);

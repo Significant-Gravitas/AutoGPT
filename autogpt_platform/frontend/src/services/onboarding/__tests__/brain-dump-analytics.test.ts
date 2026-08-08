@@ -1,34 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const capture = vi.hoisted(() => vi.fn());
-const registerForSession = vi.hoisted(() => vi.fn());
-vi.mock("posthog-js", () => ({
-  default: { capture, register_for_session: registerForSession },
-}));
+vi.mock("posthog-js", () => ({ default: { capture } }));
 
-import {
-  registerBrainDumpContext,
-  trackBrainDump,
-} from "../brain-dump-analytics";
+import { trackBrainDump } from "../brain-dump-analytics";
 
 beforeEach(() => {
   capture.mockReset();
-  registerForSession.mockReset();
 });
 
 describe("trackBrainDump", () => {
   it("forwards the event name and properties to posthog", () => {
-    trackBrainDump("Brain Dump Completed", { duration_secs: 42 });
+    trackBrainDump("brain_dump_completed", { duration_secs: 42 });
 
-    expect(capture).toHaveBeenCalledWith("Brain Dump Completed", {
+    expect(capture).toHaveBeenCalledWith("brain_dump_completed", {
       duration_secs: 42,
     });
   });
 
   it("passes undefined properties through rather than inventing an object", () => {
-    trackBrainDump("Brain Dump Started");
+    trackBrainDump("brain_dump_started");
 
-    expect(capture).toHaveBeenCalledWith("Brain Dump Started", undefined);
+    expect(capture).toHaveBeenCalledWith("brain_dump_started", undefined);
   });
 
   it("swallows a throwing analytics host so a recording is never interrupted", () => {
@@ -36,7 +29,7 @@ describe("trackBrainDump", () => {
       throw new Error("posthog host blocked");
     });
 
-    expect(() => trackBrainDump("Brain Dump Permission Denied")).not.toThrow();
+    expect(() => trackBrainDump("brain_dump_permission_denied")).not.toThrow();
   });
 
   it("keeps capturing after a failed capture", () => {
@@ -44,28 +37,12 @@ describe("trackBrainDump", () => {
       throw new Error("posthog host blocked");
     });
 
-    trackBrainDump("Brain Dump Retry");
-    trackBrainDump("Intro Followup Sent", { source: "suggestion" });
+    trackBrainDump("brain_dump_retry");
+    trackBrainDump("intro_followup_sent", { source: "suggestion" });
 
     expect(capture).toHaveBeenCalledTimes(2);
-    expect(capture).toHaveBeenLastCalledWith("Intro Followup Sent", {
+    expect(capture).toHaveBeenLastCalledWith("intro_followup_sent", {
       source: "suggestion",
     });
-  });
-});
-
-describe("registerBrainDumpContext", () => {
-  it("registers session-scoped super properties, not persistent ones", () => {
-    registerBrainDumpContext({ intro_path: "A" });
-
-    expect(registerForSession).toHaveBeenCalledWith({ intro_path: "A" });
-  });
-
-  it("swallows a throwing analytics host", () => {
-    registerForSession.mockImplementation(() => {
-      throw new Error("posthog host blocked");
-    });
-
-    expect(() => registerBrainDumpContext({ intro_path: "B" })).not.toThrow();
   });
 });

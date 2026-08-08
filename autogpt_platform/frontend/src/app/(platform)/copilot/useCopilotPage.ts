@@ -26,7 +26,6 @@ import {
   peekGreetingDone,
   setGreetingDone,
   takeIntroAwaitingFollowup,
-  takeIntroPromptClicked,
 } from "@/services/onboarding/brain-dump-handoff";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
@@ -224,10 +223,7 @@ export function useCopilotPage() {
       });
     }
     if (takeIntroAwaitingFollowup()) {
-      trackBrainDump("Intro Followup Sent", {
-        chars: trimmed.length,
-        source: takeIntroPromptClicked() ? "suggestion" : "typed",
-      });
+      trackBrainDump("intro_followup_sent", { chars: trimmed.length });
     }
 
     if (sessionId && isInflightRef.current) {

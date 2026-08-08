@@ -86,21 +86,11 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
   const card = CARDS[cardIndex];
   const isLastCard = cardIndex === CARDS.length - 1;
 
-  // Every card the user actually sees — including the first one on open
-  // and cards revisited via Previous, which firing from handleNext missed.
-  useEffect(() => {
-    if (!isOpen) return;
-    trackBrainDump("Capability Card Viewed", {
-      card_index: cardIndex,
-      card_title: CARDS[cardIndex].title,
-    });
-  }, [isOpen, cardIndex]);
-
   function finish(outcome: "completed" | "skipped") {
     trackBrainDump(
       outcome === "completed"
-        ? "Capability Cards Completed"
-        : "Capability Cards Skipped",
+        ? "capability_cards_completed"
+        : "capability_cards_skipped",
       { card_index: cardIndex },
     );
     completeStep({ params: { step: "CAPABILITY_CARDS" } });
@@ -127,6 +117,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
       finish("completed");
       return;
     }
+    trackBrainDump("capability_card_viewed", { card_index: cardIndex + 1 });
     setCardIndex(cardIndex + 1);
   }
 
@@ -248,12 +239,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                         {card.cta && (
                           <button
                             type="button"
-                            onClick={() => {
-                              trackBrainDump("Connect Tools Opened", {
-                                card_index: cardIndex,
-                              });
-                              setIsConnectOpen(true);
-                            }}
+                            onClick={() => setIsConnectOpen(true)}
                             className="w-fit text-sm font-medium text-violet-600 underline-offset-4 hover:underline"
                           >
                             {card.cta.label}
