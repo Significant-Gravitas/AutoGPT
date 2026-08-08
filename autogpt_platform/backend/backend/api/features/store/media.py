@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import uuid
 from pathlib import Path
@@ -61,18 +62,23 @@ def get_local_media_path(user_id: str, media_type: str, filename: str) -> Path:
     """Resolve the on-disk path for a piece of local marketplace media,
     guarding against path traversal via the user_id/filename components."""
     base_dir = _get_local_media_dir()
-    file_path = (
-        base_dir
-        / "users"
-        / _validate_path_component(user_id)
-        / media_type
-        / _validate_path_component(filename)
-    ).resolve()
+    candidate = os.path.join(
+        str(base_dir),
+        "users",
+        _validate_path_component(user_id),
+        media_type,
+        _validate_path_component(filename),
+    )
 
-    if not file_path.is_relative_to(base_dir.resolve()):
+    real_base_dir = os.path.realpath(str(base_dir))
+    real_candidate = os.path.realpath(candidate)
+
+    if real_candidate != real_base_dir and not real_candidate.startswith(
+        real_base_dir + os.sep
+    ):
         raise ValueError("Invalid media path: path traversal detected")
 
-    return file_path
+    return Path(real_candidate)
 
 
 def _local_media_url(user_id: str, media_type: str, filename: str) -> str:
