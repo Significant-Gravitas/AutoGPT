@@ -16,6 +16,7 @@ RUN apt-get update \
         python3-venv \
         make \
         lsb-release \
+        sudo \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
         | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
@@ -34,16 +35,23 @@ RUN apt-get update \
 RUN mkdir -p /etc/docker \
     && printf '{\n  "storage-driver": "fuse-overlayfs"\n}\n' > /etc/docker/daemon.json
 
-RUN curl -sSL https://install.python-poetry.org | python3 - \
-    && ln -s /root/.local/bin/poetry /usr/local/bin/poetry
+RUN useradd -m -s /bin/bash ubuntu \
+    && usermod -aG docker ubuntu \
+    && echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-ENV NVM_DIR=/opt/nvm
+USER ubuntu
+WORKDIR /home/ubuntu
+
+RUN curl -sSL https://install.python-poetry.org | python3 - \
+    && echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/ubuntu/.bashrc
+
+ENV NVM_DIR=/home/ubuntu/.nvm
 RUN mkdir -p "$NVM_DIR" \
-    && curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | NVM_DIR="$NVM_DIR" PROFILE=/dev/null bash \
+    && curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash \
     && . "$NVM_DIR/nvm.sh" \
     && nvm install 24 \
     && nvm alias default 24 \
     && corepack enable \
     && corepack prepare pnpm@10.33.3 --activate
 
-ENV PATH="/opt/nvm/versions/node/v24.19.0/bin:/root/.local/bin:${PATH}"
+ENV PATH="/home/ubuntu/.nvm/versions/node/v24.19.0/bin:/home/ubuntu/.local/bin:${PATH}"

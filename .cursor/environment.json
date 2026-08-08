@@ -24,12 +24,12 @@
   "terminals": [
     {
       "name": "backend",
-      "command": "bash -lc 'export NVM_DIR=\"${NVM_DIR:-/opt/nvm}\"; [[ -s \"$NVM_DIR/nvm.sh\" ]] && . \"$NVM_DIR/nvm.sh\"; export PATH=\"${NVM_DIR}/versions/node/v24.19.0/bin:$HOME/.local/bin:$PATH\"; cd autogpt_platform && make run-backend'",
+      "command": "bash -lc 'export NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"; [[ -s \"$NVM_DIR/nvm.sh\" ]] && . \"$NVM_DIR/nvm.sh\"; export PATH=\"$NVM_DIR/versions/node/v24.19.0/bin:$HOME/.local/bin:$PATH\"; cd autogpt_platform && make run-backend'",
       "description": "FastAPI backend development server"
     },
     {
       "name": "frontend",
-      "command": "bash -lc 'export NVM_DIR=\"${NVM_DIR:-/opt/nvm}\"; [[ -s \"$NVM_DIR/nvm.sh\" ]] && . \"$NVM_DIR/nvm.sh\"; export PATH=\"${NVM_DIR}/versions/node/v24.19.0/bin:$HOME/.local/bin:$PATH\"; cd autogpt_platform && make run-frontend'",
+      "command": "bash -lc 'export NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"; [[ -s \"$NVM_DIR/nvm.sh\" ]] && . \"$NVM_DIR/nvm.sh\"; export PATH=\"$NVM_DIR/versions/node/v24.19.0/bin:$HOME/.local/bin:$PATH\"; cd autogpt_platform && make run-frontend'",
       "description": "Next.js frontend development server"
     }
   ]

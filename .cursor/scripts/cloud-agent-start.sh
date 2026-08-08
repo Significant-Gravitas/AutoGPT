@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLATFORM_DIR="${ROOT_DIR}/autogpt_platform"
 COMPOSE=(docker compose -f docker-compose.yml -f ../.cursor/docker-compose.cloud.yml)
 
-export NVM_DIR="${NVM_DIR:-/opt/nvm}"
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 if [[ -s "${NVM_DIR}/nvm.sh" ]]; then
   # shellcheck disable=SC1091
   . "${NVM_DIR}/nvm.sh"

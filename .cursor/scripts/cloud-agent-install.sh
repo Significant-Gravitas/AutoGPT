@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLATFORM_DIR="${ROOT_DIR}/autogpt_platform"
 
-export NVM_DIR="${NVM_DIR:-/opt/nvm}"
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 if [[ -s "${NVM_DIR}/nvm.sh" ]]; then
   # shellcheck disable=SC1091
   . "${NVM_DIR}/nvm.sh"
