@@ -154,6 +154,15 @@ oauth-tool = "backend.cli.oauth_tool:cli"
 [tool.isort]
 profile = "black"
 
+[tool.coverage.run]
+# Offline eval harnesses: run manually with LLM credentials / ffmpeg
+# (see onboarding_dump/EVAL.md), never exercised in CI.
+omit = [
+    "backend/api/features/onboarding_dump/brain_dump_eval.py",
+    "backend/api/features/onboarding_dump/brain_dump_gate_eval.py",
+    "backend/api/features/onboarding_dump/eval_corpus.py",
+]
+
 [tool.pytest-watcher]
 now = false
 clear = true

@@ -15,8 +15,8 @@ from backend.api.features.integrations.models import (
     get_all_provider_names,
     get_provider_description,
 )
-from backend.api.features.onboarding_dump.intro import _parse_response_json
 from backend.api.features.onboarding_dump.models import RecommendedProvider
+from backend.api.features.onboarding_dump.parsing import parse_response_json
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ async def generate_recommendations(transcript: str) -> list[RecommendedProvider]
         logger.warning("Brain dump recommendation generation failed: %s", e)
         return []
 
-    data = _parse_response_json(response.choices[0].message.content or "")
+    data = parse_response_json(response.choices[0].message.content or "")
     return _parse_recommendations(data, set(known))
 
 
