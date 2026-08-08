@@ -5,7 +5,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.dataforb2b._api import DataForB2BClient, api_error_message
+from backend.blocks.dataforb2b._api import DataForB2BClient
 from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -14,7 +14,6 @@ from backend.blocks.dataforb2b._config import (
     dataforb2b,
 )
 from backend.data.model import SchemaField
-from backend.util.request import HTTPClientError, HTTPServerError
 
 ENRICH_FLAGS = (
     "enrich_profile",
@@ -54,9 +53,6 @@ class ProfileEnrichmentBlock(Block):
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Full enrichment response")
-        error: str = SchemaField(
-            description="Error message if enrichment failed", default=""
-        )
 
     def __init__(self):
         super().__init__(
@@ -114,14 +110,7 @@ class ProfileEnrichmentBlock(Block):
         if not any_flag:
             payload["enrich_profile"] = True
 
-        try:
-            result = await self.enrich_profile(payload, credentials)
-        except HTTPClientError as e:
-            yield "error", api_error_message(e, "profile enrichment")
-            return
-        except HTTPServerError as e:
-            yield "error", api_error_message(e, "profile enrichment")
-            return
+        result = await self.enrich_profile(payload, credentials)
         yield "result", result
 
 
@@ -139,9 +128,6 @@ class CompanyEnrichmentBlock(Block):
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Full company enrichment response")
-        error: str = SchemaField(
-            description="Error message if enrichment failed", default=""
-        )
 
     def __init__(self):
         super().__init__(
@@ -184,12 +170,5 @@ class CompanyEnrichmentBlock(Block):
         company_identifier = input_data.company_identifier.strip()
         if not company_identifier:
             raise ValueError("'company_identifier' is required.")
-        try:
-            result = await self.enrich_company(company_identifier, credentials)
-        except HTTPClientError as e:
-            yield "error", api_error_message(e, "company enrichment")
-            return
-        except HTTPServerError as e:
-            yield "error", api_error_message(e, "company enrichment")
-            return
+        result = await self.enrich_company(company_identifier, credentials)
         yield "result", result

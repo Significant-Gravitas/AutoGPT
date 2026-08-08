@@ -7,7 +7,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.dataforb2b._api import DataForB2BClient, api_error_message
+from backend.blocks.dataforb2b._api import DataForB2BClient
 from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -18,7 +18,6 @@ from backend.blocks.dataforb2b._config import (
 from backend.blocks.dataforb2b._enums import CompanyColumn, FilterOperator, PeopleColumn
 from backend.blocks.dataforb2b._filters import build_slot_condition, finalize_filters
 from backend.data.model import SchemaField
-from backend.util.request import HTTPClientError, HTTPServerError
 
 NUM_SLOTS = 5
 
@@ -339,9 +338,6 @@ class PeopleSearchBlock(Block):
             description="List of matching LinkedIn people / leads", default_factory=list
         )
         total: int = SchemaField(description="Total number of matches", default=0)
-        error: str = SchemaField(
-            description="Error message if the search failed", default=""
-        )
 
     def __init__(self):
         super().__init__(
@@ -394,14 +390,7 @@ class PeopleSearchBlock(Block):
             "offset": offset,
             "enrich_live": bool(input_data.enrich_live),
         }
-        try:
-            data = await self.search_people(payload, credentials)
-        except HTTPClientError as e:
-            yield "error", api_error_message(e, "people search")
-            return
-        except HTTPServerError as e:
-            yield "error", api_error_message(e, "people search")
-            return
+        data = await self.search_people(payload, credentials)
         yield "result", data
         yield "results", data.get("results", []) or []
         yield "total", data.get("total", 0)
@@ -423,9 +412,6 @@ class CompanySearchBlock(Block):
             description="List of matching companies", default_factory=list
         )
         total: int = SchemaField(description="Total number of matches", default=0)
-        error: str = SchemaField(
-            description="Error message if the search failed", default=""
-        )
 
     def __init__(self):
         super().__init__(
@@ -478,14 +464,7 @@ class CompanySearchBlock(Block):
             "offset": offset,
             "enrich_live": bool(input_data.enrich_live),
         }
-        try:
-            data = await self.search_companies(payload, credentials)
-        except HTTPClientError as e:
-            yield "error", api_error_message(e, "company search")
-            return
-        except HTTPServerError as e:
-            yield "error", api_error_message(e, "company search")
-            return
+        data = await self.search_companies(payload, credentials)
         yield "result", data
         yield "results", data.get("results", []) or []
         yield "total", data.get("total", 0)

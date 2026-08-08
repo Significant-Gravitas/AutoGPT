@@ -28,7 +28,7 @@ async def test_whitespace_only_identifier_raises_value_error():
     not passed through as if it were a real value."""
     block = ProfileEnrichmentBlock()
     input_data = ProfileEnrichmentBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         profile_identifier="   ",
     )
     with pytest.raises(ValueError, match="profile_identifier"):
@@ -39,7 +39,7 @@ async def test_whitespace_only_identifier_raises_value_error():
 @pytest.mark.asyncio
 async def test_identifier_is_stripped():
     input_data = ProfileEnrichmentBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         profile_identifier="  https://www.linkedin.com/in/johndoe  ",
         enrich_profile=True,
     )
@@ -52,7 +52,7 @@ async def test_no_flags_set_falls_back_to_enrich_profile():
     """Thread ED6c: when none of the enrich_* flags are set, the block must still
     request the profile rather than sending an all-False payload."""
     input_data = ProfileEnrichmentBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         profile_identifier="https://www.linkedin.com/in/johndoe",
         enrich_profile=False,
         enrich_work_email=False,
@@ -66,7 +66,7 @@ async def test_no_flags_set_falls_back_to_enrich_profile():
 @pytest.mark.asyncio
 async def test_explicit_flag_is_respected_without_fallback():
     input_data = ProfileEnrichmentBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         profile_identifier="https://www.linkedin.com/in/johndoe",
         enrich_profile=False,
         enrich_work_email=True,

@@ -28,7 +28,7 @@ The block sends either a natural-language `query` or a continuation pair of `ses
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the search failed | str |
+| error | Error message if the operation failed | str |
 | result | Full reasoning-search response | Dict[str, Any] |
 | status | 'ok' or 'needs_input' | str |
 | results | Matching results when status is ok | List[Any] |

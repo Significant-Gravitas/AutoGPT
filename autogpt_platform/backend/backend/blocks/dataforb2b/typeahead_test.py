@@ -1,8 +1,10 @@
 """Tests for SearchFilterTypeaheadBlock.run() input validation and limit clamping."""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pytest_snapshot.plugin import Snapshot
 
 from backend.blocks.dataforb2b._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.dataforb2b._enums import TypeaheadType
@@ -27,7 +29,7 @@ async def test_missing_query_raises_value_error():
     """Thread ED6e: missing 'q' should raise a clear ValueError, not an API 400."""
     block = SearchFilterTypeaheadBlock()
     input_data = SearchFilterTypeaheadBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_type=TypeaheadType.COMPANY,
         q="",
         limit=5,
@@ -38,11 +40,11 @@ async def test_missing_query_raises_value_error():
 
 
 @pytest.mark.asyncio
-async def test_limit_clamped_to_upper_bound():
+async def test_limit_clamped_to_upper_bound(snapshot: Snapshot):
     """Thread ED6e: limit above 20 must be clamped, not passed through raw."""
     block = SearchFilterTypeaheadBlock()
     input_data = SearchFilterTypeaheadBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_type=TypeaheadType.COMPANY,
         q="google",
         limit=999,
@@ -50,6 +52,11 @@ async def test_limit_clamped_to_upper_bound():
     outputs, mock_typeahead = await _run_and_capture(block, input_data)
     assert mock_typeahead.await_args.args[2] == 20
     assert outputs["values"] == ["Google"]
+    snapshot.snapshot_dir = "snapshots"
+    snapshot.assert_match(
+        json.dumps(outputs, indent=2, sort_keys=True),
+        "typeahead_outputs",
+    )
 
 
 @pytest.mark.asyncio
@@ -57,7 +64,7 @@ async def test_limit_clamped_to_lower_bound():
     """Thread ED6e: limit of 0 or negative must be clamped up to at least 1."""
     block = SearchFilterTypeaheadBlock()
     input_data = SearchFilterTypeaheadBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_type=TypeaheadType.COMPANY,
         q="google",
         limit=0,
@@ -70,8 +77,10 @@ async def test_limit_clamped_to_lower_bound():
 async def test_type_is_validated_enum():
     """Thread ED7M/ED64: 'type' is a closed enum, invalid values are rejected."""
     with pytest.raises(ValueError):
-        SearchFilterTypeaheadBlock.Input(
-            credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
-            filter_type="not-a-real-type",  # type: ignore[arg-type]
-            q="google",
+        SearchFilterTypeaheadBlock.Input.model_validate(
+            {
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "filter_type": "not-a-real-type",
+                "q": "google",
+            }
         )

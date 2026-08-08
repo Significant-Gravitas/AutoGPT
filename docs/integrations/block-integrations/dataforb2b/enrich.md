@@ -23,7 +23,7 @@ The block trims the provided `company_identifier` and rejects empty values befor
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if enrichment failed | str |
+| error | Error message if the operation failed | str |
 | result | Full company enrichment response | Dict[str, Any] |
 
 ### Possible use case
@@ -61,7 +61,7 @@ The block trims the provided `profile_identifier` (a LinkedIn profile URL or id)
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if enrichment failed | str |
+| error | Error message if the operation failed | str |
 | result | Full enrichment response | Dict[str, Any] |
 
 ### Possible use case

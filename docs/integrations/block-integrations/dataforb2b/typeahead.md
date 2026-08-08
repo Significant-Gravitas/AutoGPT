@@ -25,7 +25,7 @@ The block trims and validates the free-text query `q`, then sends it with `filte
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the lookup failed | str |
+| error | Error message if the operation failed | str |
 | result | Full typeahead response | Dict[str, Any] |
 | results | List of suggestions | List[Dict[str, Any]] |
 | values | Resolved stored values | List[str] |

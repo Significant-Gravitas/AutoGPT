@@ -22,7 +22,7 @@ async def test_build_filters_raises_without_slots_or_advanced_json():
     ValueError instead of sending an empty/invalid filter payload to the API."""
     block = PeopleSearchBlock()
     input_data = PeopleSearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
     )
     with pytest.raises(ValueError, match="at least one filter"):
         _build_filters(input_data)
@@ -38,7 +38,7 @@ async def test_people_search_sends_full_filters_payload_to_api():
     enrich_live), not just the mocked return value."""
     block = PeopleSearchBlock()
     input_data = PeopleSearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_1_column=PeopleColumn.current_title,
         filter_1_operator=FilterOperator.LIKE,
         filter_1_value="software engineer",
@@ -77,7 +77,7 @@ async def test_people_search_count_clamped_to_max():
     """Thread ED5-/DxBr: count above MAX_COUNT must be clamped, not sent raw."""
     block = PeopleSearchBlock()
     input_data = PeopleSearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_1_column=PeopleColumn.current_title,
         filter_1_operator=FilterOperator.LIKE,
         filter_1_value="engineer",
@@ -97,7 +97,7 @@ async def test_people_search_count_clamped_to_max():
 async def test_people_search_offset_clamped_to_non_negative():
     block = PeopleSearchBlock()
     input_data = PeopleSearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_1_column=PeopleColumn.current_title,
         filter_1_operator=FilterOperator.LIKE,
         filter_1_value="engineer",
@@ -118,7 +118,7 @@ async def test_company_search_raises_without_filters():
     """Thread ED6T (also applies to company search): same negative-path guard."""
     block = CompanySearchBlock()
     input_data = CompanySearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
     )
     with pytest.raises(ValueError, match="at least one filter"):
         async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
@@ -129,7 +129,7 @@ async def test_company_search_raises_without_filters():
 async def test_company_search_sends_full_filters_payload_to_api():
     block = CompanySearchBlock()
     input_data = CompanySearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_1_column=CompanyColumn.industry,
         filter_1_operator=FilterOperator.LIKE,
         filter_1_value="software",
@@ -156,7 +156,7 @@ async def test_company_search_sends_full_filters_payload_to_api():
 async def test_filters_json_alone_satisfies_filter_requirement():
     block = PeopleSearchBlock()
     input_data = PeopleSearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filters_json={
             "op": "and",
             "conditions": [{"column": "x", "type": "=", "value": 1}],
@@ -177,7 +177,7 @@ async def test_filters_json_alone_satisfies_filter_requirement():
 
 def test_empty_slot_does_not_validate_default_operator():
     input_data = PeopleSearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_1_column=PeopleColumn.years_of_experience,
         filters_json={
             "op": "and",
@@ -198,7 +198,7 @@ def test_empty_slot_does_not_validate_default_operator():
 )
 def test_people_search_rejects_incompatible_column_operators(column, operator):
     input_data = PeopleSearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_1_column=column,
         filter_1_operator=operator,
         filter_1_value="1",
@@ -218,7 +218,7 @@ def test_people_search_rejects_incompatible_column_operators(column, operator):
 )
 def test_company_search_rejects_incompatible_column_operators(column, operator):
     input_data = CompanySearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_1_column=column,
         filter_1_operator=operator,
         filter_1_value="1",
@@ -230,7 +230,7 @@ def test_company_search_rejects_incompatible_column_operators(column, operator):
 
 def test_search_accepts_operator_compatible_with_column():
     input_data = PeopleSearchBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT,
         filter_1_column=PeopleColumn.years_of_experience,
         filter_1_operator=FilterOperator.BETWEEN,
         filter_1_value="3,7",

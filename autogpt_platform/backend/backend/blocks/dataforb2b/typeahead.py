@@ -7,7 +7,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.dataforb2b._api import DataForB2BClient, api_error_message
+from backend.blocks.dataforb2b._api import DataForB2BClient
 from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -17,7 +17,6 @@ from backend.blocks.dataforb2b._config import (
 )
 from backend.blocks.dataforb2b._enums import TypeaheadType
 from backend.data.model import SchemaField
-from backend.util.request import HTTPClientError, HTTPServerError
 
 
 class TypeaheadSuggestion(BaseModel):
@@ -56,9 +55,6 @@ class SearchFilterTypeaheadBlock(Block):
         )
         values: list[str] = SchemaField(
             description="Resolved stored values", default_factory=list
-        )
-        error: str = SchemaField(
-            description="Error message if the lookup failed", default=""
         )
 
     def __init__(self):
@@ -106,16 +102,9 @@ class SearchFilterTypeaheadBlock(Block):
             raise ValueError("'q' (query) is required.")
 
         limit = max(1, min(int(input_data.limit), 20))
-        try:
-            data = await self.typeahead(
-                input_data.filter_type.value, query, limit, credentials
-            )
-        except HTTPClientError as e:
-            yield "error", api_error_message(e, "typeahead")
-            return
-        except HTTPServerError as e:
-            yield "error", api_error_message(e, "typeahead")
-            return
+        data = await self.typeahead(
+            input_data.filter_type.value, query, limit, credentials
+        )
         results = data.get("results", []) or []
         yield "result", data
         yield "results", results

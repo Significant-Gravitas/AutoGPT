@@ -42,7 +42,7 @@ Up to five filter slots (`filter_1_column`/`filter_1_operator`/`filter_1_value` 
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the search failed | str |
+| error | Error message if the operation failed | str |
 | result | Full search response (total, count, results) | Dict[str, Any] |
 | results | List of matching companies | List[Any] |
 | total | Total number of matches | int |
@@ -97,7 +97,7 @@ Up to five filter slots (`filter_1_column`/`filter_1_operator`/`filter_1_value` 
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the search failed | str |
+| error | Error message if the operation failed | str |
 | result | Full search response (total, count, results) | Dict[str, Any] |
 | results | List of matching LinkedIn people / leads | List[Any] |
 | total | Total number of matches | int |

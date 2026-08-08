@@ -5,7 +5,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.dataforb2b._api import DataForB2BClient, api_error_message
+from backend.blocks.dataforb2b._api import DataForB2BClient
 from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -15,7 +15,6 @@ from backend.blocks.dataforb2b._config import (
 )
 from backend.blocks.dataforb2b._enums import SearchCategory
 from backend.data.model import SchemaField
-from backend.util.request import HTTPClientError, HTTPServerError
 
 # Conservative safety ceiling for `max_results`, mirroring search.py's MAX_COUNT.
 MAX_RESULTS = 100
@@ -83,9 +82,6 @@ class SmartSearchBlock(Block):
         category: str = SchemaField(
             description="Category searched ('people' or 'company', echoed from the input) — route pagination to the matching search block",
             default="",
-        )
-        error: str = SchemaField(
-            description="Error message if the search failed", default=""
         )
 
     def __init__(self):
@@ -166,14 +162,7 @@ class SmartSearchBlock(Block):
         if input_data.answers:
             payload["answers"] = input_data.answers
 
-        try:
-            data = await self.reasoning_search(payload, credentials)
-        except HTTPClientError as e:
-            yield "error", api_error_message(e, "smart search")
-            return
-        except HTTPServerError as e:
-            yield "error", api_error_message(e, "smart search")
-            return
+        data = await self.reasoning_search(payload, credentials)
         yield "result", data
         yield "status", data.get("status", "ok")
         yield "results", data.get("results", []) or []
