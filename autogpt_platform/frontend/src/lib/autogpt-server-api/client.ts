@@ -156,8 +156,18 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user/preferences", preferences);
   }
 
-  getAutoTopUpConfig(): Promise<{ amount: number; threshold: number }> {
-    return this._get("/credits/auto-top-up");
+  async getAutoTopUpConfig(): Promise<{
+    amount: number;
+    threshold: number;
+  } | null> {
+    try {
+      return await this._get("/credits/auto-top-up");
+    } catch (error) {
+      if (!(error instanceof LogoutInterruptError)) {
+        Sentry.captureException(error);
+      }
+      return null;
+    }
   }
 
   setAutoTopUpConfig(config: {
