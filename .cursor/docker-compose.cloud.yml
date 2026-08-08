@@ -1,0 +1,14 @@
+services:
+  redis-1:
+    profiles: ["cloud-skip"]
+  redis-2:
+    profiles: ["cloud-skip"]
+  redis-init:
+    profiles: ["cloud-skip"]
+  redis-0:
+    command: redis-server --port 17000 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --bind 0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 17000 ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
