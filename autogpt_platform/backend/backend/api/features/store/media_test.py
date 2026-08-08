@@ -109,6 +109,20 @@ async def test_upload_media_falls_back_to_local_storage(
     assert stored_path.is_file()
 
 
+@pytest.mark.parametrize(
+    "user_id,filename",
+    [
+        ("../../etc", "passwd"),
+        ("test-user", "../../etc/passwd"),
+        ("test/user", "file.png"),
+        ("test-user", "sub/dir/file.png"),
+    ],
+)
+def test_get_local_media_path_rejects_disallowed_characters(user_id, filename):
+    with pytest.raises(ValueError):
+        store_media.get_local_media_path(user_id, "images", filename)
+
+
 async def test_check_media_exists_local_storage(tmp_path, monkeypatch):
     settings = Settings()
     settings.config.media_gcs_bucket_name = ""

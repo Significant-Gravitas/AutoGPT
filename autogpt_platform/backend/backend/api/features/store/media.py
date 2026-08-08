@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from pathlib import Path
 
@@ -7,7 +8,6 @@ import fastapi
 from gcloud.aio import storage as async_storage
 
 from backend.util.data import get_data_path
-from backend.util.file import sanitize_filename
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+# Allow-list for the path components of locally-stored media: reject
+# anything containing a path separator or traversal sequence outright,
+# rather than trying to strip/replace unsafe characters. This is what lets
+# static path-injection analysis (e.g. CodeQL) treat the value as safe by
+# the time it reaches a filesystem call, unlike a denylist substitution.
+_SAFE_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 # Extension used for stored files, keyed by the *validated* content type (see
 # the signature checks in upload_media). Never derive the stored extension
@@ -42,14 +49,24 @@ def _get_local_media_dir() -> Path:
     return base_dir
 
 
+def _validate_path_component(value: str) -> str:
+    """Reject a user_id/filename outright unless it's made up entirely of
+    safe characters, instead of trying to strip/replace unsafe ones."""
+    if not _SAFE_PATH_COMPONENT.fullmatch(value):
+        raise ValueError(f"Invalid media path component: {value!r}")
+    return value
+
+
 def get_local_media_path(user_id: str, media_type: str, filename: str) -> Path:
     """Resolve the on-disk path for a piece of local marketplace media,
     guarding against path traversal via the user_id/filename components."""
     base_dir = _get_local_media_dir()
-    safe_user_id = sanitize_filename(user_id)
-    safe_filename = sanitize_filename(filename)
     file_path = (
-        base_dir / "users" / safe_user_id / media_type / safe_filename
+        base_dir
+        / "users"
+        / _validate_path_component(user_id)
+        / media_type
+        / _validate_path_component(filename)
     ).resolve()
 
     if not file_path.is_relative_to(base_dir.resolve()):
@@ -59,9 +76,10 @@ def get_local_media_path(user_id: str, media_type: str, filename: str) -> Path:
 
 
 def _local_media_url(user_id: str, media_type: str, filename: str) -> str:
-    safe_user_id = sanitize_filename(user_id)
-    safe_filename = sanitize_filename(filename)
-    return f"/api/store/media/{safe_user_id}/{media_type}/{safe_filename}"
+    return (
+        f"/api/store/media/{_validate_path_component(user_id)}"
+        f"/{media_type}/{_validate_path_component(filename)}"
+    )
 
 
 def _check_media_exists_locally(user_id: str, filename: str) -> str | None:
