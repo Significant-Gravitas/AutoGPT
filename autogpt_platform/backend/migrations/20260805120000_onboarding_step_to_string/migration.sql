@@ -47,7 +47,16 @@ WHERE c.relkind IN ('v', 'm')
         WHERE d.classid = 'pg_rewrite'::regclass
           AND r.ev_class = c.oid
           AND d.refobjid = '"UserOnboarding"'::regclass
-          AND d.refobjsubid > 0
+          -- Only the columns actually being retyped. Postgres blocks the ALTER
+          -- solely for views depending on those; a view reading other columns
+          -- (e.g. analytics.user_onboarding_integration, which uses
+          -- "integrations") is no obstacle and must not be dropped.
+          AND d.refobjsubid IN (
+                SELECT attnum
+                FROM pg_attribute
+                WHERE attrelid = '"UserOnboarding"'::regclass
+                  AND attname IN ('completedSteps', 'notified', 'rewardedFor')
+              )
       );
 
 DO $$
