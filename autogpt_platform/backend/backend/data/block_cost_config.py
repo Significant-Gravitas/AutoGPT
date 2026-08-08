@@ -77,6 +77,7 @@ from backend.blocks.zerobounce.validate_emails import ValidateEmailsBlock
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,
+    avian_credentials,
     apollo_credentials,
     did_credentials,
     e2b_credentials,
@@ -351,6 +352,12 @@ LLM_COST = (
         _tokens_llm_cost(model, aiml_api_credentials)
         for model in MODEL_COST
         if MODEL_METADATA[model].provider == "aiml_api"
+    ]
+    # Avian Models
+    + [
+        _tokens_llm_cost(model, avian_credentials)
+        for model in MODEL_COST
+        if MODEL_METADATA[model].provider == "avian"
     ]
     # Ollama: self-hosted, no provider charge. Explicit zero-cost entry so
     # the builder UI can render "Free" instead of an empty cost label (which

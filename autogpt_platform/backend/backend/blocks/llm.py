@@ -70,6 +70,7 @@ LLM_REQUEST_TIMEOUT_SECONDS = 120
 LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
+    ProviderName.AVIAN,
     ProviderName.GROQ,
     ProviderName.OLLAMA,
     ProviderName.OPENAI,

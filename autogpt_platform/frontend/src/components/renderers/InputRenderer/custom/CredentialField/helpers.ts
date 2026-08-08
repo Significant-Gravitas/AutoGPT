@@ -94,6 +94,7 @@ export const providerIcons: Partial<Record<string, IconSvgElement>> = {
   aiml_api: LockKeyIcon,
   anthropic: LockKeyIcon,
   apollo: LockKeyIcon,
+  avian: LockKeyIcon,
   e2b: LockKeyIcon,
   github: GithubIcon,
   google: GoogleIcon,

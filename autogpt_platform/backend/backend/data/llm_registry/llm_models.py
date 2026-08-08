@@ -249,6 +249,11 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     V0_1_5_MD = "v0-1.5-md"
     V0_1_5_LG = "v0-1.5-lg"
     V0_1_0_MD = "v0-1.0-md"
+    # Avian models
+    AVIAN_DEEPSEEK_V3_2 = "deepseek/deepseek-v3.2"
+    AVIAN_KIMI_K2_5 = "avian/kimi-k2.5"
+    AVIAN_GLM_5 = "avian/glm-5"
+    AVIAN_MINIMAX_M2_5 = "minimax/minimax-m2.5"
 
     @classmethod
     def __get_pydantic_json_schema__(cls, schema, handler):
