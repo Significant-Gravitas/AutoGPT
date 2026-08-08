@@ -68,11 +68,11 @@ jobs:
           set: |
             *.platform=${{ matrix.platform }}
             backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
-            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max
+            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
             single-container.args.IMAGE_VERSION=${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
             single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
-            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max
+            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
             single-container.output=type=docker
             single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
 

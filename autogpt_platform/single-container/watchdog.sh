@@ -32,7 +32,8 @@ main() {
     log "watchdog health failure ${failures}/${FAILURE_LIMIT}" >&2
     sed -n '1,120p' "${output}" >&2
     if ((failures >= FAILURE_LIMIT)); then
-      stop_appliance "watchdog stopping the unhealthy appliance for Docker restart"
+      stop_appliance \
+        "watchdog stopping the unhealthy appliance; a Docker restart policy is required to restart it automatically"
     fi
   done
 }
@@ -49,7 +50,7 @@ wait_for_initial_health() {
   while ((SECONDS < deadline)); do
     if run_healthcheck "${output}"; then
       install -m 0600 /dev/null "${WATCHDOG_ARMED_FILE}"
-      log "watchdog armed after initial healthy state"
+      log "watchdog armed after initial healthy state; automatic fatal recovery requires a Docker restart policy"
       return 0
     fi
     log "watchdog waiting for initial healthy state" >&2

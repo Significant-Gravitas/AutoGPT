@@ -88,7 +88,6 @@ configure_environment() {
   validate_legacy_auth
   normalize_toggle AUTOGPT_ENABLE_CLAMAV true
   normalize_toggle AUTOGPT_ENABLE_BOT_SERVICES false
-  normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS true
   if [[ "${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}" != false ]]; then
     fatal "email verification is not supported by the single-container distribution"
   fi
@@ -102,11 +101,7 @@ configure_environment() {
   )"
   export AUTOGPT_PUBLIC_URL
   log "public URL: ${AUTOGPT_PUBLIC_URL}"
-  local loopback_origin_pattern='^https?://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?$'
-  if [[ "${AUTH_ALLOW_NEW_ACCOUNTS}" == true && \
-    ! "${AUTOGPT_PUBLIC_URL}" =~ ${loopback_origin_pattern} ]]; then
-    log "WARNING: open account registration is enabled for a non-loopback public URL"
-  fi
+  configure_account_registration
   write_nginx_public_url_config
 
   export PGDATA=/data/postgres
@@ -166,6 +161,18 @@ configure_environment() {
   # Python imports this directory's sitecustomize module before each service
   # entry point, suppressing HTTP access targets and redacting WS query tokens.
   export PYTHONPATH="${AUTOGPT_ASSET_DIR}/python"
+}
+
+configure_account_registration() {
+  local loopback_origin_pattern='^https?://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?$'
+  local default=false
+  if [[ "${AUTOGPT_PUBLIC_URL}" =~ ${loopback_origin_pattern} ]]; then
+    default=true
+  fi
+  normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS "${default}"
+  if [[ "${AUTH_ALLOW_NEW_ACCOUNTS}" == true && "${default}" == false ]]; then
+    log "WARNING: open account registration was explicitly enabled for a non-loopback public URL"
+  fi
 }
 
 write_nginx_public_url_config() {
@@ -299,4 +306,6 @@ write_falkordb_config() {
   mv -f "${temporary}" "${AUTOGPT_RUNTIME_DIR}/falkordb.conf"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

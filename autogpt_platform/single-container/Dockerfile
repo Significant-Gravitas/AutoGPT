@@ -183,6 +183,7 @@ COPY autogpt_platform/single-container/bootstrap.sh \
      autogpt_platform/single-container/probe.py \
      autogpt_platform/single-container/promote-admin.sh \
      autogpt_platform/single-container/run-app.sh \
+     autogpt_platform/single-container/run-frontend.sh \
      autogpt_platform/single-container/run-optional-app.sh \
      autogpt_platform/single-container/run-service.sh \
      autogpt_platform/single-container/runtime_config.py \
