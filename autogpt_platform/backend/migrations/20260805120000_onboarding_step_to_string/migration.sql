@@ -180,11 +180,20 @@ SELECT * FROM funnel ORDER BY step_order
 $view$;
     END IF;
 
-    -- analytics-views grants SELECT on the whole schema to analytics_readonly;
-    -- mirror that for the views recreated here.
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'analytics_readonly')
-       AND EXISTS (SELECT 1 FROM _onboarding_dropped_relations WHERE schema_name = 'analytics') THEN
-        EXECUTE 'GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_readonly';
+    -- Restore the analytics_readonly grant, scoped to the views recreated
+    -- above. analytics-views grants across the whole schema, but replicating
+    -- that here would hand read access to every other object in `analytics`,
+    -- including any deliberately withheld from the role.
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'analytics_readonly') THEN
+        FOR v IN
+            SELECT rel_name FROM _onboarding_dropped_relations
+            WHERE schema_name = 'analytics'
+              AND rel_name IN ('user_onboarding', 'user_onboarding_funnel')
+              AND relkind = 'v'
+        LOOP
+            EXECUTE format('GRANT SELECT ON analytics.%I TO analytics_readonly',
+                           v.rel_name);
+        END LOOP;
     END IF;
 
     -- Anything dropped that this migration cannot rebuild.
