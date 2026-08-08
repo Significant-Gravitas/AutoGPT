@@ -8,14 +8,12 @@ on:
       - ".github/scripts/platform-single-container-smoke.sh"
       - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/**"
-      - "docs/**"
   pull_request:
     paths:
       - ".dockerignore"
       - ".github/scripts/platform-single-container-smoke.sh"
       - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/**"
-      - "docs/**"
   workflow_dispatch:
 
 concurrency:

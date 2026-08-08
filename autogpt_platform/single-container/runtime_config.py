@@ -12,6 +12,7 @@ import re
 import secrets
 import stat
 import sys
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -43,7 +44,7 @@ def main() -> int:
     return 0
 
 
-def ensure_runtime_config(path: Path, environment: os._Environ[str]) -> dict[str, str]:
+def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[str, str]:
     """Return the existing secrets or atomically create them on first boot."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
@@ -102,7 +103,7 @@ def _normalize_public_host(host: str) -> str:
     return f"[{address.compressed}]" if address.version == 6 else address.compressed
 
 
-def _new_values(environment: os._Environ[str]) -> dict[str, str]:
+def _new_values(environment: Mapping[str, str]) -> dict[str, str]:
     vapid_private, vapid_public = _configured_or_generated_vapid(environment)
     values = {
         "AUTOGPT_RUNTIME_CONFIG_VERSION": CONFIG_VERSION,
@@ -135,13 +136,13 @@ def _new_values(environment: os._Environ[str]) -> dict[str, str]:
 
 
 def _configured_or_generated(
-    environment: os._Environ[str], name: str, generator
+    environment: Mapping[str, str], name: str, generator: Callable[[], str]
 ) -> str:
     return environment.get(name) or generator()
 
 
 def _configured_or_generated_vapid(
-    environment: os._Environ[str],
+    environment: Mapping[str, str],
 ) -> tuple[str, str]:
     private = environment.get("VAPID_PRIVATE_KEY")
     public = environment.get("VAPID_PUBLIC_KEY")
@@ -246,7 +247,7 @@ def _read_config(path: Path) -> dict[str, str]:
 
 
 def _verify_environment_matches(
-    values: dict[str, str], environment: os._Environ[str]
+    values: dict[str, str], environment: Mapping[str, str]
 ) -> None:
     for name, persisted in values.items():
         configured = environment.get(name)

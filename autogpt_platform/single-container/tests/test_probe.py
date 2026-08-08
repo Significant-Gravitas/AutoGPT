@@ -4,6 +4,7 @@ import importlib.util
 import io
 import unittest
 from pathlib import Path
+from unittest import mock
 
 MODULE_PATH = Path(__file__).parents[1] / "probe.py"
 SPEC = importlib.util.spec_from_file_location("single_container_probe", MODULE_PATH)
@@ -15,6 +16,44 @@ SPEC.loader.exec_module(probe)
 class ChunkedStream(io.BytesIO):
     def read(self, size: int = -1) -> bytes:
         return super().read(min(size, 1) if size >= 0 else 1)
+
+
+class DuplexStream:
+    def __init__(self, response: bytes) -> None:
+        self.reader = io.BytesIO(response)
+        self.written = io.BytesIO()
+
+    def read(self, size: int = -1) -> bytes:
+        return self.reader.read(size)
+
+    def readline(self, size: int = -1) -> bytes:
+        return self.reader.readline(size)
+
+    def write(self, value: bytes) -> int:
+        return self.written.write(value)
+
+
+class FakeConnection:
+    def __init__(self, response: bytes) -> None:
+        self.stream = DuplexStream(response)
+        self.response = response
+        self.sent = b""
+
+    def __enter__(self) -> FakeConnection:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def makefile(self, _mode: str, buffering: int) -> DuplexStream:
+        del buffering
+        return self.stream
+
+    def sendall(self, value: bytes) -> None:
+        self.sent = value
+
+    def recv(self, size: int) -> bytes:
+        return self.response[:size]
 
 
 class RespTest(unittest.TestCase):
@@ -47,6 +86,59 @@ class RespTest(unittest.TestCase):
         stream = io.BytesIO()
         probe._send_resp_command(stream, "AUTH", "secret")
         self.assertEqual(stream.getvalue(), b"*2\r\n$4\r\nAUTH\r\n$6\r\nsecret\r\n")
+
+
+class ServiceProbeTest(unittest.TestCase):
+    def test_http_rejects_error_status(self) -> None:
+        response = mock.MagicMock()
+        response.status = 503
+        response.__enter__.return_value = response
+        with (
+            mock.patch.object(probe.urllib.request, "urlopen", return_value=response),
+            self.assertRaisesRegex(RuntimeError, "HTTP 503"),
+        ):
+            probe.probe_http("http://127.0.0.1/health", 1)
+
+    def test_redis_rejects_failed_authentication(self) -> None:
+        connection = FakeConnection(b"+NOPE\r\n")
+        with (
+            mock.patch.object(
+                probe.socket, "create_connection", return_value=connection
+            ),
+            self.assertRaisesRegex(RuntimeError, "authentication failed"),
+        ):
+            probe.probe_redis("127.0.0.1", 6380, 1, "secret", False)
+
+    def test_redis_rejects_unhealthy_cluster(self) -> None:
+        connection = FakeConnection(b"$18\r\ncluster_state:fail\r\n")
+        with (
+            mock.patch.object(
+                probe.socket, "create_connection", return_value=connection
+            ),
+            self.assertRaisesRegex(RuntimeError, "cluster is not healthy"),
+        ):
+            probe.probe_redis("127.0.0.1", 17000, 1, "", True)
+
+    def test_redis_rejects_wrong_ping_response(self) -> None:
+        connection = FakeConnection(b"+NOPE\r\n")
+        with (
+            mock.patch.object(
+                probe.socket, "create_connection", return_value=connection
+            ),
+            self.assertRaisesRegex(RuntimeError, "did not return PONG"),
+        ):
+            probe.probe_redis("127.0.0.1", 17000, 1, "", False)
+
+    def test_clam_rejects_wrong_ping_response(self) -> None:
+        connection = FakeConnection(b"NOPE\0")
+        with (
+            mock.patch.object(
+                probe.socket, "create_connection", return_value=connection
+            ),
+            self.assertRaisesRegex(RuntimeError, "did not return PONG"),
+        ):
+            probe.probe_clam("127.0.0.1", 3310, 1)
+        self.assertEqual(connection.sent, b"zPING\0")
 
 
 if __name__ == "__main__":

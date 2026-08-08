@@ -101,6 +101,7 @@ configure_environment() {
       validate-public-url "${AUTOGPT_PUBLIC_URL:-http://localhost:3000}"
   )"
   export AUTOGPT_PUBLIC_URL
+  log "public URL: ${AUTOGPT_PUBLIC_URL}"
   write_nginx_public_url_config
 
   export PGDATA=/data/postgres

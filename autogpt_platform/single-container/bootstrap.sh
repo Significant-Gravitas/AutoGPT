@@ -55,6 +55,7 @@ ensure_valkey_cluster() {
 
   local known_nodes
   local fresh_cluster=true
+  local port
   for port in 17000 17001 17002; do
     known_nodes="$(
       valkey-cli -h 127.0.0.1 -p "${port}" cluster info 2>/dev/null |

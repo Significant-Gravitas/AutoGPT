@@ -163,6 +163,76 @@ class RuntimeConfigTest(unittest.TestCase):
                     {"RABBITMQ_DEFAULT_USER": "guest"},
                 )
 
+    def test_rejects_one_sided_vapid_configuration(self) -> None:
+        cases = [
+            {"VAPID_PRIVATE_KEY": "p" * 43},
+            {"VAPID_PUBLIC_KEY": "q" * 87},
+        ]
+        for environment in cases:
+            with (
+                self.subTest(environment=environment),
+                tempfile.TemporaryDirectory() as directory,
+                self.assertRaisesRegex(ValueError, "must be set together"),
+            ):
+                runtime_config.ensure_runtime_config(
+                    Path(directory) / "runtime.env", environment
+                )
+
+    def test_rejects_corrupt_existing_config(self) -> None:
+        invalid_vapid_public = (
+            base64.urlsafe_b64encode(b"\x03" + b"q" * 64).rstrip(b"=").decode()
+        )
+        cases = [
+            (
+                "duplicate key",
+                lambda content: content + "POSTGRES_PASSWORD=duplicate\n",
+                "invalid runtime configuration line",
+            ),
+            (
+                "malformed line",
+                lambda content: content + "malformed\n",
+                "invalid runtime configuration line",
+            ),
+            (
+                "unsupported version",
+                lambda content: content.replace(
+                    "AUTOGPT_RUNTIME_CONFIG_VERSION=1",
+                    "AUTOGPT_RUNTIME_CONFIG_VERSION=2",
+                ),
+                "unsupported runtime configuration version",
+            ),
+            (
+                "invalid encryption key",
+                lambda content: _replace_config_value(
+                    content, "ENCRYPTION_KEY", "A" * 32
+                ),
+                "ENCRYPTION_KEY",
+            ),
+            (
+                "invalid VAPID public key",
+                lambda content: _replace_config_value(
+                    content, "VAPID_PUBLIC_KEY", invalid_vapid_public
+                ),
+                "VAPID_PUBLIC_KEY",
+            ),
+        ]
+        for name, mutate, error in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "runtime.env"
+                runtime_config.ensure_runtime_config(path, {})
+                path.write_text(
+                    mutate(path.read_text(encoding="ascii")), encoding="ascii"
+                )
+                with self.assertRaisesRegex(ValueError, error):
+                    runtime_config.ensure_runtime_config(path, {})
+
+    def test_rejects_non_regular_existing_config(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            path.mkdir()
+            with self.assertRaisesRegex(ValueError, "not a regular file"):
+                runtime_config.ensure_runtime_config(path, {})
+
 
 class PublicUrlTest(unittest.TestCase):
     def test_normalizes_origin(self) -> None:
@@ -260,6 +330,41 @@ class FatalListenerTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("events=PROCESS_STATE_FATAL,PROCESS_STATE_EXITED", config)
 
+    def test_rejects_malformed_events_without_terminating(self) -> None:
+        cases = [
+            ("eventname:PROCESS_STATE_FATAL\n", "", "invalid payload length"),
+            (
+                "eventname:PROCESS_STATE_FATAL len:not-a-number\n",
+                "",
+                "invalid payload length",
+            ),
+            (
+                "eventname:PROCESS_STATE_FATAL "
+                f"len:{fatal_listener.MAX_PAYLOAD_LENGTH + 1}\n",
+                "",
+                "payload is too large",
+            ),
+            (
+                "eventname:PROCESS_STATE_FATAL len:5\n",
+                "abc",
+                "ended unexpectedly",
+            ),
+            ("eventname:TICK_5_SECONDS len:0\n", "", "unsupported type"),
+        ]
+        for header, payload, error in cases:
+            terminate = mock.Mock()
+            with (
+                self.subTest(header=header),
+                self.assertRaisesRegex(RuntimeError, error),
+            ):
+                fatal_listener.handle_event(
+                    header,
+                    io.StringIO(payload),
+                    io.StringIO(),
+                    terminate,
+                )
+            terminate.assert_not_called()
+
     def _assert_exit_ignored(self, payload: str) -> None:
         output_stream = io.StringIO()
         calls: list[str] = []
@@ -273,6 +378,15 @@ class FatalListenerTest(unittest.TestCase):
 
         self.assertEqual(output_stream.getvalue(), "RESULT 2\nOK")
         self.assertEqual(calls, [])
+
+
+def _replace_config_value(content: str, name: str, value: str) -> str:
+    prefix = f"{name}="
+    lines = [
+        f"{prefix}{value}" if line.startswith(prefix) else line
+        for line in content.splitlines()
+    ]
+    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

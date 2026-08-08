@@ -56,7 +56,6 @@ FROM clamav/clamav-debian:1.5.1@sha256:c102cd8fffe36fb27808a714f2d9c977e28549b3a
 # from the opt-in single-container distribution.
 FROM autogpt-backend AS single-container
 
-ARG POSTGRES_MAJOR=15
 ARG IMAGE_VERSION=dev
 ARG VCS_REF=unknown
 
@@ -122,16 +121,16 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
         netcat-openbsd \
         nginx \
         openssl \
-        postgresql-${POSTGRES_MAJOR} \
-        postgresql-client-${POSTGRES_MAJOR} \
-        postgresql-${POSTGRES_MAJOR}-pgvector \
+        postgresql-15 \
+        postgresql-client-15 \
+        postgresql-15-pgvector \
         procps \
         supervisor \
         tini \
         valkey-server \
         valkey-tools \
     && rm -f /usr/sbin/policy-rc.d \
-    && rm -rf /var/lib/apt/lists/* /var/lib/postgresql/${POSTGRES_MAJOR}/main \
+    && rm -rf /var/lib/apt/lists/* /var/lib/postgresql/15/main \
     && find /var/lib/clamav -mindepth 1 -maxdepth 1 -delete
 
 # Node 24 is required by the frontend. Backend Prisma and agent-browser also
@@ -212,9 +211,13 @@ RUN groupadd --system --gid 10001 autogpt \
     && ln -s /data/config/backend.json /app/autogpt_platform/backend/config.json \
     && rm -rf /app/frontend/.next/cache \
     && ln -s /data/cache/next /app/frontend/.next/cache \
+    && site_packages="$(/app/autogpt_platform/backend/.venv/bin/python -c \
+        'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
     && rm -f \
-        /app/autogpt_platform/backend/.venv/lib/python3.13/site-packages/ldclient/testing/selfsigned.key \
-        /app/autogpt_platform/backend/.venv/lib/python3.13/site-packages/ldclient/testing/selfsigned.pem
+        "${site_packages}/ldclient/testing/selfsigned.key" \
+        "${site_packages}/ldclient/testing/selfsigned.pem" \
+    && test ! -e "${site_packages}/ldclient/testing/selfsigned.key" \
+    && test ! -e "${site_packages}/ldclient/testing/selfsigned.pem"
 
 ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresql/15/bin:/app/autogpt_platform/backend/.venv/bin:${PATH}" \
     ERLANG_INSTALL_PATH_PREFIX=/opt/erlang \
