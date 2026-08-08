@@ -73,9 +73,13 @@ def get_local_media_path(user_id: str, media_type: str, filename: str) -> Path:
     real_base_dir = os.path.realpath(str(base_dir))
     real_candidate = os.path.realpath(candidate)
 
-    if real_candidate != real_base_dir and not real_candidate.startswith(
-        real_base_dir + os.sep
-    ):
+    # A single, simple `startswith` guard (rather than a compound condition)
+    # is what CodeQL's py/path-injection sanitizer recognizes as clearing
+    # the taint on `real_candidate` for every downstream filesystem use.
+    # `real_candidate` always has a "users/<id>/<type>/<file>" suffix (the
+    # allow-list above requires each component to be non-empty), so it can
+    # never equal `real_base_dir` exactly and doesn't need a separate check.
+    if not real_candidate.startswith(real_base_dir + os.sep):
         raise ValueError("Invalid media path: path traversal detected")
 
     return Path(real_candidate)
