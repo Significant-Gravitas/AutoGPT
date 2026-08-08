@@ -65,13 +65,17 @@ ARG VCS_REF=unknown
 # traversable path without changing the backend image used by cloud deployments.
 RUN install -d -m 0755 /opt/prisma-python \
     && cp -a /root/.cache/prisma-python/binaries /opt/prisma-python/binaries \
-    && prisma_cli="$(find /opt/prisma-python/binaries -type f -path '*/node_modules/prisma/build/index.js' -print -quit)" \
-    && test -n "${prisma_cli}" \
+    && set -- /opt/prisma-python/binaries/*/*/node_modules/prisma/build/index.js \
+    && test "$#" -eq 1 \
+    && prisma_cli="$1" \
+    && test -f "${prisma_cli}" \
     && prisma_node_modules="${prisma_cli%/prisma/build/index.js}" \
-    && ln -s "${prisma_node_modules}" /opt/prisma-python/binaries/node_modules \
-    && query_engine="$(find /opt/prisma-python/binaries -type f -name 'query-engine-*' -print -quit)" \
-    && test -n "${query_engine}" \
+    && set -- "${prisma_node_modules}"/prisma/query-engine-* \
+    && test "$#" -eq 1 \
+    && query_engine="$1" \
+    && test -f "${query_engine}" \
     && test -x "${query_engine}" \
+    && ln -s "${prisma_node_modules}" /opt/prisma-python/binaries/node_modules \
     && ln -s "${query_engine}" /opt/prisma-python/query-engine
 
 LABEL org.opencontainers.image.title="AutoGPT Platform single-container" \
