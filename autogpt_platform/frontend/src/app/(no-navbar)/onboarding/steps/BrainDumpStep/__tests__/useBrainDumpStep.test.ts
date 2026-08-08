@@ -536,6 +536,117 @@ describe("useBrainDumpStep — finishing a take", () => {
   });
 });
 
+describe("useBrainDumpStep — insufficient content", () => {
+  function insufficient(code = "insufficient_content") {
+    return { status: 200, data: { status: "failed", error_code: code } };
+  }
+
+  it("shows the recovery screen instead of the failure one", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(insufficient("no_usable_speech"));
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      error_code: "no_usable_speech",
+    });
+    // No accidental advance, and nothing personalized to advance to.
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
+    // The local parts are the user's backup until they pick a next move.
+    expect(clearRecording).not.toHaveBeenCalled();
+    expect(discardBrainDump).not.toHaveBeenCalled();
+  });
+
+  it("keeps a normal transcription failure on the failure screen", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce({
+      status: 200,
+      data: { status: "failed", error_code: "transcription_failed" },
+    });
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("failed");
+  });
+
+  it("recovers into a fresh take when the user records again", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(insufficient());
+    const { result } = await renderStep();
+    await act(async () => {
+      await result.current.handleDone();
+    });
+    expect(result.current.screen).toBe("insufficient");
+
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+
+    // The rejected take is discarded only now — after the user chose.
+    expect(clearRecording).toHaveBeenCalledWith("rec-1");
+    expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    expect(result.current.screen).toBe("recording");
+  });
+
+  it("opens the composer when the user types instead", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(insufficient());
+    const { result } = await renderStep();
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    act(() => {
+      result.current.showTyping();
+    });
+
+    expect(result.current.screen).toBe("typing");
+  });
+
+  it("still lets the user skip through to the generic path", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(insufficient());
+    const { result } = await renderStep();
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+  });
+
+  it("returns a typed dump to recovery with the text preserved", async () => {
+    finalizeBrainDump.mockResolvedValueOnce(insufficient());
+    const { result } = await renderStep();
+    act(() => {
+      result.current.showTyping();
+    });
+    act(() => {
+      result.current.setTypedText("hello hello testing");
+    });
+
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.typedText).toBe("hello hello testing");
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+  });
+});
+
 describe("useBrainDumpStep — restart", () => {
   it("throws away the old take locally and on the server before listening again", async () => {
     recorderState.recordingId = "rec-old";
