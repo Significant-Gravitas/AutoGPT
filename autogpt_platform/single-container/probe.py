@@ -106,6 +106,18 @@ def _send_resp_command(stream, *parts: str) -> None:
         stream.write(encoded + b"\r\n")
 
 
+def _read_exactly(stream, count: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = count
+    while remaining:
+        chunk = stream.read(remaining)
+        if not chunk:
+            raise RuntimeError("Redis closed the connection")
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
 def _read_resp(stream) -> str | int | None:
     prefix = stream.read(1)
     if not prefix:
@@ -124,8 +136,10 @@ def _read_resp(stream) -> str | int | None:
         length = int(payload)
         if length == -1:
             return None
-        value = stream.read(length)
-        if stream.read(2) != b"\r\n":
+        if length < -1:
+            raise RuntimeError("invalid Redis bulk length")
+        value = _read_exactly(stream, length)
+        if _read_exactly(stream, 2) != b"\r\n":
             raise RuntimeError("invalid Redis bulk response")
         return value.decode("utf-8")
     raise RuntimeError("unsupported Redis response type")

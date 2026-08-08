@@ -232,6 +232,48 @@ class FatalListenerTest(unittest.TestCase):
         self.assertNotIn("secret-value", stderr.getvalue())
         self.assertIn("unknown", stderr.getvalue())
 
+    def test_unexpected_bootstrap_exit_terminates_supervisor(self) -> None:
+        payload = "processname:bootstrap groupname:bootstrap expected:0"
+        output_stream = io.StringIO()
+        calls: list[str] = []
+
+        with mock.patch.object(fatal_listener.sys, "stderr", io.StringIO()):
+            fatal_listener.handle_event(
+                f"eventname:PROCESS_STATE_EXITED len:{len(payload)}\n",
+                io.StringIO(payload),
+                output_stream,
+                lambda: calls.append("terminated"),
+            )
+
+        self.assertEqual(output_stream.getvalue(), "RESULT 2\nOK")
+        self.assertEqual(calls, ["terminated"])
+
+    def test_expected_bootstrap_exit_is_ignored(self) -> None:
+        self._assert_exit_ignored("processname:bootstrap expected:1")
+
+    def test_other_process_exit_is_ignored(self) -> None:
+        self._assert_exit_ignored("processname:rest expected:0")
+
+    def test_supervisor_subscribes_to_exited_events(self) -> None:
+        config = (
+            Path(__file__).parents[1] / "supervisor" / "supervisord.conf"
+        ).read_text(encoding="utf-8")
+        self.assertIn("events=PROCESS_STATE_FATAL,PROCESS_STATE_EXITED", config)
+
+    def _assert_exit_ignored(self, payload: str) -> None:
+        output_stream = io.StringIO()
+        calls: list[str] = []
+
+        fatal_listener.handle_event(
+            f"eventname:PROCESS_STATE_EXITED len:{len(payload)}\n",
+            io.StringIO(payload),
+            output_stream,
+            lambda: calls.append("terminated"),
+        )
+
+        self.assertEqual(output_stream.getvalue(), "RESULT 2\nOK")
+        self.assertEqual(calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop Supervisor when a managed process exhausts its restart attempts."""
+"""Stop Supervisor for fatal services and unexpected bootstrap exits."""
 
 from __future__ import annotations
 
@@ -41,16 +41,36 @@ def handle_event(
     payload = input_stream.read(length)
     if len(payload) != length:
         raise RuntimeError("Supervisor event payload ended unexpectedly")
+    event_name = fields.get("eventname")
+    if event_name not in {"PROCESS_STATE_FATAL", "PROCESS_STATE_EXITED"}:
+        raise RuntimeError("Supervisor event has an unsupported type")
+
     process_name = _safe_process_name(payload)
+    payload_fields = _parse_fields(payload)
+    if event_name == "PROCESS_STATE_EXITED" and not (
+        process_name == "bootstrap" and payload_fields.get("expected") == "0"
+    ):
+        _acknowledge(output_stream)
+        return
+
+    reason = (
+        "exited unexpectedly"
+        if event_name == "PROCESS_STATE_EXITED"
+        else "entered FATAL state"
+    )
     print(
-        f"[single-container] required process entered FATAL state: {process_name}; "
+        f"[single-container] required process {reason}: {process_name}; "
         "terminating Supervisor for container restart",
         file=sys.stderr,
         flush=True,
     )
+    _acknowledge(output_stream)
+    terminate()
+
+
+def _acknowledge(output_stream: TextIO) -> None:
     output_stream.write("RESULT 2\nOK")
     output_stream.flush()
-    terminate()
 
 
 def _parse_fields(line: str) -> dict[str, str]:

@@ -10,6 +10,7 @@ readonly TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-2700}"
 readonly SAFE_PLATFORM="${SMOKE_PLATFORM//\//-}"
 readonly RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${SAFE_PLATFORM}-${RANDOM}"
 readonly RUN_CONTAINER_NAME="autogpt-single-smoke-${RUN_TOKEN}"
+readonly NEGATIVE_CONTAINER_NAME="${RUN_CONTAINER_NAME}-negative"
 HEADERS_FILE="$(mktemp)"
 readonly HEADERS_FILE
 
@@ -25,14 +26,17 @@ diagnostics() {
 
 cleanup() {
   local result=$?
+  local container
   trap - EXIT INT TERM
   if ((result != 0)); then
     diagnostics
   fi
-  if docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
-    docker stop --timeout 360 "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-    docker rm --force --volumes "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-  fi
+  for container in "${CONTAINER_NAME}" "${NEGATIVE_CONTAINER_NAME}"; do
+    if docker container inspect "${container}" >/dev/null 2>&1; then
+      docker stop --timeout 360 "${container}" >/dev/null 2>&1 || true
+      docker rm --force --volumes "${container}" >/dev/null 2>&1 || true
+    fi
+  done
   if [[ -n "${DATA_VOLUME}" ]] && docker volume inspect "${DATA_VOLUME}" >/dev/null 2>&1; then
     docker volume rm "${DATA_VOLUME}" >/dev/null 2>&1 || true
   fi
@@ -249,6 +253,17 @@ assert_runtime_config_mode() {
   }
 }
 
+assert_prisma_cli_is_prebundled() {
+  docker exec "${CONTAINER_NAME}" \
+    /usr/bin/test -f \
+    /opt/prisma-python/binaries/node_modules/prisma/build/index.js
+  if docker logs "${CONTAINER_NAME}" 2>&1 | \
+    grep -F "Installing Prisma CLI" >/dev/null; then
+    echo "Prisma CLI was installed during container startup" >&2
+    return 1
+  fi
+}
+
 assert_falkordb_binary_contract() {
   local linkage
   local listeners
@@ -413,17 +428,24 @@ assert_prefixed_backend_redirect() {
 assert_unsupported_email_verification_rejected() {
   local output
   local status
-  set +e
-  output="$(
-    docker run --rm \
+  if output="$(
+    timeout --signal=TERM --kill-after=30s 300s docker run --rm \
       --platform "${SMOKE_PLATFORM}" \
+      --name "${NEGATIVE_CONTAINER_NAME}" \
       --env AUTH_REQUIRE_EMAIL_VERIFICATION=true \
       "${SMOKE_IMAGE}" 2>&1
-  )"
-  status=$?
-  set -e
+  )"; then
+    status=0
+  else
+    status=$?
+  fi
+  docker rm --force --volumes "${NEGATIVE_CONTAINER_NAME}" >/dev/null 2>&1 || true
   ((status != 0)) || {
     echo "image accepted unsupported email verification" >&2
+    return 1
+  }
+  ((status != 124 && status != 137)) || {
+    echo "email-verification rejection probe timed out" >&2
     return 1
   }
   grep -Fq \
@@ -443,6 +465,7 @@ docker run --detach \
   "${SMOKE_IMAGE}" >/dev/null
 discover_data_volume
 wait_for_healthy
+assert_prisma_cli_is_prebundled
 assert_falkordb_binary_contract
 assert_memory_contract seed
 

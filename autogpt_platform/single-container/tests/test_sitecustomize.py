@@ -1,13 +1,16 @@
+import importlib.util
 import logging
-import sys
 import unittest
 from pathlib import Path
 
 
-PYTHON_SAFEGUARDS = Path(__file__).resolve().parents[1] / "python"
-sys.path.insert(0, str(PYTHON_SAFEGUARDS))
-
-import sitecustomize  # noqa: E402, F401
+MODULE_PATH = Path(__file__).resolve().parents[1] / "python" / "sitecustomize.py"
+SPEC = importlib.util.spec_from_file_location(
+    "single_container_sitecustomize", MODULE_PATH
+)
+assert SPEC is not None and SPEC.loader is not None
+sitecustomize = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(sitecustomize)
 
 
 class SiteCustomizeTest(unittest.TestCase):

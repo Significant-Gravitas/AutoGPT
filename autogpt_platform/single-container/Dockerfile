@@ -33,6 +33,12 @@ RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
     && rm -f .env .env.local .env.production
 
+FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS node-runtime
+
+ARG NPM_VERSION=12.0.2
+RUN npm install --global "npm@${NPM_VERSION}" \
+    && npm cache clean --force
+
 # RabbitMQ's official image ships a self-contained Erlang/OpenSSL runtime.
 # Pin the current supported 4.1.x patch by its multi-platform manifest.
 FROM rabbitmq:4.1.8@sha256:b921426eabfb39e201c60f0623f6b45a3160cf97b2dc3af2f5340365f65b5be3 AS rabbitmq
@@ -59,6 +65,10 @@ ARG VCS_REF=unknown
 # traversable path without changing the backend image used by cloud deployments.
 RUN install -d -m 0755 /opt/prisma-python \
     && cp -a /root/.cache/prisma-python/binaries /opt/prisma-python/binaries \
+    && prisma_cli="$(find /opt/prisma-python/binaries -type f -path '*/node_modules/prisma/build/index.js' -print -quit)" \
+    && test -n "${prisma_cli}" \
+    && prisma_node_modules="${prisma_cli%/prisma/build/index.js}" \
+    && ln -s "${prisma_node_modules}" /opt/prisma-python/binaries/node_modules \
     && query_engine="$(find /opt/prisma-python/binaries -type f -name 'query-engine-*' -print -quit)" \
     && test -n "${query_engine}" \
     && test -x "${query_engine}" \
@@ -124,6 +134,8 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
 # use this binary through PATH; their npm packages remain from the server stage.
 COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
 COPY --from=frontend /usr/local/LICENSE /usr/share/licenses/nodejs/LICENSE
+RUN rm -rf /usr/lib/node_modules/npm
+COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/lib/node_modules/npm
 
 # RabbitMQ + Erlang runtime and their bundled third-party license files.
 COPY --from=rabbitmq /opt/erlang /opt/erlang
@@ -141,6 +153,14 @@ COPY --from=clamav-seed --chown=102:104 /var/lib/clamav /opt/clamav-seed
 COPY --from=frontend /app/.next/standalone /app/frontend
 COPY --from=frontend /app/.next/static /app/frontend/.next/static
 COPY --from=frontend /app/public /app/frontend/public
+
+# Next's standalone trace over-includes Orval's build-only esbuild dependency.
+# It is never used by the production server and must not ship as runtime code.
+RUN rm -rf \
+        /app/frontend/node_modules/.pnpm/esbuild@* \
+        /app/frontend/node_modules/.pnpm/@esbuild+linux-*@* \
+    && find /app/frontend/node_modules -type l \
+        \( -name esbuild -o -path '*/node_modules/@esbuild/linux-*' \) -delete
 
 # Runtime orchestration, proxy, health tooling, and database compatibility shim.
 COPY autogpt_platform/single-container/bootstrap.sh \

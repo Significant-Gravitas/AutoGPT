@@ -19,7 +19,7 @@ main() {
 
 check_supervised_processes() {
   local programs=(
-    fatal-exit postgres valkey-0 valkey-1 valkey-2 rabbitmq falkordb clamd freshclam
+    fatal-exit postgres valkey-0 valkey-1 valkey-2 rabbitmq falkordb clamd freshclam clamav-logs
     database-manager scheduler batch-executor notification executor
     copilot-executor copilot-bot platform-linking-manager websocket rest next nginx
     watchdog
