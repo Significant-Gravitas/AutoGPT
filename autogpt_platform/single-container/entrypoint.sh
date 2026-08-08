@@ -102,6 +102,11 @@ configure_environment() {
   )"
   export AUTOGPT_PUBLIC_URL
   log "public URL: ${AUTOGPT_PUBLIC_URL}"
+  local loopback_origin_pattern='^https?://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?$'
+  if [[ "${AUTH_ALLOW_NEW_ACCOUNTS}" == true && \
+    ! "${AUTOGPT_PUBLIC_URL}" =~ ${loopback_origin_pattern} ]]; then
+    log "WARNING: open account registration is enabled for a non-loopback public URL"
+  fi
   write_nginx_public_url_config
 
   export PGDATA=/data/postgres
@@ -211,35 +216,6 @@ normalize_toggle() {
       export AUTH_ALLOW_NEW_ACCOUNTS
       ;;
     *) fatal "unsupported toggle: ${name}" ;;
-  esac
-}
-
-validate_legacy_auth() {
-  case "${AUTOGPT_ENABLE_LEGACY_AUTH:-false}" in
-    true)
-      if [[ -n "${JWT_VERIFY_KEY:-}" && -n "${SUPABASE_JWT_SECRET:-}" && \
-        "${JWT_VERIFY_KEY}" != "${SUPABASE_JWT_SECRET}" ]]; then
-        fatal "JWT_VERIFY_KEY and SUPABASE_JWT_SECRET must match during legacy auth migration"
-      fi
-      local legacy_secret="${JWT_VERIFY_KEY:-${SUPABASE_JWT_SECRET:-}}"
-      ((${#legacy_secret} >= 32)) || \
-        fatal "legacy auth requires a shared secret of at least 32 characters"
-      JWT_VERIFY_KEY="${legacy_secret}"
-      SUPABASE_JWT_SECRET="${legacy_secret}"
-      export JWT_VERIFY_KEY SUPABASE_JWT_SECRET
-      log "legacy symmetric JWT verification is explicitly enabled"
-      ;;
-    false | "")
-      if [[ -n "${JWT_VERIFY_KEY:-}" || -n "${SUPABASE_JWT_SECRET:-}" ]]; then
-        fatal "legacy JWT secrets were supplied; remove them or explicitly set AUTOGPT_ENABLE_LEGACY_AUTH=true"
-      fi
-      JWT_VERIFY_KEY=''
-      SUPABASE_JWT_SECRET=''
-      export JWT_VERIFY_KEY SUPABASE_JWT_SECRET
-      ;;
-    *)
-      fatal "AUTOGPT_ENABLE_LEGACY_AUTH must be true or false"
-      ;;
   esac
 }
 

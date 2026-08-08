@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import sys
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -98,6 +100,27 @@ class ServiceProbeTest(unittest.TestCase):
             self.assertRaisesRegex(RuntimeError, "HTTP 503"),
         ):
             probe.probe_http("http://127.0.0.1/health", 1)
+
+    def test_http_many_checks_every_url(self) -> None:
+        urls = ["http://127.0.0.1/one", "http://127.0.0.1/two"]
+        with mock.patch.object(probe, "probe_http") as probe_http:
+            probe.probe_http_many(urls, 1)
+        probe_http.assert_has_calls(
+            [mock.call(urls[0], 1), mock.call(urls[1], 1)], any_order=True
+        )
+
+    def test_amqp_connects_with_runtime_credentials(self) -> None:
+        connection = mock.Mock()
+        pika = types.SimpleNamespace(
+            PlainCredentials=mock.Mock(return_value="credentials"),
+            ConnectionParameters=mock.Mock(return_value="parameters"),
+            BlockingConnection=mock.Mock(return_value=connection),
+        )
+        with mock.patch.dict(sys.modules, {"pika": pika}):
+            probe.probe_amqp("127.0.0.1", 5672, 1, "autogpt", "secret")
+        pika.PlainCredentials.assert_called_once_with("autogpt", "secret")
+        pika.BlockingConnection.assert_called_once_with("parameters")
+        connection.close.assert_called_once_with()
 
     def test_redis_rejects_failed_authentication(self) -> None:
         connection = FakeConnection(b"+NOPE\r\n")

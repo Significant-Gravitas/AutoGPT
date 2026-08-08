@@ -22,6 +22,35 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fatal "required command is missing: $1"
 }
 
+validate_legacy_auth() {
+  case "${AUTOGPT_ENABLE_LEGACY_AUTH:-false}" in
+    true)
+      if [[ -n "${JWT_VERIFY_KEY:-}" && -n "${SUPABASE_JWT_SECRET:-}" && \
+        "${JWT_VERIFY_KEY}" != "${SUPABASE_JWT_SECRET}" ]]; then
+        fatal "JWT_VERIFY_KEY and SUPABASE_JWT_SECRET must match during legacy auth migration"
+      fi
+      local legacy_secret="${JWT_VERIFY_KEY:-${SUPABASE_JWT_SECRET:-}}"
+      ((${#legacy_secret} >= 32)) || \
+        fatal "legacy auth requires a shared secret of at least 32 characters"
+      JWT_VERIFY_KEY="${legacy_secret}"
+      SUPABASE_JWT_SECRET="${legacy_secret}"
+      export JWT_VERIFY_KEY SUPABASE_JWT_SECRET
+      log "legacy symmetric JWT verification is explicitly enabled"
+      ;;
+    false | "")
+      if [[ -n "${JWT_VERIFY_KEY:-}" || -n "${SUPABASE_JWT_SECRET:-}" ]]; then
+        fatal "legacy JWT secrets were supplied; remove them or explicitly set AUTOGPT_ENABLE_LEGACY_AUTH=true"
+      fi
+      JWT_VERIFY_KEY=''
+      SUPABASE_JWT_SECRET=''
+      export JWT_VERIFY_KEY SUPABASE_JWT_SECRET
+      ;;
+    *)
+      fatal "AUTOGPT_ENABLE_LEGACY_AUTH must be true or false"
+      ;;
+  esac
+}
+
 load_runtime_config() {
   [[ -f "${AUTOGPT_RUNTIME_ENV}" ]] || fatal "missing runtime config: ${AUTOGPT_RUNTIME_ENV}"
   while IFS= read -r line || [[ -n "${line}" ]]; do

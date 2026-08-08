@@ -263,6 +263,7 @@ class PublicUrlTest(unittest.TestCase):
             "http://bad_host.example",
             "http://bad$variable.example",
             "http://example..com",
+            "http://example.com:99999",
         ]
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(ValueError):
