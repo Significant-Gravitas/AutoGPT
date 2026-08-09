@@ -134,6 +134,25 @@ describe("ConnectToolsPanel — recommendations", () => {
     expect(screen.getAllByText(RECOMMENDED_HEADING)).toHaveLength(1);
   });
 
+  it("renders one card per provider when the model names the same one twice", async () => {
+    stubRegistry();
+    scriptRecommendations({
+      ready: true,
+      providers: [
+        { provider: "notion", reason: "You mentioned meeting notes" },
+        { provider: "notion", reason: "And your roadmap lives there" },
+      ],
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText(RECOMMENDED_HEADING)).toBeDefined();
+    expect(screen.getAllByRole("button", { name: /Notion/ })).toHaveLength(1);
+    // The first reason wins, so the duplicate does not quietly rewrite it.
+    expect(screen.getByText("You mentioned meeting notes")).toBeDefined();
+    expect(screen.queryByText("And your roadmap lives there")).toBeNull();
+  });
+
   it("falls back to popular providers and stops polling when the model recommends nothing", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     stubRegistry();

@@ -94,13 +94,17 @@ export function useConnectToolsPanel() {
       : [];
   // The model's reason replaces the generic provider description — that
   // line is what makes the section feel picked for this user. Unknown ids
-  // (provider renamed or removed since the job ran) are dropped.
+  // (provider renamed or removed since the job ran) are dropped, and an id
+  // the model named twice keeps its first reason rather than rendering two
+  // cards under the same React key.
+  const namedAlready = new Set<string>();
   const personalizedProviders = recommendations
     .map((recommendation): ConnectableProvider | null => {
       const provider = allProviders.find(
         (p) => p.id === recommendation.provider,
       );
-      if (!provider) return null;
+      if (!provider || namedAlready.has(provider.id)) return null;
+      namedAlready.add(provider.id);
       return {
         ...provider,
         description: recommendation.reason || provider.description,

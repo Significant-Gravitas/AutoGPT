@@ -17,9 +17,13 @@ export function GreetingLoader() {
 
   return (
     <div
+      role="status"
       className="flex w-full justify-center py-10"
       data-testid="greeting-loader"
     >
+      {/* The orb is decorative and hidden from assistive tech, so the wait
+          needs saying out loud — the composer is withheld until it ends. */}
+      <span className="sr-only">Writing your greeting</span>
       <motion.span
         layoutId={GREETING_ORB_LAYOUT_ID}
         className="relative block size-16"

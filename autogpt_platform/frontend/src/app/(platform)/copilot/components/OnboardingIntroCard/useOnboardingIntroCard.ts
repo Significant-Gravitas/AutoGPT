@@ -163,9 +163,13 @@ export function useOnboardingIntroCard() {
   // already reads on. Holding on "LaunchDarkly has not answered" alone
   // hid the composer on every flag-off /copilot load until it did.
   const isGreetingExpected = isWelcomeOpen || Boolean(isBrainDumpEnabled);
+  // `serverSaysDone` as well as `isDone`: the effect that caches the verdict
+  // runs after render, so a payload that still carries a greeting would
+  // otherwise flash the card for one paint before it takes effect.
   const isVisible =
     isMounted &&
     !isDone &&
+    !serverSaysDone &&
     !isWelcomeOpen &&
     hasIntroAnswer &&
     Boolean(intro?.greeting);

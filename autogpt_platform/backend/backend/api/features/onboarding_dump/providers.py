@@ -12,6 +12,7 @@ from backend.api.features.integrations.models import (
     get_all_provider_names,
     get_provider_description,
 )
+from backend.blocks import load_all_blocks
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,6 @@ def known_providers() -> dict[str, str | None]:
     before AutoRegistry knows about SDK-registered providers.
     """
     try:
-        from backend.blocks import load_all_blocks
-
         load_all_blocks()
     except Exception as e:  # static providers still work
         logger.warning("Brain dump: block load failed: %s", e)

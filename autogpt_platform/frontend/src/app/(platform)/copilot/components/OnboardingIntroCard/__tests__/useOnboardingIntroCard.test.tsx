@@ -403,6 +403,32 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
     expect(urls).toHaveLength(1);
   });
 
+  it("never paints the card for a done verdict that still carries a greeting", async () => {
+    // The verdict is cached in an effect, which runs after the render that
+    // first saw it — reading only the cached copy flashed the card for the
+    // paint in between.
+    countIntroRequests({
+      path: "A",
+      greeting: "Welcome back.",
+      greeting_done: true,
+    });
+    const painted: boolean[] = [];
+
+    renderHook(
+      () => {
+        const value = useOnboardingIntroCard();
+        painted.push(value.isVisible);
+        return value;
+      },
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() =>
+      expect(window.localStorage.getItem(GREETING_DONE_KEY)).toBe("user-1"),
+    );
+
+    expect(painted).not.toContain(true);
+  });
+
   it("writes no cache entry while the user record is still loading", async () => {
     authUser.current = null;
     countIntroRequests({
