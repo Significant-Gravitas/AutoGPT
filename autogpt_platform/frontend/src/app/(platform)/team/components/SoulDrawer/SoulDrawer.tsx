@@ -16,7 +16,8 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { LockSimpleIcon } from "@phosphor-icons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { LockIcon } from "@hugeicons/core-free-icons";
 import { ReactNode, useState } from "react";
 import { useSoulDrawer } from "./useSoulDrawer";
 
@@ -167,7 +168,7 @@ function ProtectedRules({ rules }: { rules: string[] }) {
   return (
     <section className="border-t border-zinc-200 pt-6">
       <div className="mb-3 flex items-center gap-2">
-        <LockSimpleIcon size={16} weight="fill" className="text-zinc-500" />
+        <Icon icon={LockIcon} size={16} className="text-zinc-500" />
         <SoulSectionTitle>Protected rules</SoulSectionTitle>
       </div>
       <div className="space-y-2 rounded-xl bg-zinc-50 p-4">
@@ -176,7 +177,7 @@ function ProtectedRules({ rules }: { rules: string[] }) {
             key={rule}
             className="flex gap-2 text-sm leading-5 text-zinc-600"
           >
-            <LockSimpleIcon size={14} className="mt-0.5 shrink-0" />
+            <Icon icon={LockIcon} size={14} className="mt-0.5 shrink-0" />
             <span>{rule}</span>
           </div>
         ))}
