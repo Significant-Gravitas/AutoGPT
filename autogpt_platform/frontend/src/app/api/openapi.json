@@ -15176,6 +15176,11 @@
             "items": { "$ref": "#/components/schemas/BriefingDecisionItem" },
             "type": "array",
             "title": "Decision Items"
+          },
+          "decision_total": {
+            "type": "integer",
+            "title": "Decision Total",
+            "default": 0
           }
         },
         "type": "object",
@@ -15232,10 +15237,23 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "delivered_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Delivered At"
+          },
           "content": { "$ref": "#/components/schemas/BriefingContent" }
         },
         "type": "object",
-        "required": ["id", "briefing_date", "created_at", "content"],
+        "required": [
+          "id",
+          "briefing_date",
+          "created_at",
+          "delivered_at",
+          "content"
+        ],
         "title": "BriefingResponse"
       },
       "BriefingRunItem": {

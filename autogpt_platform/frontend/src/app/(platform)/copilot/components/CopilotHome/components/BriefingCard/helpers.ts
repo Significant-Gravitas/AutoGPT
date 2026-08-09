@@ -10,3 +10,7 @@ export function formatBriefingDate(date: Date | string): string {
   if (isToday(parsed)) return "This morning";
   return format(parsed, "MMMM d");
 }
+
+export function isInternalLink(link: string): boolean {
+  return link.startsWith("/") && !link.startsWith("//");
+}

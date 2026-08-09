@@ -1,6 +1,5 @@
 import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import type { Expert } from "@/app/api/__generated__/models/expert";
 import { okData } from "@/app/api/helpers";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
@@ -11,7 +10,7 @@ export function useTeamStrip() {
     query: {
       // okData, like every sibling query here: an error body must never
       // reach the render layer typed as Expert[].
-      select: (res) => (okData(res) as Expert[] | undefined) ?? [],
+      select: (res) => okData(res) ?? [],
       enabled: isExpertsEnabled,
     },
   });

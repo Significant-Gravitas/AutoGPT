@@ -13,7 +13,6 @@ import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages"
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
-import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
@@ -104,7 +103,6 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  const isBriefingHomeEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -249,16 +247,6 @@ export const ChatContainer = ({
                 </Tooltip>
               </motion.div>
             </div>
-          ) : isBriefingHomeEnabled ? (
-            <CopilotHome
-              inputLayoutId={inputLayoutId}
-              isCreatingSession={isCreatingSession}
-              onSend={onSend}
-              isUploadingFiles={isUploadingFiles}
-              droppedFiles={droppedFiles}
-              onDroppedFilesConsumed={onDroppedFilesConsumed}
-              isAdoptingExpertSession={isAdoptingExpertSession}
-            />
           ) : (
             <EmptySession
               inputLayoutId={inputLayoutId}

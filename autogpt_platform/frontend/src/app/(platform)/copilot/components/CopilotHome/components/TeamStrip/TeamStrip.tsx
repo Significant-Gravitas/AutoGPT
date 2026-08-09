@@ -48,6 +48,7 @@ function TeamStripCard({ expert, schedules }: CardProps) {
       </Link>
       <Link
         href={`/copilot?expertId=${expert.id}`}
+        aria-label={`Chat with ${expert.name}`}
         className="text-sm font-medium text-zinc-700 hover:text-zinc-900"
       >
         Chat

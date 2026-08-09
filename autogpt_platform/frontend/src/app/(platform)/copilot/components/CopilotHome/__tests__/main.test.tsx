@@ -13,8 +13,11 @@ import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__g
 import { getGetV2GetPendingReviewsMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
-import { CopilotHome } from "../CopilotHome";
+import { EmptySession } from "../../EmptySession/EmptySession";
 
+// Rendered through EmptySession, not CopilotHome directly: the briefing home
+// mounts inside it, and the onboarding surface + composer recipient picker
+// that live there must survive the experts flag being on.
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
@@ -22,13 +25,15 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.HIRE_EXPERTS || flag === actual.Flag.AGENT_BRIEFING,
   };
 });
 
 const baseProps = {
   inputLayoutId: "test-layout",
   isCreatingSession: false,
+  onCreateSession: vi.fn(),
   onSend: vi.fn(),
 };
 
@@ -145,14 +150,14 @@ function mockTeamStrip() {
 
 test("renders greeting and composer", async () => {
   mockPulseStripAgent();
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
   expect(await screen.findByPlaceholderText(/./)).toBeDefined();
 });
 
 test("falls back to pulse strip when there is no briefing", async () => {
   mockPulseStripAgent();
   server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
   expect(
     await screen.findByText("What's happening with your agents"),
   ).toBeDefined();
@@ -165,6 +170,7 @@ test("renders briefing sections when a briefing is available", async () => {
       id: "briefing-1",
       briefing_date: new Date(),
       created_at: new Date(),
+      delivered_at: new Date(),
       content: {
         generated_at: new Date(),
         timezone: "UTC",
@@ -209,7 +215,7 @@ test("renders briefing sections when a briefing is available", async () => {
       },
     }),
   );
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
 
   expect(await screen.findByText("What ran")).toBeDefined();
   expect(screen.getByText("What was found")).toBeDefined();
@@ -226,17 +232,24 @@ test("renders the team strip with hired experts", async () => {
   mockPulseStripAgent();
   server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
   mockTeamStrip();
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
 
   expect(await screen.findByText("Sales Scout")).toBeDefined();
   expect(screen.getByText("Support Bot")).toBeDefined();
   expect(screen.getByText("Paused")).toBeDefined();
 
-  const chatLinks = screen
-    .getAllByRole("link", { name: "Chat" })
-    .map((link) => link.getAttribute("href"));
-  expect(chatLinks).toContain("/copilot?expertId=expert-healthy");
-  expect(chatLinks).toContain("/copilot?expertId=expert-paused");
+  // Each Chat link names its expert, so screen readers can tell the
+  // repeated links apart.
+  expect(
+    screen
+      .getByRole("link", { name: "Chat with Sales Scout" })
+      .getAttribute("href"),
+  ).toBe("/copilot?expertId=expert-healthy");
+  expect(
+    screen
+      .getByRole("link", { name: "Chat with Support Bot" })
+      .getAttribute("href"),
+  ).toBe("/copilot?expertId=expert-paused");
 });
 
 test("uses singular grammar for a single workflow needing setup", async () => {
@@ -246,7 +259,7 @@ test("uses singular grammar for a single workflow needing setup", async () => {
     getListExpertsMockHandler200([needsSetupExpert]),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
   );
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
 
   expect(await screen.findByText("1 workflow needs setup")).toBeDefined();
 });
@@ -257,7 +270,7 @@ test("renders a needs-attention row when a review is pending", async () => {
     getGetBriefingsGetLatestBriefingMockHandler200(null),
     getGetV2GetPendingReviewsMockHandler200([pendingReview]),
   );
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
 
   expect(await screen.findByText("Approve outreach email")).toBeDefined();
 });
@@ -268,7 +281,7 @@ test("does not render the needs-attention slot when there are no pending reviews
     getGetBriefingsGetLatestBriefingMockHandler200(null),
     getGetV2GetPendingReviewsMockHandler200([]),
   );
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
 
   await screen.findByText("What's happening with your agents");
   expect(screen.queryByText(/Needs your attention/)).toBeNull();
@@ -281,7 +294,7 @@ test("shows an error card instead of the pulse strip when the briefing fetch fai
       HttpResponse.json({ detail: "boom" }, { status: 500 }),
     ),
   );
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
 
   expect(await screen.findByText("Failed to load your briefing")).toBeDefined();
   expect(screen.queryByText("What's happening with your agents")).toBeNull();
@@ -295,10 +308,99 @@ test("shows an error card when the pending-reviews fetch fails", async () => {
       HttpResponse.json({ detail: "boom" }, { status: 500 }),
     ),
   );
-  render(<CopilotHome {...baseProps} />);
+  render(<EmptySession {...baseProps} />);
 
   expect(
     await screen.findByText("Failed to load pending reviews"),
   ).toBeDefined();
   expect(screen.queryByText(/Needs your attention/)).toBeNull();
+});
+
+test("keeps the onboarding surface and recipient picker with the experts flag on", async () => {
+  // hire-experts and onboarding-brain-dump are independent flags aimed at
+  // overlapping beta cohorts; the briefing home must not cancel the other
+  // rollout out from under a brand-new user.
+  mockPulseStripAgent();
+  server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
+  render(<EmptySession {...baseProps} />);
+
+  // The composer's expert picker is the only way to address an expert from
+  // the home, and it only renders behind the experts flag.
+  expect(await screen.findByText("Autopilot")).toBeDefined();
+  // Suggestion themes come from EmptySession, not the briefing block.
+  expect(screen.getByPlaceholderText(/./)).toBeDefined();
+});
+
+test("renders a run row without a link when the briefing has no deep link", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200({
+      id: "briefing-1",
+      briefing_date: new Date(),
+      created_at: new Date(),
+      delivered_at: null,
+      content: {
+        generated_at: new Date(),
+        timezone: "UTC",
+        zero_expert_fallback: false,
+        run_items: [
+          {
+            expert_id: null,
+            expert_name: null,
+            expert_avatar_url: null,
+            agent_name: "Unlinked Agent",
+            graph_id: "graph-9",
+            execution_id: "exec-9",
+            library_agent_id: null,
+            status: "COMPLETED",
+            summary: null,
+            link: null,
+          },
+        ],
+        decision_items: [],
+        decision_total: 0,
+      },
+    }),
+  );
+  render(<EmptySession {...baseProps} />);
+
+  const row = await screen.findByText("Unlinked Agent");
+  expect(row.closest("a")).toBeNull();
+});
+
+test("does not render a hollow briefing card when there are no runs", async () => {
+  // A run paused on an approval is not terminal, so it never lands in "What
+  // ran" — leaving a card that would show only a date.
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200({
+      id: "briefing-1",
+      briefing_date: new Date(),
+      created_at: new Date(),
+      delivered_at: null,
+      content: {
+        generated_at: new Date(),
+        timezone: "UTC",
+        zero_expert_fallback: false,
+        run_items: [],
+        decision_items: [
+          {
+            node_exec_id: "node-1",
+            graph_exec_id: "graph-exec-1",
+            title: "Approve outreach email",
+            expert_id: null,
+            expert_name: null,
+            expert_avatar_url: null,
+            link: "/library",
+          },
+        ],
+        decision_total: 1,
+      },
+    }),
+  );
+  render(<EmptySession {...baseProps} />);
+
+  await screen.findByPlaceholderText(/./);
+  expect(screen.queryByText("This morning")).toBeNull();
+  expect(screen.queryByText("What ran")).toBeNull();
 });

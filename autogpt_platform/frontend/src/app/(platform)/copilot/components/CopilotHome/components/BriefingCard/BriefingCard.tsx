@@ -5,7 +5,7 @@ import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import { formatBriefingDate } from "./helpers";
+import { formatBriefingDate, isInternalLink } from "./helpers";
 
 interface Props {
   briefing: BriefingResponse;
@@ -18,6 +18,11 @@ interface Props {
 export function BriefingCard({ briefing }: Props) {
   const { run_items } = briefing.content;
   const foundItems = run_items.filter((item) => item.summary);
+
+  // A briefing can be all decisions and no terminal runs (a run paused on an
+  // approval never completes), which would render as a card containing just
+  // a date. The needs-attention list below carries that case on its own.
+  if (run_items.length === 0) return null;
 
   return (
     <Card className="mb-5 space-y-5 text-left">
@@ -92,7 +97,10 @@ function RunRow({ item }: { item: BriefingRunItem }) {
     </>
   );
 
-  if (!item.link) {
+  // Relative paths only: the backend composes these, but nothing else stops
+  // a future regression from delivering an absolute or `javascript:` URL to
+  // a Next.js <Link>.
+  if (!item.link || !isInternalLink(item.link)) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3">
         {body}

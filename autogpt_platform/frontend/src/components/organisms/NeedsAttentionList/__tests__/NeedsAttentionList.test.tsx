@@ -45,7 +45,7 @@ test("renders attributed rows and approves in one tap", async () => {
   expect(await screen.findByText("Approve outreach email")).toBeDefined();
   expect(screen.getByText(/Ana/)).toBeDefined();
 
-  await userEvent.click(screen.getByRole("button", { name: /approve/i }));
+  await userEvent.click(screen.getByRole("button", { name: /^Approve:/ }));
   await waitFor(() =>
     expect(actionBody).toMatchObject({
       reviews: [{ node_exec_id: "ne-1", approved: true }],
@@ -72,12 +72,12 @@ test("only the acted row locks while its decision is in flight", async () => {
   );
 
   render(<NeedsAttentionList />);
-  const buttons = await screen.findAllByRole("button", { name: /approve/i });
+  const buttons = await screen.findAllByRole("button", { name: /^Approve:/ });
   await userEvent.click(buttons[0]);
 
   await waitFor(() => {
     const [first, second] = screen.getAllByRole("button", {
-      name: /approve/i,
+      name: /^Approve:/,
     }) as HTMLButtonElement[];
     expect(first.disabled).toBe(true);
     expect(second.disabled).toBe(false);
@@ -101,7 +101,7 @@ test("confirms a successful decision with a toast", async () => {
     </>,
   );
   await userEvent.click(
-    await screen.findByRole("button", { name: /approve/i }),
+    await screen.findByRole("button", { name: /^Approve:/ }),
   );
 
   expect(await screen.findByText("Approved")).toBeDefined();
@@ -120,8 +120,14 @@ test("decline sends a rejection", async () => {
   );
 
   render(<NeedsAttentionList />);
+  // Decline is a hard reject with no undo, so it takes a second, deliberate
+  // tap in a flow built for fast tapping.
   await userEvent.click(
-    await screen.findByRole("button", { name: /decline/i }),
+    await screen.findByRole("button", { name: /^Decline:/ }),
+  );
+  expect(actionBody).toBeUndefined();
+  await userEvent.click(
+    await screen.findByRole("button", { name: /^Confirm decline:/ }),
   );
   await waitFor(() =>
     expect(actionBody?.reviews[0]).toMatchObject({
@@ -147,7 +153,7 @@ test("shows a destructive toast when approve fails", async () => {
     </>,
   );
   await userEvent.click(
-    await screen.findByRole("button", { name: /approve/i }),
+    await screen.findByRole("button", { name: /^Approve:/ }),
   );
 
   expect(await screen.findByText("Failed to approve review")).toBeDefined();
@@ -158,4 +164,67 @@ test("renders nothing when there are no pending reviews", async () => {
 
   const { container } = render(<NeedsAttentionList />);
   await waitFor(() => expect(container.firstChild).toBeNull());
+});
+
+test("reports a 200 that carries a failure as a failure, not an approval", async () => {
+  // The mutation resolves on non-2xx and a 200 can still say failed_count > 0
+  // (review already processed, node execution gone). Toasting "Approved"
+  // there leaves the row reappearing with nothing explaining why.
+  server.use(
+    getGetV2GetPendingReviewsMockHandler200([review]),
+    getPostV2ProcessReviewActionMockHandler200({
+      approved_count: 0,
+      rejected_count: 0,
+      failed_count: 1,
+      error: "Review already processed",
+    }),
+  );
+
+  render(
+    <>
+      <NeedsAttentionList />
+      <Toaster />
+    </>,
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: /^Approve:/ }),
+  );
+
+  expect(await screen.findByText("Failed to approve review")).toBeDefined();
+  expect(screen.getByText("Review already processed")).toBeDefined();
+  expect(screen.queryByText("Approved")).toBeNull();
+});
+
+test("a second row's decision does not unlock the first one mid-flight", async () => {
+  const other = {
+    ...review,
+    node_exec_id: "ne-2",
+    instructions: "Approve invoice",
+  };
+  server.use(
+    getGetV2GetPendingReviewsMockHandler200([review, other]),
+    http.post("/api/proxy/api/review/action", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return HttpResponse.json({
+        approved_count: 1,
+        rejected_count: 0,
+        failed_count: 0,
+      });
+    }),
+  );
+
+  render(<NeedsAttentionList />);
+  const buttons = await screen.findAllByRole("button", { name: /^Approve:/ });
+  await userEvent.click(buttons[0]);
+  await userEvent.click(buttons[1]);
+
+  await waitFor(() => {
+    const [first, second] = screen.getAllByRole("button", {
+      name: /^Approve:/,
+    }) as HTMLButtonElement[];
+    // Both in flight -> both locked. A single pending slot would have
+    // re-enabled the first row here, making it double-submittable.
+    expect(first.disabled).toBe(true);
+    expect(second.disabled).toBe(true);
+  });
 });

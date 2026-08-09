@@ -1,45 +1,21 @@
 "use client";
 
-import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { NeedsAttentionList } from "@/components/organisms/NeedsAttentionList/NeedsAttentionList";
-import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { motion } from "framer-motion";
-import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
-import { EmptyHero } from "../EmptySession/components/EmptyHero";
-import { getGreetingName } from "../EmptySession/helpers";
-import { PulseChips } from "../PulseChips/PulseChips";
-import { usePulseChips } from "../PulseChips/usePulseChips";
+import type { ReactNode } from "react";
 import { BriefingCard } from "./components/BriefingCard/BriefingCard";
 import { TeamStrip } from "./components/TeamStrip/TeamStrip";
 import { useCopilotHome } from "./useCopilotHome";
 
 interface Props {
-  inputLayoutId: string;
-  isCreatingSession: boolean;
-  onSend: (
-    message: string,
-    files?: File[],
-    workspaceFiles?: WorkspaceAttachment[],
-  ) => void | Promise<void>;
-  isUploadingFiles?: boolean;
-  droppedFiles?: File[];
-  onDroppedFilesConsumed?: () => void;
-  isAdoptingExpertSession?: boolean;
+  fallback: ReactNode;
 }
 
-export function CopilotHome({
-  inputLayoutId,
-  isCreatingSession,
-  onSend,
-  isUploadingFiles,
-  droppedFiles,
-  onDroppedFilesConsumed,
-  isAdoptingExpertSession,
-}: Props) {
-  const { user } = useAuth();
-  const greetingName = getGreetingName(user);
-  const pulseChips = usePulseChips();
+// The briefing-first block of the copilot home. Mounted *inside*
+// EmptySession rather than beside it, so the experts cohort keeps the
+// onboarding surface (welcome dialog, greeting flow, suggestion themes) and
+// the composer's recipient picker, which live there.
+export function CopilotHome({ fallback }: Props) {
   const {
     briefing,
     isLoadingBriefing,
@@ -47,64 +23,30 @@ export function CopilotHome({
     refetchBriefing,
     hasBriefing,
   } = useCopilotHome();
-  const isComposerDisabled = isCreatingSession || !!isAdoptingExpertSession;
 
   return (
-    <div className="relative flex h-full flex-1 items-center justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      <motion.div
-        className="relative z-10 w-full max-w-[52rem] text-center"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-      >
-        <div className="mx-auto max-w-[52rem]">
-          <EmptyHero
-            name={greetingName}
-            isAwaitingGreeting={false}
-            isGreetingFlow={false}
-          />
+    <>
+      {/* Briefing card slot — falls back to whatever the caller renders in
+          its place only when a successful fetch says there is no briefing
+          yet; a failed fetch shows the error card so it can't masquerade as
+          "no briefing". Nothing renders until load settles so the fallback
+          doesn't flash for users who do have a briefing. */}
+      {isLoadingBriefing ? null : isBriefingError ? (
+        <ErrorCard
+          context="briefing"
+          httpError={{ message: "Failed to load your briefing" }}
+          onRetry={() => refetchBriefing()}
+          className="mb-5"
+        />
+      ) : hasBriefing && briefing ? (
+        <BriefingCard briefing={briefing} />
+      ) : (
+        fallback
+      )}
 
-          {/* Briefing card slot — falls back to the pulse strip only when a
-              successful fetch says there is no briefing yet; a failed fetch
-              shows the error card so it can't masquerade as "no briefing".
-              Nothing renders until load settles so the strip doesn't flash
-              for users who do have a briefing. */}
-          {isLoadingBriefing ? null : isBriefingError ? (
-            <ErrorCard
-              context="briefing"
-              httpError={{ message: "Failed to load your briefing" }}
-              onRetry={() => refetchBriefing()}
-              className="mb-5"
-            />
-          ) : hasBriefing && briefing ? (
-            <BriefingCard briefing={briefing} />
-          ) : (
-            <PulseChips chips={pulseChips} onChipClick={onSend} />
-          )}
+      <NeedsAttentionList />
 
-          <NeedsAttentionList />
-
-          <TeamStrip />
-
-          <div className="mb-6">
-            <motion.div
-              layoutId={inputLayoutId}
-              transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
-              className="w-full px-2"
-            >
-              <ChatInput
-                inputId="chat-input-empty"
-                onSend={onSend}
-                disabled={isComposerDisabled}
-                isUploadingFiles={isUploadingFiles}
-                droppedFiles={droppedFiles}
-                onDroppedFilesConsumed={onDroppedFilesConsumed}
-                className="w-full"
-              />
-            </motion.div>
-          </div>
-        </div>
-      </motion.div>
-    </div>
+      <TeamStrip />
+    </>
   );
 }

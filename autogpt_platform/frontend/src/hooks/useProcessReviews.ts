@@ -16,14 +16,20 @@ export function useProcessReviews({
     try {
       return await mutateAsync({ data: { reviews: items } });
     } finally {
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetPendingReviewsQueryKey(),
-      });
-      for (const graphExecId of new Set(graphExecIds)) {
+      // Awaited so callers can keep a row locked until the refetch settles;
+      // firing and forgetting leaves React Query serving the just-acted-on
+      // review for the whole GET.
+      await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: getGetV2GetPendingReviewsForExecutionQueryKey(graphExecId),
-        });
-      }
+          queryKey: getGetV2GetPendingReviewsQueryKey(),
+        }),
+        ...[...new Set(graphExecIds)].map((graphExecId) =>
+          queryClient.invalidateQueries({
+            queryKey:
+              getGetV2GetPendingReviewsForExecutionQueryKey(graphExecId),
+          }),
+        ),
+      ]);
       onSettled?.();
     }
   }

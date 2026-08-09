@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useState } from "react";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -9,14 +10,14 @@ import { getReviewLink } from "@/lib/review-links";
 import { getReviewTitle } from "./helpers";
 import { useNeedsAttentionList } from "./useNeedsAttentionList";
 
-export function NeedsAttentionList(): JSX.Element | null {
+export function NeedsAttentionList() {
   const {
     reviews,
     countLabel,
     isLoading,
     isError,
     refetch,
-    pendingNodeExecId,
+    pendingNodeExecIds,
     approve,
     decline,
   } = useNeedsAttentionList();
@@ -52,7 +53,7 @@ export function NeedsAttentionList(): JSX.Element | null {
             review={review}
             // Only the acted row locks up, so morning triage stays
             // parallel instead of serializing on each round-trip.
-            isProcessing={pendingNodeExecId === review.node_exec_id}
+            isProcessing={pendingNodeExecIds.has(review.node_exec_id)}
             onApprove={approve}
             onDecline={decline}
           />
@@ -75,9 +76,22 @@ function NeedsAttentionRow({
   onApprove,
   onDecline,
 }: RowProps) {
+  // Decline rejects the agent's action outright, with no undo, in a flow
+  // built for fast tapping — so it takes a second, deliberate tap.
+  const [isConfirmingDecline, setIsConfirmingDecline] = useState(false);
+  const title = getReviewTitle(review);
   const subtitle = [review.expert_name, review.agent_name]
     .filter(Boolean)
     .join(" · ");
+
+  function handleDecline() {
+    if (!isConfirmingDecline) {
+      setIsConfirmingDecline(true);
+      return;
+    }
+    setIsConfirmingDecline(false);
+    onDecline(review);
+  }
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3">
@@ -87,7 +101,7 @@ function NeedsAttentionRow({
       />
       <Link href={getReviewLink(review)} className="min-w-0 flex-1">
         <Text variant="body-medium" className="truncate">
-          {getReviewTitle(review)}
+          {title}
         </Text>
         {subtitle ? (
           <Text variant="small" className="truncate text-zinc-500">
@@ -100,19 +114,24 @@ function NeedsAttentionRow({
           variant="primary"
           size="small"
           disabled={isProcessing}
+          aria-label={`Approve: ${title}`}
           onClick={() => onApprove(review)}
         >
           Approve
         </Button>
-        {/* "Decline", not "Skip": this rejects the action outright rather
-            than deferring it to later. */}
         <Button
           variant="ghost"
           size="small"
           disabled={isProcessing}
-          onClick={() => onDecline(review)}
+          aria-label={
+            isConfirmingDecline
+              ? `Confirm decline: ${title}`
+              : `Decline: ${title}`
+          }
+          onClick={handleDecline}
+          onBlur={() => setIsConfirmingDecline(false)}
         >
-          Decline
+          {isConfirmingDecline ? "Confirm" : "Decline"}
         </Button>
       </div>
     </div>
