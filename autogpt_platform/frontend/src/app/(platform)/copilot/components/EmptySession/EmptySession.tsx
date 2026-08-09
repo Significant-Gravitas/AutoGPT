@@ -22,6 +22,7 @@ import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
+import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
 
@@ -142,11 +143,23 @@ export function EmptySession({
             />
           )}
 
-          {isAgentBriefingEnabled &&
-            !intro.isVisible &&
-            !intro.isAwaitingGreeting && (
-              <PulseChips chips={pulseChips} onChipClick={onSend} />
-            )}
+          {!intro.isVisible &&
+            !intro.isAwaitingGreeting &&
+            (isExpertsEnabled ? (
+              // The briefing home takes the chips' slot and falls back to
+              // them — still on their own flag — when there's no briefing.
+              <CopilotHome
+                fallback={
+                  isAgentBriefingEnabled ? (
+                    <PulseChips chips={pulseChips} onChipClick={onSend} />
+                  ) : null
+                }
+              />
+            ) : (
+              isAgentBriefingEnabled && (
+                <PulseChips chips={pulseChips} onChipClick={onSend} />
+              )
+            ))}
 
           {/* Held back while the greeting is on its way — it enters with
               the greeting page instead of sitting under a bare hero. */}

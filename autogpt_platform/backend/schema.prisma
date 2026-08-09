@@ -136,6 +136,7 @@ model User {
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  UserBriefings        UserBriefing[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
@@ -286,6 +287,29 @@ model OnboardingBrainDump {
   recommendedProviders Json?
 
   @@index([userId])
+}
+
+model UserBriefing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Local calendar date the briefing covers, in the user's timezone at generation time.
+  briefingDate DateTime @db.Date
+
+  // Serialized BriefingContent (see backend/copilot/briefing/models.py).
+  content Json
+
+  // Set only after the briefing was posted into the user's copilot thread.
+  // Null means the session post failed (or hasn't happened yet) — the next
+  // generation run for the same date retries delivery instead of skipping.
+  deliveredAt DateTime?
+
+  // Every read is by user + date (latest-first or exact date), so the unique
+  // index above serves them all — no secondary index to pay for on write.
+  @@unique([userId, briefingDate])
 }
 
 ////////////////////////////////////////////////////////////
