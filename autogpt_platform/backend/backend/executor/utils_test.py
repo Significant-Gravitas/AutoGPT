@@ -608,6 +608,7 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = "org-rpc"
+    mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-rpc"
     mock_graph_exec.expert_id = None
     mock_graph_exec.id = "exec-id-rpc"
@@ -1997,6 +1998,7 @@ def _mock_add_graph_execution_create_path(
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = org_id
+    mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = team_id
     mock_graph_exec.expert_id = None
     mock_graph_exec.id = "exec-id"
