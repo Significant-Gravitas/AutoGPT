@@ -41,6 +41,57 @@ single-request byte cap also need `ffmpeg` on `PATH`.
 roughly 3 hours of audio per run. Run it before a transcription change ships,
 not on every commit.
 
+## Quality-gate scoring
+
+A corpus can also score the quality gate (`quality.py`) by shipping a
+`gate_manifest.json` next to the audio:
+
+```json
+{"stt-wer-clean-01": "pass", "gate-reject-silence": "reject"}
+```
+
+Every scored file's machine transcript is pushed through the real
+`quality.check_transcript_quality`, and manifest entries **without** a
+`.txt` reference (silence, noise) are transcribed just to see what the STT
+hallucinates — the gate must reject the result, whatever it is. One wrong
+verdict fails the run, exactly like a WER breach: a garbage dump that
+personalizes and a real dump that bounces are both release blockers. The
+LLM half of the gate needs the usual chat key (`OPEN_ROUTER_API_KEY` or an
+OpenAI key) on top of the STT key.
+
+## The committed baseline corpus
+
+`eval_data/` in this directory is a ready-to-run baseline corpus
+(~3 MB of ogg/opus — audio, `.txt` references and the gate manifest):
+
+```bash
+poetry run brain-dump-eval --dir backend/api/features/onboarding_dump/eval_data
+```
+
+It is built from Mini LibriSpeech (LibriVox, public domain, exact
+reference transcripts — no privacy concern, which is why this corpus *can*
+be committed). Every filename states what the file tests:
+
+- `stt-wer-clean-01..13` — WER on clean speech, the accuracy baseline
+- `stt-wer-moderate-noise-15db-01..06` — WER with background noise mixed
+  at a measured 15 dB SNR (fan / quiet room)
+- `stt-wer-loud-noise-5db-01..06` — WER with loud noise at 5 dB SNR
+  (noise nearly as loud as the voice)
+- `gate-reject-{silence,white-noise,pink-noise,brown-noise}` — no speech
+  at all; the quality gate must reject whatever the STT hallucinates
+
+All 25 speech clips must also *pass* the gate. Regenerate or vary the
+corpus with:
+
+```bash
+poetry run python -m backend.api.features.onboarding_dump.eval_corpus \
+    --out backend/api/features/onboarding_dump/eval_data
+```
+
+Read speech scores far better than rambling speech, so treat its WER as a
+floor check, not the release answer — the real-dump corpus below stays
+private and uncommitted.
+
 ## The corpus
 
 Put the recordings and their reference transcripts in one flat directory,
