@@ -54,7 +54,11 @@ from .falkordb_driver import AutoGPTFalkorDriver
 PASS_ID = "e2e-pass"
 SESSION_ID = "e2e-session"
 FACT_TEXT = "Atlas deploys are gated on the smoke suite"
-INGEST_TIMEOUT_SECONDS = 60.0
+# Everything slow is stubbed (LLM, embedder, cross-encoder), so ingestion is
+# local Cypher only. Kept well above the ~1s real cost, but low enough that a
+# pipeline that never signals completion fails fast instead of burning a
+# minute per test.
+INGEST_TIMEOUT_SECONDS = 25.0
 
 PROPOSAL = ProposedFinding(
     content=FACT_TEXT,
@@ -128,7 +132,9 @@ class _FakeRedis:
         return str(value).encode() if value else None
 
     async def set(self, key: str, value, **kwargs) -> bool:
-        self.hits.setdefault(key, int(value))
+        # Overwrite, like real SET — setdefault would silently ignore a
+        # counter reset and keep a test green through that bug.
+        self.hits[key] = int(value)
         return True
 
     async def incr(self, key: str) -> int:
@@ -344,6 +350,13 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
         "promotion must not disturb provenance — an active edge still has to "
         "be attributable to the dream pass that proposed it"
     )
+    assert edge["provenance"].startswith(f"dream:{PASS_ID}:recombine:"), (
+        "promotion writes status/ratified_at and must leave the rest of the "
+        "envelope alone; a rewritten provenance would orphan the edge from "
+        "the pass that proposed it"
+    )
+    assert edge["scope"] == PROPOSAL.scope
+    assert edge["confidence"] == pytest.approx(PROPOSAL.confidence)
 
     assert (
         await try_ratify_on_hit(user_id, [edge_uuid]) == 0

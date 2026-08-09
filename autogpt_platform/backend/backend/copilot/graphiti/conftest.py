@@ -32,6 +32,7 @@ The fixtures connect using ``GraphitiConfig`` defaults
 
 import socket
 import uuid
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import AsyncIterator
 
@@ -43,6 +44,7 @@ from graphiti_core.embedder.client import EMBEDDING_DIM, EmbedderClient
 from graphiti_core.llm_client.client import LLMClient
 from graphiti_core.llm_client.config import ModelSize
 from graphiti_core.prompts.models import Message
+from pydantic import BaseModel
 
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
@@ -64,7 +66,7 @@ class ScriptedLLMClient(LLMClient):
     async def _generate_response(
         self,
         messages: list[Message],
-        response_model=None,
+        response_model: type[BaseModel] | None = None,
         max_tokens: int = 16384,
         model_size: ModelSize = ModelSize.medium,
     ) -> dict:
@@ -75,7 +77,9 @@ class ScriptedLLMClient(LLMClient):
 class StubEmbedder(EmbedderClient):
     """Constant vectors — no integration test ranks by similarity."""
 
-    async def create(self, input_data) -> list[float]:
+    async def create(
+        self, input_data: str | list[str] | Iterable[int] | Iterable[Iterable[int]]
+    ) -> list[float]:
         return [0.1] * EMBEDDING_DIM
 
     async def create_batch(self, input_data_list: list[str]) -> list[list[float]]:
@@ -97,6 +101,12 @@ def stub_graphiti_client():
     ``client._build_graphiti`` (same driver, same coroutine limit) so the
     ingestion pipeline under test behaves as it does in production, minus
     the API calls.
+
+    NOTE: the ``Graphiti(...)`` kwargs below are hand-mirrored from
+    ``client._build_graphiti``. A kwarg added to production wiring will not
+    propagate here on its own, which would quietly weaken the "drives the
+    genuine pipeline" guarantee these integration tests rest on — keep the
+    two in sync when touching either.
     """
 
     def _build(driver: AutoGPTFalkorDriver, responses: dict[str, dict]) -> Graphiti:
