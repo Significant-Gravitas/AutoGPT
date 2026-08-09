@@ -1,12 +1,8 @@
 import Link from "next/link";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
 import { Text } from "@/components/atoms/Text/Text";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { getExpertStatusLine } from "./helpers";
 import { useTeamStrip } from "./useTeamStrip";
 
@@ -37,12 +33,7 @@ function TeamStripCard({ expert, schedules }: CardProps) {
         aria-label={`View ${expert.name}`}
         className="flex flex-col gap-2"
       >
-        <Avatar className="h-10 w-10">
-          {expert.avatar_url ? (
-            <AvatarImage src={expert.avatar_url} alt={expert.name} />
-          ) : null}
-          <AvatarFallback>{expert.name}</AvatarFallback>
-        </Avatar>
+        <ExpertAvatar name={expert.name} avatarUrl={expert.avatar_url} />
         <div className="min-w-0">
           <Text variant="body-medium" className="truncate">
             {expert.name}

@@ -1,29 +1,24 @@
 import Link from "next/link";
-import { Robot01Icon } from "@hugeicons/core-free-icons";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { getReviewLink, getReviewTitle } from "./helpers";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { getReviewLink } from "@/lib/review-links";
+import { getReviewTitle } from "./helpers";
 import { useNeedsAttentionList } from "./useNeedsAttentionList";
 
 export function NeedsAttentionList(): JSX.Element | null {
   const {
     reviews,
-    count,
+    countLabel,
     isLoading,
     isError,
     refetch,
-    isProcessing,
+    pendingNodeExecId,
     approve,
-    skip,
+    decline,
   } = useNeedsAttentionList();
 
   if (isLoading) {
@@ -45,19 +40,21 @@ export function NeedsAttentionList(): JSX.Element | null {
     );
   }
 
-  if (count === 0) return null;
+  if (reviews.length === 0) return null;
 
   return (
     <section className="flex flex-col gap-3">
-      <Text variant="h5">Needs your attention ({count})</Text>
+      <Text variant="h5">Needs your attention ({countLabel})</Text>
       <div className="flex flex-col gap-2">
         {reviews.map((review) => (
           <NeedsAttentionRow
             key={review.node_exec_id}
             review={review}
-            isProcessing={isProcessing}
+            // Only the acted row locks up, so morning triage stays
+            // parallel instead of serializing on each round-trip.
+            isProcessing={pendingNodeExecId === review.node_exec_id}
             onApprove={approve}
-            onSkip={skip}
+            onDecline={decline}
           />
         ))}
       </div>
@@ -69,14 +66,14 @@ interface RowProps {
   review: PendingHumanReviewModel;
   isProcessing: boolean;
   onApprove: (review: PendingHumanReviewModel) => void;
-  onSkip: (review: PendingHumanReviewModel) => void;
+  onDecline: (review: PendingHumanReviewModel) => void;
 }
 
 function NeedsAttentionRow({
   review,
   isProcessing,
   onApprove,
-  onSkip,
+  onDecline,
 }: RowProps) {
   const subtitle = [review.expert_name, review.agent_name]
     .filter(Boolean)
@@ -84,7 +81,10 @@ function NeedsAttentionRow({
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3">
-      <ReviewAvatar review={review} />
+      <ExpertAvatar
+        name={review.expert_name ?? null}
+        avatarUrl={review.expert_avatar_url ?? null}
+      />
       <Link href={getReviewLink(review)} className="min-w-0 flex-1">
         <Text variant="body-medium" className="truncate">
           {getReviewTitle(review)}
@@ -104,34 +104,17 @@ function NeedsAttentionRow({
         >
           Approve
         </Button>
+        {/* "Decline", not "Skip": this rejects the action outright rather
+            than deferring it to later. */}
         <Button
           variant="ghost"
           size="small"
           disabled={isProcessing}
-          onClick={() => onSkip(review)}
+          onClick={() => onDecline(review)}
         >
-          Skip
+          Decline
         </Button>
       </div>
     </div>
-  );
-}
-
-function ReviewAvatar({ review }: { review: PendingHumanReviewModel }) {
-  if (!review.expert_name) {
-    return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <Icon icon={Robot01Icon} size={20} className="text-zinc-500" />
-      </div>
-    );
-  }
-
-  return (
-    <Avatar className="h-10 w-10 shrink-0">
-      {review.expert_avatar_url ? (
-        <AvatarImage src={review.expert_avatar_url} alt={review.expert_name} />
-      ) : null}
-      <AvatarFallback>{review.expert_name}</AvatarFallback>
-    </Avatar>
   );
 }

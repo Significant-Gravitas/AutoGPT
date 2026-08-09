@@ -1,14 +1,9 @@
 import Link from "next/link";
 import type { BriefingResponse } from "@/app/api/__generated__/models/briefingResponse";
 import type { BriefingRunItem } from "@/app/api/__generated__/models/briefingRunItem";
-import type { BriefingDecisionItem } from "@/app/api/__generated__/models/briefingDecisionItem";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
 import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { formatBriefingDate } from "./helpers";
 
@@ -16,8 +11,12 @@ interface Props {
   briefing: BriefingResponse;
 }
 
+// The briefing's decision items are deliberately not rendered here: the same
+// pending reviews already appear — and are actionable — in the
+// needs-attention list directly below this card. They stay in the thread
+// markdown, where there is no such list.
 export function BriefingCard({ briefing }: Props) {
-  const { run_items, decision_items } = briefing.content;
+  const { run_items } = briefing.content;
   const foundItems = run_items.filter((item) => item.summary);
 
   return (
@@ -47,42 +46,16 @@ export function BriefingCard({ briefing }: Props) {
                 variant="body"
                 className="text-zinc-700"
               >
+                {/* Attribution matters once more than one agent reports:
+                    mirrors the thread markdown's "**{agent}**: {summary}". */}
+                <span className="font-medium">{item.agent_name}</span>:{" "}
                 {item.summary}
               </Text>
             ))}
           </div>
         </section>
       ) : null}
-
-      {decision_items.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <Text variant="h5">
-            Needs your decision ({decision_items.length})
-          </Text>
-          <div className="flex flex-col gap-2">
-            {decision_items.map((item) => (
-              <DecisionRow key={item.node_exec_id} item={item} />
-            ))}
-          </div>
-        </section>
-      ) : null}
     </Card>
-  );
-}
-
-function ExpertAvatar({
-  name,
-  avatarUrl,
-}: {
-  name: string | null;
-  avatarUrl: string | null;
-}) {
-  if (!name) return null;
-  return (
-    <Avatar className="h-8 w-8 shrink-0">
-      {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
-      <AvatarFallback>{name}</AvatarFallback>
-    </Avatar>
   );
 }
 
@@ -97,6 +70,7 @@ function RunRow({ item }: { item: BriefingRunItem }) {
       <ExpertAvatar
         name={item.expert_name}
         avatarUrl={item.expert_avatar_url}
+        size={32}
       />
       <div className="min-w-0 flex-1">
         <Text
@@ -132,23 +106,6 @@ function RunRow({ item }: { item: BriefingRunItem }) {
       className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3"
     >
       {body}
-    </Link>
-  );
-}
-
-function DecisionRow({ item }: { item: BriefingDecisionItem }) {
-  return (
-    <Link
-      href={item.link}
-      className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3"
-    >
-      <ExpertAvatar
-        name={item.expert_name}
-        avatarUrl={item.expert_avatar_url}
-      />
-      <Text variant="body-medium" className="min-w-0 flex-1 truncate">
-        {item.title}
-      </Text>
     </Link>
   );
 }

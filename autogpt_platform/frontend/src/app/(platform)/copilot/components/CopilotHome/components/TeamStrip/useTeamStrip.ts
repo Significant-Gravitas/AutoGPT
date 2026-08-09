@@ -9,7 +9,9 @@ export function useTeamStrip() {
 
   const expertsQuery = useListExperts({
     query: {
-      select: (res) => res.data as Expert[],
+      // okData, like every sibling query here: an error body must never
+      // reach the render layer typed as Expert[].
+      select: (res) => (okData(res) as Expert[] | undefined) ?? [],
       enabled: isExpertsEnabled,
     },
   });

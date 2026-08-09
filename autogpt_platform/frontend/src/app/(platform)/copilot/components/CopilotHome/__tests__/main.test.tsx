@@ -29,7 +29,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
 const baseProps = {
   inputLayoutId: "test-layout",
   isCreatingSession: false,
-  onCreateSession: vi.fn(),
   onSend: vi.fn(),
 };
 
@@ -214,15 +213,13 @@ test("renders briefing sections when a briefing is available", async () => {
 
   expect(await screen.findByText("What ran")).toBeDefined();
   expect(screen.getByText("What was found")).toBeDefined();
-  expect(screen.getByText("Needs your decision (1)")).toBeDefined();
-  expect(screen.getByText("Found 3 leads")).toBeDefined();
+  // Findings carry their agent name, matching the thread markdown.
+  const finding = screen.getByText(/Found 3 leads/);
+  expect(finding.textContent).toContain("Lead Finder");
 
-  const decisionLink = screen.getByRole("link", {
-    name: /Approve outreach email/,
-  });
-  expect(decisionLink.getAttribute("href")).toBe(
-    "/library/agents/lib-1/runs/exec-1?node=node-1",
-  );
+  // The card does not repeat the decisions: the needs-attention list below
+  // shows the same pending reviews, and it can act on them.
+  expect(screen.queryByText(/Needs your decision/)).toBeNull();
 });
 
 test("renders the team strip with hired experts", async () => {

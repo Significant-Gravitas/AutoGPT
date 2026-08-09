@@ -253,7 +253,6 @@ export const ChatContainer = ({
             <CopilotHome
               inputLayoutId={inputLayoutId}
               isCreatingSession={isCreatingSession}
-              onCreateSession={onCreateSession}
               onSend={onSend}
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}

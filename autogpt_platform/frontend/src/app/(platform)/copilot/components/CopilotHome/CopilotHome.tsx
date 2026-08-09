@@ -17,7 +17,6 @@ import { useCopilotHome } from "./useCopilotHome";
 interface Props {
   inputLayoutId: string;
   isCreatingSession: boolean;
-  onCreateSession: () => void | Promise<string>;
   onSend: (
     message: string,
     files?: File[],

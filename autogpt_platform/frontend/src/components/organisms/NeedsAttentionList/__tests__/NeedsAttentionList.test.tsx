@@ -53,7 +53,61 @@ test("renders attributed rows and approves in one tap", async () => {
   );
 });
 
-test("skip sends a rejection", async () => {
+test("only the acted row locks while its decision is in flight", async () => {
+  const other = {
+    ...review,
+    node_exec_id: "ne-2",
+    instructions: "Approve invoice",
+  };
+  server.use(
+    getGetV2GetPendingReviewsMockHandler200([review, other]),
+    http.post("/api/proxy/api/review/action", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return HttpResponse.json({
+        approved_count: 1,
+        rejected_count: 0,
+        failed_count: 0,
+      });
+    }),
+  );
+
+  render(<NeedsAttentionList />);
+  const buttons = await screen.findAllByRole("button", { name: /approve/i });
+  await userEvent.click(buttons[0]);
+
+  await waitFor(() => {
+    const [first, second] = screen.getAllByRole("button", {
+      name: /approve/i,
+    }) as HTMLButtonElement[];
+    expect(first.disabled).toBe(true);
+    expect(second.disabled).toBe(false);
+  });
+});
+
+test("confirms a successful decision with a toast", async () => {
+  server.use(
+    getGetV2GetPendingReviewsMockHandler200([review]),
+    getPostV2ProcessReviewActionMockHandler200({
+      approved_count: 1,
+      rejected_count: 0,
+      failed_count: 0,
+    }),
+  );
+
+  render(
+    <>
+      <NeedsAttentionList />
+      <Toaster />
+    </>,
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: /approve/i }),
+  );
+
+  expect(await screen.findByText("Approved")).toBeDefined();
+});
+
+test("decline sends a rejection", async () => {
   let actionBody:
     | { reviews: Array<{ approved: boolean; message?: string }> }
     | undefined;
@@ -66,11 +120,13 @@ test("skip sends a rejection", async () => {
   );
 
   render(<NeedsAttentionList />);
-  await userEvent.click(await screen.findByRole("button", { name: /skip/i }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: /decline/i }),
+  );
   await waitFor(() =>
     expect(actionBody?.reviews[0]).toMatchObject({
       approved: false,
-      message: "Skipped from home",
+      message: "Declined from home",
     }),
   );
 });
