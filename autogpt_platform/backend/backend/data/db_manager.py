@@ -63,7 +63,7 @@ from backend.data.block import (
 from backend.data.briefing import (
     create_briefing,
     get_briefing_for_date,
-    get_latest_briefing,
+    get_latest_briefings,
     mark_briefing_delivered,
 )
 from backend.data.credit import (
@@ -509,7 +509,7 @@ class DatabaseManager(AppService):
     append_plain_session_message = _(chat_db.append_plain_session_message)
     create_briefing = _(create_briefing)
     get_briefing_for_date = _(get_briefing_for_date)
-    get_latest_briefing = _(get_latest_briefing)
+    get_latest_briefings = _(get_latest_briefings)
     mark_briefing_delivered = _(mark_briefing_delivered)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
@@ -583,7 +583,7 @@ class DatabaseManagerClient(AppServiceClient):
     append_plain_session_message = _(d.append_plain_session_message)
     create_briefing = _(d.create_briefing)
     get_briefing_for_date = _(d.get_briefing_for_date)
-    get_latest_briefing = _(d.get_latest_briefing)
+    get_latest_briefings = _(d.get_latest_briefings)
     mark_briefing_delivered = _(d.mark_briefing_delivered)
     append_expert_run_message = _(d.append_expert_run_message)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
@@ -807,7 +807,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     append_plain_session_message = d.append_plain_session_message
     create_briefing = d.create_briefing
     get_briefing_for_date = d.get_briefing_for_date
-    get_latest_briefing = d.get_latest_briefing
+    get_latest_briefings = d.get_latest_briefings
     mark_briefing_delivered = d.mark_briefing_delivered
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id

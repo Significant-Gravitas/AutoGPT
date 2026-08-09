@@ -98,3 +98,46 @@ async def test_append_plain_session_message_creates_session_and_dedupes(
         assert expert_messages == []
     finally:
         await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_plain_session_message_retries_on_sequence_collision(
+    server: SpinTestServer, mocker
+):
+    """Lock-degraded path: a sequence PK collision (not a duplicate message
+    id) must be retried once with a fresh sequence rather than propagating."""
+    user_id = f"plain-session-retry-{uuid4()}"
+    await _create_user(user_id)
+    try:
+        real_add_chat_message = copilot_db.add_chat_message
+        calls = {"n": 0}
+
+        async def collide_once(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                # A (sessionId, sequence) collision, NOT a duplicate
+                # ChatMessage id — the branch under test.
+                raise UniqueViolationError(
+                    {
+                        "user_facing_error": {
+                            "message": "Unique constraint failed on the "
+                            "fields: (`sessionId`,`sequence`)"
+                        }
+                    }
+                )
+            return await real_add_chat_message(*args, **kwargs)
+
+        mocker.patch.object(copilot_db, "add_chat_message", side_effect=collide_once)
+
+        message_id = str(uuid4())
+        session_id = await copilot_db.append_plain_session_message(
+            user_id=user_id, content="## Briefing", message_id=message_id
+        )
+
+        assert calls["n"] == 2  # first write collided, retry succeeded
+        assert session_id is not None
+        stored = await ChatMessage.prisma().find_unique(where={"id": message_id})
+        assert stored is not None
+        assert stored.sessionId == session_id
+    finally:
+        await _cleanup(user_id)

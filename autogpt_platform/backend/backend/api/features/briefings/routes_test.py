@@ -173,6 +173,27 @@ async def test_get_latest_briefing_returns_null_on_invalid_stored_content(
     assert response.json() is None
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_latest_briefing_falls_back_to_the_newest_readable_briefing(
+    client: httpx.AsyncClient,
+    setup_test_user: str,
+) -> None:
+    """One unreadable row on the newest date must not hide older briefings."""
+    readable = await briefing_db.create_briefing(
+        setup_test_user, datetime.date(2026, 8, 6), _valid_content()
+    )
+    await briefing_db.create_briefing(
+        setup_test_user, datetime.date(2026, 8, 7), {"unexpected": "shape"}
+    )
+
+    response = await client.get("/api/briefings/latest")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == readable.id
+    assert data["briefing_date"] == "2026-08-06"
+
+
 def test_get_latest_briefing_requires_auth() -> None:
     """GET /briefings/latest should return 401 when no valid JWT is provided."""
     import fastapi

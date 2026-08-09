@@ -7,10 +7,11 @@ Contracts pinned here:
   2. Flag off → no-op, no timezone lookup, no RPC.
   3. Timezone lookup failure is "unknown", not "UTC" — skip the cycle
      rather than risk re-registering onto UTC.
-  4. First call (no stored tz) registers the cron and writes the marker.
-  5. Matching stored tz → no-op, no RPC.
-  6. Timezone drift (stored != current) → re-registers and rewrites
-     the marker.
+  4. First call (no marker) registers the cron and writes the marker.
+  5. Marker present → no-op: no timezone lookup (a DB read on the hot
+     chat path) and no RPC.
+  6. Cleared marker (the ``update_user_timezone`` path) → re-registers
+     with the current timezone and rewrites the marker.
   7. ``ensure_morning_briefing_scheduled`` never raises — it's fired
      via ``asyncio.create_task`` from a hot request path.
   8. ``_resolve_user_timezone`` behaviors copied from the dream module:
@@ -105,7 +106,11 @@ async def test_timezone_lookup_failure_skips_registration():
     write_spy = AsyncMock()
     with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
         _PATH_TZ, new=AsyncMock(return_value=None)
-    ), patch(_PATH_WRITE_TZ, new=write_spy), patch(_PATH_CLIENT, return_value=client):
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
+        _PATH_WRITE_TZ, new=write_spy
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
         await ensure_morning_briefing_scheduled("abc")
 
     client.add_morning_briefing_schedule.assert_not_called()
@@ -137,35 +142,37 @@ async def test_first_call_registers_and_writes_marker():
 
 
 # ---------------------------------------------------------------------------
-# Matching stored tz — no-op
+# Marker present — no-op, and crucially no DB read on the hot chat path
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_matching_tz_second_call_skips_registration():
+async def test_existing_marker_skips_timezone_lookup_and_registration():
     client = _mock_scheduler_client()
+    tz_mock = AsyncMock(return_value="America/New_York")
     with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="America/New_York")
+        _PATH_TZ, new=tz_mock
     ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")), patch(
         _PATH_CLIENT, return_value=client
     ):
         await ensure_morning_briefing_scheduled("abc")
 
+    tz_mock.assert_not_called()
     client.add_morning_briefing_schedule.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Timezone drift — re-registers
+# Cleared marker (timezone change) — re-registers on the current timezone
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_timezone_drift_reregisters():
+async def test_cleared_marker_reregisters_on_current_timezone():
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
     with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
         _PATH_TZ, new=AsyncMock(return_value="Europe/Paris")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")), patch(
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
         _PATH_WRITE_TZ, new=write_spy
     ), patch(
         _PATH_CLIENT, return_value=client
@@ -275,8 +282,8 @@ async def test_clear_marker_swallows_redis_failure(caplog):
 # ---------------------------------------------------------------------------
 
 
-def test_registration_ttl_is_seven_days():
-    assert REGISTRATION_TTL_SECONDS == 7 * 24 * 3600
+def test_registration_ttl_bounds_the_recheck_window():
+    assert REGISTRATION_TTL_SECONDS == 6 * 3600
 
 
 # Suppress "imported but unused" — ``scheduling`` is the module under test.

@@ -5,6 +5,7 @@ the copilot-turn scheduling feature so they're exercised by the regular
 backend test job (and counted by codecov), not just the integration suite.
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -683,3 +684,66 @@ class TestScheduleOrgVisibility:
         ]
         result = self._run(infos, user_id="me")
         assert [r.schedule_id for r in result] == ["mine"]
+
+
+# ---------------------------------------------------------------------------
+# add_morning_briefing_schedule / execute_morning_briefing
+# ---------------------------------------------------------------------------
+
+
+class TestMorningBriefingSchedule:
+    """Registration kwargs and the job body's failure containment."""
+
+    def _register(self, **kwargs) -> MagicMock:
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        sched.scheduler.add_job.return_value = MagicMock(
+            id="morning_briefing_user-1", next_run_time=None
+        )
+        Scheduler.add_morning_briefing_schedule(sched, **kwargs)
+        return sched.scheduler.add_job
+
+    def test_registers_daily_9am_cron_in_the_users_timezone(self):
+        add_job = self._register(user_id="user-1", user_timezone="America/New_York")
+
+        add_job.assert_called_once()
+        call_kwargs = add_job.call_args.kwargs
+        assert call_kwargs["id"] == "morning_briefing_user-1"
+        assert call_kwargs["kwargs"] == {"user_id": "user-1"}
+        assert call_kwargs["replace_existing"] is True
+        assert call_kwargs["max_instances"] == 1
+
+        trigger = call_kwargs["trigger"]
+        assert str(trigger.timezone) == "America/New_York"
+        # CronTrigger stringifies its fields; pin the 09:00 daily contract.
+        assert "hour='9'" in str(trigger)
+        assert "minute='0'" in str(trigger)
+
+    def test_empty_timezone_falls_back_to_utc(self):
+        add_job = self._register(user_id="user-1", user_timezone="")
+
+        assert str(add_job.call_args.kwargs["trigger"].timezone) == "UTC"
+
+    def test_job_body_swallows_and_logs_generation_failures(self, caplog):
+        """The cron body exists to keep one user's failure off the scheduler."""
+        from backend.executor.scheduler import execute_morning_briefing
+
+        with (
+            # MagicMock, not AsyncMock: run_async is stubbed out, so an
+            # unawaited coroutine here would only raise a RuntimeWarning.
+            patch(
+                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
+                new=MagicMock(),
+            ),
+            patch(
+                f"{_SCHEDULER_PATH}.run_async",
+                side_effect=RuntimeError("briefing boom"),
+            ),
+            caplog.at_level(logging.ERROR),
+        ):
+            execute_morning_briefing("user-1")  # must not raise
+
+        assert any(
+            r.levelno == logging.ERROR and "Morning briefing failed" in r.getMessage()
+            for r in caplog.records
+        )

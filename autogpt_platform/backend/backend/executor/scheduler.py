@@ -2116,7 +2116,7 @@ class Scheduler(AppService):
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
 
-    # --- Morning briefing (Task A7) ---
+    # --- Morning briefing ---
     #
     # Daily per-user cron at user-local 09:00. The job body's flag gate and
     # idempotency (per local calendar date) live inside

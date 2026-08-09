@@ -1132,31 +1132,27 @@ async def append_plain_session_message(
         )
         session_id = created.session_id
 
+    async def write_with_fresh_sequence() -> None:
+        await add_chat_message(
+            session_id=session_id,
+            role="assistant",
+            sequence=await get_next_sequence(session_id),
+            content=content,
+            message_id=message_id,
+            metadata=metadata,
+        )
+
     # Same Redis NX lock as append_expert_run_message: the sequence read +
     # insert must not interleave with a concurrent turn writer picking the
     # same sequence and PK-colliding on (sessionId, sequence).
     async with _get_session_lock(session_id):
         try:
-            await add_chat_message(
-                session_id=session_id,
-                role="assistant",
-                sequence=await get_next_sequence(session_id),
-                content=content,
-                message_id=message_id,
-                metadata=metadata,
-            )
+            await write_with_fresh_sequence()
         except UniqueViolationError as e:
             if is_duplicate_chat_message_id_error(e):
                 return None
             # Reachable only in lock-degraded mode (Redis down yields the
             # lock without acquiring); one retry with a fresh sequence is
             # enough at this write volume.
-            await add_chat_message(
-                session_id=session_id,
-                role="assistant",
-                sequence=await get_next_sequence(session_id),
-                content=content,
-                message_id=message_id,
-                metadata=metadata,
-            )
+            await write_with_fresh_sequence()
     return session_id

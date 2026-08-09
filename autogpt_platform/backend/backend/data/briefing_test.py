@@ -55,13 +55,13 @@ async def test_create_and_get_briefing(server: SpinTestServer):
             await briefing.get_briefing_for_date(user_id, date(2026, 8, 7))
         ).id == record.id
         assert (await briefing.get_briefing_for_date(user_id, date(2026, 8, 8))) is None
-        assert (await briefing.get_latest_briefing(user_id)).id == record.id
+        assert (await briefing.get_latest_briefings(user_id))[0].id == record.id
     finally:
         await _cleanup(user_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_latest_briefing_orders_by_briefing_date_not_created_at(
+async def test_get_latest_briefings_order_by_briefing_date_not_created_at(
     server: SpinTestServer,
 ):
     """A backfill/retry can write an earlier date's briefing after a later
@@ -84,10 +84,9 @@ async def test_get_latest_briefing_orders_by_briefing_date_not_created_at(
             data={"createdAt": later.created_at + timedelta(seconds=1)},
         )
 
-        latest = await briefing.get_latest_briefing(user_id)
-        assert latest is not None
-        assert latest.id == later.id
-        assert latest.briefing_date == date(2026, 8, 10)
+        latest = await briefing.get_latest_briefings(user_id)
+        assert [record.id for record in latest] == [later.id, earlier.id]
+        assert latest[0].briefing_date == date(2026, 8, 10)
     finally:
         await _cleanup(user_id)
 

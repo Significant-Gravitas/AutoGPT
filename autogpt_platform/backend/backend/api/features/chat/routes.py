@@ -123,6 +123,10 @@ logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 
+# Strong refs to fire-and-forget tasks spawned from request handlers; the
+# event loop only keeps weak references.
+_background_tasks: set[asyncio.Task] = set()
+
 
 async def _validate_and_get_session(
     session_id: str,
@@ -1170,7 +1174,6 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
-    import asyncio
     import time
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
@@ -1178,10 +1181,16 @@ async def stream_chat_post(
     # graphiti/ingest.py's ensure_dream_system_scheduled registration.
     from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
 
-    asyncio.create_task(
+    briefing_task = asyncio.create_task(
         ensure_morning_briefing_scheduled(user_id),
         name=f"morning-briefing-register-{user_id[:12]}",
     )
+    # The loop only holds a weak reference, so an unretained task can be GC'd
+    # mid-flight — leaving the Redis marker unwritten and making every
+    # subsequent turn redo the whole registration. Same pattern as
+    # ``backend/data/user.py``'s ``_background_tasks``.
+    _background_tasks.add(briefing_task)
+    briefing_task.add_done_callback(_background_tasks.discard)
 
     stream_start_time = time.perf_counter()
     # Wall-clock arrival time, propagated to the executor so the turn-start

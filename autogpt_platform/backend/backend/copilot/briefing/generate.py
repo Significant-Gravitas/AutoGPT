@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
@@ -74,46 +76,47 @@ def compose_briefing(
     terminal.sort(key=lambda e: str(e.status) != "FAILED")
 
     run_items = []
-    for e in terminal[:_MAX_RUN_ITEMS]:
-        info = agent_info_by_graph_id.get(e.graph_id)
-        expert = experts_by_id.get(e.expert_id) if e.expert_id else None
+    for execution in terminal[:_MAX_RUN_ITEMS]:
+        info = agent_info_by_graph_id.get(execution.graph_id)
+        expert = experts_by_id.get(execution.expert_id) if execution.expert_id else None
         run_items.append(
             BriefingRunItem(
                 expert_id=expert.id if expert else None,
                 expert_name=expert.name if expert else None,
                 expert_avatar_url=expert.avatar_url if expert else None,
                 agent_name=info.name if info else "Agent",
-                graph_id=e.graph_id,
-                execution_id=e.id,
+                graph_id=execution.graph_id,
+                execution_id=execution.id,
                 library_agent_id=info.library_agent_id if info else None,
-                status=str(e.status),
-                summary=_activity_summary(e.stats),
-                link=_run_link(info, e.id),
+                status=str(execution.status),
+                summary=_activity_summary(execution.stats),
+                link=_run_link(info, execution.id),
             )
         )
 
     expert_id_by_exec = {e.id: e.expert_id for e in executions}
     decision_items = []
-    for r in reviews:
-        if r.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
-            link = f"/copilot?sessionId={r.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)}"
+    for review in reviews:
+        if review.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
+            session_id = review.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+            link = f"/copilot?sessionId={session_id}"
         else:
-            info = agent_info_by_graph_id.get(r.graph_id)
-            link = _run_link(info, r.graph_exec_id) or "/library"
+            info = agent_info_by_graph_id.get(review.graph_id)
+            link = _run_link(info, review.graph_exec_id) or "/library"
         # _enrich_pending_reviews already resolved expert attribution on the
         # review model (including copilot-session reviews and executions older
         # than the 24h window); the local lookup only backfills gaps.
         fallback = experts_by_id.get(
-            r.expert_id or expert_id_by_exec.get(r.graph_exec_id) or ""
+            review.expert_id or expert_id_by_exec.get(review.graph_exec_id) or ""
         )
         decision_items.append(
             BriefingDecisionItem(
-                node_exec_id=r.node_exec_id,
-                graph_exec_id=r.graph_exec_id,
-                title=r.instructions or "Review needed",
-                expert_id=r.expert_id or (fallback.id if fallback else None),
-                expert_name=r.expert_name or (fallback.name if fallback else None),
-                expert_avatar_url=r.expert_avatar_url
+                node_exec_id=review.node_exec_id,
+                graph_exec_id=review.graph_exec_id,
+                title=review.instructions or "Review needed",
+                expert_id=review.expert_id or (fallback.id if fallback else None),
+                expert_name=review.expert_name or (fallback.name if fallback else None),
+                expert_avatar_url=review.expert_avatar_url
                 or (fallback.avatar_url if fallback else None),
                 link=link,
             )
@@ -130,24 +133,41 @@ def compose_briefing(
     )
 
 
+# Agent names, AI-generated summaries and review instructions can all
+# originate from a third-party/marketplace agent. Escaping the markdown
+# metacharacters that carry structure stops that text from breaking out of
+# the link syntax it is interpolated into and spoofing the label or target
+# rendered in the user's thread.
+_MARKDOWN_META_RE = re.compile(r"([\\`*_\[\]()<>])")
+
+
+def _md(text: str) -> str:
+    """Escape untrusted text for inline interpolation into markdown."""
+    collapsed = " ".join(text.split())
+    return _MARKDOWN_META_RE.sub(r"\\\1", collapsed)
+
+
 def render_briefing_markdown(content: BriefingContent) -> str:
     lines = ["## ☀️ Your morning briefing", ""]
     if content.run_items:
         lines.append("**What ran**")
-        for i in content.run_items:
-            who = f"{i.expert_name}: " if i.expert_name else ""
-            outcome = "completed" if i.status == "COMPLETED" else "failed"
-            name = f"[{i.agent_name}]({i.link})" if i.link else i.agent_name
+        for item in content.run_items:
+            who = f"{_md(item.expert_name)}: " if item.expert_name else ""
+            outcome = "completed" if item.status == "COMPLETED" else "failed"
+            agent_name = _md(item.agent_name)
+            name = f"[{agent_name}]({item.link})" if item.link else agent_name
             lines.append(f"- {who}{name} — {outcome}")
         lines.append("")
-    found = [i for i in content.run_items if i.summary]
+    found = [item for item in content.run_items if item.summary]
     if found:
         lines.append("**What was found**")
-        lines.extend(f"- **{i.agent_name}**: {i.summary}" for i in found)
+        lines.extend(
+            f"- **{_md(item.agent_name)}**: {_md(item.summary or '')}" for item in found
+        )
         lines.append("")
     if content.decision_items:
         lines.append(f"**Needs your decision ({len(content.decision_items)})**")
-        lines.extend(f"- [{d.title}]({d.link})" for d in content.decision_items)
+        lines.extend(f"- [{_md(d.title)}]({d.link})" for d in content.decision_items)
     return "\n".join(lines).strip()
 
 
@@ -208,13 +228,16 @@ async def generate_and_deliver_briefing(user_id: str) -> dict:
         content = stored
     else:
         window_start = (now_local - timedelta(hours=24)).astimezone(dt_timezone.utc)
-        experts = await experts_db().list_experts(user_id)
-        executions = await execution_db().get_graph_executions(
-            user_id=user_id, created_time_gte=window_start
+        # The four reads are independent; run them concurrently so the
+        # briefing costs one round-trip's latency rather than four.
+        experts, executions, reviews, library = await asyncio.gather(
+            experts_db().list_experts(user_id),
+            execution_db().get_graph_executions(
+                user_id=user_id, created_time_gte=window_start
+            ),
+            review_db().get_pending_reviews_for_user(user_id, 1, 100),
+            library_db().list_library_agents(user_id, page_size=100),
         )
-        reviews = await review_db().get_pending_reviews_for_user(user_id, 1, 100)
-
-        library = await library_db().list_library_agents(user_id, page_size=100)
         agent_info: dict[str, AgentInfo] = {
             agent.graph_id: AgentInfo(agent.name, agent.id) for agent in library.agents
         }

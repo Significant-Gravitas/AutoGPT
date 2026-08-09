@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timezone
+from typing import Any
 
 import prisma.errors
 import prisma.models
@@ -6,12 +7,21 @@ from pydantic import BaseModel
 
 from backend.util.json import SafeJson
 
+# Serialized BriefingContent (see backend/copilot/briefing/models.py). Left
+# untyped at this layer so a shape written by another composer version still
+# round-trips; callers re-validate against the model.
+BriefingContentJson = dict[str, Any]
+
+# Upper bound on how far back get_latest_briefings looks for a readable
+# briefing when the newest rows fail validation.
+_LATEST_BRIEFING_SCAN_LIMIT = 5
+
 
 class BriefingRecord(BaseModel):
     id: str
     user_id: str
     briefing_date: date
-    content: dict
+    content: BriefingContentJson
     created_at: datetime
     delivered_at: datetime | None = None
 
@@ -32,7 +42,7 @@ def _as_db_date(briefing_date: date) -> datetime:
 
 
 async def create_briefing(
-    user_id: str, briefing_date: date, content: dict
+    user_id: str, briefing_date: date, content: BriefingContentJson
 ) -> BriefingRecord:
     try:
         row = await prisma.models.UserBriefing.prisma().create(
@@ -68,11 +78,20 @@ async def mark_briefing_delivered(user_id: str, briefing_id: str) -> None:
     )
 
 
-async def get_latest_briefing(user_id: str) -> BriefingRecord | None:
-    # Order by briefingDate, not createdAt: a backfill or retry can write an
-    # earlier date's briefing after a later date's already exists, and the
-    # "latest" briefing means the latest date it covers, not insertion order.
-    row = await prisma.models.UserBriefing.prisma().find_first(
-        where={"userId": user_id}, order={"briefingDate": "desc"}
+async def get_latest_briefings(
+    user_id: str, limit: int = _LATEST_BRIEFING_SCAN_LIMIT
+) -> list[BriefingRecord]:
+    """Return the user's most recent briefings, newest covered date first.
+
+    More than one is returned so a caller that re-validates stored content
+    can fall back to the newest *readable* briefing instead of showing
+    nothing when a single corrupt row happens to sit on the newest date.
+
+    Ordered by briefingDate, not createdAt: a backfill or retry can write an
+    earlier date's briefing after a later date's already exists, and the
+    "latest" briefing means the latest date it covers, not insertion order.
+    """
+    rows = await prisma.models.UserBriefing.prisma().find_many(
+        where={"userId": user_id}, order={"briefingDate": "desc"}, take=limit
     )
-    return BriefingRecord.from_db(row) if row else None
+    return [BriefingRecord.from_db(row) for row in rows]

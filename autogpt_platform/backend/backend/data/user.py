@@ -828,10 +828,9 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
             )
 
         # Same rationale for the morning-briefing cron: clear the stored
-        # marker first so the re-register isn't skipped by its own drift
-        # check reading the just-superseded timezone, then re-ensure so
-        # the profile change takes effect immediately instead of waiting
-        # out the marker's 7-day TTL. Fire-and-forget like the dream task
+        # marker first, since its mere presence short-circuits the helper,
+        # then re-ensure so the profile change takes effect immediately
+        # instead of waiting out the marker's TTL. Fire-and-forget like the dream task
         # above so the profile update doesn't block on Redis/scheduler
         # I/O, and guard the import so a failure here can't surface as a
         # false "failed to update timezone" after the row committed.

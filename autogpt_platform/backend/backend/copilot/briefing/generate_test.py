@@ -561,3 +561,47 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
     assert run_item["library_agent_id"] == "lib-1"
     assert run_item["link"] == "/library/agents/lib-1?executionId=run-1"
     assert run_item["agent_name"] == "Lead Finder Workflow"
+
+
+def test_summary_reads_stats_model_not_just_dict():
+    """Production hands compose_briefing a ``GraphExecutionMeta.Stats`` model,
+    while the other tests stub ``stats`` as a plain dict — pin the model branch
+    so the attribute read can't silently regress to dict-only."""
+    from backend.data.execution import GraphExecutionMeta
+
+    execution = make_exec(summary=None)
+    execution.stats = GraphExecutionMeta.Stats(activity_status="Filed 2 tickets")
+
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[execution],
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+
+    assert content is not None
+    assert content.run_items[0].summary == "Filed 2 tickets"
+
+
+def test_markdown_escapes_untrusted_text_in_link_labels():
+    """Agent names and review instructions can come from a marketplace agent;
+    they must not be able to break out of the markdown link they sit in."""
+    review = make_review(instructions="Approve [Trusted](https://evil.example) now")
+
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec(summary="Found [a](https://evil.example)")],
+        reviews=[review],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead [Finder]", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+
+    markdown = render_briefing_markdown(content)
+
+    assert "[Trusted](https://evil.example)" not in markdown
+    assert "Approve \\[Trusted\\]\\(https://evil.example\\) now" in markdown
+    assert "[Lead \\[Finder\\]](/library/agents/lib-1?executionId=run-1)" in markdown

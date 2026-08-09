@@ -307,8 +307,9 @@ model UserBriefing {
   // generation run for the same date retries delivery instead of skipping.
   deliveredAt DateTime?
 
+  // Every read is by user + date (latest-first or exact date), so the unique
+  // index above serves them all — no secondary index to pay for on write.
   @@unique([userId, briefingDate])
-  @@index([userId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////

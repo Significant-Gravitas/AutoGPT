@@ -28,30 +28,30 @@ class BriefingResponse(BaseModel):
 async def get_latest_briefing(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> BriefingResponse | None:
-    """Return the user's most recent briefing, or None if none exists yet.
+    """Return the user's most recent readable briefing, or None if there is none.
 
     Stored content that fails to validate against the current BriefingContent
-    shape (e.g. written by an older/newer version of the composer) is treated
-    as if no briefing exists, rather than 500ing the request.
+    shape (e.g. written by an older/newer version of the composer) is skipped
+    rather than 500ing the request — and rather than hiding every older
+    briefing behind one unreadable row on the newest date.
     """
-    record = await briefing_db.get_latest_briefing(user_id)
-    if record is None:
-        return None
+    for record in await briefing_db.get_latest_briefings(user_id):
+        try:
+            content = BriefingContent.model_validate(record.content)
+        except ValidationError:
+            logger.warning(
+                "Briefing %s for user %s failed to validate against "
+                "BriefingContent; falling back to the previous briefing",
+                record.id,
+                user_id,
+            )
+            continue
 
-    try:
-        content = BriefingContent.model_validate(record.content)
-    except ValidationError:
-        logger.warning(
-            "Briefing %s for user %s failed to validate against BriefingContent; "
-            "treating as if no briefing exists",
-            record.id,
-            user_id,
+        return BriefingResponse(
+            id=record.id,
+            briefing_date=record.briefing_date,
+            created_at=record.created_at,
+            content=content,
         )
-        return None
 
-    return BriefingResponse(
-        id=record.id,
-        briefing_date=record.briefing_date,
-        created_at=record.created_at,
-        content=content,
-    )
+    return None

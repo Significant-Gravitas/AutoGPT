@@ -8,10 +8,16 @@ the registry indirection.
 
 **Timezone drift handling.** APScheduler binds the cron trigger to the
 timezone at job-creation time — a later ``User.timezone`` change silently
-leaves the cron firing at the old local time. The Redis dedup key stores
-the timezone the cron was registered with; every call compares the stored
-value to the user's current timezone and re-registers on mismatch via the
-scheduler's ``replace_existing=True``.
+leaves the cron firing at the old local time. Two mechanisms cover that:
+``update_user_timezone`` clears the Redis marker so the very next call
+re-registers, and the marker's TTL bounds how long a drift arriving by any
+other route can persist. Re-registration is a no-op-cheap
+``replace_existing=True`` write.
+
+**Hot-path cost.** This helper runs on every chat turn, so the Redis
+marker is read *first* and short-circuits everything else. Only the first
+call after the marker expires pays for the timezone lookup (a DB read) and
+the scheduler RPC.
 
 Failures are logged at WARN and swallowed — ``ensure_morning_briefing_scheduled``
 is fired via ``asyncio.create_task`` from the hot chat-stream request path
@@ -26,10 +32,11 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
-# Matches dream's TTL rationale: long enough that a lazy re-check every few
-# days is enough to catch drift, short enough that an out-of-band cron
-# deletion self-heals within a bounded window.
-REGISTRATION_TTL_SECONDS = 7 * 24 * 3600
+# How long a registration marker suppresses re-checking. Short enough that
+# an out-of-band cron deletion, or a timezone change that bypassed
+# ``update_user_timezone``, self-heals within hours; long enough that the
+# DB read + scheduler RPC costs at most a handful of turns a day per user.
+REGISTRATION_TTL_SECONDS = 6 * 3600
 
 BRIEFING_REGISTRATION_PREFIX = "morning_briefing_registered"
 
@@ -74,6 +81,10 @@ async def _resolve_user_timezone(user_id: str) -> str | None:
 
 async def _read_registration_tz(user_id: str) -> str | None:
     """Read the timezone the briefing cron was last registered with.
+
+    Doubles as the freshness check: the key is written with
+    ``REGISTRATION_TTL_SECONDS``, so its mere presence means "registered
+    recently enough, don't re-check".
 
     Returns:
       * The stored timezone string when the key exists.
@@ -129,7 +140,7 @@ async def clear_briefing_registration_marker(user_id: str) -> None:
 
     Called from ``update_user_timezone`` so a profile change immediately
     re-opens lazy registration instead of leaving the marker to block it
-    for the remainder of its 7-day TTL. Single-key DEL so it routes on
+    for the remainder of its TTL. Single-key DEL so it routes on
     Redis Cluster.
 
     Best-effort — on Redis failure the marker simply expires via TTL.
@@ -154,13 +165,13 @@ async def ensure_morning_briefing_scheduled(user_id: str) -> None:
     Fire-and-forget callable from two trigger points:
 
     * **Lazy path** — ``stream_chat_post`` fires this after resolving the
-      authenticated user on every turn. Drift-detects timezone changes
-      via the Redis stored value and re-registers when the user's
-      current timezone differs from the stored one.
+      authenticated user on every turn. The Redis marker short-circuits
+      the common case, so only the first turn after the marker expires
+      re-resolves the timezone and re-registers.
     * **Eager path** — ``update_user_timezone`` clears the marker first
       (see :func:`clear_briefing_registration_marker`) then calls this,
       so a profile change re-registers within a single call instead of
-      waiting for the dedup key's 7-day TTL to expire.
+      waiting for the dedup key's TTL to expire.
 
     Never raises — swallows and logs every failure so a bad call can
     never break the caller's hot path.
@@ -171,16 +182,19 @@ async def ensure_morning_briefing_scheduled(user_id: str) -> None:
         if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
             return
 
+        # Marker first: one Redis GET is the entire cost of the common
+        # case. Resolving the timezone is a DB read, and this runs on
+        # every chat turn, so it must stay behind this gate.
+        stored_tz = await _read_registration_tz(user_id)
+        if stored_tz is not None:
+            return
+
         tz = await _resolve_user_timezone(user_id)
         if tz is None:
             # Lookup failed — "unknown" is not "UTC". Re-registering would
             # silently rebind the user's local-time cron to UTC; leave the
             # existing cron and stored tz untouched until a later call
             # resolves the real timezone.
-            return
-
-        if await _read_registration_tz(user_id) == tz:
-            # Same tz, still within TTL → no work.
             return
 
         # Lazy client handle, mirroring dream/scheduling.py: a flag-off
