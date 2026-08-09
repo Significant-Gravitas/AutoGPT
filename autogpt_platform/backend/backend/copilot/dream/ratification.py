@@ -370,9 +370,14 @@ async def _stamp_recall(
 
     Batched with ``UNWIND`` rather than looped per uuid: this runs on
     the fire-and-forget retrieval path once per chat turn, and one
-    query for the whole retrieved set keeps that cost flat. Failures
-    are swallowed — the usage signal is an optimization, never a
-    reason to disturb the chat turn.
+    query for the whole retrieved set keeps that cost flat. The uuid
+    lookup rides graphiti's standard range index on
+    ``()-[e:RELATES_TO]-() ON (e.uuid, e.group_id, …)``, built by the
+    long-lived chat-write client (this driver passes
+    ``build_indices=False`` to avoid re-firing that background task) —
+    the same index every other targeted edge write here depends on.
+    Failures are swallowed — the usage signal is an optimization, never
+    a reason to disturb the chat turn.
 
     Returns the number of edges stamped (0 on failure).
     """

@@ -34,6 +34,13 @@ logger = logging.getLogger(__name__)
 # unprotected.
 RECENT_RECALL_WINDOW = timedelta(days=7)
 
+# Lives here, beside RECENT_RECALL_WINDOW, despite being consumed only
+# by the stamp WRITER (``ratification._stamp_recall``): the two are one
+# policy split across write and read. "Two recalls within a week" is
+# only meaningful if a "recall" is defined — change the dedupe interval
+# alone and the window's guarantee quietly changes with it, so they are
+# co-located to be read (and edited) together.
+#
 # Recall stamps closer together than this collapse into one "use":
 # warm context re-pulls the same edges turn after turn, so raw
 # per-turn increments would clear any repetition bar inside a single
@@ -121,14 +128,30 @@ def protected_fact_uuids(
     }
 
 
-def format_usage(fact: FactRow) -> str:
+def format_usage(fact: FactRow, *, now: datetime | None = None) -> str:
     """Render a fact's usage signal for the dream prompts.
 
     Rendered for EVERY fact — including never-recalled ones — so the
     model reads absence as an explicit signal rather than having to
     infer it from a missing field.
+
+    The rendered signal must match what ``protected_fact_uuids``
+    actually decides on, or the sanitize prompt's promise that
+    usage-protected demotions "are dropped by a code-level guard
+    anyway" misleads the model: a lifetime count plus a recent
+    ``last_recall`` looks protected while the guard — which keys on the
+    SECOND-latest stamp — would allow the demotion. So the guard's own
+    verdict is rendered explicitly rather than left to be inferred.
     """
     count = fact.recall_count or 0
     if not count:
         return "recalls=0(never)"
-    return f"recalls={count} last_recall={fact.last_recalled_at or '?'}"
+    verdict = (
+        "protected"
+        if protected_fact_uuids([fact], now=now)
+        else "demotable-on-staleness"
+    )
+    return (
+        f"recalls={count} last_recall={fact.last_recalled_at or '?'} "
+        f"prior_recall={fact.prev_recalled_at or 'none'} usage={verdict}"
+    )

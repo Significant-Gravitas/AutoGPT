@@ -261,3 +261,36 @@ def test_recalled_facts_render_count_and_last_recall():
     )
     assert "recalls=4" in rendered
     assert "2026-08-01T00:00:00+00:00" in rendered
+
+
+def test_count_without_a_timestamp_renders_a_placeholder():
+    rendered = format_usage(_fact("undated", recall_count=4))
+    assert (
+        rendered
+        == "recalls=4 last_recall=? prior_recall=none usage=demotable-on-staleness"
+    )
+
+
+def test_rendered_verdict_matches_the_guard_decision():
+    """The prompt promises usage-protected demotions get dropped by the
+    guard — so what the model reads must be the guard's own verdict, not
+    a proxy it has to infer from the count."""
+    protected = _fact(
+        "hot",
+        recall_count=2,
+        last_recalled_at=_ago(days=1),
+        prev_recalled_at=_ago(days=2),
+    )
+    # High lifetime count, recent last recall — but the SECOND-latest
+    # recall is ancient, so the guard will not block a staleness demotion.
+    looks_hot_but_isnt = _fact(
+        "stale",
+        recall_count=40,
+        last_recalled_at=_ago(hours=2),
+        prev_recalled_at=_ago(days=400),
+    )
+
+    assert "usage=protected" in format_usage(protected)
+    assert protected_fact_uuids([protected]) == {"hot"}
+    assert "usage=demotable-on-staleness" in format_usage(looks_hot_but_isnt)
+    assert protected_fact_uuids([looks_hot_but_isnt]) == set()

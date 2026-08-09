@@ -59,7 +59,7 @@ from .schemas import (
     ProposedFinding,
     WriteSummary,
 )
-from .usage import drop_recently_used_demotions
+from .usage import drop_recently_used_demotions, protected_fact_uuids
 
 logger = logging.getLogger(__name__)
 
@@ -290,9 +290,31 @@ async def _filter_demotions(
             )
     if not kept:
         return kept
-    fresh = await fetch_usage_rows(user_id, [d.edge_uuid for d in kept])
+    return await _drop_usage_protected(user_id, pass_id, kept, facts)
+
+
+async def _drop_usage_protected(
+    user_id: str,
+    pass_id: str,
+    demotions: list[DreamDemotion],
+    facts: list[FactRow] | None,
+) -> list[DreamDemotion]:
+    """Usage guard over the snapshot plus a targeted stamp refresh.
+
+    Facts the snapshot ALREADY protects need no refresh — their
+    demotions are dropped either way — so only the rest are re-read.
+    On the sync path, where the snapshot is seconds old, that usually
+    leaves nothing to fetch and skips the driver open entirely; on the
+    batch path it is the fresh read that keeps a fact recalled since
+    submission protected.
+    """
+    snapshot_protected = protected_fact_uuids(facts) if facts else set()
+    stale_targets = [
+        d.edge_uuid for d in demotions if d.edge_uuid not in snapshot_protected
+    ]
+    fresh = await fetch_usage_rows(user_id, stale_targets) if stale_targets else []
     combined = (facts or []) + (fresh or [])
-    return drop_recently_used_demotions(pass_id, kept, combined or None)
+    return drop_recently_used_demotions(pass_id, demotions, combined or None)
 
 
 async def _read_bundle_for_filter(
@@ -310,7 +332,8 @@ async def _read_bundle_for_filter(
     except Exception as exc:
         logger.warning(
             "Dream pass %s: input bundle read failed (%s) — failing open "
-            "and skipping known-fact validation for %d demotion(s)",
+            "and skipping both demotion guards (known-fact allowlist and "
+            "usage protection) for %d demotion(s)",
             pass_id,
             exc,
             demotion_count,
@@ -318,8 +341,9 @@ async def _read_bundle_for_filter(
         return None
     if bundle is None:
         logger.warning(
-            "Dream pass %s: no input bundle available — skipping "
-            "known-fact validation for %d demotion(s)",
+            "Dream pass %s: no input bundle available — skipping both "
+            "demotion guards (known-fact allowlist and usage protection) "
+            "for %d demotion(s)",
             pass_id,
             demotion_count,
         )

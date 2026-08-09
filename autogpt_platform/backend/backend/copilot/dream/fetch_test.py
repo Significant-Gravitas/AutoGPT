@@ -84,6 +84,7 @@ async def test_fetch_usage_rows_returns_current_stamps(mocker):
                 "uuid": "hot",
                 "recall_count": 3,
                 "last_recalled_at": "2026-08-05T00:00:00+00:00",
+                "prev_recalled_at": "2026-08-03T00:00:00+00:00",
             },
             {"uuid": "cold", "recall_count": None, "last_recalled_at": None},
         ]
@@ -94,6 +95,11 @@ async def test_fetch_usage_rows_returns_current_stamps(mocker):
 
     assert rows is not None
     assert {(r.uuid, r.recall_count) for r in rows} == {("hot", 3), ("cold", None)}
+    # prev_recalled_at is the field protection actually keys on — an
+    # unmapped column here would silently unprotect every refreshed fact.
+    by_uuid = {r.uuid: r for r in rows}
+    assert by_uuid["hot"].prev_recalled_at == "2026-08-03T00:00:00+00:00"
+    assert by_uuid["cold"].prev_recalled_at is None
     driver.close.assert_awaited_once()
 
 
@@ -107,6 +113,20 @@ async def test_fetch_usage_rows_returns_none_on_query_failure(mocker):
 
     assert await fetch_usage_rows("u-1234567890ab", ["hot"]) is None
     driver.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fetch_usage_rows_returns_none_for_an_invalid_user_id(mocker):
+    """derive_group_id rejects malformed ids — fail open to the snapshot
+    rather than raising into the apply path."""
+    ctor = MagicMock()
+    mocker.patch.object(fetch_mod, "AutoGPTFalkorDriver", ctor)
+    mocker.patch.object(
+        fetch_mod, "derive_group_id", side_effect=ValueError("bad user id")
+    )
+
+    assert await fetch_usage_rows("", ["hot"]) is None
+    ctor.assert_not_called()
 
 
 @pytest.mark.asyncio

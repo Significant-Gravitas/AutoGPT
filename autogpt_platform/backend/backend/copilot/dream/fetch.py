@@ -317,6 +317,9 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
     finally:
         await driver.close()
     rows = result[0] if result else []
+    # Usage-only projection: identity/content fields are intentionally
+    # null. These rows exist to feed the demotion guard's uuid → usage
+    # lookup and must not be treated as complete facts.
     return [
         FactRow(
             uuid=str(r.get("uuid", "")),

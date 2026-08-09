@@ -40,6 +40,18 @@ def _format_episodes(input_bundle: DreamInput, max_chars_per_episode: int = 500)
     return "\n".join(lines)
 
 
+def _inline(value: str | None) -> str:
+    """Collapse untrusted free text onto one line for the fact listing.
+
+    Every free-text field here — the fact, but equally the entity and
+    relation NAMES, which the extractor lifts out of the same
+    user/tool/web content — could otherwise embed a newline and forge a
+    ``- uuid=… recalls=…`` line for a different fact, faking usage
+    stats to steer the sanitizer's demotions.
+    """
+    return " ".join((value or "?").split()) or "?"
+
+
 def _format_facts(input_bundle: DreamInput) -> str:
     if not input_bundle.facts:
         return "(no active facts)"
@@ -47,13 +59,10 @@ def _format_facts(input_bundle: DreamInput) -> str:
     for f in input_bundle.facts:
         scope = f.scope or "real:global"
         bucket = by_scope.setdefault(scope, [])
-        # Whitespace-collapse the fact text: stored memory is ultimately
-        # tool/web/user-authored, and an embedded newline could forge a
-        # ``- uuid=… recalls=…`` line for another fact in this listing.
         bucket.append(
             f"  - uuid={f.uuid} confidence={f.confidence} {format_usage(f)} "
-            f"{(f.source or '?')} —[{f.name or '?'}]→ {(f.target or '?')}: "
-            f"{' '.join((f.fact or '').split())}"
+            f"{_inline(f.source)} —[{_inline(f.name)}]→ {_inline(f.target)}: "
+            f"{_inline(f.fact)}"
         )
     parts: list[str] = []
     for scope, bucket in sorted(by_scope.items()):
@@ -230,15 +239,18 @@ SANITIZE_SYSTEM = (
     " * USAGE SIGNAL: every active fact carries a `recalls=` count — "
     "on how many distinct occasions warm-context retrieval has pulled "
     "it into a live conversation (same-day repeats collapse into one) "
-    "— and, when non-zero, the timestamp of the last recall. Prefer "
-    "demoting facts with `recalls=0(never)`: nothing has ever needed "
-    "them, so a stale one costs nothing to drop. Conversely, a fact "
-    "recalled on two or more separate occasions within the last "
-    f"{RECENT_RECALL_WINDOW.days} days is in active use — do not "
-    "demote it on staleness grounds alone (a direct contradiction or "
-    "an explicit user retraction still wins). Those demotions are "
-    "dropped by a code-level guard anyway, wasting a slot against the "
-    "per-pass cap.\n"
+    "— plus, when non-zero, `last_recall=`/`prior_recall=` timestamps "
+    "and a `usage=` verdict. Prefer demoting facts with "
+    "`recalls=0(never)`: nothing has ever needed them, so a stale one "
+    "costs nothing to drop. `usage=protected` means the fact was "
+    f"recalled twice within the last {RECENT_RECALL_WINDOW.days} days "
+    "and is in active use — do not demote it on staleness grounds "
+    "alone (a direct contradiction or an explicit user retraction "
+    "still wins). Those demotions are dropped by a code-level guard "
+    "anyway, wasting a slot against the per-pass cap. "
+    "`usage=demotable-on-staleness` means the guard will NOT block a "
+    "staleness demotion, however high the recall count looks — the "
+    "fact's second-most-recent recall is outside the window.\n"
     " * Demotion edge_uuids MUST exist in the provided list of known "
     "fact uuids. Do not invent uuids.\n"
     " * Entity invalidations require an entity_uuid present in the "
@@ -289,7 +301,7 @@ def _format_stale_candidates(input_bundle: DreamInput) -> str:
         lines.append(
             f"- uuid={fact.uuid} score={score:.2f} "
             f"created_at={fact.created_at or '?'}: "
-            f"{(fact.fact or '').strip()}"
+            f"{_inline(fact.fact)}"
         )
     return "\n".join(lines)
 
