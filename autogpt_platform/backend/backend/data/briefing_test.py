@@ -92,6 +92,32 @@ async def test_get_latest_briefings_order_by_briefing_date_not_created_at(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_briefing_content_is_user_scoped(server: SpinTestServer):
+    user_id = f"briefing-update-{uuid4()}"
+    await _create_user(user_id)
+    try:
+        record = await briefing.create_briefing(
+            user_id, date(2026, 8, 7), {"which": "original"}
+        )
+
+        await briefing.update_briefing_content(
+            f"not-{user_id}", record.id, {"which": "foreign-overwrite"}
+        )
+        untouched = await briefing.get_briefing_for_date(user_id, date(2026, 8, 7))
+        assert untouched is not None
+        assert untouched.content == {"which": "original"}
+
+        await briefing.update_briefing_content(
+            user_id, record.id, {"which": "recomposed"}
+        )
+        updated = await briefing.get_briefing_for_date(user_id, date(2026, 8, 7))
+        assert updated is not None
+        assert updated.content == {"which": "recomposed"}
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_mark_briefing_delivered_is_user_scoped(server: SpinTestServer):
     user_id = f"briefing-delivered-{uuid4()}"
     await _create_user(user_id)

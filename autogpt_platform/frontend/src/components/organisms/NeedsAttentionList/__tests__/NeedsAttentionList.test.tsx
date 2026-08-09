@@ -130,11 +130,31 @@ test("decline sends a rejection", async () => {
     await screen.findByRole("button", { name: /^Confirm decline:/ }),
   );
   await waitFor(() =>
-    expect(actionBody?.reviews[0]).toMatchObject({
-      approved: false,
-      message: "Declined from home",
-    }),
+    expect(actionBody?.reviews[0]).toMatchObject({ approved: false }),
   );
+  // No canned reason: this surface has no field to write one in, so nothing
+  // should reach the agent context / audit trail as if the user typed it.
+  expect(actionBody?.reviews[0].message).toBeUndefined();
+});
+
+test("armed decline is announced and visually distinct, not just relabelled", async () => {
+  server.use(getGetV2GetPendingReviewsMockHandler200([review]));
+
+  render(<NeedsAttentionList />);
+  const declineButton = await screen.findByRole("button", {
+    name: /^Decline:/,
+  });
+  const initialClassName = declineButton.className;
+
+  await userEvent.click(declineButton);
+
+  const armed = await screen.findByRole("button", {
+    name: /^Confirm decline:/,
+  });
+  expect(armed.className).not.toBe(initialClassName);
+  expect(
+    screen.getByText(`Tap again to decline: ${review.instructions}`),
+  ).toBeDefined();
 });
 
 test("shows a destructive toast when approve fails", async () => {

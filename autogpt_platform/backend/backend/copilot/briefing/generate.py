@@ -29,14 +29,17 @@ from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
 
 logger = logging.getLogger(__name__)
 
-_TERMINAL_STATUSES = {"COMPLETED", "FAILED"}
 _BRIEFED_STATUSES = [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
+# Derived so the query filter and the in-Python filter can't drift apart.
+_TERMINAL_STATUSES = {str(s) for s in _BRIEFED_STATUSES}
 _MAX_RUN_ITEMS = 10
 _MAX_DECISION_ITEMS = 10
 # Headroom over _MAX_RUN_ITEMS: the fetched window is filtered again in
 # Python (expert-owned runs only), so fetching exactly 10 could yield zero
 # briefable runs for a user who also runs plain agents.
 _EXECUTION_FETCH_LIMIT = 50
+# Ceiling on both the decisions considered and the reported decision_total.
+_PENDING_REVIEW_PAGE_SIZE = 100
 # Shared fallback for a run whose agent couldn't be resolved in the library.
 _DEFAULT_AGENT_NAME = "Agent"
 _LIBRARY_LINK = "/library"
@@ -66,6 +69,9 @@ def _run_link(info: AgentInfo | None, execution_id: str) -> str | None:
     ``activeTab``/``activeItem`` are the params that page actually parses
     (see ``NewAgentLibraryView``); ids are percent-encoded so a link target
     can never carry markdown or URL metacharacters.
+
+    Same route contract as the frontend's ``getReviewLink``
+    (``frontend/src/lib/review-links.ts``) — change both together.
     """
     if info and info.library_agent_id:
         return (
@@ -105,6 +111,7 @@ def compose_briefing(
     terminal = [e for e in executions if str(e.status) in _TERMINAL_STATUSES]
     if not zero_expert_fallback:
         terminal = [e for e in terminal if e.expert_id]
+    # FAILED first: the key is False (0) for failures, True (1) otherwise.
     terminal.sort(key=lambda e: str(e.status) != "FAILED")
 
     run_items = []
@@ -279,11 +286,16 @@ async def _compose_fresh_briefing(
             statuses=_BRIEFED_STATUSES,
             limit=_EXECUTION_FETCH_LIMIT,
         ),
-        review_db().get_pending_reviews_for_user(user_id, 1, 100),
+        # One page, deliberately wider than _MAX_DECISION_ITEMS: the extra
+        # rows aren't rendered, they're what makes decision_total (and the
+        # "…and N more" line) a real number rather than the render cap.
+        # A user past _PENDING_REVIEW_PAGE_SIZE waiting decisions therefore
+        # sees the total reported at that ceiling.
+        review_db().get_pending_reviews_for_user(user_id, 1, _PENDING_REVIEW_PAGE_SIZE),
     )
     # Resolve only the graphs actually referenced, rather than paging the
-    # library: a user with >100 agents used to miss the very one being
-    # briefed and fall back to an unlinkable "Agent" row.
+    # library: paging it would drop the very agent being briefed for a user
+    # with >100 agents, leaving an unlinkable "Agent" row.
     graph_ids = list({e.graph_id for e in executions} | {r.graph_id for r in reviews})
     refs = await library_db().get_library_agent_refs_by_graph_ids(user_id, graph_ids)
     agent_info: dict[str, AgentInfo] = {

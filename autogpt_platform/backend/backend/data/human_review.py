@@ -399,9 +399,9 @@ async def _enrich_pending_reviews(
 ) -> list[PendingHumanReviewModel]:
     """Batch-resolve node_id and attach expert/agent attribution.
 
-    Replaces per-row ``get_node_execution`` calls with a single batched
-    query, and additionally resolves, in a fixed number of batched
-    queries:
+    Resolves, in a fixed number of batched, ``userId``-scoped queries
+    rather than one round-trip per row:
+      - ``node_id``, from the node executions
       - expert attribution (from the graph execution, or from the chat
         session for CoPilot run_block reviews)
       - the requesting agent's display name and library agent id
@@ -421,30 +421,18 @@ async def _enrich_pending_reviews(
         r.node_exec_id for r in reviews if not is_copilot_synthetic_id(r.node_exec_id)
     ]
 
-    node_execs = (
-        await AgentNodeExecution.prisma().find_many(
-            where={
-                "id": {"in": real_node_exec_ids},
-                # Callers pass ids from user-filtered PendingHumanReview rows,
-                # but scope here too so this helper can never leak another
-                # user's node executions if a future caller slips.
-                "GraphExecution": {"is": {"userId": user_id}},
-            }
-        )
-        if real_node_exec_ids
-        else []
+    # These three reads don't depend on each other; the library lookup below
+    # does (it needs the graph ids the executions resolve to). Running them
+    # concurrently costs this endpoint two round-trips instead of four —
+    # it backs the home needs-attention list, refetched on every focus.
+    node_execs, executions, sessions = await asyncio.gather(
+        _node_executions_for(user_id, real_node_exec_ids),
+        _graph_executions_for(user_id, real_exec_ids),
+        _chat_sessions_for(user_id, session_ids),
     )
     node_id_by_exec = {ne.id: ne.agentNodeId for ne in node_execs}
-
-    executions = (
-        await AgentGraphExecution.prisma().find_many(
-            where={"id": {"in": real_exec_ids}, "userId": user_id},
-            include={"Expert": True, "AgentGraph": True},
-        )
-        if real_exec_ids
-        else []
-    )
     exec_by_id = {e.id: e for e in executions}
+    session_by_id = {s.id: s for s in sessions}
 
     graph_ids = list({e.agentGraphId for e in executions})
     lib_agents = (
@@ -467,16 +455,6 @@ async def _enrich_pending_reviews(
         else []
     )
     lib_by_graph = {a.agentGraphId: a for a in lib_agents}
-
-    sessions = (
-        await ChatSession.prisma().find_many(
-            where={"id": {"in": session_ids}, "userId": user_id},
-            include={"Expert": True},
-        )
-        if session_ids
-        else []
-    )
-    session_by_id = {s.id: s for s in sessions}
 
     for r in reviews:
         if is_copilot_synthetic_id(r.node_exec_id):
@@ -508,6 +486,42 @@ async def _enrich_pending_reviews(
                     r.expert_avatar_url = session.Expert.avatarUrl
 
     return reviews
+
+
+async def _node_executions_for(
+    user_id: str, node_exec_ids: list[str]
+) -> list[AgentNodeExecution]:
+    if not node_exec_ids:
+        return []
+    return await AgentNodeExecution.prisma().find_many(
+        where={
+            "id": {"in": node_exec_ids},
+            # Callers pass ids from user-filtered PendingHumanReview rows,
+            # but scope here too so this helper can never leak another
+            # user's node executions if a future caller slips.
+            "GraphExecution": {"is": {"userId": user_id}},
+        }
+    )
+
+
+async def _graph_executions_for(
+    user_id: str, graph_exec_ids: list[str]
+) -> list[AgentGraphExecution]:
+    if not graph_exec_ids:
+        return []
+    return await AgentGraphExecution.prisma().find_many(
+        where={"id": {"in": graph_exec_ids}, "userId": user_id},
+        include={"Expert": True, "AgentGraph": True},
+    )
+
+
+async def _chat_sessions_for(user_id: str, session_ids: list[str]) -> list[ChatSession]:
+    if not session_ids:
+        return []
+    return await ChatSession.prisma().find_many(
+        where={"id": {"in": session_ids}, "userId": user_id},
+        include={"Expert": True},
+    )
 
 
 async def get_pending_reviews_for_execution(

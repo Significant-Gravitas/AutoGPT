@@ -14,6 +14,10 @@ import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pen
  * The library route selects a run via `activeTab`/`activeItem` — those are
  * the params `NewAgentLibraryView` actually parses, so anything else lands
  * on the agent page without opening the run.
+ *
+ * The morning briefing composes these same two routes server-side, in
+ * `backend/copilot/briefing/generate.py` (`_run_link` and the decision-link
+ * branch of `compose_briefing`) — change both together.
  */
 export function getReviewLink(review: PendingHumanReviewModel): string {
   if (review.session_id) {

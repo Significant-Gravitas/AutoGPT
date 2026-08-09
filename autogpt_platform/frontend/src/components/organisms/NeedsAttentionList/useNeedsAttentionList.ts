@@ -37,7 +37,9 @@ export function useNeedsAttentionList() {
           {
             node_exec_id: review.node_exec_id,
             approved,
-            ...(approved ? {} : { message: "Declined from home" }),
+            // No message: this surface has no field to write one in, and a
+            // canned English string would reach the agent's context and the
+            // audit trail as if the user had typed it.
             auto_approve_future: false,
           },
         ],

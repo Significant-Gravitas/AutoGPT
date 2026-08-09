@@ -120,7 +120,10 @@ function NeedsAttentionRow({
           Approve
         </Button>
         <Button
-          variant="ghost"
+          // The armed state carries the destructive colour as well as the
+          // label: in a fast-tapping flow a word swap alone is easy to miss,
+          // and the next tap has no undo.
+          variant={isConfirmingDecline ? "destructive" : "ghost"}
           size="small"
           disabled={isProcessing}
           aria-label={
@@ -134,6 +137,9 @@ function NeedsAttentionRow({
           {isConfirmingDecline ? "Confirm" : "Decline"}
         </Button>
       </div>
+      <span aria-live="polite" className="sr-only">
+        {isConfirmingDecline ? `Tap again to decline: ${title}` : ""}
+      </span>
     </div>
   );
 }
