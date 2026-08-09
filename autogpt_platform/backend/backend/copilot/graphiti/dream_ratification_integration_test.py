@@ -41,6 +41,7 @@ from backend.copilot.dream import apply as apply_mod
 from backend.copilot.dream.ratification import run_ratification_pass, try_ratify_on_hit
 from backend.copilot.dream.ratification_hits import (
     RATIFICATION_GRACE_PERIOD,
+    get_hit_count,
     parse_created_at,
     record_memory_hit,
 )
@@ -132,8 +133,13 @@ class _FakeRedis:
         return str(value).encode() if value else None
 
     async def set(self, key: str, value, **kwargs) -> bool:
-        # Overwrite, like real SET — setdefault would silently ignore a
-        # counter reset and keep a test green through that bug.
+        # Honour NX like real Redis: ``record_memory_hit`` seeds with
+        # ``set(key, 0, nx=True, ex=…)`` before INCR, so an unconditional
+        # overwrite would reset the counter on every hit and cap it at 1.
+        # Without NX, SET overwrites — setdefault everywhere would instead
+        # mask a genuine counter reset.
+        if kwargs.get("nx") and key in self.hits:
+            return False
         self.hits[key] = int(value)
         return True
 
@@ -388,6 +394,22 @@ async def test_sweep_promotes_a_tentative_edge_that_earned_a_hit(dream_graph) ->
     edge = await _sole_edge(driver)
     assert edge["status"] == "active"
     assert edge["ratified_at"] is not None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_repeated_hits_accumulate_in_the_counter(dream_graph) -> None:
+    """``record_memory_hit`` seeds with SET NX then INCRs, so a fake that
+    overwrites unconditionally would pin every edge at one hit and hide
+    whatever the sweep's hit thresholds actually do."""
+    driver, user_id = dream_graph
+    await _ingest_dream_proposal(user_id)
+    edge_uuid = (await _sole_edge(driver))["uuid"]
+
+    await record_memory_hit(user_id, edge_uuid)
+    await record_memory_hit(user_id, edge_uuid)
+
+    assert await get_hit_count(user_id, edge_uuid) == 2
 
 
 @pytest.mark.integration
