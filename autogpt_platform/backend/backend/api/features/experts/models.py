@@ -73,3 +73,10 @@ class ExpertSoulUpdate(BaseModel):
         if not stripped:
             raise ValueError("Field must not be blank")
         return stripped
+
+    @field_validator("voice_preferences", "boundaries")
+    @classmethod
+    def strip_optional_fields(cls, value: str) -> str:
+        # Whitespace-only input must collapse to "" so prompt rendering falls
+        # back to "Not specified." instead of emitting a blank section.
+        return value.strip()
