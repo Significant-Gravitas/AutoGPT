@@ -14,6 +14,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   userName?: string;
+  userHandle?: string;
   userEmail?: string;
   avatarSrc?: string;
   isLoading?: boolean;
@@ -21,6 +22,7 @@ interface Props {
 
 export function AccountMenuHeader({
   userName,
+  userHandle,
   userEmail,
   avatarSrc,
   isLoading = false,
@@ -37,7 +39,12 @@ export function AccountMenuHeader({
           aria-haspopup="true"
           data-testid="account-menu-org-trigger"
         >
-          <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+            className="h-8 w-8"
+          />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             {isLoading || !userName || !userEmail ? (
               <>

@@ -55,6 +55,7 @@ from backend.util.clients import (
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    ExpertRunPausedError,
     GraphNotFoundError,
     GraphNotInLibraryError,
     GraphValidationError,
@@ -205,6 +206,7 @@ async def _execute_graph(**kwargs):
             graph_credentials_inputs=args.input_credentials,
             organization_id=args.organization_id,
             team_id=args.team_id,
+            expert_id=args.expert_id,
         )
         await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
@@ -223,6 +225,10 @@ async def _execute_graph(**kwargs):
         await _handle_graph_not_available(e, args, start_time)
     except GraphValidationError:
         await _handle_graph_validation_error(args)
+    except ExpertRunPausedError as e:
+        # Expected while an expert is paused (budget/archive): skip quietly;
+        # the schedule stays registered for one-click resume.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -1168,6 +1174,12 @@ class GraphExecutionJobArgs(BaseModel):
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
     organization_id: str = ""
     team_id: str | None = None
+    # Expert attribution: set when the schedule belongs to a hired expert
+    # (install-time schedule, manual schedule of an expert-installed
+    # workflow, or a schedule created from the expert's chat). Stamped onto
+    # every execution this schedule fires. Optional for backward compat
+    # with rows persisted before expert attribution.
+    expert_id: str | None = None
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -1690,6 +1702,7 @@ class Scheduler(AppService):
         user_timezone: str | None = None,
         organization_id: Optional[str] = None,
         team_id: Optional[str] = None,
+        expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -1715,6 +1728,7 @@ class Scheduler(AppService):
             input_credentials=input_credentials,
             organization_id=organization_id or "",
             team_id=team_id,
+            expert_id=expert_id,
         )
         job = self._persist_schedule(
             dispatch_func=execute_graph,

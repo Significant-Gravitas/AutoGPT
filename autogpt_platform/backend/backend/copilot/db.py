@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,7 +23,13 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
+from .model import (
+    ChatMessage,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    _get_session_lock,
+    cache_chat_session,
+)
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
@@ -1035,3 +1042,61 @@ async def update_chat_session_status(
         where=where, data={"chatStatus": status}
     )
     return updated > 0
+
+
+async def append_expert_run_message(
+    user_id: str,
+    expert_id: str,
+    content: str,
+    message_id: str,
+) -> str | None:
+    """Post an assistant message into the expert's latest thread, creating a
+    thread when none exists — run results land in her workspace, not a void.
+
+    Deduplicates on *message_id* (deterministic per event at the caller), so
+    executor retries and double-fires never produce duplicate posts.
+    Returns the session id the message landed in, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    session = await PrismaChatSession.prisma().find_first(
+        where={"userId": user_id, "expertId": expert_id},
+        order={"updatedAt": "desc"},
+    )
+    if session is not None:
+        session_id = session.id
+    else:
+        created = await create_chat_session(
+            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+        )
+        session_id = created.session_id
+
+    # Same Redis NX lock as turn_queue.append_and_save_message: the
+    # sequence read + insert must not interleave with a concurrent turn
+    # writer picking the same sequence and PK-colliding on
+    # (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+    return session_id
