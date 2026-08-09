@@ -604,7 +604,13 @@ async def _has_chatted(user_id: str) -> bool:
     except Exception as e:
         logger.warning("Brain dump greeting: session count failed: %s", e)
         return False
-    await db.mark_greeting_seen(user_id)
+    try:
+        # Bookkeeping behind a verdict that already stands: a failed write
+        # costs another count on the next load, not the answer — and must
+        # not 500 the card it was about to retire.
+        await db.mark_greeting_seen(user_id)
+    except Exception as e:
+        logger.warning("Brain dump greeting: seen flag not recorded: %s", e)
     return True
 
 

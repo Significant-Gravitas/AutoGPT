@@ -867,6 +867,24 @@ async def test_intro_card_is_withheld_from_a_chatting_user_without_a_dump_row(
 
 
 @pytest.mark.asyncio
+async def test_intro_card_is_still_withheld_when_the_seen_flag_cannot_be_written(
+    session_count: AsyncMock, mocker: MockerFixture
+):
+    # The session count is the verdict; the flag only saves paying for it
+    # again. A failed write must not 500 the card it was retiring.
+    session_count.return_value = 2
+    mocker.patch(
+        "backend.api.features.onboarding_dump.db.mark_greeting_seen",
+        new=AsyncMock(side_effect=RuntimeError("database down")),
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+
+
+@pytest.mark.asyncio
 async def test_intro_card_still_greets_when_the_session_count_fails(
     dumps: DumpStore, session_count: AsyncMock
 ):
