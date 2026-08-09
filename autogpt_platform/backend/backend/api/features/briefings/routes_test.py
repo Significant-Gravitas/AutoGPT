@@ -38,6 +38,23 @@ async def client(server, mock_jwt_user) -> AsyncGenerator[httpx.AsyncClient, Non
     app.dependency_overrides.pop(get_jwt_payload, None)
 
 
+async def _delete_briefings(user_id: str) -> None:
+    """Delete the user's briefings, retrying once on a stale event loop.
+
+    Fire-and-forget background tasks in earlier tests can leave the Prisma
+    pool holding a connection bound to a since-closed function-scoped loop;
+    the first session-loop call after that raises ``RuntimeError: Event loop
+    is closed`` and the pool re-establishes itself on the retry. Same
+    workaround as ``backend/conftest.py::_create_user_with_loop_retry``.
+    """
+    try:
+        await UserBriefing.prisma().delete_many(where={"userId": user_id})
+    except RuntimeError as e:
+        if "Event loop is closed" not in str(e):
+            raise
+        await UserBriefing.prisma().delete_many(where={"userId": user_id})
+
+
 @pytest_asyncio.fixture(loop_scope="session", autouse=True)
 async def _clean_briefings(server, test_user_id: str):
     """Ensure no leftover briefings for the shared test user before/after each test.
@@ -46,9 +63,9 @@ async def _clean_briefings(server, test_user_id: str):
     function-scoped loop here hits "Event loop is closed" on the first
     delete_many once another test has already bound the client's HTTP
     session to a since-closed loop."""
-    await UserBriefing.prisma().delete_many(where={"userId": test_user_id})
+    await _delete_briefings(test_user_id)
     yield
-    await UserBriefing.prisma().delete_many(where={"userId": test_user_id})
+    await _delete_briefings(test_user_id)
 
 
 def _valid_content() -> dict:
