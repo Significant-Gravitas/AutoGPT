@@ -26,15 +26,17 @@ permissions:
 jobs:
   build-and-scan:
     name: Build, smoke, and scan (${{ matrix.platform }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: linux/amd64
+            runner: ubuntu-24.04
             suffix: amd64
           - platform: linux/arm64
+            runner: ubuntu-24.04-arm
             suffix: arm64
     steps:
       - name: Check out repository
@@ -45,12 +47,6 @@ jobs:
       - name: Test appliance runtime helpers
         shell: bash
         run: python3 -m unittest discover -s autogpt_platform/single-container/tests -p 'test_*.py' -v
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-        with:
-          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
-          platforms: arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
