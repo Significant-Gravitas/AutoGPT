@@ -2463,6 +2463,100 @@ class TestAppendFollowUpWarmContext:
         assert mock_refresh.await_args.kwargs["force"] is True
 
     @pytest.mark.asyncio
+    async def test_retry_reuses_the_cached_block_without_a_second_fetch(self):
+        """The retry path rebuilds the query and calls this again for the
+        same message; one graph round-trip should serve both."""
+        cache: dict[str, str] = {}
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            first = await _append_follow_up_warm_context(
+                "q1",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+                block_cache=cache,
+            )
+            second = await _append_follow_up_warm_context(
+                "q2",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                current_message="what is Sarah working on this week",
+                was_compacted=True,
+                block_cache=cache,
+            )
+
+        assert mock_refresh.await_count == 1
+        assert first.endswith("fresh</temporal_context>")
+        assert second.startswith("q2")
+        assert _INJECTED_MEMORY_MARKER in second
+
+    @pytest.mark.asyncio
+    async def test_gated_out_first_call_still_allows_a_forced_retry_fetch(self):
+        """A trivial first turn caches NOTHING, so the post-compaction retry
+        (force=True) must still fetch — caching a miss would re-break the
+        headline case this PR fixes."""
+        cache: dict[str, str] = {}
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+            side_effect=[None, "<temporal_context>forced</temporal_context>"],
+        ) as mock_refresh:
+            await _append_follow_up_warm_context(
+                "q1",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                current_message="continue",
+                was_compacted=False,
+                block_cache=cache,
+            )
+            out = await _append_follow_up_warm_context(
+                "q2",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                current_message="continue",
+                was_compacted=True,
+                block_cache=cache,
+            )
+
+        assert mock_refresh.await_count == 2
+        assert mock_refresh.await_args.kwargs["force"] is True
+        assert out.endswith("forced</temporal_context>")
+
+    @pytest.mark.asyncio
+    async def test_returns_query_unchanged_when_refresh_yields_nothing(self):
+        """Empty graph or a timed-out fetch returns None — the query must
+        come back byte-identical with no sentinel stamped, or the scrub
+        would have a marker with no block to remove."""
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            out = await _append_follow_up_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert out == "the query"
+        assert _INJECTED_MEMORY_MARKER not in out
+
+    @pytest.mark.asyncio
     async def test_noop_on_first_turn_or_non_user_or_disabled(self):
         with patch(
             "backend.copilot.graphiti.context.refresh_warm_context",

@@ -483,6 +483,14 @@ class TestShouldRefreshWarmContext:
         # A one-ideograph reply still reads as trivial.
         assert should_refresh_warm_context("はい") is False
 
+    def test_thai_and_hangul_ranges_are_covered(self) -> None:
+        """Thai and Hangul are in _is_ideographic's ranges but were only
+        covered by the CJK/kana cases — a regression narrowing either range
+        would silently disable refresh for those users and still pass CI."""
+        assert should_refresh_warm_context("ประชุมพรุ่งนี้") is True
+        assert should_refresh_warm_context("내일 회의 일정 알려줘") is True
+        assert should_refresh_warm_context("네") is False
+
 
 class TestRefreshWarmContext:
     """Follow-up refresh uses the cheap RRF recipe and honours the gate."""
@@ -538,6 +546,28 @@ class TestRefreshWarmContext:
         assert result is not None
         mock_fetch.assert_awaited_once()
         assert mock_fetch.await_args.kwargs["use_cross_encoder"] is False
+
+
+class TestRefreshTimeoutIsApplied:
+    """The refresh's tighter budget must be APPLIED, not merely passed."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_budget_bounds_a_slow_fetch(self, monkeypatch) -> None:
+        monkeypatch.setattr(context.graphiti_config, "context_refresh_timeout", 0.05)
+        monkeypatch.setattr(context.graphiti_config, "context_timeout", 30.0)
+
+        async def slow_fetch(*args, **kwargs):
+            await asyncio.sleep(5)
+            return "<temporal_context>too late</temporal_context>"
+
+        with patch.object(context, "_fetch", slow_fetch):
+            result = await refresh_warm_context(
+                "user-abc", "deploy the staging environment now"
+            )
+
+        # The 30s first-turn budget would have hung here; the refresh budget
+        # cuts it off and degrades to None like any other retrieval failure.
+        assert result is None
 
 
 class TestFetchRecipeSelection:

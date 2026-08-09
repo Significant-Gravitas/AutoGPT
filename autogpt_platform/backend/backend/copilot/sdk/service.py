@@ -1032,10 +1032,15 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
     """
     if not content:
         return content
+    # Only the marker-bearing line can need rewriting, and only the current
+    # turn's line carries it. Without this guard every user line of the whole
+    # transcript is json.loads()-ed and Pydantic-validated on every turn —
+    # O(transcript) per turn, i.e. quadratic over a long session.
+    marker = _INJECTED_MEMORY_MARKER.encode()
     out: list[bytes] = []
     for line in content.splitlines(keepends=True):
         stripped = line.strip()
-        if not stripped:
+        if not stripped or marker not in line:
             out.append(line)
             continue
         try:
@@ -1052,7 +1057,7 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
     return b"".join(out)
 
 
-def _rewrite_user_entry_memory(entry: object) -> dict | None:
+def _rewrite_user_entry_memory(entry: object) -> dict[str, object] | None:
     """Return *entry* with the injected memory block stripped, or None.
 
     None means "no change" — the caller keeps the original line byte-for-byte,
@@ -4110,6 +4115,7 @@ async def _append_follow_up_warm_context(
     user_id: str | None,
     current_message: str,
     was_compacted: bool,
+    block_cache: dict[str, str] | None = None,
 ) -> str:
     """Append the SECRT-2378 follow-up warm-context refresh to *query_message*.
 
@@ -4121,13 +4127,24 @@ async def _append_follow_up_warm_context(
     re-injects memory. No-op on the first turn, non-user turns, and when
     Graphiti is disabled. Called after every ``_build_query_message`` (initial
     and retry) so the recovery path keeps recall too.
+
+    ``block_cache`` (a per-stream dict) reuses a block already fetched for the
+    same message on the retry path, so a recompaction retry doesn't pay a
+    second graph round-trip for an identical query. Only POPULATED results are
+    cached: a first call that the substance gate skipped stores nothing, so a
+    retry with ``was_compacted=True`` still performs its forced fetch.
     """
     if not (graphiti_enabled and has_history and is_user_message and user_id):
         return query_message
+    cached = block_cache.get(current_message) if block_cache is not None else None
+    if cached:
+        return f"{query_message}\n\n{cached}"
     refreshed = await graphiti_context.refresh_warm_context(
         user_id, current_message, force=was_compacted
     )
     if refreshed:
+        if block_cache is not None:
+            block_cache[current_message] = _mark_injected_memory_block(refreshed)
         # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
         # can scrub THIS block from the persisted transcript without touching a
         # ``<temporal_context>`` tag the user may have typed.
@@ -4895,6 +4912,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # query build here and the retry-time rebuild below, so a follow-up
         # turn that trips prompt-too-long and re-compacts still re-injects
         # memory on its recovery attempt.
+        warm_ctx_block_cache: dict[str, str] = {}
         query_message = await _append_follow_up_warm_context(
             query_message,
             graphiti_enabled=graphiti_enabled,
@@ -4903,6 +4921,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id=user_id,
             current_message=current_message,
             was_compacted=was_compacted,
+            block_cache=warm_ctx_block_cache,
         )
 
         # When running without --resume and no prior transcript in storage,
@@ -5075,6 +5094,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     user_id=user_id,
                     current_message=current_message,
                     was_compacted=state.was_compacted,
+                    block_cache=warm_ctx_block_cache,
                 )
                 # Re-inject per-turn builder context so retries carry the
                 # same live graph snapshot + guide as the initial attempt.

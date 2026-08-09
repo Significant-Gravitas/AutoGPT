@@ -27,6 +27,7 @@ from backend.copilot.baseline.service import (
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
     _natural_finish_empty_notice_text,
+    _refresh_follow_up_warm_context,
     _split_user_message_after_skills_block,
     _supports_prompt_cache_markers,
 )
@@ -2784,3 +2785,88 @@ class TestApplySkillsCacheBreakpoint:
         assert out[1] is not usr1  # target — gets shallow-copied
         assert out[2] is ast
         assert out[3] is usr2
+
+
+class TestRefreshFollowUpWarmContext:
+    """SECRT-2378 follow-up refresh gate on the BASELINE engine.
+
+    The SDK path has ``TestAppendFollowUpWarmContext``; this gate differs
+    (message count vs. has-history, no post-compaction force), so it needs
+    its own pins rather than inheriting confidence from the other engine.
+    """
+
+    @pytest.mark.asyncio
+    async def test_refreshes_on_a_follow_up_user_turn(self):
+        with patch(
+            "backend.copilot.baseline.service.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            out = await _refresh_follow_up_warm_context(
+                None,
+                graphiti_enabled=True,
+                user_id="u-1",
+                is_user_message=True,
+                pre_drain_msg_count=4,
+                message="deploy the staging environment now",
+            )
+
+        assert out == "<temporal_context>fresh</temporal_context>"
+        mock_refresh.assert_awaited_once_with(
+            "u-1", "deploy the staging environment now"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"graphiti_enabled": False},
+            {"user_id": None},
+            {"is_user_message": False},
+            {"pre_drain_msg_count": 1},
+        ],
+        ids=["flag-off", "no-user", "not-a-user-turn", "first-turn"],
+    )
+    async def test_gate_blocks_and_preserves_existing_context(self, kwargs):
+        """Each gate arm must skip the fetch AND leave the first-turn block
+        intact — returning None here would silently drop the cross-encoder
+        context the first turn already loaded."""
+        base = {
+            "graphiti_enabled": True,
+            "user_id": "u-1",
+            "is_user_message": True,
+            "pre_drain_msg_count": 4,
+            "message": "deploy the staging environment now",
+        }
+        base.update(kwargs)
+        with patch(
+            "backend.copilot.baseline.service.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            out = await _refresh_follow_up_warm_context(
+                "<temporal_context>first</temporal_context>", **base
+            )
+
+        assert out == "<temporal_context>first</temporal_context>"
+        mock_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_queries_on_the_folded_message_not_the_raw_send(self):
+        """The call site runs after the pending fold: a queued substantive
+        request paired with a short current send must still drive recall."""
+        folded = "restart the executor\n\nok"
+        with patch(
+            "backend.copilot.baseline.service.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_refresh:
+            await _refresh_follow_up_warm_context(
+                None,
+                graphiti_enabled=True,
+                user_id="u-1",
+                is_user_message=True,
+                pre_drain_msg_count=4,
+                message=folded,
+            )
+
+        assert mock_refresh.await_args.args[1] == folded

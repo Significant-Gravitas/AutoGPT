@@ -11,6 +11,7 @@ to call the memory tool.  See SECRT-2378.
 import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from ._format import (
     extract_episode_body,
@@ -22,6 +23,9 @@ from ._format import (
 from .client import derive_group_id, get_graphiti_client
 from .config import graphiti_config
 
+if TYPE_CHECKING:
+    from graphiti_core.search.search_config import SearchConfig
+
 logger = logging.getLogger(__name__)
 
 # Minimum "signal unit" count for a follow-up user message to trigger a
@@ -30,6 +34,20 @@ logger = logging.getLogger(__name__)
 # graph search + embedding call every turn.  A post-compaction turn bypasses
 # this gate via ``refresh_warm_context(..., force=True)``.
 WARM_CONTEXT_REFRESH_MIN_WORDS = 4
+
+
+def should_refresh_warm_context(message: str | None) -> bool:
+    """Whether a follow-up user message carries enough signal to re-fetch.
+
+    Pure, deterministic cost gate: only messages with at least
+    ``WARM_CONTEXT_REFRESH_MIN_WORDS`` signal units (whitespace words plus
+    individually-counted CJK characters) re-run retrieval, keeping the added
+    per-turn graph-search cost off trivial acknowledgement turns while still
+    firing for whitespace-less languages.
+    """
+    if not message:
+        return False
+    return _signal_units(message) >= WARM_CONTEXT_REFRESH_MIN_WORDS
 
 
 def _signal_units(message: str) -> int:
@@ -59,20 +77,6 @@ def _is_ideographic(ch: str) -> bool:
         or 0xAC00 <= code <= 0xD7A3  # Hangul syllables
         or 0x0E00 <= code <= 0x0E7F  # Thai
     )
-
-
-def should_refresh_warm_context(message: str | None) -> bool:
-    """Whether a follow-up user message carries enough signal to re-fetch.
-
-    Pure, deterministic cost gate: only messages with at least
-    ``WARM_CONTEXT_REFRESH_MIN_WORDS`` signal units (whitespace words plus
-    individually-counted CJK characters) re-run retrieval, keeping the added
-    per-turn graph-search cost off trivial acknowledgement turns while still
-    firing for whitespace-less languages.
-    """
-    if not message:
-        return False
-    return _signal_units(message) >= WARM_CONTEXT_REFRESH_MIN_WORDS
 
 
 async def refresh_warm_context(
@@ -155,7 +159,7 @@ async def fetch_warm_context(
         return None
 
 
-def _build_search_config(use_cross_encoder: bool):
+def _build_search_config(use_cross_encoder: bool) -> "SearchConfig":
     """Edge-search recipe for a warm-context fetch.
 
     Both variants use the SAME search methods as graphiti's
@@ -276,6 +280,21 @@ def _spawn_ratification_hits(user_id: str, edges) -> None:
     task.add_done_callback(_on_hit_task_done)
 
 
+# Retrieved memory is user/tool/web-authored. A fact containing the literal
+# ``</temporal_context>`` would close the block early: everything after it
+# reads as the user's own words (a self-scoped prompt-injection breakout),
+# and the SDK transcript scrub — which matches up to the first closing tag —
+# would leave the remainder of the block in the persisted transcript to
+# replay on --resume. Neutralising the sequence at build time fixes every
+# consumer at once rather than each reader separately.
+_CONTEXT_CLOSE_TAG = "</temporal_context>"
+_CONTEXT_CLOSE_TAG_NEUTRALISED = "<!/temporal_context>"
+
+
+def _neutralise_context_tags(text: str) -> str:
+    return text.replace(_CONTEXT_CLOSE_TAG, _CONTEXT_CLOSE_TAG_NEUTRALISED)
+
+
 def _format_context(edges, episodes) -> str | None:
     sections: list[str] = []
 
@@ -283,7 +302,7 @@ def _format_context(edges, episodes) -> str | None:
         fact_lines = []
         for e in edges:
             valid_from, valid_to = extract_temporal_validity(e)
-            fact = extract_fact(e)
+            fact = _neutralise_context_tags(extract_fact(e))
             fact_lines.append(f"  - {fact} ({valid_from} — {valid_to})")
         sections.append("<FACTS>\n" + "\n".join(fact_lines) + "\n</FACTS>")
 
@@ -295,7 +314,7 @@ def _format_context(edges, episodes) -> str | None:
             raw_body = extract_episode_body_raw(ep)
             if _is_non_global_scope(raw_body):
                 continue
-            display_body = extract_episode_body(ep)
+            display_body = _neutralise_context_tags(extract_episode_body(ep))
             ts = extract_episode_timestamp(ep)
             ep_lines.append(f"  - [{ts}] {display_body}")
         if ep_lines:
