@@ -2877,7 +2877,7 @@
       "get": {
         "tags": ["briefings"],
         "summary": "Get Latest Briefing",
-        "description": "Return the user's most recent briefing, or None if none exists yet.\n\nStored content that fails to validate against the current BriefingContent\nshape (e.g. written by an older/newer version of the composer) is treated\nas if no briefing exists, rather than 500ing the request.",
+        "description": "Return the user's most recent readable briefing, or None if there is none.\n\nStored content that fails to validate against the current BriefingContent\nshape (e.g. written by an older/newer version of the composer) is skipped\nrather than 500ing the request — and rather than hiding every older\nbriefing behind one unreadable row on the newest date.",
         "operationId": "getBriefingsGet latest briefing",
         "responses": {
           "200": {
