@@ -68,6 +68,15 @@ async def _clean_briefings(server, test_user_id: str):
     await _delete_briefings(test_user_id)
 
 
+def _today() -> datetime.date:
+    """UTC today — the route's own reference point for the recency bound."""
+    return datetime.datetime.now(datetime.timezone.utc).date()
+
+
+def _days_ago(days: int) -> datetime.date:
+    return _today() - datetime.timedelta(days=days)
+
+
 def _valid_content() -> dict:
     return {
         "generated_at": "2026-08-07T09:00:00+00:00",
@@ -119,16 +128,16 @@ async def test_get_latest_briefing_returns_typed_content(
 ) -> None:
     """A seeded briefing comes back as typed content matching what was stored."""
     content = _valid_content()
-    record = await briefing_db.create_briefing(
-        setup_test_user, datetime.date(2026, 8, 7), content
-    )
+    today = _today()
+    record = await briefing_db.create_briefing(setup_test_user, today, content)
 
     response = await client.get("/api/briefings/latest")
 
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == record.id
-    assert data["briefing_date"] == "2026-08-07"
+    assert data["briefing_date"] == today.isoformat()
+    assert data["delivered_at"] is None
     assert data["content"]["timezone"] == "UTC"
     assert data["content"]["zero_expert_fallback"] is False
     assert data["content"]["run_items"][0]["expert_name"] == "Maria"
@@ -141,11 +150,9 @@ async def test_get_latest_briefing_returns_only_the_latest_by_date(
     setup_test_user: str,
 ) -> None:
     """When multiple briefings exist, the one with the latest briefing_date wins."""
-    await briefing_db.create_briefing(
-        setup_test_user, datetime.date(2026, 8, 5), _valid_content()
-    )
+    await briefing_db.create_briefing(setup_test_user, _days_ago(1), _valid_content())
     latest = await briefing_db.create_briefing(
-        setup_test_user, datetime.date(2026, 8, 7), _valid_content()
+        setup_test_user, _today(), _valid_content()
     )
 
     response = await client.get("/api/briefings/latest")
@@ -153,7 +160,7 @@ async def test_get_latest_briefing_returns_only_the_latest_by_date(
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == latest.id
-    assert data["briefing_date"] == "2026-08-07"
+    assert data["briefing_date"] == _today().isoformat()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -164,7 +171,7 @@ async def test_get_latest_briefing_returns_null_on_invalid_stored_content(
     """Content that no longer validates against BriefingContent is treated as
     if there were no briefing, rather than 500ing the request."""
     await briefing_db.create_briefing(
-        setup_test_user, datetime.date(2026, 8, 7), {"unexpected": "shape"}
+        setup_test_user, _today(), {"unexpected": "shape"}
     )
 
     response = await client.get("/api/briefings/latest")
@@ -180,10 +187,10 @@ async def test_get_latest_briefing_falls_back_to_the_newest_readable_briefing(
 ) -> None:
     """One unreadable row on the newest date must not hide older briefings."""
     readable = await briefing_db.create_briefing(
-        setup_test_user, datetime.date(2026, 8, 6), _valid_content()
+        setup_test_user, _days_ago(1), _valid_content()
     )
     await briefing_db.create_briefing(
-        setup_test_user, datetime.date(2026, 8, 7), {"unexpected": "shape"}
+        setup_test_user, _today(), {"unexpected": "shape"}
     )
 
     response = await client.get("/api/briefings/latest")
@@ -191,7 +198,22 @@ async def test_get_latest_briefing_falls_back_to_the_newest_readable_briefing(
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == readable.id
-    assert data["briefing_date"] == "2026-08-06"
+    assert data["briefing_date"] == _days_ago(1).isoformat()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_latest_briefing_ignores_stale_briefings(
+    client: httpx.AsyncClient,
+    setup_test_user: str,
+) -> None:
+    """A briefing older than yesterday is history, not "this morning" — the
+    home card must not present weeks-old runs under a year-less date label."""
+    await briefing_db.create_briefing(setup_test_user, _days_ago(21), _valid_content())
+
+    response = await client.get("/api/briefings/latest")
+
+    assert response.status_code == 200
+    assert response.json() is None
 
 
 def test_get_latest_briefing_requires_auth() -> None:

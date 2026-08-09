@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -554,6 +555,25 @@ def execute_community_rebuild(user_id: str):
             result.get("elapsed_seconds") or 0.0,
             result.get("communities_built"),
         )
+
+
+def _morning_briefing_crontab(user_id: str) -> str:
+    """Daily 09:00-local cron, with the minute spread across the hour.
+
+    A fixed ``0 9 * * *`` fires every user in a timezone at the same instant;
+    deriving the minute from the user id spreads that batch over the hour.
+    Hashed with sha256 rather than ``hash()`` because the latter is salted
+    per process, which would move a user's slot on every restart.
+    """
+    minute = int(hashlib.sha256(user_id.encode("utf-8")).hexdigest(), 16) % 60
+    return f"{minute} 9 * * *"
+
+
+def _job_timezone_name(job: JobObj) -> str | None:
+    """IANA name of a cron job's trigger timezone, if it has one."""
+    if isinstance(job.trigger, CronTrigger):
+        return str(job.trigger.timezone)
+    return None
 
 
 def execute_morning_briefing(user_id: str) -> None:
@@ -2129,15 +2149,39 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register a daily morning briefing for one user."""
+        """Register a daily morning briefing for one user.
+
+        Re-registration with an unchanged timezone is a no-op rather than a
+        ``replace_existing`` write: APScheduler recomputes ``next_run_time``
+        on the replace path, so replacing a job whose 09:00 fire is already
+        overdue (e.g. after a scheduler restart) would push it to tomorrow
+        and lose that day's briefing entirely.
+        """
         if not user_timezone:
             user_timezone = "UTC"
 
         job_id = f"morning_briefing_{user_id}"
+        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if existing is not None and _job_timezone_name(existing) == user_timezone:
+            return {
+                "id": existing.id,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": (
+                    existing.next_run_time.isoformat()
+                    if existing.next_run_time
+                    else None
+                ),
+                "skipped": True,
+                "reason": "already_registered",
+            }
+
         job = self.scheduler.add_job(
             execute_morning_briefing,
             kwargs={"user_id": user_id},
-            trigger=CronTrigger.from_crontab("0 9 * * *", timezone=user_timezone),
+            trigger=CronTrigger.from_crontab(
+                _morning_briefing_crontab(user_id), timezone=user_timezone
+            ),
             id=job_id,
             name=f"Morning briefing for {user_id[:12]}",
             jobstore=Jobstores.EXECUTION.value,

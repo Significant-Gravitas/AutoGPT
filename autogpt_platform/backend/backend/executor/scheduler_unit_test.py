@@ -694,9 +694,10 @@ class TestScheduleOrgVisibility:
 class TestMorningBriefingSchedule:
     """Registration kwargs and the job body's failure containment."""
 
-    def _register(self, **kwargs) -> MagicMock:
+    def _register(self, existing=None, **kwargs) -> MagicMock:
         sched = Scheduler.__new__(Scheduler)
         sched.scheduler = MagicMock()
+        sched.scheduler.get_job.return_value = existing
         sched.scheduler.add_job.return_value = MagicMock(
             id="morning_briefing_user-1", next_run_time=None
         )
@@ -716,13 +717,57 @@ class TestMorningBriefingSchedule:
         trigger = call_kwargs["trigger"]
         assert str(trigger.timezone) == "America/New_York"
         # CronTrigger stringifies its fields; pin the 09:00 daily contract.
+        # The minute is spread per user, so only the hour is fixed.
         assert "hour='9'" in str(trigger)
-        assert "minute='0'" in str(trigger)
 
     def test_empty_timezone_falls_back_to_utc(self):
         add_job = self._register(user_id="user-1", user_timezone="")
 
         assert str(add_job.call_args.kwargs["trigger"].timezone) == "UTC"
+
+    def test_reregistering_the_same_timezone_leaves_the_job_alone(self):
+        """APScheduler recomputes next_run_time on the replace path, so
+        re-adding an unchanged job would push an already-overdue 09:00 fire to
+        tomorrow and silently lose that day's briefing."""
+        existing = MagicMock(
+            id="morning_briefing_user-1",
+            next_run_time=datetime(2026, 8, 7, 13, 0, tzinfo=timezone.utc),
+            trigger=CronTrigger.from_crontab("7 9 * * *", timezone="America/New_York"),
+        )
+
+        add_job = self._register(
+            existing=existing, user_id="user-1", user_timezone="America/New_York"
+        )
+
+        add_job.assert_not_called()
+
+    def test_a_changed_timezone_still_rewrites_the_job(self):
+        existing = MagicMock(
+            id="morning_briefing_user-1",
+            next_run_time=None,
+            trigger=CronTrigger.from_crontab("7 9 * * *", timezone="America/New_York"),
+        )
+
+        add_job = self._register(
+            existing=existing, user_id="user-1", user_timezone="Europe/Madrid"
+        )
+
+        add_job.assert_called_once()
+        assert str(add_job.call_args.kwargs["trigger"].timezone) == "Europe/Madrid"
+
+    def test_the_fire_minute_is_stable_per_user_and_spread_across_users(self):
+        """A fixed "0 9 * * *" fires every user in a timezone at once; the
+        minute must vary by user but never move between restarts."""
+        from backend.executor.scheduler import _morning_briefing_crontab
+
+        assert _morning_briefing_crontab("user-1") == _morning_briefing_crontab(
+            "user-1"
+        )
+        minutes = {
+            _morning_briefing_crontab(f"user-{i}").split(" ")[0] for i in range(50)
+        }
+        assert len(minutes) > 10
+        assert all(0 <= int(m) < 60 for m in minutes)
 
     def test_job_body_swallows_and_logs_generation_failures(self, caplog):
         """The cron body exists to keep one user's failure off the scheduler."""

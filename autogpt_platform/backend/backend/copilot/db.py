@@ -1120,12 +1120,19 @@ async def append_plain_session_message(
     if existing is not None:
         return None
 
-    session = await PrismaChatSession.prisma().find_first(
-        where={"userId": user_id, "expertId": None},
-        order={"updatedAt": "desc"},
+    # Dream-pass sessions are also ``expertId IS NULL`` but are hidden from
+    # every listing surface (see :data:`_EXCLUDE_DREAM_SESSIONS_SQL`), so
+    # posting into one would drop the message somewhere the user can never
+    # open. Same exclusion as the listing queries.
+    sessions = await db.query_raw_with_schema(
+        'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 '
+        f'AND "expertId" IS NULL AND {_EXCLUDE_DREAM_SESSIONS_SQL} '
+        'ORDER BY "updatedAt" DESC LIMIT 1',
+        user_id,
+        model=PrismaChatSession,
     )
-    if session is not None:
-        session_id = session.id
+    if sessions:
+        session_id = sessions[0].id
     else:
         created = await create_chat_session(
             session_id=str(uuid.uuid4()), user_id=user_id

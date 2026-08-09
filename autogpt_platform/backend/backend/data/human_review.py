@@ -449,7 +449,19 @@ async def _enrich_pending_reviews(
     graph_ids = list({e.agentGraphId for e in executions})
     lib_agents = (
         await LibraryAgent.prisma().find_many(
-            where={"userId": user_id, "agentGraphId": {"in": graph_ids}}
+            # Soft-deleted rows are excluded like every other library
+            # lookup: linking to one produces a 404 instead of falling
+            # through to the /library fallback the deep link has for
+            # exactly this case.
+            where={
+                "userId": user_id,
+                "agentGraphId": {"in": graph_ids},
+                "isDeleted": False,
+            },
+            # @@unique([userId, agentGraphId, agentGraphVersion]) allows
+            # several rows per graph; ordering makes "newest version wins"
+            # deterministic rather than whichever row came back last.
+            order=[{"agentGraphVersion": "asc"}],
         )
         if graph_ids
         else []

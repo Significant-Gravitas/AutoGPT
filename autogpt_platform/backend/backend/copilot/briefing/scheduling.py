@@ -11,13 +11,15 @@ timezone at job-creation time — a later ``User.timezone`` change silently
 leaves the cron firing at the old local time. Two mechanisms cover that:
 ``update_user_timezone`` clears the Redis marker so the very next call
 re-registers, and the marker's TTL bounds how long a drift arriving by any
-other route can persist. Re-registration is a no-op-cheap
-``replace_existing=True`` write.
+other route can persist. The scheduler side compares the stored trigger
+timezone and only rewrites the job when it actually differs — re-adding an
+existing cron would reset a pending ``next_run_time`` and drop that day's
+briefing.
 
-**Hot-path cost.** This helper runs on every chat turn, so the Redis
-marker is read *first* and short-circuits everything else. Only the first
-call after the marker expires pays for the timezone lookup (a DB read) and
-the scheduler RPC.
+**Hot-path cost.** This helper runs on every chat turn. The LaunchDarkly
+gate runs first (in-process cached), then the Redis marker short-circuits
+the rest. Only the first call after the marker expires pays for the
+timezone lookup (a DB read) and the scheduler RPC.
 
 Failures are logged at WARN and swallowed — ``ensure_morning_briefing_scheduled``
 is fired via ``asyncio.create_task`` from the hot chat-stream request path
@@ -28,15 +30,19 @@ from __future__ import annotations
 
 import logging
 
+from backend.data.db_accessors import user_db
+from backend.data.model import USER_TIMEZONE_NOT_SET
+from backend.data.redis_client import get_redis_async
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
-# How long a registration marker suppresses re-checking. Short enough that
-# an out-of-band cron deletion, or a timezone change that bypassed
-# ``update_user_timezone``, self-heals within hours; long enough that the
-# DB read + scheduler RPC costs at most a handful of turns a day per user.
-REGISTRATION_TTL_SECONDS = 6 * 3600
+# How long a registration marker suppresses re-checking. Mirrors
+# ``dream/scheduling.py``: a timezone change goes through
+# ``update_user_timezone``, which clears the marker outright, so the TTL only
+# has to bound out-of-band drift (an externally deleted cron, a tz written
+# straight to the DB) rather than carry drift detection on its own.
+REGISTRATION_TTL_SECONDS = 7 * 24 * 3600
 
 BRIEFING_REGISTRATION_PREFIX = "morning_briefing_registered"
 
@@ -57,9 +63,6 @@ async def _resolve_user_timezone(user_id: str) -> str | None:
     ``dream/scheduling.py``).
     """
     try:
-        from backend.data.db_accessors import user_db
-        from backend.data.model import USER_TIMEZONE_NOT_SET
-
         try:
             user = await user_db().get_user_by_id(user_id)
         except ValueError:
@@ -79,22 +82,24 @@ async def _resolve_user_timezone(user_id: str) -> str | None:
         return None
 
 
-async def _read_registration_tz(user_id: str) -> str | None:
-    """Read the timezone the briefing cron was last registered with.
+async def _read_registration_marker(user_id: str) -> str | None:
+    """Read the freshness marker for this user's briefing cron.
 
-    Doubles as the freshness check: the key is written with
-    ``REGISTRATION_TTL_SECONDS``, so its mere presence means "registered
-    recently enough, don't re-check".
+    The key is written with ``REGISTRATION_TTL_SECONDS``, so its mere
+    presence means "registered recently enough, don't re-check". Its value
+    is the timezone the cron was last registered with, kept for debugging
+    and log context; drift itself is decided scheduler-side, by comparing
+    the live job's trigger timezone (see
+    ``Scheduler.add_morning_briefing_schedule``).
 
     Returns:
       * The stored timezone string when the key exists.
       * ``None`` when the key is missing OR Redis is unavailable. The
-        caller treats both as "needs registration" — scheduler-side
-        ``replace_existing=True`` makes a redundant call a cheap no-op.
+        caller treats both as "needs registration" — the scheduler no-ops
+        when the existing job already matches, so a redundant call is cheap
+        and, crucially, can't reset a pending ``next_run_time``.
     """
     try:
-        from backend.data.redis_client import get_redis_async
-
         redis = await get_redis_async()
         key = f"{BRIEFING_REGISTRATION_PREFIX}:{user_id}"
         stored = await redis.get(key)
@@ -113,16 +118,14 @@ async def _read_registration_tz(user_id: str) -> str | None:
         return None
 
 
-async def _write_registration_tz(user_id: str, current_tz: str) -> None:
-    """Persist the timezone we just registered the cron with.
+async def _write_registration_marker(user_id: str, current_tz: str) -> None:
+    """Persist the freshness marker, valued with the timezone just used.
 
     Best-effort — a Redis write failure means the next call will see the
-    key as missing and force a redundant re-register (cheap via
-    ``replace_existing=True``).
+    key as missing and force a redundant re-register, which the scheduler
+    turns into a no-op when nothing changed.
     """
     try:
-        from backend.data.redis_client import get_redis_async
-
         redis = await get_redis_async()
         key = f"{BRIEFING_REGISTRATION_PREFIX}:{user_id}"
         await redis.set(key, current_tz, ex=REGISTRATION_TTL_SECONDS)
@@ -146,8 +149,6 @@ async def clear_briefing_registration_marker(user_id: str) -> None:
     Best-effort — on Redis failure the marker simply expires via TTL.
     """
     try:
-        from backend.data.redis_client import get_redis_async
-
         redis = await get_redis_async()
         await redis.delete(f"{BRIEFING_REGISTRATION_PREFIX}:{user_id}")
     except Exception:
@@ -182,11 +183,10 @@ async def ensure_morning_briefing_scheduled(user_id: str) -> None:
         if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
             return
 
-        # Marker first: one Redis GET is the entire cost of the common
+        # Marker next: one Redis GET is the rest of the cost of the common
         # case. Resolving the timezone is a DB read, and this runs on
         # every chat turn, so it must stay behind this gate.
-        stored_tz = await _read_registration_tz(user_id)
-        if stored_tz is not None:
+        if await _read_registration_marker(user_id) is not None:
             return
 
         tz = await _resolve_user_timezone(user_id)
@@ -205,7 +205,7 @@ async def ensure_morning_briefing_scheduled(user_id: str) -> None:
         await get_scheduler_client().add_morning_briefing_schedule(
             user_id=user_id, user_timezone=tz
         )
-        await _write_registration_tz(user_id, tz)
+        await _write_registration_marker(user_id, tz)
         logger.info(
             "Morning briefing: registered cron for user %s (tz=%s)",
             user_id[:12],

@@ -71,6 +71,21 @@ async def get_briefing_for_date(
     return BriefingRecord.from_db(row) if row else None
 
 
+async def update_briefing_content(
+    user_id: str, briefing_id: str, content: BriefingContentJson
+) -> None:
+    """Overwrite a stored briefing's content.
+
+    Used when a stored row can't be re-validated against the current
+    ``BriefingContent`` shape: the generator recomposes and writes the fresh
+    content back, so the stored row and the message it posts stay in sync.
+    """
+    await prisma.models.UserBriefing.prisma().update_many(
+        where={"id": briefing_id, "userId": user_id},
+        data={"content": SafeJson(content)},
+    )
+
+
 async def mark_briefing_delivered(user_id: str, briefing_id: str) -> None:
     await prisma.models.UserBriefing.prisma().update_many(
         where={"id": briefing_id, "userId": user_id},

@@ -32,3 +32,8 @@ class BriefingContent(BaseModel):
     zero_expert_fallback: bool
     run_items: list[BriefingRunItem]
     decision_items: list[BriefingDecisionItem]
+    # How many decisions were pending in total, before the list above was
+    # capped. Defaults to 0 so briefings stored before this field existed
+    # still validate; the renderer treats "<= len(decision_items)" as
+    # "nothing was truncated".
+    decision_total: int = 0

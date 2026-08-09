@@ -104,11 +104,11 @@ def test_expert_runs_and_decisions():
         "Lead Finder",
         "Found 3 leads",
     )
-    assert item.link == "/library/agents/lib-1?executionId=run-1"
+    assert item.link == "/library/agents/lib-1?activeTab=runs&activeItem=run-1"
     decision = content.decision_items[0]
     assert decision.title == "Approve outreach email"
     assert decision.expert_name == "Ana"  # attributed via the run's expert_id
-    assert decision.link == "/library/agents/lib-1?executionId=run-1"
+    assert decision.link == "/library/agents/lib-1?activeTab=runs&activeItem=run-1"
 
 
 def test_zero_experts_falls_back_to_plain_activity():
@@ -228,7 +228,7 @@ def test_markdown_has_three_sections_and_links():
     )
     md = render_briefing_markdown(content)
     assert "What ran" in md and "What was found" in md and "Needs your decision" in md
-    assert "(/library/agents/lib-1?executionId=run-1)" in md
+    assert "(/library/agents/lib-1?activeTab=runs&activeItem=run-1)" in md
 
 
 @pytest.mark.asyncio
@@ -322,9 +322,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         generate,
         "library_db",
         lambda: MagicMock(
-            list_library_agents=AsyncMock(
-                return_value=MagicMock(agents=[library_agent])
-            )
+            get_library_agent_refs_by_graph_ids=AsyncMock(return_value=[library_agent])
         ),
     )
 
@@ -470,7 +468,7 @@ async def test_generate_failed_post_leaves_briefing_retryable(monkeypatch):
         generate,
         "library_db",
         lambda: MagicMock(
-            list_library_agents=AsyncMock(return_value=MagicMock(agents=[]))
+            get_library_agent_refs_by_graph_ids=AsyncMock(return_value=[])
         ),
     )
 
@@ -547,9 +545,7 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
         generate,
         "library_db",
         lambda: MagicMock(
-            list_library_agents=AsyncMock(
-                return_value=MagicMock(agents=[library_agent])
-            )
+            get_library_agent_refs_by_graph_ids=AsyncMock(return_value=[library_agent])
         ),
     )
 
@@ -559,7 +555,7 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
     content_dict = client.create_briefing.await_args.args[2]
     run_item = content_dict["run_items"][0]
     assert run_item["library_agent_id"] == "lib-1"
-    assert run_item["link"] == "/library/agents/lib-1?executionId=run-1"
+    assert run_item["link"] == "/library/agents/lib-1?activeTab=runs&activeItem=run-1"
     assert run_item["agent_name"] == "Lead Finder Workflow"
 
 
@@ -604,4 +600,240 @@ def test_markdown_escapes_untrusted_text_in_link_labels():
 
     assert "[Trusted](https://evil.example)" not in markdown
     assert "Approve \\[Trusted\\]\\(https://evil.example\\) now" in markdown
-    assert "[Lead \\[Finder\\]](/library/agents/lib-1?executionId=run-1)" in markdown
+    assert (
+        "[Lead \\[Finder\\]](/library/agents/lib-1?activeTab=runs&activeItem=run-1)"
+        in markdown
+    )
+
+
+def test_decision_items_are_capped_and_the_overflow_is_summarized():
+    """100 pending reviews must not become a 100-line assistant message —
+    that message also rides along in every later LLM turn of the session."""
+    reviews = [
+        make_review(node_exec_id=f"ne-{i}", graph_exec_id=f"run-{i}") for i in range(25)
+    ]
+
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[],
+        reviews=reviews,
+        agent_info_by_graph_id={},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+
+    assert content is not None
+    assert len(content.decision_items) == 10
+    assert content.decision_total == 25
+
+    markdown = render_briefing_markdown(content)
+    assert "**Needs your decision (25)**" in markdown
+    assert "…and 15 more on your home page" in markdown
+
+
+def test_markdown_renders_non_relative_link_targets_as_plain_text():
+    """Targets are server-composed relative paths; anything else must not
+    become a clickable link in the user's thread."""
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec()],
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+    content.run_items[0].link = "javascript:alert(1)"
+
+    markdown = render_briefing_markdown(content)
+
+    assert "javascript:alert(1)" not in markdown
+    assert "Lead Finder" in markdown
+
+
+@pytest.mark.asyncio
+async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
+    monkeypatch,
+):
+    """The stored row and the posted message must not diverge: a row whose
+    content no longer validates is rewritten, not just re-posted."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    fake_datetime = MagicMock(wraps=datetime)
+    fake_datetime.now.return_value = NOW
+    monkeypatch.setattr(generate, "datetime", fake_datetime)
+    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+
+    user = MagicMock()
+    user.timezone = "UTC"
+    monkeypatch.setattr(
+        generate,
+        "user_db",
+        lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+    )
+
+    stale_record = MagicMock(id="briefing-1", delivered_at=None)
+    stale_record.content = {"unexpected": "shape"}
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=stale_record),
+        create_briefing=AsyncMock(),
+        update_briefing_content=AsyncMock(),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+
+    monkeypatch.setattr(
+        generate,
+        "experts_db",
+        lambda: MagicMock(list_experts=AsyncMock(return_value=[make_expert()])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "execution_db",
+        lambda: MagicMock(get_graph_executions=AsyncMock(return_value=[make_exec()])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "review_db",
+        lambda: MagicMock(get_pending_reviews_for_user=AsyncMock(return_value=[])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "library_db",
+        lambda: MagicMock(
+            get_library_agent_refs_by_graph_ids=AsyncMock(return_value=[])
+        ),
+    )
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    client.create_briefing.assert_not_awaited()
+    update_call = client.update_briefing_content.await_args
+    assert update_call.args[:2] == ("user-1", "briefing-1")
+    assert update_call.args[2]["run_items"][0]["agent_name"] == "Agent"
+
+
+@pytest.mark.asyncio
+async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say(
+    monkeypatch,
+):
+    """Otherwise every future run re-gathers and re-composes the same row."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    fake_datetime = MagicMock(wraps=datetime)
+    fake_datetime.now.return_value = NOW
+    monkeypatch.setattr(generate, "datetime", fake_datetime)
+    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+
+    user = MagicMock()
+    user.timezone = "UTC"
+    monkeypatch.setattr(
+        generate,
+        "user_db",
+        lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+    )
+
+    stale_record = MagicMock(id="briefing-1", delivered_at=None)
+    stale_record.content = {"unexpected": "shape"}
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=stale_record),
+        append_plain_session_message=AsyncMock(),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+
+    monkeypatch.setattr(
+        generate,
+        "experts_db",
+        lambda: MagicMock(list_experts=AsyncMock(return_value=[make_expert()])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "execution_db",
+        lambda: MagicMock(get_graph_executions=AsyncMock(return_value=[])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "review_db",
+        lambda: MagicMock(get_pending_reviews_for_user=AsyncMock(return_value=[])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "library_db",
+        lambda: MagicMock(
+            get_library_agent_refs_by_graph_ids=AsyncMock(return_value=[])
+        ),
+    )
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    assert result == {"status": "skipped", "reason": "nothing_to_say"}
+    client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
+    client.append_plain_session_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_generate_bounds_the_execution_query(monkeypatch):
+    """The 24h read is filtered and limited in the query — a user running
+    minute-crons would otherwise ship thousands of rows over the RPC."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+    from backend.data.execution import ExecutionStatus
+
+    fake_datetime = MagicMock(wraps=datetime)
+    fake_datetime.now.return_value = NOW
+    monkeypatch.setattr(generate, "datetime", fake_datetime)
+    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
+
+    user = MagicMock()
+    user.timezone = "UTC"
+    monkeypatch.setattr(
+        generate,
+        "user_db",
+        lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+    )
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+
+    get_graph_executions = AsyncMock(return_value=[make_exec()])
+    monkeypatch.setattr(
+        generate,
+        "experts_db",
+        lambda: MagicMock(list_experts=AsyncMock(return_value=[make_expert()])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "execution_db",
+        lambda: MagicMock(get_graph_executions=get_graph_executions),
+    )
+    monkeypatch.setattr(
+        generate,
+        "review_db",
+        lambda: MagicMock(get_pending_reviews_for_user=AsyncMock(return_value=[])),
+    )
+    refs_lookup = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        generate,
+        "library_db",
+        lambda: MagicMock(get_library_agent_refs_by_graph_ids=refs_lookup),
+    )
+
+    await generate.generate_and_deliver_briefing("user-1")
+
+    kwargs = get_graph_executions.await_args.kwargs
+    assert kwargs["statuses"] == [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]
+    assert kwargs["limit"] == generate._EXECUTION_FETCH_LIMIT
+    # Only the graphs actually referenced are resolved — no whole-library page.
+    assert refs_lookup.await_args.args == ("user-1", ["g-1"])

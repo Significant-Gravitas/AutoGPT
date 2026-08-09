@@ -8,6 +8,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage, Expert, User
 
 from backend.copilot import db as copilot_db
+from backend.copilot.model import ChatSessionMetadata
 from backend.util.test import SpinTestServer
 
 logger = logging.getLogger(__name__)
@@ -139,5 +140,42 @@ async def test_append_plain_session_message_retries_on_sequence_collision(
         stored = await ChatMessage.prisma().find_unique(where={"id": message_id})
         assert stored is not None
         assert stored.sessionId == session_id
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_plain_session_message_skips_dream_sessions(
+    server: SpinTestServer,
+):
+    """Dream sessions are also ``expertId IS NULL`` but are hidden from every
+    listing surface, so a briefing posted into one is invisible forever — and
+    still gets stamped delivered."""
+    user_id = f"plain-session-dream-{uuid4()}"
+    await _create_user(user_id)
+    try:
+        plain = await copilot_db.append_plain_session_message(
+            user_id=user_id, content="## Briefing", message_id=str(uuid4())
+        )
+        assert plain is not None
+
+        # Created after the plain session, so it is the most recently updated
+        # expertId-IS-NULL session for this user.
+        dream_session = await copilot_db.create_chat_session(
+            session_id=str(uuid4()),
+            user_id=user_id,
+            metadata=ChatSessionMetadata(kind="dream"),
+        )
+        assert dream_session.session_id != plain
+
+        landed = await copilot_db.append_plain_session_message(
+            user_id=user_id, content="## Briefing 2", message_id=str(uuid4())
+        )
+
+        assert landed == plain
+        dream_messages = await ChatMessage.prisma().find_many(
+            where={"sessionId": dream_session.session_id}
+        )
+        assert dream_messages == []
     finally:
         await _cleanup(user_id)

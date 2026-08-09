@@ -41,8 +41,8 @@ from .scheduling import (
 # bootstrap circular imports (same pattern as backend/copilot/dream).
 _PATH_FLAG = "backend.copilot.briefing.scheduling.is_feature_enabled"
 _PATH_TZ = "backend.copilot.briefing.scheduling._resolve_user_timezone"
-_PATH_READ_TZ = "backend.copilot.briefing.scheduling._read_registration_tz"
-_PATH_WRITE_TZ = "backend.copilot.briefing.scheduling._write_registration_tz"
+_PATH_READ_TZ = "backend.copilot.briefing.scheduling._read_registration_marker"
+_PATH_WRITE_TZ = "backend.copilot.briefing.scheduling._write_registration_marker"
 _PATH_CLIENT = "backend.util.clients.get_scheduler_client"
 
 
@@ -224,7 +224,7 @@ async def test_unexpected_flag_check_error_is_swallowed():
 async def test_resolve_user_timezone_missing_user_is_authoritative_utc():
     accessor = MagicMock()
     accessor.get_user_by_id = AsyncMock(side_effect=ValueError("User not found"))
-    with patch("backend.data.db_accessors.user_db", return_value=accessor):
+    with patch("backend.copilot.briefing.scheduling.user_db", return_value=accessor):
         assert await scheduling._resolve_user_timezone("abc") == "UTC"
 
 
@@ -232,7 +232,7 @@ async def test_resolve_user_timezone_missing_user_is_authoritative_utc():
 async def test_resolve_user_timezone_returns_none_when_db_lookup_fails():
     accessor = MagicMock()
     accessor.get_user_by_id = AsyncMock(side_effect=ConnectionError("db down"))
-    with patch("backend.data.db_accessors.user_db", return_value=accessor):
+    with patch("backend.copilot.briefing.scheduling.user_db", return_value=accessor):
         assert await scheduling._resolve_user_timezone("abc") is None
 
 
@@ -244,7 +244,7 @@ async def test_resolve_user_timezone_unset_value_falls_back_to_utc():
     accessor.get_user_by_id = AsyncMock(
         return_value=MagicMock(timezone=USER_TIMEZONE_NOT_SET)
     )
-    with patch("backend.data.db_accessors.user_db", return_value=accessor):
+    with patch("backend.copilot.briefing.scheduling.user_db", return_value=accessor):
         assert await scheduling._resolve_user_timezone("abc") == "UTC"
 
 
@@ -257,7 +257,7 @@ async def test_resolve_user_timezone_unset_value_falls_back_to_utc():
 async def test_clear_marker_deletes_the_registration_key():
     redis = AsyncMock()
     with patch(
-        "backend.data.redis_client.get_redis_async",
+        "backend.copilot.briefing.scheduling.get_redis_async",
         new=AsyncMock(return_value=redis),
     ):
         await clear_briefing_registration_marker("abc")
@@ -267,7 +267,7 @@ async def test_clear_marker_deletes_the_registration_key():
 @pytest.mark.asyncio
 async def test_clear_marker_swallows_redis_failure(caplog):
     with patch(
-        "backend.data.redis_client.get_redis_async",
+        "backend.copilot.briefing.scheduling.get_redis_async",
         new=AsyncMock(side_effect=ConnectionError("redis down")),
     ), caplog.at_level(logging.WARNING, logger=scheduling.logger.name):
         await clear_briefing_registration_marker("abc")  # must not raise
@@ -283,7 +283,7 @@ async def test_clear_marker_swallows_redis_failure(caplog):
 
 
 def test_registration_ttl_bounds_the_recheck_window():
-    assert REGISTRATION_TTL_SECONDS == 6 * 3600
+    assert REGISTRATION_TTL_SECONDS == 7 * 24 * 3600
 
 
 # Suppress "imported but unused" — ``scheduling`` is the module under test.

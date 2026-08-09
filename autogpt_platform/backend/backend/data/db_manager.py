@@ -17,6 +17,7 @@ from backend.api.features.library.db import (
     get_library_agent,
     get_library_agent_by_graph_id,
     get_library_agent_id_by_graph_id,
+    get_library_agent_refs_by_graph_ids,
     get_preset,
     get_root_agent_summaries,
     list_folders,
@@ -65,6 +66,7 @@ from backend.data.briefing import (
     get_briefing_for_date,
     get_latest_briefings,
     mark_briefing_delivered,
+    update_briefing_content,
 )
 from backend.data.credit import (
     UsageTransactionMetadata,
@@ -358,6 +360,7 @@ class DatabaseManager(AppService):
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
     get_library_agent_id_by_graph_id = _(get_library_agent_id_by_graph_id)
+    get_library_agent_refs_by_graph_ids = _(get_library_agent_refs_by_graph_ids)
     create_graph_in_library = _(create_graph_in_library)
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
@@ -506,11 +509,6 @@ class DatabaseManager(AppService):
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
-    append_plain_session_message = _(chat_db.append_plain_session_message)
-    create_briefing = _(create_briefing)
-    get_briefing_for_date = _(get_briefing_for_date)
-    get_latest_briefings = _(get_latest_briefings)
-    mark_briefing_delivered = _(mark_briefing_delivered)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
@@ -530,7 +528,16 @@ class DatabaseManager(AppService):
     update_chat_session_status = _(chat_db.update_chat_session_status)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
-    add_chat_message = _(chat_db.add_chat_message)
+
+    # ============ Morning Briefing ============ #
+    # Exposed so the Prisma-less scheduler process can compose, store and
+    # post a briefing via db_accessors / the DatabaseManager RPC.
+    append_plain_session_message = _(chat_db.append_plain_session_message)
+    create_briefing = _(create_briefing)
+    get_briefing_for_date = _(get_briefing_for_date)
+    get_latest_briefings = _(get_latest_briefings)
+    mark_briefing_delivered = _(mark_briefing_delivered)
+    update_briefing_content = _(update_briefing_content)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -580,13 +587,17 @@ class DatabaseManagerClient(AppServiceClient):
     validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
 
     # Expert run posts (executor completion hook)
+    append_expert_run_message = _(d.append_expert_run_message)
+    get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
+
+    # Morning briefing (scheduler cron; runs Prisma-less)
     append_plain_session_message = _(d.append_plain_session_message)
     create_briefing = _(d.create_briefing)
     get_briefing_for_date = _(d.get_briefing_for_date)
     get_latest_briefings = _(d.get_latest_briefings)
     mark_briefing_delivered = _(d.mark_briefing_delivered)
-    append_expert_run_message = _(d.append_expert_run_message)
-    get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
+    update_briefing_content = _(d.update_briefing_content)
+    get_library_agent_refs_by_graph_ids = _(d.get_library_agent_refs_by_graph_ids)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -672,8 +683,17 @@ class DatabaseManagerAsyncClient(AppServiceClient):
         d.get_user_notification_oldest_message_in_batch
     )
 
+    # ============ Morning Briefing ============ #
+    append_plain_session_message = d.append_plain_session_message
+    create_briefing = d.create_briefing
+    get_briefing_for_date = d.get_briefing_for_date
+    get_latest_briefings = d.get_latest_briefings
+    mark_briefing_delivered = d.mark_briefing_delivered
+    update_briefing_content = d.update_briefing_content
+
     # ============ Library ============ #
     list_library_agents = d.list_library_agents
+    get_library_agent_refs_by_graph_ids = d.get_library_agent_refs_by_graph_ids
     add_store_agent_to_library = d.add_store_agent_to_library
     create_graph_in_library = d.create_graph_in_library
     create_library_agent = d.create_library_agent
@@ -804,11 +824,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
-    append_plain_session_message = d.append_plain_session_message
-    create_briefing = d.create_briefing
-    get_briefing_for_date = d.get_briefing_for_date
-    get_latest_briefings = d.get_latest_briefings
-    mark_briefing_delivered = d.mark_briefing_delivered
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions

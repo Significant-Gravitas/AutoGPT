@@ -114,6 +114,7 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
 
@@ -122,10 +123,6 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
-
-# Strong refs to fire-and-forget tasks spawned from request handlers; the
-# event loop only keeps weak references.
-_background_tasks: set[asyncio.Task] = set()
 
 
 async def _validate_and_get_session(
@@ -1181,16 +1178,14 @@ async def stream_chat_post(
     # graphiti/ingest.py's ensure_dream_system_scheduled registration.
     from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
 
-    briefing_task = asyncio.create_task(
+    # Spawned through the shared helper: the loop only holds a weak
+    # reference, so an unretained task can be GC'd mid-flight — leaving the
+    # Redis marker unwritten and making every subsequent turn redo the whole
+    # registration.
+    spawn_background_task(
         ensure_morning_briefing_scheduled(user_id),
         name=f"morning-briefing-register-{user_id[:12]}",
     )
-    # The loop only holds a weak reference, so an unretained task can be GC'd
-    # mid-flight — leaving the Redis marker unwritten and making every
-    # subsequent turn redo the whole registration. Same pattern as
-    # ``backend/data/user.py``'s ``_background_tasks``.
-    _background_tasks.add(briefing_task)
-    briefing_task.add_done_callback(_background_tasks.discard)
 
     stream_start_time = time.perf_counter()
     # Wall-clock arrival time, propagated to the executor so the turn-start
