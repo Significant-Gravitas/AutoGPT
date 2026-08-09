@@ -69,6 +69,24 @@ function scriptRecommendations(...responses: RecommendedResponse[]) {
   return hits;
 }
 
+// A registry holding only one of the preferred fallback ids, so the rest
+// of the section has to be padded out of what is left.
+function stubRegistryWithoutMostPreferredIds() {
+  const names = ["slack", "airtable", "linear", "stripe", "hubspot", "asana"];
+  server.use(
+    http.get(PROVIDERS_URL, () =>
+      HttpResponse.json(
+        names.map((name) => ({
+          name,
+          description: `${name} description`,
+          supported_auth_types: ["oauth2"],
+        })),
+      ),
+    ),
+    http.get(CREDENTIALS_URL, () => HttpResponse.json([])),
+  );
+}
+
 function renderPanel() {
   return render(<ConnectToolsPanel onBack={vi.fn()} onNext={vi.fn()} />);
 }
@@ -171,6 +189,33 @@ describe("ConnectToolsPanel — recommendations", () => {
 
     await pollTimes(4);
     expect(hits).toHaveLength(1);
+  });
+
+  it("pads the popular fallback out of the registry when the preferred providers are missing", async () => {
+    // A deployment without most of the preferred ids must still fill the
+    // section rather than showing the one it happens to have.
+    stubRegistryWithoutMostPreferredIds();
+    scriptRecommendations({ ready: true, providers: [] });
+
+    renderPanel();
+
+    expect(await screen.findByText(FALLBACK_HEADING)).toBeDefined();
+    expect(screen.getAllByRole("listitem")).toHaveLength(6);
+    // The one preferred id present still leads the list.
+    expect(screen.getAllByRole("listitem")[0].textContent).toContain("Slack");
+  });
+
+  it("falls back to popular providers when the recommendation request fails", async () => {
+    stubRegistry();
+    // A rejected request never reaches `data`, so it is the query's error
+    // state — not a status — that has to settle the section.
+    server.use(http.get(RECOMMENDED_URL, () => HttpResponse.error()));
+
+    renderPanel();
+
+    expect(await screen.findByText(FALLBACK_HEADING)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Notion/ })).toBeDefined();
+    expect(screen.queryByText(RECOMMENDED_HEADING)).toBeNull();
   });
 
   it("keeps polling while the job is unfinished and renders the answer when it lands", async () => {

@@ -5,8 +5,9 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   GREETING_ORB_LAYOUT_ID,
   ORB_FLIP_TRANSITION,
+  ORB_FLIP_TRANSITION_REDUCED,
   SMALL_ORB_PARAMS,
-} from "../../OnboardingIntroCard/OnboardingIntroCard";
+} from "../../../helpers/greetingOrb";
 
 // What the page is while the greeting is still being written: the orb,
 // alone, breathing in the middle of the empty session. It carries the
@@ -33,7 +34,9 @@ export function GreetingLoader() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{
-          ...ORB_FLIP_TRANSITION,
+          ...(prefersReducedMotion
+            ? ORB_FLIP_TRANSITION_REDUCED
+            : ORB_FLIP_TRANSITION),
           opacity: { duration: 0.25, delay: 0.15 },
         }}
       >

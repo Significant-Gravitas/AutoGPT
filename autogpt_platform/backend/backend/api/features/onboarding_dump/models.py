@@ -113,9 +113,9 @@ class IntroCardResponse(BaseModel):
     prompts: list[SuggestedPrompt] = []
     greeting_done: bool = False
     greeting_pending: bool = False
-    """True while the greeting is still being written. An empty greeting
-    used to carry this meaning by implication; saying it outright is what
-    lets the client tell "still coming" apart from "there isn't one"."""
+    """True while the greeting is still being written. Both this state and
+    "there is no greeting" carry an empty ``greeting``, so the client needs
+    this flag to tell them apart and know whether to keep polling."""
     transcript: str | None = None
     """The full transcript of the recorded dump, so the greeting page can
     offer a copy button. Only present on Path A while the greeting is

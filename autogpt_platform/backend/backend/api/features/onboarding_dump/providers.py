@@ -22,6 +22,8 @@ def known_providers() -> dict[str, str | None]:
 
     Mirrors the ``/providers`` endpoint: block modules must be imported
     before AutoRegistry knows about SDK-registered providers.
+    ``load_all_blocks`` is ``@cached``, so the two jobs that share this
+    helper also share one import pass rather than each paying for it.
     """
     try:
         load_all_blocks()

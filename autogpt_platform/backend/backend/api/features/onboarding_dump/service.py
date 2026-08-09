@@ -12,6 +12,7 @@ import time
 from fastapi import BackgroundTasks
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
+from prisma.models import OnboardingBrainDump
 
 from backend.api.features.onboarding_dump import (
     db,
@@ -29,7 +30,7 @@ from backend.api.features.onboarding_dump.models import (
     RecommendedProvidersResponse,
     SuggestedPrompt,
 )
-from backend.copilot.db import get_user_session_count
+from backend.copilot.db import user_has_any_session
 from backend.data.onboarding import format_brain_dump_for_extraction
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
@@ -431,10 +432,11 @@ async def _extract_and_complete(
     ):
         return _superseded_response(user_id, input_mode)
 
-    # The greeting reads the transcript, not the extraction, so running it
-    # behind extraction only added that call's latency to the loading
-    # screen. Both degrade internally rather than raising, so a gather
-    # here cannot lose one to the other's failure.
+    # The greeting reads the transcript, not the extraction, so the two
+    # run together rather than the loading screen paying for both in
+    # series. Each returns its own fallback instead of raising (see their
+    # docstrings), which is what keeps a gather from losing one result to
+    # the other's failure — the tests below hold both to that.
     extracted, (greeting, suggested_prompts) = await asyncio.gather(
         _extract_understanding(user_id, transcript),
         intro.generate_intro(transcript),
@@ -463,18 +465,23 @@ async def _extract_and_complete(
 async def _extract_understanding(
     user_id: str, transcript: str
 ) -> BusinessUnderstandingInput:
-    understanding = await get_business_understanding(user_id)
-    formatted = format_brain_dump_for_extraction(
-        user_name=(understanding.user_name if understanding else None) or "",
-        user_role=(understanding.user_role if understanding else None) or "",
-        transcript=transcript,
-    )
+    """The structured understanding for ``transcript``, or an empty one.
+
+    Never raises. A failed extraction must not cost the user their
+    transcript — the raw text still lands in the understanding, so the
+    copilot's <user_context> is personalised even without structured
+    fields — and it runs gathered with the greeting, which a raise here
+    would take down with it.
+    """
     try:
+        understanding = await get_business_understanding(user_id)
+        formatted = format_brain_dump_for_extraction(
+            user_name=(understanding.user_name if understanding else None) or "",
+            user_role=(understanding.user_role if understanding else None) or "",
+            transcript=transcript,
+        )
         return await extract_business_understanding(formatted)
     except Exception as e:
-        # A failed extraction must not cost the user their transcript: the
-        # raw text still lands in the understanding, so the copilot's
-        # <user_context> is personalised even without structured fields.
         logger.warning("Brain dump extraction failed for user %s: %s", user_id, e)
         return BusinessUnderstandingInput.model_construct()
 
@@ -544,19 +551,19 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         # greeting must never reappear once the first message is sent.
         return IntroCardResponse(path="A", greeting="", greeting_done=True)
 
-    if await _has_chatted(user_id):
+    if dump is not None and _greeting_still_writing(dump):
+        # The background half of the pipeline is still writing the
+        # greeting. The client holds its loader and polls at 1.5s —
+        # serving the generic fallback to a brand-new user would waste
+        # the personalised one that is seconds away. Answered before the
+        # session lookup below so that poll does not re-run it every
+        # cycle: someone whose dump is mid-pipeline just recorded it.
+        return IntroCardResponse(path="A", greeting="", greeting_pending=True)
+
+    if await _retire_greeting_if_chatted(user_id):
         return IntroCardResponse(path="A", greeting="", greeting_done=True)
 
-    if (
-        dump is None
-        or dump.inputMode == BrainDumpInputMode.skipped
-        or not (dump.transcript or "").strip()
-        # A quality-rejected dump keeps its transcript on the row for
-        # recovery, but that text is by definition not worth reflecting
-        # back — falling through to Path A here would greet the user with
-        # a fallback built from the very content the gate refused.
-        or dump.errorCode in quality.QUALITY_ERROR_CODES
-    ):
+    if dump is None or _nothing_to_reflect(dump):
         return IntroCardResponse(
             path="B",
             greeting=prompts.PATH_B_GREETING,
@@ -564,15 +571,6 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         )
 
     greeting = (dump.greeting or "").strip()
-    if not greeting and dump.status not in (
-        BrainDumpStatus.completed,
-        BrainDumpStatus.failed,
-    ):
-        # The background half of the pipeline is still writing the
-        # greeting. The client holds its loader and keeps polling —
-        # serving the generic fallback to a brand-new user would waste
-        # the personalised one that is seconds away.
-        return IntroCardResponse(path="A", greeting="", greeting_pending=True)
     if not greeting:
         # Completed before the greeting column existed, or generation
         # terminally failed after the transcript landed.
@@ -585,7 +583,33 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
     )
 
 
-async def _has_chatted(user_id: str) -> bool:
+def _nothing_to_reflect(dump: OnboardingBrainDump) -> bool:
+    """Whether ``dump`` holds anything worth greeting the user about."""
+    return (
+        dump.inputMode == BrainDumpInputMode.skipped
+        or not (dump.transcript or "").strip()
+        # A quality-rejected dump keeps its transcript on the row for
+        # recovery, but that text is by definition not worth reflecting
+        # back — treating it as Path A would greet the user with a
+        # fallback built from the very content the gate refused.
+        or dump.errorCode in quality.QUALITY_ERROR_CODES
+    )
+
+
+def _greeting_still_writing(dump: OnboardingBrainDump) -> bool:
+    """Whether a Path A greeting for ``dump`` is on its way.
+
+    A terminal status means no more is coming, whatever the column holds.
+    """
+    if _nothing_to_reflect(dump):
+        return False
+    return not (dump.greeting or "").strip() and dump.status not in (
+        BrainDumpStatus.completed,
+        BrainDumpStatus.failed,
+    )
+
+
+async def _retire_greeting_if_chatted(user_id: str) -> bool:
     """Whether this user already has a chat session, greeting retired if so.
 
     ``greetingSeen`` only covers users whose first message went through
@@ -593,16 +617,17 @@ async def _has_chatted(user_id: str) -> bool:
     session started from an expert page or a shared link, or a first send
     whose completion call failed all leave it false, and the greeting
     would then greet a user mid-conversation as brand new. One session is
-    enough to say they are past this.
+    enough to say they are past this, which is why this asks for presence
+    rather than a count.
 
     A failure here must not cost a genuinely new user their greeting, so
     it answers "no" and the rest of the checks decide.
     """
     try:
-        if await get_user_session_count(user_id) == 0:
+        if not await user_has_any_session(user_id):
             return False
     except Exception as e:
-        logger.warning("Brain dump greeting: session count failed: %s", e)
+        logger.warning("Brain dump greeting: session lookup failed: %s", e)
         return False
     try:
         # Bookkeeping behind a verdict that already stands: a failed write

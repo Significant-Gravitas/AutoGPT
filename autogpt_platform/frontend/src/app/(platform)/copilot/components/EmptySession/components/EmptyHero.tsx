@@ -8,11 +8,9 @@ interface Props {
   name: string;
 }
 
-// The regular empty-session hero. The greeting flow used to borrow it as
-// a stand-in — heading pre-placed where the intro card was about to put
-// it — which meant maintaining two components that had to render the same
-// row identically. The orb now travels from GreetingLoader into the card
-// under a shared layout id, so this is only ever the regular hero again.
+// The regular empty-session hero. While a greeting is being written
+// GreetingLoader renders in its place instead, and its orb travels into
+// the intro card's heading under a shared layout id.
 export function EmptyHero({ name }: Props) {
   return (
     <>

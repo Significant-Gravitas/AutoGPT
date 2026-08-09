@@ -1,8 +1,14 @@
 "use client";
 
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
-import type { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 import type { SuggestedPrompt } from "@/app/api/__generated__/models/suggestedPrompt";
+import {
+  GREETING_ORB_LAYOUT_ID,
+  ORB_FLIP_TRANSITION,
+  ORB_FLIP_TRANSITION_REDUCED,
+  ORB_PURPLE,
+  SMALL_ORB_PARAMS,
+} from "../../helpers/greetingOrb";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -75,38 +81,9 @@ interface Props {
   disabled?: boolean;
 }
 
-// The default glass params are tuned for the big onboarding orb; at 32px
-// that much frost and distortion collapses into a flat purple ball. Light
-// frost + gentle refraction keeps the drifting blobs readable this small.
-// Also rendered by EmptySession's hero while the greeting is on its way,
-// so the orb is already on screen before the reveal.
-export const SMALL_ORB_PARAMS: GlassParams = {
-  frost: 1.5,
-  saturation: 1.5,
-  tint: 0.12,
-  edge: 0.55,
-  distortion: 8,
-  ringWidth: 1,
-  ringDepth: 2,
-  ringDark: 0.25,
-};
-
-// The purple the orb's blobs blend into — the name mirrors it. Shared with
-// the hero heading this card replaces so the swap is invisible.
-export const ORB_PURPLE = "#8a4dff";
-
-// The orb is one element across the swap, not two: the loader renders it
-// centered, this card renders it in the heading, and framer moves it
-// between the two positions because they share this id.
-export const GREETING_ORB_LAYOUT_ID = "onboarding-greeting-orb";
-export const ORB_FLIP_TRANSITION = {
-  type: "spring",
-  bounce: 0.15,
-  duration: 0.55,
-} as const;
-
-// The heading no longer arrives already on screen — the orb travels to it
-// — so it is revealed too, and everything below waits for the trip.
+// The orb travels into this card's heading from the loader, so the
+// heading is revealed on its arrival and everything below waits for the
+// trip to finish.
 const HEADING_START = 0.2;
 const GREETING_START = 0.5;
 const WORD_STAGGER = 0.08;
@@ -187,7 +164,11 @@ export function OnboardingIntroCard({
             own layout animation. Fading it too would fight that trip. */}
         <motion.span
           layoutId={GREETING_ORB_LAYOUT_ID}
-          transition={ORB_FLIP_TRANSITION}
+          transition={
+            prefersReducedMotion
+              ? ORB_FLIP_TRANSITION_REDUCED
+              : ORB_FLIP_TRANSITION
+          }
           className="relative block size-8 shrink-0"
         >
           <GlassOrb params={SMALL_ORB_PARAMS} />

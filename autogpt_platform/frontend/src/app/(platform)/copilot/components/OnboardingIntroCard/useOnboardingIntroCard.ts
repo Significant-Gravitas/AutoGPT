@@ -111,8 +111,9 @@ export function useOnboardingIntroCard() {
         const latest = query.state.data;
         if (!latest || latest.status !== 200) return false;
         const body = latest.data;
-        if (!body.greeting_done && body.greeting_pending)
+        if (!body.greeting_done && body.greeting_pending) {
           return PENDING_POLL_MS;
+        }
         return false;
       },
     },
