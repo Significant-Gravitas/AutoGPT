@@ -23,9 +23,15 @@ interface FeaturedSectionProps {
   featuredAgents: StoreAgent[];
 }
 
+// Scroll target for the Marketplace tab intro's "Browse featured agents".
+export const FEATURED_SECTION_ID = "marketplace-featured-agents";
+
 export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
   return (
-    <section className="mb-8 w-full border-b border-zinc-200/70 pb-6">
+    <section
+      id={FEATURED_SECTION_ID}
+      className="mb-8 w-full border-b border-zinc-200/70 pb-6"
+    >
       <Carousel
         opts={{
           align: "start",

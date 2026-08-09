@@ -47,6 +47,29 @@ def test_complete_step_accepts_renamed_complete_value(mocker):
     assert mock_complete.await_args.args[1] == OnboardingStep.ONBOARDING_COMPLETE
 
 
+@pytest.mark.parametrize(
+    "step",
+    [
+        OnboardingStep.AGENTS_TAB_INTRO,
+        OnboardingStep.MARKETPLACE_TAB_INTRO,
+        OnboardingStep.BUILD_TAB_INTRO,
+    ],
+)
+def test_complete_step_accepts_tab_intros(step, mocker):
+    # Each tab's first-visit card records its own step; without all three on
+    # FrontendOnboardingStep the card would 422 and reappear forever.
+    mock_complete = mocker.patch(
+        "backend.api.features.v1.complete_onboarding_step",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.post("/onboarding/step", params={"step": step.value})
+
+    assert response.status_code == 200
+    assert mock_complete.await_args.args[1] == step
+
+
 def test_is_onboarding_completed_true_when_complete_step_present(mocker):
     from backend.data.model import UserOnboarding
 
