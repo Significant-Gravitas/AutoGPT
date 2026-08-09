@@ -2877,7 +2877,7 @@
       "get": {
         "tags": ["briefings"],
         "summary": "Get Latest Briefing",
-        "description": "Return the user's most recent readable briefing, or None if there is none.\n\nStored content that fails to validate against the current BriefingContent\nshape (e.g. written by an older/newer version of the composer) is skipped\nrather than 500ing the request — and rather than hiding every older\nbriefing behind one unreadable row on the newest date.",
+        "description": "Return the user's current briefing, or None if there isn't a fresh one.\n\nOnly briefings covering today or yesterday qualify; anything older is\nhistory, not \"this morning\".\n\nStored content that fails to validate against the current BriefingContent\nshape (e.g. written by an older/newer version of the composer) is skipped\nrather than 500ing the request — and rather than hiding every older\nbriefing behind one unreadable row on the newest date.",
         "operationId": "getBriefingsGet latest briefing",
         "responses": {
           "200": {
