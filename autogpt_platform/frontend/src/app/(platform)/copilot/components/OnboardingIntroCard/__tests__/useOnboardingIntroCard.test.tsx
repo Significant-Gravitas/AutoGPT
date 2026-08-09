@@ -52,6 +52,7 @@ const PENDING_INTRO: IntroCardResponse = {
   path: "A",
   greeting: "",
   greeting_done: false,
+  greeting_pending: true,
   prompts: [],
 };
 
@@ -342,6 +343,28 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
 
     expect(result.current.isVisible).toBe(false);
     expect(result.current.greeting).toBe("");
+    // The orb sits centered for exactly this window; only the greeting
+    // itself anchors the page to the top.
+    expect(result.current.anchorTop).toBe(false);
+  });
+
+  it("releases the loader when the server sends no greeting and no pending flag", async () => {
+    // A terminally-empty Path A (generation gave up server-side): there is
+    // nothing coming, so holding the orb up would strand the composer.
+    server.use(
+      getGetBrainDumpIntroMockHandler200({
+        path: "A",
+        greeting: "",
+        greeting_done: false,
+        greeting_pending: false,
+        prompts: [],
+      }),
+    );
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(false));
+
+    expect(result.current.isVisible).toBe(false);
   });
 
   it("polls past the pending answer and reveals the greeting when it lands", async () => {

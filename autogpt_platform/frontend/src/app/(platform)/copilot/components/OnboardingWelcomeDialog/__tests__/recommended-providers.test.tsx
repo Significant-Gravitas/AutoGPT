@@ -27,6 +27,7 @@ const RECOMMENDED_URL =
 
 const POLL_INTERVAL_MS = 2_500;
 const RECOMMENDED_HEADING = "Recommended from our conversation";
+const FALLBACK_HEADING = "Popular places to start";
 const SEARCH_PROMPT = "Search to find a service to connect.";
 
 type RecommendedResponse = {
@@ -133,16 +134,21 @@ describe("ConnectToolsPanel — recommendations", () => {
     expect(screen.getAllByText(RECOMMENDED_HEADING)).toHaveLength(1);
   });
 
-  it("shows the search prompt and stops polling when the model recommends nothing", async () => {
+  it("falls back to popular providers and stops polling when the model recommends nothing", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     stubRegistry();
-    // An empty array is a real answer, not "still working".
+    // An empty array is a real answer, not "still working" — but an empty
+    // panel reads as broken, so the generic picks take over.
     const hits = scriptRecommendations({ ready: true, providers: [] });
 
     renderPanel();
 
-    await waitFor(() => expect(screen.getByText(SEARCH_PROMPT)).toBeDefined());
+    expect(await screen.findByText(FALLBACK_HEADING)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Notion/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Slack/ })).toBeDefined();
+    // The copy must not claim these came out of the conversation.
     expect(screen.queryByText(RECOMMENDED_HEADING)).toBeNull();
+    expect(screen.queryByText(SEARCH_PROMPT)).toBeNull();
 
     await pollTimes(4);
     expect(hits).toHaveLength(1);
@@ -164,7 +170,10 @@ describe("ConnectToolsPanel — recommendations", () => {
 
     renderPanel();
 
+    // Nothing generic while the job may still answer — swapping the picks
+    // out from under the user is worse than a beat of empty space.
     await waitFor(() => expect(screen.getByText(SEARCH_PROMPT)).toBeDefined());
+    expect(screen.queryByText(FALLBACK_HEADING)).toBeNull();
     expect(hits).toHaveLength(1);
 
     await pollTimes(2);
@@ -172,6 +181,7 @@ describe("ConnectToolsPanel — recommendations", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Notion/ })).toBeDefined(),
     );
+    expect(screen.getByText(RECOMMENDED_HEADING)).toBeDefined();
     expect(screen.queryByText(SEARCH_PROMPT)).toBeNull();
     expect(hits).toHaveLength(3);
 

@@ -29,6 +29,7 @@ from backend.api.features.onboarding_dump.models import (
     RecommendedProvidersResponse,
     SuggestedPrompt,
 )
+from backend.copilot.db import get_user_session_count
 from backend.data.onboarding import format_brain_dump_for_extraction
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
@@ -430,7 +431,14 @@ async def _extract_and_complete(
     ):
         return _superseded_response(user_id, input_mode)
 
-    extracted = await _extract_understanding(user_id, transcript)
+    # The greeting reads the transcript, not the extraction, so running it
+    # behind extraction only added that call's latency to the loading
+    # screen. Both degrade internally rather than raising, so a gather
+    # here cannot lose one to the other's failure.
+    extracted, (greeting, suggested_prompts) = await asyncio.gather(
+        _extract_understanding(user_id, transcript),
+        intro.generate_intro(transcript),
+    )
     extracted.additional_notes = _append_note(
         extracted.additional_notes, transcript, input_mode
     )
@@ -440,10 +448,6 @@ async def _extract_and_complete(
     if not await db.owns_dump(user_id, recording_id):
         return _superseded_response(user_id, input_mode)
     await upsert_business_understanding(user_id, extracted)
-
-    # Generated here, while the onboarding loading screen is still up, so
-    # the copilot home can render its greeting without waiting.
-    greeting, suggested_prompts = await intro.generate_intro(transcript)
 
     await db.update_dump(
         user_id,
@@ -540,6 +544,9 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         # greeting must never reappear once the first message is sent.
         return IntroCardResponse(path="A", greeting="", greeting_done=True)
 
+    if await _has_chatted(user_id):
+        return IntroCardResponse(path="A", greeting="", greeting_done=True)
+
     if (
         dump is None
         or dump.inputMode == BrainDumpInputMode.skipped
@@ -562,10 +569,10 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         BrainDumpStatus.failed,
     ):
         # The background half of the pipeline is still writing the
-        # greeting. An empty Path A response tells the client to keep
-        # polling — serving the generic fallback to a brand-new user
-        # would waste the personalised one that is seconds away.
-        return IntroCardResponse(path="A", greeting="")
+        # greeting. The client holds its loader and keeps polling —
+        # serving the generic fallback to a brand-new user would waste
+        # the personalised one that is seconds away.
+        return IntroCardResponse(path="A", greeting="", greeting_pending=True)
     if not greeting:
         # Completed before the greeting column existed, or generation
         # terminally failed after the transcript landed.
@@ -576,6 +583,29 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         prompts=_stored_prompts(dump.suggestedPrompts),
         transcript=dump.transcript,
     )
+
+
+async def _has_chatted(user_id: str) -> bool:
+    """Whether this user already has a chat session, greeting retired if so.
+
+    ``greetingSeen`` only covers users whose first message went through
+    the copilot home while the flag was on — an existing account, a
+    session started from an expert page or a shared link, or a first send
+    whose completion call failed all leave it false, and the greeting
+    would then greet a user mid-conversation as brand new. One session is
+    enough to say they are past this.
+
+    A failure here must not cost a genuinely new user their greeting, so
+    it answers "no" and the rest of the checks decide.
+    """
+    try:
+        if await get_user_session_count(user_id) == 0:
+            return False
+    except Exception as e:
+        logger.warning("Brain dump greeting: session count failed: %s", e)
+        return False
+    await db.mark_greeting_seen(user_id)
+    return True
 
 
 def _stored_prompts(raw: object) -> list[SuggestedPrompt]:

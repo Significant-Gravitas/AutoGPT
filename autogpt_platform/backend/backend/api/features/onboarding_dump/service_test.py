@@ -48,6 +48,7 @@ class DumpStore:
         self.row: OnboardingBrainDump | None = None
         self.statuses: list[BrainDumpStatus] = []
         self.transcripts: list[str | None] = []
+        self.greeting_seen_writes = 0
 
     async def get_dump(self, user_id: str) -> OnboardingBrainDump | None:
         return self.row
@@ -141,6 +142,11 @@ class DumpStore:
             errorCode=error_code,
         )
 
+    async def mark_greeting_seen(self, user_id: str) -> None:
+        if self.row is not None:
+            self.row.greetingSeen = True
+        self.greeting_seen_writes += 1
+
 
 @pytest.fixture(autouse=True)
 def dumps(mocker: MockerFixture) -> DumpStore:
@@ -152,7 +158,18 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.update_dump", new=store.update_dump)
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
+    mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
     return store
+
+
+@pytest.fixture(autouse=True)
+def session_count(mocker: MockerFixture) -> AsyncMock:
+    """A brand-new user by default; the greeting is only for those."""
+    mock = AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.onboarding_dump.service.get_user_session_count", new=mock
+    )
+    return mock
 
 
 @pytest.fixture(autouse=True)
@@ -812,6 +829,80 @@ async def test_intro_card_takes_path_a_with_the_stored_greeting(dumps: DumpStore
     assert [p.prompt for p in card.prompts] == ["Please handle them."]
     assert card.greeting_done is False
     assert card.transcript == TRANSCRIPT
+
+
+@pytest.mark.asyncio
+async def test_intro_card_is_withheld_from_a_user_who_already_has_a_session(
+    dumps: DumpStore, session_count: AsyncMock
+):
+    session_count.return_value = 1
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+    # Recorded server-side so the count is only paid once.
+    assert dumps.greeting_seen_writes == 1
+
+
+@pytest.mark.asyncio
+async def test_intro_card_is_withheld_from_a_chatting_user_without_a_dump_row(
+    dumps: DumpStore, session_count: AsyncMock
+):
+    session_count.return_value = 3
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+    assert dumps.greeting_seen_writes == 1
+
+
+@pytest.mark.asyncio
+async def test_intro_card_still_greets_when_the_session_count_fails(
+    dumps: DumpStore, session_count: AsyncMock
+):
+    session_count.side_effect = RuntimeError("database down")
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is False
+    assert card.greeting == "You mentioned the weekly order emails."
+
+
+@pytest.mark.asyncio
+async def test_intro_card_reports_pending_while_the_greeting_is_generating(
+    dumps: DumpStore,
+):
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.extracting,
+        transcript=TRANSCRIPT,
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_pending is True
+    assert card.greeting == ""
+    assert card.greeting_done is False
 
 
 @pytest.mark.asyncio
