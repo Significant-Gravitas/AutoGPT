@@ -402,49 +402,32 @@ docker run --rm \
   -xzf /backup/autogpt-platform-data.tgz -C /data
 ```
 
-Start the restored volume without network access first. Restored schedules,
-stored credentials, and executors are live state and could otherwise trigger
-outbound actions during validation:
+Validate the restored layout without starting application services or allowing
+network access:
 
 ```bash
-docker run --detach --name autogpt-restore-test \
-  --stop-timeout 360 \
-  --shm-size 2g \
-  --ulimit nofile=65536:65536 \
+docker run --rm \
   --network none \
-  --env-file autogpt_platform/single-container/.env \
-  --env AUTOGPT_PUBLIC_URL=http://localhost:3000 \
-  --volume "${RESTORE_VOLUME}:/data" \
-  autogpt-platform:single-container-dev
+  --entrypoint /bin/sh \
+  --volume "${RESTORE_VOLUME}:/data:ro" \
+  autogpt-platform:single-container-dev \
+  -ceu '
+    test -s /data/config/runtime.env
+    test -s /data/config/backend.json
+    test -s /data/postgres/PG_VERSION
+    test -d /data/rabbitmq/mnesia
+    test -d /data/valkey/17000
+    test -d /data/falkordb
+  '
 ```
 
-Wait for the isolated copy to become healthy:
-
-```bash
-attempt=0
-until docker exec autogpt-restore-test autogpt-healthcheck; do
-  attempt=$((attempt + 1))
-  if ((attempt >= 60)); then
-    echo "Restore test did not become healthy within 10 minutes" >&2
-    exit 1
-  fi
-  sleep 10
-done
-```
-
-This no-egress check cannot validate browser login or external integrations.
-Perform interactive validation only on an egress-filtered test host or network
-after revoking or replacing production provider and integration credentials.
-In that environment, recreate the test container without `--network none` and
-publish it only to loopback on an unused port with a matching
-`AUTOGPT_PUBLIC_URL`. Verify login, memory, and workspace contents, then stop
-and remove the test container. Retain both volumes until the restore is
-accepted:
-
-```bash
-docker stop --time 360 autogpt-restore-test
-docker rm autogpt-restore-test
-```
+This structural check does not prove that each database can start. A full
+recovery rehearsal boots live schedules, stored credentials, and executors,
+and some services fetch runtime data during startup. Perform it only on a
+dedicated egress-filtered host or network after revoking or replacing
+production provider and integration credentials. There is no generic appliance
+switch that safely disables every possible outbound action. Retain both
+volumes until the restore is accepted.
 
 Never selectively mix service directories from different backups.
 
