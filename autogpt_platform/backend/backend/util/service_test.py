@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import os
 import time
 from datetime import datetime, timezone
 from functools import cached_property
@@ -12,34 +11,21 @@ import orjson
 import pytest
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import TypeAdapter
-from starlette.responses import Response
-from starlette.types import Message, Receive, Scope, Send
 
 from backend.data.model import User
 from backend.util.exceptions import GraphValidationError
 from backend.util.service import (
-    INTERNAL_ASYNC_HEALTH_CHECK_PATH,
-    INTERNAL_HEALTH_CHECK_PATH,
-    INTERNAL_METRICS_PATH,
-    INTERNAL_SERVICE_TOKEN_ENV,
     AppService,
     AppServiceClient,
     HTTPClientError,
     HTTPServerError,
     RemoteCallError,
-    _internal_service_headers,
-    _InternalServiceAuthMiddleware,
     endpoint_to_async,
     expose,
     get_service_client,
 )
 
 TEST_SERVICE_PORT = 8765
-
-
-async def _ok_asgi_app(scope: Scope, receive: Receive, send: Send) -> None:
-    response = Response(status_code=200)
-    await response(scope, receive, send)
 
 
 class _SupportsGetReturn(Protocol):
@@ -53,17 +39,9 @@ class _SupportsHandleCallMethodResponse(Protocol):
 
 
 class ServiceTest(AppService):
-    def __init__(self, internal_service_token: str | None = None):
+    def __init__(self):
         super().__init__()
         self.fail_count = 0
-        self.internal_service_token = internal_service_token
-
-    def run(self):
-        if self.internal_service_token is None:
-            os.environ.pop(INTERNAL_SERVICE_TOKEN_ENV, None)
-        else:
-            os.environ[INTERNAL_SERVICE_TOKEN_ENV] = self.internal_service_token
-        super().run()
 
     @classmethod
     def get_port(cls) -> int:
@@ -129,98 +107,9 @@ class ServiceTestClient(AppServiceClient):
     subtract_async = endpoint_to_async(ServiceTest.subtract)
 
 
-def test_internal_service_auth_is_default_off(monkeypatch):
-    monkeypatch.delenv("AUTOGPT_INTERNAL_SERVICE_TOKEN", raising=False)
-    assert _internal_service_headers() == {}
-
-
-def test_internal_service_clients_send_configured_token(monkeypatch):
-    monkeypatch.setenv("AUTOGPT_INTERNAL_SERVICE_TOKEN", "test-internal-token")
-    assert _internal_service_headers() == {
-        "X-AutoGPT-Internal-Token": "test-internal-token"
-    }
-
-
 @pytest.mark.asyncio
-async def test_internal_service_middleware_requires_token() -> None:
-    middleware = _InternalServiceAuthMiddleware(_ok_asgi_app, "expected-token")
-    transport = httpx.ASGITransport(app=middleware)
-
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/get_user_credentials")
-        assert response.status_code == 401
-
-        response = await client.post(
-            "/get_user_credentials",
-            headers={"x-autogpt-internal-token": "expected-token"},
-        )
-        assert response.status_code == 200
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "path", [INTERNAL_HEALTH_CHECK_PATH, INTERNAL_ASYNC_HEALTH_CHECK_PATH]
-)
-async def test_internal_service_health_remains_unauthenticated(path: str) -> None:
-    transport = httpx.ASGITransport(
-        app=_InternalServiceAuthMiddleware(_ok_asgi_app, "expected-token")
-    )
-
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        assert (await client.get(path)).status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_internal_service_metrics_require_token() -> None:
-    transport = httpx.ASGITransport(
-        app=_InternalServiceAuthMiddleware(_ok_asgi_app, "expected-token")
-    )
-
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        assert (await client.get(INTERNAL_METRICS_PATH)).status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_internal_service_middleware_rejects_websockets() -> None:
-    middleware = _InternalServiceAuthMiddleware(_ok_asgi_app, "expected-token")
-    messages: list[Message] = []
-
-    async def receive() -> Message:
-        return {"type": "websocket.connect"}
-
-    async def send(message: Message) -> None:
-        messages.append(message)
-
-    await middleware(
-        cast(Scope, {"type": "websocket", "path": "/get_user_credentials"}),
-        receive,
-        send,
-    )
-
-    assert messages == [{"type": "websocket.close", "code": 1008}]
-
-
-@pytest.mark.asyncio
-async def test_service_creation_without_internal_auth(server):
+async def test_service_creation(server):
     with ServiceTest():
-        response = httpx.post(
-            f"http://{ServiceTest.get_host()}:{ServiceTest.get_port()}/add",
-            json={"a": 5, "b": 3},
-        )
-        assert response.status_code == 200
-        assert response.json() == 8
-
-
-@pytest.mark.asyncio
-async def test_service_creation_with_internal_auth(server, monkeypatch):
-    with ServiceTest(internal_service_token="test-internal-token"):
-        monkeypatch.setenv(INTERNAL_SERVICE_TOKEN_ENV, "test-internal-token")
-        response = httpx.post(
-            f"http://{ServiceTest.get_host()}:{ServiceTest.get_port()}/add",
-            json={"a": 5, "b": 3},
-        )
-        assert response.status_code == 401
-
         client = get_service_client(ServiceTestClient)
         assert client.add(5, 3) == 8
         assert client.subtract(10, 4) == 6

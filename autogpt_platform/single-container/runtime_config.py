@@ -107,11 +107,6 @@ def _new_values(environment: Mapping[str, str]) -> dict[str, str]:
     vapid_private, vapid_public = _configured_or_generated_vapid(environment)
     values = {
         "AUTOGPT_RUNTIME_CONFIG_VERSION": CONFIG_VERSION,
-        "AUTOGPT_INTERNAL_SERVICE_TOKEN": _configured_or_generated(
-            environment,
-            "AUTOGPT_INTERNAL_SERVICE_TOKEN",
-            lambda: secrets.token_urlsafe(36),
-        ),
         "POSTGRES_PASSWORD": _configured_or_generated(
             environment, "POSTGRES_PASSWORD", lambda: secrets.token_urlsafe(36)
         ),
@@ -188,7 +183,6 @@ def _base64url(value: bytes) -> str:
 def _validate_values(values: dict[str, str]) -> None:
     expected = {
         "AUTOGPT_RUNTIME_CONFIG_VERSION",
-        "AUTOGPT_INTERNAL_SERVICE_TOKEN",
         "POSTGRES_PASSWORD",
         "RABBITMQ_DEFAULT_USER",
         "RABBITMQ_DEFAULT_PASS",

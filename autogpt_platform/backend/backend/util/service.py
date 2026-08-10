@@ -1,7 +1,6 @@
 import asyncio
 import concurrent
 import concurrent.futures
-import hmac
 import inspect
 import logging
 import os
@@ -33,8 +32,6 @@ from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
-from starlette.datastructures import Headers
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
@@ -55,51 +52,6 @@ api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
 api_comm_max_wait = config.pyro_client_max_wait
-
-INTERNAL_SERVICE_TOKEN_ENV = "AUTOGPT_INTERNAL_SERVICE_TOKEN"
-INTERNAL_SERVICE_TOKEN_HEADER = "X-AutoGPT-Internal-Token"
-INTERNAL_HEALTH_CHECK_PATH = "/health_check"
-INTERNAL_ASYNC_HEALTH_CHECK_PATH = "/health_check_async"
-INTERNAL_METRICS_PATH = "/metrics"
-UNAUTHENTICATED_INTERNAL_PATHS = frozenset(
-    {INTERNAL_HEALTH_CHECK_PATH, INTERNAL_ASYNC_HEALTH_CHECK_PATH}
-)
-
-
-def _internal_service_headers() -> dict[str, str]:
-    token = os.environ.get(INTERNAL_SERVICE_TOKEN_ENV)
-    return {INTERNAL_SERVICE_TOKEN_HEADER: token} if token else {}
-
-
-class _InternalServiceAuthMiddleware:
-    """Authenticate internal AppService RPC traffic at the ASGI boundary."""
-
-    def __init__(self, app: ASGIApp, expected_token: str) -> None:
-        self.app = app
-        self.expected_token = expected_token.encode("utf-8")
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "lifespan":
-            await self.app(scope, receive, send)
-            return
-        if scope["type"] == "websocket":
-            await send({"type": "websocket.close", "code": 1008})
-            return
-        if scope["type"] != "http":
-            raise RuntimeError(f"unsupported internal ASGI scope: {scope['type']}")
-        if scope["path"] in UNAUTHENTICATED_INTERNAL_PATHS:
-            await self.app(scope, receive, send)
-            return
-
-        provided_token = Headers(scope=scope).get(INTERNAL_SERVICE_TOKEN_HEADER, "")
-        if not hmac.compare_digest(provided_token.encode("utf-8"), self.expected_token):
-            response = responses.JSONResponse(
-                status_code=401, content={"detail": "Unauthorized"}
-            )
-            await response(scope, receive, send)
-            return
-
-        await self.app(scope, receive, send)
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -506,22 +458,14 @@ class AppService(BaseAppService, ABC):
         super().run()
 
         self.fastapi_app = FastAPI(lifespan=self.lifespan)
-        if internal_service_token := os.environ.get(INTERNAL_SERVICE_TOKEN_ENV):
-            # AppService exposes internal RPC only; public REST and WebSocket apps
-            # are constructed separately and do not install this middleware.
-            self.fastapi_app.add_middleware(
-                _InternalServiceAuthMiddleware,
-                expected_token=internal_service_token,
-            )
 
-        # Metrics stay authenticated when the token is enabled; internal scrapers
-        # must send the same header as RPC clients.
+        # Add Prometheus instrumentation to all services
         try:
             instrument_fastapi(
                 self.fastapi_app,
                 service_name=self.service_name,
                 expose_endpoint=True,
-                endpoint=INTERNAL_METRICS_PATH,
+                endpoint="/metrics",
                 include_in_schema=False,
             )
         except ImportError:
@@ -543,14 +487,10 @@ class AppService(BaseAppService, ABC):
                     methods=["POST"],
                 )
         self.fastapi_app.add_api_route(
-            INTERNAL_HEALTH_CHECK_PATH,
-            self.health_check,
-            methods=["POST", "GET"],
+            "/health_check", self.health_check, methods=["POST", "GET"]
         )
         self.fastapi_app.add_api_route(
-            INTERNAL_ASYNC_HEALTH_CHECK_PATH,
-            self.health_check,
-            methods=["POST", "GET"],
+            "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
         self.fastapi_app.add_exception_handler(
             ValueError, self._handle_internal_http_error(400)
@@ -648,7 +588,6 @@ def get_service_client(
             return httpx.Client(
                 base_url=self.base_url,
                 timeout=call_timeout,
-                headers=_internal_service_headers(),
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
@@ -660,7 +599,6 @@ def get_service_client(
             return httpx.AsyncClient(
                 base_url=self.base_url,
                 timeout=call_timeout,
-                headers=_internal_service_headers(),
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling

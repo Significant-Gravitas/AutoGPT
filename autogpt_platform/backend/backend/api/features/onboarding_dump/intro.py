@@ -17,6 +17,10 @@ from langfuse import get_client
 
 from backend.api.features.onboarding_dump.models import SuggestedPrompt
 from backend.api.features.onboarding_dump.parsing import parse_response_json
+from backend.api.features.onboarding_dump.providers import (
+    known_providers,
+    provider_lines,
+)
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 
@@ -129,6 +133,15 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
 
     Never raises: a failed or malformed generation degrades to the
     template below rather than costing the user their greeting.
+
+    The greeting is unvalidated model output. ``transcript`` is the user's
+    own words, and the "only name real integrations" constraint in the
+    prompt is advisory, so an injected or hallucinated tool name can reach
+    the prose. That surface is deliberately left open: the text is shown
+    only to the person who recorded it, and the ids that become
+    connectable or recommended tiles are validated against
+    :func:`providers.known_providers` in ``recommend.py`` rather than
+    trusted from prose.
     """
     text = transcript.strip()
     if not text:
@@ -140,6 +153,7 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         return fallback_intro(text)
 
     instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
+    content = f"{_integrations_block()}{instructions}{text}"
     data = None
     # Two attempts: at temperature 0.6 an occasional generation comes back
     # truncated or malformed, and one retry is far cheaper than shipping
@@ -149,7 +163,7 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=_MODEL,
-                    messages=[{"role": "user", "content": f"{instructions}{text}"}],
+                    messages=[{"role": "user", "content": content}],
                     temperature=0.6,
                     max_tokens=3000,
                 ),
@@ -179,6 +193,25 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         # generic set is better than a half-empty one.
         return greeting.strip()[:MAX_GREETING_CHARS], fallback_prompts()
     return greeting.strip()[:MAX_GREETING_CHARS], prompts[:MAX_PROMPTS]
+
+
+def _integrations_block() -> str:
+    """The live provider registry, prepended to the instructions.
+
+    Without it the model invents the tools it promises to wire up, and the
+    user's first suggested automation is one we cannot run. Goes in front
+    of the instructions (which end with ``Transcript:``) so the whole
+    static half of the message stays a stable prefix.
+    """
+    lines = provider_lines(known_providers())
+    if not lines:
+        return ""
+    return (
+        "These are the integrations this platform can connect to. Only "
+        "promise automations that these can actually carry out, and never "
+        "name a tool that is not on this list:\n"
+        f"{lines}\n\n"
+    )
 
 
 async def _fetch_langfuse_prompt() -> str | None:
