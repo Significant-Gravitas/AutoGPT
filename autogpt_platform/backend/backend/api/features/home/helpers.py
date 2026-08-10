@@ -3,6 +3,7 @@ from urllib.parse import quote
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.library.model import LibraryAgentRef
+from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .models import HomeExpert
 
@@ -16,13 +17,44 @@ def to_home_expert(expert: Expert) -> HomeExpert:
     )
 
 
-def experts_by_graph(experts: list[Expert]) -> dict[str, Expert]:
-    return {
-        workflow.graph_id: expert
+def experts_by_schedule(
+    experts: list[Expert], schedules: list[GraphExecutionJobInfo]
+) -> dict[str, Expert]:
+    """Map job id to owning expert.
+
+    `graph_id` is not a schedule key — one graph can back several jobs, and an
+    org context mixes in teammates' jobs — so attribute a job by its own expert
+    stamp, falling back to the workflow whose schedule created it.
+    """
+    expert_by_id = {expert.id: expert for expert in experts}
+    expert_by_schedule_id = {
+        workflow.schedule_id: expert
         for expert in experts
         for workflow in expert.workflows
-        if workflow.graph_id
+        if workflow.schedule_id
     }
+    owners = {
+        schedule.id: expert_by_id.get(schedule.expert_id or "")
+        or expert_by_schedule_id.get(schedule.id)
+        for schedule in schedules
+    }
+    return {schedule_id: expert for schedule_id, expert in owners.items() if expert}
+
+
+def next_runs_by_expert(
+    schedules: list[GraphExecutionJobInfo], expert_by_schedule: dict[str, Expert]
+) -> dict[str, datetime]:
+    """Earliest upcoming run per expert, across every job that expert owns."""
+    earliest: dict[str, datetime] = {}
+    for schedule in schedules:
+        expert = expert_by_schedule.get(schedule.id)
+        next_run = parse_datetime(schedule.next_run_time)
+        if not expert or next_run is None:
+            continue
+        current = earliest.get(expert.id)
+        if current is None or next_run < current:
+            earliest[expert.id] = next_run
+    return earliest
 
 
 def agent_names_by_graph(

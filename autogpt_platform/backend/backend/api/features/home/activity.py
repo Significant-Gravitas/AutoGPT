@@ -87,7 +87,7 @@ def compose_active_tasks(
 
 def compose_upcoming_tasks(
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
-    expert_by_graph: dict[str, Expert],
+    expert_by_schedule: dict[str, Expert],
 ) -> list[HomeUpcomingTask]:
     upcoming = []
     for schedule in schedules:
@@ -95,7 +95,7 @@ def compose_upcoming_tasks(
         if next_run is None:
             continue
         if isinstance(schedule, GraphExecutionJobInfo):
-            expert = expert_by_graph.get(schedule.graph_id)
+            expert = expert_by_schedule.get(schedule.id)
             upcoming.append(
                 HomeUpcomingTask(
                     id=schedule.id,

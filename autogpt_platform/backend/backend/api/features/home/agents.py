@@ -1,7 +1,8 @@
-from backend.api.features.experts.models import Expert
-from backend.executor.scheduler import GraphExecutionJobInfo
+from datetime import datetime
 
-from .helpers import parse_datetime, setup_count, to_home_expert
+from backend.api.features.experts.models import Expert
+
+from .helpers import setup_count, to_home_expert
 from .models import HomeAgentStatus, HomeTeamSummary
 
 
@@ -9,10 +10,10 @@ def compose_agent_statuses(
     *,
     experts: list[Expert],
     running_expert_ids: set[str],
-    schedule_by_graph: dict[str, GraphExecutionJobInfo],
+    next_run_by_expert: dict[str, datetime],
 ) -> list[HomeAgentStatus]:
     statuses = [
-        _agent_status(expert, running_expert_ids, schedule_by_graph)
+        _agent_status(expert, running_expert_ids, next_run_by_expert)
         for expert in experts
     ]
     rank = {"working": 0, "paused": 1, "needs_setup": 2, "failed": 3, "ready": 4}
@@ -33,7 +34,7 @@ def compose_team_summary(agents: list[HomeAgentStatus]) -> HomeTeamSummary:
 def _agent_status(
     expert: Expert,
     running_expert_ids: set[str],
-    schedule_by_graph: dict[str, GraphExecutionJobInfo],
+    next_run_by_expert: dict[str, datetime],
 ) -> HomeAgentStatus:
     if expert.id in running_expert_ids:
         status, detail = "working", "Working on a task now"
@@ -45,15 +46,9 @@ def _agent_status(
         status, detail = "failed", "Last run failed"
     else:
         status, detail = "ready", "Ready for the next task"
-    times = [
-        parse_datetime(schedule_by_graph[workflow.graph_id].next_run_time)
-        for workflow in expert.workflows
-        if workflow.graph_id in schedule_by_graph
-    ]
-    next_run = min((value for value in times if value), default=None)
     return HomeAgentStatus(
         expert=to_home_expert(expert),
         status=status,
         detail=detail,
-        next_run_time=next_run,
+        next_run_time=next_run_by_expert.get(expert.id),
     )

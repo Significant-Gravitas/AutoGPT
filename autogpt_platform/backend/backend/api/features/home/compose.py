@@ -15,7 +15,7 @@ from .activity import (
 )
 from .agents import compose_agent_statuses, compose_team_summary
 from .attention import compose_attention_items
-from .helpers import agent_names_by_graph, experts_by_graph
+from .helpers import agent_names_by_graph, experts_by_schedule, next_runs_by_expert
 from .models import HomeDashboardResponse
 
 
@@ -37,13 +37,13 @@ def compose_home_dashboard(
         if not expert.is_template and not expert.is_archived
     ]
     expert_by_id = {expert.id: expert for expert in hired}
-    expert_by_graph = experts_by_graph(hired)
     agent_by_graph = agent_names_by_graph(hired, library_refs)
-    schedule_by_graph = {
-        schedule.graph_id: schedule
+    graph_schedules = [
+        schedule
         for schedule in schedules
         if isinstance(schedule, GraphExecutionJobInfo)
-    }
+    ]
+    expert_by_schedule = experts_by_schedule(hired, graph_schedules)
     running_expert_ids = {
         execution.expert_id
         for execution in executions
@@ -53,7 +53,7 @@ def compose_home_dashboard(
     agents = compose_agent_statuses(
         experts=hired,
         running_expert_ids=running_expert_ids,
-        schedule_by_graph=schedule_by_graph,
+        next_run_by_expert=next_runs_by_expert(graph_schedules, expert_by_schedule),
     )
 
     return HomeDashboardResponse(
@@ -74,7 +74,7 @@ def compose_home_dashboard(
             agent_by_graph=agent_by_graph,
         ),
         active_tasks=compose_active_tasks(executions, expert_by_id, agent_by_graph),
-        upcoming_tasks=compose_upcoming_tasks(schedules, expert_by_graph),
+        upcoming_tasks=compose_upcoming_tasks(schedules, expert_by_schedule),
         team=compose_team_summary(agents),
         agents=agents,
         week=compose_week_summary(cost_summary, credits_balance),

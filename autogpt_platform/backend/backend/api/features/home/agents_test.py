@@ -53,7 +53,7 @@ def test_working_outranks_paused_and_setup() -> None:
             _expert(expert_id="idle"),
         ],
         running_expert_ids={"busy"},
-        schedule_by_graph={},
+        next_run_by_expert={},
     )
 
     assert [status.status for status in statuses] == ["working", "ready"]
@@ -68,7 +68,7 @@ def test_status_precedence_walks_down_to_failed() -> None:
             _expert(expert_id="paused", schedules_paused_at=NOW, needs_setup=True),
         ],
         running_expert_ids=set(),
-        schedule_by_graph={},
+        next_run_by_expert={},
     )
 
     assert [status.status for status in statuses] == [
@@ -88,7 +88,7 @@ def test_team_summary_groups_non_ready_states_as_attention() -> None:
             _expert(expert_id="setup", needs_setup=True),
         ],
         running_expert_ids={"working"},
-        schedule_by_graph={},
+        next_run_by_expert={},
     )
 
     summary = compose_team_summary(statuses)
