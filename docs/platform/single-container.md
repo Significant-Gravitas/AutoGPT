@@ -14,8 +14,9 @@ installation you intend to keep.
 
 ## Get an image
 
-The repository's single-container validation workflow does not publish a
-registry image. Build it from the repository root with Docker Buildx Bake:
+Use a supported immutable registry reference documented for the release you
+are installing. If that release does not document one, build the image from
+the repository root with Docker Buildx Bake:
 
 ```bash
 docker buildx bake \
@@ -24,10 +25,9 @@ docker buildx bake \
   single-container
 ```
 
-This loads the image as `autogpt-platform:single-container-dev` into the local
-Docker image store. When maintainers provide a supported registry reference,
-substitute its exact immutable version tag or digest in the commands below;
-do not guess a `latest` tag.
+The local build loads the image as `autogpt-platform:single-container-dev`.
+Commands below use that tag; substitute only an exact immutable version tag or
+digest documented for your release, and do not guess a `latest` tag.
 
 The image has a complete default command, so this is a valid foreground boot
 check:
@@ -143,10 +143,11 @@ upgrades for `/_agpt/ws`, and allow long-lived streaming requests below
 `/_agpt/api`. Do not publish PostgreSQL, Valkey, RabbitMQ, ClamAV, FalkorDB, or
 backend service ports.
 
-Use `--publish 0.0.0.0:3000:3000` only when direct LAN access is intentional
-and the surrounding network supplies appropriate access control and TLS. Set
-`AUTOGPT_PUBLIC_URL` to the matching HTTPS origin, for example
-`https://agents.lan.example`; do not leave it at the localhost default.
+For LAN access, bind the TLS reverse proxy to the LAN interface and keep the
+container published only on `127.0.0.1:3000`. Set `AUTOGPT_PUBLIC_URL` to the
+matching HTTPS origin, for example `https://agents.lan.example`; do not expose
+the container's plaintext port directly or leave the URL at the localhost
+default.
 
 ## Account policy
 
@@ -162,8 +163,10 @@ AUTH_SIGNUP_ALLOWLIST=owner@example.com,@example.org
 
 The allowlist accepts exact email addresses and entries beginning with `@` for
 an entire domain. It applies to email/password signup and first-time social
-login because both create an account. Setting `AUTH_ALLOW_NEW_ACCOUNTS=false`
-blocks all new accounts regardless of the allowlist.
+login because both create an account. Prefer exact addresses; use a domain
+entry only for a domain you fully control, then narrow the list after
+bootstrap. Setting `AUTH_ALLOW_NEW_ACCOUNTS=false` blocks all new accounts
+regardless of the allowlist.
 
 Required email verification is not supported by this image and intentionally
 stops startup if enabled. Keep:
@@ -176,11 +179,12 @@ Postmark can provide password-reset and email-change messages:
 
 ```dotenv
 POSTMARK_SERVER_API_TOKEN=
-POSTMARK_SENDER_EMAIL=autogpt@example.com
+POSTMARK_SENDER_EMAIL=
 POSTMARK_WEBHOOK_TOKEN=
 ```
 
-It does not add account-verification support.
+Set `POSTMARK_SENDER_EMAIL` to a sender verified by your Postmark account. This
+does not add account-verification support.
 
 Social login uses the `AUTH_*` credentials in `.env.example`. Agent block OAuth
 integrations use the separate unprefixed credentials. The prebuilt frontend
@@ -372,7 +376,11 @@ with an approved backup mechanism and remove unencrypted staging copies.
 Restore into a new named volume so the source remains recoverable:
 
 ```bash
-RESTORE_VOLUME="autogpt-platform-data-restored-$(date +%Y%m%d)"
+RESTORE_VOLUME="autogpt-platform-data-restored-$(date -u +%Y%m%dT%H%M%SZ)"
+if docker volume inspect "${RESTORE_VOLUME}" >/dev/null 2>&1; then
+  echo "Refusing to reuse existing volume: ${RESTORE_VOLUME}" >&2
+  exit 1
+fi
 docker volume create "${RESTORE_VOLUME}"
 
 docker run --rm \
