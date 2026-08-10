@@ -279,7 +279,7 @@ def cached(
             return _MISSING
 
         def _set_to_memory(key: tuple, value: Any) -> None:
-            """Set value in in-memory cache with timestamp."""
+            """Set value in the in-memory cache with timestamp."""
             cache_storage[key] = CachedValue(result=value, timestamp=time.time())
 
             # Cleanup if needed
