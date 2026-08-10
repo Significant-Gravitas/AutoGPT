@@ -296,21 +296,21 @@ are separate from backend services. The frontend receives an explicit runtime
 environment allowlist and connects to PostgreSQL through a passwordless local
 peer role restricted to the Better Auth tables and columns it needs. It does
 not receive the PostgreSQL superuser password, RabbitMQ or Valkey passwords,
-the FalkorDB password, encryption keys, or the internal service token.
+the FalkorDB password, or encryption keys.
 
 Generated database, queue, cache, memory, encryption, authentication, signing,
-and internal RPC secrets are created on first boot and stored in
-`/data/config/runtime.env` as `root:root` mode `0600`. Reusing the named volume
-reuses those secrets. Supplying a different value for a persisted secret on a
-later boot fails instead of silently rotating it.
+secrets are created on first boot and stored in `/data/config/runtime.env` as
+`root:root` mode `0600`. Reusing the named volume reuses those secrets.
+Supplying a different value for a persisted secret on a later boot fails
+instead of silently rotating it.
 
 These controls limit compromise between co-located processes, but Docker daemon
 administrators and anyone who can read the data volume remain fully trusted.
 Treat the host environment file, `/data`, backups, and unredacted diagnostic
 output as secret-bearing material.
 
-Only port `3000` should be published. Internal AppService RPC and Valkey traffic
-are authenticated in addition to being bound inside the container.
+Only port `3000` should be published. Internal AppService RPC is bound to the
+container's loopback interface, and Valkey traffic requires authentication.
 
 ## Optional processes
 
