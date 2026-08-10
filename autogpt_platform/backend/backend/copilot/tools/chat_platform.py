@@ -41,13 +41,21 @@ logger = logging.getLogger(__name__)
 # Chat platforms with a wired bridge adapter. Add a value here (and its bot
 # token check in ``_any_chat_platform_configured``) when a new adapter ships —
 # the tool surface stays the same.
-SUPPORTED_PLATFORMS: tuple[str, ...] = ("discord", "slack", "telegram")
+SUPPORTED_PLATFORMS: tuple[str, ...] = ("discord", "slack", "telegram", "teams")
 
 # Telegram's Bot API can't enumerate a bot's chats, so name→ID resolution is
 # impossible there — posts must target a linked group's numeric chat ID.
 _TELEGRAM_TARGETING_HINT = (
     "Telegram can't list channels — post using the numeric chat ID of a "
     "group that's linked to this account."
+)
+
+# Teams offers no channel enumeration either (needs a Graph permission the bot
+# doesn't hold), and without it there is no channel→team mapping to authorize
+# a raw conversation id against — so channel posting is DM-only for now.
+_TEAMS_TARGETING_HINT = (
+    "Teams channels can't be targeted for proactive posts yet — "
+    "the bot can only deliver to users who linked their personal chat."
 )
 
 # Maps the bridge's stable DeliveryResult error codes to user-facing text the
@@ -116,8 +124,18 @@ def _any_chat_platform_configured() -> bool:
         secrets.autopilot_bot_telegram_token
         and secrets.autopilot_bot_telegram_webhook_secret
     )
+    # Stricter than teams_config.is_configured(): the Playground bypass mounts
+    # the inbound route without credentials, but posting needs a real token.
+    teams_configured = bool(
+        secrets.microsoft_client_id
+        and secrets.microsoft_client_secret
+        and secrets.microsoft_tenant_id
+    )
     return bool(
-        secrets.autopilot_bot_discord_token or slack_configured or telegram_configured
+        secrets.autopilot_bot_discord_token
+        or slack_configured
+        or telegram_configured
+        or teams_configured
     )
 
 
@@ -132,6 +150,12 @@ def _error_message(code: str | None, platform_name: str = "") -> str:
         # The generic messages steer toward list_chat_platform_channels,
         # which can't help on Telegram — replace them entirely.
         return f"That chat could not be resolved. {_TELEGRAM_TARGETING_HINT}"
+    if platform_name == "teams" and code in (
+        "channel_not_found",
+        "ambiguous_channel",
+        "not_authorized",
+    ):
+        return f"That channel could not be posted to. {_TEAMS_TARGETING_HINT}"
     return message
 
 
@@ -416,6 +440,8 @@ class ListChatPlatformChannelsTool(BaseTool):
             )
         elif platform_name == "telegram":
             message = _TELEGRAM_TARGETING_HINT
+        elif platform_name == "teams":
+            message = _TEAMS_TARGETING_HINT
         else:
             message = (
                 f"No postable {platform_name} channels found. Link a server via "

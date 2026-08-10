@@ -362,6 +362,9 @@ def _secrets(**overrides) -> MagicMock:
     secrets.autopilot_bot_slack_client_secret = ""
     secrets.autopilot_bot_telegram_token = ""
     secrets.autopilot_bot_telegram_webhook_secret = ""
+    secrets.microsoft_client_id = ""
+    secrets.microsoft_client_secret = ""
+    secrets.microsoft_tenant_id = ""
     for key, value in overrides.items():
         setattr(secrets, key, value)
     return secrets
@@ -395,6 +398,24 @@ def _secrets(**overrides) -> MagicMock:
             {
                 "autopilot_bot_telegram_token": "123:abc",
                 "autopilot_bot_telegram_webhook_secret": "hex",
+            },
+            True,
+        ),
+        # Teams needs all three; posting has to mint a real Connector token,
+        # so a partial registration must not enable the tool.
+        ({"microsoft_client_id": "app"}, False),
+        (
+            {
+                "microsoft_client_id": "app",
+                "microsoft_client_secret": "pw",
+            },
+            False,
+        ),
+        (
+            {
+                "microsoft_client_id": "app",
+                "microsoft_client_secret": "pw",
+                "microsoft_tenant_id": "tenant",
             },
             True,
         ),
