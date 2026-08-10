@@ -79,7 +79,15 @@ class _InternalServiceAuthMiddleware:
         self.expected_token = expected_token.encode("utf-8")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["path"] in UNAUTHENTICATED_INTERNAL_PATHS:
+        if scope["type"] == "lifespan":
+            await self.app(scope, receive, send)
+            return
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        if scope["type"] != "http":
+            raise RuntimeError(f"unsupported internal ASGI scope: {scope['type']}")
+        if scope["path"] in UNAUTHENTICATED_INTERNAL_PATHS:
             await self.app(scope, receive, send)
             return
 

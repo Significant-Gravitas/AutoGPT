@@ -54,21 +54,21 @@ check_infrastructure() {
 
 check_application_services() {
   local urls=(
-    http://127.0.0.1:8005/health_check
-    http://127.0.0.1:8003/health_check
-    http://127.0.0.1:8011/health_check
-    http://127.0.0.1:8007/health_check
-    http://127.0.0.1:8002/health_check
-    http://127.0.0.1:8008/health_check
-    http://127.0.0.1:8001/health
-    http://127.0.0.1:8006/health
+    "http://127.0.0.1:${AUTOGPT_DATABASE_API_PORT}${AUTOGPT_INTERNAL_HEALTH_PATH}"
+    "http://127.0.0.1:${AUTOGPT_EXECUTION_SCHEDULER_PORT}${AUTOGPT_INTERNAL_HEALTH_PATH}"
+    "http://127.0.0.1:${AUTOGPT_BATCH_EXECUTOR_PORT}${AUTOGPT_INTERNAL_HEALTH_PATH}"
+    "http://127.0.0.1:${AUTOGPT_NOTIFICATION_SERVICE_PORT}${AUTOGPT_INTERNAL_HEALTH_PATH}"
+    "http://127.0.0.1:${AUTOGPT_EXECUTION_MANAGER_PORT}${AUTOGPT_INTERNAL_HEALTH_PATH}"
+    "http://127.0.0.1:${AUTOGPT_COPILOT_EXECUTOR_PORT}${AUTOGPT_INTERNAL_HEALTH_PATH}"
+    "http://127.0.0.1:${AUTOGPT_WEBSOCKET_PORT}/health"
+    "http://127.0.0.1:${AUTOGPT_AGENT_API_PORT}/health"
     http://127.0.0.1:3001/
     http://127.0.0.1:3000/healthz
   )
   if [[ "${AUTOGPT_ENABLE_BOT_SERVICES:-false}" == true ]]; then
     urls+=(
-      http://127.0.0.1:8010/health_check
-      http://127.0.0.1:8009/health_check
+      "http://127.0.0.1:${AUTOGPT_COPILOT_CHAT_BRIDGE_PORT}${AUTOGPT_INTERNAL_HEALTH_PATH}"
+      "http://127.0.0.1:${AUTOGPT_PLATFORM_LINKING_SERVICE_PORT}${AUTOGPT_INTERNAL_HEALTH_PATH}"
     )
   fi
   "${PROBE[@]}" http --timeout 10 "${urls[@]}" || \

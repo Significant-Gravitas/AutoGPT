@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import os
 import time
 from datetime import datetime, timezone
 from functools import cached_property
@@ -12,7 +13,7 @@ import pytest
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import TypeAdapter
 from starlette.responses import Response
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
 
 from backend.data.model import User
 from backend.util.exceptions import GraphValidationError
@@ -20,6 +21,7 @@ from backend.util.service import (
     INTERNAL_ASYNC_HEALTH_CHECK_PATH,
     INTERNAL_HEALTH_CHECK_PATH,
     INTERNAL_METRICS_PATH,
+    INTERNAL_SERVICE_TOKEN_ENV,
     AppService,
     AppServiceClient,
     HTTPClientError,
@@ -51,9 +53,17 @@ class _SupportsHandleCallMethodResponse(Protocol):
 
 
 class ServiceTest(AppService):
-    def __init__(self):
+    def __init__(self, internal_service_token: str | None = None):
         super().__init__()
         self.fail_count = 0
+        self.internal_service_token = internal_service_token
+
+    def run(self):
+        if self.internal_service_token is None:
+            os.environ.pop(INTERNAL_SERVICE_TOKEN_ENV, None)
+        else:
+            os.environ[INTERNAL_SERVICE_TOKEN_ENV] = self.internal_service_token
+        super().run()
 
     @classmethod
     def get_port(cls) -> int:
@@ -171,9 +181,40 @@ async def test_internal_service_metrics_require_token() -> None:
 
 
 @pytest.mark.asyncio
-async def test_service_creation_with_internal_auth(server, monkeypatch):
-    monkeypatch.setenv("AUTOGPT_INTERNAL_SERVICE_TOKEN", "test-internal-token")
+async def test_internal_service_middleware_rejects_websockets() -> None:
+    middleware = _InternalServiceAuthMiddleware(_ok_asgi_app, "expected-token")
+    messages: list[Message] = []
+
+    async def receive() -> Message:
+        return {"type": "websocket.connect"}
+
+    async def send(message: Message) -> None:
+        messages.append(message)
+
+    await middleware(
+        cast(Scope, {"type": "websocket", "path": "/get_user_credentials"}),
+        receive,
+        send,
+    )
+
+    assert messages == [{"type": "websocket.close", "code": 1008}]
+
+
+@pytest.mark.asyncio
+async def test_service_creation_without_internal_auth(server):
     with ServiceTest():
+        response = httpx.post(
+            f"http://{ServiceTest.get_host()}:{ServiceTest.get_port()}/add",
+            json={"a": 5, "b": 3},
+        )
+        assert response.status_code == 200
+        assert response.json() == 8
+
+
+@pytest.mark.asyncio
+async def test_service_creation_with_internal_auth(server, monkeypatch):
+    with ServiceTest(internal_service_token="test-internal-token"):
+        monkeypatch.setenv(INTERNAL_SERVICE_TOKEN_ENV, "test-internal-token")
         response = httpx.post(
             f"http://{ServiceTest.get_host()}:{ServiceTest.get_port()}/add",
             json={"a": 5, "b": 3},
