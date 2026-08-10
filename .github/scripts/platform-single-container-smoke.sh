@@ -371,8 +371,9 @@ SELECT has_column_privilege(current_user, 'platform."User"', 'id', 'SELECT')
   AND NOT has_table_privilege(current_user, 'platform."User"', 'UPDATE');
 SQL
   )"
-  [[ "$(grep -Fxc t <<<"${assertions}")" == 6 ]] || {
+  [[ "${assertions}" == $'t\nt\nt\nt\nt\nt\nt' ]] || {
     echo "frontend database privileges are broader or narrower than expected" >&2
+    printf 'database privilege assertions:\n%s\n' "${assertions}" >&2
     return 1
   }
   if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
