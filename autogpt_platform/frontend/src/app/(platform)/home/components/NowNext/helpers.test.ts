@@ -10,6 +10,10 @@ describe("formatUntil", () => {
       "in 1h 30m",
     );
   });
+
+  it("reads an overdue run as due now rather than a negative countdown", () => {
+    expect(formatUntil(new Date(NOW.getTime() - 5 * 60_000), NOW)).toBe("now");
+  });
 });
 
 describe("formatRunningFor", () => {
