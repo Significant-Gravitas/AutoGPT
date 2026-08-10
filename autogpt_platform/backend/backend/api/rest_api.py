@@ -25,6 +25,7 @@ import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.admin.test_data_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
@@ -418,6 +419,15 @@ app.include_router(
     tags=["v2", "admin"],
     prefix="/api",
 )
+# Dev-only surface: the test-data seeder is never mounted outside a local
+# app_env, matching how docs_url/metrics are gated above. The runtime
+# `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
+if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+    app.include_router(
+        backend.api.features.admin.test_data_routes.router,
+        tags=["v2", "admin"],
+        prefix="/api",
+    )
 app.include_router(
     backend.api.features.executions.review.routes.router,
     tags=["v2", "executions", "review"],
