@@ -146,11 +146,16 @@ configure_environment() {
   # The persistent backend JSON contains user-tunable product settings, but it
   # must not be able to move or expose appliance services. Environment values
   # have higher Pydantic priority, so pin the fixed internal topology here.
-  export WEBSOCKET_SERVER_PORT=8001 EXECUTION_MANAGER_PORT=8002
-  export EXECUTION_SCHEDULER_PORT=8003 DATABASE_API_PORT=8005
-  export AGENT_API_PORT=8006 NOTIFICATION_SERVICE_PORT=8007
-  export COPILOT_EXECUTOR_PORT=8008 PLATFORM_LINKING_SERVICE_PORT=8009
-  export COPILOT_CHAT_BRIDGE_PORT=8010 BATCH_EXECUTOR_PORT=8011
+  export WEBSOCKET_SERVER_PORT="${AUTOGPT_WEBSOCKET_PORT}"
+  export EXECUTION_MANAGER_PORT="${AUTOGPT_EXECUTION_MANAGER_PORT}"
+  export EXECUTION_SCHEDULER_PORT="${AUTOGPT_EXECUTION_SCHEDULER_PORT}"
+  export DATABASE_API_PORT="${AUTOGPT_DATABASE_API_PORT}"
+  export AGENT_API_PORT="${AUTOGPT_AGENT_API_PORT}"
+  export NOTIFICATION_SERVICE_PORT="${AUTOGPT_NOTIFICATION_SERVICE_PORT}"
+  export COPILOT_EXECUTOR_PORT="${AUTOGPT_COPILOT_EXECUTOR_PORT}"
+  export PLATFORM_LINKING_SERVICE_PORT="${AUTOGPT_PLATFORM_LINKING_SERVICE_PORT}"
+  export COPILOT_CHAT_BRIDGE_PORT="${AUTOGPT_COPILOT_CHAT_BRIDGE_PORT}"
+  export BATCH_EXECUTOR_PORT="${AUTOGPT_BATCH_EXECUTOR_PORT}"
   # Keep self-hosted product behavior without enabling LOCAL-only API docs and
   # asyncio debug mode on the public REST process.
   export APP_ENV=dev BEHAVE_AS=local ENABLE_AUTH=true
@@ -161,8 +166,8 @@ configure_environment() {
   export FRONTEND_BASE_URL="${AUTOGPT_PUBLIC_URL}"
   export PLATFORM_BASE_URL="${AUTOGPT_PUBLIC_URL}/_agpt"
   export PLATFORM_LINK_BASE_URL="${AUTOGPT_PUBLIC_URL}/link"
-  export AGPT_SERVER_URL=http://127.0.0.1:8006/api
-  export AGPT_WS_SERVER_URL=ws://127.0.0.1:8001/ws
+  export AGPT_SERVER_URL="http://127.0.0.1:${AUTOGPT_AGENT_API_PORT}/api"
+  export AGPT_WS_SERVER_URL="ws://127.0.0.1:${AUTOGPT_WEBSOCKET_PORT}/ws"
   export WORKSPACE_STORAGE_DIR=/data/workspaces
   export VAPID_CLAIM_EMAIL="${VAPID_CLAIM_EMAIL:-mailto:admin@localhost}"
   export AUTH_REQUIRE_EMAIL_VERIFICATION=false
@@ -176,6 +181,9 @@ configure_account_registration() {
   normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS false
   if [[ "${AUTH_ALLOW_NEW_ACCOUNTS}" == true ]]; then
     log "WARNING: open account registration is enabled; disable it after creating the intended accounts"
+  else
+    log "account registration is closed; temporarily set AUTH_ALLOW_NEW_ACCOUNTS=true to create intended accounts"
+    log "after signup, run 'docker exec <container> autogpt-admin promote <email>', disable registration, and restart"
   fi
 }
 

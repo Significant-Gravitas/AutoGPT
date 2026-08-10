@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import unittest
@@ -7,10 +8,48 @@ from pathlib import Path
 
 
 ASSET_DIR = Path(__file__).resolve().parents[1]
+COMMON_PATH = ASSET_DIR / "common.sh"
 ENTRYPOINT_PATH = ASSET_DIR / "entrypoint.sh"
+HEALTHCHECK_PATH = ASSET_DIR / "healthcheck.sh"
 RUN_SERVICE_PATH = ASSET_DIR / "run-service.sh"
 DOCKERFILE_PATH = ASSET_DIR / "Dockerfile"
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
+BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "service.py"
+
+
+class InternalServiceTopologyTest(unittest.TestCase):
+    def test_rpc_health_path_matches_backend(self) -> None:
+        module = ast.parse(BACKEND_SERVICE_PATH.read_text(encoding="utf-8"))
+        assignments = {
+            node.targets[0].id: ast.literal_eval(node.value)
+            for node in module.body
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "INTERNAL_HEALTH_CHECK_PATH"
+        }
+        result = subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; printf "%s" "$AUTOGPT_INTERNAL_HEALTH_PATH"',
+                "bash",
+                str(COMMON_PATH),
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, assignments["INTERNAL_HEALTH_CHECK_PATH"])
+        self.assertIn(
+            "${AUTOGPT_INTERNAL_HEALTH_PATH}",
+            HEALTHCHECK_PATH.read_text(encoding="utf-8"),
+        )
 
 
 class AccountRegistrationTest(unittest.TestCase):
@@ -28,7 +67,9 @@ class AccountRegistrationTest(unittest.TestCase):
                 ):
                     result = self._configure(public_url, allow_new_accounts)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(result.stdout, "false\n")
+                    self.assertIn("account registration is closed", result.stdout)
+                    self.assertIn("autogpt-admin promote", result.stdout)
+                    self.assertTrue(result.stdout.endswith("false\n"))
 
     def test_remote_signup_requires_explicit_opt_in(self) -> None:
         result = self._configure(
@@ -41,7 +82,8 @@ class AccountRegistrationTest(unittest.TestCase):
     def test_explicit_false_overrides_loopback_default(self) -> None:
         result = self._configure("http://localhost:3000", allow_new_accounts="false")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "false\n")
+        self.assertIn("account registration is closed", result.stdout)
+        self.assertTrue(result.stdout.endswith("false\n"))
 
     def _configure(
         self, public_url: str, allow_new_accounts: str | None = None

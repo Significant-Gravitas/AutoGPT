@@ -45,8 +45,8 @@ def handle_event(
     if event_name not in {"PROCESS_STATE_FATAL", "PROCESS_STATE_EXITED"}:
         raise RuntimeError("Supervisor event has an unsupported type")
 
-    process_name = _safe_process_name(payload)
     payload_fields = _parse_fields(payload)
+    process_name = _safe_process_name(payload, payload_fields)
     if event_name == "PROCESS_STATE_EXITED" and not (
         process_name == "bootstrap" and payload_fields.get("expected") == "0"
     ):
@@ -82,10 +82,9 @@ def _parse_fields(line: str) -> dict[str, str]:
     return fields
 
 
-def _safe_process_name(payload: str) -> str:
+def _safe_process_name(payload: str, fields: dict[str, str]) -> str:
     if any(character in payload for character in "\r\n\0"):
         return "unknown"
-    fields = _parse_fields(payload)
     process_name = fields.get("processname", "unknown")
     return process_name if SAFE_PROCESS_NAME.fullmatch(process_name) else "unknown"
 

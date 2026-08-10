@@ -92,14 +92,18 @@ class RespTest(unittest.TestCase):
 
 class ServiceProbeTest(unittest.TestCase):
     def test_http_rejects_error_status(self) -> None:
-        response = mock.MagicMock()
-        response.status = 503
-        response.__enter__.return_value = response
-        with (
-            mock.patch.object(probe.urllib.request, "urlopen", return_value=response),
-            self.assertRaisesRegex(RuntimeError, "HTTP 503"),
-        ):
-            probe.probe_http("http://127.0.0.1/health", 1)
+        for status in (302, 503):
+            with self.subTest(status=status):
+                response = mock.MagicMock()
+                response.status = status
+                response.__enter__.return_value = response
+                with (
+                    mock.patch.object(
+                        probe.urllib.request, "urlopen", return_value=response
+                    ),
+                    self.assertRaisesRegex(RuntimeError, f"HTTP {status}"),
+                ):
+                    probe.probe_http("http://127.0.0.1/health", 1)
 
     def test_http_many_checks_every_url(self) -> None:
         urls = ["http://127.0.0.1/one", "http://127.0.0.1/two"]
@@ -152,6 +156,20 @@ class ServiceProbeTest(unittest.TestCase):
         ):
             probe.probe_redis("127.0.0.1", 17000, 1, "", False)
 
+    def test_redis_accepts_pong(self) -> None:
+        connection = FakeConnection(b"+PONG\r\n")
+        with mock.patch.object(
+            probe.socket, "create_connection", return_value=connection
+        ):
+            probe.probe_redis("127.0.0.1", 17000, 1, "", False)
+
+    def test_redis_accepts_healthy_cluster(self) -> None:
+        connection = FakeConnection(b"$16\r\ncluster_state:ok\r\n")
+        with mock.patch.object(
+            probe.socket, "create_connection", return_value=connection
+        ):
+            probe.probe_redis("127.0.0.1", 17000, 1, "", True)
+
     def test_clam_rejects_wrong_ping_response(self) -> None:
         connection = FakeConnection(b"NOPE\0")
         with (
@@ -159,6 +177,14 @@ class ServiceProbeTest(unittest.TestCase):
                 probe.socket, "create_connection", return_value=connection
             ),
             self.assertRaisesRegex(RuntimeError, "did not return PONG"),
+        ):
+            probe.probe_clam("127.0.0.1", 3310, 1)
+        self.assertEqual(connection.sent, b"zPING\0")
+
+    def test_clam_accepts_pong(self) -> None:
+        connection = FakeConnection(b"PONG\0")
+        with mock.patch.object(
+            probe.socket, "create_connection", return_value=connection
         ):
             probe.probe_clam("127.0.0.1", 3310, 1)
         self.assertEqual(connection.sent, b"zPING\0")

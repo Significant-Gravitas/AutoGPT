@@ -9,6 +9,7 @@ import socket
 import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from typing import BinaryIO
 
 
 def main() -> int:
@@ -70,7 +71,7 @@ def probe_tcp(host: str, port: int, timeout: float) -> None:
 def probe_http(url: str, timeout: float) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": "autogpt-healthcheck"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        if not 200 <= response.status < 400:
+        if not 200 <= response.status < 300:
             raise RuntimeError(f"HTTP {response.status} from {url}")
 
 
@@ -149,7 +150,7 @@ def _add_address_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--timeout", type=float, default=5)
 
 
-def _send_resp_command(stream, *parts: str) -> None:
+def _send_resp_command(stream: BinaryIO, *parts: str) -> None:
     stream.write(f"*{len(parts)}\r\n".encode("ascii"))
     for part in parts:
         encoded = part.encode("utf-8")
@@ -157,7 +158,7 @@ def _send_resp_command(stream, *parts: str) -> None:
         stream.write(encoded + b"\r\n")
 
 
-def _read_exactly(stream, count: int) -> bytes:
+def _read_exactly(stream: BinaryIO, count: int) -> bytes:
     chunks: list[bytes] = []
     remaining = count
     while remaining:
@@ -169,7 +170,7 @@ def _read_exactly(stream, count: int) -> bytes:
     return b"".join(chunks)
 
 
-def _read_resp(stream) -> str | int | None:
+def _read_resp(stream: BinaryIO) -> str | int | None:
     prefix = stream.read(1)
     if not prefix:
         raise RuntimeError("Redis closed the connection")
