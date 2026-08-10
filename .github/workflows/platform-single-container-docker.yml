@@ -272,6 +272,7 @@ jobs:
           set -euo pipefail
           repository_metadata="$(
             curl --fail --silent --show-error --retry 5 --retry-all-errors \
+              --connect-timeout 10 --max-time 60 \
               https://hub.docker.com/v2/repositories/significantgravitas/autogpt/
           )"
           if ! jq -e '
