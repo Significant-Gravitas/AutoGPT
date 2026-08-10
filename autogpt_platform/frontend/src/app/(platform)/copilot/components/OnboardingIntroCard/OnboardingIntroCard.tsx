@@ -1,8 +1,14 @@
 "use client";
 
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
-import type { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 import type { SuggestedPrompt } from "@/app/api/__generated__/models/suggestedPrompt";
+import {
+  GREETING_ORB_LAYOUT_ID,
+  ORB_FLIP_TRANSITION,
+  ORB_FLIP_TRANSITION_REDUCED,
+  ORB_PURPLE,
+  SMALL_ORB_PARAMS,
+} from "../../helpers/greetingOrb";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -75,27 +81,11 @@ interface Props {
   disabled?: boolean;
 }
 
-// The default glass params are tuned for the big onboarding orb; at 32px
-// that much frost and distortion collapses into a flat purple ball. Light
-// frost + gentle refraction keeps the drifting blobs readable this small.
-// Also rendered by EmptySession's hero while the greeting is on its way,
-// so the orb is already on screen before the reveal.
-export const SMALL_ORB_PARAMS: GlassParams = {
-  frost: 1.5,
-  saturation: 1.5,
-  tint: 0.12,
-  edge: 0.55,
-  distortion: 8,
-  ringWidth: 1,
-  ringDepth: 2,
-  ringDark: 0.25,
-};
-
-// The purple the orb's blobs blend into — the name mirrors it. Shared with
-// the hero heading this card replaces so the swap is invisible.
-export const ORB_PURPLE = "#8a4dff";
-
-const GREETING_START = 0.35;
+// The orb travels into this card's heading from the loader, so the
+// heading is revealed on its arrival and everything below waits for the
+// trip to finish.
+const HEADING_START = 0.2;
+const GREETING_START = 0.5;
 const WORD_STAGGER = 0.08;
 const ROW_STAGGER = 0.12;
 const ROW_START_BUFFER = 0.3;
@@ -169,40 +159,51 @@ export function OnboardingIntroCard({
       className="mb-8 w-full max-w-[48rem] text-left"
       data-testid="onboarding-intro-card"
     >
-      {/* Not revealed: this exact row is already on screen as the hero's
-          heading while the greeting generates, in this exact spot. Fading
-          and rising it here would blink a heading that never moved. */}
       <div className="mb-4 flex items-center gap-3">
-        <span className="relative size-8 shrink-0">
+        {/* Not revealed — it flies in from the loader's centre under its
+            own layout animation. Fading it too would fight that trip. */}
+        <motion.span
+          layoutId={GREETING_ORB_LAYOUT_ID}
+          transition={
+            prefersReducedMotion
+              ? ORB_FLIP_TRANSITION_REDUCED
+              : ORB_FLIP_TRANSITION
+          }
+          className="relative block size-8 shrink-0"
+        >
           <GlassOrb params={SMALL_ORB_PARAMS} />
-        </span>
-        <Text variant="h3" className="!text-[1.25rem] text-zinc-800">
-          Hey, <span style={{ color: ORB_PURPLE }}>{name}</span>
-        </Text>
+        </motion.span>
+        <motion.div {...reveal(HEADING_START)}>
+          <Text variant="h3" className="!text-[1.25rem] text-zinc-800">
+            Hey, <span style={{ color: ORB_PURPLE }}>{name}</span>
+          </Text>
+        </motion.div>
         {transcript && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleCopyTranscript}
-                aria-label="Copy your recording's transcript"
-                className="ml-auto rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-              >
-                {isCopied ? (
-                  <Icon
-                    icon={Tick02Icon}
-                    size={16}
-                    className="text-emerald-600"
-                  />
-                ) : (
-                  <Icon icon={Copy01Icon} size={16} />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {isCopied ? "Copied!" : "Copy everything you told me"}
-            </TooltipContent>
-          </Tooltip>
+          <motion.div className="ml-auto" {...reveal(HEADING_START)}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleCopyTranscript}
+                  aria-label="Copy your recording's transcript"
+                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  {isCopied ? (
+                    <Icon
+                      icon={Tick02Icon}
+                      size={16}
+                      className="text-emerald-600"
+                    />
+                  ) : (
+                    <Icon icon={Copy01Icon} size={16} />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isCopied ? "Copied!" : "Copy everything you told me"}
+              </TooltipContent>
+            </Tooltip>
+          </motion.div>
         )}
       </div>
 

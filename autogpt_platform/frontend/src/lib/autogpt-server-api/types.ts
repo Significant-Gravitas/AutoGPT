@@ -898,7 +898,11 @@ export type OnboardingStep =
   | "BUILDER_OPEN"
   | "BUILDER_RUN_AGENT"
   // Copilot home first-run: capability-cards modal completed or skipped
-  | "CAPABILITY_CARDS";
+  | "CAPABILITY_CARDS"
+  // First-visit intro card for a tab, dismissed however the user chose
+  | "AGENTS_TAB_INTRO"
+  | "MARKETPLACE_TAB_INTRO"
+  | "BUILD_TAB_INTRO";
 
 export interface UserOnboarding {
   // Plain string[] so legacy step names from existing rows pass through.
