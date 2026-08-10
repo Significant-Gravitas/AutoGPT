@@ -4,7 +4,13 @@ from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .activity import compose_upcoming_tasks
-from .helpers import experts_by_schedule, next_runs_by_expert
+from .helpers import (
+    experts_by_schedule,
+    next_runs_by_expert,
+    parse_datetime,
+    run_link,
+    split_summary,
+)
 
 SHARED_GRAPH = "graph-shared"
 
@@ -111,3 +117,51 @@ def test_upcoming_tasks_attribute_each_job_to_its_own_expert() -> None:
         ("job-alice", "alice"),
         ("job-bob", "bob"),
     ]
+
+
+def test_split_summary_uses_fallbacks_for_empty_input() -> None:
+    assert split_summary(None, fallback_title="Ran", fallback_detail="All good") == (
+        "Ran",
+        "All good",
+    )
+    assert split_summary("   ", fallback_title="Ran", fallback_detail="All good") == (
+        "Ran",
+        "All good",
+    )
+
+
+def test_split_summary_clips_a_single_sentence_title() -> None:
+    title, detail = split_summary(
+        "x" * 200, fallback_title="Ran", fallback_detail="All good"
+    )
+
+    assert title == "x" * 120
+    assert detail == "All good"
+
+
+def test_split_summary_splits_on_the_first_sentence() -> None:
+    assert split_summary(
+        "Sorted 12 emails.  Nothing needed a reply.",
+        fallback_title="Ran",
+        fallback_detail="All good",
+    ) == ("Sorted 12 emails.", "Nothing needed a reply.")
+
+
+def test_parse_datetime_pins_naive_values_to_utc() -> None:
+    assert parse_datetime("2026-08-10T09:00:00") == datetime(
+        2026, 8, 10, 9, 0, tzinfo=timezone.utc
+    )
+    assert parse_datetime("2026-08-10T09:00:00Z") == datetime(
+        2026, 8, 10, 9, 0, tzinfo=timezone.utc
+    )
+
+
+def test_parse_datetime_returns_none_for_garbage() -> None:
+    assert parse_datetime("not-a-timestamp") is None
+
+
+def test_run_link_needs_a_library_agent() -> None:
+    assert run_link(None, "execution") is None
+    assert run_link("library agent", "exec/1") == (
+        "/library/agents/library%20agent?activeTab=runs&activeItem=exec/1"
+    )

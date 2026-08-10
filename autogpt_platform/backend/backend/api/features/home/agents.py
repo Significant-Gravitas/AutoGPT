@@ -5,6 +5,8 @@ from backend.api.features.experts.models import Expert
 from .helpers import setup_count, to_home_expert
 from .models import HomeAgentStatus, HomeTeamSummary
 
+_STATUS_RANK = {"working": 0, "paused": 1, "needs_setup": 2, "failed": 3, "ready": 4}
+
 
 def compose_agent_statuses(
     *,
@@ -16,8 +18,7 @@ def compose_agent_statuses(
         _agent_status(expert, running_expert_ids, next_run_by_expert)
         for expert in experts
     ]
-    rank = {"working": 0, "paused": 1, "needs_setup": 2, "failed": 3, "ready": 4}
-    return sorted(statuses, key=lambda item: rank[item.status])
+    return sorted(statuses, key=lambda item: _STATUS_RANK[item.status])
 
 
 def compose_team_summary(agents: list[HomeAgentStatus]) -> HomeTeamSummary:

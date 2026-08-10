@@ -97,3 +97,16 @@ def test_team_summary_groups_non_ready_states_as_attention() -> None:
     assert summary.ready == 1
     assert summary.working == 1
     assert summary.needs_attention == 2
+
+
+def test_next_run_time_comes_from_the_expert_index() -> None:
+    earliest = datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc)
+
+    statuses = compose_agent_statuses(
+        experts=[_expert(expert_id="scheduled"), _expert(expert_id="idle")],
+        running_expert_ids=set(),
+        next_run_by_expert={"scheduled": earliest},
+    )
+
+    next_runs = {status.expert.id: status.next_run_time for status in statuses}
+    assert next_runs == {"scheduled": earliest, "idle": None}

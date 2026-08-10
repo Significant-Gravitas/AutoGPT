@@ -9,6 +9,9 @@ from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from .helpers import as_utc, run_link, setup_count, to_home_expert
 from .models import HomeAction, HomeAttentionItem, HomeExpert
 
+# Longest payload preview we return before clipping it with an ellipsis.
+_PREVIEW_MAX = 140
+
 
 def compose_attention_items(
     *,
@@ -123,7 +126,9 @@ def _payload_preview(payload: object) -> str | None:
         return None
     rendered = payload if isinstance(payload, str) else json.dumps(payload, default=str)
     compact = " ".join(rendered.split())
-    return f"{compact[:137]}…" if len(compact) > 140 else compact
+    if len(compact) <= _PREVIEW_MAX:
+        return compact
+    return f"{compact[:_PREVIEW_MAX - 3]}…"
 
 
 def _attention_sort_key(item: HomeAttentionItem) -> tuple[int, datetime]:

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import NamedTuple
 from urllib.parse import quote
 
 from backend.api.features.experts.models import Expert
@@ -6,6 +7,9 @@ from backend.api.features.library.model import LibraryAgentRef
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .models import HomeExpert
+
+# Longest a summary's first sentence may run before it is clipped into a title.
+_TITLE_MAX = 120
 
 
 def to_home_expert(expert: Expert) -> HomeExpert:
@@ -57,21 +61,33 @@ def next_runs_by_expert(
     return earliest
 
 
-def agent_names_by_graph(
+class AgentRef(NamedTuple):
+    name: str
+    library_agent_id: str | None
+
+
+UNKNOWN_AGENT = AgentRef(name="Agent task", library_agent_id=None)
+
+
+def agent_refs_by_graph(
     experts: list[Expert], refs: list[LibraryAgentRef]
-) -> dict[str, tuple[str, str | None]]:
-    names: dict[str, tuple[str, str | None]] = {
-        ref.graph_id: (ref.name or "Agent task", ref.id) for ref in refs
+) -> dict[str, AgentRef]:
+    agents = {
+        ref.graph_id: AgentRef(
+            name=ref.name or UNKNOWN_AGENT.name, library_agent_id=ref.id
+        )
+        for ref in refs
     }
     for expert in experts:
         for workflow in expert.workflows:
             if workflow.graph_id:
-                current = names.get(workflow.graph_id, ("Agent task", None))
-                names[workflow.graph_id] = (
-                    workflow.name or current[0],
-                    workflow.library_agent_id or current[1],
+                current = agents.get(workflow.graph_id, UNKNOWN_AGENT)
+                agents[workflow.graph_id] = AgentRef(
+                    name=workflow.name or current.name,
+                    library_agent_id=workflow.library_agent_id
+                    or current.library_agent_id,
                 )
-    return names
+    return agents
 
 
 def setup_count(expert: Expert) -> int:
@@ -116,6 +132,6 @@ def split_summary(
     if not compact:
         return fallback_title, fallback_detail
     if ". " not in compact:
-        return compact[:120], fallback_detail
+        return compact[:_TITLE_MAX], fallback_detail
     title, detail = compact.split(". ", 1)
     return f"{title}.", detail

@@ -15,7 +15,7 @@ from .activity import (
 )
 from .agents import compose_agent_statuses, compose_team_summary
 from .attention import compose_attention_items
-from .helpers import agent_names_by_graph, experts_by_schedule, next_runs_by_expert
+from .helpers import agent_refs_by_graph, experts_by_schedule, next_runs_by_expert
 from .models import HomeDashboardResponse
 
 
@@ -37,7 +37,7 @@ def compose_home_dashboard(
         if not expert.is_template and not expert.is_archived
     ]
     expert_by_id = {expert.id: expert for expert in hired}
-    agent_by_graph = agent_names_by_graph(hired, library_refs)
+    agent_by_graph = agent_refs_by_graph(hired, library_refs)
     graph_schedules = [
         schedule
         for schedule in schedules

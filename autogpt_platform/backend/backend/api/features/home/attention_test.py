@@ -176,3 +176,105 @@ def test_naive_timestamps_are_normalised_to_utc() -> None:
     ]
     assert items[0].priority == "high"
     assert items[0].created_at == NOW - timedelta(hours=30)
+
+
+def _paused_expert(*, weekly_budget: int | None, weekly_spend: int) -> Expert:
+    expert = _expert()
+    expert.schedules_paused_at = NOW - timedelta(hours=3)
+    expert.weekly_budget = weekly_budget
+    expert.weekly_spend = weekly_spend
+    return expert
+
+
+def test_paused_expert_explains_a_breached_budget() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_paused_expert(weekly_budget=500, weekly_spend=500)],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].kind == "paused"
+    assert items[0].description == "Weekly budget reached: 500 of 500 credits."
+
+
+def test_paused_expert_without_a_breached_budget_stays_generic() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_paused_expert(weekly_budget=500, weekly_spend=10)],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].description == "Scheduled work is paused."
+
+
+def test_long_payloads_are_truncated_with_an_ellipsis() -> None:
+    review = _review(NOW - timedelta(hours=1))
+    review.payload = {"body": "x" * 400}
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[review],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    preview = items[0].preview
+    assert preview is not None
+    assert len(preview) == 138
+    assert preview.endswith("…")
+
+
+def test_review_link_prefers_the_copilot_session() -> None:
+    review = _review(NOW - timedelta(hours=1))
+    review.session_id = "session 1"
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[review],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].primary_action.href == "/copilot?sessionId=session%201"
+
+
+def test_review_link_falls_back_to_the_library_run_then_the_library() -> None:
+    with_agent = _review(NOW - timedelta(hours=1), node_exec_id="with-agent")
+    with_agent.library_agent_id = "library-agent"
+    bare = _review(NOW - timedelta(hours=1), node_exec_id="bare")
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[with_agent, bare],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    hrefs = {item.id: item.primary_action.href for item in items}
+    assert hrefs["approval-with-agent"] == (
+        "/library/agents/library-agent?activeTab=runs&activeItem=graph-execution"
+    )
+    assert hrefs["approval-bare"] == "/library"
+
+
+def test_review_without_expert_details_has_no_expert() -> None:
+    review = _review(NOW - timedelta(hours=1))
+    review.expert_id = "expert"
+    review.expert_name = None
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[review],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].expert is None

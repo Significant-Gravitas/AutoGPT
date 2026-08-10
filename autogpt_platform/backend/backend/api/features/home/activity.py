@@ -6,6 +6,8 @@ from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import (
+    UNKNOWN_AGENT,
+    AgentRef,
     as_utc,
     as_utc_or_none,
     parse_datetime,
@@ -32,16 +34,22 @@ def compose_briefing(
     now: datetime,
     executions: list[GraphExecutionMeta],
     expert_by_id: dict[str, Expert],
-    agent_by_graph: dict[str, tuple[str, str | None]],
+    agent_by_graph: dict[str, AgentRef],
 ) -> HomeBriefing:
     window_start = now - timedelta(hours=24)
     terminal = [
         execution
         for execution in executions
         if execution.status in {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED}
-        and as_utc(execution.ended_at or execution.started_at or now) >= window_start
+        and _occurred_at(execution, now) >= window_start
     ]
-    terminal.sort(key=lambda execution: execution.status == ExecutionStatus.COMPLETED)
+    # Failures first (they need a decision), then most recent within each group.
+    terminal.sort(
+        key=lambda execution: (
+            execution.status == ExecutionStatus.COMPLETED,
+            -_occurred_at(execution, now).timestamp(),
+        )
+    )
     outcomes = [
         _briefing_outcome(execution, expert_by_id, agent_by_graph)
         for execution in terminal[:_MAX_OUTCOMES]
@@ -64,7 +72,7 @@ def compose_briefing(
 def compose_active_tasks(
     executions: list[GraphExecutionMeta],
     expert_by_id: dict[str, Expert],
-    agent_by_graph: dict[str, tuple[str, str | None]],
+    agent_by_graph: dict[str, AgentRef],
 ) -> list[HomeActiveTask]:
     active = [
         execution
@@ -72,24 +80,29 @@ def compose_active_tasks(
         if execution.status in {ExecutionStatus.RUNNING, ExecutionStatus.QUEUED}
     ]
     return [
-        HomeActiveTask(
-            id=execution.id,
-            title=agent_by_graph.get(execution.graph_id, ("Agent task", None))[0],
-            status=(
-                "running" if execution.status == ExecutionStatus.RUNNING else "queued"
-            ),
-            expert=(
-                to_home_expert(expert_by_id[execution.expert_id])
-                if execution.expert_id in expert_by_id
-                else None
-            ),
-            started_at=as_utc_or_none(execution.started_at),
-            link=run_link(
-                agent_by_graph.get(execution.graph_id, ("", None))[1], execution.id
-            ),
-        )
+        _active_task(execution, expert_by_id, agent_by_graph)
         for execution in active[:_MAX_ACTIVE]
     ]
+
+
+def _active_task(
+    execution: GraphExecutionMeta,
+    expert_by_id: dict[str, Expert],
+    agent_by_graph: dict[str, AgentRef],
+) -> HomeActiveTask:
+    agent = agent_by_graph.get(execution.graph_id, UNKNOWN_AGENT)
+    return HomeActiveTask(
+        id=execution.id,
+        title=agent.name,
+        status="running" if execution.status == ExecutionStatus.RUNNING else "queued",
+        expert=(
+            to_home_expert(expert_by_id[execution.expert_id])
+            if execution.expert_id in expert_by_id
+            else None
+        ),
+        started_at=as_utc_or_none(execution.started_at),
+        link=run_link(agent.library_agent_id, execution.id),
+    )
 
 
 def compose_upcoming_tasks(
@@ -152,20 +165,24 @@ def compose_week_summary(
 def _briefing_outcome(
     execution: GraphExecutionMeta,
     expert_by_id: dict[str, Expert],
-    agent_by_graph: dict[str, tuple[str, str | None]],
+    agent_by_graph: dict[str, AgentRef],
 ) -> HomeBriefingOutcome:
-    name, library_id = agent_by_graph.get(execution.graph_id, ("Agent task", None))
+    agent = agent_by_graph.get(execution.graph_id, UNKNOWN_AGENT)
     raw_summary = execution.stats.activity_status if execution.stats else None
     error = execution.stats.error if execution.stats else None
     failed = execution.status == ExecutionStatus.FAILED
+    if failed:
+        fallback_detail = (
+            error or "Open the run to inspect the failure and choose the next step."
+        )
+    else:
+        fallback_detail = "Completed successfully."
+    # Only an AI summary may become the headline. A raw exception string is the
+    # detail, never the card title.
     title, detail = split_summary(
-        raw_summary or error,
-        fallback_title=f"{name} {'needs a retry' if failed else 'finished'}",
-        fallback_detail=(
-            "Open the run to inspect the failure and choose the next step."
-            if failed
-            else "Completed successfully."
-        ),
+        raw_summary,
+        fallback_title=f"{agent.name} {'needs a retry' if failed else 'finished'}",
+        fallback_detail=fallback_detail,
     )
     return HomeBriefingOutcome(
         id=execution.id,
@@ -177,9 +194,13 @@ def _briefing_outcome(
             if execution.expert_id in expert_by_id
             else None
         ),
-        agent_name=name,
+        agent_name=agent.name,
         occurred_at=as_utc_or_none(execution.ended_at or execution.started_at),
         duration_seconds=execution.stats.duration if execution.stats else 0,
         cost_cents=execution.stats.cost if execution.stats else 0,
-        link=run_link(library_id, execution.id),
+        link=run_link(agent.library_agent_id, execution.id),
     )
+
+
+def _occurred_at(execution: GraphExecutionMeta, now: datetime) -> datetime:
+    return as_utc(execution.ended_at or execution.started_at or now)
