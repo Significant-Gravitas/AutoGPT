@@ -6,6 +6,7 @@ import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/Tou
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
+import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
   SidebarInset,
@@ -28,6 +29,7 @@ export function PlatformChrome({ children }: Props) {
   const {
     showNewLayout,
     isNewLayoutActive,
+    isLayoutReady,
     showTourSidebar,
     overlayInsetHeader,
     hasInsetHeaderTitle,
@@ -109,6 +111,7 @@ export function PlatformChrome({ children }: Props) {
   return (
     <main className="flex h-screen w-full flex-col">
       <Navbar />
+      {isLayoutReady && !isNewLayoutActive ? <ChangelogPopup /> : null}
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

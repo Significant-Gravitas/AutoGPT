@@ -20,6 +20,13 @@ const NEW_LAYOUT_EXCLUDED_PREFIXES = [
   "/unauthorized",
 ];
 
+export function isNewLayoutExcludedRoute(pathname: string | null) {
+  if (!pathname) return false;
+  return NEW_LAYOUT_EXCLUDED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export function usePlatformChrome() {
   const pathname = usePathname();
   const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
@@ -34,11 +41,6 @@ export function usePlatformChrome() {
   // classic shell, then we swap once the flag is known on the client.
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
-
-  const isExcludedRoute = NEW_LAYOUT_EXCLUDED_PREFIXES.some((prefix) => {
-    if (!pathname) return false;
-    return pathname === prefix || pathname.startsWith(`${prefix}/`);
-  });
 
   const isMarketplaceRoute =
     pathname === "/marketplace" ||
@@ -63,8 +65,12 @@ export function usePlatformChrome() {
   const isNewLayoutActive = isMounted && Boolean(isNewLayoutEnabled);
 
   return {
-    showNewLayout: isNewLayoutActive && !isExcludedRoute && !showTourSidebar,
+    showNewLayout:
+      isNewLayoutActive &&
+      !isNewLayoutExcludedRoute(pathname) &&
+      !showTourSidebar,
     isNewLayoutActive,
+    isLayoutReady: isMounted,
     // On copilot the inset header floats over the chat instead of stacking
     // above it, so messages scroll to the viewport top.
     overlayInsetHeader: isCopilotRoute,

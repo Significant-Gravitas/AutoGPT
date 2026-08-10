@@ -186,6 +186,12 @@ function getClassicAccountMenuItems(userRole?: string): MenuItemGroup[] {
           href: "/settings/creator-dashboard",
         },
         {
+          icon: IconType.WhatsNew,
+          text: "Changelog",
+          href: "https://agpt.co/changelog",
+          external: true,
+        },
+        {
           icon: IconType.Help,
           text: "Help & Docs",
           href: "https://agpt.co/docs",
