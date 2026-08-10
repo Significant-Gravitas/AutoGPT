@@ -25997,6 +25997,11 @@
             "title": "Total Duration Seconds",
             "default": 0
           },
+          "duration_run_count": {
+            "type": "integer",
+            "title": "Duration Run Count",
+            "default": 0
+          },
           "by_agent": {
             "items": { "$ref": "#/components/schemas/UserAgentCostRollup" },
             "type": "array",
