@@ -5,6 +5,7 @@ the copilot-turn scheduling feature so they're exercised by the regular
 backend test job (and counted by codecov), not just the integration suite.
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,6 +24,7 @@ from backend.executor.scheduler import (
     _build_trigger,
     _cleanup_old_schedules_without_id,
     _execute_copilot_turn,
+    _execute_graph,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
@@ -471,6 +473,50 @@ def test_graph_args_defaults_kind_to_graph():
     assert args.kind == "graph"
 
 
+def test_graph_args_expert_id_defaults_to_none():
+    """Legacy persisted job kwargs predate expert attribution; they must
+    deserialize with ``expert_id=None``."""
+    args = GraphExecutionJobArgs(
+        user_id="u",
+        graph_id="g",
+        graph_version=1,
+        cron="* * * * *",
+        input_data={},
+        input_credentials={},
+    )
+    assert args.expert_id is None
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_forwards_expert_id():
+    """An expert-attributed schedule must stamp its expert_id onto the
+    execution it creates, so any surface can answer "who ran this"."""
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+        expert_id="expert-1",
+    )
+    mock_add = AsyncMock(return_value=MagicMock(id="exec-1"))
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+
+
 def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
     args = CopilotTurnJobArgs(
         user_id="u",
@@ -638,3 +684,111 @@ class TestScheduleOrgVisibility:
         ]
         result = self._run(infos, user_id="me")
         assert [r.schedule_id for r in result] == ["mine"]
+
+
+# ---------------------------------------------------------------------------
+# add_morning_briefing_schedule / execute_morning_briefing
+# ---------------------------------------------------------------------------
+
+
+class TestMorningBriefingSchedule:
+    """Registration kwargs and the job body's failure containment."""
+
+    def _register(self, existing=None, **kwargs) -> MagicMock:
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        sched.scheduler.get_job.return_value = existing
+        sched.scheduler.add_job.return_value = MagicMock(
+            id="morning_briefing_user-1", next_run_time=None
+        )
+        Scheduler.add_morning_briefing_schedule(sched, **kwargs)
+        return sched.scheduler.add_job
+
+    def test_registers_daily_9am_cron_in_the_users_timezone(self):
+        add_job = self._register(user_id="user-1", user_timezone="America/New_York")
+
+        add_job.assert_called_once()
+        call_kwargs = add_job.call_args.kwargs
+        assert call_kwargs["id"] == "morning_briefing_user-1"
+        assert call_kwargs["kwargs"] == {"user_id": "user-1"}
+        assert call_kwargs["replace_existing"] is True
+        assert call_kwargs["max_instances"] == 1
+
+        trigger = call_kwargs["trigger"]
+        assert str(trigger.timezone) == "America/New_York"
+        # CronTrigger stringifies its fields; pin the 09:00 daily contract.
+        # The minute is spread per user, so only the hour is fixed.
+        assert "hour='9'" in str(trigger)
+
+    def test_empty_timezone_falls_back_to_utc(self):
+        add_job = self._register(user_id="user-1", user_timezone="")
+
+        assert str(add_job.call_args.kwargs["trigger"].timezone) == "UTC"
+
+    def test_reregistering_the_same_timezone_leaves_the_job_alone(self):
+        """APScheduler recomputes next_run_time on the replace path, so
+        re-adding an unchanged job would push an already-overdue 09:00 fire to
+        tomorrow and silently lose that day's briefing."""
+        existing = MagicMock(
+            id="morning_briefing_user-1",
+            next_run_time=datetime(2026, 8, 7, 13, 0, tzinfo=timezone.utc),
+            trigger=CronTrigger.from_crontab("7 9 * * *", timezone="America/New_York"),
+        )
+
+        add_job = self._register(
+            existing=existing, user_id="user-1", user_timezone="America/New_York"
+        )
+
+        add_job.assert_not_called()
+
+    def test_a_changed_timezone_still_rewrites_the_job(self):
+        existing = MagicMock(
+            id="morning_briefing_user-1",
+            next_run_time=None,
+            trigger=CronTrigger.from_crontab("7 9 * * *", timezone="America/New_York"),
+        )
+
+        add_job = self._register(
+            existing=existing, user_id="user-1", user_timezone="Europe/Madrid"
+        )
+
+        add_job.assert_called_once()
+        assert str(add_job.call_args.kwargs["trigger"].timezone) == "Europe/Madrid"
+
+    def test_the_fire_minute_is_stable_per_user_and_spread_across_users(self):
+        """A fixed "0 9 * * *" fires every user in a timezone at once; the
+        minute must vary by user but never move between restarts."""
+        from backend.executor.scheduler import _morning_briefing_crontab
+
+        assert _morning_briefing_crontab("user-1") == _morning_briefing_crontab(
+            "user-1"
+        )
+        minutes = {
+            _morning_briefing_crontab(f"user-{i}").split(" ")[0] for i in range(50)
+        }
+        assert len(minutes) > 10
+        assert all(0 <= int(m) < 60 for m in minutes)
+
+    def test_job_body_swallows_and_logs_generation_failures(self, caplog):
+        """The cron body exists to keep one user's failure off the scheduler."""
+        from backend.executor.scheduler import execute_morning_briefing
+
+        with (
+            # MagicMock, not AsyncMock: run_async is stubbed out, so an
+            # unawaited coroutine here would only raise a RuntimeWarning.
+            patch(
+                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
+                new=MagicMock(),
+            ),
+            patch(
+                f"{_SCHEDULER_PATH}.run_async",
+                side_effect=RuntimeError("briefing boom"),
+            ),
+            caplog.at_level(logging.ERROR),
+        ):
+            execute_morning_briefing("user-1")  # must not raise
+
+        assert any(
+            r.levelno == logging.ERROR and "Morning briefing failed" in r.getMessage()
+            for r in caplog.records
+        )

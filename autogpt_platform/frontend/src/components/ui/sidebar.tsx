@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
+import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -295,7 +296,7 @@ const SidebarTrigger = React.forwardRef<
         toggleSidebar();
       }}
     >
-      <SidebarSimpleIcon className="!size-5" />
+      <Icon icon={SidebarLeftIcon} className="!size-5" />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );
@@ -339,6 +340,10 @@ const SidebarInset = React.forwardRef<
     <main
       ref={ref}
       className={cn(
+        // min-w-0 lets the inset shrink to the space next to the sidebar;
+        // without it, min-width:auto sizes it to its content and fixed-width
+        // panels (e.g. the copilot artifact panel) push the page past the
+        // viewport instead of shrinking.
         "relative flex w-full min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className,

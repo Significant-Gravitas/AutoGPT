@@ -109,6 +109,7 @@ def test_from_db_execution_count_override_covers_success_rate():
 async def test_agent_preset_from_db(test_user_id: str):
     # Create mock DB agent
     db_agent = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="test-agent-123",
         createdAt=datetime.datetime.now(),
         updatedAt=datetime.datetime.now(),

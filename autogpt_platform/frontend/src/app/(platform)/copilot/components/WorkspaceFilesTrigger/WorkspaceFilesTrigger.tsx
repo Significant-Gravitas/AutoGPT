@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { FolderIcon } from "@phosphor-icons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
 import { useCopilotUIStore } from "../../store";
 
 interface Props {
@@ -25,7 +26,7 @@ export function WorkspaceFilesTrigger({ className }: Props) {
       onClick={toggleContextPanel}
       aria-label="Open workspace files"
     >
-      <FolderIcon className="!size-5" />
+      <Icon icon={Folder01Icon} className="!size-5" />
     </Button>
   );
 }

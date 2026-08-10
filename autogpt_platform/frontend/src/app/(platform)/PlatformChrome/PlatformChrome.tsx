@@ -13,6 +13,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigger/WorkspaceFilesTrigger";
@@ -42,6 +43,8 @@ export function PlatformChrome({ children }: Props) {
     isAdminRoute,
     isBuilderRoute,
   } = usePlatformChrome();
+  // The collapsed-by-default sidebar ships with the brain-dump experience.
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
 
   const content = (
     <TopUpPromptProvider>
@@ -68,7 +71,7 @@ export function PlatformChrome({ children }: Props) {
   if (showNewLayout) {
     return (
       <SidebarProvider
-        defaultOpen={!isBuilderRoute}
+        defaultOpen={!isBuilderRoute && !isBrainDumpEnabled}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
         <BuilderSidebarAutoClose />

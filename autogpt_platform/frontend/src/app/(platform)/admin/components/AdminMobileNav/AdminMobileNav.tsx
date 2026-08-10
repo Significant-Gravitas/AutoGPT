@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeftIcon, CaretDownIcon } from "@phosphor-icons/react";
+import { ArrowDown01Icon, ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import {
   Popover,
   PopoverContent,
@@ -24,7 +25,7 @@ export function AdminMobileNav() {
         aria-label="Back to home"
         className="flex items-center gap-1 rounded-[8px] py-1 pr-2 text-[#505057] transition-colors hover:text-[#1F1F20]"
       >
-        <ArrowLeftIcon size={16} weight="bold" />
+        <UIIcon icon={ArrowLeft02Icon} size={16} />
       </Link>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
@@ -34,7 +35,7 @@ export function AdminMobileNav() {
             aria-label={`Admin navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">
-              <current.Icon size={16} weight="regular" className="text-black" />
+              <UIIcon icon={current.Icon} size={16} className="text-black" />
               <Text
                 variant="body"
                 as="span"
@@ -43,9 +44,9 @@ export function AdminMobileNav() {
                 {current.label}
               </Text>
             </span>
-            <CaretDownIcon
+            <UIIcon
+              icon={ArrowDown01Icon}
               size={16}
-              weight="regular"
               className={cn(
                 "text-[#505057] transition-transform",
                 open && "rotate-180",
@@ -70,9 +71,9 @@ export function AdminMobileNav() {
                   isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
                 )}
               >
-                <Icon
+                <UIIcon
+                  icon={Icon}
                   size={16}
-                  weight={isActive ? "regular" : "light"}
                   className={isActive ? "text-black" : "text-[#1F1F20]"}
                 />
                 <Text

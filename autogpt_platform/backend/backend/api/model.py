@@ -2,10 +2,10 @@ import enum
 from typing import Any, Literal, Optional
 
 import pydantic
-from prisma.enums import OnboardingStep
 
 from backend.data.auth.api_key import APIKeyInfo, APIKeyPermission
 from backend.data.graph import Graph
+from backend.data.onboarding_steps import OnboardingStep
 from backend.util.timezone_name import TimeZoneName
 
 
@@ -93,6 +93,9 @@ class NotificationPayload(pydantic.BaseModel):
 
 
 class OnboardingNotificationPayload(NotificationPayload):
+    # Typed enum: notifications only fire on fresh completions, where ``step`` is
+    # always a current ``OnboardingStep`` (or ``None`` for ``increment_runs``).
+    # Legacy step names live only in stored rows, never in emitted notifications.
     step: OnboardingStep | None
 
 

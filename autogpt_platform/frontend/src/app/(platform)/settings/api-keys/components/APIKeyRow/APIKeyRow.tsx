@@ -1,13 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import {
-  CheckSquareIcon,
-  InfoIcon,
-  SquareIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-
 import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -19,6 +12,13 @@ import {
 
 import { APIKeyInfoDialog } from "../APIKeyInfoDialog/APIKeyInfoDialog";
 import { formatLastUsed, maskAPIKey } from "../APIKeyList/helpers";
+import {
+  CheckmarkSquare02Icon,
+  Delete02Icon,
+  InformationCircleIcon,
+  SquareIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   apiKey: APIKeyInfo;
@@ -56,9 +56,9 @@ export function APIKeyRow({
           }`}
         >
           {selected ? (
-            <CheckSquareIcon size={20} weight="fill" />
+            <Icon icon={CheckmarkSquare02Icon} size={20} />
           ) : (
-            <SquareIcon size={20} />
+            <Icon icon={SquareIcon} size={20} />
           )}
         </button>
         <div className="flex flex-col gap-1">
@@ -75,7 +75,7 @@ export function APIKeyRow({
                     onClick={() => setInfoOpen(true)}
                     className="shrink-0 rounded text-zinc-500 transition-colors hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
                   >
-                    <InfoIcon size={16} />
+                    <Icon icon={InformationCircleIcon} size={16} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top">View key details</TooltipContent>
@@ -103,7 +103,7 @@ export function APIKeyRow({
         onClick={onDelete}
         className="shrink-0 rounded text-zinc-500 transition-colors hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
       >
-        <TrashIcon size={20} />
+        <Icon icon={Delete02Icon} size={20} />
       </button>
 
       <APIKeyInfoDialog

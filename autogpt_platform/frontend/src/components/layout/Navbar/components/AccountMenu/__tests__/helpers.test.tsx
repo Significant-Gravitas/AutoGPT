@@ -1,6 +1,6 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
 import { describe, expect, test } from "vitest";
-import { getAccountMenuPhosphorIcon } from "../helpers";
+import { getAccountMenuIcon } from "../helpers";
 import {
   getAccountMenuItems,
   getAccountMenuOptionIcon,
@@ -10,7 +10,7 @@ function flattenTexts(groups: ReturnType<typeof getAccountMenuItems>) {
   return groups.flatMap((group) => group.items.map((item) => item.text));
 }
 
-describe("getAccountMenuPhosphorIcon", () => {
+describe("getAccountMenuIcon", () => {
   test.each([
     IconType.Edit,
     IconType.LayoutDashboard,
@@ -22,12 +22,12 @@ describe("getAccountMenuPhosphorIcon", () => {
     IconType.WhatsNew,
     IconType.LogOut,
   ])("returns a Phosphor icon element for %s", (icon) => {
-    const result = getAccountMenuPhosphorIcon(icon);
+    const result = getAccountMenuIcon(icon);
     expect(result).not.toBeNull();
   });
 
   test("returns null for unmapped icon types", () => {
-    const result = getAccountMenuPhosphorIcon(IconType.Chat);
+    const result = getAccountMenuIcon(IconType.Chat);
     expect(result).toBeNull();
   });
 });

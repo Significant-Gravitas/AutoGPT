@@ -64,6 +64,12 @@ class Flag(str, Enum):
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
 
+    # Gates the onboarding voice "brain dump" end-to-end.  The upload /
+    # finalize / status / download endpoints 404 when off so a stale
+    # frontend can't start writing recordings, and the wizard keeps
+    # rendering the pillbox step.  Fail-closed (default False).
+    ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump"
+
     # Gates the per-user weekly community rebuild registered by
     # ``add_community_rebuild_schedule``. Off by default; opt-in canary
     # so the Leiden + LLM-summarization cost doesn't ramp before
@@ -85,6 +91,14 @@ class Flag(str, Enum):
     # consumer pickup, no ratification loop. Defaults False; opt-in
     # only.
     DREAM_PASS_ENABLED = "dream-pass-enabled"
+
+    # Mirror of the frontend `hire-experts` flag (same LaunchDarkly key,
+    # so both sides evaluate one cohort switch). Gates the experts
+    # surface, including the scheduled morning-briefing job end-to-end:
+    # schedule registration, generation, and delivery. Deliberately no
+    # independent briefing kill switch — briefings ship to exactly the
+    # experts cohort.
+    HIRE_EXPERTS = "hire-experts"
 
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived

@@ -1,53 +1,57 @@
 import {
   BrainIcon,
-  CalculatorIcon,
-  CurrencyDollarIcon,
-  FileTextIcon,
+  Calculator01Icon,
+  DollarSignIcon,
+  File02Icon,
   GaugeIcon,
-  HeartbeatIcon,
-  MagnifyingGlassIcon,
-  ReceiptIcon,
-  RobotIcon,
+  Pulse01Icon,
+  ReceiptTextIcon,
+  Robot01Icon,
+  Search01Icon,
   SlidersHorizontalIcon,
-  UsersIcon,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+  UserMultipleIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export interface AdminNavItem {
   label: string;
   href: string;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
 }
 
 export const adminNavItems: AdminNavItem[] = [
   {
     label: "Marketplace Management",
     href: "/admin/marketplace",
-    Icon: UsersIcon,
+    Icon: UserMultipleIcon,
   },
-  { label: "User Spending", href: "/admin/spending", Icon: CurrencyDollarIcon },
+  { label: "User Spending", href: "/admin/spending", Icon: DollarSignIcon },
   {
     label: "System Diagnostics",
     href: "/admin/diagnostics",
-    Icon: HeartbeatIcon,
+    Icon: Pulse01Icon,
   },
   {
     label: "User Impersonation",
     href: "/admin/impersonation",
-    Icon: MagnifyingGlassIcon,
+    Icon: Search01Icon,
   },
   { label: "Rate Limits", href: "/admin/rate-limits", Icon: GaugeIcon },
-  { label: "Platform Costs", href: "/admin/platform-costs", Icon: ReceiptIcon },
+  {
+    label: "Platform Costs",
+    href: "/admin/platform-costs",
+    Icon: ReceiptTextIcon,
+  },
   {
     label: "Execution Analytics",
     href: "/admin/execution-analytics",
-    Icon: FileTextIcon,
+    Icon: File02Icon,
   },
-  { label: "Bot Analytics", href: "/admin/bots", Icon: RobotIcon },
+  { label: "Bot Analytics", href: "/admin/bots", Icon: Robot01Icon },
   {
     label: "Block Cost Estimates",
     href: "/admin/block-cost-estimates",
-    Icon: CalculatorIcon,
+    Icon: Calculator01Icon,
   },
   { label: "Memory Inspector", href: "/admin/memory", Icon: BrainIcon },
   {

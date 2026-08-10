@@ -1,6 +1,4 @@
 "use client";
-
-import { PlusIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
@@ -10,6 +8,8 @@ import type { PublishState } from "@/components/contextual/PublishAgentModal/use
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 
 import { EASE_OUT } from "../../helpers";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   publishState: PublishState;
@@ -52,7 +52,7 @@ export function DashboardHeader({
             data-testid="submit-agent-button"
             size="large"
             onClick={onOpenSubmit}
-            leftIcon={<PlusIcon size={18} weight="bold" />}
+            leftIcon={<Icon icon={PlusSignIcon} size={18} />}
           >
             Submit agent
           </Button>

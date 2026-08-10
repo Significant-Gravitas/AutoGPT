@@ -16,13 +16,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.graphiti.ingest import IngestionCompletion
+
 from . import apply as apply_mod
 from .fetch import DreamInput
+from .locks import DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
     DreamDemotion,
     DreamOperations,
     EntityInvalidation,
+    IngestionDrainStatus,
     ProposedFinding,
 )
 
@@ -41,6 +45,12 @@ def _bundle_with_known_facts(*uuids: str) -> DreamInput:
 def _stub_boundaries(mocker):
     """Wire up the apply.py side-effects with AsyncMocks once per test."""
     mocker.patch.object(apply_mod, "enqueue_episode", AsyncMock(return_value=True))
+    # enqueue_episode is stubbed True above, so every write/proposal registers
+    # on the pass's IngestionCompletion — but no worker runs in tests, so an
+    # unstubbed drain would block the full INGESTION_DRAIN_TIMEOUT_SECONDS
+    # (300s) per test and time out the CI job. Default the drain to an
+    # instant success; drain-behavior tests re-patch this explicitly.
+    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
     # The driver constructor + close — apply.py opens a FalkorDB driver for
     # demotions and entity invalidations. Patch where it's used.
     driver = mocker.MagicMock()
@@ -66,7 +76,21 @@ def _stub_boundaries(mocker):
         "backend.copilot.db.create_chat_session",
         AsyncMock(return_value=mocker.MagicMock(session_id="s1")),
     )
+    mocker.patch(
+        "backend.copilot.db.update_chat_session_title", AsyncMock(return_value=True)
+    )
     mocker.patch("backend.copilot.db.add_chat_message", AsyncMock(return_value=None))
+    # _create_dream_session's tenant lookup. Unmocked it runs REAL Prisma
+    # queries on this test's function-scoped event loop whenever an earlier
+    # test already connected Prisma (its except swallows the failure when
+    # not connected, so the leak is invisible locally). Those connections
+    # stay in the shared Prisma httpx pool bound to a dead loop and the
+    # next session-loop test touching Prisma dies with "Event loop is
+    # closed" (test_chatsession_redis_storage in CI).
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=(None, None)),
+    )
     # Entity invalidation is gated on DREAM_PASS_INVALIDATE_ENTITY. Default
     # the flag ON so the existing entity tests exercise the apply path; the
     # flag-off behavior has its own dedicated test below.
@@ -327,22 +351,96 @@ async def test_entity_invalidation_skipped_when_flag_off(mocker):
 
 
 @pytest.mark.asyncio
-async def test_no_op_dream_still_writes_summary_session(mocker):
-    """Empty DreamOperations still creates the dream-kind ChatSession."""
+async def test_empty_pass_creates_no_session_and_no_message():
+    """A pass with no writes, proposals, demotions, or entity
+    invalidations must not manufacture a user-visible chat — no
+    dream-kind ChatSession, no placeholder message, zero stats, and no
+    session_id. A non-empty summary alone is NOT an operation.
+    Regression: nightly dreams for users with old facts but no new
+    activity created one untitled empty chat per user per night."""
     from backend.copilot import db as copilot_db
+
+    from .schemas import DreamOperationsSnapshot
 
     ops = DreamOperations(summary_for_user="Nothing new today.")
     stats = await apply_mod.apply_operations(user_id="u-a", pass_id="p-5", ops=ops)
 
+    copilot_db.create_chat_session.assert_not_awaited()
+    copilot_db.add_chat_message.assert_not_awaited()
+    apply_mod.enqueue_episode.assert_not_awaited()
+    assert stats.get("session_id") is None
     assert stats["consolidated_count"] == 0
     assert stats["proposal_count"] == 0
     assert stats["demotion_count"] == 0
-    # ChatSession + ChatMessage were both created
+    assert stats["demotion_failed_count"] == 0
+    assert stats["entity_invalidation_count"] == 0
+    assert stats["snapshot"] == DreamOperationsSnapshot()
+
+
+@pytest.mark.asyncio
+async def test_ops_with_empty_summary_still_create_session_with_placeholder():
+    """Operations landed but the model returned no narrative — the
+    session must still be created (the memory ops need their provenance
+    + user-visible record) with the fallback placeholder message."""
+    from backend.copilot import db as copilot_db
+
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="",
+    )
+    stats = await apply_mod.apply_operations(user_id="u-ph", pass_id="p-ph", ops=ops)
+
     copilot_db.create_chat_session.assert_awaited_once()
     copilot_db.add_chat_message.assert_awaited_once()
     msg_kwargs = copilot_db.add_chat_message.await_args.kwargs
     assert msg_kwargs["role"] == "assistant"
-    assert msg_kwargs["content"] == "Nothing new today."
+    assert msg_kwargs["content"] == "Dream pass completed with no narrative output."
+    assert isinstance(stats["session_id"], str) and stats["session_id"]
+
+
+@pytest.mark.asyncio
+async def test_dream_session_titled_with_utc_date():
+    """The dream-kind session gets a 'Dream summary — YYYY-MM-DD' title
+    (UTC date) via update_chat_session_title, scoped to the owning user,
+    so it doesn't render as '(untitled)' in the chat list."""
+    from backend.copilot import db as copilot_db
+
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    stats = await apply_mod.apply_operations(
+        user_id="u-title", pass_id="p-title", ops=ops
+    )
+
+    copilot_db.update_chat_session_title.assert_awaited_once()
+    title_kwargs = copilot_db.update_chat_session_title.await_args.kwargs
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    assert title_kwargs["title"] == f"Dream summary — {today}"
+    assert title_kwargs["session_id"] == stats["session_id"]
+    assert title_kwargs["user_id"] == "u-title"
+
+
+@pytest.mark.asyncio
+async def test_title_failure_does_not_abort_apply(mocker):
+    """The title write is cosmetic and best-effort — on the batch path the
+    at-most-once apply gate is already claimed when apply runs, so an
+    exception here would permanently lose the dream. The ops and the
+    narrative must still land."""
+    from backend.copilot import db as copilot_db
+
+    mocker.patch(
+        "backend.copilot.db.update_chat_session_title",
+        AsyncMock(side_effect=ConnectionError("db blip")),
+    )
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    stats = await apply_mod.apply_operations(user_id="u-tf", pass_id="p-tf", ops=ops)
+
+    assert stats["consolidated_count"] == 1
+    copilot_db.add_chat_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -386,6 +484,233 @@ async def test_summary_written_after_memory_ops(mocker):
     )
 
     assert calls == ["write", "summary"], calls
+
+
+# ---------------------------------------------------------------------------
+# Ingestion drain — enqueue_episode returning True only proves the episode
+# reached the in-process asyncio queue; the real graph write (LLM extraction
+# + embedding in _ingestion_worker) happens later. apply_operations must
+# await the queue drain BEFORE returning, because the caller holds the dream
+# lock only until apply returns — otherwise a scheduler pod restart silently
+# discards queued writes while the pass stays recorded successful.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_waits_for_ingestion_drain_before_reporting_counts(mocker):
+    """With writes enqueued, apply must await wait_for_ingestion (scoped to
+    the pass's own episodes, bounded by the drain timeout) and report
+    ingestion_drain_status=drained on success."""
+    drain = mocker.patch.object(
+        apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
+    )
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    stats = await apply_mod.apply_operations(
+        user_id="u-drain", pass_id="p-drain", ops=ops
+    )
+
+    drain.assert_awaited_once()
+    # Waited on the pass's own completion tracker, not the whole queue, with
+    # the sync drain timeout.
+    completion, timeout = drain.await_args.args
+    assert isinstance(completion, IngestionCompletion)
+    assert completion.registered == 1
+    assert timeout == apply_mod.INGESTION_DRAIN_TIMEOUT_SECONDS
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.drained
+
+
+@pytest.mark.asyncio
+async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, caplog):
+    """When the pass's episodes don't drain inside the cap, the pass must
+    still succeed (partial visibility beats a failed pass): counts are
+    returned, ingestion_drain_status=timed_out flags the overflow, and a
+    WARNING records the revert to fire-and-forget behavior."""
+    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=False))
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    with caplog.at_level(logging.WARNING, logger=apply_mod.logger.name):
+        stats = await apply_mod.apply_operations(
+            user_id="u-slow", pass_id="p-slow", ops=ops
+        )
+
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
+    assert stats["consolidated_count"] == 1
+    assert any(
+        "did not drain" in record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+    )
+
+
+@pytest.mark.asyncio
+async def test_zero_drain_timeout_skips_wait_and_reports_skipped(mocker, caplog):
+    """The batch path passes ``ingestion_drain_timeout=0`` so apply never
+    stalls the shared, serial BatchExecutor.walk_once loop: even with writes
+    enqueued, wait_for_ingestion is NOT awaited, and the pass reports
+    ingestion_drain_status=skipped (a by-design skip, not a failure)."""
+    drain = mocker.patch.object(
+        apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
+    )
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    with caplog.at_level(logging.INFO, logger=apply_mod.logger.name):
+        stats = await apply_mod.apply_operations(
+            user_id="u-batch",
+            pass_id="p-batch",
+            ops=ops,
+            ingestion_drain_timeout=apply_mod.BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
+        )
+
+    drain.assert_not_awaited()
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.skipped
+    assert stats["consolidated_count"] == 1
+    assert any("drain skipped" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_no_enqueued_writes_skips_ingestion_drain(mocker):
+    """A dream with no writes/proposals must not block on the shared
+    per-user queue (live chat episodes could be in flight) — the drain is
+    skipped and reported vacuously drained."""
+    drain = mocker.patch.object(
+        apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
+    )
+    ops = DreamOperations(summary_for_user="Nothing new today.")
+    stats = await apply_mod.apply_operations(
+        user_id="u-empty", pass_id="p-empty", ops=ops
+    )
+
+    drain.assert_not_awaited()
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.drained
+
+
+@pytest.mark.asyncio
+async def test_sync_path_renews_lock_before_drain(mocker):
+    """The dream lock is renewed to a fresh budget right before the drain so
+    it cannot expire while the pass's writes are still landing (which would
+    admit a concurrent pass onto the same graph)."""
+    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = AsyncMock(return_value=True)
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    await apply_mod.apply_operations(
+        user_id="u-lock", pass_id="p-lock", ops=ops, lock_handle=lock_handle
+    )
+
+    lock_handle.extend.assert_awaited_once_with(apply_mod.LOCK_DRAIN_RENEWAL_SECONDS)
+
+
+@pytest.mark.asyncio
+async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
+    """A failed renewal means the lock expired (a newer pass may own the
+    graph), so apply must abort before the drain and the destructive
+    demotions/summary writes instead of continuing as if it held exclusive
+    ownership. The orchestrator's catch-all turns the raise into an errored
+    ``DreamPassResult``."""
+    drain = mocker.patch.object(apply_mod, "_drain_ingestion", AsyncMock())
+    demote = mocker.patch.object(
+        apply_mod, "_filter_demotions_to_known_facts", AsyncMock()
+    )
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = AsyncMock(return_value=False)
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+
+    with pytest.raises(DreamLockLostError):
+        await apply_mod.apply_operations(
+            user_id="u-lost", pass_id="p-lost", ops=ops, lock_handle=lock_handle
+        )
+
+    drain.assert_not_awaited()
+    demote.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_demotions_only_pass_renews_lock_before_destructive_tail(mocker):
+    """Demotions and entity invalidations are the most destructive ops in a
+    pass, and a sanitizer output can contain them with zero writes. Such a
+    pass registers no episodes, so the renewal must not be gated on the
+    ingestion tracker alone or it would run under a near-exhausted TTL."""
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = AsyncMock(return_value=True)
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="a", reason="stale")],
+        entity_invalidations=[EntityInvalidation(entity_uuid="ent-x", reason="gone")],
+        summary_for_user="tidied up",
+    )
+    await apply_mod.apply_operations(
+        user_id="u-demote", pass_id="p-demote", ops=ops, lock_handle=lock_handle
+    )
+
+    lock_handle.extend.assert_awaited_once_with(apply_mod.LOCK_DRAIN_RENEWAL_SECONDS)
+
+
+@pytest.mark.asyncio
+async def test_empty_pass_does_not_renew_lock(mocker):
+    """A pass with nothing to drain and nothing to demote needn't touch the
+    lock TTL."""
+    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = AsyncMock(return_value=None)
+    ops = DreamOperations(summary_for_user="Nothing new today.")
+    await apply_mod.apply_operations(
+        user_id="u-empty", pass_id="p-empty", ops=ops, lock_handle=lock_handle
+    )
+
+    lock_handle.extend.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# drain_status_from_stats — the single read point for the drain outcome,
+# shared by the sync orchestrator and the batch callback. Deserialized or
+# partial stats must never read as a confirmed drain.
+# ---------------------------------------------------------------------------
+
+
+def test_drain_status_from_stats_passes_through_enum():
+    assert (
+        apply_mod.drain_status_from_stats(
+            {"ingestion_drain_status": IngestionDrainStatus.skipped}
+        )
+        is IngestionDrainStatus.skipped
+    )
+
+
+def test_drain_status_from_stats_coerces_valid_string():
+    """Stats that round-tripped through JSON carry the enum's string value."""
+    assert (
+        apply_mod.drain_status_from_stats({"ingestion_drain_status": "drained"})
+        is IngestionDrainStatus.drained
+    )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["", "DRAINED", "nonsense", 1, True, None, ["drained"]],
+)
+def test_drain_status_from_stats_fails_closed(raw):
+    """Malformed, wrong-typed and missing values all read as ``timed_out`` —
+    lost observability must not present as a confirmed drain."""
+    assert (
+        apply_mod.drain_status_from_stats({"ingestion_drain_status": raw})
+        is IngestionDrainStatus.timed_out
+    )
+
+
+def test_drain_status_from_stats_missing_key_fails_closed():
+    assert apply_mod.drain_status_from_stats({}) is IngestionDrainStatus.timed_out
 
 
 # ---------------------------------------------------------------------------

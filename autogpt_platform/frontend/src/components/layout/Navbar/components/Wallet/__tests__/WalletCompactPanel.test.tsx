@@ -20,7 +20,7 @@ const groups: TaskGroup[] = [
     details: "",
     tasks: [
       {
-        id: "VISIT_COPILOT",
+        id: "ONBOARDING_COMPLETE",
         name: "Complete onboarding",
         amount: 3,
         details: "",
@@ -54,7 +54,7 @@ const groups: TaskGroup[] = [
 ];
 
 const completedSteps: OnboardingStep[] = [
-  "VISIT_COPILOT",
+  "ONBOARDING_COMPLETE",
   "MARKETPLACE_ADD_AGENT",
 ];
 
@@ -70,7 +70,7 @@ describe("getEarnGroups", () => {
       defaultOpen: false,
       rows: [
         {
-          key: "VISIT_COPILOT",
+          key: "ONBOARDING_COMPLETE",
           label: "Complete onboarding",
           done: true,
           amount: 3,

@@ -26,6 +26,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -37,6 +38,7 @@ import backend.api.features.library.model
 import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
+import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
@@ -54,6 +56,7 @@ import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
@@ -159,6 +162,9 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
+
+    # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
+    backend.data.llm_registry.load_catalog()
 
     with launch_darkly_context():
         yield
@@ -418,6 +424,10 @@ app.include_router(
     prefix="/api/review",
 )
 app.include_router(
+    backend.api.features.briefings.routes.router,
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
@@ -425,6 +435,11 @@ app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
 
+app.include_router(
+    onboarding_dump_routes.router,
+    tags=["v1", "onboarding"],
+    prefix="/api",
+)
 app.include_router(
     backend.api.features.postmark.postmark.router,
     tags=["v1", "email"],

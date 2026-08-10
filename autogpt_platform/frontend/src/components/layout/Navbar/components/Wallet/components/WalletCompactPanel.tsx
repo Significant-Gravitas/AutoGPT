@@ -1,22 +1,22 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { OnboardingStep } from "@/lib/autogpt-server-api";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  CaretDownIcon,
+  ArrowDown01Icon,
+  CheckmarkBadge01Icon,
   CircleIcon,
   CreditCardIcon,
-  SealCheckIcon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
 import { useState } from "react";
 
 import { EarnGroup, EarnRow, getEarnGroups, TaskGroup } from "../helpers";
 
 interface Props {
   groups: TaskGroup[];
-  completedSteps: OnboardingStep[] | undefined;
+  completedSteps: string[] | undefined;
   formattedCredits: string;
   onAddCredits: () => void;
 }
@@ -45,7 +45,7 @@ export function WalletCompactPanel({
           onClick={onAddCredits}
           className="flex items-center justify-center gap-3 rounded-large bg-zinc-100 px-3 py-2.5 text-center transition-colors hover:bg-zinc-200"
         >
-          <CreditCardIcon size={20} className="text-zinc-700" />
+          <Icon icon={CreditCardIcon} size={20} className="text-zinc-700" />
           <Text variant="body-medium">Add credits</Text>
         </button>
       )}
@@ -82,7 +82,8 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
         <span className="flex min-w-0 items-start gap-2.5">
           <StatusIcon done={group.done} />
           <Text variant="body-medium">{group.label}</Text>
-          <CaretDownIcon
+          <Icon
+            icon={ArrowDown01Icon}
             size={14}
             className={cn(
               "mt-1 shrink-0 text-zinc-400 transition-transform duration-200",
@@ -118,16 +119,16 @@ function StatusIcon({ done }: { done: boolean }) {
   return (
     <span className="mt-0.5 shrink-0">
       {done ? (
-        <SealCheckIcon
+        <Icon
+          icon={CheckmarkBadge01Icon}
           size={18}
-          weight="fill"
           className="text-[#00a656]"
           aria-label="completed"
         />
       ) : (
-        <CircleIcon
+        <Icon
+          icon={CircleIcon}
           size={16}
-          weight="regular"
           className="text-zinc-400"
           aria-label="pending"
         />
