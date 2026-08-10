@@ -8,6 +8,9 @@ from pathlib import Path
 
 ASSET_DIR = Path(__file__).resolve().parents[1]
 ENTRYPOINT_PATH = ASSET_DIR / "entrypoint.sh"
+RUN_SERVICE_PATH = ASSET_DIR / "run-service.sh"
+DOCKERFILE_PATH = ASSET_DIR / "Dockerfile"
+SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
 
 
 class AccountRegistrationTest(unittest.TestCase):
@@ -121,6 +124,32 @@ class NormalizationTest(unittest.TestCase):
                 "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
             },
         )
+
+
+class ValkeyConfigurationTest(unittest.TestCase):
+    def test_password_is_kept_out_of_process_arguments(self) -> None:
+        entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
+        service_runner = RUN_SERVICE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("printf 'requirepass %s", entrypoint)
+        self.assertIn("printf 'masterauth %s", entrypoint)
+        self.assertIn("chmod 0400", entrypoint)
+        self.assertNotIn("--requirepass", service_runner)
+        self.assertNotIn("--masterauth", service_runner)
+
+
+class ProxyIsolationTest(unittest.TestCase):
+    def test_nginx_uses_a_dedicated_operating_system_user(self) -> None:
+        dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
+        supervisor = SUPERVISOR_PATH.read_text(encoding="utf-8")
+        nginx_program = supervisor.split("[program:nginx]", 1)[1].split(
+            "[program:watchdog]", 1
+        )[0]
+
+        self.assertIn("--uid 10006", dockerfile)
+        self.assertIn("user=autogpt_proxy", nginx_program)
+        self.assertIn("AUTOGPT_HOME=/run/autogpt/nginx/home", nginx_program)
+        self.assertNotIn("user=autogpt\n", nginx_program)
 
 
 if __name__ == "__main__":

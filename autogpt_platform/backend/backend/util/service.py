@@ -1,6 +1,7 @@
 import asyncio
 import concurrent
 import concurrent.futures
+import hmac
 import inspect
 import logging
 import os
@@ -52,6 +53,32 @@ api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
 api_comm_max_wait = config.pyro_client_max_wait
+
+INTERNAL_SERVICE_TOKEN_ENV = "AUTOGPT_INTERNAL_SERVICE_TOKEN"
+INTERNAL_SERVICE_TOKEN_HEADER = "X-AutoGPT-Internal-Token"
+UNAUTHENTICATED_INTERNAL_PATHS = frozenset({"/health_check", "/health_check_async"})
+
+
+def _internal_service_headers() -> dict[str, str]:
+    token = os.environ.get(INTERNAL_SERVICE_TOKEN_ENV)
+    return {INTERNAL_SERVICE_TOKEN_HEADER: token} if token else {}
+
+
+def _build_internal_service_auth_middleware(expected_token: str):
+    async def authenticate(request: Request, call_next):
+        if request.url.path in UNAUTHENTICATED_INTERNAL_PATHS:
+            return await call_next(request)
+
+        provided_token = request.headers.get(INTERNAL_SERVICE_TOKEN_HEADER, "")
+        if not hmac.compare_digest(
+            provided_token.encode("utf-8"), expected_token.encode("utf-8")
+        ):
+            return responses.JSONResponse(
+                status_code=401, content={"detail": "Unauthorized"}
+            )
+        return await call_next(request)
+
+    return authenticate
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -458,6 +485,10 @@ class AppService(BaseAppService, ABC):
         super().run()
 
         self.fastapi_app = FastAPI(lifespan=self.lifespan)
+        if internal_service_token := os.environ.get(INTERNAL_SERVICE_TOKEN_ENV):
+            self.fastapi_app.middleware("http")(
+                _build_internal_service_auth_middleware(internal_service_token)
+            )
 
         # Add Prometheus instrumentation to all services
         try:
@@ -588,6 +619,7 @@ def get_service_client(
             return httpx.Client(
                 base_url=self.base_url,
                 timeout=call_timeout,
+                headers=_internal_service_headers(),
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
@@ -599,6 +631,7 @@ def get_service_client(
             return httpx.AsyncClient(
                 base_url=self.base_url,
                 timeout=call_timeout,
+                headers=_internal_service_headers(),
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling

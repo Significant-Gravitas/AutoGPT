@@ -216,6 +216,8 @@ RUN groupadd --system --gid 10001 autogpt \
     && useradd --system --uid 10004 --gid autogpt-falkor --home-dir /data/falkordb --shell /usr/sbin/nologin autogpt-falkor \
     && groupadd --system --gid 10005 autogpt_frontend \
     && useradd --system --uid 10005 --gid autogpt_frontend --home-dir /data/frontend-home --shell /usr/sbin/nologin autogpt_frontend \
+    && groupadd --system --gid 10006 autogpt_proxy \
+    && useradd --system --uid 10006 --gid autogpt_proxy --home-dir /run/autogpt/nginx/home --shell /usr/sbin/nologin autogpt_proxy \
     && chmod -R a+rX /opt/autogpt/single-container /usr/share/licenses/autogpt-platform /usr/share/licenses/falkordb /usr/share/licenses/redis \
     && find /opt/autogpt/single-container -type f \( -name '*.sh' -o -name 'entrypoint' -o -name 'autogpt-*' \) -exec chmod 0755 {} + \
     && ln -sf /opt/autogpt/single-container/healthcheck.sh /usr/local/bin/autogpt-healthcheck \

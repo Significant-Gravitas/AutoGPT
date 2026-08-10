@@ -13,6 +13,8 @@ readonly RUN_CONTAINER_NAME="autogpt-single-smoke-${RUN_TOKEN}"
 readonly NEGATIVE_CONTAINER_NAME="${RUN_CONTAINER_NAME}-negative"
 HEADERS_FILE="$(mktemp)"
 readonly HEADERS_FILE
+AUTH_COOKIE_FILE="$(mktemp)"
+readonly AUTH_COOKIE_FILE
 
 CONTAINER_NAME="${RUN_CONTAINER_NAME}"
 DATA_VOLUME=
@@ -40,7 +42,7 @@ cleanup() {
   if [[ -n "${DATA_VOLUME}" ]] && docker volume inspect "${DATA_VOLUME}" >/dev/null 2>&1; then
     docker volume rm "${DATA_VOLUME}" >/dev/null 2>&1 || true
   fi
-  rm -f "${HEADERS_FILE}"
+  rm -f "${HEADERS_FILE}" "${AUTH_COOKIE_FILE}"
   exit "${result}"
 }
 
@@ -196,8 +198,10 @@ assert_pinned_topology_environment() {
 
 assert_frontend_database_isolation() {
   local next_pid
+  local nginx_pid
   local rest_pid
   local next_uid
+  local nginx_uid
   local rest_uid
   local assertions
 
@@ -211,13 +215,21 @@ assert_frontend_database_isolation() {
       supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
       pid rest
   )"
-  [[ "${next_pid}" =~ ^[0-9]+$ && "${rest_pid}" =~ ^[0-9]+$ ]]
+  nginx_pid="$(
+    docker exec "${CONTAINER_NAME}" \
+      supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
+      pid nginx
+  )"
+  [[ "${next_pid}" =~ ^[0-9]+$ && "${rest_pid}" =~ ^[0-9]+$ && \
+    "${nginx_pid}" =~ ^[0-9]+$ ]]
 
   next_uid="$(docker exec "${CONTAINER_NAME}" stat -c '%u' "/proc/${next_pid}")"
   rest_uid="$(docker exec "${CONTAINER_NAME}" stat -c '%u' "/proc/${rest_pid}")"
-  [[ "${next_uid}" == 10005 && "${rest_uid}" == 10001 && \
-    "${next_uid}" != "${rest_uid}" ]] || {
-    echo "frontend and backend process identities are not isolated" >&2
+  nginx_uid="$(docker exec "${CONTAINER_NAME}" stat -c '%u' "/proc/${nginx_pid}")"
+  [[ "${next_uid}" == 10005 && "${nginx_uid}" == 10006 && \
+    "${rest_uid}" == 10001 && "${next_uid}" != "${rest_uid}" && \
+    "${nginx_uid}" != "${rest_uid}" ]] || {
+    echo "public and backend process identities are not isolated" >&2
     return 1
   }
 
@@ -226,6 +238,13 @@ assert_frontend_database_isolation() {
       [[ ! -r /data/config/runtime.env ]]
       [[ ! -r "/proc/${1}/environ" ]]
     ' bash "${rest_pid}"
+
+  docker exec --user autogpt_proxy "${CONTAINER_NAME}" \
+    /bin/bash -Eeuo pipefail -c '
+      [[ ! -r /data/config/runtime.env ]]
+      [[ ! -r "/proc/${1}/environ" ]]
+      [[ ! -r "/proc/${2}/environ" ]]
+    ' bash "${rest_pid}" "${next_pid}"
 
   docker exec --interactive --user autogpt_frontend "${CONTAINER_NAME}" \
     /app/autogpt_platform/backend/.venv/bin/python - "${next_pid}" <<'PY'
@@ -240,6 +259,7 @@ for item in Path(f"/proc/{sys.argv[1]}/environ").read_bytes().split(b"\0"):
         environment[name.decode("ascii")] = value.decode("utf-8")
 
 forbidden = {
+    "AUTOGPT_INTERNAL_SERVICE_TOKEN",
     "AUTH_DATABASE_URL",
     "DB_PASS",
     "DIRECT_URL",
@@ -247,6 +267,7 @@ forbidden = {
     "GRAPHITI_FALKORDB_PASSWORD",
     "POSTGRES_PASSWORD",
     "RABBITMQ_DEFAULT_PASS",
+    "REDIS_PASSWORD",
     "UNSUBSCRIBE_SECRET_KEY",
     "VAPID_PRIVATE_KEY",
 }
@@ -366,6 +387,16 @@ SQL
     return 1
   fi
 
+  if docker exec --user autogpt_proxy "${CONTAINER_NAME}" \
+    /usr/bin/env -i \
+    PATH=/usr/bin:/bin \
+    /app/autogpt_platform/backend/.venv/bin/python \
+    /opt/autogpt/single-container/probe.py redis --port 17000 \
+    >/dev/null 2>&1; then
+    echo "nginx operating-system user can access Valkey without authentication" >&2
+    return 1
+  fi
+
   [[ "$(
     docker exec --user postgres "${CONTAINER_NAME}" \
       /usr/bin/env -i \
@@ -377,6 +408,17 @@ SQL
       --command="SELECT rolpassword IS NULL FROM pg_catalog.pg_authid WHERE rolname = 'autogpt_frontend'"
   )" == t ]] || {
     echo "frontend database role unexpectedly has a password" >&2
+    return 1
+  }
+
+  [[ "$(
+    docker exec --user autogpt_proxy "${CONTAINER_NAME}" \
+      curl --silent --show-error --max-time 30 \
+      --output /dev/null --write-out '%{http_code}' \
+      --request POST --header 'Content-Type: application/json' \
+      --data '{}' http://127.0.0.1:8005/get_user_credentials
+  )" == 401 ]] || {
+    echo "nginx operating-system user can call protected internal RPC" >&2
     return 1
   }
   if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
@@ -391,9 +433,69 @@ SQL
     return 1
   fi
 
+  if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
+    /usr/bin/env -i \
+    PATH=/usr/bin:/bin \
+    /app/autogpt_platform/backend/.venv/bin/python \
+    /opt/autogpt/single-container/probe.py redis --port 17000 \
+    >/dev/null 2>&1; then
+    echo "frontend operating-system user can access Valkey without authentication" >&2
+    return 1
+  fi
+
+  [[ "$(
+    docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
+      curl --silent --show-error --max-time 30 \
+      --output /dev/null --write-out '%{http_code}' \
+      --request POST --header 'Content-Type: application/json' \
+      --data '{}' http://127.0.0.1:8005/get_user_credentials
+  )" == 401 ]] || {
+    echo "frontend operating-system user can call protected internal RPC" >&2
+    return 1
+  }
+
   docker exec "${CONTAINER_NAME}" \
     curl --fail --silent --show-error --max-time 30 \
     http://127.0.0.1:3001/api/auth/jwks >/dev/null
+}
+
+assert_email_auth_flow() {
+  local email="single-container-${RUN_TOKEN}@example.com"
+  local password=single-container-smoke-password # pragma: allowlist secret
+
+  curl --fail-with-body --silent --show-error --max-time 30 \
+    --cookie-jar "${AUTH_COOKIE_FILE}" \
+    --request POST --header 'Content-Type: application/json' \
+    --header "Origin: ${PUBLIC_URL}" \
+    --data "{\"name\":\"Single Container Smoke\",\"email\":\"${email}\",\"password\":\"${password}\"}" \
+    "${PUBLIC_URL}/api/auth/sign-up/email" >/dev/null
+
+  curl --fail-with-body --silent --show-error --max-time 30 \
+    --cookie "${AUTH_COOKIE_FILE}" \
+    "${PUBLIC_URL}/api/auth/get-session" |
+    python3 -c \
+      'import json, sys; assert json.load(sys.stdin)["user"]["email"] == sys.argv[1]' \
+      "${email}"
+
+  curl --fail-with-body --silent --show-error --max-time 30 \
+    --cookie "${AUTH_COOKIE_FILE}" --cookie-jar "${AUTH_COOKIE_FILE}" \
+    --request POST --header 'Content-Type: application/json' \
+    --header "Origin: ${PUBLIC_URL}" --data '{}' \
+    "${PUBLIC_URL}/api/auth/sign-out" >/dev/null
+
+  curl --fail-with-body --silent --show-error --max-time 30 \
+    --cookie-jar "${AUTH_COOKIE_FILE}" \
+    --request POST --header 'Content-Type: application/json' \
+    --header "Origin: ${PUBLIC_URL}" \
+    --data "{\"email\":\"${email}\",\"password\":\"${password}\"}" \
+    "${PUBLIC_URL}/api/auth/sign-in/email" >/dev/null
+
+  curl --fail-with-body --silent --show-error --max-time 30 \
+    --cookie "${AUTH_COOKIE_FILE}" \
+    "${PUBLIC_URL}/api/auth/get-session" |
+    python3 -c \
+      'import json, sys; assert json.load(sys.stdin)["user"]["email"] == sys.argv[1]' \
+      "${email}"
 }
 
 assert_request_tokens_absent_from_logs() {
@@ -711,6 +813,7 @@ wait_for_healthy
 assert_runtime_config_mode
 assert_frontend_database_isolation
 assert_pinned_topology_environment
+assert_email_auth_flow
 assert_falkordb_binary_contract
 assert_memory_contract verify
 curl --fail --silent --show-error "${PUBLIC_URL}/healthz" >/dev/null

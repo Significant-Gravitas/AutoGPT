@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone
 from functools import cached_property
 from typing import Any, Protocol, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import orjson
@@ -20,6 +20,8 @@ from backend.util.service import (
     HTTPClientError,
     HTTPServerError,
     RemoteCallError,
+    _build_internal_service_auth_middleware,
+    _internal_service_headers,
     endpoint_to_async,
     expose,
     get_service_client,
@@ -107,8 +109,50 @@ class ServiceTestClient(AppServiceClient):
     subtract_async = endpoint_to_async(ServiceTest.subtract)
 
 
+def test_internal_service_auth_is_default_off(monkeypatch):
+    monkeypatch.delenv("AUTOGPT_INTERNAL_SERVICE_TOKEN", raising=False)
+    assert _internal_service_headers() == {}
+
+
+def test_internal_service_clients_send_configured_token(monkeypatch):
+    monkeypatch.setenv("AUTOGPT_INTERNAL_SERVICE_TOKEN", "test-internal-token")
+    assert _internal_service_headers() == {
+        "X-AutoGPT-Internal-Token": "test-internal-token"
+    }
+
+
 @pytest.mark.asyncio
-async def test_service_creation(server):
+async def test_internal_service_middleware_requires_token() -> None:
+    middleware = _build_internal_service_auth_middleware("expected-token")
+    call_next = AsyncMock(return_value="allowed")
+
+    request = Mock()
+    request.url.path = "/get_user_credentials"
+    request.headers = {}
+    response = await middleware(request, call_next)
+    assert response.status_code == 401
+    call_next.assert_not_awaited()
+
+    request.headers = {"X-AutoGPT-Internal-Token": "expected-token"}
+    assert await middleware(request, call_next) == "allowed"
+    call_next.assert_awaited_once_with(request)
+
+
+@pytest.mark.asyncio
+async def test_internal_service_health_remains_unauthenticated() -> None:
+    middleware = _build_internal_service_auth_middleware("expected-token")
+    call_next = AsyncMock(return_value="healthy")
+    request = Mock()
+    request.url.path = "/health_check"
+    request.headers = {}
+
+    assert await middleware(request, call_next) == "healthy"
+    call_next.assert_awaited_once_with(request)
+
+
+@pytest.mark.asyncio
+async def test_service_creation_with_internal_auth(server, monkeypatch):
+    monkeypatch.setenv("AUTOGPT_INTERNAL_SERVICE_TOKEN", "test-internal-token")
     with ServiceTest():
         client = get_service_client(ServiceTestClient)
         assert client.add(5, 3) == 8

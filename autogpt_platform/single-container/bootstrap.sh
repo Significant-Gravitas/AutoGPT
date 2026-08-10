@@ -24,9 +24,12 @@ main() {
 wait_for_infrastructure() {
   wait_until "PostgreSQL" 180 \
     "${POSTGRES_BINDIR}/pg_isready" -q -h 127.0.0.1 -p 5432 -U postgres
-  wait_until "Valkey node 17000" 120 "${PROBE[@]}" redis --port 17000
-  wait_until "Valkey node 17001" 120 "${PROBE[@]}" redis --port 17001
-  wait_until "Valkey node 17002" 120 "${PROBE[@]}" redis --port 17002
+  wait_until "Valkey node 17000" 120 "${PROBE[@]}" redis --port 17000 \
+    --password-env REDIS_PASSWORD
+  wait_until "Valkey node 17001" 120 "${PROBE[@]}" redis --port 17001 \
+    --password-env REDIS_PASSWORD
+  wait_until "Valkey node 17002" 120 "${PROBE[@]}" redis --port 17002 \
+    --password-env REDIS_PASSWORD
   wait_until "RabbitMQ" 240 run_rabbitmq_cli /opt/rabbitmq/sbin/rabbitmq-diagnostics -q ping
   wait_until "FalkorDB" 120 "${PROBE[@]}" redis --port 6380 \
     --password-env GRAPHITI_FALKORDB_PASSWORD
@@ -49,7 +52,8 @@ wait_until() {
 }
 
 ensure_valkey_cluster() {
-  if "${PROBE[@]}" redis --port 17000 --cluster >/dev/null 2>&1; then
+  if "${PROBE[@]}" redis --port 17000 --cluster \
+    --password-env REDIS_PASSWORD >/dev/null 2>&1; then
     log "Valkey cluster is already healthy"
     return 0
   fi
@@ -59,7 +63,8 @@ ensure_valkey_cluster() {
   local port
   for port in 17000 17001 17002; do
     known_nodes="$(
-      valkey-cli -h 127.0.0.1 -p "${port}" cluster info 2>/dev/null |
+      REDISCLI_AUTH="${REDIS_PASSWORD}" \
+        valkey-cli -h 127.0.0.1 -p "${port}" cluster info 2>/dev/null |
         awk -F: '$1 == "cluster_known_nodes" {gsub("\r", "", $2); print $2}'
     )"
     [[ "${known_nodes}" == "1" ]] || fresh_cluster=false
@@ -67,10 +72,11 @@ ensure_valkey_cluster() {
 
   if [[ "${fresh_cluster}" == true ]]; then
     log "forming three-node Valkey cluster"
-    valkey-cli --cluster create \
+    REDISCLI_AUTH="${REDIS_PASSWORD}" valkey-cli --cluster create \
       127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 \
       --cluster-replicas 0 --cluster-yes >/dev/null
-    wait_until "Valkey cluster" 60 "${PROBE[@]}" redis --port 17000 --cluster
+    wait_until "Valkey cluster" 60 "${PROBE[@]}" redis --port 17000 --cluster \
+      --password-env REDIS_PASSWORD
     return 0
   fi
 
@@ -78,7 +84,8 @@ ensure_valkey_cluster() {
   # restart. Never destructively recreate a partially known cluster.
   local elapsed=0
   while ((elapsed < 90)); do
-    if "${PROBE[@]}" redis --port 17000 --cluster >/dev/null 2>&1; then
+    if "${PROBE[@]}" redis --port 17000 --cluster \
+      --password-env REDIS_PASSWORD >/dev/null 2>&1; then
       log "Valkey cluster recovered"
       return 0
     fi

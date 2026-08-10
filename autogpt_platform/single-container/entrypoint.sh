@@ -21,6 +21,7 @@ main() {
   chmod 0600 "${AUTOGPT_RUNTIME_ENV}"
   load_runtime_config
   configure_environment
+  write_valkey_configs
   initialize_postgres
   write_rabbitmq_config
   seed_clamav_database
@@ -68,12 +69,15 @@ prepare_directories() {
   # their own assets without being able to list or modify sibling state.
   install -d -m 0711 -o root -g root "${AUTOGPT_RUNTIME_DIR}"
   install -d -m 0700 -o rabbitmq -g rabbitmq "${AUTOGPT_RUNTIME_DIR}/rabbitmq"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/client"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/proxy"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/fastcgi"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/uwsgi"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/scgi"
+  install -d -m 0711 -o root -g root "${AUTOGPT_RUNTIME_DIR}/valkey"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/home"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/cache"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/client"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/proxy"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/fastcgi"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/uwsgi"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/scgi"
 }
 
 initialize_backend_config() {
@@ -120,7 +124,7 @@ configure_environment() {
   export DIRECT_URL="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/postgres?schema=platform&connect_timeout=${DB_CONNECT_TIMEOUT}"
   export PRISMA_SCHEMA="${AUTOGPT_BACKEND_DIR}/schema.prisma" AUTH_DB_SCHEMA=platform
 
-  export REDIS_HOST=127.0.0.1 REDIS_PORT=17000 REDIS_PASSWORD=
+  export REDIS_HOST=127.0.0.1 REDIS_PORT=17000 REDIS_PASSWORD
   export REDIS_CLUSTER_HOST=127.0.0.1 REDIS_CLUSTER_PORT=17000
   export REDIS_USE_ANNOUNCED_ADDRESS=false
   export RABBITMQ_HOST=127.0.0.1 RABBITMQ_PORT=5672
@@ -185,7 +189,7 @@ write_nginx_public_url_config() {
   local public_scheme="${AUTOGPT_PUBLIC_URL%%://*}"
   local public_host="${AUTOGPT_PUBLIC_URL#*://}"
   [[ ! -L "${path}" ]] || fatal "refusing symlink at nginx public URL config"
-  install -m 0600 -o autogpt -g autogpt /dev/null "${path}"
+  install -m 0600 -o autogpt_proxy -g autogpt_proxy /dev/null "${path}"
   {
     printf "set \$autogpt_public_url \"%s\";\n" "${AUTOGPT_PUBLIC_URL}"
     printf "set \$autogpt_public_host \"%s\";\n" "${public_host}"
@@ -263,9 +267,43 @@ initialize_postgres() {
   trap - RETURN
 }
 
+write_valkey_configs() {
+  local port
+  local target
+  local temporary
+  for port in 17000 17001 17002; do
+    target="${AUTOGPT_RUNTIME_DIR}/valkey/${port}.conf"
+    [[ ! -L "${target}" ]] || fatal "refusing symlink at Valkey config path"
+    temporary="$(mktemp "${AUTOGPT_RUNTIME_DIR}/valkey/.${port}.conf.XXXXXX")"
+    trap 'rm -f "${temporary}"' RETURN
+    chmod 0600 "${temporary}"
+    {
+      printf 'bind 127.0.0.1\n'
+      printf 'protected-mode yes\n'
+      printf 'port %s\n' "${port}"
+      printf 'dir /data/valkey/%s\n' "${port}"
+      printf 'appendonly yes\n'
+      printf 'cluster-enabled yes\n'
+      printf 'cluster-config-file nodes.conf\n'
+      printf 'cluster-node-timeout 5000\n'
+      printf 'cluster-require-full-coverage no\n'
+      printf 'cluster-announce-ip 127.0.0.1\n'
+      printf 'cluster-announce-port %s\n' "${port}"
+      printf 'cluster-announce-bus-port %s\n' "$((port + 10000))"
+      printf 'requirepass %s\n' "${REDIS_PASSWORD}"
+      printf 'masterauth %s\n' "${REDIS_PASSWORD}"
+    } >"${temporary}"
+    chown autogpt-valkey:autogpt-valkey "${temporary}"
+    chmod 0400 "${temporary}"
+    mv -f "${temporary}" "${target}"
+    trap - RETURN
+  done
+}
+
 write_rabbitmq_config() {
   local temporary
   temporary="$(mktemp "${AUTOGPT_RUNTIME_DIR}/rabbitmq/rabbitmq.conf.XXXXXX")"
+  trap 'rm -f "${temporary}"' RETURN
   chmod 0600 "${temporary}"
   {
     cat "${AUTOGPT_ASSET_DIR}/rabbitmq/rabbitmq.conf"
@@ -275,6 +313,7 @@ write_rabbitmq_config() {
   } >"${temporary}"
   chown rabbitmq:rabbitmq "${temporary}"
   mv -f "${temporary}" "${AUTOGPT_RUNTIME_DIR}/rabbitmq/rabbitmq.conf"
+  trap - RETURN
 }
 
 seed_clamav_database() {
@@ -295,6 +334,7 @@ seed_clamav_database() {
 write_falkordb_config() {
   local temporary
   temporary="$(mktemp "${AUTOGPT_RUNTIME_DIR}/falkordb.conf.XXXXXX")"
+  trap 'rm -f "${temporary}"' RETURN
   chmod 0600 "${temporary}"
   {
     printf 'bind 127.0.0.1\n'
@@ -309,6 +349,7 @@ write_falkordb_config() {
   } >"${temporary}"
   chown autogpt-falkor:autogpt-falkor "${temporary}"
   mv -f "${temporary}" "${AUTOGPT_RUNTIME_DIR}/falkordb.conf"
+  trap - RETURN
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

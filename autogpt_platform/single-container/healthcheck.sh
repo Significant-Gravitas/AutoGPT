@@ -40,7 +40,8 @@ check_supervised_processes() {
 
 check_infrastructure() {
   "${POSTGRES_BINDIR}/pg_isready" -q -h 127.0.0.1 -p 5432 -U postgres
-  "${PROBE[@]}" redis --port 17000 --cluster
+  "${PROBE[@]}" redis --port 17000 --cluster \
+    --password-env REDIS_PASSWORD
   "${PROBE[@]}" amqp --port 5672 \
     --username-env RABBITMQ_DEFAULT_USER \
     --password-env RABBITMQ_DEFAULT_PASS

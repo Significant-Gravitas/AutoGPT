@@ -39,9 +39,11 @@ class RuntimeConfigTest(unittest.TestCase):
                 set(first),
                 {
                     "AUTOGPT_RUNTIME_CONFIG_VERSION",
+                    "AUTOGPT_INTERNAL_SERVICE_TOKEN",
                     "POSTGRES_PASSWORD",
                     "RABBITMQ_DEFAULT_USER",
                     "RABBITMQ_DEFAULT_PASS",
+                    "REDIS_PASSWORD",
                     "BETTER_AUTH_SECRET",
                     "ENCRYPTION_KEY",
                     "UNSUBSCRIBE_SECRET_KEY",
@@ -58,9 +60,11 @@ class RuntimeConfigTest(unittest.TestCase):
             base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
         )
         environment = {
+            "AUTOGPT_INTERNAL_SERVICE_TOKEN": "i" * 40,
             "POSTGRES_PASSWORD": "p" * 40,
             "RABBITMQ_DEFAULT_USER": "self_hosted",
             "RABBITMQ_DEFAULT_PASS": "r" * 40,
+            "REDIS_PASSWORD": "d" * 40,
             "BETTER_AUTH_SECRET": "b" * 40,
             "ENCRYPTION_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             "UNSUBSCRIBE_SECRET_KEY": "u" * 40,
