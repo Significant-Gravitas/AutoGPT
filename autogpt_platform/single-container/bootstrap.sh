@@ -16,6 +16,7 @@ main() {
   ensure_valkey_cluster
   verify_rabbitmq_user
   migrate_database
+  configure_frontend_database_role
   publish_readiness
   log "bootstrap complete"
 }
@@ -115,6 +116,97 @@ migrate_database() {
     cd "${AUTOGPT_BACKEND_DIR}"
     prisma migrate deploy
   )
+}
+
+configure_frontend_database_role() {
+  log "configuring least-privilege frontend database role"
+  PGPASSWORD="${POSTGRES_PASSWORD}" \
+    "${POSTGRES_BINDIR}/psql" \
+    --host=127.0.0.1 \
+    --port=5432 \
+    --username=postgres \
+    --dbname=postgres \
+    --set=ON_ERROR_STOP=1 \
+    --quiet <<'SQL'
+BEGIN;
+
+DO $role$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'autogpt_frontend'
+  ) THEN
+    CREATE ROLE autogpt_frontend LOGIN;
+  END IF;
+END
+$role$;
+
+ALTER ROLE autogpt_frontend
+  LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
+  CONNECTION LIMIT 10 PASSWORD NULL;
+ALTER ROLE autogpt_frontend RESET ALL;
+ALTER ROLE autogpt_frontend IN DATABASE postgres RESET ALL;
+
+REVOKE ALL PRIVILEGES ON DATABASE postgres FROM autogpt_frontend;
+REVOKE TEMPORARY ON DATABASE postgres FROM PUBLIC;
+GRANT CONNECT ON DATABASE postgres TO autogpt_frontend;
+
+REVOKE ALL PRIVILEGES ON SCHEMA platform FROM PUBLIC, autogpt_frontend;
+GRANT USAGE ON SCHEMA platform TO autogpt_frontend;
+
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA platform
+  FROM PUBLIC, autogpt_frontend;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA platform
+  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA platform
+  FROM PUBLIC, autogpt_frontend;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA platform
+  FROM PUBLIC, autogpt_frontend;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+  platform."UserAuthIdentity",
+  platform."UserAuthSession",
+  platform."UserAuthAccount",
+  platform."UserAuthVerification",
+  platform."UserAuthJwks"
+TO autogpt_frontend;
+
+GRANT SELECT (id, email), UPDATE (email, "updatedAt")
+  ON TABLE platform."User"
+  TO autogpt_frontend;
+
+DO $membership$
+DECLARE
+  frontend_role_oid oid;
+BEGIN
+  SELECT oid INTO STRICT frontend_role_oid
+  FROM pg_catalog.pg_roles
+  WHERE rolname = 'autogpt_frontend';
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_auth_members membership
+    WHERE membership.member = frontend_role_oid
+  ) THEN
+    RAISE EXCEPTION 'autogpt_frontend must not belong to another database role';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_database WHERE datdba = frontend_role_oid
+    UNION ALL
+    SELECT 1 FROM pg_catalog.pg_namespace WHERE nspowner = frontend_role_oid
+    UNION ALL
+    SELECT 1 FROM pg_catalog.pg_class WHERE relowner = frontend_role_oid
+    UNION ALL
+    SELECT 1 FROM pg_catalog.pg_proc WHERE proowner = frontend_role_oid
+  ) THEN
+    RAISE EXCEPTION 'autogpt_frontend must not own database objects';
+  END IF;
+END
+$membership$;
+
+COMMIT;
+SQL
 }
 
 publish_readiness() {

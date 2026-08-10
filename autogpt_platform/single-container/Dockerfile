@@ -27,7 +27,7 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_TURNSTILE=disabled \
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
     BETTER_AUTH_SECRET=build-only-placeholder-not-used-at-runtime \
-    DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres
+    DATABASE_URL="postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend"
 
 RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
@@ -127,6 +127,7 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
         procps \
         supervisor \
         tini \
+        util-linux \
         valkey-server \
         valkey-tools \
     && rm -f /usr/sbin/policy-rc.d \
@@ -136,6 +137,7 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
         -lname '*ssl-cert-snakeoil.pem' -delete \
     && test ! -e /etc/ssl/private/ssl-cert-snakeoil.key \
     && test ! -e /etc/ssl/certs/ssl-cert-snakeoil.pem \
+    && test -x /usr/bin/setpriv \
     && test -z "$(find /etc/ssl/certs -maxdepth 1 -type l \
         -lname '*ssl-cert-snakeoil.pem' -print -quit)" \
     && rm -rf /var/lib/apt/lists/* /var/lib/postgresql/15/main \
@@ -212,6 +214,8 @@ RUN groupadd --system --gid 10001 autogpt \
     && useradd --system --uid 10003 --gid autogpt-valkey --home-dir /data/valkey --shell /usr/sbin/nologin autogpt-valkey \
     && groupadd --system --gid 10004 autogpt-falkor \
     && useradd --system --uid 10004 --gid autogpt-falkor --home-dir /data/falkordb --shell /usr/sbin/nologin autogpt-falkor \
+    && groupadd --system --gid 10005 autogpt_frontend \
+    && useradd --system --uid 10005 --gid autogpt_frontend --home-dir /data/frontend-home --shell /usr/sbin/nologin autogpt_frontend \
     && chmod -R a+rX /opt/autogpt/single-container /usr/share/licenses/autogpt-platform /usr/share/licenses/falkordb /usr/share/licenses/redis \
     && find /opt/autogpt/single-container -type f \( -name '*.sh' -o -name 'entrypoint' -o -name 'autogpt-*' \) -exec chmod 0755 {} + \
     && ln -sf /opt/autogpt/single-container/healthcheck.sh /usr/local/bin/autogpt-healthcheck \

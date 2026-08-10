@@ -12,5 +12,5 @@ shift || true
 wait_for_ready_file
 log "starting ${name}"
 export HOME="${AUTOGPT_HOME:-/data/home}"
-export XDG_CACHE_HOME="${AUTOGPT_CACHE_DIR:-/data/cache}"
+export XDG_CACHE_HOME="${AUTOGPT_CACHE_DIR:-/data/cache/backend}"
 exec "$@"

@@ -17,6 +17,8 @@ main() {
   initialize_backend_config
   "${AUTOGPT_PYTHON}" "${AUTOGPT_ASSET_DIR}/runtime_config.py" ensure \
     --path "${AUTOGPT_RUNTIME_ENV}"
+  chown root:root "${AUTOGPT_RUNTIME_ENV}"
+  chmod 0600 "${AUTOGPT_RUNTIME_ENV}"
   load_runtime_config
   configure_environment
   initialize_postgres
@@ -37,7 +39,8 @@ prepare_directories() {
   for managed_path in \
     /data/config /data/postgres /data/rabbitmq /data/valkey \
     /data/valkey/17000 /data/valkey/17001 /data/valkey/17002 /data/falkordb \
-    /data/clamav /data/workspaces /data/home /data/cache /data/cache/next; do
+    /data/clamav /data/workspaces /data/home /data/frontend-home \
+    /data/cache /data/cache/backend /data/cache/next; do
     [[ ! -L "${managed_path}" ]] || fatal "refusing symlink at managed data path: ${managed_path}"
   done
   install -d -m 0710 -o root -g autogpt /data/config
@@ -51,8 +54,10 @@ prepare_directories() {
   install -d -m 0750 -o clamav -g clamav /data/clamav
   install -d -m 0750 -o autogpt -g autogpt /data/workspaces
   install -d -m 0750 -o autogpt -g autogpt /data/home
-  install -d -m 0750 -o autogpt -g autogpt /data/cache
-  install -d -m 0750 -o autogpt -g autogpt /data/cache/next
+  install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/frontend-home
+  install -d -m 0711 -o root -g root /data/cache
+  install -d -m 0750 -o autogpt -g autogpt /data/cache/backend
+  install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/cache/next
   install -d -m 0755 -o postgres -g postgres /run/postgresql
   install -d -m 0750 -o clamav -g clamav /run/clamav
   install -m 0640 -o clamav -g clamav /dev/null /run/clamav/clamd.log

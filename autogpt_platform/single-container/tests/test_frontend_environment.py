@@ -11,6 +11,7 @@ from pathlib import Path
 SINGLE_CONTAINER_DIR = Path(__file__).resolve().parents[1]
 RUN_FRONTEND_PATH = SINGLE_CONTAINER_DIR / "run-frontend.sh"
 SUPERVISOR_PATH = SINGLE_CONTAINER_DIR / "supervisor" / "supervisord.conf"
+BOOTSTRAP_PATH = SINGLE_CONTAINER_DIR / "bootstrap.sh"
 
 
 class FrontendEnvironmentTest(unittest.TestCase):
@@ -24,7 +25,6 @@ class FrontendEnvironmentTest(unittest.TestCase):
             "BETTER_AUTH_INTERNAL_URL": "http://127.0.0.1:3001",
             "BETTER_AUTH_SECRET": "better-auth-secret",
             "BETTER_AUTH_URL": "https://autogpt.example.com",
-            "DATABASE_URL": "postgresql://postgres:db-password@127.0.0.1/postgres",  # pragma: allowlist secret
         }
         optional = {
             "AUTH_CALLBACK_URL": "/auth/callback",
@@ -44,6 +44,7 @@ class FrontendEnvironmentTest(unittest.TestCase):
             "TRANSCRIPTION_MODEL": "whisper-1",
         }
         forbidden = {
+            "DATABASE_URL": "postgresql://postgres:db-password@127.0.0.1/postgres",  # pragma: allowlist secret
             "DB_PASS": "database-password",
             "DIRECT_URL": "postgresql://superuser:secret@127.0.0.1/postgres",
             "ENCRYPTION_KEY": "master-encryption-key",
@@ -67,13 +68,20 @@ class FrontendEnvironmentTest(unittest.TestCase):
                 **optional,
                 **forbidden,
             }
+            shell = (
+                'source "$1"; build_frontend_environment; '
+                '/usr/bin/env -i "${frontend_env[@]}" python3 -c '
+                "'import json, os; print(json.dumps(dict(os.environ)))'"
+            )
             result = subprocess.run(
                 [
                     "bash",
-                    str(RUN_FRONTEND_PATH),
-                    "python3",
+                    "-Eeuo",
+                    "pipefail",
                     "-c",
-                    "import json, os; print(json.dumps(dict(os.environ)))",
+                    shell,
+                    "bash",
+                    str(RUN_FRONTEND_PATH),
                 ],
                 check=False,
                 capture_output=True,
@@ -85,15 +93,35 @@ class FrontendEnvironmentTest(unittest.TestCase):
         child_environment = json.loads(result.stdout.splitlines()[-1])
         for name, value in {**required, **optional}.items():
             self.assertEqual(child_environment[name], value)
+        self.assertEqual(
+            child_environment["DATABASE_URL"],
+            "postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend",
+        )
         for name in forbidden:
-            self.assertNotIn(name, child_environment)
+            if name != "DATABASE_URL":
+                self.assertNotIn(name, child_environment)
+        self.assertNotEqual(
+            child_environment["DATABASE_URL"], forbidden["DATABASE_URL"]
+        )
+        self.assertEqual(child_environment["HOME"], "/data/frontend-home")
+        self.assertEqual(child_environment["XDG_CACHE_HOME"], "/data/cache/next")
+        self.assertEqual(child_environment["USER"], "autogpt_frontend")
+        self.assertEqual(child_environment["LOGNAME"], "autogpt_frontend")
         self.assertEqual(child_environment["PORT"], "3001")
         self.assertEqual(child_environment["HOSTNAME"], "127.0.0.1")
         self.assertEqual(child_environment["NODE_ENV"], "production")
 
     def test_rejects_missing_required_setting(self) -> None:
         result = subprocess.run(
-            ["bash", str(RUN_FRONTEND_PATH), "/usr/bin/true"],
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; build_frontend_environment',
+                "bash",
+                str(RUN_FRONTEND_PATH),
+            ],
             check=False,
             capture_output=True,
             encoding="utf-8",
@@ -114,6 +142,52 @@ class FrontendEnvironmentTest(unittest.TestCase):
             "command=/opt/autogpt/single-container/run-frontend.sh", next_program
         )
         self.assertNotIn("run-app.sh", next_program)
+        self.assertIn("user=root", next_program)
+
+        launcher = RUN_FRONTEND_PATH.read_text(encoding="utf-8")
+        self.assertIn("/usr/bin/env -i", launcher)
+        self.assertLess(
+            launcher.index("/usr/bin/env -i"), launcher.index("/usr/bin/setpriv")
+        )
+        self.assertIn("--reuid=autogpt_frontend", launcher)
+        self.assertIn("--regid=autogpt_frontend", launcher)
+        self.assertIn("--bounding-set=-all", launcher)
+
+    def test_frontend_database_policy_is_explicitly_least_privilege(self) -> None:
+        bootstrap = BOOTSTRAP_PATH.read_text(encoding="utf-8")
+        policy = bootstrap.split("configure_frontend_database_role() {", 1)[1].split(
+            "publish_readiness() {", 1
+        )[0]
+
+        for attribute in (
+            "NOSUPERUSER",
+            "NOCREATEDB",
+            "NOCREATEROLE",
+            "NOINHERIT",
+            "NOREPLICATION",
+            "NOBYPASSRLS",
+            "PASSWORD NULL",
+        ):
+            self.assertIn(attribute, policy)
+        for table in (
+            'platform."UserAuthIdentity"',
+            'platform."UserAuthSession"',
+            'platform."UserAuthAccount"',
+            'platform."UserAuthVerification"',
+            'platform."UserAuthJwks"',
+        ):
+            self.assertEqual(policy.count(table), 1)
+        self.assertIn('GRANT SELECT (id, email), UPDATE (email, "updatedAt")', policy)
+        self.assertIn(
+            "ALTER ROLE autogpt_frontend IN DATABASE postgres RESET ALL", policy
+        )
+        self.assertIn("REVOKE TEMPORARY ON DATABASE postgres FROM PUBLIC", policy)
+        self.assertIn(
+            "REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA platform", policy
+        )
+        self.assertIn("REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC", policy)
+        self.assertNotIn("GRANT ALL", policy)
+        self.assertNotIn("GRANT CREATE", policy)
 
 
 if __name__ == "__main__":

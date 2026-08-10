@@ -194,6 +194,208 @@ assert_pinned_topology_environment() {
   done
 }
 
+assert_frontend_database_isolation() {
+  local next_pid
+  local rest_pid
+  local next_uid
+  local rest_uid
+  local assertions
+
+  next_pid="$(
+    docker exec "${CONTAINER_NAME}" \
+      supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
+      pid next
+  )"
+  rest_pid="$(
+    docker exec "${CONTAINER_NAME}" \
+      supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
+      pid rest
+  )"
+  [[ "${next_pid}" =~ ^[0-9]+$ && "${rest_pid}" =~ ^[0-9]+$ ]]
+
+  next_uid="$(docker exec "${CONTAINER_NAME}" stat -c '%u' "/proc/${next_pid}")"
+  rest_uid="$(docker exec "${CONTAINER_NAME}" stat -c '%u' "/proc/${rest_pid}")"
+  [[ "${next_uid}" == 10005 && "${rest_uid}" == 10001 && \
+    "${next_uid}" != "${rest_uid}" ]] || {
+    echo "frontend and backend process identities are not isolated" >&2
+    return 1
+  }
+
+  docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
+    /bin/bash -Eeuo pipefail -c '
+      [[ ! -r /data/config/runtime.env ]]
+      [[ ! -r "/proc/${1}/environ" ]]
+    ' bash "${rest_pid}"
+
+  docker exec --interactive --user autogpt_frontend "${CONTAINER_NAME}" \
+    /app/autogpt_platform/backend/.venv/bin/python - "${next_pid}" <<'PY'
+import sys
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+environment = {}
+for item in Path(f"/proc/{sys.argv[1]}/environ").read_bytes().split(b"\0"):
+    if item:
+        name, value = item.split(b"=", 1)
+        environment[name.decode("ascii")] = value.decode("utf-8")
+
+forbidden = {
+    "AUTH_DATABASE_URL",
+    "DB_PASS",
+    "DIRECT_URL",
+    "ENCRYPTION_KEY",
+    "GRAPHITI_FALKORDB_PASSWORD",
+    "POSTGRES_PASSWORD",
+    "RABBITMQ_DEFAULT_PASS",
+    "UNSUBSCRIBE_SECRET_KEY",
+    "VAPID_PRIVATE_KEY",
+}
+assert forbidden.isdisjoint(environment)
+
+database_url = urlsplit(environment["DATABASE_URL"])
+query = parse_qs(database_url.query, strict_parsing=True)
+assert database_url.scheme == "postgresql"
+assert database_url.hostname is None
+assert database_url.username is None
+assert database_url.password is None
+assert database_url.path == "/postgres"
+assert query == {
+    "host": ["/run/postgresql"],
+    "user": ["autogpt_frontend"],
+}
+PY
+
+  assertions="$(
+    docker exec --interactive --user autogpt_frontend "${CONTAINER_NAME}" \
+      /usr/bin/env -i \
+      PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
+      PGHOST=/run/postgresql \
+      PGDATABASE=postgres \
+      PGUSER=autogpt_frontend \
+      psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 <<'SQL'
+SELECT current_user = 'autogpt_frontend'
+  AND NOT rolsuper
+  AND NOT rolcreatedb
+  AND NOT rolcreaterole
+  AND NOT rolinherit
+  AND NOT rolreplication
+  AND NOT rolbypassrls
+  AND rolconnlimit = 10
+FROM pg_catalog.pg_roles
+WHERE rolname = current_user;
+
+SELECT count(*) = 0
+FROM pg_catalog.pg_auth_members membership
+JOIN pg_catalog.pg_roles role ON role.oid = membership.member
+WHERE role.rolname = current_user;
+
+SELECT has_database_privilege(current_user, 'postgres', 'CONNECT')
+  AND NOT has_database_privilege(current_user, 'postgres', 'TEMPORARY')
+  AND has_schema_privilege(current_user, 'platform', 'USAGE')
+  AND NOT has_schema_privilege(current_user, 'platform', 'CREATE')
+  AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
+  AND NOT has_schema_privilege(current_user, 'auth', 'USAGE');
+
+SELECT COALESCE(
+  bool_and(NOT has_function_privilege(current_user, function.oid, 'EXECUTE')),
+  true
+)
+FROM pg_catalog.pg_proc function
+JOIN pg_catalog.pg_namespace namespace ON namespace.oid = function.pronamespace
+WHERE namespace.nspname = 'platform';
+
+WITH required_table(name) AS (
+  VALUES
+    ('UserAuthIdentity'),
+    ('UserAuthSession'),
+    ('UserAuthAccount'),
+    ('UserAuthVerification'),
+    ('UserAuthJwks')
+), required_privilege(name) AS (
+  VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE')
+)
+SELECT bool_and(
+  has_table_privilege(
+    current_user,
+    format('platform.%I', required_table.name),
+    required_privilege.name
+  )
+)
+FROM required_table CROSS JOIN required_privilege;
+
+WITH required_table(name) AS (
+  VALUES
+    ('UserAuthIdentity'),
+    ('UserAuthSession'),
+    ('UserAuthAccount'),
+    ('UserAuthVerification'),
+    ('UserAuthJwks')
+)
+SELECT bool_and(
+  NOT has_table_privilege(
+    current_user,
+    format('platform.%I', required_table.name),
+    'TRUNCATE'
+  )
+)
+FROM required_table;
+
+SELECT has_column_privilege(current_user, 'platform."User"', 'id', 'SELECT')
+  AND has_column_privilege(current_user, 'platform."User"', 'email', 'SELECT')
+  AND has_column_privilege(current_user, 'platform."User"', 'email', 'UPDATE')
+  AND has_column_privilege(current_user, 'platform."User"', 'updatedAt', 'UPDATE')
+  AND NOT has_column_privilege(current_user, 'platform."User"', 'metadata', 'SELECT')
+  AND NOT has_column_privilege(current_user, 'platform."User"', 'metadata', 'UPDATE')
+  AND NOT has_table_privilege(current_user, 'platform."User"', 'SELECT')
+  AND NOT has_table_privilege(current_user, 'platform."User"', 'UPDATE');
+SQL
+  )"
+  [[ "$(grep -Fxc t <<<"${assertions}")" == 6 ]] || {
+    echo "frontend database privileges are broader or narrower than expected" >&2
+    return 1
+  }
+  if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
+    /usr/bin/env -i \
+    PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
+    PGHOST=/run/postgresql \
+    PGDATABASE=postgres \
+    PGUSER=autogpt_frontend \
+    psql --no-psqlrc --set=ON_ERROR_STOP=1 \
+    --command='SET ROLE postgres' >/dev/null 2>&1; then
+    echo "frontend database role can assume postgres" >&2
+    return 1
+  fi
+
+  [[ "$(
+    docker exec --user postgres "${CONTAINER_NAME}" \
+      /usr/bin/env -i \
+      PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
+      PGHOST=/run/postgresql \
+      PGDATABASE=postgres \
+      PGUSER=postgres \
+      psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+      --command="SELECT rolpassword IS NULL FROM pg_catalog.pg_authid WHERE rolname = 'autogpt_frontend'"
+  )" == t ]] || {
+    echo "frontend database role unexpectedly has a password" >&2
+    return 1
+  }
+  if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
+    /usr/bin/env -i \
+    PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
+    PGHOST=/run/postgresql \
+    PGDATABASE=postgres \
+    PGUSER=postgres \
+    psql --no-psqlrc --set=ON_ERROR_STOP=1 \
+    --command='SELECT 1' >/dev/null 2>&1; then
+    echo "frontend operating-system user can authenticate as postgres" >&2
+    return 1
+  fi
+
+  docker exec "${CONTAINER_NAME}" \
+    curl --fail --silent --show-error --max-time 30 \
+    http://127.0.0.1:3001/api/auth/jwks >/dev/null
+}
+
 assert_request_tokens_absent_from_logs() {
   local sentinel=AUTOGPT_LOG_SENTINEL_6f2b3cb87e9a
   local websocket_key=dGhlIHNhbXBsZSBub25jZQ== # pragma: allowlist secret # gitleaks:allow
@@ -245,10 +447,12 @@ assert_internal_tooling_is_private() {
 }
 
 assert_runtime_config_mode() {
-  local mode
-  mode="$(docker exec "${CONTAINER_NAME}" stat -c '%a' /data/config/runtime.env)"
-  [[ "${mode}" == 600 ]] || {
-    echo "runtime config mode is ${mode}, expected 600" >&2
+  local ownership_and_mode
+  ownership_and_mode="$(
+    docker exec "${CONTAINER_NAME}" stat -c '%u:%g:%a' /data/config/runtime.env
+  )"
+  [[ "${ownership_and_mode}" == 0:0:600 ]] || {
+    echo "runtime config ownership/mode is not root:root 0600" >&2
     return 1
   }
 }
@@ -475,6 +679,7 @@ first_hash="$(runtime_config_hash)"
   exit 1
 }
 assert_runtime_config_mode
+assert_frontend_database_isolation
 
 docker stop --timeout 360 "${CONTAINER_NAME}" >/dev/null
 [[ "$(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")" == 0 ]] || {
@@ -504,6 +709,7 @@ wait_for_healthy
   exit 1
 }
 assert_runtime_config_mode
+assert_frontend_database_isolation
 assert_pinned_topology_environment
 assert_falkordb_binary_contract
 assert_memory_contract verify
@@ -546,6 +752,7 @@ wait_for_automatic_restart "$((restart_count + 1))"
   exit 1
 }
 assert_runtime_config_mode
+assert_frontend_database_isolation
 assert_redirect "${PUBLIC_URL}/copilot" --resolve localhost:3300:127.0.0.1
 assert_falkordb_binary_contract
 assert_memory_contract cleanup

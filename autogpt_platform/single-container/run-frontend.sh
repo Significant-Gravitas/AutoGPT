@@ -5,6 +5,8 @@ set -Eeuo pipefail
 # shellcheck source=common.sh
 source "${AUTOGPT_ASSET_DIR:-/opt/autogpt/single-container}/common.sh"
 
+readonly FRONTEND_DATABASE_URL='postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend'
+
 readonly -a REQUIRED_FRONTEND_ENV=(
   AGPT_SERVER_URL
   AGPT_WS_SERVER_URL
@@ -14,7 +16,6 @@ readonly -a REQUIRED_FRONTEND_ENV=(
   BETTER_AUTH_INTERNAL_URL
   BETTER_AUTH_SECRET
   BETTER_AUTH_URL
-  DATABASE_URL
 )
 
 readonly -a OPTIONAL_FRONTEND_ENV=(
@@ -35,12 +36,17 @@ readonly -a OPTIONAL_FRONTEND_ENV=(
   TRANSCRIPTION_MODEL
 )
 
-main() {
+declare -a frontend_env=()
+
+build_frontend_environment() {
   local name
-  local -a frontend_env=(
+  frontend_env=(
     PATH=/usr/local/bin:/usr/bin:/bin
-    HOME="${AUTOGPT_HOME:-/data/home}"
-    XDG_CACHE_HOME="${AUTOGPT_CACHE_DIR:-/data/cache}"
+    HOME=/data/frontend-home
+    XDG_CACHE_HOME=/data/cache/next
+    USER=autogpt_frontend
+    LOGNAME=autogpt_frontend
+    DATABASE_URL="${FRONTEND_DATABASE_URL}"
     LANG=C.UTF-8
     LC_ALL=C.UTF-8
     NODE_ENV=production
@@ -58,11 +64,27 @@ main() {
       frontend_env+=("${name}=${!name}")
     fi
   done
+}
+
+main() {
+  [[ "$(id -u)" -eq 0 ]] || fatal "frontend launcher must start as root"
+  build_frontend_environment
 
   wait_for_ready_file
   (($# > 0)) || set -- node /app/frontend/server.js
   log "starting next"
-  exec /usr/bin/env -i "${frontend_env[@]}" "$@"
+  exec /usr/bin/env -i "${frontend_env[@]}" \
+    /usr/bin/setpriv \
+    --reuid=autogpt_frontend \
+    --regid=autogpt_frontend \
+    --clear-groups \
+    --nnp \
+    --bounding-set=-all \
+    --inh-caps=-all \
+    --ambient-caps=-all \
+    -- "$@"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
