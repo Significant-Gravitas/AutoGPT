@@ -119,6 +119,7 @@ export function Navbar() {
                 {profile && <Wallet key={profile.username} />}
                 <AccountMenu
                   userName={profile?.name || profile?.username}
+                  userHandle={profile?.username}
                   userEmail={user?.email}
                   avatarSrc={profile?.avatar_url ?? ""}
                   menuItemGroups={dynamicMenuItems}

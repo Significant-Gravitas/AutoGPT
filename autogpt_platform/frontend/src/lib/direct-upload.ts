@@ -78,7 +78,9 @@ async function postFileToBackend({
     throw new Error("Authentication error — please sign in again.");
   }
 
-  const url = new URL(path, environment.getAGPTServerBaseUrl());
+  const baseURL = new URL(environment.getAGPTServerBaseUrl());
+  baseURL.pathname = `${baseURL.pathname.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+  const url = baseURL;
   for (const [key, value] of Object.entries(searchParams ?? {})) {
     url.searchParams.set(key, value);
   }

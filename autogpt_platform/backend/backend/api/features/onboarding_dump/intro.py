@@ -10,14 +10,17 @@ fallback when Langfuse is unconfigured or unreachable.
 """
 
 import asyncio
-import json
 import logging
 import os
-import re
 
 from langfuse import get_client
 
 from backend.api.features.onboarding_dump.models import SuggestedPrompt
+from backend.api.features.onboarding_dump.parsing import parse_response_json
+from backend.api.features.onboarding_dump.providers import (
+    known_providers,
+    provider_lines,
+)
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 
@@ -130,6 +133,15 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
 
     Never raises: a failed or malformed generation degrades to the
     template below rather than costing the user their greeting.
+
+    The greeting is unvalidated model output. ``transcript`` is the user's
+    own words, and the "only name real integrations" constraint in the
+    prompt is advisory, so an injected or hallucinated tool name can reach
+    the prose. That surface is deliberately left open: the text is shown
+    only to the person who recorded it, and the ids that become
+    connectable or recommended tiles are validated against
+    :func:`providers.known_providers` in ``recommend.py`` rather than
+    trusted from prose.
     """
     text = transcript.strip()
     if not text:
@@ -141,6 +153,7 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         return fallback_intro(text)
 
     instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
+    content = f"{_integrations_block()}{instructions}{text}"
     data = None
     # Two attempts: at temperature 0.6 an occasional generation comes back
     # truncated or malformed, and one retry is far cheaper than shipping
@@ -150,13 +163,13 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=_MODEL,
-                    messages=[{"role": "user", "content": f"{instructions}{text}"}],
+                    messages=[{"role": "user", "content": content}],
                     temperature=0.6,
                     max_tokens=3000,
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )
-            data = _parse_response_json(response.choices[0].message.content or "")
+            data = parse_response_json(response.choices[0].message.content or "")
         except Exception as e:  # degrades to the template below
             logger.warning(
                 "Brain dump greeting generation failed (attempt %s): %s",
@@ -182,6 +195,25 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
     return greeting.strip()[:MAX_GREETING_CHARS], prompts[:MAX_PROMPTS]
 
 
+def _integrations_block() -> str:
+    """The live provider registry, prepended to the instructions.
+
+    Without it the model invents the tools it promises to wire up, and the
+    user's first suggested automation is one we cannot run. Goes in front
+    of the instructions (which end with ``Transcript:``) so the whole
+    static half of the message stays a stable prefix.
+    """
+    lines = provider_lines(known_providers())
+    if not lines:
+        return ""
+    return (
+        "These are the integrations this platform can connect to. Only "
+        "promise automations that these can actually carry out, and never "
+        "name a tool that is not on this list:\n"
+        f"{lines}\n\n"
+    )
+
+
 async def _fetch_langfuse_prompt() -> str | None:
     """Fetch the greeting instructions from Langfuse.
 
@@ -203,31 +235,6 @@ async def _fetch_langfuse_prompt() -> str | None:
     except Exception as e:  # local prompt is the fallback
         logger.warning("Brain dump greeting: Langfuse prompt fetch failed: %s", e)
         return None
-
-
-def _parse_response_json(content: str) -> dict | None:
-    """Parse the model's JSON, tolerating markdown fences and preamble.
-
-    Anthropic models have no OpenAI-style JSON mode, so the contract is
-    prompt-level ("return ONLY valid JSON") and the parser forgives the
-    two ways that commonly bends: a ```json fence around the object, or
-    stray prose before/after it.
-    """
-    text = content.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end <= start:
-            return None
-        try:
-            data = json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
-            return None
-    return data if isinstance(data, dict) else None
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:

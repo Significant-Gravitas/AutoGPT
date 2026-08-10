@@ -222,31 +222,37 @@ export function useBrainDumpRecorder() {
   async function stop(): Promise<number> {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state === "inactive") {
+      if (recorder) {
+        stopTracks();
+        recorderRef.current = null;
+        setPhase("stopped");
+      }
       return elapsedSecondsRef.current;
     }
     setPhase("stopping");
-    await new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
-      recorder.stop();
-    });
-    await Promise.all(pendingWritesRef.current);
-    pendingWritesRef.current = [];
-    stopTracks();
-    recorderRef.current = null;
-    // Measured here rather than read off state: the awaits above mean the
-    // last tick is already behind, and the tail of the take counts.
-    const durationSecs = (Date.now() - startedAtRef.current) / 1000;
-    elapsedSecondsRef.current = durationSecs;
-    setElapsedSeconds(durationSecs);
-    await rememberMeta({
-      recordingId: recordingIdRef.current ?? "",
-      mimeType: mimeTypeRef.current,
-      startedAt: startedAtRef.current,
-      durationSecs,
-      finalized: false,
-    });
-    setPhase("stopped");
-    return durationSecs;
+    try {
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve();
+        recorder.stop();
+      });
+      await Promise.all(pendingWritesRef.current);
+      const durationSecs = (Date.now() - startedAtRef.current) / 1000;
+      elapsedSecondsRef.current = durationSecs;
+      setElapsedSeconds(durationSecs);
+      await rememberMeta({
+        recordingId: recordingIdRef.current ?? "",
+        mimeType: mimeTypeRef.current,
+        startedAt: startedAtRef.current,
+        durationSecs,
+        finalized: false,
+      });
+      return durationSecs;
+    } finally {
+      pendingWritesRef.current = [];
+      stopTracks();
+      recorderRef.current = null;
+      setPhase("stopped");
+    }
   }
 
   // On mount, an unfinalized recording in IndexedDB means the last

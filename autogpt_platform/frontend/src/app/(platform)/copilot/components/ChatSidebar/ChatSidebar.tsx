@@ -40,6 +40,7 @@ import {
 import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchModal/useGlobalSearchStore";
 import { useRouter } from "next/navigation";
 import { ChatSessionRow } from "./components/ChatSessionRow/ChatSessionRow";
+import { ExpertSessionGroup } from "./components/ExpertSessionGroup/ExpertSessionGroup";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
@@ -310,31 +311,6 @@ export function ChatSidebar() {
     );
   }
 
-  function renderSessionSection(
-    key: string,
-    label: string,
-    list: SessionSummaryResponse[],
-  ) {
-    const headerId = `session-group-${key}`;
-    return (
-      <div
-        key={key}
-        role="group"
-        aria-labelledby={headerId}
-        className="flex flex-col gap-1"
-      >
-        <div
-          id={headerId}
-          data-testid={`expert-group-header-${key}`}
-          className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-zinc-500"
-        >
-          {label}
-        </div>
-        {list.map((session, index) => renderSessionRow(session, index, list))}
-      </div>
-    );
-  }
-
   return (
     <>
       <Sidebar
@@ -461,17 +437,31 @@ export function ChatSidebar() {
                 </p>
               ) : sessionSections ? (
                 <>
-                  {pinned.length > 0 &&
-                    renderSessionSection("pinned", "Pinned", pinned)}
-                  {sessionSections.map((group) =>
-                    renderSessionSection(
-                      group.expertId ?? "autopilot",
-                      group.expertId
-                        ? (expertsById.get(group.expertId)?.name ?? "Expert")
-                        : "Autopilot",
-                      group.sessions,
-                    ),
+                  {pinned.length > 0 && (
+                    <ExpertSessionGroup
+                      groupKey="pinned"
+                      label="Pinned"
+                      sessions={pinned}
+                      renderRow={renderSessionRow}
+                    />
                   )}
+                  {sessionSections.map((group) => {
+                    const groupKey = group.expertId ?? "autopilot";
+                    return (
+                      <ExpertSessionGroup
+                        key={groupKey}
+                        groupKey={groupKey}
+                        label={
+                          group.expertId
+                            ? (expertsById.get(group.expertId)?.name ??
+                              "Expert")
+                            : "Autopilot"
+                        }
+                        sessions={group.sessions}
+                        renderRow={renderSessionRow}
+                      />
+                    );
+                  })}
                 </>
               ) : (
                 sessions.map((session, index) =>

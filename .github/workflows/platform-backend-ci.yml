@@ -169,7 +169,14 @@ jobs:
   test:
     permissions:
       contents: read
-    timeout-minutes: 20
+    # The suite is ~10.6k tests run serially (no pytest-xdist): the pytest step
+    # alone measures p50 ~13min / max ~18min, on top of 2-7min of container,
+    # checkout and dependency setup. A 20min cap sat *below* the job's real p95,
+    # so healthy runs were killed mid-suite and reported as `cancelled`. On
+    # merge_group that is fatal: `Check PR Status` treats a non-success check as
+    # a failure and GitHub ejects the PR from the merge queue. This is a guard
+    # against a hung job, not a performance budget - keep it well above p99.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -248,7 +255,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          # Full ref history is needed so the "Install Poetry" step below can
+          # read poetry.lock off the base branch. `filter: blob:none` keeps
+          # every ref reachable while skipping the blob download for all of
+          # them, then lazily fetches the one blob that step actually reads.
+          # Without it this checkout has been measured at 429s vs 27s for a
+          # sibling matrix leg in the same run - enough variance on its own to
+          # blow the job budget.
           fetch-depth: 0
+          filter: blob:none
           submodules: true
 
       - name: Set up Python ${{ matrix.python-version }}
