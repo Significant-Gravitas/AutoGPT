@@ -14,7 +14,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
 const flagsReady = vi.hoisted(() => ({ current: true }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ONBOARDING_TAB_INTROS: "onboarding-tab-intros" },
+  Flag: { ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump" },
   useFlagStatus: (flag: string) => ({
     enabled: flags.current[flag] ?? false,
     ready: flagsReady.current,
@@ -46,7 +46,7 @@ beforeEach(() => {
   window.localStorage.clear();
   capture.mockReset();
   authUser.current = { id: "user-1" };
-  flags.current = { "onboarding-tab-intros": true };
+  flags.current = { "onboarding-brain-dump": true };
   flagsReady.current = true;
   onboarding.current = { state: { completedSteps: [] }, completeStep: vi.fn() };
 });
@@ -61,6 +61,10 @@ describe("useTabIntroCard — when it opens", () => {
         tab: "agents",
       }),
     );
+    // Exactly once: a re-render must not re-report the same impression.
+    expect(
+      capture.mock.calls.filter(([event]) => event === "tab_intro_shown"),
+    ).toHaveLength(1);
   });
 
   it("stays closed while the flag is off", () => {
@@ -104,6 +108,39 @@ describe("useTabIntroCard — when it opens", () => {
     window.localStorage.setItem(SEEN_KEY, "someone-else");
 
     expect(renderGate().result.current.isOpen).toBe(true);
+  });
+
+  it("stays closed until auth has said who the user is", () => {
+    authUser.current = null;
+
+    expect(renderGate().result.current.isOpen).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it("never opens for a returning user whose id arrives after mount", () => {
+    window.localStorage.setItem(SEEN_KEY, "user-1");
+    authUser.current = null;
+
+    const { result, rerender } = renderGate();
+    expect(result.current.isOpen).toBe(false);
+
+    authUser.current = { id: "user-1" };
+    rerender();
+
+    expect(result.current.isOpen).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it("opens once a first-time user's id arrives after mount", () => {
+    authUser.current = null;
+
+    const { result, rerender } = renderGate();
+    expect(result.current.isOpen).toBe(false);
+
+    authUser.current = { id: "user-1" };
+    rerender();
+
+    expect(result.current.isOpen).toBe(true);
   });
 
   it("burns nothing when the tab vetoes this particular visit", () => {
@@ -151,6 +188,20 @@ describe("useTabIntroCard — dismissal", () => {
       "tab_intro_dismissed",
       expect.anything(),
     );
+  });
+
+  it("gives a second account signing in on the same tab its own intro", () => {
+    const { result, rerender } = renderGate();
+
+    result.current.dismiss();
+    rerender();
+    expect(result.current.isOpen).toBe(false);
+
+    // No remount — just a different account behind the same mounted hook.
+    authUser.current = { id: "user-2" };
+    rerender();
+
+    expect(result.current.isOpen).toBe(true);
   });
 
   it("still closes when localStorage is unavailable", () => {

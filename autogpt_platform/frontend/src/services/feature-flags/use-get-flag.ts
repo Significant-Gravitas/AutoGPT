@@ -26,10 +26,6 @@ export enum Flag {
   // Mirror of the backend ``Flag`` enum — the endpoints 404 when off, so
   // both sides must agree. Off renders the pillbox flow untouched.
   ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump",
-  // First-visit intro card on the Agents / Marketplace / Build tabs. Kept
-  // separate from ONBOARDING_BRAIN_DUMP so the tab intros can roll out on
-  // their own — nothing about them depends on a dump having happened.
-  ONBOARDING_TAB_INTROS = "onboarding-tab-intros",
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
   // them when memory/dream-related UI surfaces ship (P6+ on the
@@ -74,9 +70,6 @@ const defaultFlags = {
   // brain dump for everyone — which is what the backend 404s are meant to
   // prevent. Use NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP locally.
   [Flag.ONBOARDING_BRAIN_DUMP]: false,
-  // Off by default for the same reason as the dump: with no LaunchDarkly key
-  // a `true` here would pop a modal on every tab for every existing user.
-  [Flag.ONBOARDING_TAB_INTROS]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
@@ -140,8 +133,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
     case Flag.ONBOARDING_BRAIN_DUMP:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP;
-    case Flag.ONBOARDING_TAB_INTROS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_TAB_INTROS;
     case Flag.GRAPHITI_MEMORY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
     case Flag.GRAPHITI_COMMUNITIES_ENABLED:

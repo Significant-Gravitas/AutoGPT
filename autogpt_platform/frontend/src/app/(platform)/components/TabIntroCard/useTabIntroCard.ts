@@ -9,6 +9,7 @@ import {
   peekTabIntroSeen,
   setTabIntroSeen,
   TAB_INTRO_STEPS,
+  type TabIntroCta,
   type TabIntroTab,
 } from "./helpers";
 
@@ -22,34 +23,39 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const { state, completeStep } = useOnboarding();
-  const { enabled, ready } = useFlagStatus(Flag.ONBOARDING_TAB_INTROS);
+  // Same gate as the rest of the new onboarding: the tab intros are part of
+  // that rollout, so they ship and roll back with it rather than on a flag
+  // of their own.
+  const { enabled, ready } = useFlagStatus(Flag.ONBOARDING_BRAIN_DUMP);
   const step = TAB_INTRO_STEPS[tab];
 
-  const [isFinished, setIsFinished] = useState(() =>
-    peekTabIntroSeen(tab, userId),
-  );
+  // Who closed the card in this mounted session, rather than a boolean: a
+  // second account signing in behind the same mounted hook gets its own intro.
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null);
 
-  useEffect(() => {
-    // The user record can arrive after mount — re-check once it does.
-    if (peekTabIntroSeen(tab, userId)) setIsFinished(true);
-  }, [tab, userId]);
-
-  // `state` is null until the provider has fetched the onboarding record.
-  // Waiting for it is what keeps the card from flashing in front of a user
-  // who already dismissed it on another device.
+  // `state` is null until the provider has fetched the onboarding record, and
+  // `userId` is null until auth resolves. Waiting for both is what keeps the
+  // card from flashing in front of a user who already dismissed it — on
+  // another device, or on this one before we knew who they were.
+  //
+  // The cache read is derived here rather than latched into state so it can
+  // never lag a render behind the user id, and it sits last so the disabled
+  // case never touches localStorage at all.
   const isOpen =
     canShow &&
     ready &&
     Boolean(enabled) &&
-    !isFinished &&
+    userId !== null &&
+    dismissedFor !== userId &&
     state !== null &&
-    !state.completedSteps.includes(step);
+    !state.completedSteps.includes(step) &&
+    !peekTabIntroSeen(tab, userId);
 
   useEffect(() => {
     if (isOpen) trackTabIntro("tab_intro_shown", { tab });
   }, [isOpen, tab]);
 
-  function finish(cta?: string) {
+  function finish(cta?: TabIntroCta) {
     if (cta) {
       trackTabIntro("tab_intro_cta_clicked", { tab, cta });
     } else {
@@ -57,7 +63,7 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
     }
     setTabIntroSeen(tab, userId);
     completeStep(step);
-    setIsFinished(true);
+    setDismissedFor(userId);
   }
 
   return {
@@ -66,6 +72,6 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
     dismiss: () => finish(),
     // Any of the card's calls to action, named so the funnel can tell a
     // Build "ask AutoPilot" apart from a Build "learn it yourself".
-    takeAction: (cta: string) => finish(cta),
+    takeAction: (cta: TabIntroCta) => finish(cta),
   };
 }

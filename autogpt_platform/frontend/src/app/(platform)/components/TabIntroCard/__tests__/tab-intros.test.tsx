@@ -11,7 +11,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
-    ONBOARDING_TAB_INTROS: "onboarding-tab-intros",
+    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
     HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: () => false,
@@ -40,7 +40,10 @@ vi.mock("@/app/(platform)/build/components/FlowEditor/tutorial", () => ({
 import { AgentsTabIntro } from "@/app/(platform)/library/components/AgentsTabIntro/AgentsTabIntro";
 import { BuildTabIntro } from "@/app/(platform)/build/components/BuildTabIntro/BuildTabIntro";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
-import { FEATURED_SECTION_ID } from "@/app/(platform)/marketplace/components/FeaturedSection/FeaturedSection";
+import {
+  AGENTS_SECTION_ID,
+  FEATURED_SECTION_ID,
+} from "@/app/(platform)/marketplace/components/MarketplaceTabIntro/helpers";
 import { MarketplaceTabIntro } from "@/app/(platform)/marketplace/components/MarketplaceTabIntro/MarketplaceTabIntro";
 
 beforeEach(() => {
@@ -96,10 +99,35 @@ describe("MarketplaceTabIntro", () => {
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(completeStep).toHaveBeenCalledWith("MARKETPLACE_TAB_INTRO");
+    expect(capture).toHaveBeenCalledWith("tab_intro_cta_clicked", {
+      tab: "marketplace",
+      cta: "browse_featured",
+    });
     featured.remove();
   });
 
-  it("still closes when nothing is featured right now", async () => {
+  it("falls back to the full listing when nothing is featured right now", async () => {
+    const listing = document.createElement("div");
+    listing.id = AGENTS_SECTION_ID;
+    const scrollIntoView = vi.fn();
+    listing.scrollIntoView = scrollIntoView;
+    document.body.appendChild(listing);
+
+    render(<MarketplaceTabIntro />);
+    await screen.findByText("Agents ready to work.");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Browse featured agents" }),
+    );
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.queryByText("Agents ready to work.")).toBeNull(),
+    );
+    listing.remove();
+  });
+
+  it("still closes when there is nothing to scroll to at all", async () => {
     render(<MarketplaceTabIntro />);
     await screen.findByText("Agents ready to work.");
 

@@ -70,6 +70,61 @@ def test_complete_step_accepts_tab_intros(step, mocker):
     assert mock_complete.await_args.args[1] == step
 
 
+@pytest.mark.parametrize(
+    "step",
+    [
+        OnboardingStep.MARKETPLACE_ADD_AGENT,
+        OnboardingStep.LIBRARY_RUN_AGENT,
+        OnboardingStep.RUN_AGENTS_100,
+    ],
+)
+def test_complete_step_rejects_rewarded_backend_only_steps(step, mocker):
+    # These are real OnboardingStep values that carry a credit reward and are
+    # deliberately left off FrontendOnboardingStep. The endpoint's Literal is
+    # the only thing standing between an authenticated user and self-awarding
+    # credits, so it gets its own test.
+    mock_complete = mocker.patch(
+        "backend.api.features.v1.complete_onboarding_step",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.post("/onboarding/step", params={"step": step.value})
+
+    assert response.status_code == 422
+    mock_complete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "step",
+    [
+        OnboardingStep.AGENTS_TAB_INTRO,
+        OnboardingStep.MARKETPLACE_TAB_INTRO,
+        OnboardingStep.BUILD_TAB_INTRO,
+    ],
+)
+async def test_tab_intro_steps_grant_no_reward(step, mocker):
+    # The tab intros are client-writable, so "unrewarded" has to be enforced
+    # rather than documented: posting one must never reach the credit model.
+    from backend.data import onboarding as onboarding_module
+    from backend.data.model import UserOnboarding
+
+    mock_credit_model = mocker.patch.object(
+        onboarding_module,
+        "get_user_credit_model",
+        new_callable=AsyncMock,
+    )
+
+    await onboarding_module._reward_user(
+        "test-user-id",
+        UserOnboarding.model_construct(rewardedFor=[]),
+        step,
+    )
+
+    mock_credit_model.assert_not_awaited()
+
+
 def test_is_onboarding_completed_true_when_complete_step_present(mocker):
     from backend.data.model import UserOnboarding
 

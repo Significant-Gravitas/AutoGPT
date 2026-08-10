@@ -12,6 +12,7 @@ import Link from "next/link";
 import { FeaturedAgentCard } from "../FeaturedAgentCard/FeaturedAgentCard";
 import { SparklesIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { FEATURED_SECTION_ID } from "../MarketplaceTabIntro/helpers";
 
 const FEATURED_COLORS = [
   "bg-violet-50 border-violet-100/70",
@@ -23,10 +24,7 @@ interface FeaturedSectionProps {
   featuredAgents: StoreAgent[];
 }
 
-// Scroll target for the Marketplace tab intro's "Browse featured agents".
-export const FEATURED_SECTION_ID = "marketplace-featured-agents";
-
-export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
+export function FeaturedSection({ featuredAgents }: FeaturedSectionProps) {
   return (
     <section
       id={FEATURED_SECTION_ID}
@@ -75,4 +73,4 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
       </Carousel>
     </section>
   );
-};
+}

@@ -1,4 +1,4 @@
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { SparklesIcon } from "@hugeicons/core-free-icons";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,8 +9,8 @@ const onDismiss = vi.fn();
 const onCta = vi.fn();
 const onAlt = vi.fn();
 
-function renderCard(props: { isOpen?: boolean; withAltAction?: boolean } = {}) {
-  return render(
+function card(props: { isOpen?: boolean; withAltAction?: boolean } = {}) {
+  return (
     <TabIntroCard
       isOpen={props.isOpen ?? true}
       icon={SparklesIcon}
@@ -23,8 +23,12 @@ function renderCard(props: { isOpen?: boolean; withAltAction?: boolean } = {}) {
           : undefined
       }
       onDismiss={onDismiss}
-    />,
+    />
   );
+}
+
+function renderCard(props: { isOpen?: boolean; withAltAction?: boolean } = {}) {
+  return render(card(props));
 }
 
 beforeEach(() => {
@@ -105,5 +109,57 @@ describe("TabIntroCard", () => {
 
     expect(onAlt).toHaveBeenCalledTimes(1);
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+});
+
+describe("TabIntroCard — keyboard focus", () => {
+  it("moves focus into the card on open", async () => {
+    renderCard();
+    await screen.findByText("Your mission control.");
+
+    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(
+      true,
+    );
+  });
+
+  it("keeps Tab and Shift+Tab inside the card", async () => {
+    renderCard({ withAltAction: true });
+    await screen.findByText("Your mission control.");
+
+    const alt = screen.getByRole("button", {
+      name: "Learn to build it yourself",
+    });
+    const gotIt = screen.getByRole("button", { name: "Got it" });
+    const cta = screen.getByRole("button", { name: "See my agents" });
+
+    await userEvent.tab();
+    expect(document.activeElement).toBe(alt);
+    await userEvent.tab();
+    expect(document.activeElement).toBe(gotIt);
+    await userEvent.tab();
+    expect(document.activeElement).toBe(cta);
+
+    // Past the last control the focus wraps back into the card rather than
+    // reaching the page behind an `aria-modal` overlay.
+    await userEvent.tab();
+    expect(document.activeElement).toBe(alt);
+
+    await userEvent.tab({ shift: true });
+    expect(document.activeElement).toBe(cta);
+  });
+
+  it("restores focus to whatever opened it", async () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const { rerender } = renderCard();
+    await screen.findByText("Your mission control.");
+    expect(document.activeElement).not.toBe(opener);
+
+    rerender(card({ isOpen: false }));
+
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    opener.remove();
   });
 });

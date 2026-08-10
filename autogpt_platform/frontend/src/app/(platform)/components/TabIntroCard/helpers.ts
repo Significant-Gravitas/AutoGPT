@@ -2,6 +2,15 @@ import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models
 
 export type TabIntroTab = "agents" | "marketplace" | "build";
 
+// Every call to action a tab intro can offer. A union rather than a bare
+// string so a typo lands as a type error instead of a silent extra branch in
+// the funnel.
+export type TabIntroCta =
+  | "see_agents"
+  | "browse_featured"
+  | "ask_autopilot"
+  | "builder_tutorial";
+
 // One onboarding step per tab. The backend record is the source of truth —
 // it is what stops the card reappearing on a new browser or device.
 export const TAB_INTRO_STEPS: Record<
@@ -42,4 +51,20 @@ export function setTabIntroSeen(
     // Storage can be unavailable (private mode, quota). The server step
     // still records the dismissal, so this is only a latency shortcut.
   }
+}
+
+// Everything inside the card that can hold focus, in tab order. Used to keep
+// Tab inside an `aria-modal` dialog rather than letting it reach the page
+// behind the overlay.
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+export function getFocusableElements(root: HTMLElement) {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 }

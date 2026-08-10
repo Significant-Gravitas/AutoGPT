@@ -7,6 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
+import { getFocusableElements } from "./helpers";
 
 interface Action {
   label: string;
@@ -17,7 +18,7 @@ interface Props {
   isOpen: boolean;
   icon: IconSvgElement;
   title: string;
-  /** Capped at 20 words — an icon, a short title, one sentence. */
+  /** One sentence under the title. */
   body: string;
   /** The card's primary way forward, sat next to "Got it". */
   cta: Action;
@@ -41,17 +42,66 @@ export function TabIntroCard({
 }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  // The listener below is installed once per open, so it would otherwise
+  // capture the `onDismiss` from that render. A ref keeps it on the current
+  // one without tearing the listener down on every parent render.
+  const dismissRef = useRef(onDismiss);
+  useEffect(() => {
+    dismissRef.current = onDismiss;
+  });
+
   // Focus starts inside the card rather than on whatever was behind the
-  // overlay, and Escape is a dismissal like every other way out.
+  // overlay, stays there while the dialog is open (`aria-modal` promises as
+  // much), and goes back where it came from on close. Escape is a dismissal
+  // like every other way out.
   useEffect(() => {
     if (!isOpen) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     dialogRef.current?.focus();
+
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onDismiss();
+      if (event.key === "Escape") {
+        dismissRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusable = getFocusableElements(dialog);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (!dialog.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      // Skip a node the close itself removed — refocusing it does nothing but
+      // hand focus back to <body>.
+      if (previouslyFocused && document.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
+    };
   }, [isOpen]);
 
   return (
@@ -92,20 +142,21 @@ export function TabIntroCard({
             </div>
 
             <div className="flex flex-col gap-3 px-7 pb-7 pt-6 text-left">
-              <Text variant="h3" className="!text-[1.25rem] text-zinc-900">
+              <Text variant="lead-semibold" as="h3" className="text-zinc-900">
                 {title}
               </Text>
-              <Text variant="body" className="!text-[0.9375rem] !text-zinc-600">
+              <Text variant="large" className="text-zinc-600">
                 {body}
               </Text>
               {altAction && (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="small"
                   onClick={altAction.onClick}
-                  className="w-fit text-sm font-medium text-violet-600 underline-offset-4 hover:underline"
+                  className="w-fit self-start px-0 text-violet-600 underline-offset-4 hover:bg-transparent hover:underline"
                 >
                   {altAction.label}
-                </button>
+                </Button>
               )}
 
               <div className="mt-3 flex items-center justify-end gap-3">
