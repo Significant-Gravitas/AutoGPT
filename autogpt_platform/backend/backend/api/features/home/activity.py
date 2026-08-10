@@ -5,7 +5,14 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
-from .helpers import as_utc, parse_datetime, run_link, split_summary, to_home_expert
+from .helpers import (
+    as_utc,
+    as_utc_or_none,
+    parse_datetime,
+    run_link,
+    split_summary,
+    to_home_expert,
+)
 from .models import (
     HomeActiveTask,
     HomeBriefing,
@@ -76,7 +83,7 @@ def compose_active_tasks(
                 if execution.expert_id in expert_by_id
                 else None
             ),
-            started_at=execution.started_at,
+            started_at=as_utc_or_none(execution.started_at),
             link=run_link(
                 agent_by_graph.get(execution.graph_id, ("", None))[1], execution.id
             ),
@@ -171,7 +178,7 @@ def _briefing_outcome(
             else None
         ),
         agent_name=name,
-        occurred_at=execution.ended_at or execution.started_at,
+        occurred_at=as_utc_or_none(execution.ended_at or execution.started_at),
         duration_seconds=execution.stats.duration if execution.stats else 0,
         cost_cents=execution.stats.cost if execution.stats else 0,
         link=run_link(library_id, execution.id),

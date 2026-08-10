@@ -88,6 +88,10 @@ def as_utc(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
+def as_utc_or_none(value: datetime | None) -> datetime | None:
+    return as_utc(value) if value else None
+
+
 def parse_datetime(value: str) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))

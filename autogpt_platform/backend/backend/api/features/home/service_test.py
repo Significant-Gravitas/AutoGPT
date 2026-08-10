@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,10 +9,11 @@ from backend.data.execution_cost_summary import UserExecutionCostSummary
 
 from .service import build_home_dashboard
 
-NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
-
 
 def _execution() -> GraphExecutionMeta:
+    # `build_home_dashboard` reads the live clock, so anchor the run to now — a
+    # fixed timestamp would drop out of the 24h briefing window over time.
+    ran_at = datetime.now(timezone.utc) - timedelta(minutes=5)
     return GraphExecutionMeta(
         id="exec-1",
         user_id="user-1",
@@ -23,8 +24,8 @@ def _execution() -> GraphExecutionMeta:
         nodes_input_masks=None,
         preset_id=None,
         status=ExecutionStatus.COMPLETED,
-        started_at=NOW,
-        ended_at=NOW,
+        started_at=ran_at,
+        ended_at=ran_at,
         stats=GraphExecutionMeta.Stats(activity_status="Booked the flight."),
     )
 

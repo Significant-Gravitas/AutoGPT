@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
@@ -103,31 +103,35 @@ async def _load_home_source_data(
     )
     schedules_task = asyncio.create_task(
         _get_schedules(
-            user_id=user_id,
-            organization_id=organization_id,
-            team_ids=team_ids,
+            user_id=user_id, organization_id=organization_id, team_ids=team_ids
         )
     )
     credits_task = asyncio.create_task(
         _get_credits(user_id=user_id, organization_id=organization_id)
     )
     user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
-    experts = await experts_task
-    executions = await hide_activity_summaries_if_disabled(
-        await executions_task, user_id
-    )
-    reviews = await reviews_task
-    cost_summary = await cost_summary_task
-    schedules = await schedules_task
-    credits = await credits_task
-    user = await user_task
+    # Gather rather than awaiting one by one: a failure in the first task would
+    # otherwise leave the rest detached with their exceptions never retrieved.
+    started: list[asyncio.Task[Any]] = [
+        experts_task,
+        executions_task,
+        reviews_task,
+        cost_summary_task,
+        schedules_task,
+        credits_task,
+        user_task,
+    ]
+    await asyncio.gather(*started)
+    user = user_task.result()
     return HomeSourceData(
-        experts=experts,
-        executions=executions,
-        reviews=reviews,
-        cost_summary=cost_summary,
-        schedules=schedules,
-        credits_balance=credits,
+        experts=experts_task.result(),
+        executions=await hide_activity_summaries_if_disabled(
+            executions_task.result(), user_id
+        ),
+        reviews=reviews_task.result(),
+        cost_summary=cost_summary_task.result(),
+        schedules=schedules_task.result(),
+        credits_balance=credits_task.result(),
         timezone_name=get_user_timezone_or_utc(user.timezone if user else None),
     )
 
