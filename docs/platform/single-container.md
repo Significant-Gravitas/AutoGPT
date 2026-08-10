@@ -372,7 +372,7 @@ with an approved backup mechanism and remove unencrypted staging copies.
 Restore into a new named volume so the source remains recoverable:
 
 ```bash
-RESTORE_VOLUME=autogpt-platform-data-restored-YYYYMMDD
+RESTORE_VOLUME="autogpt-platform-data-restored-$(date +%Y%m%d)"
 docker volume create "${RESTORE_VOLUME}"
 
 docker run --rm \
