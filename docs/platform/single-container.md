@@ -14,9 +14,8 @@ installation you intend to keep.
 
 ## Get an image
 
-The repository's single-container workflow builds and tests the image but does
-not publish it to a registry. Until a published image reference is announced,
-build it from the repository root with Docker Buildx Bake:
+The repository's single-container validation workflow does not publish a
+registry image. Build it from the repository root with Docker Buildx Bake:
 
 ```bash
 docker buildx bake \
@@ -26,9 +25,9 @@ docker buildx bake \
 ```
 
 This loads the image as `autogpt-platform:single-container-dev` into the local
-Docker image store. If an image is published later, pull its exact documented
-reference and substitute it for that local tag in the commands below. Prefer an
-immutable version tag or digest rather than guessing a `latest` tag.
+Docker image store. When maintainers provide a supported registry reference,
+substitute its exact immutable version tag or digest in the commands below;
+do not guess a `latest` tag.
 
 The image has a complete default command, so this is a valid foreground boot
 check:
@@ -54,11 +53,14 @@ Edit the file and set at least:
 ```dotenv
 AUTOGPT_PUBLIC_URL=http://localhost:3000
 AUTH_ALLOW_NEW_ACCOUNTS=true
+AUTH_SIGNUP_ALLOWLIST=owner@example.com
 ```
 
-Signup is closed by default. Enabling it temporarily is required to create the
-first account. Provider settings are covered in
-[Models and memory](#models-and-memory).
+Replace `owner@example.com` with the intended first account. Signup is closed
+by default; the temporary allowlist avoids opening registration to every email
+address during bootstrap. These loopback HTTP values are only for local
+evaluation. Use an HTTPS origin for LAN or remote access. Provider settings
+are covered in [Models and memory](#models-and-memory).
 
 Start the appliance:
 
@@ -71,7 +73,6 @@ docker run --detach --name autogpt \
   --log-driver json-file \
   --log-opt max-size=50m \
   --log-opt max-file=5 \
-  --add-host host.docker.internal:host-gateway \
   --env-file autogpt_platform/single-container/.env \
   --publish 127.0.0.1:3000:3000 \
   --volume autogpt-platform-data:/data \
@@ -115,7 +116,7 @@ the `autogpt-platform-data` volume.
 Container port `3000` does not change. To use host port `3300`, change the run
 command to:
 
-```text
+```bash
 --publish 127.0.0.1:3300:3000
 ```
 
@@ -143,7 +144,9 @@ upgrades for `/_agpt/ws`, and allow long-lived streaming requests below
 backend service ports.
 
 Use `--publish 0.0.0.0:3000:3000` only when direct LAN access is intentional
-and the surrounding network supplies appropriate access control and TLS.
+and the surrounding network supplies appropriate access control and TLS. Set
+`AUTOGPT_PUBLIC_URL` to the matching HTTPS origin, for example
+`https://agents.lan.example`; do not leave it at the localhost default.
 
 ## Account policy
 
@@ -242,9 +245,17 @@ CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ```
 
 `CHAT_API_KEY` must be non-empty even if the local server ignores it. The
-`--add-host host.docker.internal:host-gateway` option in the run command makes
-the host reachable on Docker Engine. Docker Desktop provides that hostname as
-well.
+local transport automatically makes Graphiti inherit the same base URL and API
+key, rewrites its default extraction and reranker model to the configured local
+chat model, and uses `nomic-embed-text` for embeddings. Separate
+`GRAPHITI_*` routing variables are unnecessary unless you want an override.
+
+On Docker Engine, add `--add-host host.docker.internal:host-gateway` to the run
+command for this local-model profile. Docker Desktop provides that hostname
+without the extra option. Small quantized models reduce memory requirements,
+but latency and answer quality remain hardware-, model-, and
+workload-dependent; select another compatible model when the default does not
+meet your needs.
 
 Check connectivity from the running appliance:
 
@@ -328,7 +339,8 @@ docker inspect --format \
 
 ## Cold backup
 
-Stop the appliance before archiving the coupled service state:
+Stop the appliance before archiving the coupled service state. It remains
+unavailable for the duration of the archive, which grows with `/data`:
 
 ```bash
 docker stop --time 360 autogpt
@@ -360,11 +372,12 @@ with an approved backup mechanism and remove unencrypted staging copies.
 Restore into a new named volume so the source remains recoverable:
 
 ```bash
-docker volume create autogpt-platform-data-restored-YYYYMMDD
+RESTORE_VOLUME=autogpt-platform-data-restored-YYYYMMDD
+docker volume create "${RESTORE_VOLUME}"
 
 docker run --rm \
   --entrypoint tar \
-  --volume autogpt-platform-data-restored-YYYYMMDD:/data \
+  --volume "${RESTORE_VOLUME}:/data" \
   --volume "${PWD}:/backup:ro" \
   autogpt-platform:single-container-dev \
   -xzf /backup/autogpt-platform-data.tgz -C /data
@@ -378,13 +391,15 @@ docker run --detach --name autogpt-restore-test \
   --restart unless-stopped \
   --stop-timeout 360 \
   --shm-size 2g \
-  --add-host host.docker.internal:host-gateway \
   --env-file autogpt_platform/single-container/.env \
   --env AUTOGPT_PUBLIC_URL=http://localhost:3001 \
   --publish 127.0.0.1:3001:3000 \
-  --volume autogpt-platform-data-restored-YYYYMMDD:/data \
+  --volume "${RESTORE_VOLUME}:/data" \
   autogpt-platform:single-container-dev
 ```
+
+If the environment file selects a host-local model on Docker Engine, include
+the `--add-host host.docker.internal:host-gateway` option in this restore test.
 
 Verify health, login, saved credentials, memory, and workspace contents. Stop
 and remove the test container afterward, but retain both volumes until the
