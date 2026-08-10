@@ -6,7 +6,7 @@ from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
-from .helpers import run_link, setup_count, to_home_expert
+from .helpers import as_utc, run_link, setup_count, to_home_expert
 from .models import HomeAction, HomeAttentionItem, HomeExpert
 
 
@@ -31,18 +31,17 @@ def _review_attention(
     review: PendingHumanReviewModel, now: datetime
 ) -> HomeAttentionItem:
     title = review.instructions or review.agent_name or "Review an agent decision"
+    created_at = as_utc(review.created_at)
     return HomeAttentionItem(
         id=f"approval-{review.node_exec_id}",
         kind="approval",
-        priority=(
-            "high" if now - review.created_at > timedelta(hours=24) else "normal"
-        ),
+        priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
         title=title,
         description="Your agent paused before taking an external action.",
         why_it_matters="The task cannot continue until you approve or decline it.",
         expert=_review_expert(review),
         agent_name=review.agent_name,
-        created_at=review.created_at,
+        created_at=created_at,
         preview=_payload_preview(review.payload),
         review=review,
         primary_action=HomeAction(label="Review", href=_review_link(review)),
@@ -66,7 +65,7 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
             description=description,
             why_it_matters="Upcoming tasks will not run while this agent is paused.",
             expert=summary,
-            created_at=expert.schedules_paused_at,
+            created_at=as_utc(expert.schedules_paused_at),
             primary_action=HomeAction(
                 label="Review budget", href=f"/team/{quote(expert.id)}"
             ),

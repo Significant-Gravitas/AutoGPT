@@ -49,14 +49,19 @@ def setup_count(expert: Expert) -> int:
     )
 
 
+def as_utc(value: datetime) -> datetime:
+    """Stored timestamps can come back naive; comparing those to an aware `now`
+    raises, so pin anything naive to UTC before it reaches arithmetic or sorting.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
 def parse_datetime(value: str) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
+    return as_utc(parsed)
 
 
 def run_link(library_id: str | None, execution_id: str) -> str | None:

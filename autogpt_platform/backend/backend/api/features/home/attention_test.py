@@ -154,3 +154,25 @@ def test_positive_balance_raises_no_credits_item() -> None:
     )
 
     assert items == []
+
+
+def test_naive_timestamps_are_normalised_to_utc() -> None:
+    naive_created = (NOW - timedelta(hours=30)).replace(tzinfo=None)
+    paused_expert = _expert()
+    paused_expert.schedules_paused_at = (NOW - timedelta(hours=2)).replace(tzinfo=None)
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[paused_expert, _expert(needs_setup=True)],
+        reviews=[_review(naive_created, node_exec_id="naive")],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert [item.id for item in items] == [
+        "approval-naive",
+        "paused-expert",
+        "setup-expert",
+    ]
+    assert items[0].priority == "high"
+    assert items[0].created_at == NOW - timedelta(hours=30)

@@ -5,7 +5,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
-from .helpers import parse_datetime, run_link, split_summary, to_home_expert
+from .helpers import as_utc, parse_datetime, run_link, split_summary, to_home_expert
 from .models import (
     HomeActiveTask,
     HomeBriefing,
@@ -32,7 +32,7 @@ def compose_briefing(
         execution
         for execution in executions
         if execution.status in {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED}
-        and (execution.ended_at or execution.started_at or now) >= window_start
+        and as_utc(execution.ended_at or execution.started_at or now) >= window_start
     ]
     terminal.sort(key=lambda execution: execution.status == ExecutionStatus.COMPLETED)
     outcomes = [
