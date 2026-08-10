@@ -6,7 +6,7 @@
     with no high-availability or zero-downtime guarantee.
 
 The image packages the AutoGPT Platform frontend and backend together with
-PostgreSQL, a three-node Valkey cluster, RabbitMQ, ClamAV, nginx, and FalkorDB.
+PostgreSQL, a three-node Valkey cluster, RabbitMQ, nginx, and FalkorDB.
 Only nginx listens on the container's public interface, on port `3000`.
 FalkorDB-backed memory is a core part of this image and is always enabled.
 
@@ -143,7 +143,7 @@ AUTOGPT_PUBLIC_URL=https://agents.example.com
 
 The reverse proxy must route all paths to `127.0.0.1:3000`, support WebSocket
 upgrades for `/_agpt/ws`, and allow long-lived streaming requests below
-`/_agpt/api`. Do not publish PostgreSQL, Valkey, RabbitMQ, ClamAV, FalkorDB, or
+`/_agpt/api`. Do not publish PostgreSQL, Valkey, RabbitMQ, FalkorDB, or
 backend service ports.
 
 For LAN access, bind the TLS reverse proxy to the LAN interface and keep the
@@ -314,16 +314,15 @@ are authenticated in addition to being bound inside the container.
 
 ## Optional processes
 
-FalkorDB is mandatory. The supported process toggles are:
+FalkorDB is mandatory. The one supported process toggle is:
 
 ```dotenv
-AUTOGPT_ENABLE_CLAMAV=true
 AUTOGPT_ENABLE_BOT_SERVICES=false
 ```
 
-Disabling ClamAV disables file scanning. Bot services should remain off unless
-their required platform credentials and public routes are configured. These
-settings stop processes; they do not make the image smaller.
+Bot services should remain off unless their required platform credentials and
+public routes are configured. This setting stops processes; it does not make the
+image smaller.
 
 ## Persistence
 
@@ -336,7 +335,6 @@ The named volume mounted at `/data` contains all durable appliance state:
 | `/data/rabbitmq` | Queue state |
 | `/data/valkey` | Three-node Valkey state |
 | `/data/falkordb` | Graphiti memory data |
-| `/data/clamav` | Antivirus signatures and state |
 | `/data/workspaces` | User workspaces |
 | `/data/home` and `/data/frontend-home` | Application home directories |
 | `/data/cache` | Backend and Next.js caches |
@@ -483,9 +481,11 @@ ready.
 ## Known limitations
 
 - One container is one failure, maintenance, scaling, and security boundary.
-- PostgreSQL, Valkey, RabbitMQ, ClamAV, FalkorDB, browser tooling, and the
+- PostgreSQL, Valkey, RabbitMQ, FalkorDB, browser tooling, and the
   application compete for the same host resources.
 - All durable services share one volume and one backup schedule.
+- Uploaded files are not scanned for malware. Unlike the hosted platform, this
+  image bundles no antivirus daemon, so treat every upload as trusted input.
 - Required email verification is unsupported.
 - Remote TLS termination is operator-supplied.
 - The local `bash_exec` fallback depends on host support for Bubblewrap user and
