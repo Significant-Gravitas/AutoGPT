@@ -6610,6 +6610,29 @@
         }
       }
     },
+    "/api/home": {
+      "get": {
+        "tags": ["home", "private"],
+        "summary": "Get Home Dashboard",
+        "operationId": "get_home_dashboard",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeDashboardResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -18668,6 +18691,353 @@
         "type": "object",
         "required": ["expert", "failed_preloads"],
         "title": "HireResult"
+      },
+      "HomeAction": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "href": { "type": "string", "title": "Href" }
+        },
+        "type": "object",
+        "required": ["label", "href"],
+        "title": "HomeAction"
+      },
+      "HomeActiveTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "status": {
+            "type": "string",
+            "enum": ["running", "queued"],
+            "title": "Status"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title", "status"],
+        "title": "HomeActiveTask"
+      },
+      "HomeAgentStatus": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/HomeExpert" },
+          "status": {
+            "type": "string",
+            "enum": ["ready", "working", "needs_setup", "paused", "failed"],
+            "title": "Status"
+          },
+          "detail": { "type": "string", "title": "Detail" },
+          "next_run_time": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Next Run Time"
+          }
+        },
+        "type": "object",
+        "required": ["expert", "status", "detail"],
+        "title": "HomeAgentStatus"
+      },
+      "HomeAttentionItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["approval", "setup", "paused", "credits"],
+            "title": "Kind"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["high", "normal"],
+            "title": "Priority"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "description": { "type": "string", "title": "Description" },
+          "why_it_matters": { "type": "string", "title": "Why It Matters" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
+          "preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Preview"
+          },
+          "review": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingHumanReviewModel" },
+              { "type": "null" }
+            ]
+          },
+          "primary_action": { "$ref": "#/components/schemas/HomeAction" },
+          "secondary_action": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeAction" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "priority",
+          "title",
+          "description",
+          "why_it_matters",
+          "primary_action"
+        ],
+        "title": "HomeAttentionItem"
+      },
+      "HomeBriefing": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "window_started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window Started At"
+          },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" },
+          "routine_count": { "type": "integer", "title": "Routine Count" },
+          "outcomes": {
+            "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
+            "type": "array",
+            "title": "Outcomes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "window_started_at",
+          "completed_count",
+          "failed_count",
+          "routine_count",
+          "outcomes"
+        ],
+        "title": "HomeBriefing"
+      },
+      "HomeBriefingOutcome": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "status": {
+            "type": "string",
+            "enum": ["completed", "failed"],
+            "title": "Status"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "summary": { "type": "string", "title": "Summary" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "occurred_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Occurred At"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["id", "status", "title", "summary", "agent_name"],
+        "title": "HomeBriefingOutcome"
+      },
+      "HomeDailyActivity": {
+        "properties": {
+          "date": { "type": "string", "format": "date", "title": "Date" },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "review_count": { "type": "integer", "title": "Review Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" }
+        },
+        "type": "object",
+        "required": ["date", "completed_count", "review_count", "failed_count"],
+        "title": "HomeDailyActivity"
+      },
+      "HomeDashboardResponse": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "is_demo": { "type": "boolean", "title": "Is Demo" },
+          "attention": {
+            "items": { "$ref": "#/components/schemas/HomeAttentionItem" },
+            "type": "array",
+            "title": "Attention"
+          },
+          "briefing": { "$ref": "#/components/schemas/HomeBriefing" },
+          "active_tasks": {
+            "items": { "$ref": "#/components/schemas/HomeActiveTask" },
+            "type": "array",
+            "title": "Active Tasks"
+          },
+          "upcoming_tasks": {
+            "items": { "$ref": "#/components/schemas/HomeUpcomingTask" },
+            "type": "array",
+            "title": "Upcoming Tasks"
+          },
+          "team": { "$ref": "#/components/schemas/HomeTeamSummary" },
+          "agents": {
+            "items": { "$ref": "#/components/schemas/HomeAgentStatus" },
+            "type": "array",
+            "title": "Agents"
+          },
+          "week": { "$ref": "#/components/schemas/HomeWeekSummary" }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "timezone",
+          "is_demo",
+          "attention",
+          "briefing",
+          "active_tasks",
+          "upcoming_tasks",
+          "team",
+          "agents",
+          "week"
+        ],
+        "title": "HomeDashboardResponse"
+      },
+      "HomeExpert": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "role", "avatar_url"],
+        "title": "HomeExpert"
+      },
+      "HomeTeamSummary": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "ready": { "type": "integer", "title": "Ready" },
+          "working": { "type": "integer", "title": "Working" },
+          "needs_attention": { "type": "integer", "title": "Needs Attention" }
+        },
+        "type": "object",
+        "required": ["total", "ready", "working", "needs_attention"],
+        "title": "HomeTeamSummary"
+      },
+      "HomeUpcomingTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "kind": {
+            "type": "string",
+            "enum": ["agent", "followup"],
+            "title": "Kind"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "next_run_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Run Time"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title", "kind", "next_run_time"],
+        "title": "HomeUpcomingTask"
+      },
+      "HomeWeekSummary": {
+        "properties": {
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "review_count": { "type": "integer", "title": "Review Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" },
+          "total_runtime_seconds": {
+            "type": "number",
+            "title": "Total Runtime Seconds"
+          },
+          "timed_run_count": { "type": "integer", "title": "Timed Run Count" },
+          "total_cost_cents": {
+            "type": "integer",
+            "title": "Total Cost Cents"
+          },
+          "credits_balance": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Credits Balance"
+          },
+          "daily": {
+            "items": { "$ref": "#/components/schemas/HomeDailyActivity" },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_count",
+          "completed_count",
+          "review_count",
+          "failed_count",
+          "total_runtime_seconds",
+          "timed_run_count",
+          "total_cost_cents",
+          "credits_balance",
+          "daily"
+        ],
+        "title": "HomeWeekSummary"
       },
       "HostScopedCredentials": {
         "properties": {
