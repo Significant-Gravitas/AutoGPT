@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish the current dev commit to Docker Hub"
+        description: "Publish the current dev commit to Docker Hub (select dev as the ref)"
         required: true
         type: boolean
         default: false
@@ -28,6 +28,9 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
 
 jobs:
   build-and-scan:
@@ -71,7 +74,7 @@ jobs:
             *.platform=${{ matrix.platform }}
             backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
             backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
-            single-container.args.IMAGE_VERSION=${{ github.sha }}
+            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
             single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
             single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
@@ -109,10 +112,9 @@ jobs:
     name: Publish, smoke, and scan (${{ matrix.platform }})
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/dev' && needs.build-and-scan.result == 'success' }}
     needs: build-and-scan
+    environment: dockerhub-publish
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
-    env:
-      DEPLOY_IMAGE: ${{ secrets.DOCKER_USER }}/autogpt
     strategy:
       fail-fast: false
       matrix:
@@ -151,12 +153,12 @@ jobs:
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
-            backend-server.cache-from=type=gha,scope=platform-single-container-backend-publish-${{ matrix.suffix }}
-            backend-server.cache-to=type=gha,scope=platform-single-container-backend-publish-${{ matrix.suffix }},mode=max,ignore-error=true
+            backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
+            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
-            single-container.cache-from=type=gha,scope=platform-single-container-publish-${{ matrix.suffix }}
-            single-container.cache-to=type=gha,scope=platform-single-container-publish-${{ matrix.suffix }},mode=max,ignore-error=true
+            single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
+            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
             single-container.tags=${{ env.DEPLOY_IMAGE }}
             single-container.attest=type=provenance,mode=max
             single-container.attest=type=sbom
@@ -224,6 +226,7 @@ jobs:
           digest_hex="${DIGEST#sha256:}"
           [[ "$digest_hex" =~ ^[0-9a-f]{64}$ ]]
           mkdir -p "$DIGEST_DIR"
+          # Artifact names carry the platform and verified digest between jobs.
           touch "${DIGEST_DIR}/${PLATFORM_SUFFIX}-${digest_hex}"
 
       - name: Upload verified digest
@@ -237,12 +240,11 @@ jobs:
 
   publish-manifest:
     name: Publish multi-platform manifest
-    if: ${{ needs.publish-platform-digests.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/dev' && needs.publish-platform-digests.result == 'success' }}
     needs: publish-platform-digests
+    environment: dockerhub-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      DEPLOY_IMAGE: ${{ secrets.DOCKER_USER }}/autogpt
     steps:
       - name: Download verified digests
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
@@ -264,6 +266,23 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Verify Docker Hub repository is public
+        shell: bash
+        run: |
+          set -euo pipefail
+          repository_metadata="$(
+            curl --fail --silent --show-error --retry 5 --retry-all-errors \
+              https://hub.docker.com/v2/repositories/significantgravitas/autogpt/
+          )"
+          if ! jq -e '
+            .namespace == "significantgravitas"
+            and .name == "autogpt"
+            and .is_private == false
+          ' <<<"$repository_metadata" >/dev/null; then
+            echo "Docker Hub repository significantgravitas/autogpt must be public" >&2
+            exit 1
+          fi
+
       - name: Publish and verify manifest
         shell: bash
         env:
@@ -281,6 +300,7 @@ jobs:
           image_refs=()
           for digest_file in "${digest_files[@]}"; do
             descriptor="$(basename "$digest_file")"
+            # Producer writes <arch>-<digest>; reject any other cross-job input.
             if [[ ! "$descriptor" =~ ^(amd64|arm64)-([0-9a-f]{64})$ ]]; then
               echo "invalid digest artifact name: $descriptor" >&2
               exit 1
@@ -295,7 +315,19 @@ jobs:
             image_ref="${DEPLOY_IMAGE}@sha256:${digest_hex}"
             actual_platform="$(
               docker buildx imagetools inspect "$image_ref" --format '{{json .Image}}' |
-                jq -er '"\(.os)/\(.architecture)"'
+                jq -er '
+                  if has("os") and has("architecture") then
+                    "\(.os)/\(.architecture)"
+                  else
+                    to_entries
+                    | map(select(.value.os? != null and .value.architecture? != null))
+                    | if length == 1 then
+                        "\(.[0].value.os)/\(.[0].value.architecture)"
+                      else
+                        error("expected exactly one runnable platform")
+                      end
+                  end
+                '
             )"
             if [[ "$actual_platform" != "linux/${expected_arch}" ]]; then
               echo "$image_ref is $actual_platform, expected linux/${expected_arch}" >&2
@@ -340,6 +372,7 @@ jobs:
             echo "immutable tag resolved to an unexpected digest" >&2
             exit 1
           fi
+          # Attestations use unknown/unknown and are not runnable platforms.
           if ! docker buildx imagetools inspect --raw "$sha_ref" |
             jq -e '
               [
