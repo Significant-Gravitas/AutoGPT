@@ -59,7 +59,6 @@ def compose_home_dashboard(
     return HomeDashboardResponse(
         generated_at=now,
         timezone=timezone_name,
-        is_demo=False,
         attention=compose_attention_items(
             now=now,
             experts=hired,

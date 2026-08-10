@@ -111,7 +111,6 @@ class HomeWeekSummary(BaseModel):
 class HomeDashboardResponse(BaseModel):
     generated_at: datetime
     timezone: str
-    is_demo: bool
     attention: list[HomeAttentionItem]
     briefing: HomeBriefing
     active_tasks: list[HomeActiveTask]

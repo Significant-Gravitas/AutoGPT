@@ -38,7 +38,6 @@ def _dashboard() -> HomeDashboardResponse:
     return HomeDashboardResponse(
         generated_at=NOW,
         timezone="UTC",
-        is_demo=False,
         attention=[
             HomeAttentionItem(
                 id="approval-node",
