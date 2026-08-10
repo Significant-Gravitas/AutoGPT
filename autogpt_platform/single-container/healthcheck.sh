@@ -19,7 +19,7 @@ main() {
 
 check_supervised_processes() {
   local programs=(
-    fatal-exit postgres valkey-0 valkey-1 valkey-2 rabbitmq falkordb clamd freshclam clamav-logs
+    fatal-exit postgres valkey-0 valkey-1 valkey-2 rabbitmq falkordb
     database-manager scheduler batch-executor notification executor
     copilot-executor copilot-bot platform-linking-manager websocket rest next nginx
     watchdog
@@ -47,9 +47,6 @@ check_infrastructure() {
     --password-env RABBITMQ_DEFAULT_PASS
   "${PROBE[@]}" redis --port 6380 \
     --password-env GRAPHITI_FALKORDB_PASSWORD
-  if [[ "${AUTOGPT_ENABLE_CLAMAV:-true}" == true ]]; then
-    "${PROBE[@]}" clam --port 3310
-  fi
 }
 
 check_application_services() {

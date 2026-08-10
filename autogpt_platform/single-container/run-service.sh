@@ -23,19 +23,6 @@ case "${service}" in
   falkordb)
     exec /opt/falkordb/redis-server "${AUTOGPT_RUNTIME_DIR}/falkordb.conf"
     ;;
-  clamd)
-    if [[ "${AUTOGPT_ENABLE_CLAMAV:-true}" == false ]]; then
-      exec "${AUTOGPT_ASSET_DIR}/disabled-service.sh" clamd
-    fi
-    exec clamd --foreground=true --config-file="${AUTOGPT_ASSET_DIR}/clamav/clamd.conf"
-    ;;
-  freshclam)
-    if [[ "${AUTOGPT_ENABLE_CLAMAV:-true}" == false ]]; then
-      exec "${AUTOGPT_ASSET_DIR}/disabled-service.sh" freshclam
-    fi
-    exec freshclam --daemon --foreground \
-      --config-file="${AUTOGPT_ASSET_DIR}/clamav/freshclam.conf"
-    ;;
   *)
     fatal "unknown bundled service: ${service:-<empty>}"
     ;;

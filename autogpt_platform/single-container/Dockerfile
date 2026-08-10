@@ -47,10 +47,6 @@ FROM rabbitmq:4.1.8@sha256:b921426eabfb39e201c60f0623f6b45a3160cf97b2dc3af2f5340
 # its browser UI is not part of the appliance image.
 FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS falkordb
 
-# Seed ClamAV's persistent signature volume so a cold start can scan before the
-# first network refresh completes. Runtime binaries come from Debian packages.
-FROM clamav/clamav-debian:1.5.1@sha256:c102cd8fffe36fb27808a714f2d9c977e28549b3aae1ea0de7d7ac7814f8ded7 AS clamav-seed
-
 # autogpt-backend is supplied by Docker Bake from the existing backend
 # Dockerfile's server target. This keeps the backend image contract independent
 # from the opt-in single-container distribution.
@@ -96,8 +92,6 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
     && chmod 0755 /usr/sbin/policy-rc.d \
     && groupadd --system --gid 102 postgres \
     && useradd --system --uid 100 --gid postgres --home-dir /var/lib/postgresql --shell /bin/bash postgres \
-    && groupadd --system --gid 104 clamav \
-    && useradd --system --uid 102 --gid clamav --home-dir /var/lib/clamav --shell /bin/false clamav \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -113,10 +107,6 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
-        clamav \
-        clamav-daemon \
-        clamav-freshclam \
-        clamdscan \
         libgomp1 \
         netcat-openbsd \
         nginx \
@@ -140,8 +130,7 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
     && test -x /usr/bin/setpriv \
     && test -z "$(find /etc/ssl/certs -maxdepth 1 -type l \
         -lname '*ssl-cert-snakeoil.pem' -print -quit)" \
-    && rm -rf /var/lib/apt/lists/* /var/lib/postgresql/15/main \
-    && find /var/lib/clamav -mindepth 1 -maxdepth 1 -delete
+    && rm -rf /var/lib/apt/lists/* /var/lib/postgresql/15/main
 
 # Node 24 is required by the frontend. Backend Prisma and agent-browser also
 # use this binary through PATH; their npm packages remain from the server stage.
@@ -158,9 +147,6 @@ COPY --from=rabbitmq /opt/rabbitmq /opt/rabbitmq
 # FalkorDB server only (no bundled Browser UI).
 COPY --from=falkordb /usr/local/bin/redis-server /opt/falkordb/redis-server
 COPY --from=falkordb /var/lib/falkordb/bin/falkordb.so /opt/falkordb/falkordb.so
-
-# Cold-start antivirus definitions. entrypoint copies these into /data once.
-COPY --from=clamav-seed --chown=102:104 /var/lib/clamav /opt/clamav-seed
 
 # Next standalone server and immutable assets.
 COPY --from=frontend /app/.next/standalone /app/frontend
@@ -191,7 +177,6 @@ COPY autogpt_platform/single-container/bootstrap.sh \
      autogpt_platform/single-container/runtime_config.py \
      autogpt_platform/single-container/watchdog.sh \
      /opt/autogpt/single-container/
-COPY autogpt_platform/single-container/clamav /opt/autogpt/single-container/clamav
 COPY autogpt_platform/single-container/nginx /opt/autogpt/single-container/nginx
 COPY autogpt_platform/single-container/python /opt/autogpt/single-container/python
 COPY autogpt_platform/single-container/rabbitmq /opt/autogpt/single-container/rabbitmq
