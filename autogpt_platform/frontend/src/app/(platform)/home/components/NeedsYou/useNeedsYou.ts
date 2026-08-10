@@ -9,10 +9,9 @@ interface Args {
   items: HomeAttentionItem[];
 }
 
-export const ATTENTION_FILTER_LABELS: Record<
-  "all" | HomeAttentionItem["kind"],
-  string
-> = {
+type AttentionFilter = "all" | HomeAttentionItem["kind"];
+
+const FILTER_LABELS: Partial<Record<AttentionFilter, string>> = {
   all: "All",
   approval: "Approvals",
   setup: "Setup",
@@ -90,13 +89,9 @@ export function useNeedsYou({ items }: Args) {
   return {
     filteredItems,
     visibleItems,
-    filterOptions: [
-      { value: "all", label: ATTENTION_FILTER_LABELS.all },
-      ...filterKinds.map((kind) => ({
-        value: kind,
-        label: ATTENTION_FILTER_LABELS[kind],
-      })),
-    ],
+    filterOptions: (["all", ...filterKinds] as AttentionFilter[]).map(
+      (value) => ({ value, label: FILTER_LABELS[value] ?? value }),
+    ),
     hasFilters: filterKinds.length > 1,
     selectedKind,
     selectKind,

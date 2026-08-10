@@ -5,7 +5,7 @@ import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBri
 
 export type BriefingFilter = "all" | HomeBriefingOutcome["status"];
 
-export const BRIEFING_FILTER_LABELS: Record<BriefingFilter, string> = {
+const FILTER_LABELS: Partial<Record<BriefingFilter, string>> = {
   all: "All",
   completed: "Completed",
   failed: "Failed",
@@ -30,13 +30,9 @@ export function useMorningBriefing({
       : outcomes.filter((outcome) => outcome.status === selectedFilter);
 
   return {
-    filterOptions: [
-      { value: "all", label: BRIEFING_FILTER_LABELS.all },
-      ...filterStatuses.map((status) => ({
-        value: status,
-        label: BRIEFING_FILTER_LABELS[status],
-      })),
-    ],
+    filterOptions: (["all", ...filterStatuses] as BriefingFilter[]).map(
+      (value) => ({ value, label: FILTER_LABELS[value] ?? value }),
+    ),
     hasFilters: filterStatuses.length > 1,
     selectedFilter,
     selectFilter: setActiveFilter,

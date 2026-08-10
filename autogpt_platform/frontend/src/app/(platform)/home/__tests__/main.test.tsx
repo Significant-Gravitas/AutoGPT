@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, expect, test, vi } from "vitest";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
+import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
@@ -305,6 +306,35 @@ test("filters briefing outcomes by their real status", async () => {
     screen.getByText("Learning sessions could not be scheduled"),
   ).toBeDefined();
   expect(screen.queryByText("Your camera research is ready")).toBeNull();
+});
+
+test("labels a filter option for an unrecognised briefing status", async () => {
+  const user = userEvent.setup();
+  mockDashboard({
+    ...dashboard,
+    briefing: {
+      ...dashboard.briefing,
+      outcomes: [
+        dashboard.briefing.outcomes[0],
+        {
+          ...dashboard.briefing.outcomes[1],
+          status: "cancelled" as HomeBriefingOutcome["status"],
+        },
+      ],
+    },
+  });
+
+  render(<HomePage />);
+
+  await user.click(
+    await screen.findByRole("button", {
+      name: "Filter briefing outcomes: All",
+    }),
+  );
+
+  expect(
+    screen.getByRole("menuitemradio", { name: "cancelled" }),
+  ).toBeDefined();
 });
 
 test("shows a retryable page error when the aggregate cannot load", async () => {
