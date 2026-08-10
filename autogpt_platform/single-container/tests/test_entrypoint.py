@@ -14,33 +14,28 @@ SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
 
 
 class AccountRegistrationTest(unittest.TestCase):
-    def test_defaults_open_for_loopback_origins(self) -> None:
+    def test_defaults_closed_for_all_origins(self) -> None:
         for public_url in (
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://[::1]:3000",
+            "https://autogpt.example.com",
         ):
-            with self.subTest(public_url=public_url):
-                result = self._configure(public_url)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout, "true\n")
-
-    def test_defaults_closed_for_remote_origin(self) -> None:
-        for allow_new_accounts in (None, ""):
-            with self.subTest(allow_new_accounts=allow_new_accounts):
-                result = self._configure(
-                    "https://autogpt.example.com",
+            for allow_new_accounts in (None, ""):
+                with self.subTest(
+                    public_url=public_url,
                     allow_new_accounts=allow_new_accounts,
-                )
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout, "false\n")
+                ):
+                    result = self._configure(public_url, allow_new_accounts)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, "false\n")
 
     def test_remote_signup_requires_explicit_opt_in(self) -> None:
         result = self._configure(
             "https://autogpt.example.com", allow_new_accounts="true"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("explicitly enabled", result.stdout)
+        self.assertIn("open account registration is enabled", result.stdout)
         self.assertTrue(result.stdout.endswith("true\n"))
 
     def test_explicit_false_overrides_loopback_default(self) -> None:
@@ -92,7 +87,7 @@ class NormalizationTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(error, result.stderr)
 
-    def test_rejects_invalid_and_unsupported_toggles(self) -> None:
+    def test_rejects_invalid_toggle(self) -> None:
         invalid = self._run(
             'AUTOGPT_ENABLE_CLAMAV="$2"; normalize_toggle AUTOGPT_ENABLE_CLAMAV true',
             "yes",
@@ -100,9 +95,14 @@ class NormalizationTest(unittest.TestCase):
         self.assertNotEqual(invalid.returncode, 0)
         self.assertIn("must be true or false", invalid.stderr)
 
-        unsupported = self._run("normalize_toggle UNKNOWN_TOGGLE true", "")
-        self.assertNotEqual(unsupported.returncode, 0)
-        self.assertIn("unsupported toggle", unsupported.stderr)
+    def test_normalizes_named_toggle(self) -> None:
+        result = self._run(
+            'CUSTOM_TOGGLE="$2"; normalize_toggle CUSTOM_TOGGLE false; '
+            'printf "%s\\n" "$CUSTOM_TOGGLE"',
+            "true",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "true\n")
 
     def _run(self, expression: str, value: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(

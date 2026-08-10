@@ -33,6 +33,8 @@ from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
@@ -56,7 +58,12 @@ api_comm_max_wait = config.pyro_client_max_wait
 
 INTERNAL_SERVICE_TOKEN_ENV = "AUTOGPT_INTERNAL_SERVICE_TOKEN"
 INTERNAL_SERVICE_TOKEN_HEADER = "X-AutoGPT-Internal-Token"
-UNAUTHENTICATED_INTERNAL_PATHS = frozenset({"/health_check", "/health_check_async"})
+INTERNAL_HEALTH_CHECK_PATH = "/health_check"
+INTERNAL_ASYNC_HEALTH_CHECK_PATH = "/health_check_async"
+INTERNAL_METRICS_PATH = "/metrics"
+UNAUTHENTICATED_INTERNAL_PATHS = frozenset(
+    {INTERNAL_HEALTH_CHECK_PATH, INTERNAL_ASYNC_HEALTH_CHECK_PATH}
+)
 
 
 def _internal_service_headers() -> dict[str, str]:
@@ -64,21 +71,27 @@ def _internal_service_headers() -> dict[str, str]:
     return {INTERNAL_SERVICE_TOKEN_HEADER: token} if token else {}
 
 
-def _build_internal_service_auth_middleware(expected_token: str):
-    async def authenticate(request: Request, call_next):
-        if request.url.path in UNAUTHENTICATED_INTERNAL_PATHS:
-            return await call_next(request)
+class _InternalServiceAuthMiddleware:
+    """Authenticate internal AppService RPC traffic at the ASGI boundary."""
 
-        provided_token = request.headers.get(INTERNAL_SERVICE_TOKEN_HEADER, "")
-        if not hmac.compare_digest(
-            provided_token.encode("utf-8"), expected_token.encode("utf-8")
-        ):
-            return responses.JSONResponse(
+    def __init__(self, app: ASGIApp, expected_token: str) -> None:
+        self.app = app
+        self.expected_token = expected_token.encode("utf-8")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["path"] in UNAUTHENTICATED_INTERNAL_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        provided_token = Headers(scope=scope).get(INTERNAL_SERVICE_TOKEN_HEADER, "")
+        if not hmac.compare_digest(provided_token.encode("utf-8"), self.expected_token):
+            response = responses.JSONResponse(
                 status_code=401, content={"detail": "Unauthorized"}
             )
-        return await call_next(request)
+            await response(scope, receive, send)
+            return
 
-    return authenticate
+        await self.app(scope, receive, send)
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -486,17 +499,21 @@ class AppService(BaseAppService, ABC):
 
         self.fastapi_app = FastAPI(lifespan=self.lifespan)
         if internal_service_token := os.environ.get(INTERNAL_SERVICE_TOKEN_ENV):
-            self.fastapi_app.middleware("http")(
-                _build_internal_service_auth_middleware(internal_service_token)
+            # AppService exposes internal RPC only; public REST and WebSocket apps
+            # are constructed separately and do not install this middleware.
+            self.fastapi_app.add_middleware(
+                _InternalServiceAuthMiddleware,
+                expected_token=internal_service_token,
             )
 
-        # Add Prometheus instrumentation to all services
+        # Metrics stay authenticated when the token is enabled; internal scrapers
+        # must send the same header as RPC clients.
         try:
             instrument_fastapi(
                 self.fastapi_app,
                 service_name=self.service_name,
                 expose_endpoint=True,
-                endpoint="/metrics",
+                endpoint=INTERNAL_METRICS_PATH,
                 include_in_schema=False,
             )
         except ImportError:
@@ -518,10 +535,14 @@ class AppService(BaseAppService, ABC):
                     methods=["POST"],
                 )
         self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST", "GET"]
+            INTERNAL_HEALTH_CHECK_PATH,
+            self.health_check,
+            methods=["POST", "GET"],
         )
         self.fastapi_app.add_api_route(
-            "/health_check_async", self.health_check, methods=["POST", "GET"]
+            INTERNAL_ASYNC_HEALTH_CHECK_PATH,
+            self.health_check,
+            methods=["POST", "GET"],
         )
         self.fastapi_app.add_exception_handler(
             ValueError, self._handle_internal_http_error(400)

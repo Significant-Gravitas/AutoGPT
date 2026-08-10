@@ -4,30 +4,40 @@ import time
 from datetime import datetime, timezone
 from functools import cached_property
 from typing import Any, Protocol, cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 
 import httpx
 import orjson
 import pytest
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import TypeAdapter
+from starlette.responses import Response
+from starlette.types import Receive, Scope, Send
 
 from backend.data.model import User
 from backend.util.exceptions import GraphValidationError
 from backend.util.service import (
+    INTERNAL_ASYNC_HEALTH_CHECK_PATH,
+    INTERNAL_HEALTH_CHECK_PATH,
+    INTERNAL_METRICS_PATH,
     AppService,
     AppServiceClient,
     HTTPClientError,
     HTTPServerError,
     RemoteCallError,
-    _build_internal_service_auth_middleware,
     _internal_service_headers,
+    _InternalServiceAuthMiddleware,
     endpoint_to_async,
     expose,
     get_service_client,
 )
 
 TEST_SERVICE_PORT = 8765
+
+
+async def _ok_asgi_app(scope: Scope, receive: Receive, send: Send) -> None:
+    response = Response(status_code=200)
+    await response(scope, receive, send)
 
 
 class _SupportsGetReturn(Protocol):
@@ -123,37 +133,53 @@ def test_internal_service_clients_send_configured_token(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_internal_service_middleware_requires_token() -> None:
-    middleware = _build_internal_service_auth_middleware("expected-token")
-    call_next = AsyncMock(return_value="allowed")
+    middleware = _InternalServiceAuthMiddleware(_ok_asgi_app, "expected-token")
+    transport = httpx.ASGITransport(app=middleware)
 
-    request = Mock()
-    request.url.path = "/get_user_credentials"
-    request.headers = {}
-    response = await middleware(request, call_next)
-    assert response.status_code == 401
-    call_next.assert_not_awaited()
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/get_user_credentials")
+        assert response.status_code == 401
 
-    request.headers = {"X-AutoGPT-Internal-Token": "expected-token"}
-    assert await middleware(request, call_next) == "allowed"
-    call_next.assert_awaited_once_with(request)
+        response = await client.post(
+            "/get_user_credentials",
+            headers={"x-autogpt-internal-token": "expected-token"},
+        )
+        assert response.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_internal_service_health_remains_unauthenticated() -> None:
-    middleware = _build_internal_service_auth_middleware("expected-token")
-    call_next = AsyncMock(return_value="healthy")
-    request = Mock()
-    request.url.path = "/health_check"
-    request.headers = {}
+@pytest.mark.parametrize(
+    "path", [INTERNAL_HEALTH_CHECK_PATH, INTERNAL_ASYNC_HEALTH_CHECK_PATH]
+)
+async def test_internal_service_health_remains_unauthenticated(path: str) -> None:
+    transport = httpx.ASGITransport(
+        app=_InternalServiceAuthMiddleware(_ok_asgi_app, "expected-token")
+    )
 
-    assert await middleware(request, call_next) == "healthy"
-    call_next.assert_awaited_once_with(request)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        assert (await client.get(path)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_internal_service_metrics_require_token() -> None:
+    transport = httpx.ASGITransport(
+        app=_InternalServiceAuthMiddleware(_ok_asgi_app, "expected-token")
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        assert (await client.get(INTERNAL_METRICS_PATH)).status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_service_creation_with_internal_auth(server, monkeypatch):
     monkeypatch.setenv("AUTOGPT_INTERNAL_SERVICE_TOKEN", "test-internal-token")
     with ServiceTest():
+        response = httpx.post(
+            f"http://{ServiceTest.get_host()}:{ServiceTest.get_port()}/add",
+            json={"a": 5, "b": 3},
+        )
+        assert response.status_code == 401
+
         client = get_service_client(ServiceTestClient)
         assert client.add(5, 3) == 8
         assert client.subtract(10, 4) == 6

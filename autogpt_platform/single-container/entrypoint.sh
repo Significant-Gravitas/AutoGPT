@@ -173,14 +173,9 @@ configure_environment() {
 }
 
 configure_account_registration() {
-  local loopback_origin_pattern='^https?://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?$'
-  local default=false
-  if [[ "${AUTOGPT_PUBLIC_URL}" =~ ${loopback_origin_pattern} ]]; then
-    default=true
-  fi
-  normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS "${default}"
-  if [[ "${AUTH_ALLOW_NEW_ACCOUNTS}" == true && "${default}" == false ]]; then
-    log "WARNING: open account registration was explicitly enabled for a non-loopback public URL"
+  normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS false
+  if [[ "${AUTH_ALLOW_NEW_ACCOUNTS}" == true ]]; then
+    log "WARNING: open account registration is enabled; disable it after creating the intended accounts"
   fi
 }
 
@@ -218,21 +213,8 @@ normalize_toggle() {
     true | false) ;;
     *) fatal "${name} must be true or false" ;;
   esac
-  case "${name}" in
-    AUTOGPT_ENABLE_CLAMAV)
-      AUTOGPT_ENABLE_CLAMAV="${value}"
-      export AUTOGPT_ENABLE_CLAMAV
-      ;;
-    AUTOGPT_ENABLE_BOT_SERVICES)
-      AUTOGPT_ENABLE_BOT_SERVICES="${value}"
-      export AUTOGPT_ENABLE_BOT_SERVICES
-      ;;
-    AUTH_ALLOW_NEW_ACCOUNTS)
-      AUTH_ALLOW_NEW_ACCOUNTS="${value}"
-      export AUTH_ALLOW_NEW_ACCOUNTS
-      ;;
-    *) fatal "unsupported toggle: ${name}" ;;
-  esac
+  printf -v "${name}" '%s' "${value}"
+  export "${name?}"
 }
 
 initialize_postgres() {

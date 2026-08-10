@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import importlib.util
 import io
+import re
 import stat
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 MODULE_PATH = Path(__file__).parents[1] / "runtime_config.py"
+COMMON_PATH = Path(__file__).parents[1] / "common.sh"
 SPEC = importlib.util.spec_from_file_location(
     "single_container_runtime_config", MODULE_PATH
 )
@@ -27,6 +29,25 @@ LISTENER_SPEC.loader.exec_module(fatal_listener)
 
 
 class RuntimeConfigTest(unittest.TestCase):
+    def test_shell_loader_allowlist_matches_generated_runtime_keys(self) -> None:
+        common = COMMON_PATH.read_text(encoding="utf-8")
+        match = re.search(
+            r'case "\$\{name\}" in\s+(?P<keys>[A-Z0-9_ |]+)\)\s+'
+            r'export "\$\{name\}=\$\{value\}"',
+            common,
+        )
+        self.assertIsNotNone(match)
+        assert match is not None
+        shell_keys = {name.strip() for name in match.group("keys").split("|")}
+        with tempfile.TemporaryDirectory() as directory:
+            generated_keys = set(
+                runtime_config.ensure_runtime_config(
+                    Path(directory) / "runtime.env", {}
+                )
+            )
+
+        self.assertEqual(shell_keys, generated_keys)
+
     def test_first_boot_generates_complete_private_config_and_reuses_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "runtime.env"
