@@ -18790,6 +18790,11 @@
             "title": "Greeting Done",
             "default": false
           },
+          "greeting_pending": {
+            "type": "boolean",
+            "title": "Greeting Pending",
+            "default": false
+          },
           "transcript": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Transcript"

@@ -687,6 +687,22 @@ async def get_user_session_count(
     return rows[0]["count"] if rows else 0
 
 
+async def user_has_any_session(user_id: str) -> bool:
+    """Whether the user has at least one visible chat session.
+
+    The presence-only counterpart to :func:`get_user_session_count`, for
+    callers that only compare the total against zero: it stops at the
+    first matching row instead of scanning every session the user owns.
+    """
+    rows = await db.query_raw_with_schema(
+        'SELECT 1 FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
+        + _EXCLUDE_DREAM_SESSIONS_SQL
+        + " LIMIT 1",
+        user_id,
+    )
+    return bool(rows)
+
+
 def _escape_like(value: str) -> str:
     """Escape LIKE wildcards so ``title_contains`` matches literally.
 

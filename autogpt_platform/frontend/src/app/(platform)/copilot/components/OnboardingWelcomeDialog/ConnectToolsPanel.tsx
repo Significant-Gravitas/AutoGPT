@@ -40,6 +40,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
     setQuery,
     providers,
     recommendedProviders,
+    isPersonalized,
     isLoading,
     isError,
     error,
@@ -175,7 +176,9 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                   ) : recommendedProviders.length > 0 ? (
                     <div className="flex flex-col gap-2">
                       <span className="text-xs font-medium text-violet-600">
-                        Recommended from our conversation
+                        {isPersonalized
+                          ? "Recommended from our conversation"
+                          : "Popular places to start"}
                       </span>
                       <ul className="grid grid-cols-2 gap-2">
                         {recommendedProviders.map((provider) => (
