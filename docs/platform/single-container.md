@@ -421,7 +421,15 @@ docker run --detach --name autogpt-restore-test \
 Wait for the isolated copy to become healthy:
 
 ```bash
-docker exec autogpt-restore-test autogpt-healthcheck
+attempt=0
+until docker exec autogpt-restore-test autogpt-healthcheck; do
+  attempt=$((attempt + 1))
+  if ((attempt >= 60)); then
+    echo "Restore test did not become healthy within 10 minutes" >&2
+    exit 1
+  fi
+  sleep 10
+done
 ```
 
 This no-egress check cannot validate browser login or external integrations.
