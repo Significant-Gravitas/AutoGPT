@@ -1,8 +1,9 @@
 # Run AutoGPT in one Docker container (Experimental)
 
 !!! warning
-    The single-container image is intended for local evaluation and
-    single-host self-hosting. It is not a highly available deployment.
+    This distribution is experimental and may receive breaking operational
+    changes. It is intended for local evaluation and single-host self-hosting,
+    with no high-availability or zero-downtime guarantee.
 
 The image packages the AutoGPT Platform frontend and backend together with
 PostgreSQL, a three-node Valkey cluster, RabbitMQ, ClamAV, nginx, and FalkorDB.
@@ -59,8 +60,11 @@ AUTH_SIGNUP_ALLOWLIST=owner@example.com
 Replace `owner@example.com` with the intended first account. Signup is closed
 by default; the temporary allowlist avoids opening registration to every email
 address during bootstrap. These loopback HTTP values are only for local
-evaluation. Use an HTTPS origin for LAN or remote access. Provider settings
-are covered in [Models and memory](#models-and-memory).
+evaluation. Use an HTTPS origin for LAN or remote access.
+
+Before starting, choose a provider profile from
+[Models and memory](#models-and-memory) and add it to the same file. The UI can
+boot without a provider, but AutoPilot and memory model calls cannot work.
 
 Start the appliance:
 
@@ -158,7 +162,7 @@ To allow only selected accounts during provisioning, set both variables:
 
 ```dotenv
 AUTH_ALLOW_NEW_ACCOUNTS=true
-AUTH_SIGNUP_ALLOWLIST=owner@example.com,@example.org
+AUTH_SIGNUP_ALLOWLIST=owner@example.com
 ```
 
 The allowlist accepts exact email addresses and entries beginning with `@` for
@@ -167,6 +171,9 @@ login because both create an account. Prefer exact addresses; use a domain
 entry only for a domain you fully control, then narrow the list after
 bootstrap. Setting `AUTH_ALLOW_NEW_ACCOUNTS=false` blocks all new accounts
 regardless of the allowlist.
+
+Fresh installations should keep `AUTOGPT_ENABLE_LEGACY_AUTH=false`. Enable it
+only when intentionally migrating an existing legacy symmetric-JWT setup.
 
 Required email verification is not supported by this image and intentionally
 stops startup if enabled. Keep:
@@ -213,7 +220,7 @@ OPENAI_API_KEY=YOUR_OPENAI_KEY
 Both keys are needed for the complete memory path. `OPENAI_API_KEY` alone does
 not select direct OpenAI routing for AutoPilot.
 
-### Direct Anthropic
+### Anthropic chat with remote memory
 
 To route AutoPilot directly to Anthropic:
 
@@ -238,6 +245,11 @@ model on the Docker host:
 ollama pull hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ollama pull nomic-embed-text
 ```
+
+The chat model and exact `Q4_K_M` artifact are published in the
+[Unsloth Qwen3.5-4B-GGUF repository](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/tree/main).
+Keep the model identifier in the pull command and environment setting
+identical.
 
 Then set:
 
@@ -396,7 +408,6 @@ container:
 
 ```bash
 docker run --detach --name autogpt-restore-test \
-  --restart unless-stopped \
   --stop-timeout 360 \
   --shm-size 2g \
   --env-file autogpt_platform/single-container/.env \
