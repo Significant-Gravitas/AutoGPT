@@ -1036,7 +1036,12 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
     # turn's line carries it. Without this guard every user line of the whole
     # transcript is json.loads()-ed and Pydantic-validated on every turn —
     # O(transcript) per turn, i.e. quadratic over a long session.
-    marker = _INJECTED_MEMORY_MARKER.encode()
+    #
+    # Probe on the bare NONCE, not the full marker: the marker embeds quotes
+    # (``data-agpt-injected="…"``) which JSON-encode to ``\"`` in the raw
+    # line, so a full-marker substring test never matches. The nonce is
+    # hex — unchanged by JSON escaping.
+    marker = _INJECTED_MEMORY_NONCE.encode()
     out: list[bytes] = []
     for line in content.splitlines(keepends=True):
         stripped = line.strip()
