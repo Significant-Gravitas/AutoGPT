@@ -1085,10 +1085,12 @@ async def add_store_agent_to_library(
         f"Adding agent from store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
-    graph_model = await resolve_graph_for_library(
+    graph_model, marketplace_image_url = await resolve_graph_for_library(
         store_listing_version_id, user_id, admin=False
     )
-    return await add_graph_to_library(store_listing_version_id, graph_model, user_id)
+    return await add_graph_to_library(
+        graph_model, user_id, marketplace_image_url=marketplace_image_url
+    )
 
 
 async def add_store_agent_to_library_as_admin(
@@ -1102,10 +1104,12 @@ async def add_store_agent_to_library_as_admin(
         f"ADMIN adding agent from store listing version "
         f"#{store_listing_version_id} to library for user #{user_id}"
     )
-    graph_model = await resolve_graph_for_library(
+    graph_model, marketplace_image_url = await resolve_graph_for_library(
         store_listing_version_id, user_id, admin=True
     )
-    return await add_graph_to_library(store_listing_version_id, graph_model, user_id)
+    return await add_graph_to_library(
+        graph_model, user_id, marketplace_image_url=marketplace_image_url
+    )
 
 
 ##############################################

@@ -229,6 +229,7 @@ async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
 
     mock_slv = MagicMock()
     mock_slv.AgentGraph = MagicMock(id=GRAPH_ID, version=GRAPH_VERSION)
+    mock_slv.imageUrls = []
     mock_graph_model = MagicMock(name="GraphModel")
 
     with (
@@ -249,9 +250,11 @@ async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
     ):
         mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
 
-        result = await resolve_graph_for_library(SLV_ID, ADMIN_USER_ID, admin=True)
+        graph_model, _ = await resolve_graph_for_library(
+            SLV_ID, ADMIN_USER_ID, admin=True
+        )
 
-    assert result is mock_graph_model
+    assert graph_model is mock_graph_model
     mock_admin.assert_awaited_once_with(
         graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID
     )
@@ -266,6 +269,7 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
 
     mock_slv = MagicMock()
     mock_slv.AgentGraph = MagicMock(id=GRAPH_ID, version=GRAPH_VERSION)
+    mock_slv.imageUrls = []
     mock_graph_model = MagicMock(name="GraphModel")
 
     with (
@@ -286,9 +290,11 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
     ):
         mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
 
-        result = await resolve_graph_for_library(SLV_ID, "regular-user-id", admin=False)
+        graph_model, _ = await resolve_graph_for_library(
+            SLV_ID, "regular-user-id", admin=False
+        )
 
-    assert result is mock_graph_model
+    assert graph_model is mock_graph_model
     mock_regular.assert_awaited_once_with(
         graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id="regular-user-id"
     )

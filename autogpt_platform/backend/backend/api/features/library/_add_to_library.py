@@ -27,11 +27,14 @@ async def resolve_graph_for_library(
     user_id: str,
     *,
     admin: bool,
-) -> GraphModel:
+) -> tuple[GraphModel, str | None]:
     """Look up a StoreListingVersion and resolve its graph.
 
     When ``admin=True``, uses ``get_graph_as_admin`` to bypass the marketplace
     APPROVED-only check.  Otherwise uses the regular ``get_graph``.
+
+    Also returns the listing's marketplace image (issue #9879), extracted
+    from this same lookup rather than a second query.
     """
     slv = await prisma.models.StoreListingVersion.prisma().find_unique(
         where={"id": store_listing_version_id}, include={"AgentGraph": True}
@@ -53,30 +56,21 @@ async def resolve_graph_for_library(
 
     if not graph_model:
         raise NotFoundError(f"Graph #{ag.id} v{ag.version} not found or accessible")
-    return graph_model
+    return graph_model, _extract_marketplace_image_url(slv)
 
 
-async def _fetch_marketplace_image_url(
-    store_listing_version_id: str,
+def _extract_marketplace_image_url(
+    slv: prisma.models.StoreListingVersion,
 ) -> str | None:
-    """Return the first marketplace image for a store listing version, if any.
-
-    The marketplace stores its artwork on ``StoreListingVersion.imageUrls``.
-    Downloading an agent should carry that image over to the user's library
-    entry (issue #9879); returns ``None`` when the listing has no images.
-    """
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}
-    )
-    if slv and slv.imageUrls:
-        return slv.imageUrls[0]
-    return None
+    """Return the first marketplace image on an already-fetched listing, if any."""
+    return slv.imageUrls[0] if slv.imageUrls else None
 
 
 async def add_graph_to_library(
-    store_listing_version_id: str,
     graph_model: GraphModel,
     user_id: str,
+    *,
+    marketplace_image_url: str | None = None,
 ) -> library_model.LibraryAgent:
     """Check existing / restore soft-deleted / create new LibraryAgent.
 
@@ -88,13 +82,6 @@ async def add_graph_to_library(
     settings_json = SafeJson(GraphSettings.from_graph(graph_model).model_dump())
     _include = library_agent_include(
         user_id, include_nodes=False, include_executions=False
-    )
-
-    # Carry the marketplace image over to the library so the downloaded agent
-    # shows the same artwork it had on the marketplace, rather than no image.
-    # See issue #9879.
-    marketplace_image_url = await _fetch_marketplace_image_url(
-        store_listing_version_id
     )
 
     try:
@@ -146,7 +133,6 @@ async def add_graph_to_library(
 
     logger.debug(
         f"Added graph #{graph_model.id} v{graph_model.version} "
-        f"for store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
     schedule_info = await _fetch_schedule_info(user_id, graph_id=graph_model.id)
