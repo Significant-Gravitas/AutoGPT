@@ -5,6 +5,8 @@ import fastapi.testclient
 import pytest
 
 from backend.api.features.v1 import v1_router
+from backend.data import onboarding as onboarding_module
+from backend.data.model import UserOnboarding
 from backend.data.onboarding import OnboardingStep
 
 app = fastapi.FastAPI()
@@ -107,9 +109,6 @@ def test_complete_step_rejects_rewarded_backend_only_steps(step, mocker):
 async def test_tab_intro_steps_grant_no_reward(step, mocker):
     # The tab intros are client-writable, so "unrewarded" has to be enforced
     # rather than documented: posting one must never reach the credit model.
-    from backend.data import onboarding as onboarding_module
-    from backend.data.model import UserOnboarding
-
     mock_credit_model = mocker.patch.object(
         onboarding_module,
         "get_user_credit_model",
@@ -126,8 +125,6 @@ async def test_tab_intro_steps_grant_no_reward(step, mocker):
 
 
 def test_is_onboarding_completed_true_when_complete_step_present(mocker):
-    from backend.data.model import UserOnboarding
-
     mock_get = mocker.patch(
         "backend.api.features.v1.get_user_onboarding",
         new_callable=AsyncMock,
@@ -143,8 +140,6 @@ def test_is_onboarding_completed_true_when_complete_step_present(mocker):
 
 
 def test_is_onboarding_completed_false_without_complete_step(mocker):
-    from backend.data.model import UserOnboarding
-
     mock_get = mocker.patch(
         "backend.api.features.v1.get_user_onboarding",
         new_callable=AsyncMock,
@@ -160,8 +155,6 @@ def test_is_onboarding_completed_false_without_complete_step(mocker):
 
 
 def test_user_onboarding_response_model_accepts_deprecated_stored_values():
-    from backend.data.model import UserOnboarding
-
     # Deprecated steps stay in OnboardingStep forever: existing rows still
     # contain them and the strict ``list[OnboardingStep]`` response model would
     # 500 reads otherwise. This validates (no ``model_construct``) so it fails
@@ -206,9 +199,6 @@ def test_update_onboarding_rejects_invalid_notified_step(mocker):
 
 @pytest.mark.asyncio
 async def test_update_user_onboarding_merges_notified_as_plain_strings(mocker):
-    from backend.data import onboarding as onboarding_module
-    from backend.data.model import UserOnboarding
-
     mocker.patch.object(
         onboarding_module,
         "get_user_onboarding",
