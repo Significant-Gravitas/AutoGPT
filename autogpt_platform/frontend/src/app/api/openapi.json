@@ -9414,7 +9414,10 @@
                 "CONGRATS",
                 "ONBOARDING_COMPLETE",
                 "BUILDER_OPEN",
-                "CAPABILITY_CARDS"
+                "CAPABILITY_CARDS",
+                "AGENTS_TAB_INTRO",
+                "MARKETPLACE_TAB_INTRO",
+                "BUILD_TAB_INTRO"
               ],
               "type": "string",
               "title": "Step"
@@ -20532,7 +20535,10 @@
           "RUN_AGENTS_100",
           "BUILDER_OPEN",
           "BUILDER_RUN_AGENT",
-          "CAPABILITY_CARDS"
+          "CAPABILITY_CARDS",
+          "AGENTS_TAB_INTRO",
+          "MARKETPLACE_TAB_INTRO",
+          "BUILD_TAB_INTRO"
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
