@@ -1,0 +1,22 @@
+# Registration-only on master; selecting dev loads the publishing workflow from dev.
+name: AutoGPT Platform - Single-container image
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the current dev commit to Docker Hub (select dev as the ref)
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  registration-placeholder:
+    # workflow_dispatch always supplies a SHA, so this never allocates a runner.
+    if: ${{ github.sha == '' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: ":"
