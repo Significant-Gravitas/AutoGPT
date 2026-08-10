@@ -13,7 +13,7 @@ from .activity import (
 from .helpers import AgentRef
 
 NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
-TRIAGE = {"graph": AgentRef("Inbox triage", "library-agent")}
+TRIAGE = {"graph": AgentRef(name="Inbox triage", library_agent_id="library-agent")}
 
 
 def _execution(
@@ -58,7 +58,7 @@ def test_briefing_ignores_runs_outside_the_24h_window() -> None:
             ),
         ],
         expert_by_id={},
-        agent_by_graph={"graph": AgentRef("Inbox triage", None)},
+        agent_by_graph={"graph": AgentRef(name="Inbox triage", library_agent_id=None)},
     )
 
     assert briefing.window_started_at == NOW - timedelta(hours=24)
@@ -83,7 +83,7 @@ def test_briefing_lists_failures_before_successes() -> None:
             ),
         ],
         expert_by_id={},
-        agent_by_graph={"graph": AgentRef("Inbox triage", None)},
+        agent_by_graph={"graph": AgentRef(name="Inbox triage", library_agent_id=None)},
     )
 
     assert [outcome.status for outcome in briefing.outcomes] == ["failed", "completed"]
@@ -107,7 +107,7 @@ def test_briefing_counts_unlisted_successes_as_routine() -> None:
         now=NOW,
         executions=executions,
         expert_by_id={},
-        agent_by_graph={"graph": AgentRef("Inbox triage", None)},
+        agent_by_graph={"graph": AgentRef(name="Inbox triage", library_agent_id=None)},
     )
 
     assert briefing.completed_count == 6

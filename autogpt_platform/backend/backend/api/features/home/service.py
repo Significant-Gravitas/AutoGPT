@@ -1,7 +1,9 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, NamedTuple
+from typing import Any
+
+from pydantic import BaseModel
 
 from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
@@ -32,7 +34,7 @@ _EXECUTION_LIMIT = 300
 _REVIEW_LIMIT = 100
 
 
-class HomeSourceData(NamedTuple):
+class HomeSourceData(BaseModel):
     experts: list[Expert]
     executions: list[GraphExecutionMeta]
     reviews: list[PendingHumanReviewModel]

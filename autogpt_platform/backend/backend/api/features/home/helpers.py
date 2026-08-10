@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
-from typing import NamedTuple
 from urllib.parse import quote
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.library.model import LibraryAgentRef
@@ -61,7 +62,9 @@ def next_runs_by_expert(
     return earliest
 
 
-class AgentRef(NamedTuple):
+class AgentRef(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     name: str
     library_agent_id: str | None
 
