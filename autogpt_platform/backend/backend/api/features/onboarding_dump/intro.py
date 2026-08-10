@@ -133,6 +133,15 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
 
     Never raises: a failed or malformed generation degrades to the
     template below rather than costing the user their greeting.
+
+    The greeting is unvalidated model output. ``transcript`` is the user's
+    own words, and the "only name real integrations" constraint in the
+    prompt is advisory, so an injected or hallucinated tool name can reach
+    the prose. That surface is deliberately left open: the text is shown
+    only to the person who recorded it, and the ids that become
+    connectable or recommended tiles are validated against
+    :func:`providers.known_providers` in ``recommend.py`` rather than
+    trusted from prose.
     """
     text = transcript.strip()
     if not text:

@@ -182,22 +182,6 @@ def dumps(mocker: MockerFixture) -> DumpStore:
 
 
 @pytest.fixture(autouse=True)
-def has_session(mocker: MockerFixture) -> AsyncMock:
-    """A brand-new user by default; the greeting is only for those.
-
-    The intro route asks whether the user has any chat session, which is
-    a real query — left unstubbed these route tests reach the database on
-    the TestClient's own event loop, and the connection it leaves behind
-    outlives that loop and breaks the next test that queries for real.
-    """
-    mock = AsyncMock(return_value=False)
-    mocker.patch(
-        "backend.api.features.onboarding_dump.service.user_has_any_session", new=mock
-    )
-    return mock
-
-
-@pytest.fixture(autouse=True)
 def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
     module = "backend.api.features.onboarding_dump.storage"
     mocks = {

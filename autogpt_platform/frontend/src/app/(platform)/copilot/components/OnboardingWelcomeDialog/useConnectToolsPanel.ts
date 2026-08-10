@@ -17,7 +17,7 @@ import {
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
-import { fallbackProviders } from "./helpers";
+import { fallbackProviders, firstMentionOfEachProvider } from "./helpers";
 
 const POLL_INTERVAL_MS = 2_500;
 // ~1 minute of polling; a job the backend never finished (process restart
@@ -83,14 +83,12 @@ export function useConnectToolsPanel() {
   // (provider renamed or removed since the job ran) are dropped, and an id
   // the model named twice keeps its first reason rather than rendering two
   // cards under the same React key.
-  const namedAlready = new Set<string>();
-  const personalizedProviders = recommendations
+  const personalizedProviders = firstMentionOfEachProvider(recommendations)
     .map((recommendation): ConnectableProvider | null => {
       const provider = allProviders.find(
         (p) => p.id === recommendation.provider,
       );
-      if (!provider || namedAlready.has(provider.id)) return null;
-      namedAlready.add(provider.id);
+      if (!provider) return null;
       return {
         ...provider,
         description: recommendation.reason || provider.description,

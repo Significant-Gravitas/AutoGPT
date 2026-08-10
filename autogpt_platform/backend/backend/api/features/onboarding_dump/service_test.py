@@ -163,16 +163,6 @@ def dumps(mocker: MockerFixture) -> DumpStore:
 
 
 @pytest.fixture(autouse=True)
-def has_session(mocker: MockerFixture) -> AsyncMock:
-    """A brand-new user by default; the greeting is only for those."""
-    mock = AsyncMock(return_value=False)
-    mocker.patch(
-        "backend.api.features.onboarding_dump.service.user_has_any_session", new=mock
-    )
-    return mock
-
-
-@pytest.fixture(autouse=True)
 def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
     module = "backend.api.features.onboarding_dump.storage"
     mocks = {
