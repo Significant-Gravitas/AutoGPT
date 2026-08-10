@@ -33,7 +33,7 @@ The image has a complete default command, so this is a valid foreground boot
 check:
 
 ```bash
-docker run autogpt-platform:single-container-dev
+docker run --rm autogpt-platform:single-container-dev
 ```
 
 That command does not publish the web port and uses an anonymous `/data`
@@ -472,7 +472,7 @@ ready.
 | --- | --- |
 | The browser cannot connect after `docker run IMAGE` | A bare run does not publish a port. Use the complete Quick start command. |
 | Port `3300` opens but auth actions fail | Use `--publish 127.0.0.1:3300:3000` and set `AUTOGPT_PUBLIC_URL=http://localhost:3300`, then replace the container. |
-| Signup says registration is closed | Temporarily set `AUTH_ALLOW_NEW_ACCOUNTS=true`, replace the container, create the intended accounts, and close it again. |
+| Signup says registration is closed | Temporarily enable signup with an exact-address `AUTH_SIGNUP_ALLOWLIST`, replace the container, create the intended accounts, and close signup again. |
 | The container remains `starting` or becomes `unhealthy` | First boot can take several minutes. Run `autogpt-healthcheck` and inspect container logs for the first failed service. |
 | AutoPilot returns a provider `401` | Configure the key for the selected transport. The default remote route needs `OPEN_ROUTER_API_KEY`; complete remote memory also needs `OPENAI_API_KEY`. |
 | Local chat works but memory ingestion fails | Install `nomic-embed-text` on the configured local server and confirm its `/v1/embeddings` endpoint works. |
