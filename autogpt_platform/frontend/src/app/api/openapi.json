@@ -25950,7 +25950,22 @@
         "properties": {
           "date": { "type": "string", "format": "date", "title": "Date" },
           "cost_cents": { "type": "integer", "title": "Cost Cents" },
-          "run_count": { "type": "integer", "title": "Run Count" }
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "success_count": {
+            "type": "integer",
+            "title": "Success Count",
+            "default": 0
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          }
         },
         "type": "object",
         "required": ["date", "cost_cents", "run_count"],
@@ -25967,6 +25982,31 @@
           "failed_cost_cents": {
             "type": "integer",
             "title": "Failed Cost Cents"
+          },
+          "success_run_count": {
+            "type": "integer",
+            "title": "Success Run Count",
+            "default": 0
+          },
+          "failed_run_count": {
+            "type": "integer",
+            "title": "Failed Run Count",
+            "default": 0
+          },
+          "review_run_count": {
+            "type": "integer",
+            "title": "Review Run Count",
+            "default": 0
+          },
+          "total_duration_seconds": {
+            "type": "number",
+            "title": "Total Duration Seconds",
+            "default": 0
+          },
+          "duration_run_count": {
+            "type": "integer",
+            "title": "Duration Run Count",
+            "default": 0
           },
           "by_agent": {
             "items": { "$ref": "#/components/schemas/UserAgentCostRollup" },
