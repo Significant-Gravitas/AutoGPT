@@ -15,9 +15,7 @@ installation you intend to keep.
 
 ## Get an image
 
-Use a supported immutable registry reference documented for the release you
-are installing. If that release does not document one, build the image from
-the repository root with Docker Buildx Bake:
+Build the image from the repository root with Docker Buildx Bake:
 
 ```bash
 docker buildx bake \
@@ -27,8 +25,9 @@ docker buildx bake \
 ```
 
 The local build loads the image as `autogpt-platform:single-container-dev`.
-Commands below use that tag; substitute only an exact immutable version tag or
-digest documented for your release, and do not guess a `latest` tag.
+Commands below use that tag. If the release you are installing documents a
+supported registry reference, you may substitute its exact immutable version
+tag or digest; do not guess a `latest` tag.
 
 The image has a complete default command, so this is a valid foreground boot
 check:
@@ -403,26 +402,36 @@ docker run --rm \
   -xzf /backup/autogpt-platform-data.tgz -C /data
 ```
 
-Test the restored volume on another host port without touching the original
-container:
+Start the restored volume without network access first. Restored schedules,
+stored credentials, and executors are live state and could otherwise trigger
+outbound actions during validation:
 
 ```bash
 docker run --detach --name autogpt-restore-test \
   --stop-timeout 360 \
   --shm-size 2g \
+  --ulimit nofile=65536:65536 \
+  --network none \
   --env-file autogpt_platform/single-container/.env \
-  --env AUTOGPT_PUBLIC_URL=http://localhost:3001 \
-  --publish 127.0.0.1:3001:3000 \
+  --env AUTOGPT_PUBLIC_URL=http://localhost:3000 \
   --volume "${RESTORE_VOLUME}:/data" \
   autogpt-platform:single-container-dev
 ```
 
-If the environment file selects a host-local model on Docker Engine, include
-the `--add-host host.docker.internal:host-gateway` option in this restore test.
+Wait for the isolated copy to become healthy:
 
-Verify health, login, saved credentials, memory, and workspace contents. Stop
-and remove the test container afterward, but retain both volumes until the
-restore is accepted:
+```bash
+docker exec autogpt-restore-test autogpt-healthcheck
+```
+
+This no-egress check cannot validate browser login or external integrations.
+Perform interactive validation only on an egress-filtered test host or network
+after revoking or replacing production provider and integration credentials.
+In that environment, recreate the test container without `--network none` and
+publish it only to loopback on an unused port with a matching
+`AUTOGPT_PUBLIC_URL`. Verify login, memory, and workspace contents, then stop
+and remove the test container. Retain both volumes until the restore is
+accepted:
 
 ```bash
 docker stop --time 360 autogpt-restore-test
@@ -491,5 +500,5 @@ ready.
 - The local `bash_exec` fallback depends on host support for Bubblewrap user and
   network namespaces. Do not make the entire appliance privileged to work
   around a host that disables them.
-- The repository workflow validates `linux/amd64` and `linux/arm64` images but
-  does not publish them.
+- Registry availability is documented per release; otherwise build the
+  validated `linux/amd64` or `linux/arm64` image from source as described above.
