@@ -341,6 +341,7 @@ jobs:
           fi
 
           sha_ref="${DEPLOY_IMAGE}:sha-${GITHUB_SHA}"
+          # Workflow concurrency serializes this guard; registry policy covers external writers.
           set +e
           inspect_output="$(docker buildx imagetools inspect "$sha_ref" 2>&1)"
           inspect_status=$?
