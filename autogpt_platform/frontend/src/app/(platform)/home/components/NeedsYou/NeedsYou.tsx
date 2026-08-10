@@ -1,24 +1,14 @@
 "use client";
 
-import {
-  AlertCircleIcon,
-  FilterHorizontalIcon,
-} from "@hugeicons/core-free-icons";
+import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { HomeTileExpandButton } from "../HomeTileExpandButton/HomeTileExpandButton";
+import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
-import { AttentionRow } from "./AttentionRow";
+import { AttentionRow } from "./components/AttentionRow";
 import { useNeedsYou } from "./useNeedsYou";
 
 interface Props {
@@ -26,18 +16,11 @@ interface Props {
   className?: string;
 }
 
-const FILTER_LABELS: Record<"all" | HomeAttentionItem["kind"], string> = {
-  all: "All",
-  approval: "Approvals",
-  setup: "Setup",
-  paused: "Paused",
-  credits: "Credits",
-};
-
 export function NeedsYou({ dashboard, className }: Props) {
   const {
     visibleItems,
-    filterKinds,
+    filterOptions,
+    hasFilters,
     selectedKind,
     selectKind,
     showAll,
@@ -75,44 +58,15 @@ export function NeedsYou({ dashboard, className }: Props) {
                 {itemCount}
               </span>
             ) : null}
-            {filterKinds.length > 1 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    className="min-w-0"
-                    leftIcon={
-                      <Icon
-                        icon={FilterHorizontalIcon}
-                        size={15}
-                        aria-hidden="true"
-                      />
-                    }
-                    aria-label={`Filter interventions: ${FILTER_LABELS[selectedKind]}`}
-                    unmask={false}
-                  >
-                    {FILTER_LABELS[selectedKind]}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-36">
-                  <DropdownMenuRadioGroup
-                    value={selectedKind}
-                    onValueChange={(value) =>
-                      selectKind(value as "all" | HomeAttentionItem["kind"])
-                    }
-                  >
-                    <DropdownMenuRadioItem value="all">
-                      All
-                    </DropdownMenuRadioItem>
-                    {filterKinds.map((kind) => (
-                      <DropdownMenuRadioItem key={kind} value={kind}>
-                        {FILTER_LABELS[kind]}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            {hasFilters ? (
+              <HomeTileFilter
+                ariaLabelPrefix="Filter interventions"
+                value={selectedKind}
+                options={filterOptions}
+                onChange={(value) =>
+                  selectKind(value as "all" | HomeAttentionItem["kind"])
+                }
+              />
             ) : null}
             {itemCount > 0 ? (
               <HomeTileExpandButton

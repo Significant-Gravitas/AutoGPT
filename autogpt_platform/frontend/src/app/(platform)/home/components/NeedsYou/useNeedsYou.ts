@@ -9,6 +9,17 @@ interface Args {
   items: HomeAttentionItem[];
 }
 
+export const ATTENTION_FILTER_LABELS: Record<
+  "all" | HomeAttentionItem["kind"],
+  string
+> = {
+  all: "All",
+  approval: "Approvals",
+  setup: "Setup",
+  paused: "Paused",
+  credits: "Credits",
+};
+
 export function useNeedsYou({ items }: Args) {
   const queryClient = useQueryClient();
   const { processReviews } = useProcessReviews();
@@ -79,7 +90,14 @@ export function useNeedsYou({ items }: Args) {
   return {
     filteredItems,
     visibleItems,
-    filterKinds,
+    filterOptions: [
+      { value: "all", label: ATTENTION_FILTER_LABELS.all },
+      ...filterKinds.map((kind) => ({
+        value: kind,
+        label: ATTENTION_FILTER_LABELS[kind],
+      })),
+    ],
+    hasFilters: filterKinds.length > 1,
     selectedKind,
     selectKind,
     showAll,

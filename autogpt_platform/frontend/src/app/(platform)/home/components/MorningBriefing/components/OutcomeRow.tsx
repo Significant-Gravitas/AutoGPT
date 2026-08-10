@@ -9,7 +9,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatDuration } from "../../helpers";
+import { formatCurrency, formatDuration } from "../../../helpers";
 
 interface Props {
   outcome: HomeBriefingOutcome;

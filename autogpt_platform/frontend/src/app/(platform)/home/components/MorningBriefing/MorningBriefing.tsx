@@ -2,55 +2,31 @@
 
 import {
   CheckmarkCircle02Icon,
-  FilterHorizontalIcon,
   TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
-import { useState } from "react";
-import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { HomeTileExpandButton } from "../HomeTileExpandButton/HomeTileExpandButton";
+import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
-import { OutcomeRow } from "./OutcomeRow";
+import { OutcomeRow } from "./components/OutcomeRow";
+import { type BriefingFilter, useMorningBriefing } from "./useMorningBriefing";
 
 interface Props {
   dashboard: HomeDashboardResponse;
   className?: string;
 }
 
-type BriefingFilter = "all" | HomeBriefingOutcome["status"];
-
-const FILTER_LABELS: Record<BriefingFilter, string> = {
-  all: "All",
-  completed: "Completed",
-  failed: "Failed",
-};
-
 export function MorningBriefing({ dashboard, className }: Props) {
   const { briefing } = dashboard;
-  const [activeFilter, setActiveFilter] = useState<BriefingFilter>("all");
-  const filterStatuses = Array.from(
-    new Set(briefing.outcomes.map((outcome) => outcome.status)),
-  );
-  const selectedFilter: BriefingFilter =
-    activeFilter !== "all" && filterStatuses.includes(activeFilter)
-      ? activeFilter
-      : "all";
-  const visibleOutcomes =
-    selectedFilter === "all"
-      ? briefing.outcomes
-      : briefing.outcomes.filter(
-          (outcome) => outcome.status === selectedFilter,
-        );
+  const {
+    filterOptions,
+    hasFilters,
+    selectedFilter,
+    selectFilter,
+    visibleOutcomes,
+  } = useMorningBriefing({ outcomes: briefing.outcomes });
 
   return (
     <HomeTile
@@ -79,44 +55,13 @@ export function MorningBriefing({ dashboard, className }: Props) {
                 </span>
               ) : null}
             </div>
-            {filterStatuses.length > 1 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    className="min-w-0"
-                    leftIcon={
-                      <Icon
-                        icon={FilterHorizontalIcon}
-                        size={15}
-                        aria-hidden="true"
-                      />
-                    }
-                    aria-label={`Filter briefing outcomes: ${FILTER_LABELS[selectedFilter]}`}
-                    unmask={false}
-                  >
-                    {FILTER_LABELS[selectedFilter]}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-36">
-                  <DropdownMenuRadioGroup
-                    value={selectedFilter}
-                    onValueChange={(value) =>
-                      setActiveFilter(value as BriefingFilter)
-                    }
-                  >
-                    <DropdownMenuRadioItem value="all">
-                      All
-                    </DropdownMenuRadioItem>
-                    {filterStatuses.map((status) => (
-                      <DropdownMenuRadioItem key={status} value={status}>
-                        {FILTER_LABELS[status]}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            {hasFilters ? (
+              <HomeTileFilter
+                ariaLabelPrefix="Filter briefing outcomes"
+                value={selectedFilter}
+                options={filterOptions}
+                onChange={(value) => selectFilter(value as BriefingFilter)}
+              />
             ) : null}
             <HomeTileExpandButton
               label="Open briefing activity"
