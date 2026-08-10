@@ -1027,3 +1027,89 @@ async def test_update_chat_message_stamps_not_found_returns_false():
             routing_source="env",
         )
     assert ok is False
+
+
+# ---------- append_expert_run_message ----------
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_dedupes_on_message_id() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=_make_msg(sequence=1))
+    add_message = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result is None
+    add_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_uses_latest_expert_session() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=None)
+    find_first = AsyncMock(return_value=_make_session(session_id="sess-latest"))
+    add_message = AsyncMock()
+    create_session = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(find_first=find_first)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+        patch("backend.copilot.db.create_chat_session", new=create_session),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=7)),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result == "sess-latest"
+    create_session.assert_not_awaited()
+    call_kwargs = add_message.call_args.kwargs
+    assert call_kwargs["session_id"] == "sess-latest"
+    assert call_kwargs["role"] == "assistant"
+    assert call_kwargs["sequence"] == 7
+    assert call_kwargs["message_id"] == "m1"
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_creates_session_when_none_exists() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=None)
+    find_first = AsyncMock(return_value=None)
+    add_message = AsyncMock()
+    created = AsyncMock()
+    created_info = AsyncMock()
+    created_info.session_id = "sess-new"
+    created.return_value = created_info
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(find_first=find_first)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+        patch("backend.copilot.db.create_chat_session", new=created),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=0)),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result == "sess-new"
+    assert created.call_args.kwargs["expert_id"] == "e1"
+    assert add_message.call_args.kwargs["session_id"] == "sess-new"

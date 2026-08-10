@@ -26,6 +26,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -421,6 +422,10 @@ app.include_router(
     backend.api.features.executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
+)
+app.include_router(
+    backend.api.features.briefings.routes.router,
+    prefix="/api",
 )
 app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"

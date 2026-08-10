@@ -1,5 +1,9 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getGetExpertMockHandler,
+  getListExpertsMockHandler,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { server } from "@/mocks/mock-server";
@@ -165,6 +169,12 @@ const mariaExpert: Expert = {
   skills: [],
   tagline: "Grows your brand while you sleep",
   identity: "You are Maria, a senior marketing strategist.",
+  voice_preferences: "Warm, concise, and direct.",
+  boundaries: "Never invent customer evidence.",
+  protected_soul_rules: [
+    "The expert discloses that it is AI when acting externally.",
+    "External actions require approval.",
+  ],
   is_template: false,
   source_template_id: "template-maria",
   is_archived: false,
@@ -482,6 +492,79 @@ describe("ChatSidebar — expert groups", () => {
     expect(within(mariaGroup).queryByText("Pinned campaign")).toBeNull();
   });
 
+  it("shows the first 5 chats of an expert and reveals the rest via Load more", async () => {
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: [
+          makeSession({ id: "s-plain", title: "Plain chat" }),
+          ...Array.from({ length: 7 }, (_, i) =>
+            makeSession({
+              id: `s-maria-${i + 1}`,
+              title: `Maria chat ${i + 1}`,
+              expert_id: "expert-maria",
+            }),
+          ),
+        ],
+        total: 8,
+      }),
+      getListExpertsMockHandler([mariaExpert]),
+    );
+
+    render(
+      <SidebarProvider>
+        <ChatSidebar />
+      </SidebarProvider>,
+    );
+
+    await screen.findByText("Maria chat 1");
+    expect(screen.getByText("Maria chat 5")).toBeDefined();
+    expect(screen.queryByText("Maria chat 6")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("expert-group-load-more-expert-maria"));
+    expect(screen.getByText("Maria chat 6")).toBeDefined();
+    expect(screen.getByText("Maria chat 7")).toBeDefined();
+    expect(
+      screen.queryByTestId("expert-group-load-more-expert-maria"),
+    ).toBeNull();
+    // Autopilot's single chat never needs a Load more button.
+    expect(screen.queryByTestId("expert-group-load-more-autopilot")).toBeNull();
+  });
+
+  it("collapses and expands an expert group from its header", async () => {
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: [
+          makeSession({ id: "s-plain", title: "Plain chat" }),
+          makeSession({
+            id: "s-maria",
+            title: "Campaign ideas",
+            expert_id: "expert-maria",
+          }),
+        ],
+        total: 2,
+      }),
+      getListExpertsMockHandler([mariaExpert]),
+    );
+
+    render(
+      <SidebarProvider>
+        <ChatSidebar />
+      </SidebarProvider>,
+    );
+
+    await screen.findByText("Campaign ideas");
+    const header = screen.getByTestId("expert-group-header-expert-maria");
+
+    fireEvent.click(header);
+    await waitFor(() => {
+      expect(screen.queryByText("Campaign ideas")).toBeNull();
+    });
+    expect(screen.getByText("Plain chat")).toBeDefined();
+
+    fireEvent.click(header);
+    expect(await screen.findByText("Campaign ideas")).toBeDefined();
+  });
+
   it("does not fetch experts or group sessions when the flag is off", async () => {
     flagState.values = { "hire-experts": false };
     let expertsRequests = 0;
@@ -524,27 +607,70 @@ describe("ChatMessagesContainer — expert identity", () => {
     parts: [{ type: "text", text: "Here is your marketing plan." }],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
+  const mariaIdentity = {
+    id: "expert-maria",
+    name: "Maria",
+    avatarUrl: mariaExpert.avatar_url,
+    role: mariaExpert.role,
+  };
 
-  it("shows the expert name and avatar in the thread header and on assistant messages", () => {
+  it("shows the expert name and avatar in the thread header only", () => {
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
         status="ready"
         error={undefined}
         isLoading={false}
-        expertIdentity={{
-          name: "Maria",
-          avatarUrl: mariaExpert.avatar_url,
-          role: mariaExpert.role,
-        }}
+        expertIdentity={mariaIdentity}
       />,
     );
 
     const header = screen.getByTestId("expert-thread-header");
     expect(within(header).getByText("Maria")).toBeDefined();
     expect(within(header).getByRole("img", { name: "Maria" })).toBeDefined();
-    const assistantIdentity = screen.getByTestId("expert-assistant-identity");
-    expect(within(assistantIdentity).getByText("Maria")).toBeDefined();
+    expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
+  });
+
+  it("shows a scheduled-workflows button that opens the schedules drawer", async () => {
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        {
+          id: "sched-1",
+          name: "Content Calendar",
+          agent_name: "Content Calendar",
+          user_id: "user-1",
+          graph_id: "graph-1",
+          graph_version: 1,
+          cron: "40 7 * * *",
+          input_data: {},
+          next_run_time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          expert_id: "expert-maria",
+        },
+      ]),
+    );
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={mariaIdentity}
+      />,
+    );
+
+    const button = await screen.findByTestId("expert-schedules-button");
+    expect(button.textContent).toContain("1 workflow scheduled");
+
+    fireEvent.click(button);
+    expect(
+      await screen.findByText("Maria's scheduled workflows"),
+    ).toBeDefined();
+    expect(await screen.findByTestId("schedule-row")).toBeDefined();
   });
 
   it("renders no expert header or identity for plain sessions", () => {

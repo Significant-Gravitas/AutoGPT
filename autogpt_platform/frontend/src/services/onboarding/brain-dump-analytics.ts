@@ -13,6 +13,7 @@ import posthog from "posthog-js";
 type BrainDumpEvent =
   | "brain_dump_started"
   | "brain_dump_completed"
+  | "brain_dump_canceled"
   | "brain_dump_skipped"
   | "brain_dump_recovery_shown"
   | "brain_dump_recovery_used"

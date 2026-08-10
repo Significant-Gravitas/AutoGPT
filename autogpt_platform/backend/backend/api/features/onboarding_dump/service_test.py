@@ -197,6 +197,18 @@ def extraction(mocker: MockerFixture) -> dict[str, AsyncMock]:
     return mocks
 
 
+@pytest.fixture(autouse=True)
+def quality_gate(mocker: MockerFixture) -> AsyncMock:
+    """The quality gate passes by default so pipeline tests stay about the
+    pipeline; rejection tests flip the return value."""
+    mock = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.onboarding_dump.quality.check_transcript_quality",
+        new=mock,
+    )
+    return mock
+
+
 async def start_voice_take(dumps: DumpStore) -> None:
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
 
@@ -881,6 +893,119 @@ async def test_intro_card_falls_back_when_the_greeting_was_never_generated(
     # An empty stored list degrades to the generic starters — a greeting
     # with nothing under it would look broken.
     assert card.prompts == intro.fallback_prompts()
+
+
+@pytest.mark.asyncio
+async def test_quality_rejected_voice_dump_keeps_data_and_queues_nothing(
+    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+):
+    await start_voice_take(dumps)
+    quality_gate.return_value = "no_usable_speech"
+    background = BackgroundTasks()
+
+    response = await service.finalize_voice_dump(
+        USER_ID, RECORDING_ID, 12.0, "audio/webm", background
+    )
+    await background()
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "no_usable_speech"
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.failed
+    assert dumps.row.errorCode == "no_usable_speech"
+    # Rejection is not deletion: audio and transcript both survive.
+    assert dumps.row.audioPath == AUDIO_PATH
+    assert dumps.row.transcript == TRANSCRIPT
+    # And nothing personalized was queued from the rejected content.
+    assert background.tasks == []
+    extraction["extract_business_understanding"].assert_not_awaited()
+    extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_quality_rejected_typed_dump_records_the_error(
+    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+):
+    quality_gate.return_value = "insufficient_content"
+    background = BackgroundTasks()
+
+    response = await service.finalize_typed_dump(
+        USER_ID, RECORDING_ID, "hello hello testing", background
+    )
+    await background()
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "insufficient_content"
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.failed
+    assert dumps.row.errorCode == "insufficient_content"
+    assert dumps.row.transcript == "hello hello testing"
+    assert background.tasks == []
+    extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repeating_finalize_after_quality_rejection_does_not_rerun_the_gate(
+    dumps: DumpStore, quality_gate: AsyncMock, storage_mocks: dict[str, AsyncMock]
+):
+    """A client retry of the same rejected take gets the stored verdict.
+
+    The part buffer is gone by then, so re-running the pipeline would
+    assemble nothing and mark the take lost; the claim guard answers with
+    the row's failure instead, without a second quality check.
+    """
+    await start_voice_take(dumps)
+    quality_gate.return_value = "no_usable_speech"
+    await finalize_voice()
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.failed
+    assert quality_gate.await_count == 1
+    storage_mocks["assemble_parts"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_new_take_after_quality_rejection_runs_the_pipeline(
+    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+):
+    await start_voice_take(dumps)
+    quality_gate.return_value = "insufficient_content"
+    await finalize_voice()
+
+    quality_gate.return_value = None
+    await dumps.start_dump(USER_ID, "rec-2", BrainDumpInputMode.voice)
+    background = BackgroundTasks()
+    response = await service.finalize_voice_dump(
+        USER_ID, "rec-2", 30.0, "audio/webm", background
+    )
+    await background()
+
+    assert response.status == BrainDumpStatus.transcribed
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.errorCode is None
+    extraction["upsert_business_understanding"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_intro_card_takes_path_b_for_a_quality_rejected_dump(dumps: DumpStore):
+    """The preserved transcript of a rejected dump must never leak into a
+    Path A greeting — the gate already decided it isn't worth reflecting."""
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.failed,
+        transcript="Thank you for watching.",
+        errorCode="insufficient_content",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.path == "B"
+    assert card.greeting == prompts.PATH_B_GREETING
+    assert card.transcript is None
 
 
 @pytest.mark.asyncio
