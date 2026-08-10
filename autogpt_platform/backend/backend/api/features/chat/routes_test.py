@@ -691,8 +691,9 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
         organization_id: str | None = None,
         team_id: str | None = None,
         source_platform: str | None = None,
+        expert_id: str | None = None,
     ):
-        return ChatSession.new(user_id, dry_run=dry_run)
+        return ChatSession.new(user_id, dry_run=dry_run, expert_id=expert_id)
 
     return mocker.patch(
         "backend.api.features.chat.routes.create_chat_session",
@@ -739,6 +740,100 @@ def test_create_session_rejects_nested_metadata(
     )
 
     assert response.status_code == 422
+
+
+# ─── Create session: expert_id ──────────────────────────────────────────
+
+
+def _make_expert(expert_id: str = "expert-1", *, is_archived: bool = False):
+    from backend.api.features.experts.models import Expert
+
+    return Expert(
+        id=expert_id,
+        name="Maria",
+        avatar_url=None,
+        role="Marketing",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="You are Maria, a marketing expert.",
+        is_template=False,
+        source_template_id="tpl-1",
+        is_archived=is_archived,
+        workflows=[],
+    )
+
+
+def _mock_get_expert(mocker: pytest_mock.MockerFixture, return_value):
+    """Mock experts_db.get_expert at the chat routes import site."""
+    return mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=return_value,
+    )
+
+
+def test_create_session_with_expert_id_persists_it(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """A valid owned expert id is validated and threaded into the session."""
+    mock_create = _mock_create_chat_session(mocker)
+    mock_get = _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert response.json()["expert_id"] == "expert-1"
+    mock_get.assert_called_once_with(test_user_id, "expert-1")
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["expert_id"] == "expert-1"
+
+
+def test_create_session_with_other_users_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """get_expert scopes by owner — another user's expert looks like None."""
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, None)
+
+    response = client.post("/sessions", json={"expert_id": "expert-other"})
+
+    assert response.status_code == 404
+    mock_create.assert_not_called()
+
+
+def test_create_session_with_archived_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Archived experts are not chat targets."""
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1", is_archived=True))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 404
+    mock_create.assert_not_called()
+
+
+def test_create_session_rejects_builder_graph_id_with_expert_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The builder branch ignores expert_id, so the combo is rejected upfront
+    instead of silently dropping the expert scoping."""
+    mock_create = _mock_create_chat_session(mocker)
+    mock_get = _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post(
+        "/sessions",
+        json={"builder_graph_id": "graph-1", "expert_id": "expert-1"},
+    )
+
+    assert response.status_code == 422
+    mock_get.assert_not_called()
+    mock_create.assert_not_called()
 
 
 class TestStreamChatRequestModeValidation:
@@ -1229,6 +1324,7 @@ def _make_session_info(
     title: str | None = "Test",
     source_platform: str | None = None,
     is_pinned: bool = False,
+    expert_id: str | None = None,
 ):
     """Build a minimal ChatSessionInfo-like mock."""
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
@@ -1242,6 +1338,7 @@ def _make_session_info(
         updated_at=datetime.now(UTC),
         metadata=ChatSessionMetadata(source_platform=source_platform),
         is_pinned=is_pinned,
+        expert_id=expert_id,
     )
 
 
@@ -1325,6 +1422,35 @@ def test_list_sessions_returns_is_pinned(
 
     assert response.status_code == 200
     assert response.json()["sessions"][0]["is_pinned"] is True
+
+
+def test_list_sessions_filters_by_expert_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """GET /sessions?expert_id=... passes the filter through and echoes it."""
+    session = _make_session_info("sess-expert", expert_id="expert-1")
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([session], 1),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=["done"])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get("/sessions?expert_id=expert-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["sessions"][0]["expert_id"] == "expert-1"
+    assert mock_get.call_args.kwargs["expert_id"] == "expert-1"
 
 
 def test_list_sessions_marks_running_as_processing(

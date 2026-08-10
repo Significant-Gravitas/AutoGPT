@@ -16,7 +16,7 @@ What this module IS responsible for:
     ``flex`` in later steps)
 
 What this module is NOT responsible for (caller wraps):
-  * ``LlmModel``-aware token-budget computation (caller passes
+  * ``LLMModel``-aware token-budget computation (caller passes
     pre-computed ``max_tokens``)
   * Prompt compression (``compress_context``) — block layer needs it,
     dream may not

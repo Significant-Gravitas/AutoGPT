@@ -36,9 +36,10 @@
     "@faker-js/faker": "10.0.0",
     "@ferrucc-io/emoji-picker": "0.0.48",
     "@hookform/resolvers": "5.2.2",
+    "@hugeicons/core-free-icons": "^4.2.3",
+    "@hugeicons/react": "^1.1.9",
     "@next/third-parties": "15.4.6",
     "@number-flow/react": "0.6.0",
-    "@phosphor-icons/react": "2.1.10",
     "@posthog/react": "1.7.0",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
@@ -68,8 +69,6 @@
     "@streamdown/cjk": "1.0.1",
     "@streamdown/math": "1.0.1",
     "@streamdown/mermaid": "1.0.1",
-    "@supabase/ssr": "0.7.0",
-    "@supabase/supabase-js": "2.78.0",
     "@tanstack/react-query": "5.90.6",
     "@tanstack/react-table": "8.21.3",
     "@types/jaro-winkler": "0.2.4",
@@ -77,6 +76,8 @@
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.9.2",
     "ai": "6.0.134",
+    "bcryptjs": "3.0.3",
+    "better-auth": "1.6.14",
     "boring-avatars": "1.11.2",
     "canvas-confetti": "1.9.4",
     "class-variance-authority": "0.7.1",
@@ -93,6 +94,7 @@
     "geist": "1.5.1",
     "highlight.js": "11.11.1",
     "jaro-winkler": "0.2.8",
+    "jose": "6.2.3",
     "jszip": "3.10.1",
     "katex": "0.16.25",
     "launchdarkly-react-client-sdk": "3.9.0",
@@ -102,6 +104,7 @@
     "next": "15.5.18",
     "next-themes": "0.4.6",
     "nuqs": "2.7.2",
+    "pg": "8.21.0",
     "posthog-js": "1.334.1",
     "react": "18.3.1",
     "react-currency-input-field": "4.0.3",
@@ -150,10 +153,12 @@
     "@testing-library/dom": "10.4.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
+    "@types/bcryptjs": "3.0.0",
     "@types/canvas-confetti": "1.9.0",
     "@types/lodash": "4.17.20",
     "@types/negotiator": "0.6.4",
     "@types/node": "24.10.0",
+    "@types/pg": "8.20.0",
     "@types/react": "18.3.17",
     "@types/react-dom": "18.3.5",
     "@types/react-modal": "3.16.3",
@@ -192,9 +197,11 @@
     ]
   },
   "pnpm": {
+    "//kysely": "DO NOT UPGRADE past 0.28.x: @better-auth/kysely-adapter (better-auth) imports DEFAULT_MIGRATION_LOCK_TABLE from the kysely root, which 0.29 moved to kysely/migration — upgrading crashes every /api/auth route. Revisit when better-auth's adapter supports kysely 0.29+.",
     "overrides": {
       "@opentelemetry/instrumentation": "0.209.0",
-      "lodash-es": "4.17.23"
+      "lodash-es": "4.17.23",
+      "kysely": "0.28.17"
     }
   },
   "packageManager": "pnpm@10.20.0+sha512.cf9998222162dd85864d0a8102e7892e7ba4ceadebbf5a31f9c2fce48dfce317a9c53b9f6464d1ef9042cba2e02ae02a9f7c143a2b438cd93c91840f0192b9dd"

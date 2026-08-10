@@ -64,6 +64,12 @@ class Flag(str, Enum):
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
 
+    # Gates the onboarding voice "brain dump" end-to-end.  The upload /
+    # finalize / status / download endpoints 404 when off so a stale
+    # frontend can't start writing recordings, and the wizard keeps
+    # rendering the pillbox step.  Fail-closed (default False).
+    ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump"
+
     # Gates the per-user weekly community rebuild registered by
     # ``add_community_rebuild_schedule``. Off by default; opt-in canary
     # so the Leiden + LLM-summarization cost doesn't ramp before
@@ -197,15 +203,14 @@ def shutdown_launchdarkly() -> None:
 
 async def _fetch_user_context_data(user_id: str) -> Context:
     """
-    Fetch user context for LaunchDarkly from Supabase.
+    Fetch user context for LaunchDarkly from the auth user table.
 
-    Successful lookups are cached for 24h (see
-    ``_fetch_supabase_user_context``).  Failed lookups are NOT cached: the
-    degraded anonymous fallback is built outside the cache so the next
-    evaluation retries Supabase instead of pinning this process to an
-    email-less context for a full TTL — which would make its
-    email/role-targeted flag evaluations silently diverge from peer
-    processes.  The degraded path costs one failed Supabase call per
+    Successful lookups are cached for 24h (see ``_fetch_user_context``).
+    Failed lookups are NOT cached: the degraded anonymous fallback is built
+    outside the cache so the next evaluation retries the lookup instead of
+    pinning this process to an email-less context for a full TTL — which
+    would make its email/role-targeted flag evaluations silently diverge
+    from peer processes.  The degraded path costs one failed lookup per
     evaluation; bounded, and acceptable versus a 24h-poisoned cache.
 
     Args:
@@ -217,11 +222,11 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     try:
         uuid.UUID(user_id)
     except ValueError:
-        # Non-UUID key (e.g. "system") — skip Supabase lookup, return anonymous context.
+        # Non-UUID key (e.g. "system") — skip user lookup, return anonymous context.
         return _anonymous_context(user_id)
 
     try:
-        return await _fetch_supabase_user_context(user_id)
+        return await _fetch_user_context(user_id)
     except Exception as e:
         logger.warning(
             f"Failed to fetch user context for {user_id}: {e} — "
@@ -238,34 +243,43 @@ def _anonymous_context(user_id: str) -> Context:
 
 
 @cached(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
-async def _fetch_supabase_user_context(user_id: str) -> Context:
+async def _fetch_user_context(user_id: str) -> Context:
     """
-    Build the full LaunchDarkly context for ``user_id`` from Supabase.
+    Build the full LaunchDarkly context for ``user_id`` from the auth user
+    table.
 
-    Raises on Supabase lookup failure: ``@cached`` never stores results
-    of calls that raise, so a degraded context can't be cached here —
-    the caller handles the fallback outside the cache.
+    Raises on lookup failure: ``@cached`` never stores results of calls
+    that raise, so a degraded context can't be cached here — the caller
+    handles the fallback outside the cache.
     """
-    from backend.util.clients import get_supabase
+    # Local import to avoid a util <-> data import cycle.
+    from backend.data.db_accessors import user_db
 
-    builder = Context.builder(user_id).kind("user").anonymous(True)
+    # user_db() falls back to the DatabaseManager RPC client in processes
+    # without a locally-connected Prisma client (scheduler, executors, ...).
+    fields = await user_db().get_auth_user_flag_fields(user_id)
 
-    # If we have user data, update context
-    response = get_supabase().auth.admin.get_user_by_id(user_id)
-    if response and response.user:
-        user = response.user
-        builder.anonymous(False)
-        if user.role:
-            builder.set("role", user.role)
-            # It's weird, I know, but it is what it is.
-            builder.set("custom", {"role": user.role})
-        if user.email:
-            builder.set("email", user.email)
-            builder.set("email_domain", user.email.split("@")[-1])
-        if user.created_at:
-            # ISO-8601 string — LD supports RFC3339 date targeting on
-            # this attribute (e.g. cohort users by signup window).
-            builder.set("created_at", user.created_at.isoformat())
+    if fields is None:
+        # Raise instead of returning an anonymous context: @cached would pin
+        # the anonymous result for 24h even after the user's row appears
+        # (possible during the auth-migration copy window). The caller falls
+        # back to an uncached anonymous context.
+        raise LookupError(f"No auth user row for {user_id}")
+
+    builder = Context.builder(user_id).kind("user").anonymous(False)
+    # Keep the same role values previously issued in JWTs so existing
+    # LaunchDarkly targeting rules keep matching.
+    role = "admin" if fields.role == "admin" else "authenticated"
+    builder.set("role", role)
+    # It's weird, I know, but it is what it is.
+    builder.set("custom", {"role": role})
+    if fields.email:
+        builder.set("email", fields.email)
+        builder.set("email_domain", fields.email.split("@")[-1])
+    if fields.created_at:
+        # ISO-8601 string — LD supports RFC3339 date targeting on
+        # this attribute (e.g. cohort users by signup window).
+        builder.set("created_at", fields.created_at.isoformat())
 
     return builder.build()
 
@@ -299,7 +313,7 @@ async def get_feature_flag_value(
             )
             return default
 
-        # Get user context from Supabase
+        # Get user context (role/email) from the Better Auth user table
         context = await _fetch_user_context_data(user_id)
 
         # Evaluate flag

@@ -1,9 +1,14 @@
 "use client";
-import { SignOutIcon } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { AccountMenuRow } from "./AccountMenuRow";
+import { Logout03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function AccountLogoutOption() {
+interface Props {
+  weight?: "bold" | "regular";
+}
+
+export function AccountLogoutOption({ weight = "bold" }: Props) {
   const router = useRouter();
 
   function handleLogout() {
@@ -15,9 +20,8 @@ export function AccountLogoutOption() {
       as="button"
       destructive
       label="Log out"
-      icon={
-        <SignOutIcon className="h-[18px] w-[18px] shrink-0" weight="bold" />
-      }
+      newLayout={weight === "regular"}
+      icon={<Icon icon={Logout03Icon} className="h-[18px] w-[18px] shrink-0" />}
       onClick={handleLogout}
     />
   );

@@ -67,6 +67,13 @@ logger = logging.getLogger(__name__)
 # shorter wastes scheduler RPC calls when nothing changed.
 REGISTRATION_TTL_SECONDS = 7 * 24 * 3600
 
+# Redis dedup key prefixes, exported so the scheduler's delete_*
+# @expose methods can clear the matching marker when a cron is removed
+# in-band (see :func:`clear_registration_marker`). Must stay in sync
+# with the registry rows below — pinned by a test.
+COMMUNITY_REBUILD_REGISTRATION_PREFIX = "community_rebuild_registered"
+NIGHTLY_BATCH_REGISTRATION_PREFIX = "dream_nightly_batch_registered"
+
 
 # A SchedulerClient is the caller's handle to the scheduler service.
 # We don't import the concrete type here to avoid a circular import
@@ -135,7 +142,7 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
     DreamSystemJob(
         name="Community rebuild",
         job_id_prefix="community_rebuild",
-        registration_key_prefix="community_rebuild_registered",
+        registration_key_prefix=COMMUNITY_REBUILD_REGISTRATION_PREFIX,
         flag=Flag.GRAPHITI_COMMUNITIES_ENABLED,
         skip_reason="graphiti_communities_disabled",
         register=_register_community_rebuild,
@@ -147,7 +154,7 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
         # crons — those keys (``dream_pass_registered``,
         # ``ratification_pass_registered``) are orphaned by the
         # consolidation and naturally expire via their 7-day TTL.
-        registration_key_prefix="dream_nightly_batch_registered",
+        registration_key_prefix=NIGHTLY_BATCH_REGISTRATION_PREFIX,
         # The nightly batch cron carries dream pass + ratification
         # supersession + future P2/P3/P4/P11 work. All ride the same
         # master gate; finer-grained flags inside individual submitters
@@ -258,6 +265,31 @@ async def _write_registration_tz(
         )
 
 
+async def clear_registration_marker(user_id: str, key_prefix: str) -> None:
+    """Delete the Redis registration marker for one dream-system cron.
+
+    Called from the scheduler's ``delete_*_schedule`` @expose methods so
+    an in-band cron removal immediately re-opens lazy registration
+    instead of leaving the marker to block it for the remainder of its
+    7-day TTL. Single-key DEL so it routes on Redis Cluster.
+
+    Best-effort — on Redis failure the marker simply expires via TTL,
+    which is the pre-existing out-of-band-deletion recovery window.
+    """
+    try:
+        from backend.data.redis_client import get_redis_async
+
+        redis = await get_redis_async()
+        await redis.delete(f"{key_prefix}:{user_id}")
+    except Exception:
+        logger.warning(
+            "Redis delete failed for %s:%s; marker will expire via TTL",
+            key_prefix,
+            user_id[:12],
+            exc_info=True,
+        )
+
+
 async def ensure_dream_system_scheduled(
     user_id: str, *, force_refresh: bool = False
 ) -> dict[str, Any]:
@@ -361,6 +393,25 @@ async def ensure_dream_system_scheduled(
                 client_cached = get_scheduler_client()
 
             result = await job.register(client_cached, user_id, tz_cached)
+            if result.get("skipped"):
+                # The scheduler's own layer-2 gate refused without
+                # creating the job — layer 1 already said ON, so this
+                # is always a disagreement (LD cold start in the
+                # scheduler pod, transient LD error, targeting-context
+                # divergence). Writing the marker here would leave
+                # Redis claiming "registered" with no APScheduler job
+                # behind it for the full 7-day TTL. Surface it and let
+                # the next cycle retry.
+                logger.warning(
+                    "Dream-system: scheduler skipped %s for user %s "
+                    "(reason=%s) despite the local flag check passing — "
+                    "not marking registered; next cycle retries",
+                    job.name,
+                    user_id[:12],
+                    result.get("reason"),
+                )
+                results[job.job_id_prefix] = result
+                continue
             await _write_registration_tz(
                 user_id, job.registration_key_prefix, tz_cached
             )

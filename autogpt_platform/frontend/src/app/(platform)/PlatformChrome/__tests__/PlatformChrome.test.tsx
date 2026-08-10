@@ -56,9 +56,6 @@ vi.mock("../../admin/components/AdminImpersonationBanner", () => ({
 vi.mock("../../components/GlobalSearchModal/GlobalSearchOverlay", () => ({
   GlobalSearchOverlay: () => <div data-testid="global-search" />,
 }));
-vi.mock("../components/InsetHeaderActions/InsetHeaderActions", () => ({
-  InsetHeaderActions: () => <div data-testid="inset-actions" />,
-}));
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -82,7 +79,7 @@ describe("PlatformChrome", () => {
     expect(screen.getByTestId("child")).toBeDefined();
   });
 
-  it("renders the new sidebar shell with inset actions when enabled", async () => {
+  it("renders the new sidebar shell when enabled", async () => {
     showNewLayoutMock.mockReturnValue(true);
     render(
       <PlatformChrome>
@@ -93,7 +90,6 @@ describe("PlatformChrome", () => {
     await waitFor(() => {
       expect(screen.getByTestId("app-sidebar")).toBeDefined();
     });
-    expect(screen.getByTestId("inset-actions")).toBeDefined();
     expect(screen.queryByTestId("navbar")).toBeNull();
     expect(screen.getByTestId("child")).toBeDefined();
   });

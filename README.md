@@ -191,7 +191,7 @@ Connect the apps that are yours. AutoGPT provides access to hundreds of AI model
 
 | Component | License | What it means |
 |---|---|---|
-| `autogpt_platform/` | [Polyform Shield](https://polyformproject.org/licenses/shield/1.0.0/) | Free for personal and internal business use; cannot be sold as a competing hosted service |
+| `autogpt_platform/` | [Polyform Shield](https://polyformproject.org/licenses/shield/1.0.0) | Free for personal and internal business use; cannot be sold as a competing hosted service |
 | `classic/` and everything else | [MIT](LICENSE) | Permissive open-source use |
 
 ---

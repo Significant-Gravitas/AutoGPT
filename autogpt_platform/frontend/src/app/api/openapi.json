@@ -2569,6 +2569,45 @@
         }
       }
     },
+    "/api/auth/email/send": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Send a Better Auth transactional email via the backend mailer",
+        "operationId": "sendAuthTransactionalEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AuthEmailRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "400": {
+            "description": "url does not point at a trusted frontend origin"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -2577,6 +2616,12 @@
         "responses": {
           "200": {
             "description": "Successful Response",
+            "headers": {
+              "X-AutoGPT-User-Created": {
+                "description": "Whether this request created a new user",
+                "schema": { "type": "string", "enum": ["true", "false"] }
+              }
+            },
             "content": { "application/json": { "schema": {} } }
           },
           "401": {
@@ -3294,7 +3339,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3319,6 +3364,18 @@
               "minimum": 0,
               "default": 0,
               "title": "Offset"
+            }
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Expert Id"
             }
           }
         ],
@@ -3349,7 +3406,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run`` and/or\n        ``builder_graph_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
+        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -5344,6 +5401,207 @@
         }
       }
     },
+    "/api/experts": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Experts",
+        "operationId": "list_experts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/Expert" },
+                  "type": "array",
+                  "title": "Response List Experts"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Hire Expert",
+        "operationId": "hire_expert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/HireRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HireResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert template not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/templates": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Templates",
+        "operationId": "list_expert_templates",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/Expert" },
+                  "type": "array",
+                  "title": "Response List Expert Templates"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/{expert_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Archive Expert",
+        "operationId": "archive_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert",
+        "operationId": "get_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/workflows": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Install Expert Workflow",
+        "operationId": "install_expert_workflow",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallWorkflowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertWorkflowRef" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/files/upload": {
       "post": {
         "tags": ["v1", "files"],
@@ -5574,7 +5832,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphModel" }
+                "schema": { "$ref": "#/components/schemas/UpdateGraphResponse" }
               }
             }
           },
@@ -6122,7 +6380,13 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetActiveGraphVersionResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -8665,6 +8929,238 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump": {
+      "delete": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Discard Brain Dump",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
+        "operationId": "discard_brain_dump",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "recording_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+                { "type": "null" }
+              ],
+              "title": "Recording Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onboarding/brain-dump/finalize": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Finalize Brain Dump",
+        "description": "Close out a take: assemble, scan, store, transcribe.\n\nExtraction and greeting generation continue in the background after\nthis responds — the preparing step polls ``/status`` until\n``greeting_ready``. Idempotent per ``recording_id`` — a client that\nretries after a timeout gets the stored result rather than a second\ntranscription.",
+        "operationId": "finalize_brain_dump",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FinalizeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FinalizeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Intro",
+        "description": "Content for the copilot home's onboarding greeting.\n\nPre-generated during finalize, so this is a plain row read — the\ncopilot home never waits on a model to render its first screen.\n``greeting_done=true`` means the client should show nothing and cache\nthat locally.",
+        "operationId": "get_brain_dump_intro",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IntroCardResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro/complete": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Complete Brain Dump Greeting",
+        "description": "Mark the greeting as done — called when the first message is sent.\n\nPermanent and content-preserving: the flag flips, the stored greeting\nstays in the row.",
+        "operationId": "complete_brain_dump_greeting",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreetingDoneResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/parts": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Upload Brain Dump Part",
+        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.",
+        "operationId": "upload_brain_dump_part",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_brain_dump_part"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadPartResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recommended-providers": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Recommended Providers",
+        "description": "Provider picks for the welcome dialog's \"Connect your tools\" panel.\n\nWritten by a background job that runs beside the greeting one; a plain\nrow read here. ``ready=false`` means keep polling.",
+        "operationId": "get_brain_dump_recommended_providers",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recording": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Download Brain Dump Recording",
+        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "operationId": "download_brain_dump_recording",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/status": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Status",
+        "description": "Polled by the loading screen while the pipeline runs.",
+        "operationId": "get_brain_dump_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
@@ -8765,7 +9261,8 @@
                 "AGENT_INPUT",
                 "CONGRATS",
                 "VISIT_COPILOT",
-                "BUILDER_OPEN"
+                "BUILDER_OPEN",
+                "CAPABILITY_CARDS"
               ],
               "type": "string",
               "title": "Step"
@@ -13587,6 +14084,20 @@
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
       },
+      "AuthEmailRequest": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["reset_password", "verify_email", "change_email"],
+            "title": "Type"
+          },
+          "to": { "type": "string", "format": "email", "title": "To" },
+          "url": { "type": "string", "title": "Url" }
+        },
+        "type": "object",
+        "required": ["type", "to", "url"],
+        "title": "AuthEmailRequest"
+      },
       "AuthorizeRequest": {
         "properties": {
           "client_id": {
@@ -14360,6 +14871,24 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "Body_upload_brain_dump_part": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" },
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
+          "part_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Part Index"
+          }
+        },
+        "type": "object",
+        "required": ["file", "recording_id", "part_index"],
+        "title": "Body_upload_brain_dump_part"
+      },
       "BotAnalyticsSummary": {
         "properties": {
           "platform": {
@@ -14502,6 +15031,23 @@
         "type": "object",
         "required": ["date", "messages", "replies", "errors"],
         "title": "BotTimeseriesPoint"
+      },
+      "BrainDumpInputMode": {
+        "type": "string",
+        "enum": ["voice", "typed", "skipped"],
+        "title": "BrainDumpInputMode"
+      },
+      "BrainDumpStatus": {
+        "type": "string",
+        "enum": [
+          "recording_uploaded",
+          "transcribing",
+          "transcribed",
+          "extracting",
+          "completed",
+          "failed"
+        ],
+        "title": "BrainDumpStatus"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -15260,12 +15806,19 @@
               { "type": "null" }
             ],
             "title": "Builder Graph Id"
+          },
+          "expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Expert Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -15278,6 +15831,10 @@
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
             "default": { "dry_run": false, "kind": "normal" }
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
@@ -15889,6 +16446,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dream Session Id"
           },
+          "ingestion_drain_status": {
+            "$ref": "#/components/schemas/IngestionDrainStatus",
+            "default": "drained"
+          },
           "operations": {
             "anyOf": [
               { "$ref": "#/components/schemas/DreamOperationsSnapshot" },
@@ -15960,6 +16521,38 @@
         "type": "object",
         "title": "DreamPassUsage",
         "description": "Aggregate usage across all phases of one dream pass.\n\nSurfaced on ``DreamPassResult.usage`` so eval / admin UI / billing\ncan read tokens + cost without recomputing. Written to\n``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;\ncharged against the user's rate-limit window via\n``persist_and_record_usage`` so dream-pass spend rolls into the\nsame daily/weekly subscription tier budget as chat-execution\noverage."
+      },
+      "DumpStatusResponse": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpStatus" },
+              { "type": "null" }
+            ]
+          },
+          "input_mode": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpInputMode" },
+              { "type": "null" }
+            ]
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          },
+          "has_audio": {
+            "type": "boolean",
+            "title": "Has Audio",
+            "default": false
+          },
+          "greeting_ready": {
+            "type": "boolean",
+            "title": "Greeting Ready",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "DumpStatusResponse"
       },
       "EnableShareRequest": {
         "properties": {
@@ -16363,6 +16956,16 @@
               { "type": "null" }
             ],
             "title": "Node Executions"
+          },
+          "nodes_failed": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/NodeFailureSummary" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Nodes Failed"
           }
         },
         "type": "object",
@@ -16406,6 +17009,93 @@
         "required": ["message", "execution_id", "graph_id", "graph_name"],
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
+      },
+      "Expert": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "role": { "type": "string", "title": "Role" },
+          "tagline": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tagline"
+          },
+          "bio": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Bio"
+          },
+          "skills": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Skills"
+          },
+          "identity": { "type": "string", "title": "Identity" },
+          "is_template": { "type": "boolean", "title": "Is Template" },
+          "source_template_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Template Id"
+          },
+          "is_archived": { "type": "boolean", "title": "Is Archived" },
+          "workflows": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkflowRef" },
+            "type": "array",
+            "title": "Workflows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "avatar_url",
+          "role",
+          "tagline",
+          "bio",
+          "skills",
+          "identity",
+          "is_template",
+          "source_template_id",
+          "is_archived",
+          "workflows"
+        ],
+        "title": "Expert"
+      },
+      "ExpertWorkflowRef": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "store_listing_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Store Listing Version Id"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "store_listing_version_id",
+          "library_agent_id",
+          "graph_id",
+          "name",
+          "description"
+        ],
+        "title": "ExpertWorkflowRef"
       },
       "FactListResponse": {
         "properties": {
@@ -16524,6 +17214,58 @@
         "required": ["executions", "total"],
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
+      },
+      "FinalizeRequest": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
+          "input_mode": {
+            "$ref": "#/components/schemas/BrainDumpInputMode",
+            "default": "voice"
+          },
+          "duration_secs": {
+            "anyOf": [
+              { "type": "number", "maximum": 14400.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Duration Secs"
+          },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "text": {
+            "anyOf": [
+              { "type": "string", "maxLength": 20000 },
+              { "type": "null" }
+            ],
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "FinalizeRequest",
+        "description": "Finalize one take.\n\n``text`` is the typed fallback: when set, no audio is expected and the\ndump is stored with ``input_mode=typed``. ``input_mode=skipped``\nrecords the deliberate skip so Path B can be chosen server-side."
+      },
+      "FinalizeResponse": {
+        "properties": {
+          "status": { "$ref": "#/components/schemas/BrainDumpStatus" },
+          "input_mode": { "$ref": "#/components/schemas/BrainDumpInputMode" },
+          "transcript_preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript Preview"
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": ["status", "input_mode"],
+        "title": "FinalizeResponse"
       },
       "FolderCreateRequest": {
         "properties": {
@@ -17470,6 +18212,14 @@
         "required": ["provider", "config_schema", "credentials_input_name"],
         "title": "GraphTriggerInfo"
       },
+      "GreetingDoneResponse": {
+        "properties": {
+          "greeting_done": { "type": "boolean", "title": "Greeting Done" }
+        },
+        "type": "object",
+        "required": ["greeting_done"],
+        "title": "GreetingDoneResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -17480,6 +18230,34 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HireRequest": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["template_id"],
+        "title": "HireRequest"
+      },
+      "HireResult": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "failed_preloads": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Failed Preloads"
+          }
+        },
+        "type": "object",
+        "required": ["expert", "failed_preloads"],
+        "title": "HireResult"
       },
       "HostScopedCredentials": {
         "properties": {
@@ -17533,6 +18311,12 @@
         "required": ["image_url"],
         "title": "ImageURLResponse"
       },
+      "IngestionDrainStatus": {
+        "type": "string",
+        "enum": ["drained", "skipped", "timed_out"],
+        "title": "IngestionDrainStatus",
+        "description": "Fate of a dream pass's enqueued graph writes at the moment the pass\nwas reported complete.\n\nThree distinct states, so consumers (and a future Memory Visualizer)\ncan tell a healthy by-design skip from a real failure:\n\n  * ``drained`` — the pass's own episodes were confirmed landed in the\n    graph before the pass returned (sync path), or the pass enqueued\n    nothing to drain. Healthy.\n  * ``skipped`` — the drain was intentionally not run to avoid stalling\n    a shared serial loop (batch path). The episodes process\n    fire-and-forget; healthy by design, NOT a failure signal.\n  * ``timed_out`` — the sync-path drain was attempted but did not finish\n    within its budget. The reported write/proposal counts include\n    episodes still queued in-process, which are lost if the worker's pod\n    restarts. This is the only value that warrants an operator warning."
+      },
       "InputValidationErrorResponse": {
         "properties": {
           "type": {
@@ -17569,6 +18353,42 @@
         "required": ["message", "unrecognized_fields", "inputs"],
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
+      },
+      "InstallWorkflowRequest": {
+        "properties": {
+          "store_listing_version_id": {
+            "type": "string",
+            "title": "Store Listing Version Id"
+          }
+        },
+        "type": "object",
+        "required": ["store_listing_version_id"],
+        "title": "InstallWorkflowRequest"
+      },
+      "IntroCardResponse": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "greeting": { "type": "string", "title": "Greeting" },
+          "prompts": {
+            "items": { "$ref": "#/components/schemas/SuggestedPrompt" },
+            "type": "array",
+            "title": "Prompts",
+            "default": []
+          },
+          "greeting_done": {
+            "type": "boolean",
+            "title": "Greeting Done",
+            "default": false
+          },
+          "transcript": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript"
+          }
+        },
+        "type": "object",
+        "required": ["path", "greeting"],
+        "title": "IntroCardResponse",
+        "description": "Content for the copilot home's onboarding greeting.\n\n``path`` is \"A\" when we have something to reflect back and \"B\" when\nthe greeting's job is to invite a recording instead. ``greeting_done``\nis the server-side \"already seen it\" flag — when true the client\nshows nothing and caches the fact locally."
       },
       "InvitationCreateResponse": {
         "properties": {
@@ -17743,6 +18563,13 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
           },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
@@ -18076,7 +18903,7 @@
       },
       "LibraryAgentSort": {
         "type": "string",
-        "enum": ["createdAt", "updatedAt"],
+        "enum": ["createdAt", "updatedAt", "lastRunAt"],
         "title": "LibraryAgentSort",
         "description": "Possible sort options for sorting library agents."
       },
@@ -18381,14 +19208,22 @@
         "properties": {
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "params": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Params",
+            "description": "Compact argument summary: top-level input field names, required ones marked with *."
+          },
           "input_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Input Schema"
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Input Schema",
+            "description": "Full input schema. Omitted in discovery responses to keep them small; the execution error path returns the failed tool's full schema on demand."
           }
         },
         "type": "object",
-        "required": ["name", "description", "input_schema"],
+        "required": ["name", "description"],
         "title": "MCPToolInfo",
         "description": "Information about a single MCP tool discovered from a server."
       },
@@ -18932,6 +19767,19 @@
         ],
         "title": "NodeExecutionResult"
       },
+      "NodeFailureSummary": {
+        "properties": {
+          "node_id": { "type": "string", "title": "Node Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["node_id", "block_name", "error"],
+        "title": "NodeFailureSummary"
+      },
       "NodeModel": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -19242,7 +20090,8 @@
           "RUN_14_DAYS",
           "RUN_AGENTS_100",
           "BUILDER_OPEN",
-          "BUILDER_RUN_AGENT"
+          "BUILDER_RUN_AGENT",
+          "CAPABILITY_CARDS"
         ],
         "title": "OnboardingStep"
       },
@@ -20619,6 +21468,31 @@
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
       },
+      "RecommendedProvider": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
+        },
+        "type": "object",
+        "required": ["provider"],
+        "title": "RecommendedProvider",
+        "description": "One provider Claude picked from the transcript.\n\n``provider`` is a registry id (validated against the live provider\nlist before storage); ``reason`` is the one-liner shown under it in\nthe welcome dialog's Recommended section."
+      },
+      "RecommendedProvidersResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "providers": {
+            "items": { "$ref": "#/components/schemas/RecommendedProvider" },
+            "type": "array",
+            "title": "Providers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["ready"],
+        "title": "RecommendedProvidersResponse",
+        "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -21338,6 +22212,10 @@
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
             "default": { "dry_run": false, "kind": "normal" }
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
@@ -21368,12 +22246,28 @@
             "type": "boolean",
             "title": "Is Pinned",
             "default": false
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
         "required": ["id", "created_at", "updated_at", "is_processing"],
         "title": "SessionSummaryResponse",
         "description": "Response model for a session summary (without messages)."
+      },
+      "SetActiveGraphVersionResponse": {
+        "properties": {
+          "skipped_webhook_presets": {
+            "items": { "$ref": "#/components/schemas/SkippedWebhookPreset" },
+            "type": "array",
+            "title": "Skipped Webhook Presets"
+          }
+        },
+        "type": "object",
+        "title": "SetActiveGraphVersionResponse",
+        "description": "Response for activating an existing graph version.\n\nCarries any webhook presets that were left pinned to their old version\nbecause the newly activated version's trigger block is incompatible and\nneeds to be reconfigured."
       },
       "SetGraphActiveVersion": {
         "properties": {
@@ -21609,6 +22503,17 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SkippedWebhookPreset": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "pinned_version": { "type": "integer", "title": "Pinned Version" }
+        },
+        "type": "object",
+        "required": ["id", "name", "pinned_version"],
+        "title": "SkippedWebhookPreset",
+        "description": "A webhook preset that was left pinned to its old version because the\nnewly activated version swaps or reconfigures the trigger block. The user\nneeds to reconfigure the trigger on the new version for it to fire."
       },
       "Stats": {
         "properties": {
@@ -22550,6 +23455,17 @@
         "required": ["message", "suggested_goal"],
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
+      },
+      "SuggestedPrompt": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "prompt": { "type": "string", "title": "Prompt" },
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" }
+        },
+        "type": "object",
+        "required": ["title", "prompt"],
+        "title": "SuggestedPrompt",
+        "description": "One pickable prompt under the greeting.\n\n``title`` is the short line the user sees; ``prompt`` is the full\nmessage that gets sent when they pick it. ``icon`` is a Phosphor icon\nslug from ``intro.PROMPT_ICONS`` — the frontend maps it to the actual\nicon component and falls back to a sparkle for anything unknown."
       },
       "SuggestedPromptsResponse": {
         "properties": {
@@ -23724,6 +24640,20 @@
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
       },
+      "UpdateGraphResponse": {
+        "properties": {
+          "graph": { "$ref": "#/components/schemas/GraphModel" },
+          "skipped_webhook_presets": {
+            "items": { "$ref": "#/components/schemas/SkippedWebhookPreset" },
+            "type": "array",
+            "title": "Skipped Webhook Presets"
+          }
+        },
+        "type": "object",
+        "required": ["graph"],
+        "title": "UpdateGraphResponse",
+        "description": "Response for creating/activating a new graph version.\n\nCarries the new graph version plus any webhook presets that were left\npinned to their old version because the new version's trigger block is\nincompatible and needs to be reconfigured."
+      },
       "UpdateMemberRequest": {
         "properties": {
           "is_admin": {
@@ -24440,6 +25370,22 @@
         "required": ["content"],
         "title": "UploadCopilotSkillRequest",
         "description": "Body for the library UI's \"upload skill\" action.\n\nCarries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the\nuser picked from disk; the server parses + validates it so the upload and\nthe copilot's ``store_skill`` tool share one source of truth."
+      },
+      "UploadPartResponse": {
+        "properties": {
+          "recording_id": { "type": "string", "title": "Recording Id" },
+          "part_index": { "type": "integer", "title": "Part Index" },
+          "received_bytes": { "type": "integer", "title": "Received Bytes" },
+          "total_bytes": { "type": "integer", "title": "Total Bytes" }
+        },
+        "type": "object",
+        "required": [
+          "recording_id",
+          "part_index",
+          "received_bytes",
+          "total_bytes"
+        ],
+        "title": "UploadPartResponse"
       },
       "UsageWindowPublic": {
         "properties": {

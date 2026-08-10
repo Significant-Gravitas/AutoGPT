@@ -14,8 +14,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useMainCreatorPage } from "./useMainCreatorPage";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   params: MarketplaceCreatorPageParams;
@@ -61,7 +62,7 @@ export function MainCreatorPage({ params }: Props) {
             as="NextLink"
             href="/marketplace"
             className="relative -left-2 lg:!-left-4"
-            leftIcon={<ArrowLeftIcon size={16} />}
+            leftIcon={<Icon icon={ArrowLeft02Icon} size={16} />}
           >
             Go back
           </Button>
@@ -149,7 +150,7 @@ export function MainCreatorPage({ params }: Props) {
           <AgentsSection
             agents={creatorAgents.agents}
             hideAvatars
-            sectionTitle={`Agents by ${creator.name}`}
+            sectionTitle={`AI Workflows by ${creator.name}`}
           />
         )}
       </main>
