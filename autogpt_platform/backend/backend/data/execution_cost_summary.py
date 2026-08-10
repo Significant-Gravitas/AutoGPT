@@ -29,6 +29,9 @@ class UserDailyCost(BaseModel):
     date: date
     cost_cents: int
     run_count: int
+    success_count: int = 0
+    failed_count: int = 0
+    review_count: int = 0
 
 
 class UserExecutionCostSummary(BaseModel):
@@ -36,6 +39,10 @@ class UserExecutionCostSummary(BaseModel):
     run_count: int
     billable_run_count: int
     failed_cost_cents: int
+    success_run_count: int = 0
+    failed_run_count: int = 0
+    review_run_count: int = 0
+    total_duration_seconds: float = 0
     by_agent: list[UserAgentCostRollup]
     top_runs: list[UserTopRun]
     daily: list[UserDailyCost]
@@ -91,7 +98,15 @@ async def get_user_cost_summary(
             "    AS billable_run_count,"
             "  COALESCE(SUM(CASE WHEN \"executionStatus\" IN ('FAILED', 'TERMINATED')"
             "    THEN (stats->>'cost')::numeric ELSE 0 END), 0)::bigint"
-            "    AS failed_cost_cents"
+            "    AS failed_cost_cents,"
+            "  COUNT(*) FILTER (WHERE \"executionStatus\" = 'COMPLETED')::bigint"
+            "    AS success_run_count,"
+            "  COUNT(*) FILTER (WHERE \"executionStatus\" IN ('FAILED', 'TERMINATED'))::bigint"
+            "    AS failed_run_count,"
+            "  COUNT(*) FILTER (WHERE \"executionStatus\" = 'REVIEW')::bigint"
+            "    AS review_run_count,"
+            "  COALESCE(SUM((stats->>'duration')::numeric), 0)::float"
+            "    AS total_duration_seconds"
             ' FROM {schema_prefix}"AgentGraphExecution"'
             f" WHERE {base_where}",
             *params,
@@ -129,7 +144,13 @@ async def get_user_cost_summary(
             "SELECT"
             '  ("createdAt" AT TIME ZONE \'UTC\')::date AS "date",'
             "  COALESCE(SUM((stats->>'cost')::numeric), 0)::bigint AS cost_cents,"
-            "  COUNT(*)::bigint AS run_count"
+            "  COUNT(*)::bigint AS run_count,"
+            "  COUNT(*) FILTER (WHERE \"executionStatus\" = 'COMPLETED')::bigint"
+            "    AS success_count,"
+            "  COUNT(*) FILTER (WHERE \"executionStatus\" IN ('FAILED', 'TERMINATED'))::bigint"
+            "    AS failed_count,"
+            "  COUNT(*) FILTER (WHERE \"executionStatus\" = 'REVIEW')::bigint"
+            "    AS review_count"
             ' FROM {schema_prefix}"AgentGraphExecution"'
             f" WHERE {base_where}"
             "  GROUP BY (\"createdAt\" AT TIME ZONE 'UTC')::date"
@@ -144,6 +165,10 @@ async def get_user_cost_summary(
         run_count=int(totals.get("run_count") or 0),
         billable_run_count=int(totals.get("billable_run_count") or 0),
         failed_cost_cents=int(totals.get("failed_cost_cents") or 0),
+        success_run_count=int(totals.get("success_run_count") or 0),
+        failed_run_count=int(totals.get("failed_run_count") or 0),
+        review_run_count=int(totals.get("review_run_count") or 0),
+        total_duration_seconds=float(totals.get("total_duration_seconds") or 0),
         by_agent=[
             UserAgentCostRollup(
                 graph_id=r["graph_id"],
@@ -169,6 +194,9 @@ async def get_user_cost_summary(
                 date=r["date"],
                 cost_cents=int(r.get("cost_cents") or 0),
                 run_count=int(r.get("run_count") or 0),
+                success_count=int(r.get("success_count") or 0),
+                failed_count=int(r.get("failed_count") or 0),
+                review_count=int(r.get("review_count") or 0),
             )
             for r in daily_rows
         ],

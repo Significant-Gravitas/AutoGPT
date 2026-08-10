@@ -105,6 +105,10 @@ async def test_empty_window_returns_zeroed_summary(server: SpinTestServer):
         assert summary.run_count == 0
         assert summary.billable_run_count == 0
         assert summary.failed_cost_cents == 0
+        assert summary.success_run_count == 0
+        assert summary.failed_run_count == 0
+        assert summary.review_run_count == 0
+        assert summary.total_duration_seconds == 0
         assert summary.by_agent == []
         assert summary.top_runs == []
         assert summary.daily == []
@@ -180,6 +184,15 @@ async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
             cost_cents=0,
             started_at=now - timedelta(minutes=5),
         )
+        # A run parked on human review counts toward review_run_count only.
+        await _create_run(
+            run_id=f"e7-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_a,
+            status=AgentExecutionStatus.REVIEW,
+            cost_cents=0,
+            started_at=now - timedelta(minutes=3),
+        )
 
         summary = await get_user_cost_summary(
             user_id=user_id,
@@ -189,15 +202,21 @@ async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
         )
 
         assert summary.total_cents == 1570
-        assert summary.run_count == 6
+        assert summary.run_count == 7
         assert summary.billable_run_count == 5
         # 50 FAILED + 20 TERMINATED
         assert summary.failed_cost_cents == 70
+        # 4 COMPLETED vs 1 FAILED + 1 TERMINATED + 1 REVIEW
+        assert summary.success_run_count == 4
+        assert summary.failed_run_count == 2
+        assert summary.review_run_count == 1
+        # every run above uses the default 1.0s duration
+        assert summary.total_duration_seconds == 7.0
 
         by_agent = {row.graph_id: row for row in summary.by_agent}
         assert by_agent[graph_a].cost_cents == 500
-        # 2 paid runs + 1 zero-cost run on graph_a
-        assert by_agent[graph_a].run_count == 3
+        # 2 paid runs + 1 zero-cost run + 1 review run on graph_a
+        assert by_agent[graph_a].run_count == 4
         assert by_agent[graph_b].cost_cents == 1070
         assert by_agent[graph_b].run_count == 3
         # graph_b leads on total spend so it sorts first
@@ -295,6 +314,22 @@ async def test_daily_buckets_group_by_utc_date(server: SpinTestServer):
             cost_cents=400,
             started_at=day2,
         )
+        await _create_run(
+            run_id=f"d2f-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.FAILED,
+            cost_cents=0,
+            started_at=day2,
+        )
+        await _create_run(
+            run_id=f"d2r-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.REVIEW,
+            cost_cents=0,
+            started_at=day2,
+        )
 
         summary = await get_user_cost_summary(
             user_id=user_id,
@@ -308,8 +343,14 @@ async def test_daily_buckets_group_by_utc_date(server: SpinTestServer):
         ]
         assert summary.daily[0].cost_cents == 350
         assert summary.daily[0].run_count == 2
+        assert summary.daily[0].success_count == 2
+        assert summary.daily[0].failed_count == 0
+        assert summary.daily[0].review_count == 0
         assert summary.daily[1].cost_cents == 400
-        assert summary.daily[1].run_count == 1
+        assert summary.daily[1].run_count == 3
+        assert summary.daily[1].success_count == 1
+        assert summary.daily[1].failed_count == 1
+        assert summary.daily[1].review_count == 1
     finally:
         await _cleanup(user_id, [graph_id])
 
