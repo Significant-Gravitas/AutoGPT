@@ -1,6 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, expect, test, vi } from "vitest";
+import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
@@ -204,6 +205,22 @@ test("renders every Home tile from the aggregate API", async () => {
     screen.getAllByText("Checking recurring subscriptions").length,
   ).toBeGreaterThan(0);
   expect(screen.getByText("Spanish practice plan")).toBeDefined();
+});
+
+test("falls back to an Unknown badge for an unrecognised agent status", async () => {
+  mockDashboard({
+    ...dashboard,
+    agents: [
+      {
+        ...dashboard.agents[0],
+        status: "decommissioned" as HomeAgentStatus["status"],
+      },
+    ],
+  });
+
+  render(<HomePage />);
+
+  expect(await screen.findByText("Unknown")).toBeDefined();
 });
 
 test("approving an item one-tap sends the review decision", async () => {
