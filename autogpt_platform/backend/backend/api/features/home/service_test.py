@@ -107,3 +107,28 @@ async def test_activity_summary_hidden_when_flag_disabled(
     dashboard = await build_home_dashboard(user_id="user-1")
 
     assert dashboard.briefing.outcomes[0].title == "Agent task finished"
+
+
+@pytest.mark.asyncio
+async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    scheduler = MagicMock()
+    scheduler.get_execution_schedules = AsyncMock(side_effect=RuntimeError("scheduler"))
+    mocker.patch(
+        "backend.api.features.home.service.get_scheduler_client", return_value=scheduler
+    )
+    mocker.patch(
+        "backend.api.features.home.service.get_credit_model",
+        AsyncMock(side_effect=RuntimeError("credits")),
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert dashboard.upcoming_tasks == []
+    assert dashboard.week.credits_balance is None
+    assert dashboard.briefing.outcomes[0].title == "Booked the flight."
