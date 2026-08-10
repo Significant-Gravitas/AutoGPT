@@ -1,14 +1,10 @@
 "use client";
 
-import { AlertCircleIcon } from "@hugeicons/core-free-icons";
-import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { HomeTileExpandButton } from "../HomeTileExpandButton/HomeTileExpandButton";
-import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AttentionRow } from "./components/AttentionRow";
+import { NeedsYouTitle } from "./components/NeedsYouTitle";
 import { useNeedsYou } from "./useNeedsYou";
 
 interface Props {
@@ -36,51 +32,15 @@ export function NeedsYou({ dashboard, className }: Props) {
       contentClassName="flex flex-col gap-3"
       surfaceClassName="py-4 sm:py-4"
       title={
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <Icon
-              icon={AlertCircleIcon}
-              size={18}
-              className="text-zinc-500"
-              aria-hidden="true"
-            />
-            <Text variant="h5" className="text-zinc-950">
-              Needs you
-            </Text>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            {itemCount > 0 ? (
-              <span
-                role="status"
-                aria-label={`${itemCount} ${itemCount === 1 ? "item needs" : "items need"} your attention`}
-                className="flex size-6 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold tabular-nums text-white"
-              >
-                {itemCount}
-              </span>
-            ) : null}
-            {hasFilters ? (
-              <HomeTileFilter
-                ariaLabelPrefix="Filter interventions"
-                value={selectedKind}
-                options={filterOptions}
-                onChange={(value) =>
-                  selectKind(value as "all" | HomeAttentionItem["kind"])
-                }
-              />
-            ) : null}
-            {itemCount > 0 ? (
-              <HomeTileExpandButton
-                label={
-                  showAll
-                    ? "Show fewer attention items"
-                    : "Expand attention items"
-                }
-                pressed={showAll}
-                onClick={() => setShowAll(!showAll)}
-              />
-            ) : null}
-          </div>
-        </div>
+        <NeedsYouTitle
+          itemCount={itemCount}
+          hasFilters={hasFilters}
+          selectedKind={selectedKind}
+          filterOptions={filterOptions}
+          onSelectKind={selectKind}
+          showAll={showAll}
+          onToggleShowAll={() => setShowAll(!showAll)}
+        />
       }
       header={
         <Text variant="large" className="max-w-xl text-pretty text-zinc-600">

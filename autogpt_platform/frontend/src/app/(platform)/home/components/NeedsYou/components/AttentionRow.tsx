@@ -1,19 +1,16 @@
 import {
   AlertCircleIcon,
-  Cancel01Icon,
   CoinsDollarIcon,
   PauseIcon,
   Settings02Icon,
-  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { cn } from "@/lib/utils";
+import { AttentionRowActions } from "./AttentionRowActions";
 
 interface Props {
   item: HomeAttentionItem;
@@ -91,52 +88,14 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
-          {item.kind === "approval" && item.review ? (
-            <>
-              <Button
-                as="NextLink"
-                href={item.primary_action.href}
-                variant="secondary"
-                size="small"
-              >
-                {item.primary_action.label}
-              </Button>
-              <Button
-                variant="icon"
-                size="icon"
-                className="size-10 border-zinc-800 bg-zinc-800 p-0 text-white hover:border-zinc-900 hover:bg-zinc-900"
-                disabled={isProcessing}
-                aria-label={`Approve: ${item.title}`}
-                onClick={() => onDecision(item, true)}
-              >
-                <Icon icon={Tick02Icon} size={18} aria-hidden="true" />
-              </Button>
-              <Button
-                variant="icon"
-                size="icon"
-                className={cn(
-                  "size-10 p-0",
-                  confirmDecline &&
-                    "border-red-500 bg-red-500 text-white hover:border-red-600 hover:bg-red-600",
-                )}
-                disabled={isProcessing}
-                aria-label={`${confirmDecline ? "Confirm decline" : "Decline"}: ${item.title}`}
-                onClick={handleDecline}
-                onBlur={() => setConfirmDecline(false)}
-              >
-                <Icon icon={Cancel01Icon} size={18} aria-hidden="true" />
-              </Button>
-            </>
-          ) : (
-            <Button
-              as="NextLink"
-              href={item.primary_action.href}
-              variant="secondary"
-              size="small"
-            >
-              {item.primary_action.label}
-            </Button>
-          )}
+          <AttentionRowActions
+            item={item}
+            isProcessing={isProcessing}
+            confirmDecline={confirmDecline}
+            onApprove={() => onDecision(item, true)}
+            onDecline={handleDecline}
+            onDeclineBlur={() => setConfirmDecline(false)}
+          />
         </div>
       </div>
       <span className="sr-only" aria-live="polite">

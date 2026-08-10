@@ -97,7 +97,11 @@ function HomeSkeleton() {
   );
 }
 
-function HomeTileSkeleton({ cardClassName }: { cardClassName: string }) {
+interface Props {
+  cardClassName: string;
+}
+
+function HomeTileSkeleton({ cardClassName }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-col justify-start space-y-1 px-4 sm:px-5">
