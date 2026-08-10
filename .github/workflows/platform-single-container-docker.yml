@@ -1,0 +1,20 @@
+name: AutoGPT Platform - Single-container image
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the current dev commit to Docker Hub
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-frame:
+    if: ${{ github.sha == '' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: ":"
