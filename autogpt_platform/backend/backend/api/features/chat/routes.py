@@ -114,6 +114,7 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
 
@@ -1170,8 +1171,21 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
-    import asyncio
     import time
+
+    # Fire-and-forget; per-user Redis dedup inside the helper provides
+    # cross-process / cross-restart idempotency. Same pattern as
+    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
+    from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
+
+    # Spawned through the shared helper: the loop only holds a weak
+    # reference, so an unretained task can be GC'd mid-flight — leaving the
+    # Redis marker unwritten and making every subsequent turn redo the whole
+    # registration.
+    spawn_background_task(
+        ensure_morning_briefing_scheduled(user_id),
+        name=f"morning-briefing-register-{user_id[:12]}",
+    )
 
     stream_start_time = time.perf_counter()
     # Wall-clock arrival time, propagated to the executor so the turn-start

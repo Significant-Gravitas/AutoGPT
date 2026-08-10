@@ -2873,6 +2873,34 @@
         }
       }
     },
+    "/api/briefings/latest": {
+      "get": {
+        "tags": ["briefings"],
+        "summary": "Get Latest Briefing",
+        "description": "Return the user's current briefing, or None if there isn't a fresh one.\n\nOnly briefings covering today or yesterday qualify; anything older is\nhistory, not \"this morning\".\n\nStored content that fails to validate against the current BriefingContent\nshape (e.g. written by an older/newer version of the composer) is skipped\nrather than 500ing the request — and rather than hiding every older\nbriefing behind one unreadable row on the newest date.",
+        "operationId": "getBriefingsGet latest briefing",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/BriefingResponse" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Getbriefingsget Latest Briefing"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/builder/blocks": {
       "get": {
         "tags": ["v2"],
@@ -5608,6 +5636,52 @@
             "schema": { "type": "string", "title": "Expert Id" }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/soul": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Soul",
+        "operationId": "update_expert_soul",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertSoulUpdate" }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -15127,6 +15201,153 @@
         ],
         "title": "BrainDumpStatus"
       },
+      "BriefingContent": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "zero_expert_fallback": {
+            "type": "boolean",
+            "title": "Zero Expert Fallback"
+          },
+          "run_items": {
+            "items": { "$ref": "#/components/schemas/BriefingRunItem" },
+            "type": "array",
+            "title": "Run Items"
+          },
+          "decision_items": {
+            "items": { "$ref": "#/components/schemas/BriefingDecisionItem" },
+            "type": "array",
+            "title": "Decision Items"
+          },
+          "decision_total": {
+            "type": "integer",
+            "title": "Decision Total",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "timezone",
+          "zero_expert_fallback",
+          "run_items",
+          "decision_items"
+        ],
+        "title": "BriefingContent"
+      },
+      "BriefingDecisionItem": {
+        "properties": {
+          "node_exec_id": { "type": "string", "title": "Node Exec Id" },
+          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" },
+          "title": { "type": "string", "title": "Title" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "link": { "type": "string", "title": "Link" }
+        },
+        "type": "object",
+        "required": [
+          "node_exec_id",
+          "graph_exec_id",
+          "title",
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "link"
+        ],
+        "title": "BriefingDecisionItem"
+      },
+      "BriefingResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "briefing_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Briefing Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "delivered_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Delivered At"
+          },
+          "content": { "$ref": "#/components/schemas/BriefingContent" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "briefing_date",
+          "created_at",
+          "delivered_at",
+          "content"
+        ],
+        "title": "BriefingResponse"
+      },
+      "BriefingRunItem": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "agent_name",
+          "graph_id",
+          "execution_id",
+          "library_agent_id",
+          "status",
+          "summary",
+          "link"
+        ],
+        "title": "BriefingRunItem"
+      },
       "BulkMoveAgentsRequest": {
         "properties": {
           "agent_ids": {
@@ -17111,6 +17332,16 @@
             "title": "Skills"
           },
           "identity": { "type": "string", "title": "Identity" },
+          "voice_preferences": {
+            "type": "string",
+            "title": "Voice Preferences"
+          },
+          "boundaries": { "type": "string", "title": "Boundaries" },
+          "protected_soul_rules": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Protected Soul Rules"
+          },
           "is_template": { "type": "boolean", "title": "Is Template" },
           "source_template_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -17160,6 +17391,9 @@
           "bio",
           "skills",
           "identity",
+          "voice_preferences",
+          "boundaries",
+          "protected_soul_rules",
           "is_template",
           "source_template_id",
           "is_archived",
@@ -17184,6 +17418,35 @@
         "required": ["schedule_names", "trigger_names"],
         "title": "ExpertDetachPreview",
         "description": "What archiving the expert would pause — drives the confirm dialog."
+      },
+      "ExpertSoulUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "identity": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "voice_preferences": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Voice Preferences"
+          },
+          "boundaries": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Boundaries"
+          }
+        },
+        "type": "object",
+        "required": ["name", "identity", "voice_preferences", "boundaries"],
+        "title": "ExpertSoulUpdate"
       },
       "ExpertWorkflowRef": {
         "properties": {
@@ -20503,6 +20766,34 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Review Message",
             "description": "Optional message from the reviewer"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id",
+            "description": "Expert attributed to the requesting run"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name",
+            "description": "Display name of the agent that requested the review"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id",
+            "description": "For run deep links"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Chat session id for copilot run_block reviews"
           },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
