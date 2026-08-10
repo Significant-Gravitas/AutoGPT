@@ -7,7 +7,6 @@ source "${AUTOGPT_ASSET_DIR:-/opt/autogpt/single-container}/common.sh"
 
 readonly AUTOGPT_PYTHON="${AUTOGPT_PYTHON:-${AUTOGPT_BACKEND_DIR}/.venv/bin/python}"
 readonly POSTGRES_BINDIR="${POSTGRES_BINDIR:-/usr/lib/postgresql/15/bin}"
-readonly CLAMAV_SEED_DIR="${CLAMAV_SEED_DIR:-/opt/clamav-seed}"
 
 main() {
   [[ "$(id -u)" -eq 0 ]] || fatal "entrypoint must start as root so services can drop privileges"
@@ -24,7 +23,6 @@ main() {
   write_valkey_configs
   initialize_postgres
   write_rabbitmq_config
-  seed_clamav_database
   write_falkordb_config
   rm -f "${AUTOGPT_READY_FILE}"
 
@@ -40,7 +38,7 @@ prepare_directories() {
   for managed_path in \
     /data/config /data/postgres /data/rabbitmq /data/valkey \
     /data/valkey/17000 /data/valkey/17001 /data/valkey/17002 /data/falkordb \
-    /data/clamav /data/workspaces /data/home /data/frontend-home \
+    /data/workspaces /data/home /data/frontend-home \
     /data/cache /data/cache/backend /data/cache/next; do
     [[ ! -L "${managed_path}" ]] || fatal "refusing symlink at managed data path: ${managed_path}"
   done
@@ -52,7 +50,6 @@ prepare_directories() {
   install -d -m 0750 -o autogpt-valkey -g autogpt-valkey /data/valkey/17001
   install -d -m 0750 -o autogpt-valkey -g autogpt-valkey /data/valkey/17002
   install -d -m 0750 -o autogpt-falkor -g autogpt-falkor /data/falkordb
-  install -d -m 0750 -o clamav -g clamav /data/clamav
   install -d -m 0750 -o autogpt -g autogpt /data/workspaces
   install -d -m 0750 -o autogpt -g autogpt /data/home
   install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/frontend-home
@@ -60,9 +57,6 @@ prepare_directories() {
   install -d -m 0750 -o autogpt -g autogpt /data/cache/backend
   install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/cache/next
   install -d -m 0755 -o postgres -g postgres /run/postgresql
-  install -d -m 0750 -o clamav -g clamav /run/clamav
-  install -m 0640 -o clamav -g clamav /dev/null /run/clamav/clamd.log
-  install -m 0640 -o clamav -g clamav /dev/null /run/clamav/freshclam.log
   # Service-specific runtime directories and files carry the restrictive
   # permissions. Keep only execute permission on their common parent so the
   # unprivileged PostgreSQL, RabbitMQ, FalkorDB, and app users can traverse to
@@ -95,7 +89,6 @@ initialize_backend_config() {
 
 configure_environment() {
   validate_legacy_auth
-  normalize_toggle AUTOGPT_ENABLE_CLAMAV true
   normalize_toggle AUTOGPT_ENABLE_BOT_SERVICES false
   if [[ "${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}" != false ]]; then
     fatal "email verification is not supported by the single-container distribution"
@@ -134,8 +127,9 @@ configure_environment() {
   export RABBITMQ_NODENAME=rabbit@localhost
   export RABBITMQ_CONFIG_FILE="${AUTOGPT_RUNTIME_DIR}/rabbitmq/rabbitmq"
   export GRAPHITI_FALKORDB_HOST=127.0.0.1 GRAPHITI_FALKORDB_PORT=6380
-  export CLAMAV_SERVICE_HOST=127.0.0.1 CLAMAV_SERVICE_PORT=3310
-  export CLAMAV_SERVICE_ENABLED="${AUTOGPT_ENABLE_CLAMAV}"
+  # The appliance bundles no antivirus daemon. Force the scanner off so uploads
+  # short-circuit as clean instead of failing on an unreachable ClamAV service.
+  export CLAMAV_SERVICE_ENABLED=false
 
   export PYRO_HOST=127.0.0.1
   export AGENTSERVER_HOST=127.0.0.1 SCHEDULER_HOST=127.0.0.1
@@ -304,21 +298,6 @@ write_rabbitmq_config() {
   chown rabbitmq:rabbitmq "${temporary}"
   mv -f "${temporary}" "${AUTOGPT_RUNTIME_DIR}/rabbitmq/rabbitmq.conf"
   trap - RETURN
-}
-
-seed_clamav_database() {
-  [[ "${AUTOGPT_ENABLE_CLAMAV}" == true ]] || return 0
-  if find /data/clamav -maxdepth 1 -type l -print -quit | grep -q .; then
-    fatal "refusing symlink in ClamAV data directory"
-  fi
-  if find /data/clamav -maxdepth 1 -type f \( -name '*.cvd' -o -name '*.cld' \) \
-    -print -quit | grep -q .; then
-    return 0
-  fi
-  [[ -d "${CLAMAV_SEED_DIR}" ]] || fatal "ClamAV seed database is missing"
-  log "seeding ClamAV signature database"
-  cp -a "${CLAMAV_SEED_DIR}/." /data/clamav/
-  chown -R clamav:clamav /data/clamav
 }
 
 write_falkordb_config() {

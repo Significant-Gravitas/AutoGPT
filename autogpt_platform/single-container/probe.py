@@ -33,9 +33,6 @@ def main() -> int:
     redis_parser.add_argument("--password-env")
     redis_parser.add_argument("--cluster", action="store_true")
 
-    clam_parser = subparsers.add_parser("clam")
-    _add_address_arguments(clam_parser)
-
     args = parser.parse_args()
     try:
         if args.command == "tcp":
@@ -50,13 +47,11 @@ def main() -> int:
                 os.environ.get(args.username_env, ""),
                 os.environ.get(args.password_env, ""),
             )
-        elif args.command == "redis":
+        else:
             password = (
                 os.environ.get(args.password_env, "") if args.password_env else ""
             )
             probe_redis(args.host, args.port, args.timeout, password, args.cluster)
-        else:
-            probe_clam(args.host, args.port, args.timeout)
     except (OSError, RuntimeError, TimeoutError) as exc:
         print(f"probe failed: {exc}", file=sys.stderr)
         return 1
@@ -134,14 +129,6 @@ def probe_redis(
             _send_resp_command(stream, "PING")
             if _read_resp(stream) != "PONG":
                 raise RuntimeError("Redis did not return PONG")
-
-
-def probe_clam(host: str, port: int, timeout: float) -> None:
-    with socket.create_connection((host, port), timeout=timeout) as connection:
-        connection.sendall(b"zPING\0")
-        response = connection.recv(64).rstrip(b"\0\n")
-    if response != b"PONG":
-        raise RuntimeError("ClamAV did not return PONG")
 
 
 def _add_address_arguments(parser: argparse.ArgumentParser) -> None:

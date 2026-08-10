@@ -170,24 +170,6 @@ class ServiceProbeTest(unittest.TestCase):
         ):
             probe.probe_redis("127.0.0.1", 17000, 1, "", True)
 
-    def test_clam_rejects_wrong_ping_response(self) -> None:
-        connection = FakeConnection(b"NOPE\0")
-        with (
-            mock.patch.object(
-                probe.socket, "create_connection", return_value=connection
-            ),
-            self.assertRaisesRegex(RuntimeError, "did not return PONG"),
-        ):
-            probe.probe_clam("127.0.0.1", 3310, 1)
-        self.assertEqual(connection.sent, b"zPING\0")
-
-    def test_clam_accepts_pong(self) -> None:
-        connection = FakeConnection(b"PONG\0")
-        with mock.patch.object(
-            probe.socket, "create_connection", return_value=connection
-        ):
-            probe.probe_clam("127.0.0.1", 3310, 1)
-        self.assertEqual(connection.sent, b"zPING\0")
 
 
 if __name__ == "__main__":

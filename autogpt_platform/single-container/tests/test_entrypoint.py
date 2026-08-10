@@ -131,7 +131,7 @@ class NormalizationTest(unittest.TestCase):
 
     def test_rejects_invalid_toggle(self) -> None:
         invalid = self._run(
-            'AUTOGPT_ENABLE_CLAMAV="$2"; normalize_toggle AUTOGPT_ENABLE_CLAMAV true',
+            'AUTOGPT_ENABLE_BOT_SERVICES="$2"; normalize_toggle AUTOGPT_ENABLE_BOT_SERVICES false',
             "yes",
         )
         self.assertNotEqual(invalid.returncode, 0)
