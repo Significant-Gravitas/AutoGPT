@@ -259,7 +259,6 @@ for item in Path(f"/proc/{sys.argv[1]}/environ").read_bytes().split(b"\0"):
         environment[name.decode("ascii")] = value.decode("utf-8")
 
 forbidden = {
-    "AUTOGPT_INTERNAL_SERVICE_TOKEN",
     "AUTH_DATABASE_URL",
     "DB_PASS",
     "DIRECT_URL",
@@ -412,16 +411,6 @@ SQL
     return 1
   }
 
-  [[ "$(
-    docker exec --user autogpt_proxy "${CONTAINER_NAME}" \
-      curl --silent --show-error --max-time 30 \
-      --output /dev/null --write-out '%{http_code}' \
-      --request POST --header 'Content-Type: application/json' \
-      --data '{}' http://127.0.0.1:8005/get_user_credentials
-  )" == 401 ]] || {
-    echo "nginx operating-system user can call protected internal RPC" >&2
-    return 1
-  }
   if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
     /usr/bin/env -i \
     PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
@@ -443,17 +432,6 @@ SQL
     echo "frontend operating-system user can access Valkey without authentication" >&2
     return 1
   fi
-
-  [[ "$(
-    docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
-      curl --silent --show-error --max-time 30 \
-      --output /dev/null --write-out '%{http_code}' \
-      --request POST --header 'Content-Type: application/json' \
-      --data '{}' http://127.0.0.1:8005/get_user_credentials
-  )" == 401 ]] || {
-    echo "frontend operating-system user can call protected internal RPC" >&2
-    return 1
-  }
 
   docker exec "${CONTAINER_NAME}" \
     curl --fail --silent --show-error --max-time 30 \

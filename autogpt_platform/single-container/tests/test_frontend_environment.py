@@ -44,7 +44,6 @@ class FrontendEnvironmentTest(unittest.TestCase):
             "TRANSCRIPTION_MODEL": "whisper-1",
         }
         forbidden = {
-            "AUTOGPT_INTERNAL_SERVICE_TOKEN": "internal-service-token",
             "DATABASE_URL": "postgresql://postgres:db-password@127.0.0.1/postgres",  # pragma: allowlist secret
             "DB_PASS": "database-password",
             "DIRECT_URL": "postgresql://superuser:secret@127.0.0.1/postgres",

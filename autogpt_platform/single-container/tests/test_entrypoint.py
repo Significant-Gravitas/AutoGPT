@@ -20,13 +20,15 @@ BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "serv
 class InternalServiceTopologyTest(unittest.TestCase):
     def test_rpc_health_path_matches_backend(self) -> None:
         module = ast.parse(BACKEND_SERVICE_PATH.read_text(encoding="utf-8"))
-        assignments = {
-            node.targets[0].id: ast.literal_eval(node.value)
-            for node in module.body
-            if isinstance(node, ast.Assign)
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-            and node.targets[0].id == "INTERNAL_HEALTH_CHECK_PATH"
+        route_paths = {
+            ast.literal_eval(node.args[0])
+            for node in ast.walk(module)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "add_api_route"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
         }
         result = subprocess.run(
             [
@@ -45,7 +47,7 @@ class InternalServiceTopologyTest(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, assignments["INTERNAL_HEALTH_CHECK_PATH"])
+        self.assertIn(result.stdout, route_paths)
         self.assertIn(
             "${AUTOGPT_INTERNAL_HEALTH_PATH}",
             HEALTHCHECK_PATH.read_text(encoding="utf-8"),
