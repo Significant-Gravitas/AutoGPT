@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 
 import stripe
-from prisma.enums import CreditTransactionType, OnboardingStep
+from prisma.enums import CreditTransactionType
 from pydantic import BaseModel
 
 from backend.data.credit import (
@@ -21,6 +21,7 @@ from backend.data.credit import (
 )
 from backend.data.db import prisma
 from backend.data.model import RefundRequest, TransactionHistory
+from backend.data.onboarding_steps import OnboardingStep
 from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson

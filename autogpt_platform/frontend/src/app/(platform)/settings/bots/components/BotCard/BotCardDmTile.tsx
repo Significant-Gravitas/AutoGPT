@@ -1,8 +1,12 @@
-import { ChatCircleDotsIcon, LinkIcon, TrashIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import type { PlatformUserLinkInfo } from "@/app/api/__generated__/models/platformUserLinkInfo";
+import {
+  Chatting01Icon,
+  Delete02Icon,
+  Link01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   platformName: string;
@@ -27,7 +31,11 @@ export function BotCardDmTile({
   return (
     <div className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
-        <ChatCircleDotsIcon size={20} className="shrink-0 text-zinc-500" />
+        <Icon
+          icon={Chatting01Icon}
+          size={20}
+          className="shrink-0 text-zinc-500"
+        />
         <div className="flex min-w-0 flex-col">
           <Text variant="body-medium" as="span" className="text-textBlack">
             {title}
@@ -41,7 +49,7 @@ export function BotCardDmTile({
         <Button
           variant="outline"
           size="small"
-          leftIcon={<TrashIcon size={16} />}
+          leftIcon={<Icon icon={Delete02Icon} size={16} />}
           loading={isPending(dmLink.id)}
           onClick={() => onUnlink(dmLink.id)}
           aria-label={`Unlink DM on ${platformName}`}
@@ -50,7 +58,7 @@ export function BotCardDmTile({
         </Button>
       ) : (
         <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
-          <LinkIcon size={14} /> Not linked
+          <Icon icon={Link01Icon} size={14} /> Not linked
         </span>
       )}
     </div>

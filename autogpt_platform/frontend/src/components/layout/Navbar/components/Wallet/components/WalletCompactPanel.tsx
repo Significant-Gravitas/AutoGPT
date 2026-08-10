@@ -2,19 +2,18 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
-import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { getEarnRows, TaskGroup } from "../helpers";
 import {
+  CheckmarkBadge01Icon,
   CircleIcon,
   CreditCardIcon,
-  SealCheckIcon,
-} from "@phosphor-icons/react";
-
-import { getEarnRows, TaskGroup } from "../helpers";
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   groups: TaskGroup[];
-  completedSteps: OnboardingStep[] | undefined;
+  completedSteps: string[] | undefined;
   formattedCredits: string;
   onAddCredits: () => void;
 }
@@ -43,7 +42,7 @@ export function WalletCompactPanel({
           onClick={onAddCredits}
           className="flex items-center justify-center gap-3 rounded-large bg-zinc-100 px-3 py-2.5 text-center transition-colors hover:bg-zinc-200"
         >
-          <CreditCardIcon size={20} className="text-zinc-700" />
+          <Icon icon={CreditCardIcon} size={20} className="text-zinc-700" />
           <Text variant="body-medium">Add credits</Text>
         </button>
       )}
@@ -62,16 +61,16 @@ export function WalletCompactPanel({
               <div className="flex min-w-0 items-start gap-2.5">
                 <span className="mt-0.5 shrink-0">
                   {row.done ? (
-                    <SealCheckIcon
+                    <Icon
+                      icon={CheckmarkBadge01Icon}
                       size={18}
-                      weight="fill"
                       className="text-[#00a656]"
                       aria-label="completed"
                     />
                   ) : (
-                    <CircleIcon
+                    <Icon
+                      icon={CircleIcon}
                       size={16}
-                      weight="regular"
                       className="text-zinc-400"
                       aria-label="pending"
                     />

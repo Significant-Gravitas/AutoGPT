@@ -1,10 +1,11 @@
 "use client";
 
 import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
-import { UserCircleDashedIcon } from "@phosphor-icons/react";
 import { CreatorCard } from "../CreatorCard/CreatorCard";
 import { SectionHeader } from "../SectionHeader";
 import { useFeaturedCreators } from "./useFeaturedCreators";
+import { UserCircle02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface FeaturedCreatorsProps {
   title?: string;
@@ -23,7 +24,7 @@ export const FeaturedCreators = ({
       <div className="w-full max-w-[1360px]">
         <SectionHeader
           eyebrow="The community"
-          eyebrowIcon={<UserCircleDashedIcon size={16} weight="bold" />}
+          eyebrowIcon={<Icon icon={UserCircle02Icon} size={16} />}
           title={title}
           subtitle="The people behind the workflows you install."
         />
@@ -33,6 +34,7 @@ export const FeaturedCreators = ({
             <CreatorCard
               key={index}
               creatorName={creator.name || creator.username}
+              creatorUsername={creator.username}
               creatorImage={creator.avatar_url}
               bio={creator.description}
               agentsUploaded={creator.num_agents}

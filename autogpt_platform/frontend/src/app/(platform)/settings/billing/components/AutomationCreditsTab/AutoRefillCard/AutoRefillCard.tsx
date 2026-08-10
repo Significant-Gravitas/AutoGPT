@@ -1,6 +1,4 @@
 "use client";
-
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
@@ -9,6 +7,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { getSectionMotionProps } from "../../../helpers";
 import { AutoRefillDialog } from "./AutoRefillDialog";
 import { useAutoRefillCard } from "./useAutoRefillCard";
+import { ReloadIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   index?: number;
@@ -39,7 +39,7 @@ export function AutoRefillCard({ index = 0 }: Props) {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-violet-100 text-violet-700">
-          <ArrowsClockwiseIcon size={20} />
+          <Icon icon={ReloadIcon} size={20} />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text variant="body-medium" as="span" className="text-textBlack">

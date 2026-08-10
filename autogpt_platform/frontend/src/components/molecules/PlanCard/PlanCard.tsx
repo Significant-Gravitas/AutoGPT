@@ -6,10 +6,11 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { CheckIcon, StarIcon } from "@phosphor-icons/react";
 import { type Country } from "./countries";
 import { PLAN_KEYS, type PlanDef, type PlanKey } from "./plans";
 import { computePlanPricing } from "./computePricing";
+import { StarIcon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const ZERO_DECIMAL_CODES = new Set(["JPY", "KRW", "HUF", "CLP"]);
 
@@ -102,9 +103,9 @@ export function PlanCard({
                     }
               }
             >
-              <StarIcon
+              <Icon
+                icon={StarIcon}
                 size={10}
-                weight="fill"
                 aria-hidden="true"
                 className="text-yellow-300"
               />
@@ -219,9 +220,9 @@ export function PlanCard({
                     isTeam ? "bg-stone-100" : "bg-purple-50",
                   )}
                 >
-                  <CheckIcon
+                  <Icon
+                    icon={Tick02Icon}
                     size={10}
-                    weight="bold"
                     className={isTeam ? "text-stone-500" : "text-purple-500"}
                   />
                 </span>

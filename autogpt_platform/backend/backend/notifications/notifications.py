@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
@@ -55,6 +56,20 @@ settings = Settings()
 # truly broken messages on the queue for long.
 MAX_CONSUMER_RETRY_ATTEMPTS = 3
 CONSUMER_RETRY_BACKOFF_SECONDS = 2
+
+# Upper bound for each stage of _shutdown_service (consumer-task cancellation
+# and RabbitMQ disconnect). A consumer stuck unwinding on a dead broker
+# connection must not hang cleanup forever — the process has to keep making
+# forward progress so its supervisor sees a clean exit. Mirrors the
+# timeout=10 drain in GraphExecutorManager.cleanup.
+SHUTDOWN_TIMEOUT_SECONDS = 10
+
+# Outer deadline for cleanup()'s cross-thread wait on the _shutdown_service
+# barrier. Each barrier stage is individually bounded by
+# SHUTDOWN_TIMEOUT_SECONDS, so this only fires when the event loop stops
+# before ever servicing the barrier — without it, Future.result() would block
+# process exit indefinitely.
+CLEANUP_TIMEOUT_SECONDS = SHUTDOWN_TIMEOUT_SECONDS * 2 + 5
 
 
 NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
@@ -219,6 +234,7 @@ class NotificationManager(AppService):
     def __init__(self):
         super().__init__()
         self.rabbitmq_config = create_notification_config()
+        self.rabbitmq_service: rabbitmq.AsyncRabbitMQ | None = None
         self.running = True
         self.email_sender = EmailSender()
         self._run_service_future: Future[None] | None = None
@@ -1205,8 +1221,8 @@ class NotificationManager(AppService):
 
     async def _shutdown_service(self) -> None:
         """Stop consumers completely before closing their RabbitMQ connection."""
-        service_future = getattr(self, "_run_service_future", None)
-        service_task = getattr(self, "_run_service_task", None)
+        service_future = self._run_service_future
+        service_task = self._run_service_task
         # Cleanup can race the tracked coroutine's first loop turn. Yield until
         # it records the actual asyncio task or its scheduling proxy completes.
         while (
@@ -1215,16 +1231,43 @@ class NotificationManager(AppService):
             and not service_future.done()
         ):
             await asyncio.sleep(0)
-            service_task = getattr(self, "_run_service_task", None)
+            service_task = self._run_service_task
 
         if service_task is not None and service_task is not asyncio.current_task():
             if not service_task.done():
                 service_task.cancel()
-            await asyncio.gather(service_task, return_exceptions=True)
+            # Bounded wait: a consumer stuck unwinding (e.g. awaiting a broker
+            # reply on a dead connection) must not hang shutdown forever.
+            _, pending = await asyncio.wait(
+                [service_task], timeout=SHUTDOWN_TIMEOUT_SECONDS
+            )
+            if pending:
+                logger.warning(
+                    "Notification service task did not finish cancelling within "
+                    f"{SHUTDOWN_TIMEOUT_SECONDS}s; continuing shutdown"
+                )
 
-        if rabbitmq_service := getattr(self, "rabbitmq_service", None):
+        if self.rabbitmq_service is not None:
             logger.info("⏳ Disconnecting RabbitMQ...")
-            await rabbitmq_service.disconnect()
+            # asyncio.wait (not wait_for): on timeout, wait_for would cancel
+            # the disconnect and then await that cancellation, so a
+            # cancellation-resistant disconnect could still hang shutdown.
+            # wait() returns at the deadline and abandons the task instead.
+            disconnect_task = asyncio.ensure_future(self.rabbitmq_service.disconnect())
+            _, pending = await asyncio.wait(
+                [disconnect_task], timeout=SHUTDOWN_TIMEOUT_SECONDS
+            )
+            if pending:
+                disconnect_task.cancel()
+                logger.warning(
+                    "RabbitMQ disconnect did not complete within "
+                    f"{SHUTDOWN_TIMEOUT_SECONDS}s; continuing shutdown"
+                )
+            elif (
+                not disconnect_task.cancelled()
+                and (exc := disconnect_task.exception()) is not None
+            ):
+                logger.warning(f"RabbitMQ disconnect failed during shutdown: {exc}")
 
     def cleanup(self):
         """Cleanup service resources."""
@@ -1234,12 +1277,38 @@ class NotificationManager(AppService):
             # concurrent Future marks that proxy done before the underlying
             # asyncio task and its consumer children have finished unwinding.
             shutdown = self._shutdown_service()
-            if self.shared_event_loop.is_running():
-                self.run_and_wait(shutdown)
+            if self.shared_event_loop.is_closed():
+                # The loop thread already stopped and closed the loop (loop
+                # crash or repeated cleanup): every task on it is gone, and
+                # both scheduling paths below would raise "Event loop is
+                # closed" instead of shutting down.
+                shutdown.close()
+                logger.warning(
+                    "Event loop is already closed; "
+                    "skipping notification service shutdown"
+                )
+            elif self.shared_event_loop.is_running():
+                try:
+                    # Each stage of _shutdown_service is already bounded by
+                    # SHUTDOWN_TIMEOUT_SECONDS; this outer deadline only fires
+                    # when the loop stops before ever servicing the barrier,
+                    # which would otherwise block .result() forever.
+                    self.run_and_wait(shutdown, timeout=CLEANUP_TIMEOUT_SECONDS)
+                except FutureTimeoutError:
+                    logger.warning(
+                        "Notification service shutdown did not run within "
+                        f"{CLEANUP_TIMEOUT_SECONDS}s; continuing cleanup"
+                    )
+                except RuntimeError as e:
+                    # The loop closed between the is_closed() check above and
+                    # the scheduling call; nothing is left to shut down.
+                    shutdown.close()
+                    logger.warning(f"Could not run notification service shutdown: {e}")
             else:
                 self.shared_event_loop.run_until_complete(shutdown)
         finally:
             self._run_service_future = None
+            self._run_service_task = None
             super().cleanup()
 
 

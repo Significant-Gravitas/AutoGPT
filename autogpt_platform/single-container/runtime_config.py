@@ -12,6 +12,7 @@ import re
 import secrets
 import stat
 import sys
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -43,7 +44,7 @@ def main() -> int:
     return 0
 
 
-def ensure_runtime_config(path: Path, environment: os._Environ[str]) -> dict[str, str]:
+def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[str, str]:
     """Return the existing secrets or atomically create them on first boot."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
@@ -102,16 +103,24 @@ def _normalize_public_host(host: str) -> str:
     return f"[{address.compressed}]" if address.version == 6 else address.compressed
 
 
-def _new_values(environment: os._Environ[str]) -> dict[str, str]:
+def _new_values(environment: Mapping[str, str]) -> dict[str, str]:
     vapid_private, vapid_public = _configured_or_generated_vapid(environment)
     values = {
         "AUTOGPT_RUNTIME_CONFIG_VERSION": CONFIG_VERSION,
+        "AUTOGPT_INTERNAL_SERVICE_TOKEN": _configured_or_generated(
+            environment,
+            "AUTOGPT_INTERNAL_SERVICE_TOKEN",
+            lambda: secrets.token_urlsafe(36),
+        ),
         "POSTGRES_PASSWORD": _configured_or_generated(
             environment, "POSTGRES_PASSWORD", lambda: secrets.token_urlsafe(36)
         ),
         "RABBITMQ_DEFAULT_USER": environment.get("RABBITMQ_DEFAULT_USER") or "autogpt",
         "RABBITMQ_DEFAULT_PASS": _configured_or_generated(
             environment, "RABBITMQ_DEFAULT_PASS", lambda: secrets.token_urlsafe(36)
+        ),
+        "REDIS_PASSWORD": _configured_or_generated(
+            environment, "REDIS_PASSWORD", lambda: secrets.token_urlsafe(36)
         ),
         "BETTER_AUTH_SECRET": _configured_or_generated(
             environment, "BETTER_AUTH_SECRET", lambda: secrets.token_urlsafe(48)
@@ -135,13 +144,13 @@ def _new_values(environment: os._Environ[str]) -> dict[str, str]:
 
 
 def _configured_or_generated(
-    environment: os._Environ[str], name: str, generator
+    environment: Mapping[str, str], name: str, generator: Callable[[], str]
 ) -> str:
     return environment.get(name) or generator()
 
 
 def _configured_or_generated_vapid(
-    environment: os._Environ[str],
+    environment: Mapping[str, str],
 ) -> tuple[str, str]:
     private = environment.get("VAPID_PRIVATE_KEY")
     public = environment.get("VAPID_PUBLIC_KEY")
@@ -179,9 +188,11 @@ def _base64url(value: bytes) -> str:
 def _validate_values(values: dict[str, str]) -> None:
     expected = {
         "AUTOGPT_RUNTIME_CONFIG_VERSION",
+        "AUTOGPT_INTERNAL_SERVICE_TOKEN",
         "POSTGRES_PASSWORD",
         "RABBITMQ_DEFAULT_USER",
         "RABBITMQ_DEFAULT_PASS",
+        "REDIS_PASSWORD",
         "BETTER_AUTH_SECRET",
         "ENCRYPTION_KEY",
         "UNSUBSCRIBE_SECRET_KEY",
@@ -246,7 +257,7 @@ def _read_config(path: Path) -> dict[str, str]:
 
 
 def _verify_environment_matches(
-    values: dict[str, str], environment: os._Environ[str]
+    values: dict[str, str], environment: Mapping[str, str]
 ) -> None:
     for name, persisted in values.items():
         configured = environment.get(name)
@@ -264,7 +275,12 @@ def _write_config(path: Path, values: dict[str, str]) -> None:
         flags |= os.O_NOFOLLOW
     descriptor = os.open(temporary, flags, 0o600)
     try:
-        with os.fdopen(descriptor, "w", encoding="ascii") as stream:
+        try:
+            stream = os.fdopen(descriptor, "w", encoding="ascii")
+        except BaseException:
+            os.close(descriptor)
+            raise
+        with stream:
             os.fchmod(stream.fileno(), 0o600)
             stream.write("# Generated once by the AutoGPT all-in-one image.\n")
             for name, value in values.items():

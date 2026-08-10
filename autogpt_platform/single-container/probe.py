@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small dependency-free health probes for the bundled services."""
+"""Small health probes for the bundled services."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import os
 import socket
 import sys
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 
 def main() -> int:
@@ -18,8 +19,13 @@ def main() -> int:
     _add_address_arguments(tcp_parser)
 
     http_parser = subparsers.add_parser("http")
-    http_parser.add_argument("url")
+    http_parser.add_argument("urls", nargs="+")
     http_parser.add_argument("--timeout", type=float, default=5)
+
+    amqp_parser = subparsers.add_parser("amqp")
+    _add_address_arguments(amqp_parser)
+    amqp_parser.add_argument("--username-env", required=True)
+    amqp_parser.add_argument("--password-env", required=True)
 
     redis_parser = subparsers.add_parser("redis")
     _add_address_arguments(redis_parser)
@@ -34,7 +40,15 @@ def main() -> int:
         if args.command == "tcp":
             probe_tcp(args.host, args.port, args.timeout)
         elif args.command == "http":
-            probe_http(args.url, args.timeout)
+            probe_http_many(args.urls, args.timeout)
+        elif args.command == "amqp":
+            probe_amqp(
+                args.host,
+                args.port,
+                args.timeout,
+                os.environ.get(args.username_env, ""),
+                os.environ.get(args.password_env, ""),
+            )
         elif args.command == "redis":
             password = (
                 os.environ.get(args.password_env, "") if args.password_env else ""
@@ -50,7 +64,7 @@ def main() -> int:
 
 def probe_tcp(host: str, port: int, timeout: float) -> None:
     with socket.create_connection((host, port), timeout=timeout):
-        return
+        pass
 
 
 def probe_http(url: str, timeout: float) -> None:
@@ -58,6 +72,43 @@ def probe_http(url: str, timeout: float) -> None:
     with urllib.request.urlopen(request, timeout=timeout) as response:
         if not 200 <= response.status < 400:
             raise RuntimeError(f"HTTP {response.status} from {url}")
+
+
+def probe_http_many(urls: list[str], timeout: float) -> None:
+    with ThreadPoolExecutor(max_workers=len(urls)) as executor:
+        futures = [executor.submit(probe_http, url, timeout) for url in urls]
+        for future in futures:
+            future.result()
+
+
+def probe_amqp(
+    host: str,
+    port: int,
+    timeout: float,
+    username: str,
+    password: str,
+) -> None:
+    if not username or not password:
+        raise RuntimeError("AMQP credentials are missing")
+    try:
+        import pika
+
+        parameters = pika.ConnectionParameters(
+            host=host,
+            port=port,
+            virtual_host="/",
+            credentials=pika.PlainCredentials(username, password),
+            connection_attempts=1,
+            retry_delay=0,
+            socket_timeout=timeout,
+            stack_timeout=timeout,
+            blocked_connection_timeout=timeout,
+            heartbeat=0,
+        )
+        connection = pika.BlockingConnection(parameters)
+        connection.close()
+    except Exception as exc:
+        raise RuntimeError("AMQP connection failed") from exc
 
 
 def probe_redis(
@@ -106,6 +157,18 @@ def _send_resp_command(stream, *parts: str) -> None:
         stream.write(encoded + b"\r\n")
 
 
+def _read_exactly(stream, count: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = count
+    while remaining:
+        chunk = stream.read(remaining)
+        if not chunk:
+            raise RuntimeError("Redis closed the connection")
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
 def _read_resp(stream) -> str | int | None:
     prefix = stream.read(1)
     if not prefix:
@@ -124,8 +187,10 @@ def _read_resp(stream) -> str | int | None:
         length = int(payload)
         if length == -1:
             return None
-        value = stream.read(length)
-        if stream.read(2) != b"\r\n":
+        if length < -1:
+            raise RuntimeError("invalid Redis bulk length")
+        value = _read_exactly(stream, length)
+        if _read_exactly(stream, 2) != b"\r\n":
             raise RuntimeError("invalid Redis bulk response")
         return value.decode("utf-8")
     raise RuntimeError("unsupported Redis response type")

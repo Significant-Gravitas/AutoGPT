@@ -24,13 +24,12 @@ declare global {
 let currDataLayerName: string | undefined = undefined;
 
 type SetupProps = {
-  enabled?: boolean;
   ga: GAParams;
   host: string;
 };
 
 export function SetupAnalytics(props: SetupProps) {
-  const { enabled = true, ga, host } = props;
+  const { ga, host } = props;
   const { gaId, debugMode, dataLayerName = "dataLayer", nonce } = ga;
   const isProductionDomain = host.includes("platform.agpt.co");
 
@@ -50,13 +49,11 @@ export function SetupAnalytics(props: SetupProps) {
 
   // Datafa.st journey analytics only on production AND with consent
   const dataFastEnabled =
-    enabled && isProductionDomain && (hasAnalyticsConsent || isPublicTourPage);
+    isProductionDomain && (hasAnalyticsConsent || isPublicTourPage);
   // We collect analytics too for open source developers running the platform locally
   // BUT only with consent
   const googleAnalyticsEnabled =
-    enabled &&
-    (environment.isLocal() || isProductionDomain) &&
-    hasAnalyticsConsent;
+    (environment.isLocal() || isProductionDomain) && hasAnalyticsConsent;
 
   if (currDataLayerName === undefined) {
     currDataLayerName = dataLayerName;

@@ -1,8 +1,8 @@
 "use client";
-
-import { CaretRightIcon, CheckIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { ArrowRight01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   title: string;
@@ -40,11 +40,11 @@ export function LlmMenuItem({
         </div>
         <div className="flex items-center gap-2">
           {isActive && (
-            <CheckIcon className="h-4 w-4 text-emerald-600" weight="bold" />
+            <Icon icon={Tick02Icon} className="h-4 w-4 text-emerald-600" />
           )}
           {rightSlot}
           {showChevron && (
-            <CaretRightIcon className="h-4 w-4 text-zinc-900" weight="bold" />
+            <Icon icon={ArrowRight01Icon} className="h-4 w-4 text-zinc-900" />
           )}
         </div>
       </div>

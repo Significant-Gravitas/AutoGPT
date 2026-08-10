@@ -42,7 +42,13 @@ async def _ensure_db_connected() -> None:
         await db_module.connect()
 
 
-def make_session(user_id: str, *, guide_read: bool = True, library_check: bool = True):
+def make_session(
+    user_id: str,
+    *,
+    guide_read: bool = True,
+    library_check: bool = True,
+    expert_id: str | None = None,
+):
     """Build a fake ChatSession for tool tests.
 
     ``guide_read=True`` (default) pre-populates the session with a
@@ -74,6 +80,7 @@ def make_session(user_id: str, *, guide_read: bool = True, library_check: bool =
         updated_at=datetime.now(UTC),
         successful_agent_runs={},
         successful_agent_schedules={},
+        expert_id=expert_id,
     )
     if library_check:
         session.announce_inflight_tool_call(

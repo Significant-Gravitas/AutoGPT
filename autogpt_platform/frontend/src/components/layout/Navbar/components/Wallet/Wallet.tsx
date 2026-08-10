@@ -8,11 +8,11 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { TopUpDialog } from "@/components/layout/TopUpPrompt/TopUpDialog/TopUpDialog";
 import { cn } from "@/lib/utils";
-import { WalletIcon } from "@phosphor-icons/react";
-
 import { WalletCompactPanel } from "./components/WalletCompactPanel";
 import { WalletFullPanel } from "./components/WalletFullPanel";
 import { useWallet } from "./useWallet";
+import { Wallet01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   compact?: boolean;
@@ -54,7 +54,8 @@ export function Wallet({ compact = false }: Props) {
               )}
               onClick={onWalletOpen}
             >
-              <WalletIcon
+              <Icon
+                icon={Wallet01Icon}
                 size={20}
                 className={cn("inline-block", !compact && "xl:hidden")}
               />

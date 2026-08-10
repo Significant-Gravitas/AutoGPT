@@ -22,7 +22,7 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
-from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
+from backend.copilot.config import ChatConfig, CopilotLLMModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.model import (
@@ -114,6 +114,7 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
 
@@ -216,7 +217,7 @@ class StreamChatRequest(BaseModel):
         description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
         "If None, uses the server default (extended_thinking).",
     )
-    model: CopilotLlmModel | None = Field(
+    model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
         "If None, the server applies per-user LD targeting then falls back to config.",
@@ -1170,8 +1171,21 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
-    import asyncio
     import time
+
+    # Fire-and-forget; per-user Redis dedup inside the helper provides
+    # cross-process / cross-restart idempotency. Same pattern as
+    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
+    from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
+
+    # Spawned through the shared helper: the loop only holds a weak
+    # reference, so an unretained task can be GC'd mid-flight — leaving the
+    # Redis marker unwritten and making every subsequent turn redo the whole
+    # registration.
+    spawn_background_task(
+        ensure_morning_briefing_scheduled(user_id),
+        name=f"morning-briefing-register-{user_id[:12]}",
+    )
 
     stream_start_time = time.perf_counter()
     # Wall-clock arrival time, propagated to the executor so the turn-start
