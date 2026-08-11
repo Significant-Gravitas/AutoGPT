@@ -36,22 +36,133 @@ manifest_is_absent() {
   ((inspect_status != 0)) && grep -Eqi '(manifest unknown|not found)' <<<"$inspect_output"
 }
 
+expected_source_revision() {
+  printf '%s\n' "$GITHUB_SHA"
+}
+
 runnable_manifest_rows() {
   jq -er '
-    [
-      .manifests[]
-      | select(
-          ((.annotations // {})["vnd.docker.reference.type"] // "") != "attestation-manifest"
-          and (.platform.os // "unknown") != "unknown"
-          and (.platform.architecture // "unknown") != "unknown"
-        )
-      | { platform: "\(.platform.os)/\(.platform.architecture)", digest }
-    ]
-    | if (map(.platform) | sort) == ["linux/amd64", "linux/arm64"] then
-        .[] | "\(.platform) \(.digest)"
+    def valid_digest:
+      type == "string" and test("^sha256:[0-9a-f]{64}$");
+    def image_manifest:
+      .mediaType == "application/vnd.oci.image.manifest.v1+json"
+      or .mediaType == "application/vnd.docker.distribution.manifest.v2+json";
+    def image_index:
+      .mediaType == "application/vnd.oci.image.index.v1+json"
+      or .mediaType == "application/vnd.docker.distribution.manifest.list.v2+json";
+
+    if image_index and (.manifests | type) == "array" then
+      .manifests as $manifests
+      | [
+          $manifests[]
+          | select(
+              ((.annotations // {})["vnd.docker.reference.type"] // "")
+                != "attestation-manifest"
+            )
+        ] as $runnable
+      | [
+          $manifests[]
+          | select(
+              ((.annotations // {})["vnd.docker.reference.type"] // "")
+                == "attestation-manifest"
+            )
+        ] as $attestations
+      | [
+          $runnable[]
+          | { platform: "\(.platform.os)/\(.platform.architecture)", digest }
+        ] as $rows
+      | if (
+          ($rows | map(.platform) | sort) == ["linux/amd64", "linux/arm64"]
+          and all($runnable[]; image_manifest and (.digest | valid_digest))
+          and (($runnable | length) + ($attestations | length) == ($manifests | length))
+          and all(
+            $attestations[];
+            (image_manifest)
+            and (.digest | valid_digest)
+            and .platform.os == "unknown"
+            and .platform.architecture == "unknown"
+            and (
+              .annotations["vnd.docker.reference.digest"] as $subject
+              | any($runnable[]; .digest == $subject)
+            )
+          )
+        ) then
+          $rows[] | "\(.platform) \(.digest)"
+        else
+          error("invalid runnable or attestation manifest set")
+        end
+    else
+      error("expected a supported image index")
+    end
+  '
+}
+
+single_runnable_manifest_row() {
+  local expected_arch="$1"
+  local source_digest="$2"
+  jq -er --arg expected_arch "$expected_arch" --arg source_digest "$source_digest" '
+    def valid_digest:
+      type == "string" and test("^sha256:[0-9a-f]{64}$");
+    def image_manifest:
+      .mediaType == "application/vnd.oci.image.manifest.v1+json"
+      or .mediaType == "application/vnd.docker.distribution.manifest.v2+json";
+    def image_index:
+      .mediaType == "application/vnd.oci.image.index.v1+json"
+      or .mediaType == "application/vnd.docker.distribution.manifest.list.v2+json";
+
+    if image_manifest then
+      if ($source_digest | valid_digest) then
+        "linux/\($expected_arch) \($source_digest)"
       else
-        error("expected exactly linux/amd64 and linux/arm64")
+        error("invalid source manifest digest")
       end
+    elif image_index then
+      .manifests as $manifests
+      | if ($manifests | type) != "array" then
+          error("index is missing manifest descriptors")
+        else
+          [
+            $manifests[]
+            | select(
+                ((.annotations // {})["vnd.docker.reference.type"] // "")
+                  != "attestation-manifest"
+              )
+          ] as $runnable
+          | if ($runnable | length) != 1 then
+              error("expected exactly one runnable descriptor")
+            else
+              $runnable[0] as $image
+              | [
+                  $manifests[]
+                  | select(
+                      ((.annotations // {})["vnd.docker.reference.type"] // "")
+                        == "attestation-manifest"
+                    )
+                ] as $attestations
+              | if (
+                  ($image | image_manifest)
+                  and ($image.digest | valid_digest)
+                  and $image.platform.os == "linux"
+                  and $image.platform.architecture == $expected_arch
+                  and (($runnable | length) + ($attestations | length) == ($manifests | length))
+                  and all(
+                    $attestations[];
+                    (image_manifest)
+                    and (.digest | valid_digest)
+                    and .platform.os == "unknown"
+                    and .platform.architecture == "unknown"
+                    and .annotations["vnd.docker.reference.digest"] == $image.digest
+                  )
+                ) then
+                  "linux/\($expected_arch) \($image.digest)"
+                else
+                  error("invalid runnable or attestation descriptor")
+                end
+            end
+        end
+    else
+      error("unsupported manifest media type")
+    end
   '
 }
 
@@ -151,7 +262,7 @@ tag_state() {
 verify_manifest() {
   local image_ref="$1"
   shift
-  local raw_manifest rows_output actual_rows expected_rows row platform digest image_json
+  local raw_manifest rows_output actual_rows expected_rows row platform digest image_json source_revision
   local -a rows=()
 
   if (($# != 2)); then
@@ -167,13 +278,14 @@ verify_manifest() {
     echo "$image_ref does not match this run's smoke-tested platform digests" >&2
     return 1
   fi
+  source_revision="$(expected_source_revision)"
   for row in "${rows[@]}"; do
     read -r platform digest <<<"$row"
     [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
     image_json="$(
       docker buildx imagetools inspect "${DEPLOY_IMAGE}@${digest}" --format '{{json .Image}}'
     )"
-    if ! jq -e --arg revision "$GITHUB_SHA" '
+    if ! jq -e --arg revision "$source_revision" '
       .config.Labels["org.opencontainers.image.revision"] == $revision
     ' <<<"$image_json" >/dev/null; then
       echo "$image_ref has an unexpected source revision for $platform" >&2
@@ -314,7 +426,8 @@ publish_latest_tag() {
 }
 
 load_verified_digests() {
-  local digest_file descriptor expected_arch digest_hex image_ref actual_platform
+  local digest_file descriptor expected_arch digest_hex image_ref actual_platform raw_manifest expected_row
+  local runnable_digest image_json source_revision
   local -a digest_files=()
   declare -A seen_platforms=()
 
@@ -326,6 +439,7 @@ load_verified_digests() {
 
   image_refs=()
   expected_rows=()
+  source_revision="$(expected_source_revision)"
   for digest_file in "${digest_files[@]}"; do
     descriptor="$(basename "$digest_file")"
     if [[ ! "$descriptor" =~ ^(amd64|arm64)-([0-9a-f]{64})$ ]]; then
@@ -348,8 +462,23 @@ load_verified_digests() {
       echo "$image_ref is $actual_platform, expected linux/${expected_arch}" >&2
       return 1
     fi
+    raw_manifest="$(docker buildx imagetools inspect --raw "$image_ref")"
+    expected_row="$(
+      single_runnable_manifest_row "$expected_arch" "sha256:${digest_hex}" <<<"$raw_manifest"
+    )"
+    read -r _ runnable_digest <<<"$expected_row"
+    image_json="$(
+      docker buildx imagetools inspect "${DEPLOY_IMAGE}@${runnable_digest}" \
+        --format '{{json .Image}}'
+    )"
+    if ! jq -e --arg revision "$source_revision" '
+      .config.Labels["org.opencontainers.image.revision"] == $revision
+    ' <<<"$image_json" >/dev/null; then
+      echo "$image_ref has an unexpected source revision for linux/${expected_arch}" >&2
+      return 1
+    fi
     image_refs+=("$image_ref")
-    expected_rows+=("linux/${expected_arch} sha256:${digest_hex}")
+    expected_rows+=("$expected_row")
   done
 }
 
@@ -527,14 +656,77 @@ self_test() {
   fi
 
   actual="$(runnable_manifest_rows <<'JSON'
-{"manifests":[
-  {"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","platform":{"os":"linux","architecture":"amd64"}},
-  {"digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","platform":{"os":"unknown","architecture":"unknown"},"annotations":{"vnd.docker.reference.type":"attestation-manifest"}},
-  {"digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","platform":{"os":"linux","architecture":"arm64"}}
+{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","platform":{"os":"linux","architecture":"amd64"}},
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","platform":{"os":"unknown","architecture":"unknown"},"annotations":{"vnd.docker.reference.type":"attestation-manifest","vnd.docker.reference.digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","platform":{"os":"linux","architecture":"arm64"}}
 ]}
 JSON
   )"
   assert_equal $'linux/amd64 sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nlinux/arm64 sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' "$actual" "attested manifest rows"
+
+  if runnable_manifest_rows <<'JSON' >/dev/null 2>&1; then
+{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","platform":{"os":"linux","architecture":"amd64"}},
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","platform":{"os":"unknown","architecture":"unknown"}},
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","platform":{"os":"linux","architecture":"arm64"}}
+]}
+JSON
+    echo "unclassified final manifest descriptor was accepted" >&2
+    return 1
+  fi
+
+  actual="$(
+    single_runnable_manifest_row amd64 \
+      sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+      <<<'{"mediaType":"application/vnd.oci.image.manifest.v1+json"}'
+  )"
+  assert_equal \
+    'linux/amd64 sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+    "$actual" "single image manifest row"
+
+  actual="$(
+    single_runnable_manifest_row arm64 \
+      sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa <<'JSON'
+{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","platform":{"os":"linux","architecture":"arm64"}},
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","platform":{"os":"unknown","architecture":"unknown"},"annotations":{"vnd.docker.reference.type":"attestation-manifest","vnd.docker.reference.digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
+]}
+JSON
+  )"
+  assert_equal \
+    'linux/arm64 sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
+    "$actual" "attested image index row"
+
+  if single_runnable_manifest_row amd64 \
+    sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    <<<'{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[]}' \
+    >/dev/null 2>&1; then
+    echo "empty image index was accepted" >&2
+    return 1
+  fi
+  if single_runnable_manifest_row amd64 \
+    sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa <<'JSON' \
+    >/dev/null 2>&1; then
+{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","platform":{"os":"linux","architecture":"amd64"}},
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","platform":{"os":"linux","architecture":"arm64"}}
+]}
+JSON
+    echo "multi-platform source index was accepted" >&2
+    return 1
+  fi
+  if single_runnable_manifest_row amd64 \
+    sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa <<'JSON' \
+    >/dev/null 2>&1; then
+{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","platform":{"os":"linux","architecture":"amd64"}},
+  {"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","platform":{"os":"unknown","architecture":"unknown"},"annotations":{"vnd.docker.reference.type":"attestation-manifest","vnd.docker.reference.digest":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}}
+]}
+JSON
+    echo "unlinked attestation manifest was accepted" >&2
+    return 1
+  fi
 
   actual="$(
     release_version_from_manifest \
