@@ -540,6 +540,7 @@ assert_codex_runtime_contract() {
   done
 
   docker exec --interactive --user autogpt \
+    --env "CODEX_TEMP_ROOT=${EXPECTED_CODEX_TEMP_ROOT}" \
     --workdir /app/autogpt_platform/backend \
     "${CONTAINER_NAME}" \
     /app/autogpt_platform/backend/.venv/bin/python - <<'PY'
