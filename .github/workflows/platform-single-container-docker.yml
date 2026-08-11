@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish the current dev commit to Docker Hub (select dev as the ref)"
+        description: "Publish a dev release or this PR branch's canary image to Docker Hub"
         required: true
         type: boolean
         default: false
@@ -110,7 +110,7 @@ jobs:
 
   publish-platform-digests:
     name: Publish, smoke, and scan (${{ matrix.platform }})
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/dev' && needs.build-and-scan.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/codex/single-container-publish') && needs.build-and-scan.result == 'success' }}
     needs: build-and-scan
     environment: dockerhub-publish
     runs-on: ${{ matrix.runner }}
@@ -240,7 +240,7 @@ jobs:
 
   publish-manifest:
     name: Publish multi-platform manifest
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/dev' && needs.publish-platform-digests.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/codex/single-container-publish') && needs.publish-platform-digests.result == 'success' }}
     needs: publish-platform-digests
     environment: dockerhub-publish
     runs-on: ubuntu-24.04
@@ -341,41 +341,53 @@ jobs:
             exit 1
           fi
 
-          sha_ref="${DEPLOY_IMAGE}:sha-${GITHUB_SHA}"
+          if [[ "$GITHUB_REF" == "refs/heads/dev" ]]; then
+            immutable_ref="${DEPLOY_IMAGE}:sha-${GITHUB_SHA}"
+            publish_latest=true
+            publication_name="Single-container image published"
+          elif [[ "$GITHUB_REF" == "refs/heads/codex/single-container-publish" ]]; then
+            immutable_ref="${DEPLOY_IMAGE}:canary-sha-${GITHUB_SHA}"
+            publish_latest=false
+            publication_name="Single-container PR canary published"
+          else
+            echo "refusing to publish from $GITHUB_REF" >&2
+            exit 1
+          fi
+
           # Workflow concurrency serializes this guard; registry policy covers external writers.
           set +e
-          inspect_output="$(docker buildx imagetools inspect "$sha_ref" 2>&1)"
+          inspect_output="$(docker buildx imagetools inspect "$immutable_ref" 2>&1)"
           inspect_status=$?
           set -e
           if (( inspect_status == 0 )); then
-            echo "refusing to overwrite immutable tag $sha_ref" >&2
+            echo "refusing to overwrite immutable tag $immutable_ref" >&2
             exit 1
           fi
           if ! grep -Eqi '(manifest unknown|not found)' <<<"$inspect_output"; then
-            echo "could not prove that $sha_ref is absent" >&2
+            echo "could not prove that $immutable_ref is absent" >&2
             printf '%s\n' "$inspect_output" >&2
             exit 1
           fi
 
           docker buildx imagetools create \
             --metadata-file "$MANIFEST_METADATA" \
-            --tag "$sha_ref" \
+            --tag "$immutable_ref" \
             "${image_refs[@]}"
           manifest_digest="$(jq -er '."containerimage.descriptor".digest' "$MANIFEST_METADATA")"
           if [[ ! "$manifest_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "manifest creation did not return a valid sha256 digest" >&2
             exit 1
           fi
-          resolved_sha_digest="$(
-            docker buildx imagetools inspect "$sha_ref" --format '{{json .Manifest.Digest}}' |
+          resolved_immutable_digest="$(
+            docker buildx imagetools inspect "$immutable_ref" --format '{{json .Manifest.Digest}}' |
               jq -er .
           )"
-          if [[ "$resolved_sha_digest" != "$manifest_digest" ]]; then
+          if [[ "$resolved_immutable_digest" != "$manifest_digest" ]]; then
             echo "immutable tag resolved to an unexpected digest" >&2
             exit 1
           fi
           # Attestations use unknown/unknown and are not runnable platforms.
-          if ! docker buildx imagetools inspect --raw "$sha_ref" |
+          if ! docker buildx imagetools inspect --raw "$immutable_ref" |
             jq -e '
               [
                 .manifests[]
@@ -392,22 +404,28 @@ jobs:
             exit 1
           fi
 
-          latest_ref="${DEPLOY_IMAGE}:latest"
-          docker buildx imagetools create --tag "$latest_ref" "${DEPLOY_IMAGE}@${manifest_digest}"
-          resolved_latest_digest="$(
-            docker buildx imagetools inspect "$latest_ref" --format '{{json .Manifest.Digest}}' |
-              jq -er .
-          )"
-          if [[ "$resolved_latest_digest" != "$manifest_digest" ]]; then
-            echo "latest did not resolve to the verified manifest digest" >&2
-            exit 1
+          if [[ "$publish_latest" == true ]]; then
+            latest_ref="${DEPLOY_IMAGE}:latest"
+            docker buildx imagetools create --tag "$latest_ref" "${DEPLOY_IMAGE}@${manifest_digest}"
+            resolved_latest_digest="$(
+              docker buildx imagetools inspect "$latest_ref" --format '{{json .Manifest.Digest}}' |
+                jq -er .
+            )"
+            if [[ "$resolved_latest_digest" != "$manifest_digest" ]]; then
+              echo "latest did not resolve to the verified manifest digest" >&2
+              exit 1
+            fi
           fi
 
           {
-            echo "## Single-container image published"
+            echo "## $publication_name"
             echo
-            echo "\`${sha_ref}\`"
-            echo "\`${latest_ref}\`"
+            echo "\`${immutable_ref}\`"
+            if [[ "$publish_latest" == true ]]; then
+              echo "\`${latest_ref}\`"
+            else
+              echo "\`latest\` was not changed"
+            fi
             echo
             echo "Digest: \`${manifest_digest}\`"
             echo
