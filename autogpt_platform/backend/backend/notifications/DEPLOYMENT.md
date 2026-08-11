@@ -154,6 +154,10 @@ migration tooling (`backend/data/org_migration.py`), which is a different
 subsystem with its own tests. Dropping them is a small follow-up, not part of
 the email change.
 
+`bleach` is likewise still declared in `pyproject.toml` with no importer left —
+the sanitizer path it existed for is gone. Removing it means regenerating
+`poetry.lock`, so it is a separate housekeeping commit.
+
 ## 8. Behaviour change to be aware of
 
 `queue_notification` / `queue_notification_async` used to short-circuit in
