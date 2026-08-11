@@ -12,15 +12,18 @@ export function useBotsList() {
         // staleTime would serve cache to someone returning from exactly that
         // round-trip, so always refetch on mount/focus instead.
         staleTime: 0,
-        refetchOnWindowFocus: true,
+        // Off because the listeners below already cover coming back; leaving
+        // it on would queue a second refetch for the same return.
+        refetchOnWindowFocus: false,
         refetchOnMount: "always",
       },
     });
 
-  // The install flow ends in Slack, not back on this page, so the only signal
-  // that the user has returned is the tab regaining visibility. Subscribe
-  // directly rather than relying on the query client's focus handling, which
-  // doesn't fire reliably when the trip out went through a native app.
+  // The install flow ends in the chat client, not back on this page, so the
+  // only signal that the user returned is the tab becoming current again.
+  // Both events are needed: switching tabs fires visibilitychange, while
+  // alt-tabbing back from a desktop app fires focus on an already-visible
+  // tab. Query-level dedupe collapses the overlap into one request.
   useEffect(() => {
     function refetchIfVisible() {
       if (document.visibilityState === "visible") refetch();

@@ -134,6 +134,15 @@ async def _handle_callback(
     if not token or not team_id:
         return _done(ok=False, detail="incomplete install response")
 
+    await _store_install(resp, team_id=team_id, token=token, team=team)
+    if on_installed is not None:
+        on_installed(team_id)
+    if user_id:
+        await _mark_install_pending(user_id, team_id=team_id, team=team, resp=resp)
+    return _post_install_response(resp, team_id=team_id, team=team)
+
+
+async def _store_install(resp: dict, *, team_id: str, token: str, team: dict) -> None:
     await upsert_bot_install(
         platform=Platform.SLACK,
         team_id=team_id,
@@ -142,8 +151,6 @@ async def _handle_callback(
         app_id=resp.get("app_id"),
         name=team.get("name"),
     )
-    if on_installed is not None:
-        on_installed(team_id)
     try:
         await record_guild_joined(
             BotGuildInput(
@@ -155,26 +162,35 @@ async def _handle_callback(
             "Failed to record BotGuild for Slack install %s", team_id, exc_info=True
         )
 
+
+async def _mark_install_pending(
+    user_id: str, *, team_id: str, team: dict, resp: dict
+) -> None:
+    """Flag the install as awaiting the user's DM, so the Bots page can say so."""
+    await mark_pending(
+        user_id,
+        PendingSlackInstall(
+            team_id=team_id,
+            team_name=team.get("name"),
+            app_id=resp.get("app_id") or None,
+        ),
+    )
+
+
+def _post_install_response(resp: dict, *, team_id: str, team: dict) -> Response:
     app_id = resp.get("app_id") or ""
-    if user_id:
-        await mark_pending(
-            user_id,
-            PendingSlackInstall(
-                team_id=team_id, team_name=team.get("name"), app_id=app_id or None
-            ),
+    if not app_id:
+        return _done(ok=True, detail=team.get("name") or team_id)
+    # Our own page rather than Slack's: it opens the bot DM via the desktop
+    # deep link and then returns the tab to the Bots settings page, so the
+    # install doesn't strand a dead browser tab.
+    return RedirectResponse(
+        _installed_page_url(
+            team_id=team_id, app_id=app_id, bot_user_id=resp.get("bot_user_id")
         )
-    if app_id:
-        # Hand off to our own page rather than Slack's redirect page: it opens
-        # the bot DM via the desktop deep link and then returns the tab to the
-        # Bots settings page, so the install doesn't strand a dead browser tab.
-        return RedirectResponse(
-            _installed_page_url(
-                team_id=team_id, app_id=app_id, bot_user_id=resp.get("bot_user_id")
-            )
-            or bot_dm_url(app_id, team_id),
-            status_code=302,
-        )
-    return _done(ok=True, detail=team.get("name") or team_id)
+        or bot_dm_url(app_id, team_id),
+        status_code=302,
+    )
 
 
 def _installed_page_url(

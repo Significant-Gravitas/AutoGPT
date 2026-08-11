@@ -13,6 +13,7 @@ interface Props {
   linkType: LinkType;
   platform: string;
   serverName: string | null;
+  serverNoun: string;
   returnUrl: string | null;
 }
 
@@ -20,6 +21,7 @@ export function SuccessView({
   linkType,
   platform,
   serverName,
+  serverNoun,
   returnUrl,
 }: Props) {
   const forUser = isUserLink(linkType);
@@ -27,7 +29,7 @@ export function SuccessView({
     forUser || !serverName ? `your ${platform} account` : serverName;
   const detail = forUser
     ? `You can now chat with AutoGPT in your ${platform} DMs.`
-    : `Everyone in the server can start using AutoGPT right away.`;
+    : `Everyone in the ${serverNoun} can start using AutoGPT right away.`;
 
   return (
     <AuthCard title="AutoGPT is ready!" className="max-w-[38rem] gap-6 p-8">

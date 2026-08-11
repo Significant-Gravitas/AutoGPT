@@ -52,6 +52,7 @@ export default function PlatformLinkPage() {
           linkType={page.successData.linkType}
           platform={page.successData.platform}
           serverName={page.successData.serverName}
+          serverNoun={page.successData.serverNoun}
           returnUrl={page.successData.returnUrl}
         />
       )}

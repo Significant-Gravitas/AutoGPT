@@ -37,6 +37,7 @@ def _discord_meta(
         platform="DISCORD",
         display_name="Discord",
         icon="discord.png",
+        server_noun="server",
         enabled=enabled,
         add_bot_url=add_bot_url,
     )
@@ -510,6 +511,7 @@ def _slack_meta() -> PlatformMeta:
         platform="SLACK",
         display_name="Slack",
         icon="slack.png",
+        server_noun="workspace",
         enabled=True,
         add_bot_url="https://b.example/api/copilot-webhooks/slack/install",
     )
@@ -575,9 +577,7 @@ class TestClosedLoopSlackFlow:
 
     @pytest.mark.asyncio
     async def test_user_confirm_returns_deep_link_and_clears_marker(self):
-        from backend.api.features.platform_linking.routes import (
-            confirm_user_link_token,
-        )
+        from backend.api.features.platform_linking.routes import confirm_user_link_token
         from backend.copilot.bot.adapters.slack.pending import PendingSlackInstall
 
         db = _db_mock(
@@ -646,9 +646,7 @@ class TestClosedLoopSlackFlow:
 
     @pytest.mark.asyncio
     async def test_telegram_user_confirm_returns_tme_link(self):
-        from backend.api.features.platform_linking.routes import (
-            confirm_user_link_token,
-        )
+        from backend.api.features.platform_linking.routes import confirm_user_link_token
 
         db = _db_mock(
             confirm_user_link=AsyncMock(

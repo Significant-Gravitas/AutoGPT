@@ -98,6 +98,7 @@ export function usePlatformLinkingPage() {
     successData: buildSuccessData({
       confirmResponse,
       fallbackPlatform: platformFromUrl,
+      serverNoun: info?.server_noun ?? "server",
     }),
     errorMessage: buildErrorMessage({
       hasToken: Boolean(token),
@@ -154,6 +155,7 @@ function buildViewData(args: {
 function buildSuccessData(args: {
   confirmResponse: ConfirmLinkResponse | ConfirmUserLinkResponse | undefined;
   fallbackPlatform: string;
+  serverNoun: string;
 }): (ViewData & { platform: string; returnUrl: string | null }) | null {
   if (!args.confirmResponse) return null;
   const serverName =
@@ -166,9 +168,9 @@ function buildSuccessData(args: {
       getPlatformDisplayName(args.confirmResponse.platform) ||
       args.fallbackPlatform,
     serverName,
-    // The confirm response carries no noun; the success copy that uses it
-    // is platform-name based, so the generic default is fine here.
-    serverNoun: "server",
+    // Carried from the token info: the confirm response has no noun of its
+    // own, and the success copy still names the server type.
+    serverNoun: args.serverNoun,
     returnUrl: args.confirmResponse.return_url ?? null,
   };
 }

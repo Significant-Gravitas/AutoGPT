@@ -159,6 +159,35 @@ describe("PlatformLinkPage", () => {
     expect(screen.getByText(/builders guild/i)).toBeDefined();
   });
 
+  test("names the server type the way the platform does", async () => {
+    setRoute("token-123", "slack");
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "SLACK",
+        link_type: LinkType.SERVER,
+        server_name: "Acme",
+        server_noun: "workspace",
+      }),
+      getPostPlatformLinkingConfirmAServerLinkTokenUserMustBeAuthenticatedMockHandler200(
+        {
+          success: true,
+          link_type: LinkType.SERVER,
+          platform: "SLACK",
+          platform_server_id: "T1",
+          server_name: "Acme",
+        },
+      ),
+    );
+
+    render(<PlatformLinkPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /connect slack to autogpt/i }),
+    );
+
+    expect(await screen.findByText(/everyone in the workspace/i)).toBeDefined();
+  });
+
   test("falls back to a generic title when the server has no name", async () => {
     server.use(
       getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
