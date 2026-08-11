@@ -48,14 +48,12 @@ async def build_home_dashboard(
     *,
     user_id: str,
     organization_id: str | None = None,
-    team_ids: list[str] | None = None,
 ) -> HomeDashboardResponse:
     now = datetime.now(timezone.utc)
     week_start = now - timedelta(days=7)
     data = await _load_home_source_data(
         user_id=user_id,
         organization_id=organization_id,
-        team_ids=team_ids or [],
         now=now,
         week_start=week_start,
     )
@@ -84,7 +82,6 @@ async def _load_home_source_data(
     *,
     user_id: str,
     organization_id: str | None,
-    team_ids: list[str],
     now: datetime,
     week_start: datetime,
 ) -> HomeSourceData:
@@ -103,11 +100,7 @@ async def _load_home_source_data(
     cost_summary_task = asyncio.create_task(
         get_user_cost_summary(user_id=user_id, since=week_start, until=now)
     )
-    schedules_task = asyncio.create_task(
-        _get_schedules(
-            user_id=user_id, organization_id=organization_id, team_ids=team_ids
-        )
-    )
+    schedules_task = asyncio.create_task(_get_schedules(user_id=user_id))
     credits_task = asyncio.create_task(
         _get_credits(user_id=user_id, organization_id=organization_id)
     )
@@ -139,14 +132,14 @@ async def _load_home_source_data(
 
 
 async def _get_schedules(
-    *, user_id: str, organization_id: str | None, team_ids: list[str]
+    *,
+    user_id: str,
 ) -> list[GraphExecutionJobInfo | CopilotTurnJobInfo]:
+    # Deliberately owner-scoped: executions, reviews and cost totals on this page
+    # are all personal, so org/team schedules would surface upcoming runs whose
+    # outcomes and approvals could never appear anywhere else on the dashboard.
     try:
-        return await get_scheduler_client().get_execution_schedules(
-            user_id=user_id,
-            organization_id=organization_id,
-            team_ids=team_ids,
-        )
+        return await get_scheduler_client().get_execution_schedules(user_id=user_id)
     except Exception:
         logger.warning("Home could not load schedules for user %s", user_id[:12])
         return []

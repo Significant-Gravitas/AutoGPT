@@ -110,6 +110,34 @@ async def test_activity_summary_hidden_when_flag_disabled(
 
 
 @pytest.mark.asyncio
+async def test_schedules_stay_owner_scoped_inside_an_organization(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    scheduler = MagicMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+    mocker.patch(
+        "backend.api.features.home.service.get_scheduler_client", return_value=scheduler
+    )
+    credit_model = MagicMock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    get_credit_model = mocker.patch(
+        "backend.api.features.home.service.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+
+    await build_home_dashboard(user_id="user-1", organization_id="org-1")
+
+    # Executions, reviews and cost totals are personal, so a teammate's schedule
+    # would show an upcoming run whose outcome never lands anywhere else.
+    scheduler.get_execution_schedules.assert_awaited_once_with(user_id="user-1")
+    get_credit_model.assert_awaited_once_with("user-1", "org-1")
+
+
+@pytest.mark.asyncio
 async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page(
     mocker: MockerFixture, home_dependencies
 ) -> None:

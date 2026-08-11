@@ -82,10 +82,6 @@ def test_get_home_dashboard_returns_single_payload(
         "backend.api.features.home.routes.build_home_dashboard",
         AsyncMock(return_value=_dashboard()),
     )
-    mocker.patch(
-        "backend.api.features.home.routes.get_user_team_ids",
-        AsyncMock(return_value=["test-team"]),
-    )
 
     response = client.get("/home")
 
@@ -94,12 +90,10 @@ def test_get_home_dashboard_returns_single_payload(
     assert body["timezone"] == "UTC"
     assert body["attention"][0]["kind"] == "approval"
     assert set(body) >= {"attention", "briefing", "active_tasks", "team", "week"}
-    build.assert_awaited_once_with(
-        user_id=test_user_id, organization_id="test-org", team_ids=["test-team"]
-    )
+    build.assert_awaited_once_with(user_id=test_user_id, organization_id="test-org")
 
 
-def test_personal_context_skips_team_lookup(
+def test_personal_context_passes_no_organization(
     mocker: MockerFixture, test_user_id: str
 ) -> None:
     from autogpt_libs.auth import get_request_context
@@ -120,12 +114,6 @@ def test_personal_context_skips_team_lookup(
         "backend.api.features.home.routes.build_home_dashboard",
         AsyncMock(return_value=_dashboard()),
     )
-    get_team_ids = mocker.patch(
-        "backend.api.features.home.routes.get_user_team_ids", AsyncMock(return_value=[])
-    )
 
     assert client.get("/home").status_code == 200
-    get_team_ids.assert_not_awaited()
-    build.assert_awaited_once_with(
-        user_id=test_user_id, organization_id=None, team_ids=[]
-    )
+    build.assert_awaited_once_with(user_id=test_user_id, organization_id=None)
