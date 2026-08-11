@@ -1,9 +1,9 @@
-from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
 
 from prisma.enums import SubscriptionTier
+from pydantic import BaseModel, ConfigDict
 
 from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import BehaveAs, Settings
@@ -13,8 +13,9 @@ class Entitlement(str, Enum):
     CODEX_SUBSCRIPTION_TRANSPORT = "codex_subscription_transport"
 
 
-@dataclass(frozen=True)
-class EntitlementPolicy:
+class EntitlementPolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     minimum_tier: SubscriptionTier
     allow_local: bool = False
 

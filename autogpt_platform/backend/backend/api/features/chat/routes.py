@@ -120,11 +120,11 @@ from backend.data.model import Credentials
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
-from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.access import (
     enforce_codex_access_http,
     has_codex_access_for_discovery,
 )
+from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.background import spawn_background_task

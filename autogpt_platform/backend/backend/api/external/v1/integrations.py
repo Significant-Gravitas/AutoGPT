@@ -31,11 +31,11 @@ from backend.data.model import (
     UserPasswordCredentials,
     is_sdk_default,
 )
+from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
 )
-from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName

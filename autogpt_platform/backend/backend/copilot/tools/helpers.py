@@ -31,8 +31,8 @@ from backend.executor.auto_credentials import (
 )
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
-from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.codex.access import enforce_codex_access
+from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
