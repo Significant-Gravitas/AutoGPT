@@ -15131,6 +15131,11 @@
           "platform": { "type": "string", "title": "Platform" },
           "display_name": { "type": "string", "title": "Display Name" },
           "icon": { "type": "string", "title": "Icon" },
+          "server_noun": {
+            "type": "string",
+            "title": "Server Noun",
+            "default": "server"
+          },
           "add_bot_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
@@ -15145,6 +15150,12 @@
             "items": { "$ref": "#/components/schemas/PlatformLinkInfo" },
             "type": "array",
             "title": "Server Links"
+          },
+          "pending_install": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingInstallInfo" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -15687,6 +15698,10 @@
           "server_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Server Name"
+          },
+          "return_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Return Url"
           }
         },
         "type": "object",
@@ -15706,7 +15721,11 @@
             "default": "USER"
           },
           "platform": { "type": "string", "title": "Platform" },
-          "platform_user_id": { "type": "string", "title": "Platform User Id" }
+          "platform_user_id": { "type": "string", "title": "Platform User Id" },
+          "return_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Return Url"
+          }
         },
         "type": "object",
         "required": ["success", "platform", "platform_user_id"],
@@ -19494,6 +19513,11 @@
           "server_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Server Name"
+          },
+          "server_noun": {
+            "type": "string",
+            "title": "Server Noun",
+            "default": "server"
           }
         },
         "type": "object",
@@ -20854,6 +20878,19 @@
         ],
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
+      },
+      "PendingInstallInfo": {
+        "properties": {
+          "server_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Name"
+          },
+          "open_bot_url": { "type": "string", "title": "Open Bot Url" }
+        },
+        "type": "object",
+        "required": ["open_bot_url"],
+        "title": "PendingInstallInfo",
+        "description": "The caller added the bot to a server but hasn't linked an account yet.\n\n``open_bot_url`` deep-links into the bot's chat on the platform, where the\nnext step (the bot's Link Account prompt) is waiting."
       },
       "PhaseUsage": {
         "properties": {

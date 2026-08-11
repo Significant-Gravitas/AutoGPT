@@ -7,7 +7,12 @@ import pytest
 from fastapi import HTTPException
 
 from backend.api.features.platform_linking.registry import PlatformMeta
-from backend.platform_linking.models import PlatformLinkInfo, PlatformUserLinkInfo
+from backend.platform_linking.models import (
+    ConfirmLinkResponse,
+    ConfirmUserLinkResponse,
+    PlatformLinkInfo,
+    PlatformUserLinkInfo,
+)
 from backend.util.exceptions import (
     LinkAlreadyExistsError,
     LinkFlowMismatchError,
@@ -498,3 +503,167 @@ class TestTelegramLoginVerification:
             with pytest.raises(HTTPException) as exc:
                 await confirm_user_link_token("tok", "user-1", body=None)
         assert exc.value.status_code == 403
+
+
+def _slack_meta() -> PlatformMeta:
+    return PlatformMeta(
+        platform="SLACK",
+        display_name="Slack",
+        icon="slack.png",
+        enabled=True,
+        add_bot_url="https://b.example/api/copilot-webhooks/slack/install",
+    )
+
+
+_R = "backend.api.features.platform_linking.routes"
+
+
+class TestClosedLoopSlackFlow:
+    @pytest.mark.asyncio
+    async def test_slack_install_url_is_user_bound(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[]),
+            list_server_links=AsyncMock(return_value=[]),
+        )
+        with (
+            patch(f"{_R}.platform_linking_db", return_value=db),
+            patch(
+                f"{_R}.registry.enabled_platforms",
+                return_value=[_slack_meta()],
+            ),
+            patch(
+                f"{_R}.slack_oauth.make_install_user_param",
+                return_value="u1.1.sig",
+            ),
+            patch(f"{_R}.slack_pending.get_pending", new=AsyncMock(return_value=None)),
+        ):
+            result = await list_bot_platforms(user_id="u1")
+
+        assert result[0].add_bot_url == (
+            "https://b.example/api/copilot-webhooks/slack/install?u=u1.1.sig"
+        )
+        assert result[0].pending_install is None
+
+    @pytest.mark.asyncio
+    async def test_pending_install_surfaces_until_dm_linked(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+        from backend.copilot.bot.adapters.slack.pending import PendingSlackInstall
+
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[]),
+            list_server_links=AsyncMock(return_value=[]),
+        )
+        marker = PendingSlackInstall(team_id="T1", team_name="eek", app_id="A1")
+        with (
+            patch(f"{_R}.platform_linking_db", return_value=db),
+            patch(
+                f"{_R}.registry.enabled_platforms",
+                return_value=[_slack_meta()],
+            ),
+            patch(
+                f"{_R}.slack_pending.get_pending", new=AsyncMock(return_value=marker)
+            ),
+        ):
+            result = await list_bot_platforms(user_id="u1")
+
+        pending = result[0].pending_install
+        assert pending is not None
+        assert pending.server_name == "eek"
+        assert pending.open_bot_url == "https://slack.com/app_redirect?app=A1&team=T1"
+
+    @pytest.mark.asyncio
+    async def test_user_confirm_returns_deep_link_and_clears_marker(self):
+        from backend.api.features.platform_linking.routes import (
+            confirm_user_link_token,
+        )
+        from backend.copilot.bot.adapters.slack.pending import PendingSlackInstall
+
+        db = _db_mock(
+            confirm_user_link=AsyncMock(
+                return_value=ConfirmUserLinkResponse(
+                    success=True, platform="SLACK", platform_user_id="U1"
+                )
+            )
+        )
+        marker = PendingSlackInstall(team_id="T1", team_name="eek", app_id="A1")
+        with (
+            patch(f"{_R}.platform_linking_db", return_value=db),
+            patch(
+                f"{_R}.slack_pending.get_pending", new=AsyncMock(return_value=marker)
+            ),
+            patch(f"{_R}.slack_pending.clear_pending", new=AsyncMock()) as cleared,
+        ):
+            response = await confirm_user_link_token("tok", "u1", body=None)
+
+        assert response.return_url == "https://slack.com/app_redirect?app=A1&team=T1"
+        cleared.assert_awaited_once_with("u1")
+
+    @pytest.mark.asyncio
+    async def test_server_confirm_returns_deep_link_from_install(self):
+        from backend.api.features.platform_linking.routes import confirm_link_token
+
+        db = _db_mock(
+            confirm_server_link=AsyncMock(
+                return_value=ConfirmLinkResponse(
+                    success=True,
+                    platform="SLACK",
+                    platform_server_id="T1",
+                    server_name="eek",
+                )
+            )
+        )
+        install = MagicMock()
+        install.app_id = "A1"
+        with (
+            patch(f"{_R}.platform_linking_db", return_value=db),
+            patch(f"{_R}.get_bot_install", new=AsyncMock(return_value=install)),
+        ):
+            response = await confirm_link_token("tok", "u1", body=None)
+
+        assert response.return_url == "https://slack.com/app_redirect?app=A1&team=T1"
+
+    @pytest.mark.asyncio
+    async def test_non_slack_platforms_are_untouched(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[]),
+            list_server_links=AsyncMock(return_value=[]),
+        )
+        with (
+            patch(f"{_R}.platform_linking_db", return_value=db),
+            patch(
+                f"{_R}.registry.enabled_platforms",
+                return_value=[_discord_meta()],
+            ),
+        ):
+            result = await list_bot_platforms(user_id="u1")
+
+        assert result[0].add_bot_url == "https://invite"
+        assert result[0].pending_install is None
+
+    @pytest.mark.asyncio
+    async def test_telegram_user_confirm_returns_tme_link(self):
+        from backend.api.features.platform_linking.routes import (
+            confirm_user_link_token,
+        )
+
+        db = _db_mock(
+            confirm_user_link=AsyncMock(
+                return_value=ConfirmUserLinkResponse(
+                    success=True, platform="TELEGRAM", platform_user_id="tg-1"
+                )
+            )
+        )
+        with (
+            patch(f"{_R}.platform_linking_db", return_value=db),
+            patch(
+                f"{_R}.telegram_config.get_bot_username",
+                return_value="AutoGPTBot",
+            ),
+        ):
+            response = await confirm_user_link_token("tok", "u1", body=None)
+
+        assert response.return_url == "https://t.me/AutoGPTBot"

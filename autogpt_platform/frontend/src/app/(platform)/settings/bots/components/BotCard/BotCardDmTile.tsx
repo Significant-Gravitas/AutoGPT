@@ -11,6 +11,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 type Props = {
   platformName: string;
   dmLink: PlatformUserLinkInfo | null;
+  pendingWorkspaceName?: string | null;
   isPending: (linkId: string) => boolean;
   onUnlink: (linkId: string) => void;
 };
@@ -18,15 +19,20 @@ type Props = {
 export function BotCardDmTile({
   platformName,
   dmLink,
+  pendingWorkspaceName,
   isPending,
   onUnlink,
 }: Props) {
   const title = dmLink
     ? (dmLink.platform_username ?? `User ${dmLink.platform_user_id}`)
-    : `DM the bot on ${platformName} to link`;
+    : pendingWorkspaceName
+      ? `Workspace “${pendingWorkspaceName}” connected — one step left`
+      : `DM the bot on ${platformName} to link`;
   const subtitle = dmLink
     ? "Your DM channel is linked to this account."
-    : "Send the bot a direct message to start the link flow.";
+    : pendingWorkspaceName
+      ? `DM @AutoGPT in ${platformName} and tap Link Account to connect your DMs.`
+      : "Send the bot a direct message to start the link flow.";
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">

@@ -145,7 +145,7 @@ describe("SettingsBotsPage", () => {
     ).toBeDefined();
   });
 
-  test("shows a 'Bot not in server' indicator when the server name is missing", async () => {
+  test("flags a link whose name we don't have, without claiming the bot is gone", async () => {
     server.use(
       getListBotPlatformsMockHandler([
         discordPlatform({
@@ -166,7 +166,10 @@ describe("SettingsBotsPage", () => {
     render(<SettingsBotsPage />);
 
     expect(await screen.findByText("1126875755960336515")).toBeDefined();
-    expect(screen.getByText(/bot not in server/i)).toBeDefined();
+    // A missing name means exactly that — it is not evidence the bot was
+    // removed, so the row must not say so.
+    expect(screen.getByText(/name unavailable/i)).toBeDefined();
+    expect(screen.queryByText(/not in server/i)).toBeNull();
   });
 
   test("clicking unlink on a linked server fires the API and the row is gone after refetch", async () => {

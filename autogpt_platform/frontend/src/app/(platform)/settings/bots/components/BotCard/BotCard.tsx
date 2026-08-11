@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
@@ -9,7 +10,7 @@ import type { BotPlatformInfo } from "@/app/api/__generated__/models/botPlatform
 import { BotCardDmTile } from "./BotCardDmTile";
 import { BotCardServerList } from "./BotCardServerList";
 import { useBotCard } from "./useBotCard";
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { ArrowUpRight01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
@@ -19,6 +20,9 @@ type Props = {
 export function BotCard({ platform }: Props) {
   const { isPending, unlinkServerLink, unlinkDmLink } = useBotCard();
   const serverLinks = platform.server_links ?? [];
+  const pendingInstall = platform.pending_install ?? null;
+  // Optional in the generated client (it has a server-side default).
+  const serverNoun = platform.server_noun ?? "server";
 
   return (
     <Card className="flex flex-col gap-5 p-5">
@@ -34,13 +38,30 @@ export function BotCard({ platform }: Props) {
           <Text variant="large-medium" as="h2" className="text-textBlack">
             {platform.display_name}
           </Text>
+          {pendingInstall ? (
+            <Badge variant="info" size="small">
+              Pending — finish in {platform.display_name}
+            </Badge>
+          ) : null}
         </div>
-        {platform.add_bot_url ? (
+        {pendingInstall ? (
+          <Button
+            as="NextLink"
+            href={pendingInstall.open_bot_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="primary"
+            size="small"
+            rightIcon={<Icon icon={ArrowUpRight01Icon} size={16} />}
+          >
+            Open AutoGPT in {platform.display_name}
+          </Button>
+        ) : platform.add_bot_url ? (
+          // Same tab on purpose: the install round-trip ends by returning here,
+          // so a new tab would just strand the user on a dead page.
           <Button
             as="NextLink"
             href={platform.add_bot_url}
-            target="_blank"
-            rel="noopener noreferrer"
             variant="primary"
             size="small"
             leftIcon={<Icon icon={PlusSignIcon} size={16} />}
@@ -61,6 +82,7 @@ export function BotCard({ platform }: Props) {
         <BotCardDmTile
           platformName={platform.display_name}
           dmLink={platform.dm_link ?? null}
+          pendingWorkspaceName={pendingInstall?.server_name ?? null}
           isPending={isPending}
           onUnlink={unlinkDmLink}
         />
@@ -72,10 +94,11 @@ export function BotCard({ platform }: Props) {
           as="span"
           className="uppercase tracking-wide text-zinc-500"
         >
-          Linked servers
+          Linked {serverNoun}s
         </Text>
         <BotCardServerList
           platformName={platform.display_name}
+          serverNoun={serverNoun}
           serverLinks={serverLinks}
           isPending={isPending}
           onUnlink={unlinkServerLink}

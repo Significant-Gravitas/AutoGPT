@@ -26,6 +26,7 @@ export default function PlatformLinkPage() {
           linkType={page.viewData.linkType}
           platform={page.viewData.platform}
           serverName={page.viewData.serverName}
+          serverNoun={page.viewData.serverNoun}
           userEmail={page.userEmail}
           isLinking={false}
           onLink={page.handleLink}
@@ -38,6 +39,7 @@ export default function PlatformLinkPage() {
           linkType={page.viewData.linkType}
           platform={page.viewData.platform}
           serverName={page.viewData.serverName}
+          serverNoun={page.viewData.serverNoun}
           userEmail={page.userEmail}
           isLinking
           onLink={page.handleLink}
@@ -50,6 +52,7 @@ export default function PlatformLinkPage() {
           linkType={page.successData.linkType}
           platform={page.successData.platform}
           serverName={page.successData.serverName}
+          returnUrl={page.successData.returnUrl}
         />
       )}
 

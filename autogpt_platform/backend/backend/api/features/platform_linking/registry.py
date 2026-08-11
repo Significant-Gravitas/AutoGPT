@@ -28,6 +28,10 @@ class PlatformMeta(BaseModel):
     platform: str  # canonical key, matches PlatformLinkInfo.platform (uppercase)
     display_name: str
     icon: str  # filename under /public/integrations/<icon>
+    # The platform's own word for a server: Slack has workspaces, Telegram
+    # groups, Teams teams. Declared once here so every surface (settings page,
+    # link confirmation, bot copy) reads natively instead of saying "server".
+    server_noun: str
     enabled: bool
     add_bot_url: str | None  # null when the platform has no invite URL we can build
 
@@ -42,12 +46,25 @@ def enabled_platforms() -> list[PlatformMeta]:
     return [platform for platform in all_platforms if platform.enabled]
 
 
+def server_noun_for(platform: str) -> str:
+    """The platform's word for a server, for surfaces that only know its key.
+
+    Falls back to "server" for a platform not listed (or one whose adapter
+    isn't configured here), which is the safe generic wording.
+    """
+    for meta in (_discord_meta(), _slack_meta(), _telegram_meta()):
+        if meta.platform == platform.upper():
+            return meta.server_noun
+    return "server"
+
+
 def _discord_meta() -> PlatformMeta:
     enabled = bool(discord_config.get_bot_token())
     return PlatformMeta(
         platform="DISCORD",
         display_name="Discord",
         icon="discord.png",
+        server_noun="server",
         enabled=enabled,
         add_bot_url=_discord_invite_url() if enabled else None,
     )
@@ -67,6 +84,7 @@ def _slack_meta() -> PlatformMeta:
         platform="SLACK",
         display_name="Slack",
         icon="slack.png",
+        server_noun="workspace",
         enabled=enabled,
         add_bot_url=_slack_install_url() if (enabled and oauth_ready) else None,
     )
@@ -84,6 +102,7 @@ def _telegram_meta() -> PlatformMeta:
         platform="TELEGRAM",
         display_name="Telegram",
         icon="telegram.png",
+        server_noun="group",
         enabled=enabled,
         add_bot_url=(
             f"https://t.me/{username}?startgroup=true"
