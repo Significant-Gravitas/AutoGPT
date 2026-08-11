@@ -1274,7 +1274,7 @@ def test_create_session_platform_route_still_enforces_paywall(
 
 
 def _make_expert(expert_id: str = "expert-1", *, is_archived: bool = False):
-    from backend.api.features.experts.models import Expert
+    from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 
     return Expert(
         id=expert_id,
@@ -1285,6 +1285,9 @@ def _make_expert(expert_id: str = "expert-1", *, is_archived: bool = False):
         bio=None,
         skills=[],
         identity="You are Maria, a marketing expert.",
+        voice_preferences="Direct and concise.",
+        boundaries="Ask before external actions.",
+        protected_soul_rules=list(PROTECTED_SOUL_RULES),
         is_template=False,
         source_template_id="tpl-1",
         is_archived=is_archived,

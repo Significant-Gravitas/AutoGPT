@@ -28,6 +28,7 @@ from backend.copilot.db import (
     get_user_chat_sessions,
     get_user_session_count,
     update_chat_session_title,
+    user_has_any_session,
 )
 from backend.copilot.model import ChatSessionMetadata
 from backend.util.json import SafeJson
@@ -130,6 +131,32 @@ async def test_count_returns_zero_when_query_yields_no_rows():
     raw = AsyncMock(return_value=[])
     with patch(_RAW_QUERY_TARGET, raw):
         assert await get_user_session_count("u1") == 0
+
+
+@pytest.mark.asyncio
+async def test_presence_query_stops_at_the_first_row_and_keeps_the_dream_filter():
+    """The greeting gate reads presence, so it must not scan every session.
+
+    A regression in either half — the dream exclusion or the ``LIMIT 1`` —
+    is silent at the call site: ``_retire_greeting_if_chatted`` swallows
+    failures and answers "no", so every new user would keep a greeting
+    they have already outgrown.
+    """
+    raw = AsyncMock(return_value=[{"?column?": 1}])
+    with patch(_RAW_QUERY_TARGET, raw):
+        assert await user_has_any_session("u1") is True
+
+    query = raw.call_args.args[0]
+    assert _NULL_SAFE_DREAM_FILTER in query
+    assert "LIMIT 1" in query
+    assert raw.call_args.args[1:] == ("u1",)
+
+
+@pytest.mark.asyncio
+async def test_presence_is_false_when_the_user_owns_no_visible_session():
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        assert await user_has_any_session("u1") is False
 
 
 # ---------- NULL semantics against the real database ----------
