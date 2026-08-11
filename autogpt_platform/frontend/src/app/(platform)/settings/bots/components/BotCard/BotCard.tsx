@@ -81,8 +81,9 @@ export function BotCard({ platform }: Props) {
         </Text>
         <BotCardDmTile
           platformName={platform.display_name}
+          serverNoun={serverNoun}
           dmLink={platform.dm_link ?? null}
-          pendingWorkspaceName={pendingInstall?.server_name ?? null}
+          pendingServerName={pendingInstall?.server_name ?? null}
           isPending={isPending}
           onUnlink={unlinkDmLink}
         />

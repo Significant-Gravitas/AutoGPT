@@ -159,6 +159,69 @@ describe("PlatformLinkPage", () => {
     expect(screen.getByText(/builders guild/i)).toBeDefined();
   });
 
+  test("offers a way back into the chat client when confirm returns one", async () => {
+    setRoute("token-123", "slack");
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "SLACK",
+        link_type: LinkType.USER,
+        server_name: null,
+      }),
+      getPostPlatformLinkingConfirmAUserLinkTokenUserMustBeAuthenticatedMockHandler200(
+        {
+          success: true,
+          link_type: LinkType.USER,
+          platform: "SLACK",
+          platform_user_id: "U1",
+          return_url: "https://slack.com/app_redirect?app=A1&team=T1",
+        },
+      ),
+    );
+
+    render(<PlatformLinkPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /connect my slack dms/i }),
+    );
+
+    const back = await screen.findByRole("link", { name: /return to slack/i });
+    expect(back.getAttribute("href")).toBe(
+      "https://slack.com/app_redirect?app=A1&team=T1",
+    );
+    expect(screen.getByText(/try it now/i)).toBeDefined();
+  });
+
+  test("keeps the DM-only hint off a server link", async () => {
+    setRoute("token-123", "slack");
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "SLACK",
+        link_type: LinkType.SERVER,
+        server_name: "Acme",
+        server_noun: "workspace",
+      }),
+      getPostPlatformLinkingConfirmAServerLinkTokenUserMustBeAuthenticatedMockHandler200(
+        {
+          success: true,
+          link_type: LinkType.SERVER,
+          platform: "SLACK",
+          platform_server_id: "T1",
+          server_name: "Acme",
+          return_url: "https://slack.com/app_redirect?app=A1&team=T1",
+        },
+      ),
+    );
+
+    render(<PlatformLinkPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /connect slack to autogpt/i }),
+    );
+
+    await screen.findByRole("link", { name: /return to slack/i });
+    // The whole workspace is linked; telling them to DM the bot is a mixed
+    // message on this path.
+    expect(screen.queryByText(/try it now/i)).toBeNull();
+  });
+
   test("names the server type the way the platform does", async () => {
     setRoute("token-123", "slack");
     server.use(

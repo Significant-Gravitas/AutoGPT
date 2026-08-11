@@ -10,28 +10,30 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   platformName: string;
+  serverNoun: string;
   dmLink: PlatformUserLinkInfo | null;
-  pendingWorkspaceName?: string | null;
+  pendingServerName?: string | null;
   isPending: (linkId: string) => boolean;
   onUnlink: (linkId: string) => void;
 };
 
 export function BotCardDmTile({
   platformName,
+  serverNoun,
   dmLink,
-  pendingWorkspaceName,
+  pendingServerName,
   isPending,
   onUnlink,
 }: Props) {
   const title = dmLink
     ? (dmLink.platform_username ?? `User ${dmLink.platform_user_id}`)
-    : pendingWorkspaceName
-      ? `Workspace “${pendingWorkspaceName}” connected — one step left`
+    : pendingServerName
+      ? `${capitalize(serverNoun)} “${pendingServerName}” connected — one step left`
       : `DM the bot on ${platformName} to link`;
   const subtitle = dmLink
     ? "Your DM channel is linked to this account."
-    : pendingWorkspaceName
-      ? `DM @AutoGPT in ${platformName} and tap Link Account to connect your DMs.`
+    : pendingServerName
+      ? `DM the bot in ${platformName} and tap Link Account to connect your DMs.`
       : "Send the bot a direct message to start the link flow.";
 
   return (
@@ -69,4 +71,8 @@ export function BotCardDmTile({
       )}
     </div>
   );
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

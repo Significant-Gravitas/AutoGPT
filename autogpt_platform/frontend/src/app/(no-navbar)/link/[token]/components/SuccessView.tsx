@@ -48,10 +48,10 @@ export function SuccessView({
             <br />
             {detail}
           </Text>
-          {returnUrl ? (
+          {returnUrl && forUser ? (
             <Text variant="small" className="mt-3 block text-muted-foreground">
-              Try it now: DM @AutoGPT — &ldquo;research a topic&rdquo;,
-              &ldquo;build me an agent&rdquo;, or &ldquo;draft a doc&rdquo;.
+              Try it now — &ldquo;research a topic&rdquo;, &ldquo;build me an
+              agent&rdquo;, or &ldquo;draft a doc&rdquo;.
             </Text>
           ) : null}
         </div>
