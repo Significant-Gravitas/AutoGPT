@@ -114,6 +114,34 @@ class AccountRegistrationTest(unittest.TestCase):
         )
 
 
+class PublicOriginConfigurationTest(unittest.TestCase):
+    def test_backend_cors_uses_the_validated_public_origin(self) -> None:
+        result = subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; AUTOGPT_PUBLIC_URL="$2"; '
+                'configure_backend_cors_origin; '
+                'printf "%s\\n" "$BACKEND_CORS_ALLOW_ORIGINS"',
+                "bash",
+                str(ENTRYPOINT_PATH),
+                "http://192.168.1.254:3300",
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '["http://192.168.1.254:3300"]\n')
+
+
 class NormalizationTest(unittest.TestCase):
     def test_rejects_invalid_integer_values(self) -> None:
         for value, error in (

@@ -22,6 +22,7 @@ import {
   getAvailableLlmTransports,
   resolveCopilotLlmAuthSelection,
 } from "./helpers/copilotLlmAuth";
+import { useCopilotStreamStore } from "./copilotStreamStore";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -204,18 +205,7 @@ export function useChatSession({
   }, [freshSessionData, sessionId, hasActiveStream]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
-    usePostV2CreateSession({
-      mutation: {
-        onSuccess: (response) => {
-          if (response.status === 200 && response.data?.id) {
-            setSessionId(response.data.id);
-            queryClient.invalidateQueries({
-              queryKey: SESSION_LIST_QUERY_KEY,
-            });
-          }
-        },
-      },
-    });
+    usePostV2CreateSession();
 
   async function createSession() {
     if (sessionId) return sessionId;
@@ -299,6 +289,13 @@ export function useChatSession({
         });
         throw error;
       }
+      useCopilotStreamStore
+        .getState()
+        .bindPendingFirstSendToSession(response.data.id);
+      setSessionId(response.data.id);
+      queryClient.invalidateQueries({
+        queryKey: SESSION_LIST_QUERY_KEY,
+      });
       return response.data.id;
     } catch (error) {
       if (

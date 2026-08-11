@@ -108,6 +108,7 @@ configure_environment() {
   export AUTOGPT_PUBLIC_URL
   log "public URL: ${AUTOGPT_PUBLIC_URL}"
   configure_account_registration
+  configure_backend_cors_origin
   write_nginx_public_url_config
 
   export PGDATA=/data/postgres
@@ -173,6 +174,10 @@ configure_environment() {
   # Python imports this directory's sitecustomize module before each service
   # entry point, suppressing HTTP access targets and redacting WS query tokens.
   export PYTHONPATH="${AUTOGPT_ASSET_DIR}/python"
+}
+
+configure_backend_cors_origin() {
+  export BACKEND_CORS_ALLOW_ORIGINS="[\"${AUTOGPT_PUBLIC_URL}\"]"
 }
 
 configure_account_registration() {
