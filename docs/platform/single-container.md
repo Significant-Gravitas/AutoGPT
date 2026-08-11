@@ -580,7 +580,7 @@ ready.
 | --- | --- |
 | The browser cannot connect after `docker run IMAGE` | A bare run does not publish a port. Use the complete Quick start command. |
 | Port `3300` opens but auth actions fail | Use `--publish 127.0.0.1:3300:3000` and set `AUTOGPT_PUBLIC_URL=http://localhost:3300`, then replace the container. |
-| Signup says registration is closed | Set `AUTH_ALLOW_NEW_ACCOUNTS=true` with an optional exact-address `AUTH_SIGNUP_ALLOWLIST`, replace the container, create the intended accounts, and close signup again. |
+| Signup says registration is closed | Set `AUTH_ALLOW_NEW_ACCOUNTS=true` with an exact-address `AUTH_SIGNUP_ALLOWLIST=owner@example.com`, replace the container, create the intended accounts, and close signup again. |
 | The container remains `starting` or becomes `unhealthy` | First boot can take several minutes. Run `autogpt-healthcheck` and inspect container logs for the first failed service. |
 | AutoPilot returns a provider `401` | Configure the key for the selected transport. The default remote route needs `OPEN_ROUTER_API_KEY`; complete remote memory also needs `OPENAI_API_KEY`. |
 | Local chat works but memory ingestion fails | Install `nomic-embed-text` on the configured local server and confirm its `/v1/embeddings` endpoint works. |
