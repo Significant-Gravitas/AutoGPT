@@ -1,10 +1,4 @@
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
-import {
-  ChartIncreaseIcon,
-  Coins01Icon,
-  Notification03Icon,
-  Store01Icon,
-} from "@hugeicons/core-free-icons";
 
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 export const EASE_IOS = [0.32, 0.72, 0, 1] as const;
@@ -34,11 +28,6 @@ export const BRIEFING_OPTIONS: { value: BriefingFrequency; label: string }[] = [
   { value: "MONTHLY", label: "Monthly" },
   { value: "OFF", label: "Off" },
 ];
-
-export const NOTIFICATIONS_FALLBACK_ICON = Notification03Icon;
-export const BRIEFING_ICON = ChartIncreaseIcon;
-export const ALERTS_ICON = Coins01Icon;
-export const VERDICT_ICON = Store01Icon;
 
 /**
  * The `?f=` values the Briefing footer links use. "alerts" and "off" both turn
