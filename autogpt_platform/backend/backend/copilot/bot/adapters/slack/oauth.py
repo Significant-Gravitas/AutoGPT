@@ -19,6 +19,7 @@ from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
+from pydantic import BaseModel
 from slack_sdk.web.async_client import AsyncWebClient
 
 from backend.data.bot_analytics import record_guild_joined
@@ -128,67 +129,85 @@ async def _handle_callback(
         logger.warning("Slack oauth.v2.access failed: %s", resp.get("error"))
         return _done(ok=False, detail=resp.get("error") or "exchange failed")
 
-    token = resp.get("access_token") or ""
     team = resp.get("team") or {}
-    team_id = team.get("id") or ""
-    if not token or not team_id:
+    install = _Install(
+        team_id=team.get("id") or "",
+        team_name=team.get("name"),
+        token=resp.get("access_token") or "",
+        app_id=resp.get("app_id") or "",
+        bot_user_id=resp.get("bot_user_id"),
+    )
+    if not install.token or not install.team_id:
         return _done(ok=False, detail="incomplete install response")
 
-    await _store_install(resp, team_id=team_id, token=token, team=team)
+    await _store_install(install)
     if on_installed is not None:
-        on_installed(team_id)
+        on_installed(install.team_id)
     if user_id:
-        await _mark_install_pending(user_id, team_id=team_id, team=team, resp=resp)
-    return _post_install_response(resp, team_id=team_id, team=team)
+        await _mark_install_pending(user_id, install)
+    return _post_install_response(install)
 
 
-async def _store_install(resp: dict, *, team_id: str, token: str, team: dict) -> None:
+class _Install(BaseModel):
+    """The fields we need out of an oauth.v2.access response."""
+
+    team_id: str
+    team_name: str | None
+    token: str
+    app_id: str
+    bot_user_id: str | None
+
+
+async def _store_install(install: _Install) -> None:
     await upsert_bot_install(
         platform=Platform.SLACK,
-        team_id=team_id,
-        bot_token=token,
-        bot_user_id=resp.get("bot_user_id"),
-        app_id=resp.get("app_id"),
-        name=team.get("name"),
+        team_id=install.team_id,
+        bot_token=install.token,
+        bot_user_id=install.bot_user_id,
+        app_id=install.app_id or None,
+        name=install.team_name,
     )
     try:
         await record_guild_joined(
             BotGuildInput(
-                platform=Platform.SLACK, server_id=team_id, name=team.get("name")
+                platform=Platform.SLACK,
+                server_id=install.team_id,
+                name=install.team_name,
             )
         )
     except Exception:
         logger.warning(
-            "Failed to record BotGuild for Slack install %s", team_id, exc_info=True
+            "Failed to record BotGuild for Slack install %s",
+            install.team_id,
+            exc_info=True,
         )
 
 
-async def _mark_install_pending(
-    user_id: str, *, team_id: str, team: dict, resp: dict
-) -> None:
+async def _mark_install_pending(user_id: str, install: _Install) -> None:
     """Flag the install as awaiting the user's DM, so the Bots page can say so."""
     await mark_pending(
         user_id,
         PendingSlackInstall(
-            team_id=team_id,
-            team_name=team.get("name"),
-            app_id=resp.get("app_id") or None,
+            team_id=install.team_id,
+            team_name=install.team_name,
+            app_id=install.app_id or None,
         ),
     )
 
 
-def _post_install_response(resp: dict, *, team_id: str, team: dict) -> Response:
-    app_id = resp.get("app_id") or ""
-    if not app_id:
-        return _done(ok=True, detail=team.get("name") or team_id)
+def _post_install_response(install: _Install) -> Response:
+    if not install.app_id:
+        return _done(ok=True, detail=install.team_name or install.team_id)
     # Our own page rather than Slack's: it opens the bot DM via the desktop
     # deep link and then returns the tab to the Bots settings page, so the
     # install doesn't strand a dead browser tab.
     return RedirectResponse(
         _installed_page_url(
-            team_id=team_id, app_id=app_id, bot_user_id=resp.get("bot_user_id")
+            team_id=install.team_id,
+            app_id=install.app_id,
+            bot_user_id=install.bot_user_id,
         )
-        or bot_dm_url(app_id, team_id),
+        or bot_dm_url(install.app_id, install.team_id),
         status_code=302,
     )
 
