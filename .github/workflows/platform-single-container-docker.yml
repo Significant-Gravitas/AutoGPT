@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish the current dev commit to Docker Hub"
+        description: "Publish the final PR canary without changing latest"
         required: true
         type: boolean
         default: false
@@ -35,6 +35,7 @@ permissions:
 
 env:
   DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
+  CANARY_SOURCE_SHA: 6245b1b00ecfb14ea00188f40fcf5bb41335fd2e
 
 jobs:
   authorize-publication:
@@ -46,7 +47,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           persist-credentials: false
+
+      - name: Verify final canary control commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$CANARY_SOURCE_SHA"
+          test "$(git diff --name-only "$CANARY_SOURCE_SHA" HEAD | paste -sd ' ' -)" = \
+            ".github/scripts/platform-single-container-publish.sh .github/workflows/platform-single-container-docker.yml"
 
       - name: Validate publication source
         id: policy
@@ -104,8 +114,8 @@ jobs:
             *.platform=${{ matrix.platform }}
             backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
             backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
-            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
-            single-container.args.VCS_REF=${{ github.sha }}
+            single-container.args.IMAGE_VERSION=sha-${{ env.CANARY_SOURCE_SHA }}
+            single-container.args.VCS_REF=${{ env.CANARY_SOURCE_SHA }}
             single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
             single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
             single-container.output=type=docker
@@ -185,8 +195,8 @@ jobs:
             *.platform=${{ matrix.platform }}
             backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
             backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
-            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
-            single-container.args.VCS_REF=${{ github.sha }}
+            single-container.args.IMAGE_VERSION=sha-${{ env.CANARY_SOURCE_SHA }}
+            single-container.args.VCS_REF=${{ env.CANARY_SOURCE_SHA }}
             single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
             single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
             single-container.tags=${{ env.DEPLOY_IMAGE }}
@@ -310,6 +320,7 @@ jobs:
         run: bash .github/scripts/platform-single-container-publish.sh publish
 
       - name: Update Docker Hub Overview
+        if: ${{ github.ref != 'refs/heads/codex/single-container-publish-final-canary' }}
         uses: peter-evans/dockerhub-description@e98e4d1628a5f3be2be7c231e50981aee98723ae # v4.0.0
         with:
           username: ${{ secrets.DOCKER_USER }}

@@ -66,6 +66,16 @@ resolve_publication() {
     return
   fi
 
+  if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" == "refs/heads/codex/single-container-publish-final-canary" ]]; then
+    if [[ "$CANARY_SOURCE_SHA" != "6245b1b00ecfb14ea00188f40fcf5bb41335fd2e" ]]; then
+      echo "refusing canary for unexpected source revision: $CANARY_SOURCE_SHA" >&2
+      return 1
+    fi
+    immutable_ref="${DEPLOY_IMAGE}:canary-sha-${CANARY_SOURCE_SHA}"
+    publication_name="Single-container final PR canary published"
+    return
+  fi
+
   if [[ "$GITHUB_EVENT_NAME" == "release" && "$GITHUB_REF" == "refs/tags/${RELEASE_TAG}" ]]; then
     if [[ ! "$RELEASE_TAG" =~ ^autogpt-platform-beta-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
       echo "refusing unsupported release tag: $RELEASE_TAG" >&2
@@ -151,7 +161,7 @@ tag_state() {
 verify_manifest() {
   local image_ref="$1"
   shift
-  local raw_manifest rows_output actual_rows expected_rows row platform digest image_json
+  local raw_manifest rows_output actual_rows expected_rows row platform digest image_json source_revision
   local -a rows=()
 
   if (($# != 2)); then
@@ -167,13 +177,17 @@ verify_manifest() {
     echo "$image_ref does not match this run's smoke-tested platform digests" >&2
     return 1
   fi
+  source_revision="$GITHUB_SHA"
+  if [[ "$GITHUB_REF" == "refs/heads/codex/single-container-publish-final-canary" ]]; then
+    source_revision="$CANARY_SOURCE_SHA"
+  fi
   for row in "${rows[@]}"; do
     read -r platform digest <<<"$row"
     [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
     image_json="$(
       docker buildx imagetools inspect "${DEPLOY_IMAGE}@${digest}" --format '{{json .Image}}'
     )"
-    if ! jq -e --arg revision "$GITHUB_SHA" '
+    if ! jq -e --arg revision "$source_revision" '
       .config.Labels["org.opencontainers.image.revision"] == $revision
     ' <<<"$image_json" >/dev/null; then
       echo "$image_ref has an unexpected source revision for $platform" >&2
@@ -450,6 +464,17 @@ self_test() {
   assert_equal docker.io/significantgravitas/autogpt:sha-abc123 "$immutable_ref" "dev immutable tag"
   assert_equal '' "$release_ref" "dev release tag"
   assert_equal false "$publish_latest" "dev latest policy"
+
+  DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
+    GITHUB_EVENT_NAME=workflow_dispatch \
+    GITHUB_REF=refs/heads/codex/single-container-publish-final-canary \
+    GITHUB_SHA=control123 CANARY_SOURCE_SHA=6245b1b00ecfb14ea00188f40fcf5bb41335fd2e \
+    RELEASE_TAG='' resolve_publication
+  assert_equal \
+    docker.io/significantgravitas/autogpt:canary-sha-6245b1b00ecfb14ea00188f40fcf5bb41335fd2e \
+    "$immutable_ref" "canary immutable tag"
+  assert_equal '' "$release_ref" "canary release tag"
+  assert_equal false "$publish_latest" "canary latest policy"
 
   DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7.1 \
