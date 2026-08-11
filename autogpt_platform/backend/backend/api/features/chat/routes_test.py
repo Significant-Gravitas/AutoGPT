@@ -61,6 +61,16 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
         "get_creds_by_provider",
         new=AsyncMock(return_value=[]),
     )
+    mocker.patch.object(
+        chat_routes,
+        "has_codex_access_for_discovery",
+        new=AsyncMock(return_value=True),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "enforce_codex_access_http",
+        new=AsyncMock(),
+    )
     mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.CLOUD)
     yield
     app.dependency_overrides.clear()
@@ -893,6 +903,36 @@ def test_list_chat_transports_hosted_defaults_to_platform_with_codex(
     }
 
 
+def test_list_chat_transports_hosted_omits_codex_without_required_plan(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    access = mocker.patch.object(
+        chat_routes,
+        "has_codex_access_for_discovery",
+        new=AsyncMock(return_value=False),
+    )
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup.return_value = [_codex_credentials()]
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transports": [
+            {
+                "auth_provider": "platform",
+                "credential_id": None,
+                "label": "AutoGPT Platform",
+                "available": True,
+                "default": True,
+            }
+        ]
+    }
+    access.assert_awaited_once_with(test_user_id)
+    lookup.assert_not_awaited()
+
+
 def test_list_chat_transports_omits_invalid_codex_credentials(
     test_user_id: str,
 ) -> None:
@@ -1064,6 +1104,41 @@ def test_create_session_codex_route_rejects_unowned_credential(
     assert response.status_code == 404
     assert response.json()["detail"] == "codex_credential_not_found"
     lookup.assert_awaited_once_with(test_user_id, "codex")
+
+
+def test_create_session_codex_route_rejects_user_without_required_plan(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    gate = mocker.patch.object(
+        chat_routes,
+        "enforce_codex_access_http",
+        new=AsyncMock(
+            side_effect=fastapi.HTTPException(
+                status_code=402,
+                detail="A Max plan or higher is required to use ChatGPT.",
+            )
+        ),
+    )
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    mock_create = mocker.patch.object(
+        chat_routes,
+        "create_chat_session",
+        new=AsyncMock(),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 402
+    assert response.json()["detail"] == (
+        "A Max plan or higher is required to use ChatGPT."
+    )
+    gate.assert_awaited_once_with(test_user_id)
+    lookup.assert_not_awaited()
+    mock_create.assert_not_awaited()
 
 
 def test_create_session_codex_route_persists_owned_credential(

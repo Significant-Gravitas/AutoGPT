@@ -535,6 +535,7 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             if entry.llm_auth_provider == "codex":
+                from backend.integrations.codex.access import enforce_codex_access
                 from backend.integrations.codex.credential_codec import (
                     bundle_from_credentials,
                 )
@@ -546,6 +547,7 @@ class CoPilotProcessor:
                 if entry.user_id is None:
                     raise RuntimeError("codex_user_required")
                 codex_user_id = entry.user_id
+                await enforce_codex_access(codex_user_id)
                 if entry.llm_credential_id is None:
                     raise RuntimeError("codex_credential_required")
                 try:

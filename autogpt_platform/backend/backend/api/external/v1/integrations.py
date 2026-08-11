@@ -35,6 +35,7 @@ from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
 )
+from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -272,7 +273,10 @@ async def list_providers(
     from backend.sdk.registry import AutoRegistry
 
     providers = []
+    codex_allowed = await has_codex_access_for_discovery(auth.user_id)
     for name in get_all_provider_names():
+        if name == ProviderName.CODEX and not codex_allowed:
+            continue
         supports_oauth = name in HANDLERS_BY_NAME
         handler_class = HANDLERS_BY_NAME.get(name)
         default_scopes = (

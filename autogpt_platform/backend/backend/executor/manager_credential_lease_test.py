@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import (
     APIKeyCredentials,
@@ -17,6 +18,10 @@ from backend.integrations.providers import ProviderName
 
 CodexCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.CODEX], Literal["oauth2"]
+]
+MixedCredentialsInput = CredentialsMetaInput[
+    Literal[ProviderName.OPENAI, ProviderName.CODEX],
+    Literal["api_key", "oauth2"],
 ]
 
 
@@ -148,6 +153,67 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
     assert captured["input_data"]["codex_credentials"] == metadata  # type: ignore[index]
     assert "codex_credentials" not in captured
     assert "credential_leases" not in captured
+
+
+@pytest.mark.asyncio
+async def test_codex_credential_is_rejected_and_released_without_entitlement():
+    credentials = _codex_credentials("cred-1")
+    lease = MagicMock(credentials=credentials)
+    lease.release = AsyncMock()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=lease)
+    block = _block_with_credentials({"credentials": CodexCredentialsInput}, {})
+    gate = AsyncMock(side_effect=UserPaywalledError("Max plan required"))
+
+    with (
+        patch("backend.executor.manager.enforce_codex_access", new=gate),
+        pytest.raises(UserPaywalledError, match="Max plan required"),
+    ):
+        await anext(
+            execute_node(
+                _node(block),
+                _entry({"credentials": _credential_metadata("cred-1")}),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    gate.assert_awaited_once_with("user-1")
+    manager.acquire_lease.assert_awaited_once_with("user-1", "cred-1")
+    lease.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_credential_metadata_cannot_hide_authoritative_codex_provider():
+    credentials = _codex_credentials("cred-1")
+    lease = MagicMock(credentials=credentials)
+    lease.release = AsyncMock()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=lease)
+    captured: dict[str, object] = {}
+    block = _block_with_credentials({"credentials": MixedCredentialsInput}, captured)
+    gate = AsyncMock()
+    disguised_metadata = {
+        "id": "cred-1",
+        "provider": "openai",
+        "type": "oauth2",
+        "title": None,
+    }
+
+    with (
+        patch("backend.executor.manager.enforce_codex_access", new=gate),
+        pytest.raises(ValueError, match="Credentials #cred-1 .* not found"),
+    ):
+        await anext(
+            execute_node(
+                _node(block),
+                _entry({"credentials": disguised_metadata}),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    gate.assert_not_awaited()
+    lease.release.assert_awaited_once()
+    assert "credentials" not in captured
 
 
 def _block_with_credentials(

@@ -222,6 +222,7 @@ export function useCredentialsInput({
     try {
       let login_url: string;
       let state_token: string;
+      let cancel_url: string | null | undefined;
 
       if (isMCP) {
         const mcpLoginResponse = await postV2InitiateOauthLoginForAnMcpServer({
@@ -230,7 +231,7 @@ export function useCredentialsInput({
         if (mcpLoginResponse.status !== 200) throw mcpLoginResponse.data;
         ({ login_url, state_token } = mcpLoginResponse.data);
       } else {
-        ({ login_url, state_token } = await api.oAuthLogin(
+        ({ login_url, state_token, cancel_url } = await api.oAuthLogin(
           provider,
           schema.credentials_scopes,
           credentialID,
@@ -248,6 +249,7 @@ export function useCredentialsInput({
       const { promise, cleanup, popupBlocked, fallbackBlocked } =
         openOAuthPopup(login_url, {
           stateToken: state_token,
+          cancelUrl: cancel_url,
           preOpenedWindow,
           timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
           // Always enable BroadcastChannel + localStorage listeners — they are

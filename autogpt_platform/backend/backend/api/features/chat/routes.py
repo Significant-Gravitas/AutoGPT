@@ -121,6 +121,10 @@ from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
 from backend.integrations.codex.auth_bundle import CodexAuthBundleError
+from backend.integrations.codex.access import (
+    enforce_codex_access_http,
+    has_codex_access_for_discovery,
+)
 from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.background import spawn_background_task
@@ -517,8 +521,10 @@ async def _get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
         )
     ]
 
-    codex_credentials = await credentials_manager.store.get_creds_by_provider(
-        user_id, "codex"
+    codex_credentials = (
+        await credentials_manager.store.get_creds_by_provider(user_id, "codex")
+        if await has_codex_access_for_discovery(user_id)
+        else []
     )
     valid_codex_credentials = [
         credentials
@@ -555,6 +561,9 @@ async def _resolve_new_session_llm_route(
 ) -> tuple[CopilotLlmAuthProvider, str | None]:
     auth_provider = request.llm_auth_provider if request else "platform"
     credential_id = request.llm_credential_id if request else None
+
+    if auth_provider == "codex":
+        await enforce_codex_access_http(user_id)
 
     if request is not None and request.builder_graph_id is not None:
         if auth_provider == "codex" or credential_id is not None:
@@ -1378,6 +1387,8 @@ async def stream_chat_post(
     is_platform_route = session.metadata.llm_auth_provider == "platform"
     if is_platform_route:
         await enforce_payment_paywall(user_id)
+    elif session.metadata.llm_auth_provider == "codex":
+        await enforce_codex_access_http(user_id)
 
     # Session-anchored tenancy: the ChatSession row is the authoritative
     # org/team for every turn in it — a user whose active header org
@@ -1706,7 +1717,9 @@ async def queue_pending_message(
     user_id: str = Security(auth.get_user_id),
 ):
     """Queue a follow-up message while the session has an active turn."""
-    await _validate_and_get_session(session_id, user_id)
+    session = await _validate_and_get_session(session_id, user_id)
+    if session.metadata.llm_auth_provider == "codex":
+        await enforce_codex_access_http(user_id)
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
     except StreamRegistryUnavailable as exc:

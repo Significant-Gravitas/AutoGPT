@@ -13,8 +13,8 @@ from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
 from backend.integrations.codex.login import (
     CodexDeviceLoginState,
+    CodexLoginFailedError,
     CodexLoginCoordinator,
-    CodexLoginPendingError,
     CodexLoginStatus,
     CodexLoginTransport,
     CodexSharedLoginState,
@@ -61,6 +61,9 @@ class MemoryStateStore:
         self.active[state.user_id] = login_id
         await self.write(state, login_id)
         return True
+
+    async def get_active(self, user_id: str) -> str | None:
+        return self.active.get(user_id)
 
     async def get(self, user_id: str, login_id: str) -> CodexSharedLoginState | None:
         state = self.states.get((user_id, login_id))
@@ -136,9 +139,10 @@ class FakeRedis:
 
 
 @pytest.mark.asyncio
-async def test_start_reserves_distributed_slot_before_requesting_device_code():
+async def test_new_start_supersedes_distributed_login_before_requesting_device_code():
     user_id = "user-123"
-    session = FakeSession()
+    first_session = FakeSession()
+    second_session = FakeSession()
     state_store = MemoryStateStore()
     transport_started = asyncio.Event()
     allow_transport = asyncio.Event()
@@ -146,12 +150,12 @@ async def test_start_reserves_distributed_slot_before_requesting_device_code():
     async def start_transport() -> FakeSession:
         transport_started.set()
         await allow_transport.wait()
-        return session
+        return first_session
 
     first_transport = MagicMock()
     first_transport.start_device_login = AsyncMock(side_effect=start_transport)
-    losing_transport = MagicMock()
-    losing_transport.start_device_login = AsyncMock()
+    replacement_transport = MagicMock()
+    replacement_transport.start_device_login = AsyncMock(return_value=second_session)
     origin = CodexLoginCoordinator(
         transport_factory=lambda: first_transport,
         state_store=state_store,
@@ -159,22 +163,63 @@ async def test_start_reserves_distributed_slot_before_requesting_device_code():
         state_poll_interval_seconds=0.001,
     )
     other_replica = CodexLoginCoordinator(
-        transport_factory=lambda: losing_transport,
+        transport_factory=lambda: replacement_transport,
         state_store=state_store,
         credentials_manager=MagicMock(),
+        state_poll_interval_seconds=0.001,
     )
 
     start_task = asyncio.create_task(origin.start(user_id))
     await asyncio.wait_for(transport_started.wait(), timeout=1)
 
-    with pytest.raises(CodexLoginPendingError):
-        await other_replica.start(user_id)
-    losing_transport.start_device_login.assert_not_awaited()
+    replacement = await other_replica.start(user_id)
+    replacement_transport.start_device_login.assert_awaited_once()
+    assert state_store.active[user_id] == replacement.login_id
 
     allow_transport.set()
-    details = await start_task
-    assert details.login_id != session.details.login_id
+    with pytest.raises(CodexLoginFailedError, match="ownership was lost"):
+        await start_task
+    first_session.close.assert_awaited()
     await origin.shutdown()
+    await other_replica.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_new_start_cancels_established_cross_replica_login_without_releasing_replacement():
+    user_id = "user-123"
+    first_session = FakeSession()
+    second_session = FakeSession()
+    state_store = MemoryStateStore()
+    origin = CodexLoginCoordinator(
+        transport_factory=lambda: _transport(first_session),
+        state_store=state_store,
+        credentials_manager=MagicMock(),
+        state_poll_interval_seconds=0.001,
+    )
+    other_replica = CodexLoginCoordinator(
+        transport_factory=lambda: _transport(second_session),
+        state_store=state_store,
+        credentials_manager=MagicMock(),
+        state_poll_interval_seconds=0.001,
+    )
+
+    original = await origin.start(user_id)
+    original_task = origin._local_tasks[original.login_id]
+    replacement = await other_replica.start(user_id)
+
+    original_state = await origin.get(user_id, original.login_id)
+    assert original_state is not None
+    assert original_state.status == "canceled"
+    assert original_state.error == "ChatGPT sign-in was replaced by a newer attempt"
+    assert state_store.active[user_id] == replacement.login_id
+
+    await asyncio.wait_for(original_task, timeout=1)
+    first_session.cancel.assert_awaited_once()
+    first_session.close.assert_awaited_once()
+    assert state_store.active[user_id] == replacement.login_id
+
+    await origin.shutdown()
+    await other_replica.shutdown()
 
 
 @pytest.mark.asyncio

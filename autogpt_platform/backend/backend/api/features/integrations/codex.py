@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from backend.api.features.integrations.codex_device_page import render_device_login_page
+from backend.integrations.codex.access import enforce_codex_access_http
 from backend.integrations.codex.login import (
     CodexDeviceLogin,
     CodexDeviceLoginState,
@@ -48,6 +49,7 @@ async def codex_account(
     credential_id: Annotated[str, Path(min_length=1)],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CodexAccountSnapshot:
+    await enforce_codex_access_http(user_id)
     lease = await _acquire_codex_lease(user_id, credential_id)
     try:
         return await _get_codex_transport().account(lease)
@@ -69,6 +71,7 @@ async def codex_rate_limits(
     credential_id: Annotated[str, Path(min_length=1)],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CodexRateLimitsSnapshot:
+    await enforce_codex_access_http(user_id)
     lease = await _acquire_codex_lease(user_id, credential_id)
     try:
         return await _get_codex_transport().rate_limits(lease)
@@ -144,6 +147,13 @@ def build_device_login_url(
         f"{base_url}/api/proxy/api/integrations/codex/"
         f"device-login/{login_id}#{fragment}"
     )
+
+
+def build_device_login_cancel_url(
+    login: CodexDeviceLogin,
+) -> str:
+    login_id = quote(login.login_id, safe="")
+    return f"/api/proxy/api/integrations/codex/device-login/{login_id}/cancel"
 
 
 async def revoke_codex_credentials(
@@ -238,6 +248,7 @@ __all__ = [
     "CODEX_LOGIN_STATE_KEY",
     "CodexDeviceLogin",
     "CodexDeviceLoginState",
+    "build_device_login_cancel_url",
     "build_device_login_url",
     "render_device_login_page",
     "revoke_codex_credentials",

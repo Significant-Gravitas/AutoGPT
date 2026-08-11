@@ -45,6 +45,10 @@ from backend.integrations.codex.login import (
     CodexLoginFailedError,
     CodexLoginPendingError,
 )
+from backend.integrations.codex.access import (
+    enforce_codex_access_http,
+    has_codex_access_for_discovery,
+)
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -75,6 +79,7 @@ from backend.util.settings import Settings
 
 from .codex import (
     CODEX_LOGIN_STATE_KEY,
+    build_device_login_cancel_url,
     build_device_login_url,
     codex_login_coordinator,
     revoke_codex_credentials,
@@ -103,6 +108,7 @@ creds_manager = IntegrationCredentialsManager()
 class LoginResponse(BaseModel):
     login_url: str
     state_token: str
+    cancel_url: str | None = None
 
 
 @router.get("/{provider}/login", summary="Initiate OAuth flow")
@@ -121,6 +127,7 @@ async def login(
     ] = None,
 ) -> LoginResponse:
     if provider == ProviderName.CODEX:
+        await enforce_codex_access_http(user_id)
         return await _start_codex_login(user_id, scopes, credential_id)
 
     handler = _get_provider_oauth_handler(request, provider)
@@ -196,6 +203,7 @@ async def _start_codex_login(
     return LoginResponse(
         login_url=build_device_login_url(frontend_base_url, login_attempt, state_token),
         state_token=state_token,
+        cancel_url=build_device_login_cancel_url(login_attempt),
     )
 
 
@@ -293,6 +301,9 @@ async def callback(
     request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
+
+    if provider == ProviderName.CODEX:
+        await enforce_codex_access_http(user_id)
 
     # Verify the state token
     valid_state = await creds_manager.store.verify_state_token(
@@ -1465,6 +1476,8 @@ async def list_providers(
         logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
     all_providers = get_all_provider_names()
+    if not await has_codex_access_for_discovery(user_id):
+        all_providers = [name for name in all_providers if name != ProviderName.CODEX]
     return [
         ProviderMetadata(
             name=name,

@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.config import CopilotMode
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.executor.processor import (
     CoPilotProcessor,
     resolve_effective_mode,
@@ -576,6 +577,47 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
 
 
 @pytest.mark.asyncio
+async def test_codex_entitlement_is_checked_before_credential_acquire():
+    transport = MagicMock()
+    transport.acquire_runtime_lease = AsyncMock()
+    mark_completed = AsyncMock()
+    gate = AsyncMock(side_effect=UserPaywalledError("Max plan required"))
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=_codex_session()),
+        ),
+        patch(
+            "backend.integrations.codex.transport.get_codex_transport",
+            return_value=transport,
+        ),
+        patch(
+            "backend.integrations.codex.access.enforce_codex_access",
+            new=gate,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            mark_completed,
+        ),
+        pytest.raises(UserPaywalledError, match="Max plan required"),
+    ):
+        await CoPilotProcessor()._execute_async(
+            _codex_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
+
+    gate.assert_awaited_once_with("user-1")
+    transport.acquire_runtime_lease.assert_not_awaited()
+    mark_completed.assert_awaited_once_with(
+        "sess-codex",
+        error_message="Max plan required",
+    )
+
+
+@pytest.mark.asyncio
 async def test_codex_busy_credential_fails_closed_without_platform_fallback():
     transport = MagicMock()
     transport.acquire_runtime_lease = AsyncMock(
@@ -844,9 +886,9 @@ class TestExecuteSafetyNet:
 
         # The sync safety net must have fired despite the async path
         # blowing up — this is the core guarantee of the PR.
-        assert call_log == [
-            "sync-ok"
-        ], f"expected sync_fail_close_session to run once, got {call_log!r}"
+        assert call_log == ["sync-ok"], (
+            f"expected sync_fail_close_session to run once, got {call_log!r}"
+        )
 
     def test_cancel_waits_for_async_task_to_finish(self, exec_loop) -> None:
         """A cancel request must not let ``_execute`` return while the

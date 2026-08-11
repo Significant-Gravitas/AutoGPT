@@ -50,6 +50,7 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.data.db_accessors import chat_db
+from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +261,16 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
     head = queued[0]
 
-    if head.metadata.llm_auth_provider != "codex":
+    if head.metadata.llm_auth_provider == "codex":
+        if not await has_codex_access(user_id):
+            logger.info(
+                "dispatch_next_for_user: user=%s lacks Codex entitlement, "
+                "leaving session=%s queued",
+                user_id,
+                head.session_id,
+            )
+            return False
+    else:
         if await is_user_paywalled(user_id):
             logger.info(
                 "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",

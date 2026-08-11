@@ -8,6 +8,7 @@ import pytest
 
 from backend.blocks._base import BlockType
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
@@ -1528,6 +1529,91 @@ class TestExecuteBlockCredentialLeases:
         manager.acquire_lease.assert_awaited_once_with(_USER, "cred-1")
         manager.get.assert_not_awaited()
         lease.release.assert_awaited_once()
+
+    async def test_codex_entitlement_is_checked_against_acquired_credentials(self):
+        block = _make_block()
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        lease = MagicMock(credentials=credentials)
+        lease.release = AsyncMock()
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock(return_value=lease)
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.CODEX], Literal["oauth2"]
+        ](id="cred-1", provider=ProviderName.CODEX, type="oauth2")
+        gate = AsyncMock(side_effect=UserPaywalledError("Max plan required"))
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.enforce_codex_access",
+                new=gate,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-entitlement",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Max plan required" in result.message
+        gate.assert_awaited_once_with(_USER)
+        manager.acquire_lease.assert_awaited_once_with(_USER, "cred-1")
+        lease.release.assert_awaited_once()
+
+    async def test_credential_metadata_cannot_hide_authoritative_codex_provider(self):
+        block = _make_block()
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        manager = MagicMock()
+        manager.get = AsyncMock(return_value=credentials)
+        manager.acquire_lease = AsyncMock()
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.OPENAI, ProviderName.CODEX],
+            Literal["api_key", "oauth2"],
+        ](id="cred-1", provider=ProviderName.OPENAI, type="oauth2")
+        gate = AsyncMock()
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.enforce_codex_access",
+                new=gate,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-disguised-codex",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Failed to retrieve credentials" in result.message
+        gate.assert_not_awaited()
+        manager.acquire_lease.assert_not_awaited()
 
     async def test_ordinary_credentials_keep_nonlocking_lookup(self):
         block = _make_block()

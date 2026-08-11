@@ -244,6 +244,11 @@ async def test_codex_dispatch_skips_platform_billing_gates() -> None:
             "backend.copilot.turn_queue.check_rate_limit",
             new=rate_limit_check,
         ),
+        patch.object(
+            turn_queue,
+            "has_codex_access",
+            new=AsyncMock(return_value=True),
+        ),
         patch(
             "backend.copilot.executor.utils.dispatch_turn",
             new=dispatch_turn_mock,
@@ -263,6 +268,33 @@ async def test_codex_dispatch_skips_platform_billing_gates() -> None:
     dispatch_turn_mock.assert_awaited_once()
     assert dispatch_turn_mock.call_args.kwargs["llm_auth_provider"] == "codex"
     assert dispatch_turn_mock.call_args.kwargs["llm_credential_id"] == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_codex_dispatch_leaves_queued_when_user_lacks_access() -> None:
+    head = _mock_session()
+    head.metadata.llm_auth_provider = "codex"
+    head.metadata.llm_credential_id = "cred-1"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock()
+    dispatch_turn_mock = AsyncMock()
+    access = AsyncMock(return_value=False)
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=access),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=dispatch_turn_mock,
+        ),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    access.assert_awaited_once_with("u1")
+    db.update_chat_session_status.assert_not_awaited()
+    dispatch_turn_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -19825,7 +19825,11 @@
       "LoginResponse": {
         "properties": {
           "login_url": { "type": "string", "title": "Login Url" },
-          "state_token": { "type": "string", "title": "State Token" }
+          "state_token": { "type": "string", "title": "State Token" },
+          "cancel_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cancel Url"
+          }
         },
         "type": "object",
         "required": ["login_url", "state_token"],

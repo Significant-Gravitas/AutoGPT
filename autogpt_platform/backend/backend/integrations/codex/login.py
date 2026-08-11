@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.data.model import OAuth2Credentials
 from backend.data.redis_client import get_redis_async
+from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.codex.credential_codec import credentials_from_bundle
 from backend.integrations.codex.models import (
     CodexDeviceCodeDetails,
@@ -84,6 +85,8 @@ class CodexLoginStateStore(Protocol):
 
     async def claim(self, state: CodexSharedLoginState, login_id: str) -> bool: ...
 
+    async def get_active(self, user_id: str) -> str | None: ...
+
     async def get(
         self, user_id: str, login_id: str
     ) -> CodexSharedLoginState | None: ...
@@ -131,6 +134,10 @@ class RedisCodexLoginStateStore:
             )
             raise
         return True
+
+    async def get_active(self, user_id: str) -> str | None:
+        redis = await get_redis_async()
+        return await redis.get(_active_key(user_id))
 
     async def get(self, user_id: str, login_id: str) -> CodexSharedLoginState | None:
         redis = await get_redis_async()
@@ -207,6 +214,16 @@ class CodexLoginCoordinator:
         login_id = secrets.token_urlsafe(24)
         state = CodexSharedLoginState(user_id=user_id, status="pending")
         async with self._state_store.locked(user_id):
+            active_login_id = await self._state_store.get_active(user_id)
+            if active_login_id is not None:
+                active_state = await self._state_store.get(user_id, active_login_id)
+                if active_state is not None and active_state.status == "pending":
+                    active_state.status = "canceled"
+                    active_state.error = (
+                        "ChatGPT sign-in was replaced by a newer attempt"
+                    )
+                    await self._state_store.write(active_state, active_login_id)
+                await self._state_store.release_active(user_id, active_login_id)
             if not await self._state_store.claim(state, login_id):
                 raise CodexLoginPendingError(
                     "A ChatGPT sign-in is already active for this user"
@@ -484,6 +501,7 @@ class CodexLoginCoordinator:
         login_id: str,
         completion: CodexLoginCompletion,
     ) -> None:
+        await enforce_codex_access(user_id)
         credentials = credentials_from_bundle(completion.bundle)
         async with self._credentials_manager.locked_provider_credentials(
             user_id, credentials.provider

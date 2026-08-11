@@ -48,6 +48,8 @@ from backend.executor.cost_tracking import (
     log_system_credential_cost,
 )
 from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.codex.access import enforce_codex_access
+from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.clients import (
@@ -308,12 +310,17 @@ async def execute_node(
                 )
                 if not (
                     credentials is not None
-                    and credentials.provider == credentials_meta.provider
+                    and provider_matches(
+                        credentials.provider,
+                        credentials_meta.provider,
+                    )
                     and credentials.type == credentials_meta.type
                 ):
                     raise ValueError(
                         f"Credentials #{credentials_meta.id} for user #{user_id} not found"
                     )
+                if provider_matches(credentials.provider, "codex"):
+                    await enforce_codex_access(user_id)
                 continue
             try:
                 lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
@@ -329,6 +336,19 @@ async def execute_node(
                     continue
                 raise
             credential_leases[field_name] = lease
+            credentials = lease.credentials
+            if not (
+                provider_matches(
+                    credentials.provider,
+                    credentials_meta.provider,
+                )
+                and credentials.type == credentials_meta.type
+            ):
+                raise ValueError(
+                    f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+                )
+            if provider_matches(credentials.provider, "codex"):
+                await enforce_codex_access(user_id)
             extra_exec_kwargs[field_name] = lease.credentials
             if _uses_provider_runtime(lease):
                 runtime_credential_leases[field_name] = lease
