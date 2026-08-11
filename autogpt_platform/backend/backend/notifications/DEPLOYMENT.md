@@ -182,6 +182,31 @@ staging first.
   and falls back to free-text `comments` otherwise. The store review UI
   currently only collects free text; collecting discrete items is what the
   rendering was designed for.
+- **The page's palette vs. the templates' palette — a decision to confirm.**
+  The templates here are byte-identical to the design repo's own
+  `user_emails/templates/` and `kit/templates/`, which is what the WCAG audit
+  was run against. The *previews* on the design page are not: `build_app.py`
+  applies a brand remap before displaying them (`#f1efe9`→`#eceaf6` page,
+  `#0b0a14`/`#17123b`→`#070629` ink, `#5d23bb`/`#6d28d9`→`#5635b2` action,
+  14px→16px sheet radius, the system font stack→Poppins via a Google Fonts
+  `@import`, and the inline-SVG masthead mark→a hosted `logo-light.png`), and
+  the page's Design section describes that remapped result.
+
+  We ship the templates as written, for three reasons: they are the artifacts
+  the contrast audit actually covers; the remap is applied in the page
+  generator rather than in the templates; and the plan's own delivery
+  mechanics say **no webfonts** — "Gmail strips them, so today's Poppins was
+  never rendering anyway, and the system stack plus Georgia plus monospace is
+  a deliberate aesthetic rather than a fallback" — which the page's "Poppins
+  throughout" line contradicts.
+
+  If design wants the page's exact palette in the sent mail, it is a
+  find-and-replace across `templates/_ui.j2` and `templates/_lifecycle_ui.j2`
+  using the pairs in `build_app.py`'s `BRAND_REMAP`, plus swapping the
+  masthead SVG for `logo-light.png` off the CDN. Re-run the contrast audit
+  afterwards (`audit_contrast.py` in the design repo) — the remapped values
+  needed three fine-print grays darkened to stay AA, which is why that repo
+  keeps a separate `audit_user_remapped.json`.
 - **Starred runs** are listed in the design as an interestingness signal. The
   platform has no way to star a run, so `compute_score` does not use one; add
   the signal when the feature exists.
