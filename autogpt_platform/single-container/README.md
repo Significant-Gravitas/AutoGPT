@@ -41,7 +41,7 @@ and generated application secrets survive container replacement.
 
 `AUTOGPT_PUBLIC_URL` must exactly match the URL used in the browser. For
 example, publishing host port `8080` requires
-`AUTOGPT_PUBLIC_URL=http://localhost:8080` and `-p 8080:3000`.
+`AUTOGPT_PUBLIC_URL=http://localhost:8080` and `-p 127.0.0.1:8080:3000`.
 
 Configure model providers and optional integrations with environment variables.
 Core memory is enabled and stored in the bundled FalkorDB; memory extraction
