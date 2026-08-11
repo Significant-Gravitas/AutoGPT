@@ -49,6 +49,14 @@ def test_state_carries_the_installing_user():
         assert oauth._verify_state(state) == "user-123"
 
 
+def test_state_survives_a_user_id_containing_dots():
+    # The user id is the last field, so parsing has to stop after the two
+    # fixed ones or a dotted id silently loses its tail.
+    with patch(f"{_O}.config.get_client_secret", return_value="csecret"):
+        state = oauth._make_state("user.with.dots")
+        assert oauth._verify_state(state) == "user.with.dots"
+
+
 def test_expired_state_rejected():
     with patch(f"{_O}.config.get_client_secret", return_value="csecret"):
         old_ts = int(time.time()) - oauth._STATE_TTL_SECONDS - 5
@@ -119,7 +127,9 @@ async def test_callback_with_user_state_records_pending_install():
         patch(f"{_O}.upsert_bot_install", new=AsyncMock()),
         patch(f"{_O}.record_guild_joined", new=AsyncMock()),
         patch(f"{_O}.mark_pending", new=AsyncMock()) as pending,
+        patch(f"{_O}.Settings") as settings,
     ):
+        settings.return_value.config.frontend_base_url = "https://f.example"
         web_client.return_value.oauth_v2_access = AsyncMock(
             return_value={
                 "ok": True,
@@ -138,7 +148,12 @@ async def test_callback_with_user_state_records_pending_install():
     assert install.team_id == "T1"
     assert install.team_name == "Acme"
     assert install.app_id == "A1"
+    # Pin the target: without Settings patched both branches return 302 and
+    # the assertion passes either way.
     assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "https://f.example/link/slack/installed?team=T1&app=A1&bot=UBOT"
+    )
 
 
 @pytest.mark.asyncio

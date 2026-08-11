@@ -44,31 +44,37 @@ export function BotCard({ platform }: Props) {
             </Badge>
           ) : null}
         </div>
-        {pendingInstall ? (
-          <Button
-            as="NextLink"
-            href={pendingInstall.open_bot_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="primary"
-            size="small"
-            rightIcon={<Icon icon={ArrowUpRight01Icon} size={16} />}
-          >
-            Open AutoGPT in {platform.display_name}
-          </Button>
-        ) : platform.add_bot_url ? (
-          // Same tab on purpose: the install round-trip ends by returning here,
-          // so a new tab would just strand the user on a dead page.
-          <Button
-            as="NextLink"
-            href={platform.add_bot_url}
-            variant="primary"
-            size="small"
-            leftIcon={<Icon icon={PlusSignIcon} size={16} />}
-          >
-            Add bot to {platform.display_name}
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {pendingInstall ? (
+            <Button
+              as="NextLink"
+              href={pendingInstall.open_bot_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="primary"
+              size="small"
+              rightIcon={<Icon icon={ArrowUpRight01Icon} size={16} />}
+            >
+              Open AutoGPT in {platform.display_name}
+            </Button>
+          ) : null}
+          {/* Kept alongside the pending action, not replaced by it: adding the
+              bot to a second {serverNoun} is a normal thing to want while the
+              first install is still waiting on its DM. */}
+          {platform.add_bot_url ? (
+            // Same tab on purpose: the install round-trip ends by returning here,
+            // so a new tab would just strand the user on a dead page.
+            <Button
+              as="NextLink"
+              href={platform.add_bot_url}
+              variant={pendingInstall ? "outline" : "primary"}
+              size="small"
+              leftIcon={<Icon icon={PlusSignIcon} size={16} />}
+            >
+              Add bot to {platform.display_name}
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       <section className="flex flex-col gap-2">

@@ -19,6 +19,16 @@ from backend.util.settings import Settings
 # oauth module — which pulls in the Slack SDK + Prisma — into this metadata file).
 _SLACK_INSTALL_PATH = "/api/copilot-webhooks/slack/install"
 
+# The platform's own word for a server: Slack has workspaces, Telegram
+# groups, Teams teams. Declared once so every surface (settings page, link
+# confirmation, bot copy) reads natively instead of saying "server".
+_SERVER_NOUNS = {
+    "DISCORD": "server",
+    "SLACK": "workspace",
+    "TELEGRAM": "group",
+}
+_DEFAULT_SERVER_NOUN = "server"
+
 
 class PlatformMeta(BaseModel):
     """Static + runtime metadata for one chat-bot platform."""
@@ -28,10 +38,7 @@ class PlatformMeta(BaseModel):
     platform: str  # canonical key, matches PlatformLinkInfo.platform (uppercase)
     display_name: str
     icon: str  # filename under /public/integrations/<icon>
-    # The platform's own word for a server: Slack has workspaces, Telegram
-    # groups, Teams teams. Declared once here so every surface (settings page,
-    # link confirmation, bot copy) reads natively instead of saying "server".
-    server_noun: str
+    server_noun: str  # see _SERVER_NOUNS
     enabled: bool
     add_bot_url: str | None  # null when the platform has no invite URL we can build
 
@@ -49,13 +56,11 @@ def enabled_platforms() -> list[PlatformMeta]:
 def server_noun_for(platform: str) -> str:
     """The platform's word for a server, for surfaces that only know its key.
 
-    Falls back to "server" for a platform not listed (or one whose adapter
-    isn't configured here), which is the safe generic wording.
+    Reads the map rather than the metas: building those hits config getters
+    and URL builders, which is a lot of work for a constant string. Unknown
+    platforms get the safe generic wording.
     """
-    for meta in (_discord_meta(), _slack_meta(), _telegram_meta()):
-        if meta.platform == platform.upper():
-            return meta.server_noun
-    return "server"
+    return _SERVER_NOUNS.get(platform.upper(), _DEFAULT_SERVER_NOUN)
 
 
 def _discord_meta() -> PlatformMeta:
@@ -64,7 +69,7 @@ def _discord_meta() -> PlatformMeta:
         platform="DISCORD",
         display_name="Discord",
         icon="discord.png",
-        server_noun="server",
+        server_noun=_SERVER_NOUNS["DISCORD"],
         enabled=enabled,
         add_bot_url=_discord_invite_url() if enabled else None,
     )
@@ -84,7 +89,7 @@ def _slack_meta() -> PlatformMeta:
         platform="SLACK",
         display_name="Slack",
         icon="slack.png",
-        server_noun="workspace",
+        server_noun=_SERVER_NOUNS["SLACK"],
         enabled=enabled,
         add_bot_url=_slack_install_url() if (enabled and oauth_ready) else None,
     )
@@ -102,7 +107,7 @@ def _telegram_meta() -> PlatformMeta:
         platform="TELEGRAM",
         display_name="Telegram",
         icon="telegram.png",
-        server_noun="group",
+        server_noun=_SERVER_NOUNS["TELEGRAM"],
         enabled=enabled,
         add_bot_url=(
             f"https://t.me/{username}?startgroup=true"

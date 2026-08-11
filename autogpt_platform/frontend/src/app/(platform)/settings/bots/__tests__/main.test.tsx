@@ -116,10 +116,43 @@ describe("SettingsBotsPage", () => {
     expect(open.getAttribute("href")).toBe(
       "https://slack.com/app_redirect?app=A1&team=T1",
     );
-    // The install is done; offering it again would just re-run the OAuth flow.
+    // Alongside, not instead of: a pending marker lasts up to 7 days and must
+    // not lock someone out of installing to a second workspace.
     expect(
-      screen.queryByRole("link", { name: /add bot to slack/i }),
-    ).toBeNull();
+      screen.getByRole("link", { name: /add bot to slack/i }),
+    ).toBeDefined();
+  });
+
+  test("refetches when the user comes back to the tab", async () => {
+    let calls = 0;
+    server.use(
+      getListBotPlatformsMockHandler(() => {
+        calls += 1;
+        return [slackPlatform()];
+      }),
+    );
+
+    render(<SettingsBotsPage />);
+    await screen.findByRole("heading", { name: /slack/i });
+    const afterMount = calls;
+
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(calls).toBeGreaterThan(afterMount));
+
+    // Hidden tabs are not a return: the install round-trip ends with the user
+    // looking at this page, not at a background one.
+    const settled = calls;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    fireEvent(document, new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls).toBe(settled);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
   });
 
   test("names Slack's server type a workspace", async () => {

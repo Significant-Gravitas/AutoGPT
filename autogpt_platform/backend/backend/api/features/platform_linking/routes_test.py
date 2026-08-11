@@ -30,6 +30,13 @@ def _db_mock(**method_configs):
     return db
 
 
+def _installs_mock(install):
+    """Mock of the bot-installs accessor, resolving to the given install."""
+    installs = MagicMock()
+    installs.get_bot_install = AsyncMock(return_value=install)
+    return installs
+
+
 def _discord_meta(
     *, enabled: bool = True, add_bot_url: str | None = "https://invite"
 ) -> PlatformMeta:
@@ -618,11 +625,67 @@ class TestClosedLoopSlackFlow:
         install.app_id = "A1"
         with (
             patch(f"{_R}.platform_linking_db", return_value=db),
-            patch(f"{_R}.get_bot_install", new=AsyncMock(return_value=install)),
+            patch(
+                f"{_R}.bot_installs_db",
+                return_value=_installs_mock(install),
+            ),
         ):
             response = await confirm_link_token("tok", "u1", body=None)
 
         assert response.return_url == "https://slack.com/app_redirect?app=A1&team=T1"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("install", [None, "no-app-id"])
+    async def test_server_confirm_has_no_deep_link_without_a_usable_install(
+        self, install
+    ):
+        from backend.api.features.platform_linking.routes import confirm_link_token
+
+        db = _db_mock(
+            confirm_server_link=AsyncMock(
+                return_value=ConfirmLinkResponse(
+                    success=True,
+                    platform="SLACK",
+                    platform_server_id="T1",
+                    server_name="eek",
+                )
+            )
+        )
+        if install == "no-app-id":
+            install = MagicMock()
+            install.app_id = None
+        with (
+            patch(f"{_R}.platform_linking_db", return_value=db),
+            patch(f"{_R}.bot_installs_db", return_value=_installs_mock(install)),
+        ):
+            response = await confirm_link_token("tok", "u1", body=None)
+
+        # No app id means no deep link we can build; the link itself still stands.
+        assert response.success is True
+        assert response.return_url is None
+
+    @pytest.mark.asyncio
+    async def test_user_confirm_without_a_marker_still_clears_and_returns_no_link(self):
+        from backend.api.features.platform_linking.routes import confirm_user_link_token
+
+        db = _db_mock(
+            confirm_user_link=AsyncMock(
+                return_value=ConfirmUserLinkResponse(
+                    success=True, platform="SLACK", platform_user_id="U1"
+                )
+            )
+        )
+        with (
+            patch(f"{_R}.platform_linking_db", return_value=db),
+            patch(f"{_R}.slack_pending.get_pending", new=AsyncMock(return_value=None)),
+            patch(f"{_R}.slack_pending.clear_pending", new=AsyncMock()) as cleared,
+        ):
+            response = await confirm_user_link_token("tok", "u1", body=None)
+
+        assert response.return_url is None
+        # Clearing is unconditional: a marker may exist even when this call
+        # could not read one back.
+        cleared.assert_awaited_once_with("u1")
 
     @pytest.mark.asyncio
     async def test_non_slack_platforms_are_untouched(self):

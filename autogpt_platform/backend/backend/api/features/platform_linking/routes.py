@@ -11,8 +11,7 @@ from backend.copilot.bot.adapters.slack import oauth as slack_oauth
 from backend.copilot.bot.adapters.slack import pending as slack_pending
 from backend.copilot.bot.adapters.telegram import config as telegram_config
 from backend.copilot.bot.adapters.telegram.login import verify_login
-from backend.data.bot_installs import get_bot_install
-from backend.data.db_accessors import platform_linking_db
+from backend.data.db_accessors import bot_installs_db, platform_linking_db
 from backend.platform_linking.models import (
     BotPlatformInfo,
     ConfirmLinkResponse,
@@ -229,7 +228,7 @@ async def _slack_return_url_for_team(platform: str, team_id: str) -> str | None:
     """Deep link into the bot's DM for a just-linked Slack workspace."""
     if platform != Platform.SLACK.value:
         return None
-    install = await get_bot_install(Platform.SLACK, team_id)
+    install = await bot_installs_db().get_bot_install(Platform.SLACK, team_id)
     if install is None or not install.app_id:
         return None
     return slack_pending.bot_dm_url(install.app_id, team_id)

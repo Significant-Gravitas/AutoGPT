@@ -280,10 +280,12 @@ def _verify_state(state: str) -> str | None:
         return None
     if not hmac.compare_digest(sig, _sign(payload)):
         return None
-    parts = payload.split(".")
-    if len(parts) != 3:
+    # Split off the two fixed leading fields, not on every dot: the user id
+    # is last and a dotted one would otherwise fail attribution.
+    try:
+        _nonce, ts, user_id = payload.split(".", 2)
+    except ValueError:
         return None
-    _nonce, ts, user_id = parts
     try:
         if (int(time.time()) - int(ts)) > _STATE_TTL_SECONDS:
             return None
