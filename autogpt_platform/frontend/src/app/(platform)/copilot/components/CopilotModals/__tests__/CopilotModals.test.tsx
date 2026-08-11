@@ -20,6 +20,7 @@ function Harness() {
       <button onClick={() => openModal("integrations")}>
         open-integrations
       </button>
+      <button onClick={() => openModal("connect")}>open-connect</button>
       <CopilotModals />
     </>
   );
@@ -95,5 +96,13 @@ describe("CopilotModals", () => {
     expect(
       (await screen.findAllByText("Connect Service")).length,
     ).toBeGreaterThan(0);
+  });
+
+  test("opens the connect dialog directly, without the credentials list", async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-connect"));
+
+    expect(await screen.findByText("Connect a service")).toBeDefined();
+    expect(screen.queryByText("Third Party Integrations")).toBeNull();
   });
 });

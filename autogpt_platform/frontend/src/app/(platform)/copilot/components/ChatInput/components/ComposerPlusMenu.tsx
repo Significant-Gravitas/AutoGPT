@@ -91,11 +91,11 @@ export function ComposerPlusMenu({
           <DropdownMenuItem
             onSelect={() => {
               onClearGuidedPrompt?.();
-              openModal("integrations");
+              openModal("connect");
             }}
           >
             <Icon icon={PlugSocketIcon} className="mr-2 h-4 w-4" />
-            Integrations
+            Connect service
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openModal("skills")}>
             <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
