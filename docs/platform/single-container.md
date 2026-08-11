@@ -15,9 +15,9 @@ installation you intend to keep.
 
 ## Get an image
 
-Published single-container images begin with the first stable release after the
-publication workflow is enabled; earlier Platform releases are not backfilled.
-After that release completes, use the most recent fully verified stable image:
+Stable AutoGPT Platform releases publish `latest` and an immutable `vX.Y.Z`
+single-container image; historical releases are not backfilled. When `latest`
+is available, use the most recent fully verified stable image:
 
 ```bash
 IMAGE=significantgravitas/autogpt:latest
@@ -53,8 +53,10 @@ check:
 docker run --rm "${IMAGE}"
 ```
 
-That command does not publish the web port and uses an anonymous `/data`
-volume. Use the full setup below for a usable installation.
+This runs in the foreground. First boot may take several minutes and use
+roughly 5–6 GiB of memory; press Ctrl-C to stop it. The command does not publish
+the web port and uses an anonymous `/data` volume. Use the full setup below for
+a usable installation.
 
 ## Quick start
 
@@ -70,18 +72,19 @@ When working from a source checkout, you can copy
 `autogpt_platform/single-container/.env.example` instead to see every optional
 setting.
 
-Edit the file and set at least:
+Edit the file and set at least the public URL and exact address for the first
+account:
 
 ```dotenv
 AUTOGPT_PUBLIC_URL=http://localhost:3000
+AUTH_SIGNUP_ALLOWLIST=owner@example.com
 ```
 
-Signup starts open so a fresh installation can create its first account. The
-run command below binds the app only to loopback. If other users can reach the
-URL, anyone can register until you close signup. To limit provisioning to one
-address, optionally set `AUTH_SIGNUP_ALLOWLIST=owner@example.com` before the
-first boot. Configure an HTTPS origin before creating real accounts or entering
-credentials on any LAN or remote deployment.
+Replace `owner@example.com` with the email address for the intended first
+account. Signup starts open so a fresh installation can create that account,
+and the run command below binds the app only to loopback. Configure an HTTPS
+origin before creating real accounts or entering credentials on any LAN or
+remote deployment.
 
 Provider keys are not required to boot, create an account, use Builder, or run
 provider-free blocks. Model-backed functions return their normal actionable
@@ -101,7 +104,7 @@ docker run --detach --name autogpt \
   --log-opt max-file=5 \
   --env-file autogpt.env \
   --publish 127.0.0.1:3000:3000 \
-  --volume autogpt-platform-data:/data \
+  --volume autogpt-data:/data \
   "${IMAGE}"
 ```
 
@@ -140,7 +143,7 @@ docker rm autogpt
 ```
 
 Repeat the `docker run` command above. Removing the container does not remove
-the `autogpt-platform-data` volume.
+the `autogpt-data` volume.
 
 ## Port and public URL
 
@@ -402,7 +405,7 @@ with `/data`:
     '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' \
     autogpt)"
   BACKUP_DIR="${PWD}/autogpt-backups"
-  BACKUP_FILE="autogpt-platform-data-$(date -u +%Y%m%dT%H%M%SZ).tgz"
+  BACKUP_FILE="autogpt-data-$(date -u +%Y%m%dT%H%M%SZ).tgz"
   PARTIAL_FILE="${BACKUP_FILE}.partial"
   # Invoked by the EXIT trap below.
   # shellcheck disable=SC2329
@@ -473,7 +476,7 @@ immutable tag or digest recorded with that backup. If the archive is not under
   : "${BACKUP_FILE:?Set BACKUP_FILE to the timestamped archive filename}"
   : "${RESTORE_IMAGE:?Set RESTORE_IMAGE to the recorded immutable image}"
   BACKUP_DIR="${BACKUP_DIR:-${PWD}/autogpt-backups}"
-  RESTORE_VOLUME="autogpt-platform-data-restored-$(date -u +%Y%m%dT%H%M%SZ)"
+  RESTORE_VOLUME="autogpt-data-restored-$(date -u +%Y%m%dT%H%M%SZ)"
 
   if [[ "${BACKUP_FILE}" == */* ]]; then
     echo "BACKUP_FILE must be a filename within BACKUP_DIR" >&2
@@ -597,6 +600,7 @@ ready.
 - Uploaded files are not scanned for malware. Unlike the hosted platform, this
   image bundles no antivirus daemon, so treat every upload as trusted input.
 - Required email verification is unsupported.
+- The prebuilt frontend cannot configure Google Picker public keys at runtime.
 - Remote TLS termination is operator-supplied.
 - The local `bash_exec` fallback depends on host support for Bubblewrap user and
   network namespaces. Do not make the entire appliance privileged to work
