@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -2307,6 +2308,31 @@ class TestStripEphemeralMemoryFromCliJsonl:
         block = f"<temporal_context {foreign}>stale</temporal_context>"
         line = self._user_line(f"the user turn\n\n{block}")
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_marks_an_open_tag_that_carries_attributes(self):
+        # The producer (_format_context) lives in another module. If it ever
+        # emits attributes or padding, an exact-string stamp would silently
+        # no-op — and an unstamped block is never scrubbed, so stale memory
+        # replays on --resume. Match the tag by name so that can't happen.
+        block = _mark_injected_memory_block(
+            '<temporal_context role="memory">\n  - stale fact\n</temporal_context>'
+        )
+        assert _INJECTED_MEMORY_MARKER in block
+        assert 'role="memory"' in block, "producer attributes must survive"
+
+        line = self._user_line(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
+    def test_unstampable_block_is_logged_rather_than_passed_silently(self, caplog):
+        # Belt and braces: if the tag NAME itself ever changes, the block is
+        # returned unharmed (memory must never break chat) but an operator
+        # gets a signal instead of silent transcript growth.
+        block = "<memory_context>x</memory_context>"
+        with caplog.at_level(logging.WARNING):
+            assert _mark_injected_memory_block(block) == block
+        assert "temporal_context" in caplog.text
 
     def test_marker_carries_an_unguessable_nonce(self):
         assert _INJECTED_MEMORY_NONCE not in ("", "1")

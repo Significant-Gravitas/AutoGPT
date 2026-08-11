@@ -996,15 +996,33 @@ _INJECTED_MEMORY_BLOCK_RE = re.compile(
     + r"[^>]*>.*?</temporal_context>",
     re.DOTALL,
 )
+# Open tag matched by name, so the stamp survives attribute/spacing changes
+# in the producer. Mirrors the ``<temporal_context\b`` prefix above.
+_CONTEXT_OPEN_TAG_RE = re.compile(r"<temporal_context\b")
 
 
 def _mark_injected_memory_block(block: str) -> str:
-    """Stamp the provenance nonce onto a ``<temporal_context>`` block."""
-    return block.replace(
-        "<temporal_context>",
-        f"<temporal_context {_INJECTED_MEMORY_MARKER}>",
-        1,
+    """Stamp the provenance nonce onto a ``<temporal_context>`` block.
+
+    Matches the open tag by NAME rather than as an exact string: the block is
+    produced by ``graphiti.context._format_context`` in another module, and an
+    attribute or spacing change there must not silently un-stamp it — an
+    unstamped block is never scrubbed from the uploaded transcript, so it
+    replays as stale context on ``--resume``.
+
+    A block with no recognisable open tag is returned untouched (memory must
+    never break a turn) but logged, so the miss surfaces instead of quietly
+    growing every transcript.
+    """
+    marked, substitutions = _CONTEXT_OPEN_TAG_RE.subn(
+        f"<temporal_context {_INJECTED_MEMORY_MARKER}", block, count=1
     )
+    if not substitutions:
+        logger.warning(
+            "Warm-context block carries no <temporal_context> open tag; it "
+            "cannot be marked and will not be scrubbed from the transcript"
+        )
+    return marked
 
 
 def _strip_injected_memory_text(text: str) -> str:
