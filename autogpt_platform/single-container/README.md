@@ -13,6 +13,7 @@ memory while persisting runtime data under `/data`.
 docker run -d \
   --name autogpt \
   --restart unless-stopped \
+  --stop-timeout 360 \
   --shm-size 2g \
   --ulimit nofile=65536:65536 \
   -p 127.0.0.1:3000:3000 \
