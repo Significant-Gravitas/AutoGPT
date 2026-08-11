@@ -142,7 +142,7 @@ jobs:
     name: Publish, smoke, and scan (${{ matrix.platform }})
     if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.build-and-scan.result == 'success' }}
     needs: [authorize-publication, build-and-scan]
-    environment: dockerhub-publish
+    environment: ${{ github.event_name == 'release' && 'dockerhub-release' || 'dockerhub-publish' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     strategy:
@@ -272,7 +272,7 @@ jobs:
     name: Publish multi-platform manifest
     if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.publish-platform-digests.result == 'success' }}
     needs: [authorize-publication, publish-platform-digests]
-    environment: dockerhub-publish
+    environment: ${{ github.event_name == 'release' && 'dockerhub-release' || 'dockerhub-publish' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
