@@ -781,7 +781,6 @@ docker run --detach \
   --restart unless-stopped \
   --publish 127.0.0.1:3300:3000 \
   --env "AUTOGPT_PUBLIC_URL=${PUBLIC_URL}" \
-  --env AUTH_ALLOW_NEW_ACCOUNTS=true \
   --volume "${DATA_VOLUME}:/data" \
   "${SMOKE_IMAGE}" >/dev/null
 wait_for_healthy
