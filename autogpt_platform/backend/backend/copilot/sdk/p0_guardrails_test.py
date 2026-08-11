@@ -114,7 +114,6 @@ class TestResolveFallbackModel:
 
 
 _SECURITY_VARS = (
-    "CLAUDE_CODE_DISABLE_CLAUDE_MDS",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
 )
@@ -167,6 +166,18 @@ class TestSecurityEnvVars:
 
         for var in _SECURITY_VARS:
             assert env.get(var) == "1", f"{var} not set in subscription mode"
+
+    def test_claude_md_loading_not_disabled(self):
+        """CLAUDE_CODE_DISABLE_CLAUDE_MDS must not be set — project CLAUDE.md
+        / AGENTS.md instructions should be respected, matching interactive
+        Claude Code behavior."""
+        cfg = _make_config(use_claude_code_subscription=False, use_openrouter=False)
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env()
+
+        assert "CLAUDE_CODE_DISABLE_CLAUDE_MDS" not in env
 
     def test_tmpdir_set_when_sdk_cwd_provided(self):
         """CLAUDE_CODE_TMPDIR must be set when sdk_cwd is provided."""

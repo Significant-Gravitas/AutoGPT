@@ -110,10 +110,11 @@ def build_sdk_env(
     if sdk_cwd:
         env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
 
-    # Harden multi-tenant deployment: prevent loading untrusted workspace
-    # .claude.md files, writing auto-memory, and sending non-essential
-    # telemetry traffic.
-    env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
+    # Harden multi-tenant deployment: prevent writing auto-memory and
+    # sending non-essential telemetry traffic. CLAUDE.md/AGENTS.md loading
+    # is intentionally left enabled (see PR description) so project
+    # instructions in cloned repos are respected, matching interactive
+    # Claude Code behavior.
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
