@@ -1605,3 +1605,19 @@ class TestLLMModelMissingHandler:
                 f"OpenRouter alias missing for {member.value} — expected slug "
                 f"{slug!r} to resolve back to {member.name}"
             )
+
+
+class TestMiniMaxModelMetadata:
+    def test_m3_metadata(self):
+        metadata = llm.LLMModel.MINIMAX_M3.metadata
+        assert metadata.provider == "minimax"
+        assert metadata.context_window == 1_000_000
+        assert metadata.display_name == "MiniMax M3"
+        assert metadata.price_tier == 2
+
+    def test_m2_7_metadata(self):
+        metadata = llm.LLMModel.MINIMAX_M2_7.metadata
+        assert metadata.provider == "minimax"
+        assert metadata.context_window == 204_800
+        assert metadata.display_name == "MiniMax M2.7"
+        assert metadata.price_tier == 1

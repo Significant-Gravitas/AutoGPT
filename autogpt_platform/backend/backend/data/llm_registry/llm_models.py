@@ -205,6 +205,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
     LLAMA_API_LLAMA3_3_8B = "Llama-3.3-8B-Instruct"
     LLAMA_API_LLAMA3_3_70B = "Llama-3.3-70B-Instruct"
+    # MiniMax models
+    MINIMAX_M3 = "MiniMax-M3"
+    MINIMAX_M2_7 = "MiniMax-M2.7"
     # v0 by Vercel models
     V0_1_5_MD = "v0-1.5-md"
     V0_1_5_LG = "v0-1.5-lg"
