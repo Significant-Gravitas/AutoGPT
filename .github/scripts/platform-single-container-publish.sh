@@ -264,23 +264,32 @@ inspect_manifest() {
   return 1
 }
 
+inspect_tag_once() {
+  local image_ref="$1"
+  docker buildx imagetools inspect "$image_ref"
+}
+
 tag_state() {
   local image_ref="$1"
-  local inspect_output inspect_status
+  local attempt inspect_output inspect_status
 
-  set +e
-  inspect_output="$(docker buildx imagetools inspect "$image_ref" 2>&1)"
-  inspect_status=$?
-  set -e
-  if ((inspect_status == 0)); then
-    printf 'present\n'
-  elif manifest_is_absent "$inspect_status" "$inspect_output"; then
-    printf 'absent\n'
-  else
-    echo "could not determine whether $image_ref exists" >&2
-    printf '%s\n' "$inspect_output" >&2
-    return 1
-  fi
+  for ((attempt = 1; attempt <= 3; attempt++)); do
+    if inspect_output="$(inspect_tag_once "$image_ref" 2>&1)"; then
+      printf 'present\n'
+      return 0
+    else
+      inspect_status=$?
+    fi
+    if ! manifest_is_absent "$inspect_status" "$inspect_output"; then
+      echo "could not determine whether $image_ref exists" >&2
+      printf '%s\n' "$inspect_output" >&2
+      return 1
+    fi
+    if ((attempt < 3)); then
+      sleep 2
+    fi
+  done
+  printf 'absent\n'
 }
 
 verify_manifest() {
@@ -569,7 +578,7 @@ assert_equal() {
 }
 
 self_test() {
-  local actual authorization_output manifest_retry_state
+  local actual authorization_output manifest_retry_state tag_retry_state
 
   actual="$(platform_from_image_json amd64 <<<'{"os":"linux","architecture":"amd64"}')"
   assert_equal linux/amd64 "$actual" "flat image platform"
@@ -622,8 +631,12 @@ self_test() {
     "$actual" "manifest digest retry"
   actual="$(<"$manifest_retry_state")"
   assert_equal 3 "$actual" "manifest digest retry count"
+  printf '0\n' >"$manifest_retry_state"
   if (
     inspect_manifest_once() {
+      local attempt
+      attempt="$(<"$manifest_retry_state")"
+      printf '%s\n' "$((attempt + 1))" >"$manifest_retry_state"
       printf 'null\n'
     }
     sleep() {
@@ -634,7 +647,53 @@ self_test() {
     echo "invalid manifest digest survived bounded retries" >&2
     return 1
   fi
+  actual="$(<"$manifest_retry_state")"
+  assert_equal 6 "$actual" "invalid manifest retry count"
   rm -f "$manifest_retry_state"
+
+  tag_retry_state="$(mktemp)"
+  printf '0\n' >"$tag_retry_state"
+  actual="$(
+    (
+      inspect_tag_once() {
+        local attempt
+        attempt="$(<"$tag_retry_state")"
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" >"$tag_retry_state"
+        if ((attempt == 1)); then
+          printf 'manifest unknown\n' >&2
+          return 1
+        fi
+      }
+      sleep() {
+        :
+      }
+      tag_state docker.io/significantgravitas/autogpt:test
+    )
+  )"
+  assert_equal present "$actual" "transient absent manifest state"
+  actual="$(<"$tag_retry_state")"
+  assert_equal 2 "$actual" "transient absent retry count"
+  printf '0\n' >"$tag_retry_state"
+  actual="$(
+    (
+      inspect_tag_once() {
+        local attempt
+        attempt="$(<"$tag_retry_state")"
+        printf '%s\n' "$((attempt + 1))" >"$tag_retry_state"
+        printf 'not found\n' >&2
+        return 1
+      }
+      sleep() {
+        :
+      }
+      tag_state docker.io/significantgravitas/autogpt:test
+    )
+  )"
+  assert_equal absent "$actual" "confirmed absent manifest state"
+  actual="$(<"$tag_retry_state")"
+  assert_equal 3 "$actual" "confirmed absent retry count"
+  rm -f "$tag_retry_state"
 
   DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
