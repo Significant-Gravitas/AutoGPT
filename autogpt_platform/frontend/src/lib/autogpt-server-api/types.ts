@@ -690,28 +690,32 @@ export type HostScopedCredentials = BaseCredentials & {
 
 // Mirror of backend/backend/data/notifications.py:NotificationType
 export type NotificationType =
-  | "AGENT_RUN"
-  | "ZERO_BALANCE"
-  | "LOW_BALANCE"
-  | "BLOCK_EXECUTION_FAILED"
-  | "CONTINUOUS_AGENT_ERROR"
-  | "DAILY_SUMMARY"
-  | "WEEKLY_SUMMARY"
-  | "MONTHLY_SUMMARY"
-  | "AGENT_APPROVED"
-  | "AGENT_REJECTED";
+  | "BRIEFING"
+  | "ALERT"
+  | "VERDICT"
+  | "OPS"
+  | "SUBSCRIPTION_WELCOME"
+  | "PAYMENT_FAILED"
+  | "PAYMENT_FINAL_NOTICE"
+  | "SUBSCRIPTION_CANCELLED"
+  | "SUBSCRIPTION_RESUMED"
+  | "SUBSCRIPTION_ENDED";
 
-// Mirror of backend/backend/data/notifications.py:NotificationPreference
+export type BriefingFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "OFF";
+
+// Mirror of backend/backend/data/notifications.py:NotificationPreferenceDTO.
+// A volume knob rather than a checkbox list: billing and account messages are
+// service mail and are not represented here.
 export type NotificationPreferenceDTO = {
   email: string;
-  preferences: { [key in NotificationType]: boolean };
+  briefing_frequency: BriefingFrequency;
+  alerts_enabled: boolean;
+  store_verdicts_enabled: boolean;
   daily_limit: number;
 };
 
 export type NotificationPreference = NotificationPreferenceDTO & {
   user_id: UserID;
-  emails_sent_today: number;
-  last_reset_date: Date;
 };
 
 /* Mirror of backend/data/integrations.py:Webhook */

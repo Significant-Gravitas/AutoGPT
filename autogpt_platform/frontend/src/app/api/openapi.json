@@ -29634,11 +29634,7 @@
             "title": "Email"
           },
           "briefing_frequency": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BriefingFrequency"
-              }
-            ]
+            "$ref": "#/components/schemas/BriefingFrequency"
           },
           "alerts_enabled": {
             "type": "boolean",

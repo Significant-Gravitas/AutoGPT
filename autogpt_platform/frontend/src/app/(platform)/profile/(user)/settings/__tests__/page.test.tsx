@@ -34,6 +34,15 @@ const testUser = {
   created_at: "2026-01-01T00:00:00.000Z",
 };
 
+const defaultPreferences = {
+  user_id: "user-1",
+  email: "user@example.com",
+  briefing_frequency: "WEEKLY" as const,
+  alerts_enabled: true,
+  store_verdicts_enabled: true,
+  daily_limit: 0,
+};
+
 describe("SettingsPage", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({
@@ -45,35 +54,10 @@ describe("SettingsPage", () => {
 
   test("renders the account actions", async () => {
     server.use(
-      getGetV1GetNotificationPreferencesMockHandler({
-        user_id: "user-1",
-        email: "user@example.com",
-        preferences: {
-          AGENT_RUN: true,
-          ZERO_BALANCE: false,
-          LOW_BALANCE: false,
-          BLOCK_EXECUTION_FAILED: true,
-          CONTINUOUS_AGENT_ERROR: false,
-          DAILY_SUMMARY: false,
-          WEEKLY_SUMMARY: true,
-          MONTHLY_SUMMARY: false,
-          AGENT_APPROVED: true,
-          AGENT_REJECTED: true,
-        },
-        daily_limit: 0,
-        emails_sent_today: 0,
-        last_reset_date: new Date("2026-01-01T00:00:00.000Z"),
-      }),
+      getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateUserEmailMockHandler({}),
-      getPostV1UpdateNotificationPreferencesMockHandler({
-        user_id: "user-1",
-        email: "user@example.com",
-        preferences: {},
-        daily_limit: 0,
-        emails_sent_today: 0,
-        last_reset_date: new Date("2026-01-01T00:00:00.000Z"),
-      }),
+      getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
     );
 
     render(<SettingsPage />);
@@ -86,61 +70,32 @@ describe("SettingsPage", () => {
   });
 
   test("saves notification preference changes", async () => {
-    let submittedPreferences:
+    let submitted:
       | {
           email: string;
-          preferences: Record<string, boolean>;
+          briefing_frequency: string;
+          alerts_enabled: boolean;
+          store_verdicts_enabled: boolean;
         }
       | undefined;
 
     server.use(
-      getGetV1GetNotificationPreferencesMockHandler({
-        user_id: "user-1",
-        email: "user@example.com",
-        preferences: {
-          AGENT_RUN: false,
-          ZERO_BALANCE: false,
-          LOW_BALANCE: false,
-          BLOCK_EXECUTION_FAILED: false,
-          CONTINUOUS_AGENT_ERROR: false,
-          DAILY_SUMMARY: false,
-          WEEKLY_SUMMARY: false,
-          MONTHLY_SUMMARY: false,
-          AGENT_APPROVED: false,
-          AGENT_REJECTED: false,
-        },
-        daily_limit: 0,
-        emails_sent_today: 0,
-        last_reset_date: new Date("2026-01-01T00:00:00.000Z"),
-      }),
+      getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
-        submittedPreferences = (await request.json()) as {
-          email: string;
-          preferences: Record<string, boolean>;
-        };
-
-        return {
-          user_id: "user-1",
-          email: submittedPreferences.email,
-          preferences: submittedPreferences.preferences,
-          daily_limit: 0,
-          emails_sent_today: 0,
-          last_reset_date: new Date("2026-01-01T00:00:00.000Z"),
-        };
+        submitted = (await request.json()) as typeof submitted;
+        return { ...defaultPreferences, ...submitted };
       }),
     );
 
     render(<SettingsPage />);
 
-    fireEvent.click(
-      await screen.findByRole("switch", { name: "Agent Run Notifications" }),
-    );
+    fireEvent.click(await screen.findByRole("switch", { name: "Alerts" }));
     fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
 
     await waitFor(() => {
-      expect(submittedPreferences?.preferences.AGENT_RUN).toBe(true);
+      expect(submitted?.alerts_enabled).toBe(false);
     });
   });
 });
