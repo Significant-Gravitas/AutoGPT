@@ -171,6 +171,5 @@ class ServiceProbeTest(unittest.TestCase):
             probe.probe_redis("127.0.0.1", 17000, 1, "", True)
 
 
-
 if __name__ == "__main__":
     unittest.main()

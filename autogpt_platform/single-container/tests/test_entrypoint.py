@@ -55,7 +55,7 @@ class InternalServiceTopologyTest(unittest.TestCase):
 
 
 class AccountRegistrationTest(unittest.TestCase):
-    def test_defaults_closed_for_all_origins(self) -> None:
+    def test_defaults_open_for_all_origins(self) -> None:
         for public_url in (
             "http://localhost:3000",
             "http://127.0.0.1:3000",
@@ -69,11 +69,10 @@ class AccountRegistrationTest(unittest.TestCase):
                 ):
                     result = self._configure(public_url, allow_new_accounts)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn("account registration is closed", result.stdout)
-                    self.assertIn("autogpt-admin promote", result.stdout)
-                    self.assertTrue(result.stdout.endswith("false\n"))
+                    self.assertIn("open account registration is enabled", result.stdout)
+                    self.assertTrue(result.stdout.endswith("true\n"))
 
-    def test_remote_signup_requires_explicit_opt_in(self) -> None:
+    def test_explicit_true_keeps_signup_open(self) -> None:
         result = self._configure(
             "https://autogpt.example.com", allow_new_accounts="true"
         )
@@ -81,7 +80,7 @@ class AccountRegistrationTest(unittest.TestCase):
         self.assertIn("open account registration is enabled", result.stdout)
         self.assertTrue(result.stdout.endswith("true\n"))
 
-    def test_explicit_false_overrides_loopback_default(self) -> None:
+    def test_explicit_false_closes_signup(self) -> None:
         result = self._configure("http://localhost:3000", allow_new_accounts="false")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("account registration is closed", result.stdout)
