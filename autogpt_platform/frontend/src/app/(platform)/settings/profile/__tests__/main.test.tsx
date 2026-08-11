@@ -19,12 +19,12 @@ import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetai
 
 import SettingsProfilePage from "../page";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 const toastSpy = vi.hoisted(() => vi.fn());
 const uploadAvatarSpy = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 vi.mock("@/lib/direct-upload", async (importOriginal) => {
@@ -59,7 +59,7 @@ function makeProfile(overrides: Partial<ProfileDetails> = {}): ProfileDetails {
 }
 
 function authenticate() {
-  mockUseSupabase.mockReturnValue({
+  mockUseAuth.mockReturnValue({
     user: {
       id: "user-1",
       email: "user@example.com",
@@ -70,7 +70,6 @@ function authenticate() {
     },
     isLoggedIn: true,
     isUserLoading: false,
-    supabase: {},
   });
 }
 
@@ -686,11 +685,10 @@ describe("SettingsProfilePage - avatar upload", () => {
 
 describe("SettingsProfilePage - skeleton & nullish profile fields", () => {
   test("renders the skeleton on first render before the user resolves", () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: null,
       isLoggedIn: false,
       isUserLoading: true,
-      supabase: {},
     });
 
     const { container } = render(<SettingsProfilePage />);

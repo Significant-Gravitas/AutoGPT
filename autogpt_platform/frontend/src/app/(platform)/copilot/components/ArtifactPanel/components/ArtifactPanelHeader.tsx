@@ -6,16 +6,17 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import {
-  ArrowLeftIcon,
-  CopyIcon,
-  DownloadSimpleIcon,
-  FolderIcon,
-  XIcon,
-} from "@phosphor-icons/react";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { SourceToggle } from "./SourceToggle";
+import {
+  ArrowLeft02Icon,
+  Cancel01Icon,
+  Copy01Icon,
+  Download04Icon,
+  Folder01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   artifact: ArtifactRef;
@@ -72,18 +73,20 @@ export function ArtifactPanelHeader({
   onOpenFiles,
   onSourceToggle,
 }: Props) {
-  const Icon = classification.icon;
-
   return (
     <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3 py-2">
       {/* Left section */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {canGoBack && (
           <HeaderButton onClick={onBack} title="Back">
-            <ArrowLeftIcon size={16} />
+            <Icon icon={ArrowLeft02Icon} size={16} />
           </HeaderButton>
         )}
-        <Icon size={16} className="shrink-0 text-zinc-400" />
+        <Icon
+          icon={classification.icon}
+          size={16}
+          className="shrink-0 text-zinc-400"
+        />
         <span className="truncate text-sm font-medium text-zinc-900">
           {artifact.title}
         </span>
@@ -106,17 +109,17 @@ export function ArtifactPanelHeader({
         )}
         {canCopy && (
           <HeaderButton onClick={onCopy} title="Copy">
-            <CopyIcon size={16} />
+            <Icon icon={Copy01Icon} size={16} />
           </HeaderButton>
         )}
         <HeaderButton onClick={onDownload} title="Download">
-          <DownloadSimpleIcon size={16} />
+          <Icon icon={Download04Icon} size={16} />
         </HeaderButton>
         <HeaderButton onClick={onOpenFiles} title="All files">
-          <FolderIcon size={16} />
+          <Icon icon={Folder01Icon} size={16} />
         </HeaderButton>
         <HeaderButton onClick={onClose} title="Close">
-          <XIcon size={16} />
+          <Icon icon={Cancel01Icon} size={16} />
         </HeaderButton>
       </div>
     </div>

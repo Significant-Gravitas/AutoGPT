@@ -11,10 +11,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -38,6 +38,12 @@ const mariaTemplate: Expert = {
   skills: [],
   tagline: "Grows your brand while you sleep",
   identity: "You are Maria, a senior marketing strategist.",
+  voice_preferences: "Warm, concise, and direct.",
+  boundaries: "Never invent customer evidence.",
+  protected_soul_rules: [
+    "The expert discloses that it is AI when acting externally.",
+    "External actions require approval.",
+  ],
   is_template: true,
   source_template_id: null,
   is_archived: false,
@@ -62,7 +68,7 @@ function renderMarketplace() {
 
 describe("Marketplace ExpertsSection", () => {
   beforeEach(() => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
     });
@@ -88,7 +94,7 @@ describe("Marketplace ExpertsSection", () => {
   });
 
   test("stays hidden and fetches nothing for signed-out visitors", async () => {
-    mockUseSupabase.mockReturnValue({ user: null, isLoggedIn: false });
+    mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
     let templatesRequested = false;
     server.use(
       getListExpertTemplatesMockHandler(() => {

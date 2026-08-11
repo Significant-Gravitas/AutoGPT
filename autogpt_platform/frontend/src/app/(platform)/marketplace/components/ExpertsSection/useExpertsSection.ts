@@ -3,14 +3,14 @@ import {
   useListExpertTemplates,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
 
 export function useExpertsSection() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
   );
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
 
   const templatesQuery = useListExpertTemplates({
     query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },

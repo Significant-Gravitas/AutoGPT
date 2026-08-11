@@ -1,0 +1,100 @@
+name: AutoGPT Platform - Single-container image
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".dockerignore"
+      - ".github/scripts/platform-single-container-smoke.sh"
+      - ".github/workflows/platform-single-container-docker.yml"
+      - "autogpt_platform/**"
+  pull_request:
+    paths:
+      - ".dockerignore"
+      - ".github/scripts/platform-single-container-smoke.sh"
+      - ".github/workflows/platform-single-container-docker.yml"
+      - "autogpt_platform/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    name: Build, smoke, and scan (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test appliance runtime helpers
+        shell: bash
+        run: python3 -m unittest discover -s autogpt_platform/single-container/tests -p 'test_*.py' -v
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.36.0
+          driver-opts: |
+            image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+
+      - name: Build image without publishing
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        with:
+          source: .
+          files: autogpt_platform/single-container/docker-bake.hcl
+          targets: single-container
+          set: |
+            *.platform=${{ matrix.platform }}
+            backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
+            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
+            single-container.args.IMAGE_VERSION=${{ github.sha }}
+            single-container.args.VCS_REF=${{ github.sha }}
+            single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
+            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
+            single-container.output=type=docker
+            single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
+
+      - name: Smoke-test the complete image
+        shell: bash
+        env:
+          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          SMOKE_PLATFORM: ${{ matrix.platform }}
+        run: bash .github/scripts/platform-single-container-smoke.sh
+
+      - name: Scan for fixable critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          format: table
+          ignore-unfixed: true
+          severity: CRITICAL
+          exit-code: "1"
+          timeout: 30m
+
+      - name: Scan image filesystem for embedded secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          scanners: secret
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          timeout: 30m

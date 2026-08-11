@@ -2,13 +2,10 @@
 
 Two layers with different prompt weights:
 
-- ``build_expert_identity_suffix()`` → ``<expert_identity>`` (name, role,
-  persona doc, precedence over the AutoPilot base identity).  Appended to the
-  per-session SYSTEM prompt by both engines, exactly like the building-mode
-  guide suffix: session-stable, so the cacheable base prefix stays
-  byte-identical and cross-user cache hits are preserved for plain sessions
-  (empty suffix).  Identity must live here — injected user-message context
-  loses to the system prompt on direct identity questions.
+- ``build_expert_identity_suffix()`` → ``<expert_identity>`` (the latest Soul,
+  with precedence over the AutoPilot base identity). Appended to the SYSTEM
+  prompt on every turn by both engines, so edits affect existing sessions
+  while the cacheable base prefix stays byte-identical.
 - ``build_expert_context()`` → first-user-message context blocks:
   ``<expert_workflows>`` (expert session: installed workflows the model
   should prefer ``run_agent`` on) or ``<team_context>`` (plain session:
@@ -23,18 +20,13 @@ directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 
 import logging
 
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.data.db_accessors import experts_db
 
 logger = logging.getLogger(__name__)
 
 
-def _escape(value: str) -> str:
-    """Escape angle brackets so user-supplied (expert name) or marketplace
-    (workflow name/description) text cannot terminate the surrounding trusted
-    block. Mirrors ``service._sanitize_user_context_field``; duplicated here
-    because ``service`` imports this module.
-    """
+def escape_prompt_xml_tags(value: str) -> str:
     return value.replace("<", "&lt;").replace(">", "&gt;")
 
 
@@ -62,12 +54,20 @@ async def build_expert_identity_suffix(
     if expert is None or expert.is_archived:
         return ""
 
-    name = _escape(expert.name)
+    name = escape_prompt_xml_tags(expert.name)
+    identity = escape_prompt_xml_tags(expert.identity)
+    voice = escape_prompt_xml_tags(expert.voice_preferences) or "Not specified."
+    boundaries = escape_prompt_xml_tags(expert.boundaries) or "Not specified."
+    protected_rules = "\n".join(f"- {rule}" for rule in PROTECTED_SOUL_RULES)
     return (
         f"\n\n<expert_identity>\n"
-        f"For this session you are {name} — {expert.role}, a hired "
+        f"For this session you are {name} — {escape_prompt_xml_tags(expert.role)}, a hired "
         f"expert on the user's team.\n"
-        f"{expert.identity}\n"
+        f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
+        f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
+        f"<boundaries>\n{boundaries}\n</boundaries>\n"
+        f"<what_ive_learned>\n- Nothing recorded yet.\n</what_ive_learned>\n"
+        f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
         f"The base instructions above describe AutoPilot, the platform "
         f"engine you run on. All platform capabilities and tools remain "
         f"available to you, but you always speak and act as {name}: "
@@ -102,9 +102,9 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
 
     if expert.workflows:
         workflow_lines = "\n".join(
-            f"- {_escape(w.name or 'Unnamed workflow')} "
+            f"- {escape_prompt_xml_tags(w.name or 'Unnamed workflow')} "
             f"(library_agent_id: {w.library_agent_id}, graph_id: {w.graph_id})"
-            f": {_escape(w.description or 'No description')}"
+            f": {escape_prompt_xml_tags(w.description or 'No description')}"
             for w in expert.workflows
         )
     else:
@@ -139,11 +139,12 @@ async def _team_context(user_id: str) -> str:
 
 def _team_line(expert: Expert) -> str:
     workflow_names = ", ".join(
-        _escape(w.name or "Unnamed workflow") for w in expert.workflows
+        escape_prompt_xml_tags(w.name or "Unnamed workflow") for w in expert.workflows
     )
     if not workflow_names:
         workflow_names = "none installed"
     return (
-        f"- {_escape(expert.name)} — {expert.role} (expert id: {expert.id}); "
+        f"- {escape_prompt_xml_tags(expert.name)} — "
+        f"{escape_prompt_xml_tags(expert.role)} (expert id: {expert.id}); "
         f"installed workflows: {workflow_names}"
     )

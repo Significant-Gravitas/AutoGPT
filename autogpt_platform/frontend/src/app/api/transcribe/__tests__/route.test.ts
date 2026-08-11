@@ -1,20 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
-vi.mock("@/lib/autogpt-server-api/helpers", () => ({
+vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
   getServerAuthToken: vi.fn(),
 }));
 
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { POST } from "../route";
 
-function makeAudioRequest(type = "audio/webm"): NextRequest {
+function makeAudioRequest(type = "audio/webm", context?: string): NextRequest {
   const formData = new FormData();
   formData.append("audio", new Blob(["audio-bytes"], { type }));
+  if (context !== undefined) formData.append("context", context);
   return new Request("http://localhost/api/transcribe", {
     method: "POST",
     body: formData,
   }) as NextRequest;
+}
+
+function stubOkFetch() {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify({ text: "ok" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 describe("transcribe route", () => {
@@ -142,6 +154,41 @@ describe("transcribe route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "model is unavailable",
     });
+  });
+
+  it("forwards the composer draft as the transcription prompt", async () => {
+    process.env.OPENAI_API_KEY = "openai-token";
+    const fetchMock = stubOkFetch();
+
+    await POST(makeAudioRequest("audio/webm", "  Ship the Q3 recap  "));
+
+    const upstreamBody = (fetchMock.mock.calls[0]?.[1] as RequestInit)
+      .body as FormData;
+    expect(upstreamBody.get("prompt")).toBe("Ship the Q3 recap");
+  });
+
+  it("sends no prompt when the request carries no draft", async () => {
+    process.env.OPENAI_API_KEY = "openai-token";
+    const fetchMock = stubOkFetch();
+
+    await POST(makeAudioRequest("audio/webm", "   "));
+
+    const upstreamBody = (fetchMock.mock.calls[0]?.[1] as RequestInit)
+      .body as FormData;
+    expect(upstreamBody.get("prompt")).toBeNull();
+  });
+
+  it("trims an oversized draft to the tail the model actually reads", async () => {
+    process.env.OPENAI_API_KEY = "openai-token";
+    const fetchMock = stubOkFetch();
+
+    await POST(makeAudioRequest("audio/webm", `${"a".repeat(900)}tail`));
+
+    const upstreamBody = (fetchMock.mock.calls[0]?.[1] as RequestInit)
+      .body as FormData;
+    const prompt = upstreamBody.get("prompt") as string;
+    expect(prompt).toHaveLength(800);
+    expect(prompt.endsWith("tail")).toBe(true);
   });
 
   it("keeps requiring an API key for the default OpenAI transcription endpoint", async () => {

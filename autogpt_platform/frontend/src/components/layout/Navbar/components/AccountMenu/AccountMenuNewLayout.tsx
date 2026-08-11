@@ -10,10 +10,11 @@ import { AccountMenuActivityRow } from "./components/AccountMenuActivityRow";
 import { AccountMenuHeader } from "./components/AccountMenuHeader";
 import { AccountMenuRow } from "./components/AccountMenuRow";
 import { InitialAvatar } from "./components/InitialAvatar";
-import { getAccountMenuPhosphorIcon } from "./helpers";
+import { getAccountMenuIcon } from "./helpers";
 
 interface Props {
   userName?: string;
+  userHandle?: string;
   userEmail?: string;
   avatarSrc?: string;
   menuItemGroups: MenuItemGroup[];
@@ -24,6 +25,7 @@ interface Props {
 
 export function AccountMenuNewLayout({
   userName,
+  userHandle,
   userEmail,
   avatarSrc,
   menuItemGroups,
@@ -44,7 +46,12 @@ export function AccountMenuNewLayout({
           aria-haspopup="true"
           data-testid="profile-popout-menu-trigger"
         >
-          <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+            className="h-8 w-8"
+          />
         </button>
       </PopoverTrigger>
 
@@ -59,6 +66,7 @@ export function AccountMenuNewLayout({
         <div className="px-2">
           <AccountMenuHeader
             userName={userName}
+            userHandle={userHandle}
             userEmail={userEmail}
             avatarSrc={avatarSrc}
             isLoading={isLoading}
@@ -78,10 +86,7 @@ export function AccountMenuNewLayout({
                 <ul className="flex flex-col gap-0.5">
                   {group.items.map((item, itemIndex) => {
                     const key = `${groupIndex}-${itemIndex}-${item.text}`;
-                    const icon = getAccountMenuPhosphorIcon(
-                      item.icon,
-                      "regular",
-                    );
+                    const icon = getAccountMenuIcon(item.icon);
 
                     if (item.text === "Log out") {
                       return (

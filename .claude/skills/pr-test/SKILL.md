@@ -539,12 +539,12 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
 
 ### 3i. Disable onboarding for test user
 
-The frontend redirects to `/onboarding` when the `VISIT_COPILOT` step is not in `completedSteps`.
+The frontend redirects to `/onboarding` when the `ONBOARDING_COMPLETE` step is not in `completedSteps`.
 Mark it complete via the backend API so every browser test lands on the real feature UI:
 
 ```bash
 ONBOARDING_RESULT=$(curl -s --max-time 30 -X POST \
-  "http://localhost:8006/api/onboarding/step?step=VISIT_COPILOT" \
+  "http://localhost:8006/api/onboarding/step?step=ONBOARDING_COMPLETE" \
   -H "Authorization: Bearer $TOKEN")
 echo "Onboarding bypass: $ONBOARDING_RESULT"
 

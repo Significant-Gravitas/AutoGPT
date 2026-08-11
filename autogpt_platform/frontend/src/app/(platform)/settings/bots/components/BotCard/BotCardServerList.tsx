@@ -1,5 +1,3 @@
-import { TrashIcon, UsersIcon, WarningCircleIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -8,6 +6,12 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { PlatformLinkInfo } from "@/app/api/__generated__/models/platformLinkInfo";
+import {
+  AlertCircleIcon,
+  Delete02Icon,
+  UserMultipleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   platformName: string;
@@ -68,7 +72,11 @@ function BotCardServerRow({
   return (
     <li className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
-        <UsersIcon size={20} className="shrink-0 text-zinc-500" />
+        <Icon
+          icon={UserMultipleIcon}
+          size={20}
+          className="shrink-0 text-zinc-500"
+        />
         <div className="flex min-w-0 flex-col">
           <Text
             variant="body-medium"
@@ -81,8 +89,7 @@ function BotCardServerRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-                  <WarningCircleIcon size={14} weight="fill" /> Bot not in
-                  server
+                  <Icon icon={AlertCircleIcon} size={14} /> Bot not in server
                 </span>
               </TooltipTrigger>
               <TooltipContent>
@@ -101,7 +108,7 @@ function BotCardServerRow({
       <Button
         variant="outline"
         size="small"
-        leftIcon={<TrashIcon size={16} />}
+        leftIcon={<Icon icon={Delete02Icon} size={16} />}
         loading={isPending}
         onClick={onUnlink}
         aria-label={`Unlink ${displayLabel}`}

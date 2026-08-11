@@ -471,6 +471,47 @@ async def get_library_agent_by_store_version_id(
     return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
 
 
+async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str | None:
+    """Id-only lookup for building deep links (e.g. the expert run post) —
+    no relation includes, no schedule info, unlike the full getter below."""
+    agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"agentGraphId": graph_id, "userId": user_id, "isDeleted": False},
+    )
+    return agent.id if agent else None
+
+
+async def get_library_agent_refs_by_graph_ids(
+    user_id: str, graph_ids: list[str]
+) -> list[library_model.LibraryAgentRef]:
+    """Resolve display name + id for the given graphs in one query.
+
+    Batched counterpart to :func:`get_library_agent_id_by_graph_id`, for
+    callers (e.g. the morning briefing) that need to label a known handful
+    of runs and would otherwise page through the whole library.
+
+    ``@@unique([userId, agentGraphId, agentGraphVersion])`` allows several
+    rows per graph, so exactly one ref per graph is returned — the newest
+    version — instead of whichever row the DB happened to return last.
+    """
+    if not graph_ids:
+        return []
+    agents = await prisma.models.LibraryAgent.prisma().find_many(
+        where={
+            "userId": user_id,
+            "agentGraphId": {"in": graph_ids},
+            "isDeleted": False,
+        },
+        order=[{"agentGraphVersion": "asc"}],
+    )
+    newest_by_graph = {
+        agent.agentGraphId: library_model.LibraryAgentRef(
+            id=agent.id, graph_id=agent.agentGraphId, name=agent.name or ""
+        )
+        for agent in agents
+    }
+    return list(newest_by_graph.values())
+
+
 async def get_library_agent_by_graph_id(
     user_id: str,
     graph_id: str,
@@ -1931,6 +1972,7 @@ async def create_preset(
     preset: library_model.LibraryAgentPresetCreatable,
     *,
     webhook_id: str | None = None,
+    expert_id: str | None = None,
 ) -> library_model.LibraryAgentPreset:
     """
     Creates a new AgentPreset for a user.
@@ -1941,6 +1983,9 @@ async def create_preset(
         webhook_id: Internal-only; not part of the public request model. Only
             trusted callers (the setup-trigger flow, legacy migration) pass a
             webhook they provisioned for the caller.
+        expert_id: Expert attribution, resolved by the route layer (this
+            module cannot import experts_db without a cycle). Runs fired by
+            the preset inherit it.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -1994,6 +2039,8 @@ async def create_preset(
         create_input["organizationId"] = graph.organization_id
     if graph.team_id:
         create_input["teamId"] = graph.team_id
+    if expert_id:
+        create_input["expertId"] = expert_id
     new_preset = await prisma.models.AgentPreset.prisma().create(
         data=create_input,
         include=AGENT_PRESET_INCLUDE,
@@ -2056,6 +2103,8 @@ async def create_preset_from_graph_execution(
             description=create_request.description,
             is_active=create_request.is_active,
         ),
+        # A preset built from an expert-attributed run keeps the attribution.
+        expert_id=graph_execution.expert_id,
     )
 
 
