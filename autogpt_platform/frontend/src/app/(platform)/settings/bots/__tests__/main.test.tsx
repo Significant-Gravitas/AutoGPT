@@ -95,6 +95,45 @@ describe("SettingsBotsPage", () => {
     );
   });
 
+  test("takes over the card with a finish-in-Slack prompt while an install is pending", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({
+          add_bot_url:
+            "https://backend.example/api/copilot-webhooks/slack/install",
+          pending_install: {
+            server_name: "Acme",
+            open_bot_url: "https://slack.com/app_redirect?app=A1&team=T1",
+          },
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText(/pending — finish in slack/i)).toBeDefined();
+    const open = screen.getByRole("link", { name: /open autogpt in slack/i });
+    expect(open.getAttribute("href")).toBe(
+      "https://slack.com/app_redirect?app=A1&team=T1",
+    );
+    // The install is done; offering it again would just re-run the OAuth flow.
+    expect(
+      screen.queryByRole("link", { name: /add bot to slack/i }),
+    ).toBeNull();
+  });
+
+  test("names Slack's server type a workspace", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({ server_noun: "workspace" }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText(/linked workspaces/i)).toBeDefined();
+  });
+
   test("shows the 'no bots enabled' empty state when no platforms are configured", async () => {
     server.use(getListBotPlatformsMockHandler([]));
 
