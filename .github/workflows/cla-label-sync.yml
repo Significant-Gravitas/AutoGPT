@@ -100,11 +100,15 @@ jobs:
             const REMINDER_DAYS = parseInt(process.env.REMINDER_DAYS);
             const CLOSE_WARNING_DAYS = parseInt(process.env.CLOSE_WARNING_DAYS);
             const CLOSE_DAYS = parseInt(process.env.CLOSE_DAYS);
-            const DEMOTE_DEBOUNCE_SECONDS = parseInt(process.env.DEMOTE_DEBOUNCE_SECONDS);
+            const DEMOTE_DEBOUNCE_SECONDS = Number(process.env.DEMOTE_DEBOUNCE_SECONDS);
             
             // Validate timing configuration
-            if ([REMINDER_DAYS, CLOSE_WARNING_DAYS, CLOSE_DAYS, DEMOTE_DEBOUNCE_SECONDS].some(Number.isNaN)) {
-              core.setFailed('Invalid timing configuration — REMINDER_DAYS, CLOSE_WARNING_DAYS, CLOSE_DAYS, and DEMOTE_DEBOUNCE_SECONDS must be numeric.');
+            if ([REMINDER_DAYS, CLOSE_WARNING_DAYS, CLOSE_DAYS].some(Number.isNaN)) {
+              core.setFailed('Invalid timing configuration — REMINDER_DAYS, CLOSE_WARNING_DAYS, and CLOSE_DAYS must be numeric.');
+              return;
+            }
+            if (!Number.isInteger(DEMOTE_DEBOUNCE_SECONDS) || DEMOTE_DEBOUNCE_SECONDS < 0) {
+              core.setFailed('Invalid timing configuration — DEMOTE_DEBOUNCE_SECONDS must be a non-negative integer.');
               return;
             }
             const DEMOTE_DEBOUNCE_MS = DEMOTE_DEBOUNCE_SECONDS * 1000;
@@ -235,7 +239,7 @@ jobs:
             for (const prNumber of prsToCheck) {
               try {
                 // Get PR details
-                const { data: pr } = await github.rest.pulls.get({
+                let { data: pr } = await github.rest.pulls.get({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   pull_number: prNumber
@@ -254,7 +258,7 @@ jobs:
                 }
                 
                 // Skip if PR already has cla: signed label (optimization for scheduled sweeps)
-                const currentLabels = pr.labels.map(l => l.name);
+                let currentLabels = pr.labels.map(l => l.name);
                 const knownPlatformPR = currentLabels.includes(LABEL_SIGNED) || currentLabels.includes(LABEL_PENDING);
                 
                 // Skip listFiles if we've already labelled this PR (a previous run verified it touches platform code)
@@ -277,8 +281,8 @@ jobs:
                 }
                 
                 let claStatus = await getClaStatus(pr.head.sha);
-                const hasPending = currentLabels.includes(LABEL_PENDING);
-                const hasSigned = currentLabels.includes(LABEL_SIGNED);
+                let hasPending = currentLabels.includes(LABEL_PENDING);
+                let hasSigned = currentLabels.includes(LABEL_SIGNED);
                 const prAgeDays = daysSince(pr.created_at);
                 
                 console.log(`PR #${prNumber}: CLA ${claStatus.passed ? 'passed' : 'pending'} (${claStatus.state}), age: ${prAgeDays} days`);
@@ -296,7 +300,26 @@ jobs:
                 if (hasSigned && !claStatus.passed) {
                   console.log(`PR #${prNumber}: was signed but now shows ${claStatus.state} — debouncing ${DEMOTE_DEBOUNCE_SECONDS}s before demoting`);
                   await new Promise(resolve => setTimeout(resolve, DEMOTE_DEBOUNCE_MS));
-                  claStatus = await getClaStatus(pr.head.sha);
+                  
+                  // Re-fetch the PR — a new commit could have been pushed, or the
+                  // PR closed, while we were waiting. Evaluate the refreshed state
+                  // rather than the one captured before the delay.
+                  const { data: refreshedPr } = await github.rest.pulls.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber
+                  });
+                  
+                  if (refreshedPr.state !== 'open') {
+                    console.log(`PR #${prNumber}: no longer open after debounce — skipping`);
+                    continue;
+                  }
+                  
+                  pr = refreshedPr;
+                  currentLabels = refreshedPr.labels.map(l => l.name);
+                  hasPending = currentLabels.includes(LABEL_PENDING);
+                  hasSigned = currentLabels.includes(LABEL_SIGNED);
+                  claStatus = await getClaStatus(refreshedPr.head.sha);
                   console.log(`PR #${prNumber}: post-debounce CLA ${claStatus.passed ? 'passed' : 'still ' + claStatus.state}`);
                 }
                 
