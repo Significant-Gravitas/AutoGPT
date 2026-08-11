@@ -15,25 +15,42 @@ installation you intend to keep.
 
 ## Get an image
 
-Build the image from the repository root with Docker Buildx Bake:
+Published single-container images begin with the first stable release after the
+publication workflow is enabled; earlier Platform releases are not backfilled.
+After that release completes, use the most recent fully verified stable image:
+
+```bash
+IMAGE=significantgravitas/autogpt:latest
+docker pull "${IMAGE}"
+```
+
+For a reproducible installation, replace `latest` with an immutable `vX.Y.Z`
+tag or manifest digest. Docker image tags map to source releases as follows:
+
+- `latest` points to the newest stable AutoGPT Platform release.
+- `vX.Y.Z` is the immutable image for GitHub release
+  `autogpt-platform-beta-vX.Y.Z`.
+- `sha-<git-sha>` is the immutable image for an exact `dev` or release source
+  revision.
+
+To build from source instead, run Docker Buildx Bake from the repository root:
 
 ```bash
 docker buildx bake \
   --file autogpt_platform/single-container/docker-bake.hcl \
   --load \
   single-container
+IMAGE=autogpt-platform:single-container-dev
 ```
 
-The local build loads the image as `autogpt-platform:single-container-dev`.
-Commands below use that tag. If the release you are installing documents a
-supported registry reference, you may substitute its exact immutable version
-tag or digest; do not guess a `latest` tag.
+Commands below use the shell variable `IMAGE`, whether it identifies the
+Docker Hub image, a pinned digest, or the local build.
 
 The image has a complete default command, so this is a valid foreground boot
 check:
 
 ```bash
-docker run --rm autogpt-platform:single-container-dev
+docker run --rm "${IMAGE}"
 ```
 
 That command does not publish the web port and uses an anonymous `/data`
@@ -44,26 +61,31 @@ volume. Use the full setup below for a usable installation.
 Create a private environment file:
 
 ```bash
-install -m 600 autogpt_platform/single-container/.env.example \
-  autogpt_platform/single-container/.env
+umask 077
+touch autogpt.env
+chmod 600 autogpt.env
 ```
+
+When working from a source checkout, you can copy
+`autogpt_platform/single-container/.env.example` instead to see every optional
+setting.
 
 Edit the file and set at least:
 
 ```dotenv
 AUTOGPT_PUBLIC_URL=http://localhost:3000
-AUTH_ALLOW_NEW_ACCOUNTS=true
-AUTH_SIGNUP_ALLOWLIST=owner@example.com
 ```
 
-Replace `owner@example.com` with the intended first account. Signup is closed
-by default; the temporary allowlist avoids opening registration to every email
-address during bootstrap. These loopback HTTP values are only for local
-evaluation. Use an HTTPS origin for LAN or remote access.
+Signup starts open so a fresh installation can create its first account. The
+run command below binds the app only to loopback. If other users can reach the
+URL, anyone can register until you close signup. To limit provisioning to one
+address, optionally set `AUTH_SIGNUP_ALLOWLIST=owner@example.com` before the
+first boot. Use an HTTPS origin for LAN or remote access.
 
-Before starting, choose a provider profile from
-[Models and memory](#models-and-memory) and add it to the same file. The UI can
-boot without a provider, but AutoPilot and memory model calls cannot work.
+Provider keys are not required to boot, create an account, use Builder, or run
+provider-free blocks. Model-backed functions return their normal actionable
+missing-credential error until you configure a profile from
+[Models and memory](#models-and-memory).
 
 Start the appliance:
 
@@ -76,10 +98,10 @@ docker run --detach --name autogpt \
   --log-driver json-file \
   --log-opt max-size=50m \
   --log-opt max-file=5 \
-  --env-file autogpt_platform/single-container/.env \
+  --env-file autogpt.env \
   --publish 127.0.0.1:3000:3000 \
   --volume autogpt-platform-data:/data \
-  autogpt-platform:single-container-dev
+  "${IMAGE}"
 ```
 
 Wait for the complete appliance to become healthy:
@@ -88,6 +110,10 @@ Wait for the complete appliance to become healthy:
 docker inspect --format '{{.State.Health.Status}}' autogpt
 docker logs --follow autogpt
 ```
+
+Test installations used about 5–6 GiB of memory during startup and steady-state
+health checks. This is measured guidance, not a guaranteed minimum; allow
+headroom for enabled services, agents, local models, and workload growth.
 
 Open `http://localhost:3000`, create the intended account, and promote it:
 
@@ -154,10 +180,11 @@ default.
 
 ## Account policy
 
-New-account creation is closed by default, including on localhost. Existing
-accounts can still sign in when signup is closed.
+New-account creation starts open so the first administrator can sign up.
+Existing accounts can still sign in after signup is closed.
 
-To allow only selected accounts during provisioning, set both variables:
+To allow only selected accounts during provisioning, keep signup enabled and
+set an allowlist:
 
 ```dotenv
 AUTH_ALLOW_NEW_ACCOUNTS=true
@@ -168,8 +195,10 @@ The allowlist accepts exact email addresses and entries beginning with `@` for
 an entire domain. It applies to email/password signup and first-time social
 login because both create an account. Prefer exact addresses; use a domain
 entry only for a domain you fully control, then narrow the list after
-bootstrap. Setting `AUTH_ALLOW_NEW_ACCOUNTS=false` blocks all new accounts
-regardless of the allowlist.
+bootstrap. Public email domains such as `@gmail.com` are not safe allowlist
+entries. Setting `AUTH_ALLOW_NEW_ACCOUNTS=false` blocks all new accounts
+regardless of the allowlist; recreate the container with the same volume to
+apply the setting after promoting the intended administrator.
 
 Fresh installations should keep `AUTOGPT_ENABLE_LEGACY_AUTH=false`. Enable it
 only when intentionally migrating an existing legacy symmetric-JWT setup.
@@ -201,8 +230,11 @@ does not support configuring Google Picker public keys at runtime.
 FalkorDB and Graphiti memory are always enabled and persisted under `/data`.
 FalkorDB cannot be disabled in this distribution.
 
-The image does not include model-provider credentials. Configure one of the
-following profiles before expecting AutoPilot and memory extraction to work.
+The image does not include model-provider credentials. This does not block
+startup, authentication, Builder, or provider-free blocks. Configure one of
+the following profiles before expecting AutoPilot and memory extraction to
+work; until then, provider-backed requests return the same missing-credential
+errors as other AutoGPT deployment modes.
 
 ### OpenRouter with OpenAI embeddings
 
@@ -298,9 +330,10 @@ peer role restricted to the Better Auth tables and columns it needs. It does
 not receive the PostgreSQL superuser password, RabbitMQ or Valkey passwords,
 the FalkorDB password, or encryption keys.
 
-Generated database, queue, cache, memory, encryption, authentication, signing,
-secrets are created on first boot and stored in `/data/config/runtime.env` as
-`root:root` mode `0600`. Reusing the named volume reuses those secrets.
+Generated database, queue, cache, memory, encryption, authentication, and
+signing secrets are created on first boot and stored in
+`/data/config/runtime.env` as `root:root` mode `0600`. Reusing the named volume
+reuses those secrets.
 Supplying a different value for a persisted secret on a later boot fails
 instead of silently rotating it.
 
@@ -352,21 +385,40 @@ docker inspect --format \
 
 ## Cold backup
 
-Stop the appliance before archiving the coupled service state. It remains
-unavailable for the duration of the archive, which grows with `/data`:
+Stop the appliance before archiving the coupled service state. The block below
+uses the stopped container's exact local image ID, writes to a unique partial
+file, and promotes it to the final timestamped name only after `tar` succeeds.
+The appliance remains unavailable for the duration of the archive, which grows
+with `/data`:
 
 ```bash
-docker stop --time 360 autogpt
-umask 077
-touch autogpt-platform-data.tgz
-chmod 600 autogpt-platform-data.tgz
+(
+  set -euo pipefail
+  BACKUP_IMAGE="$(docker inspect --format '{{.Image}}' autogpt)"
+  BACKUP_FILE="autogpt-platform-data-$(date -u +%Y%m%dT%H%M%SZ).tgz"
+  PARTIAL_FILE="${BACKUP_FILE}.partial"
 
-docker run --rm \
-  --entrypoint tar \
-  --volume autogpt-platform-data:/data:ro \
-  --volume "${PWD}:/backup" \
-  autogpt-platform:single-container-dev \
-  -czf /backup/autogpt-platform-data.tgz -C /data .
+  if [[ -e "${BACKUP_FILE}" || -e "${PARTIAL_FILE}" ]]; then
+    echo "Refusing to overwrite an existing backup: ${BACKUP_FILE}" >&2
+    exit 1
+  fi
+
+  docker stop --time 360 autogpt
+  umask 077
+  touch "${PARTIAL_FILE}"
+  chmod 600 "${PARTIAL_FILE}"
+
+  docker run --rm \
+    --entrypoint tar \
+    --volume autogpt-platform-data:/data:ro \
+    --volume "${PWD}:/backup" \
+    "${BACKUP_IMAGE}" \
+    -czf "/backup/${PARTIAL_FILE}" -C /data .
+
+  mv "${PARTIAL_FILE}" "${BACKUP_FILE}"
+  printf 'Backup written to %s with image %s\n' \
+    "${BACKUP_FILE}" "${BACKUP_IMAGE}"
+)
 ```
 
 Restart the unchanged installation when the archive completes:
@@ -382,41 +434,61 @@ with an approved backup mechanism and remove unencrypted staging copies.
 
 ## Restore into a new volume
 
-Restore into a new named volume so the source remains recoverable:
+Restore into a new named volume so the source remains recoverable. Set
+`BACKUP_FILE` to the timestamped archive and `RESTORE_IMAGE` to the immutable
+tag or digest recorded with that backup before running the block:
 
 ```bash
-RESTORE_VOLUME="autogpt-platform-data-restored-$(date -u +%Y%m%dT%H%M%SZ)"
-if docker volume inspect "${RESTORE_VOLUME}" >/dev/null 2>&1; then
-  echo "Refusing to reuse existing volume: ${RESTORE_VOLUME}" >&2
-  exit 1
-fi
-docker volume create "${RESTORE_VOLUME}"
+(
+  set -euo pipefail
+  : "${BACKUP_FILE:?Set BACKUP_FILE to the timestamped archive filename}"
+  : "${RESTORE_IMAGE:?Set RESTORE_IMAGE to the recorded immutable image}"
+  RESTORE_VOLUME="autogpt-platform-data-restored-$(date -u +%Y%m%dT%H%M%SZ)"
 
-docker run --rm \
-  --entrypoint tar \
-  --volume "${RESTORE_VOLUME}:/data" \
-  --volume "${PWD}:/backup:ro" \
-  autogpt-platform:single-container-dev \
-  -xzf /backup/autogpt-platform-data.tgz -C /data
+  if docker volume inspect "${RESTORE_VOLUME}" >/dev/null 2>&1; then
+    echo "Refusing to reuse existing volume: ${RESTORE_VOLUME}" >&2
+    exit 1
+  fi
+  docker volume create "${RESTORE_VOLUME}"
+
+  docker run --rm \
+    --entrypoint tar \
+    --volume "${RESTORE_VOLUME}:/data" \
+    --volume "${PWD}:/backup:ro" \
+    "${RESTORE_IMAGE}" \
+    -xzf "/backup/${BACKUP_FILE}" -C /data
+
+  printf 'Restored %s into volume %s\n' \
+    "${BACKUP_FILE}" "${RESTORE_VOLUME}"
+)
 ```
 
 Validate the restored layout without starting application services or allowing
-network access:
+network access. Set `RESTORE_VOLUME` to the volume printed above and reuse the
+same `RESTORE_IMAGE`:
 
 ```bash
-docker run --rm \
-  --network none \
-  --entrypoint /bin/sh \
-  --volume "${RESTORE_VOLUME}:/data:ro" \
-  autogpt-platform:single-container-dev \
-  -ceu '
-    test -s /data/config/runtime.env
-    test -s /data/config/backend.json
-    test -s /data/postgres/PG_VERSION
-    test -d /data/rabbitmq/mnesia
-    test -d /data/valkey/17000
-    test -d /data/falkordb
-  '
+(
+  set -euo pipefail
+  : "${RESTORE_VOLUME:?Set RESTORE_VOLUME to the restored volume name}"
+  : "${RESTORE_IMAGE:?Set RESTORE_IMAGE to the recorded immutable image}"
+
+  docker run --rm \
+    --network none \
+    --entrypoint /bin/sh \
+    --volume "${RESTORE_VOLUME}:/data:ro" \
+    "${RESTORE_IMAGE}" \
+    -ceu '
+      test -s /data/config/runtime.env
+      test -s /data/config/backend.json
+      test -s /data/postgres/PG_VERSION
+      test -d /data/rabbitmq/mnesia
+      test -d /data/valkey/17000
+      test -d /data/valkey/17001
+      test -d /data/valkey/17002
+      test -d /data/falkordb
+    '
+)
 ```
 
 This structural check does not prove that each database can start. A full
@@ -470,7 +542,7 @@ ready.
 | --- | --- |
 | The browser cannot connect after `docker run IMAGE` | A bare run does not publish a port. Use the complete Quick start command. |
 | Port `3300` opens but auth actions fail | Use `--publish 127.0.0.1:3300:3000` and set `AUTOGPT_PUBLIC_URL=http://localhost:3300`, then replace the container. |
-| Signup says registration is closed | Temporarily enable signup with an exact-address `AUTH_SIGNUP_ALLOWLIST`, replace the container, create the intended accounts, and close signup again. |
+| Signup says registration is closed | Set `AUTH_ALLOW_NEW_ACCOUNTS=true` with an optional exact-address `AUTH_SIGNUP_ALLOWLIST`, replace the container, create the intended accounts, and close signup again. |
 | The container remains `starting` or becomes `unhealthy` | First boot can take several minutes. Run `autogpt-healthcheck` and inspect container logs for the first failed service. |
 | AutoPilot returns a provider `401` | Configure the key for the selected transport. The default remote route needs `OPEN_ROUTER_API_KEY`; complete remote memory also needs `OPENAI_API_KEY`. |
 | Local chat works but memory ingestion fails | Install `nomic-embed-text` on the configured local server and confirm its `/v1/embeddings` endpoint works. |
@@ -491,5 +563,3 @@ ready.
 - The local `bash_exec` fallback depends on host support for Bubblewrap user and
   network namespaces. Do not make the entire appliance privileged to work
   around a host that disables them.
-- Registry availability is documented per release; otherwise build the
-  validated `linux/amd64` or `linux/arm64` image from source as described above.
