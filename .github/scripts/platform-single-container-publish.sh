@@ -37,6 +37,10 @@ manifest_is_absent() {
 }
 
 expected_source_revision() {
+  if [[ "$GITHUB_REF" == "refs/heads/codex/single-container-publish-final-canary-56b2927" ]]; then
+    printf '%s\n' "$CANARY_SOURCE_SHA"
+    return
+  fi
   printf '%s\n' "$GITHUB_SHA"
 }
 
@@ -174,6 +178,16 @@ resolve_publication() {
   publication_name="Single-container SHA image published"
 
   if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" == "refs/heads/dev" ]]; then
+    return
+  fi
+
+  if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" == "refs/heads/codex/single-container-publish-final-canary-56b2927" ]]; then
+    if [[ "$CANARY_SOURCE_SHA" != "56b2927f0faec04af4e735d7406dffe4559c3ebc" ]]; then
+      echo "refusing canary for unexpected source revision: $CANARY_SOURCE_SHA" >&2
+      return 1
+    fi
+    immutable_ref="${DEPLOY_IMAGE}:canary-sha-${CANARY_SOURCE_SHA}"
+    publication_name="Single-container final PR canary published"
     return
   fi
 
@@ -579,6 +593,17 @@ self_test() {
   assert_equal docker.io/significantgravitas/autogpt:sha-abc123 "$immutable_ref" "dev immutable tag"
   assert_equal '' "$release_ref" "dev release tag"
   assert_equal false "$publish_latest" "dev latest policy"
+
+  DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
+    GITHUB_EVENT_NAME=workflow_dispatch \
+    GITHUB_REF=refs/heads/codex/single-container-publish-final-canary-56b2927 \
+    GITHUB_SHA=control123 CANARY_SOURCE_SHA=56b2927f0faec04af4e735d7406dffe4559c3ebc \
+    RELEASE_TAG='' resolve_publication
+  assert_equal \
+    docker.io/significantgravitas/autogpt:canary-sha-56b2927f0faec04af4e735d7406dffe4559c3ebc \
+    "$immutable_ref" "canary immutable tag"
+  assert_equal '' "$release_ref" "canary release tag"
+  assert_equal false "$publish_latest" "canary latest policy"
 
   DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7.1 \
