@@ -30,7 +30,7 @@ wait_for_infrastructure() {
     --password-env REDIS_PASSWORD
   wait_until "Valkey node 17002" 120 "${PROBE[@]}" redis --port 17002 \
     --password-env REDIS_PASSWORD
-  wait_until "RabbitMQ" 240 run_rabbitmq_cli /opt/rabbitmq/sbin/rabbitmq-diagnostics -q ping
+  wait_until "RabbitMQ" 240 run_rabbitmq_cli /opt/rabbitmq/sbin/rabbitmq-diagnostics -q check_running
   wait_until "FalkorDB" 120 "${PROBE[@]}" redis --port 6380 \
     --password-env GRAPHITI_FALKORDB_PASSWORD
 }

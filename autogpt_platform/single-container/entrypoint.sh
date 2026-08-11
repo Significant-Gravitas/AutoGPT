@@ -172,9 +172,10 @@ configure_environment() {
 }
 
 configure_account_registration() {
-  normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS false
+  normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS true
   if [[ "${AUTH_ALLOW_NEW_ACCOUNTS}" == true ]]; then
-    log "WARNING: open account registration is enabled; disable it after creating the intended accounts"
+    log "WARNING: open account registration is enabled; anyone who can reach the app can sign up"
+    log "after creating the intended accounts, set AUTH_ALLOW_NEW_ACCOUNTS=false and recreate the container"
   else
     log "account registration is closed; temporarily set AUTH_ALLOW_NEW_ACCOUNTS=true to create intended accounts"
     log "after signup, run 'docker exec <container> autogpt-admin promote <email>', disable registration, and restart"

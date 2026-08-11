@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 export function MainSearchResultPageLoading() {
   return (
     <div className="w-full">
-      <div className="mx-auto min-h-screen max-w-[1440px] px-10 lg:min-w-[1440px]">
+      <div className="mx-auto min-h-screen w-full max-w-[1440px] px-6 md:px-10">
         {/* Go back button */}
         <div className="mb-4 mt-5">
           <Skeleton className="h-9 w-24 rounded-full" />
