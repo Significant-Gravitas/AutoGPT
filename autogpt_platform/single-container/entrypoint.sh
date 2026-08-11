@@ -7,6 +7,8 @@ source "${AUTOGPT_ASSET_DIR:-/opt/autogpt/single-container}/common.sh"
 
 readonly AUTOGPT_PYTHON="${AUTOGPT_PYTHON:-${AUTOGPT_BACKEND_DIR}/.venv/bin/python}"
 readonly POSTGRES_BINDIR="${POSTGRES_BINDIR:-/usr/lib/postgresql/15/bin}"
+readonly CODEX_TEMP_ROOT=/dev/shm/autogpt-codex
+export CODEX_TEMP_ROOT
 
 main() {
   [[ "$(id -u)" -eq 0 ]] || fatal "entrypoint must start as root so services can drop privileges"
@@ -39,7 +41,8 @@ prepare_directories() {
     /data/config /data/postgres /data/rabbitmq /data/valkey \
     /data/valkey/17000 /data/valkey/17001 /data/valkey/17002 /data/falkordb \
     /data/workspaces /data/home /data/frontend-home \
-    /data/cache /data/cache/backend /data/cache/next; do
+    /data/cache /data/cache/backend /data/cache/next \
+    "${CODEX_TEMP_ROOT}"; do
     [[ ! -L "${managed_path}" ]] || fatal "refusing symlink at managed data path: ${managed_path}"
   done
   install -d -m 0710 -o root -g autogpt /data/config
@@ -56,6 +59,7 @@ prepare_directories() {
   install -d -m 0711 -o root -g root /data/cache
   install -d -m 0750 -o autogpt -g autogpt /data/cache/backend
   install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/cache/next
+  install -d -m 0700 -o autogpt -g autogpt "${CODEX_TEMP_ROOT}"
   install -d -m 0755 -o postgres -g postgres /run/postgresql
   # Service-specific runtime directories and files carry the restrictive
   # permissions. Keep only execute permission on their common parent so the

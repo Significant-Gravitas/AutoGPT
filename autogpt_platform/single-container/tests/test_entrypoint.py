@@ -181,6 +181,38 @@ class ValkeyConfigurationTest(unittest.TestCase):
         self.assertNotIn("--masterauth", service_runner)
 
 
+class CodexTemporaryHomeTest(unittest.TestCase):
+    def test_defaults_to_private_memory_backed_storage(self) -> None:
+        entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
+        result = subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; printf "%s\\n" "$CODEX_TEMP_ROOT"',
+                "bash",
+                str(ENTRYPOINT_PATH),
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+                "CODEX_TEMP_ROOT": "/data/not-memory-backed",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "/dev/shm/autogpt-codex\n")
+        self.assertIn(
+            'install -d -m 0700 -o autogpt -g autogpt "${CODEX_TEMP_ROOT}"',
+            entrypoint,
+        )
+        self.assertIn('"${CODEX_TEMP_ROOT}"; do', entrypoint)
+
+
 class ProxyIsolationTest(unittest.TestCase):
     def test_nginx_uses_a_dedicated_operating_system_user(self) -> None:
         dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
