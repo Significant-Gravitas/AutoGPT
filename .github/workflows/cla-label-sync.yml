@@ -43,6 +43,13 @@ env:
   REMINDER_DAYS: 7        # Days before first reminder
   CLOSE_WARNING_DAYS: 23  # Days before "closing soon" warning
   CLOSE_DAYS: 30          # Days before auto-close
+  # Debounce before demoting cla:signed -> cla:pending. CLA-assistant
+  # re-verifies per commit SHA, so an already-signed contributor's status can
+  # transiently flip to pending/failure on repeated status events for the
+  # same commit. Waiting this long and re-checking filters that noise while
+  # still catching a genuinely new unsigned commit (e.g. pushed under a
+  # different git identity).
+  DEMOTE_DEBOUNCE_SECONDS: 75
 
 jobs:
   sync-labels:
@@ -93,12 +100,18 @@ jobs:
             const REMINDER_DAYS = parseInt(process.env.REMINDER_DAYS);
             const CLOSE_WARNING_DAYS = parseInt(process.env.CLOSE_WARNING_DAYS);
             const CLOSE_DAYS = parseInt(process.env.CLOSE_DAYS);
+            const DEMOTE_DEBOUNCE_SECONDS = Number(process.env.DEMOTE_DEBOUNCE_SECONDS);
             
             // Validate timing configuration
             if ([REMINDER_DAYS, CLOSE_WARNING_DAYS, CLOSE_DAYS].some(Number.isNaN)) {
               core.setFailed('Invalid timing configuration — REMINDER_DAYS, CLOSE_WARNING_DAYS, and CLOSE_DAYS must be numeric.');
               return;
             }
+            if (!Number.isInteger(DEMOTE_DEBOUNCE_SECONDS) || DEMOTE_DEBOUNCE_SECONDS < 0) {
+              core.setFailed('Invalid timing configuration — DEMOTE_DEBOUNCE_SECONDS must be a non-negative integer.');
+              return;
+            }
+            const DEMOTE_DEBOUNCE_MS = DEMOTE_DEBOUNCE_SECONDS * 1000;
             if (!(REMINDER_DAYS < CLOSE_WARNING_DAYS && CLOSE_WARNING_DAYS < CLOSE_DAYS)) {
               core.warning(`Timing order looks odd: REMINDER(${REMINDER_DAYS}) < WARNING(${CLOSE_WARNING_DAYS}) < CLOSE(${CLOSE_DAYS}) expected.`);
             }
@@ -226,7 +239,7 @@ jobs:
             for (const prNumber of prsToCheck) {
               try {
                 // Get PR details
-                const { data: pr } = await github.rest.pulls.get({
+                let { data: pr } = await github.rest.pulls.get({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   pull_number: prNumber
@@ -245,7 +258,7 @@ jobs:
                 }
                 
                 // Skip if PR already has cla: signed label (optimization for scheduled sweeps)
-                const currentLabels = pr.labels.map(l => l.name);
+                let currentLabels = pr.labels.map(l => l.name);
                 const knownPlatformPR = currentLabels.includes(LABEL_SIGNED) || currentLabels.includes(LABEL_PENDING);
                 
                 // Skip listFiles if we've already labelled this PR (a previous run verified it touches platform code)
@@ -267,12 +280,48 @@ jobs:
                   }
                 }
                 
-                const claStatus = await getClaStatus(pr.head.sha);
-                const hasPending = currentLabels.includes(LABEL_PENDING);
-                const hasSigned = currentLabels.includes(LABEL_SIGNED);
+                let claStatus = await getClaStatus(pr.head.sha);
+                let hasPending = currentLabels.includes(LABEL_PENDING);
+                let hasSigned = currentLabels.includes(LABEL_SIGNED);
                 const prAgeDays = daysSince(pr.created_at);
                 
                 console.log(`PR #${prNumber}: CLA ${claStatus.passed ? 'passed' : 'pending'} (${claStatus.state}), age: ${prAgeDays} days`);
+                
+                // Debounce demotion: if this PR was previously confirmed signed
+                // but the latest check no longer shows a pass, wait and re-check
+                // before treating it as a real demotion. CLA-assistant
+                // re-verifies per commit SHA, so an already-signed contributor's
+                // status can transiently flip to pending/failure on repeated
+                // status events for the same commit — without this, that flip
+                // causes an immediate label add/remove + possible comment churn.
+                // A genuinely new unsigned commit (e.g. pushed under a different,
+                // unsigned git identity) still shows unsigned after the delay, so
+                // it's still demoted correctly below.
+                if (hasSigned && !claStatus.passed) {
+                  console.log(`PR #${prNumber}: was signed but now shows ${claStatus.state} — debouncing ${DEMOTE_DEBOUNCE_SECONDS}s before demoting`);
+                  await new Promise(resolve => setTimeout(resolve, DEMOTE_DEBOUNCE_MS));
+                  
+                  // Re-fetch the PR — a new commit could have been pushed, or the
+                  // PR closed, while we were waiting. Evaluate the refreshed state
+                  // rather than the one captured before the delay.
+                  const { data: refreshedPr } = await github.rest.pulls.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber
+                  });
+                  
+                  if (refreshedPr.state !== 'open') {
+                    console.log(`PR #${prNumber}: no longer open after debounce — skipping`);
+                    continue;
+                  }
+                  
+                  pr = refreshedPr;
+                  currentLabels = refreshedPr.labels.map(l => l.name);
+                  hasPending = currentLabels.includes(LABEL_PENDING);
+                  hasSigned = currentLabels.includes(LABEL_SIGNED);
+                  claStatus = await getClaStatus(refreshedPr.head.sha);
+                  console.log(`PR #${prNumber}: post-debounce CLA ${claStatus.passed ? 'passed' : 'still ' + claStatus.state}`);
+                }
                 
                 if (claStatus.passed) {
                   // ✅ CLA signed - add signed label, remove pending
