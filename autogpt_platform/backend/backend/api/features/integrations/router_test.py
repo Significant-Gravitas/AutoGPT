@@ -4,11 +4,14 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
+import fastapi.routing
 import fastapi.testclient
 import pytest
+from prisma.enums import CredentialOwnerType
 from pydantic import SecretStr
 
 from backend.api.features.integrations.router import router
+from backend.api.features.orgs.team_model import TeamMembership
 from backend.data.integrations import Webhook
 from backend.data.model import (
     APIKeyCredentials,
@@ -851,3 +854,442 @@ class TestWebhookPingOwnership:
         assert resp.status_code == 200
         assert resp.json() is True
         webhook_manager.trigger_ping.assert_awaited_once()
+
+
+ROUTER = "backend.api.features.integrations.router"
+
+
+def _membership(
+    *,
+    is_admin: bool = True,
+    is_active: bool = True,
+    org_id: str = "org-1",
+) -> TeamMembership:
+    """The authz facts the orgs data layer hands the router for a live team."""
+    return TeamMembership(org_id=org_id, is_active=is_active, is_admin=is_admin)
+
+
+def _patch_membership(membership: TeamMembership | None):
+    """Patch the team-membership lookup the router authorizes against.
+
+    ``None`` models both "no membership row" and "archived/missing team" —
+    the data layer collapses them so cross-org team ids stay unprobeable.
+    """
+    return patch(f"{ROUTER}.get_team_membership", AsyncMock(return_value=membership))
+
+
+def _team_cred_row(
+    cred_id: str = "row-1",
+    *,
+    credential_type: str = "api_key",
+    display_name: str = "Team Key",
+    metadata: dict | None = None,
+):
+    """A metadata dict as returned by ``scoped_credentials.list_team_credentials``."""
+    return {
+        "id": cred_id,
+        "provider": "openai",
+        "credentialType": credential_type,
+        "displayName": display_name,
+        "scope": "TEAM",
+        "createdByUserId": "u",
+        "lastUsedAt": None,
+        "expiresAt": None,
+        "createdAt": None,
+        "metadata": metadata,
+    }
+
+
+class TestTeamCredentialRouting:
+    """The team routes must not be swallowed by the generic provider routes."""
+
+    def test_team_credential_paths_resolve_to_the_team_endpoints(self):
+        """`/teams/{team_id}/credentials` has one more path segment than
+        `/{provider}/credentials`, so the generic route cannot shadow it — and
+        `teams` is not a `ProviderName` member in the first place."""
+        assert "teams" not in {p.value for p in ProviderName}
+
+        routes = {
+            (r.path, tuple(sorted(r.methods))): r.name
+            for r in app.routes
+            if isinstance(r, fastapi.routing.APIRoute)
+        }
+        assert routes[("/teams/{team_id}/credentials", ("GET",))] == (
+            "list_team_credentials"
+        )
+        assert routes[("/teams/{team_id}/credentials/{cred_id}", ("DELETE",))] == (
+            "delete_team_credential"
+        )
+
+        with (
+            _patch_membership(_membership(is_admin=False)),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.list_team_credentials = AsyncMock(return_value=[])
+            resp = client.get("/teams/team-a/credentials")
+
+        # A provider-route match would have 422'd on the ProviderName enum.
+        assert resp.status_code == 200
+        mock_scoped.list_team_credentials.assert_awaited_once()
+
+
+class TestCreateTeamCredential:
+    """POST /{provider}/credentials?team_id=... creates a TEAM-owned credential.
+
+    Authorization: team admins only (TeamAction.MANAGE_CREDENTIALS). The row
+    written must match exactly what the scoped read path resolves on.
+    """
+
+    def test_team_admin_creates_team_credential_with_expected_row_shape(
+        self, test_user_id
+    ):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            _patch_membership(_membership(org_id="org-1")),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock(return_value={"id": "row-uuid-1"})
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 201
+        data = resp.json()
+        # The DB row id (not the client-supplied id) is reflected back.
+        assert data["id"] == "row-uuid-1"
+        assert data["provider"] == "openai"
+        assert data["type"] == "api_key"
+        assert "sk-secret-key-value" not in str(data)
+
+        # Row shape must match the TEAM branch of the read path exactly:
+        # ownerType=TEAM, ownerId=teamId, org = the team's org. The teamId FK is
+        # derived from owner_id by the store, so it is not passed separately.
+        kwargs = mock_scoped.create_credential.await_args.kwargs
+        assert kwargs["owner_type"] == CredentialOwnerType.TEAM
+        assert kwargs["owner_id"] == "team-a"
+        assert "team_id" not in kwargs
+        assert kwargs["organization_id"] == "org-1"
+        assert kwargs["provider"] == "openai"
+        assert kwargs["credential_type"] == "api_key"
+        assert kwargs["user_id"] == test_user_id
+        # Secret round-trips into the encrypted payload as plaintext (the
+        # store encrypts it; CREDENTIALS_ADAPTER reconstructs on read).
+        assert kwargs["payload"]["api_key"] == "sk-secret-key-value"
+
+    def test_untitled_team_credential_reports_the_persisted_title(self):
+        """The row's displayName is never null, so an untitled credential is
+        stored as the provider name — and the 201 must say the same thing the
+        later list will, not `title: null`."""
+        cred = _make_api_key_cred(provider="openai")
+        cred.title = None
+        with (
+            _patch_membership(_membership()),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock(return_value={"id": "row-uuid-1"})
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 201
+        assert resp.json()["title"] == "openai"
+        assert mock_scoped.create_credential.await_args.kwargs["display_name"] == (
+            "openai"
+        )
+
+    def test_host_scoped_team_credential_round_trips_host(self):
+        """Host-scoped creds must keep their host in the row metadata, or the
+        list response can't tell them apart (it never decrypts payloads)."""
+        cred = _make_host_scoped_cred(provider="openai")
+        with (
+            _patch_membership(_membership()),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock(return_value={"id": "row-uuid-1"})
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["type"] == "host_scoped"
+        assert data["host"] == "https://api.example.com"
+        assert "top-secret" not in str(data)
+
+        kwargs = mock_scoped.create_credential.await_args.kwargs
+        assert kwargs["credential_type"] == "host_scoped"
+        assert kwargs["metadata"] == {"host": "https://api.example.com"}
+        assert kwargs["payload"]["headers"]["Authorization"] == "Bearer top-secret"
+
+    def test_user_password_team_credential_is_stored_without_leaking_secrets(self):
+        cred = _make_user_password_cred(provider="openai")
+        with (
+            _patch_membership(_membership()),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock(return_value={"id": "row-uuid-1"})
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["type"] == "user_password"
+        # The username is a SecretStr on this type; the personal path doesn't
+        # surface it either, so it must not leak through the team path.
+        assert data["username"] is None
+        assert "s3cret-pass" not in str(data)
+        assert "admin" not in str(data)
+
+        kwargs = mock_scoped.create_credential.await_args.kwargs
+        assert kwargs["credential_type"] == "user_password"
+        assert kwargs["payload"]["password"] == "s3cret-pass"
+        # No non-secret display metadata to mirror for this type.
+        assert kwargs["metadata"] is None
+
+    def test_oauth2_team_credential_is_rejected(self):
+        """Team OAuth is deferred: the callback's merge/scope-upgrade logic is
+        user-scoped, so a stored team OAuth2 cred could never be refreshed and
+        its delete could never revoke provider-side tokens."""
+        cred = _make_oauth2_cred(provider="github")
+        with (
+            _patch_membership(_membership()),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock()
+            resp = client.post(
+                "/github/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 400
+        assert "oauth2" in resp.json()["detail"]
+        assert "ghp_secret_token" not in str(resp.json())
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_oauth2_personal_credential_still_allowed(self):
+        """The type gate is team-only — personal OAuth2 creation is unchanged."""
+        cred = _make_oauth2_cred(provider="github")
+        with (
+            patch(f"{ROUTER}.creds_manager") as mock_mgr,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_mgr.create = AsyncMock()
+            resp = client.post("/github/credentials", json=cred.model_dump())
+
+        assert resp.status_code == 201
+        mock_mgr.create.assert_awaited_once()
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_team_credential_store_failure_maps_to_500(self):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            _patch_membership(_membership(org_id="org-1")),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock(
+                side_effect=RuntimeError("db down")
+            )
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 500
+        assert "sk-secret-key-value" not in str(resp.json())
+
+    def test_non_admin_member_cannot_create_team_credential(self):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            _patch_membership(_membership(is_admin=False)),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock()
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 403
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_inactive_admin_cannot_create_team_credential(self):
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            _patch_membership(_membership(is_active=False)),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock()
+            resp = client.post(
+                "/openai/credentials?team_id=team-a", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 403
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_team_outside_callers_org_is_not_found(self):
+        """A team the caller isn't a member of — including any team in another
+        org — has no membership row, so it 404s (cross-org ids can't be probed).
+        An archived team is collapsed into the same answer."""
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            _patch_membership(None),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.create_credential = AsyncMock()
+            resp = client.post(
+                "/openai/credentials?team_id=team-other-org", json=cred.model_dump()
+            )
+
+        assert resp.status_code == 404
+        mock_scoped.create_credential.assert_not_called()
+
+    def test_personal_credential_path_unchanged_when_no_team_id(self):
+        """Regression: without team_id, creation still uses the legacy per-user
+        store and never touches the team authz path or scoped store."""
+        cred = _make_api_key_cred(provider="openai")
+        with (
+            patch(f"{ROUTER}.creds_manager") as mock_mgr,
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+            patch(f"{ROUTER}.get_team_membership") as mock_membership,
+        ):
+            mock_mgr.create = AsyncMock()
+            resp = client.post("/openai/credentials", json=cred.model_dump())
+
+        assert resp.status_code == 201
+        mock_mgr.create.assert_awaited_once()
+        mock_scoped.create_credential.assert_not_called()
+        mock_membership.assert_not_called()
+
+
+class TestListTeamCredentials:
+    """GET /teams/{team_id}/credentials lists TEAM creds (metadata only)."""
+
+    def test_active_member_lists_team_credentials(self):
+        with (
+            _patch_membership(_membership(is_admin=False, org_id="org-1")),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.list_team_credentials = AsyncMock(
+                return_value=[_team_cred_row()]
+            )
+            resp = client.get("/teams/team-a/credentials")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data[0]["id"] == "row-1"
+        assert data[0]["type"] == "api_key"
+        assert data[0]["title"] == "Team Key"
+        assert data[0]["provider"] == "openai"
+        assert data[0]["host"] is None
+        mock_scoped.list_team_credentials.assert_awaited_once_with("org-1", "team-a")
+
+    def test_listed_host_scoped_credentials_surface_their_host(self):
+        """Otherwise every host-scoped row in the list looks identical, and the
+        list disagrees with what the create call returned for the same row."""
+        with (
+            _patch_membership(_membership(is_admin=False)),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.list_team_credentials = AsyncMock(
+                return_value=[
+                    _team_cred_row(
+                        "row-a",
+                        credential_type="host_scoped",
+                        display_name="Prod API",
+                        metadata={"host": "https://prod.example.com"},
+                    ),
+                    _team_cred_row(
+                        "row-b",
+                        credential_type="host_scoped",
+                        display_name="Staging API",
+                        metadata={"host": "https://staging.example.com"},
+                    ),
+                ]
+            )
+            resp = client.get("/teams/team-a/credentials")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [c["host"] for c in data] == [
+            "https://prod.example.com",
+            "https://staging.example.com",
+        ]
+
+    def test_inactive_member_cannot_list_team_credentials(self):
+        with (
+            _patch_membership(_membership(is_active=False)),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.list_team_credentials = AsyncMock()
+            resp = client.get("/teams/team-a/credentials")
+
+        assert resp.status_code == 403
+        mock_scoped.list_team_credentials.assert_not_called()
+
+    def test_non_member_cannot_list_team_credentials(self):
+        with (
+            _patch_membership(None),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.list_team_credentials = AsyncMock()
+            resp = client.get("/teams/team-a/credentials")
+
+        assert resp.status_code == 404
+        mock_scoped.list_team_credentials.assert_not_called()
+
+
+class TestDeleteTeamCredential:
+    """DELETE /teams/{team_id}/credentials/{cred_id} — team admins only."""
+
+    def test_team_admin_deletes_team_credential(self):
+        with (
+            _patch_membership(_membership(org_id="org-1")),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.delete_team_credential = AsyncMock()
+            resp = client.delete("/teams/team-a/credentials/row-uuid-1")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["deleted"] is True
+        # Team creds can't be OAuth2 (rejected at create), so there is never a
+        # provider token to revoke — same answer the personal path gives for an
+        # API key.
+        assert body["revoked"] is None
+        mock_scoped.delete_team_credential.assert_awaited_once_with(
+            "row-uuid-1", "team-a", "org-1"
+        )
+
+    def test_non_admin_cannot_delete_team_credential(self):
+        with (
+            _patch_membership(_membership(is_admin=False)),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.delete_team_credential = AsyncMock()
+            resp = client.delete("/teams/team-a/credentials/row-uuid-1")
+
+        assert resp.status_code == 403
+        mock_scoped.delete_team_credential.assert_not_called()
+
+    def test_inactive_admin_cannot_delete_team_credential(self):
+        with (
+            _patch_membership(_membership(is_active=False)),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.delete_team_credential = AsyncMock()
+            resp = client.delete("/teams/team-a/credentials/row-uuid-1")
+
+        assert resp.status_code == 403
+        mock_scoped.delete_team_credential.assert_not_called()
+
+    def test_deleting_unknown_team_credential_returns_404(self):
+        """The store raises ValueError for a cred that isn't an active TEAM-owned
+        row for this team/org (incl. another team's cred) — surfaced as a 404."""
+        with (
+            _patch_membership(_membership(org_id="org-1")),
+            patch(f"{ROUTER}.scoped_credentials") as mock_scoped,
+        ):
+            mock_scoped.delete_team_credential = AsyncMock(
+                side_effect=ValueError("not found")
+            )
+            resp = client.delete("/teams/team-a/credentials/other-teams-cred")
+
+        assert resp.status_code == 404

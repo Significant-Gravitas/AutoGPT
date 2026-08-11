@@ -14,11 +14,13 @@ from fastapi import (
     Security,
     status,
 )
+from prisma.enums import CredentialOwnerType
 from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.orgs.team_db import get_team_membership
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -38,6 +40,7 @@ from backend.data.model import (
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor.utils import add_graph_execution
+from backend.integrations import scoped_credentials
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.credentials_store import (
     is_system_credential,
@@ -447,12 +450,27 @@ async def create_credentials(
         ProviderName, Path(title="The provider to create credentials for")
     ],
     credentials: Credentials,
+    team_id: Annotated[
+        str | None,
+        Query(
+            title="If set, create a team-owned credential for this team "
+            "(team admins only) instead of a personal one. Team credentials "
+            "are listed and deleted via /teams/{team_id}/credentials.",
+        ),
+    ] = None,
 ) -> CredentialsMetaResponse:
     if is_sdk_default(credentials.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot create credentials with a reserved ID",
         )
+
+    # With `team_id`, the credential is persisted in the IntegrationCredential
+    # table owned by that team and gated on team-admin authorization. Without
+    # it, creation goes to the legacy per-user store.
+    if team_id is not None:
+        return await _create_team_credential(user_id, provider, credentials, team_id)
+
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -478,6 +496,182 @@ class CredentialsDeletionNeedsConfirmationResponse(BaseModel):
     deleted: Literal[False] = False
     need_confirmation: Literal[True] = True
     message: str
+
+
+# ----------------------- TEAM CREDENTIALS ------------------------ #
+
+
+TEAM_CREDENTIAL_TYPES: frozenset[CredentialsType] = frozenset(
+    {"api_key", "host_scoped", "user_password"}
+)
+"""Credential types a team may own.
+
+OAuth2 is excluded on purpose: the callback's merge/scope-upgrade logic is
+user-scoped throughout, so a team-owned OAuth2 credential could never be
+refreshed and its delete could never revoke the provider-side tokens. Storing
+one would silently create a credential that rots and outlives its deletion.
+"""
+
+
+async def _require_team_access(user_id: str, team_id: str, *, admin: bool) -> str:
+    """Authorize a team-credential action and return the team's org id.
+
+    The integrations router authenticates with ``get_user_id`` only, so there
+    is no RequestContext to lean on; membership is resolved through the orgs
+    data layer instead. A caller with no membership row for the team
+    (including a team that lives in *another* org, which the caller can't be a
+    member of) gets a 404, so cross-org team ids can't even be probed. A
+    non-ACTIVE member gets a 403, as does an ACTIVE non-admin when ``admin`` is
+    set — that is ``TeamAction.MANAGE_CREDENTIALS`` ({"team_admin"}), required
+    for create/delete; listing metadata only needs ACTIVE membership.
+
+    The returned ``orgId`` is the authoritative ``organizationId`` for anything
+    the team owns, so the "credential carries the team's org" invariant holds
+    by construction — it is never client-supplied.
+    """
+    membership = await get_team_membership(team_id, user_id)
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
+        )
+    if not membership.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Active team membership required",
+        )
+    if admin and not membership.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team admin access required to manage team credentials",
+        )
+    return membership.org_id
+
+
+def _team_cred_meta_to_response(
+    meta: scoped_credentials.CredentialMetadata,
+) -> CredentialsMetaResponse:
+    """Map a scoped-store metadata dict to the API credential-meta shape.
+
+    Secrets are never touched — listing works off the non-decrypted row
+    columns, with the non-secret display fields (currently the host pattern)
+    mirrored into the row's ``metadata`` JSON at create time so this response
+    agrees with the one the create call returned.
+
+    ``scopes`` is always ``None`` because OAuth2 team credentials are rejected
+    at create; ``username`` is always ``None`` because the only non-OAuth type
+    that has one (``user_password``) keeps it as a ``SecretStr``, which the
+    personal-credential path doesn't surface either.
+    """
+    row_metadata = meta.get("metadata") or {}
+    return CredentialsMetaResponse(
+        id=meta["id"],
+        provider=meta["provider"],
+        type=meta["credentialType"],
+        title=meta["displayName"],
+        scopes=None,
+        username=None,
+        host=row_metadata.get("host"),
+        is_managed=False,
+    )
+
+
+def _team_row_metadata(credentials: Credentials) -> dict[str, Any] | None:
+    """Non-secret display metadata to mirror onto the credential row.
+
+    Listing team credentials must not decrypt payloads, so anything the list
+    response needs has to live in queryable columns. ``host`` is the only such
+    field today (host-scoped creds are otherwise indistinguishable in a list).
+    """
+    row_metadata = dict(credentials.metadata or {})
+    host = CredentialsMetaResponse.get_host(credentials)
+    if host is not None:
+        row_metadata["host"] = host
+    return row_metadata or None
+
+
+async def _create_team_credential(
+    user_id: str,
+    provider: ProviderName,
+    credentials: Credentials,
+    team_id: str,
+) -> CredentialsMetaResponse:
+    org_id = await _require_team_access(user_id, team_id, admin=True)
+
+    if credentials.type not in TEAM_CREDENTIAL_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Team-owned '{credentials.type}' credentials are not supported. "
+                "Connect OAuth integrations per user instead."
+            ),
+        )
+
+    # Normalize the provider to its plain string value so the encrypted
+    # payload and the row's `provider` column agree with what the read path
+    # queries on (avoids the `ProviderName.X` stringification quirk).
+    credentials.provider = provider.value
+    # The row's displayName is never null, so default it here and echo the same
+    # value back — otherwise the 201 would report `title: null` for a row that
+    # lists as the provider name.
+    credentials.title = credentials.title or provider.value
+
+    try:
+        created = await scoped_credentials.create_credential(
+            organization_id=org_id,
+            owner_type=CredentialOwnerType.TEAM,
+            owner_id=team_id,
+            provider=provider.value,
+            credential_type=credentials.type,
+            display_name=credentials.title,
+            # `model_dump()` renders SecretStr fields to plaintext (see
+            # `_BaseCredentials.dump_secret_strings`); it round-trips back
+            # through `CREDENTIALS_ADAPTER` on read. Expiry lives in the payload.
+            payload=credentials.model_dump(),
+            user_id=user_id,
+            metadata=_team_row_metadata(credentials),
+        )
+    except Exception:
+        logger.exception("Failed to store team credential")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store credentials",
+        )
+
+    # The table generates its own uuid; reflect the authoritative row id back
+    # rather than the client-supplied one (which is ignored for team creds).
+    credentials.id = created["id"]
+    return to_meta_response(credentials)
+
+
+@router.get("/teams/{team_id}/credentials", summary="List Team Credentials")
+async def list_team_credentials(
+    user_id: Annotated[str, Security(get_user_id)],
+    team_id: Annotated[str, Path(title="The team whose credentials to list")],
+) -> list[CredentialsMetaResponse]:
+    org_id = await _require_team_access(user_id, team_id, admin=False)
+    metas = await scoped_credentials.list_team_credentials(org_id, team_id)
+    return [_team_cred_meta_to_response(m) for m in metas]
+
+
+@router.delete(
+    "/teams/{team_id}/credentials/{cred_id}", summary="Delete Team Credential"
+)
+async def delete_team_credential(
+    user_id: Annotated[str, Security(get_user_id)],
+    team_id: Annotated[str, Path(title="The team that owns the credential")],
+    cred_id: Annotated[str, Path(title="The ID of the team credential to delete")],
+) -> CredentialsDeletionResponse:
+    org_id = await _require_team_access(user_id, team_id, admin=True)
+    try:
+        await scoped_credentials.delete_team_credential(cred_id, team_id, org_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    # `TEAM_CREDENTIAL_TYPES` keeps OAuth2 out of the team store, so a team
+    # credential never holds provider tokens to revoke — `revoked=None` is the
+    # same answer the personal path gives for an API key.
+    return CredentialsDeletionResponse(revoked=None)
 
 
 class AyrshareSSOResponse(BaseModel):

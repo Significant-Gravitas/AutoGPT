@@ -74,3 +74,17 @@ class AddTeamMemberRequest(BaseModel):
 class UpdateTeamMemberRequest(BaseModel):
     is_admin: bool | None = None
     is_billing_manager: bool | None = None
+
+
+class TeamMembership(BaseModel):
+    """The authorization-relevant facts about one user's place in one team.
+
+    Returned by ``team_db.get_team_membership`` so routers that authenticate
+    with a bare user id (and therefore have no RequestContext to lean on) can
+    gate on team membership without reaching into Prisma themselves.
+    """
+
+    org_id: str
+    """The owning org — authoritative tenancy for anything the team owns."""
+    is_active: bool
+    is_admin: bool
