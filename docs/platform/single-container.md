@@ -80,7 +80,8 @@ Signup starts open so a fresh installation can create its first account. The
 run command below binds the app only to loopback. If other users can reach the
 URL, anyone can register until you close signup. To limit provisioning to one
 address, optionally set `AUTH_SIGNUP_ALLOWLIST=owner@example.com` before the
-first boot. Use an HTTPS origin for LAN or remote access.
+first boot. Configure an HTTPS origin before creating real accounts or entering
+credentials on any LAN or remote deployment.
 
 Provider keys are not required to boot, create an account, use Builder, or run
 provider-free blocks. Model-backed functions return their normal actionable
@@ -195,10 +196,11 @@ The allowlist accepts exact email addresses and entries beginning with `@` for
 an entire domain. It applies to email/password signup and first-time social
 login because both create an account. Prefer exact addresses; use a domain
 entry only for a domain you fully control, then narrow the list after
-bootstrap. Public email domains such as `@gmail.com` are not safe allowlist
-entries. Setting `AUTH_ALLOW_NEW_ACCOUNTS=false` blocks all new accounts
-regardless of the allowlist; recreate the container with the same volume to
-apply the setting after promoting the intended administrator.
+bootstrap. Domain matching trusts the identity provider's asserted email;
+public email domains such as `@gmail.com` are not safe allowlist entries.
+Setting `AUTH_ALLOW_NEW_ACCOUNTS=false` blocks all new accounts regardless of
+the allowlist; recreate the container with the same volume to apply the setting
+after promoting the intended administrator.
 
 Fresh installations should keep `AUTOGPT_ENABLE_LEGACY_AUTH=false`. Enable it
 only when intentionally migrating an existing legacy symmetric-JWT setup.
@@ -395,29 +397,33 @@ with `/data`:
 (
   set -euo pipefail
   BACKUP_IMAGE="$(docker inspect --format '{{.Image}}' autogpt)"
+  BACKUP_DIR="${PWD}/autogpt-backups"
   BACKUP_FILE="autogpt-platform-data-$(date -u +%Y%m%dT%H%M%SZ).tgz"
   PARTIAL_FILE="${BACKUP_FILE}.partial"
 
-  if [[ -e "${BACKUP_FILE}" || -e "${PARTIAL_FILE}" ]]; then
+  mkdir -p "${BACKUP_DIR}"
+  chmod 700 "${BACKUP_DIR}"
+  if [[ -e "${BACKUP_DIR}/${BACKUP_FILE}" || \
+        -e "${BACKUP_DIR}/${PARTIAL_FILE}" ]]; then
     echo "Refusing to overwrite an existing backup: ${BACKUP_FILE}" >&2
     exit 1
   fi
 
   docker stop --time 360 autogpt
   umask 077
-  touch "${PARTIAL_FILE}"
-  chmod 600 "${PARTIAL_FILE}"
+  touch "${BACKUP_DIR}/${PARTIAL_FILE}"
+  chmod 600 "${BACKUP_DIR}/${PARTIAL_FILE}"
 
   docker run --rm \
     --entrypoint tar \
     --volume autogpt-platform-data:/data:ro \
-    --volume "${PWD}:/backup" \
+    --volume "${BACKUP_DIR}:/backup" \
     "${BACKUP_IMAGE}" \
     -czf "/backup/${PARTIAL_FILE}" -C /data .
 
-  mv "${PARTIAL_FILE}" "${BACKUP_FILE}"
+  mv "${BACKUP_DIR}/${PARTIAL_FILE}" "${BACKUP_DIR}/${BACKUP_FILE}"
   printf 'Backup written to %s with image %s\n' \
-    "${BACKUP_FILE}" "${BACKUP_IMAGE}"
+    "${BACKUP_DIR}/${BACKUP_FILE}" "${BACKUP_IMAGE}"
 )
 ```
 
@@ -435,16 +441,26 @@ with an approved backup mechanism and remove unencrypted staging copies.
 ## Restore into a new volume
 
 Restore into a new named volume so the source remains recoverable. Set
-`BACKUP_FILE` to the timestamped archive and `RESTORE_IMAGE` to the immutable
-tag or digest recorded with that backup before running the block:
+`BACKUP_FILE` to the timestamped archive name and `RESTORE_IMAGE` to the
+immutable tag or digest recorded with that backup. If the archive is not under
+`./autogpt-backups`, also set `BACKUP_DIR` before running the block:
 
 ```bash
 (
   set -euo pipefail
   : "${BACKUP_FILE:?Set BACKUP_FILE to the timestamped archive filename}"
   : "${RESTORE_IMAGE:?Set RESTORE_IMAGE to the recorded immutable image}"
+  BACKUP_DIR="${BACKUP_DIR:-${PWD}/autogpt-backups}"
   RESTORE_VOLUME="autogpt-platform-data-restored-$(date -u +%Y%m%dT%H%M%SZ)"
 
+  if [[ "${BACKUP_FILE}" == */* ]]; then
+    echo "BACKUP_FILE must be a filename within BACKUP_DIR" >&2
+    exit 1
+  fi
+  if [[ ! -f "${BACKUP_DIR}/${BACKUP_FILE}" ]]; then
+    echo "Backup archive does not exist: ${BACKUP_DIR}/${BACKUP_FILE}" >&2
+    exit 1
+  fi
   if docker volume inspect "${RESTORE_VOLUME}" >/dev/null 2>&1; then
     echo "Refusing to reuse existing volume: ${RESTORE_VOLUME}" >&2
     exit 1
@@ -454,7 +470,7 @@ tag or digest recorded with that backup before running the block:
   docker run --rm \
     --entrypoint tar \
     --volume "${RESTORE_VOLUME}:/data" \
-    --volume "${PWD}:/backup:ro" \
+    --volume "${BACKUP_DIR}:/backup:ro" \
     "${RESTORE_IMAGE}" \
     -xzf "/backup/${BACKUP_FILE}" -C /data
 
