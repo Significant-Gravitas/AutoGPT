@@ -923,8 +923,10 @@ class ExecutionProcessor:
                     "Activity status generation disabled, not setting fields"
                 )
         finally:
-            # Communication handling
-            billing.handle_agent_run_notif(db_client, graph_exec, exec_stats)
+            # No per-run email: a successful run is the system working as
+            # designed, and its evidence belongs in the Briefing's highlights
+            # or behind a deep link. The run is scored for the Briefing when
+            # its terminal stats are written, just below.
             expert_posts.handle_expert_run_post(
                 db_client, graph_exec, exec_meta.status, exec_stats
             )

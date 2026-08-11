@@ -48,6 +48,26 @@ def _configure_frontend_origin(mocker: pytest_mock.MockFixture) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _stub_lifecycle_emails(mocker: pytest_mock.MockFixture) -> None:
+    """The billing emails hang off the Stripe webhook. Stub them here so the
+    dispatch tests in this module stay about routing, not about mail."""
+    for handler in (
+        "on_checkout_completed",
+        "on_payment_failed",
+        "on_subscription_updated",
+        "on_subscription_deleted",
+    ):
+        mocker.patch(
+            f"backend.api.features.v1.lifecycle.{handler}", new_callable=AsyncMock
+        )
+    mocker.patch(
+        "stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
+        return_value={"id": "sub_stub"},
+    )
+
+
+@pytest.fixture(autouse=True)
 def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
     """Default pending-change lookup to None so tests don't hit Stripe/DB.
 

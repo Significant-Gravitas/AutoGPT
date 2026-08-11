@@ -1,0 +1,54 @@
+{#- Plain-text part of the Briefing, built from the same context as the HTML
+    so a text-only client gets the same facts in the same order, not a
+    tag-stripped approximation. -#}
+{%- set quiet = (mode | default('standard')) == 'quiet' -%}
+{%- set attn = attention | default([]) -%}
+{{ subject }}
+
+{{ preheader }}
+
+YOUR {{ {'daily':'DAY','weekly':'WEEK','monthly':'MONTH'}.get(period.frequency, 'WEEK') }} IN AGENTS - {{ period.label }}
+{% if attn %}
+NEEDS YOU
+{% for item in attn[:3] %}
+{{ loop.index }}. {{ item.title }}{% if item.tag %} ({{ item.tag }}){% endif %}
+
+   {{ item.body }}
+   {{ item.cta_label }}: {{ item.cta_url }}
+{% endfor %}
+{% if attn | length > 3 %}
+   + {{ attn | length - 3 }} more waiting: {{ urls.attention }}
+{% endif %}
+{% endif %}
+{% if highlights %}
+WORTH A LOOK
+{% for h in highlights[:3] %}
+- {{ h.agent }} {{ h.gist }}
+  {{ h.link_label }}: {{ h.url }}
+{% endfor %}
+{% endif %}
+{% if not quiet %}
+THE LEDGER
+{% for row in ledger[:6] %}
+- {{ row.agent }}: {{ '{:,}'.format(row.runs) }} runs, {{ '%.2f' | format(row.credits) }} credits{% if row.issues_label %}, {{ row.issues_label }}{% endif %}
+
+{% endfor %}
+{% if ledger | length > 6 %}
+- + {{ ledger | length - 6 }} quieter agents: {{ urls.dashboard }}
+{% endif %}
+
+{{ '{:,.2f}'.format(totals.credits_used) }} credits used{% if totals.usd_estimate is not none %} (${{ '{:,.2f}'.format(totals.usd_estimate) }}){% endif %} - balance {{ '{:,.2f}'.format(totals.credits_balance) }}
+{% else %}
+{{ '{:,}'.format(totals.runs) }} runs - {{ totals.agents_active }} active{% if totals.agents_idle %} - {{ totals.agents_idle }} on standby{% endif %} - {{ totals.failed }} issues - {{ '{:,.2f}'.format(totals.credits_used) }} credits
+{% endif %}
+
+Open your dashboard: {{ urls.dashboard }}
+
+--
+You get this briefing {{ period.frequency }}, and only when your agents
+actually ran. Switch to daily, weekly or monthly, choose alerts only, or
+pause it entirely: {{ urls.settings }}
+
+This is your agent briefing for {{ user_email }}.
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
+Unsubscribe: {{ urls.unsubscribe }}

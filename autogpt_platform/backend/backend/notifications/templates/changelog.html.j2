@@ -1,0 +1,51 @@
+{#- ============================================================
+    changelog.html.j2 — the monthly "AutoGPT Update".
+    Content is authored in MailerLite; this template is the shared
+    design reference for that campaign. Context:
+      edition_label   "July 2026"
+      period_label    "June 18 – July 9"
+      intro           one casual sentence
+      entries         [ { emoji, title, body, url } ... ]
+      urls            shared link map
+    Sent monthly to the changelog MailerLite group · marketing
+    footer · signed by John.
+    ============================================================ -#}
+{%- import "_lifecycle_ui.j2" as ui with context -%}
+<!doctype html>
+<html lang="en">
+<head>
+{{ ui.head_block(subject) }}
+</head>
+<body style="margin:0; padding:0; background-color:#eceaf6; -webkit-text-size-adjust:100%; font-family:'Poppins',Helvetica,Arial,sans-serif;">
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.hero('changelog') }}
+    <tr><td bgcolor="#ffffff" style="border-radius:0 0 16px 16px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{% call ui.eyebrow(color='#5635b2') %}AUTOGPT UPDATE · {{ edition_label | upper }}{% endcall %}
+{% call ui.headline() %}What's new — {{ period_label }}{% endcall %}
+{% call ui.para() %}Hey {{ user_name }} — {{ intro }}{% endcall %}
+        <tr><td class="gutter" style="padding:20px 48px 0;">
+          {%- for e in entries %}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f3fb" style="border-radius:10px;{{ ' margin-top:10px;' if not loop.first }}">
+            <tr><td style="padding:14px 16px;">
+              <div style="font-size:14px; font-weight:700; color:#070629;">{{ e.emoji }}&nbsp; {{ e.title }}</div>
+              <div style="font-size:13.5px; line-height:21px; color:#2d2a3e; padding-top:3px;">{{ e.body }}</div>
+              <div style="font-size:13px; padding-top:5px;"><a href="{{ e.url }}" style="color:#5635b2; font-weight:700; text-decoration:underline;">Learn more</a></div>
+            </td></tr>
+          </table>
+          {%- endfor %}
+        </td></tr>
+{{ ui.cta('See the full changelog', urls.changelog, 'Everything we ship lands there weekly — this email is just the monthly roundup.') }}
+{% call ui.para(color='#575072', size=13, lh=20, top=18) %}Something here you asked for? That's not a coincidence — reply and tell me what should be in next month's edition.{% endcall %}
+{{ ui.signature('John Ababseh', 'Product Manager · AutoGPT', 'john.ababseh@agpt.co') }}
+{{ ui.close_row('The monthly update lands the same week each month.', 'Choose which emails you get', urls.prefs) }}
+      </table>
+    </td></tr>
+{{ ui.page_close() }}
+{{ ui.legal_footer('You are receiving the monthly AutoGPT Update because you subscribe to the platform, at ' ~ user_email ~ '.', 'Unsubscribe', urls.unsubscribe, discord=true) }}
+
+</td></tr>
+</table>
+</body></html>

@@ -1,0 +1,159 @@
+{#- Plain-text part of the billing and account messages, branching on the same
+    `kind` as the HTML template and assembled from the same slots. The trial
+    branch of lifecycle.html.j2 has no counterpart here on purpose: the
+    platform does not offer trials and never emits that kind. -#}
+{{ subject }}
+
+{{ preheader }}
+
+{% if kind == 'welcome' %}
+PLAN ACTIVE - {{ plan.label | upper }}
+
+You're in. Let's put an agent to work.
+
+Hi {{ user_name }} - your {{ plan.name }} subscription is active and everything on your
+plan is unlocked. Here's your setup at a glance:
+
+Plan:   {{ plan.label }}
+Price:  {{ plan.price_display }}
+Renews: {{ renews_label }}
+
+The best first step takes about ten minutes: pick a ready-made agent from the
+Marketplace, connect it to something you actually use, and watch it run.
+
+Build your first agent: {{ urls.marketplace }}
+
+Three good places to start
+- The quick-start guide - from zero to a running agent: {{ urls.docs }}
+- The Marketplace - proven agents you can use as-is: {{ urls.marketplace }}
+- Discord - where builders share what's working: {{ urls.discord }}
+
+Toran Bruce Richards
+Founder - AutoGPT
+
+You can change or cancel your plan any time: {{ urls.billing }}
+{% elif kind == 'payment_failed' %}
+NEEDS YOU - PAYMENT DECLINED
+
+Your payment didn't go through.
+
+Hi {{ user_name }} - we tried to charge your card for this {{ plan.cycle_noun }}'s renewal on your
+{{ plan.name }} plan, and the payment was declined. This happens: cards expire, banks
+get cautious, limits get hit. Your plan and your agents keep running normally
+while we retry.
+
+Amount:     {{ amount_display }}
+Card:       {{ card.brand }} .... {{ card.last4 }}
+Next retry: {{ next_retry_label }} - automatic
+
+If the card details are out of date, fixing it takes about a minute.
+
+Update payment method: {{ urls.billing }}
+
+You will only hear about this again if the automatic retries fail.
+{% elif kind == 'final_notice' %}
+FINAL NOTICE - PLAN PAUSES {{ pauses_label | upper }}
+
+Last try - let's keep your agents running.
+
+Hi {{ user_name }} - we've attempted this {{ plan.cycle_noun }}'s payment for your {{ plan.name }} plan
+several times over the past two weeks, and each attempt was declined. This is
+the final notice before your plan pauses.
+
+Amount due:     {{ amount_display }}
+Plan pauses on: {{ pauses_label }}
+What pauses:    Scheduled runs & {{ plan.name }} features
+
+If the plan pauses, scheduled agents stop running until a payment succeeds -
+then everything picks up exactly where it left off. Your agents and their data
+are kept safe; nothing is deleted.
+
+Update payment method: {{ urls.billing }}
+
+Stuck? Reply to this email - a human reads it.
+{% elif kind == 'cancel_confirmed' %}
+YOUR PLAN - ENDS {{ access_until_label | upper }}
+
+Cancellation confirmed.
+
+Hi {{ user_name }} - we've cancelled the renewal on your {{ plan.name }} plan, as requested.
+No further charges will be made, and you keep full {{ plan.name }} access for the time
+you've already paid for.
+
+Plan:         {{ plan.label }}
+Access until: {{ access_until_label }}
+After that:   Agents pause - work kept safe
+
+When the plan ends, your agents and everything you've built stay saved in your
+account - they just stop running on schedule. Come back any time and switch
+them on again.
+
+Resume my plan: {{ urls.billing }}
+
+Thanks for building with us. If something didn't work the way you needed,
+reply and tell us - it comes straight to me, and I read every one.
+
+John Ababseh
+Product Manager - AutoGPT
+john.ababseh@agpt.co
+{% elif kind == 'cancel_reversed' %}
+YOUR PLAN - RESUMED
+
+Welcome back - your plan continues.
+
+Hi {{ user_name }} - you've resumed your {{ plan.name }} plan, so the cancellation is off.
+Nothing pauses, nothing changes: your agents keep running exactly as before.
+
+Plan:         {{ plan.label }}
+Next renewal: {{ renews_label }}
+Price:        {{ plan.price_display }}
+
+About that earlier email: the message saying your plan would end no longer
+applies - you can safely ignore it.
+
+Back to my agents: {{ urls.dashboard }}
+{% elif kind == 'ended' %}
+YOUR PLAN - ENDED {{ ended_label | upper }}
+
+Your plan has ended.
+
+{% if due_to_payment %}
+Hi {{ user_name }} - we couldn't collect payment for your {{ plan.name }} plan after several
+attempts, so it ended today and paid features are now switched off. Here's
+exactly where things stand:
+
+Ended on:    {{ ended_label }}
+Why:         Payment could not be collected
+Your agents: Paused - saved as you left them
+Your data:   Kept safe in your account
+{% else %}
+Hi {{ user_name }} - your {{ plan.name }} plan reached the end of its billing period today, as
+scheduled after your cancellation, so paid features are now switched off.
+Here's exactly where things stand:
+
+Ended on:    {{ ended_label }}
+Your agents: Paused - saved as you left them
+Your data:   Kept safe in your account
+{% endif %}
+
+Everything you built is one click from running again. Restart whenever you're
+ready and your agents pick up where they left off - schedules, connections and
+all.
+
+Restart my plan: {{ urls.billing }}
+
+Not the right time? I'd genuinely love to hear what would have made {{ plan.name }}
+worth keeping - just reply, it comes straight to me.
+
+John Ababseh
+Product Manager - AutoGPT
+john.ababseh@agpt.co
+{% endif %}
+
+--
+This is a service message about the AutoGPT account for {{ user_email }} - it's
+sent even if you've opted out of product news.
+Email preferences: {{ urls.prefs }}
+
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
+Unsubscribe: {{ urls.unsubscribe }}

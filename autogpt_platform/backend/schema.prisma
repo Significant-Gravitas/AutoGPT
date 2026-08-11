@@ -111,17 +111,21 @@ model User {
   stripeCustomerId String?
   topUpConfig      Json?
 
-  maxEmailsPerDay              Int     @default(3)
-  notifyOnAgentRun             Boolean @default(true)
-  notifyOnZeroBalance          Boolean @default(true)
-  notifyOnLowBalance           Boolean @default(true)
-  notifyOnBlockExecutionFailed Boolean @default(true)
-  notifyOnContinuousAgentError Boolean @default(true)
-  notifyOnDailySummary         Boolean @default(true)
-  notifyOnWeeklySummary        Boolean @default(true)
-  notifyOnMonthlySummary       Boolean @default(true)
-  notifyOnAgentApproved        Boolean @default(true)
-  notifyOnAgentRejected        Boolean @default(true)
+  maxEmailsPerDay Int @default(3)
+
+  // The volume knob from the Briefing footer: a frequency plus two switches,
+  // instead of one unsubscribe trapdoor.
+  briefingFrequency    BriefingFrequency @default(WEEKLY)
+  alertsEnabled        Boolean           @default(true)
+  notifyOnStoreVerdict Boolean           @default(true)
+
+  // Last Briefing actually sent, so a re-run of the scheduler can't send the
+  // same period twice and the next period knows where to start.
+  lastBriefingAt DateTime?
+
+  // Set the first time this user pays for a plan. Doubles as the "first
+  // subscription" test for the welcome email and its idempotency key.
+  welcomeEmailSentAt DateTime?
 
   timezone String @default("not-set")
 
@@ -153,6 +157,7 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  AlertConditions       AlertCondition[]
   PushSubscriptions     PushSubscription[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
@@ -699,19 +704,87 @@ model AgentPreset {
   @@index([organizationId])
 }
 
+// The four product-notification families plus the account/billing service
+// messages. Every email the platform sends is one of these; there is
+// deliberately no per-run notification type — a finished run is evidence for
+// the Briefing's highlights, not a message of its own.
 enum NotificationType {
-  AGENT_RUN
-  ZERO_BALANCE
+  BRIEFING
+  ALERT
+  VERDICT
+  OPS
+  SUBSCRIPTION_WELCOME
+  PAYMENT_FAILED
+  PAYMENT_FINAL_NOTICE
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_RESUMED
+  SUBSCRIPTION_ENDED
+}
+
+// How often the Briefing is delivered. OFF is the "alerts only" / "pause"
+// half of the footer volume knob; `alertsEnabled` carries the other half.
+enum BriefingFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  OFF
+}
+
+// Every condition the Alert family can fire for. The last four have no
+// equivalent in the notification surface this replaces.
+enum AlertCause {
+  AUTH_EXPIRED
+  PAUSED_FAILURES
+  BLOCK_FAILED
+  CONTINUOUS_ERROR
+  AWAITING_REVIEW
+  AWAITING_INPUT
   LOW_BALANCE
-  BLOCK_EXECUTION_FAILED
-  CONTINUOUS_AGENT_ERROR
-  DAILY_SUMMARY
-  WEEKLY_SUMMARY
-  MONTHLY_SUMMARY
-  REFUND_REQUEST
-  REFUND_PROCESSED
-  AGENT_APPROVED
-  AGENT_REJECTED
+  ZERO_BALANCE
+  GUARDRAIL
+}
+
+enum AlertConditionStatus {
+  // Raised, inside the debounce window, not yet emailed.
+  PENDING
+  // Emailed. Blocks the same cause from re-alerting for 24h.
+  SENT
+  // Deduped or capped — folds into the next Briefing's attention block
+  // instead of re-pinging the inbox.
+  DEFERRED
+  // Cleared before it was ever sent, or fixed afterwards.
+  RESOLVED
+}
+
+// One row per live "the platform is blocked on the human" condition. The
+// alert engine debounces (10 min), coalesces, dedupes per cause per 24h and
+// caps sends at two a day off this table; anything it can't send lands in the
+// Briefing rather than being dropped.
+model AlertCondition {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cause AlertCause
+  // Stable identity of the underlying problem (e.g. "auth_expired:gmail:<graph
+  // id>"), so re-raising the same condition updates one row instead of piling
+  // up duplicates, and resolving it can find the row without the payload.
+  causeKey String
+  data     Json
+
+  status     AlertConditionStatus @default(PENDING)
+  sentAt     DateTime?
+  resolvedAt DateTime?
+  // Set once the condition has been carried into a Briefing's attention
+  // block, so the next Briefing doesn't repeat it.
+  briefedAt DateTime?
+
+  @@unique([userId, causeKey])
+  @@index([status, createdAt])
+  @@index([userId, status])
 }
 
 model NotificationEvent {
@@ -1085,6 +1158,13 @@ model AgentGraphExecution {
 
   stats Json?
 
+  // Scored once, when the run reaches a terminal state, from signals we
+  // already have (outcome, first-ever success, novel output, cost/duration
+  // anomaly). Assembling a Briefing is then a ranked read rather than a scan
+  // of every run in the period. Null for runs that finished before scoring
+  // existed, and for runs still in flight.
+  interestingness Float?
+
   // Parent-child execution tracking for nested agent graphs
   parentGraphExecutionId String?
   ParentExecution        AgentGraphExecution?  @relation("ParentChildExecution", fields: [parentGraphExecutionId], references: [id], onDelete: SetNull)
@@ -1110,6 +1190,8 @@ model AgentGraphExecution {
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
+  // Briefing assembly: top-scored runs for one user over one period.
+  @@index([userId, endedAt, interestingness])
   @@index([agentPresetId])
   @@index([expertId, createdAt])
   @@index([shareToken])

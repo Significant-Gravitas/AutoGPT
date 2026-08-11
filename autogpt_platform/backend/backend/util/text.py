@@ -2,12 +2,9 @@ import asyncio
 import logging
 import re
 
-import bleach
-from bleach.css_sanitizer import CSSSanitizer
 from jinja2 import BaseLoader
 from jinja2.exceptions import TemplateError
 from jinja2.sandbox import SandboxedEnvironment
-from markupsafe import Markup
 
 logger = logging.getLogger(__name__)
 
@@ -42,77 +39,6 @@ class TextFormatter:
 
         self.env.filters["format"] = format_filter_for_jinja2
 
-        # Define allowed CSS properties (sorted alphabetically, if you add more)
-        allowed_css_properties = [
-            "background-color",
-            "border",
-            "border-bottom",
-            "border-color",
-            "border-left",
-            "border-radius",
-            "border-right",
-            "border-style",
-            "border-top",
-            "border-width",
-            "bottom",
-            "box-shadow",
-            "clear",
-            "color",
-            "display",
-            "float",
-            "font-family",
-            "font-size",
-            "font-weight",
-            "height",
-            "left",
-            "letter-spacing",
-            "line-height",
-            "margin-bottom",
-            "margin-left",
-            "margin-right",
-            "margin-top",
-            "padding",
-            "position",
-            "right",
-            "text-align",
-            "text-decoration",
-            "text-shadow",
-            "text-transform",
-            "top",
-            "width",
-        ]
-
-        self.css_sanitizer = CSSSanitizer(allowed_css_properties=allowed_css_properties)
-
-        # Define allowed tags (sorted alphabetically, if you add more)
-        self.allowed_tags = [
-            "a",
-            "b",
-            "br",
-            "div",
-            "em",
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-            "i",
-            "img",
-            "li",
-            "p",
-            "span",
-            "strong",
-            "u",
-            "ul",
-        ]
-
-        # Define allowed attributes to be used on specific tags
-        self.allowed_attributes = {
-            "*": ["class", "style"],
-            "a": ["href"],
-            "img": ["src"],
-        }
-
     async def format_string(
         self,
         template_str: str,
@@ -140,56 +66,7 @@ class TextFormatter:
         except TemplateError as e:
             raise ValueError(e) from e
 
-    async def format_email(
-        self,
-        subject_template: str,
-        base_template: str,
-        content_template: str,
-        data=None,
-        **kwargs,
-    ) -> tuple[str, str]:
-        """
-        Special handling for email templates where content needs to be rendered as HTML
-        """
-        # First render the content template
-        content = await self.format_string(content_template, data, **kwargs)
 
-        # Clean the HTML + CSS but don't escape it
-        clean_content = bleach.clean(
-            content,
-            tags=self.allowed_tags,
-            attributes=self.allowed_attributes,
-            css_sanitizer=self.css_sanitizer,
-            strip=True,
-        )
-
-        # Mark the cleaned HTML as safe using Markup
-        safe_content = Markup(clean_content)
-
-        # Render subject
-        rendered_subject_template = await self.format_string(
-            subject_template, data, **kwargs
-        )
-
-        # Create restricted env for HTML template (defense-in-depth)
-        html_env = _RestrictedEnvironment(
-            loader=BaseLoader(), autoescape=True, enable_async=True
-        )
-        html_env.filters["safe"] = lambda x: (
-            x if isinstance(x, Markup) else Markup(str(x))
-        )
-
-        # Render base template with the safe content
-        template = html_env.from_string(base_template)
-        rendered_base_template = await template.render_async(
-            data={
-                "message": safe_content,
-                "title": rendered_subject_template,
-                "unsubscribe_link": kwargs.get("unsubscribe_link", ""),
-            }
-        )
-
-        return rendered_subject_template, rendered_base_template
 
 
 def _safe_range(*args: int) -> range:

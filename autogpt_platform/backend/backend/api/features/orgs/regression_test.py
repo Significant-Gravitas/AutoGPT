@@ -1526,16 +1526,9 @@ class TestRegressionUserSettings:
         mock_user = MagicMock()
         mock_user.id = USER_ID
         mock_user.email = "test@example.com"
-        mock_user.notifyOnAgentRun = True
-        mock_user.notifyOnZeroBalance = False
-        mock_user.notifyOnLowBalance = False
-        mock_user.notifyOnBlockExecutionFailed = False
-        mock_user.notifyOnContinuousAgentError = False
-        mock_user.notifyOnDailySummary = False
-        mock_user.notifyOnWeeklySummary = False
-        mock_user.notifyOnMonthlySummary = False
-        mock_user.notifyOnAgentApproved = False
-        mock_user.notifyOnAgentRejected = False
+        mock_user.briefingFrequency = "WEEKLY"
+        mock_user.alertsEnabled = True
+        mock_user.notifyOnStoreVerdict = True
         mock_user.maxEmailsPerDay = 3
         self.mock_user_actions.find_unique_or_raise = AsyncMock(return_value=mock_user)
 
@@ -1571,16 +1564,9 @@ class TestRegressionUserSettings:
         mock_user.stripeCustomerId = None
         mock_user.topUpConfig = None
         mock_user.onboardingCompletedAt = None
-        mock_user.notifyOnAgentRun = True
-        mock_user.notifyOnZeroBalance = False
-        mock_user.notifyOnLowBalance = False
-        mock_user.notifyOnBlockExecutionFailed = False
-        mock_user.notifyOnContinuousAgentError = False
-        mock_user.notifyOnDailySummary = False
-        mock_user.notifyOnWeeklySummary = False
-        mock_user.notifyOnMonthlySummary = False
-        mock_user.notifyOnAgentApproved = False
-        mock_user.notifyOnAgentRejected = False
+        mock_user.briefingFrequency = "WEEKLY"
+        mock_user.alertsEnabled = True
+        mock_user.notifyOnStoreVerdict = True
         mock_user.maxEmailsPerDay = 3
         mock_user.subscriptionTier = "NO_TIER"
         self.mock_user_actions.update = AsyncMock(return_value=mock_user)

@@ -11,7 +11,7 @@ from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
-from prisma.enums import NotificationType
+from prisma.enums import BriefingFrequency
 from prisma.errors import UniqueViolationError
 from prisma.models import AuthUser
 from prisma.models import User as PrismaUser
@@ -503,41 +503,14 @@ async def get_active_users_ids() -> list[str]:
 
 
 async def get_user_notification_preference(user_id: str) -> NotificationPreference:
+    """The volume knob: a Briefing frequency plus two switches. Billing and
+    account messages are service mail and are not gated by any of it."""
     try:
-        user = await PrismaUser.prisma().find_unique_or_raise(
-            where={"id": user_id},
-        )
-
-        # enable notifications by default if user has no notification preference (shouldn't ever happen though)
-        preferences: dict[NotificationType, bool] = {
-            NotificationType.AGENT_RUN: user.notifyOnAgentRun or False,
-            NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or False,
-            NotificationType.LOW_BALANCE: user.notifyOnLowBalance or False,
-            NotificationType.BLOCK_EXECUTION_FAILED: user.notifyOnBlockExecutionFailed
-            or False,
-            NotificationType.CONTINUOUS_AGENT_ERROR: user.notifyOnContinuousAgentError
-            or False,
-            NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or False,
-            NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or False,
-            NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or False,
-            NotificationType.AGENT_APPROVED: user.notifyOnAgentApproved or False,
-            NotificationType.AGENT_REJECTED: user.notifyOnAgentRejected or False,
-        }
-        daily_limit = user.maxEmailsPerDay or 3
-        notification_preference = NotificationPreference(
-            user_id=user.id,
-            email=user.email,
-            preferences=preferences,
-            daily_limit=daily_limit,
-            # TODO with other changes later, for now we just will email them
-            emails_sent_today=0,
-            last_reset_date=datetime.now(),
-        )
-        return NotificationPreference.model_validate(notification_preference)
-
+        user = await PrismaUser.prisma().find_unique_or_raise(where={"id": user_id})
+        return _preference_from_user(user)
     except Exception as e:
         raise DatabaseError(
-            f"Failed to upsert user notification preference for user {user_id}: {e}"
+            f"Failed to get user notification preference for user {user_id}: {e}"
         ) from e
 
 
@@ -545,91 +518,39 @@ async def update_user_notification_preference(
     user_id: str, data: NotificationPreferenceDTO
 ) -> NotificationPreference:
     try:
-        update_data: UserUpdateInput = {}
+        update_data: UserUpdateInput = {
+            "briefingFrequency": data.briefing_frequency,
+            "alertsEnabled": data.alerts_enabled,
+            "notifyOnStoreVerdict": data.store_verdicts_enabled,
+        }
         if data.email:
             update_data["email"] = data.email
-        if NotificationType.AGENT_RUN in data.preferences:
-            update_data["notifyOnAgentRun"] = data.preferences[
-                NotificationType.AGENT_RUN
-            ]
-        if NotificationType.ZERO_BALANCE in data.preferences:
-            update_data["notifyOnZeroBalance"] = data.preferences[
-                NotificationType.ZERO_BALANCE
-            ]
-        if NotificationType.LOW_BALANCE in data.preferences:
-            update_data["notifyOnLowBalance"] = data.preferences[
-                NotificationType.LOW_BALANCE
-            ]
-        if NotificationType.BLOCK_EXECUTION_FAILED in data.preferences:
-            update_data["notifyOnBlockExecutionFailed"] = data.preferences[
-                NotificationType.BLOCK_EXECUTION_FAILED
-            ]
-        if NotificationType.CONTINUOUS_AGENT_ERROR in data.preferences:
-            update_data["notifyOnContinuousAgentError"] = data.preferences[
-                NotificationType.CONTINUOUS_AGENT_ERROR
-            ]
-        if NotificationType.DAILY_SUMMARY in data.preferences:
-            update_data["notifyOnDailySummary"] = data.preferences[
-                NotificationType.DAILY_SUMMARY
-            ]
-        if NotificationType.WEEKLY_SUMMARY in data.preferences:
-            update_data["notifyOnWeeklySummary"] = data.preferences[
-                NotificationType.WEEKLY_SUMMARY
-            ]
-        if NotificationType.MONTHLY_SUMMARY in data.preferences:
-            update_data["notifyOnMonthlySummary"] = data.preferences[
-                NotificationType.MONTHLY_SUMMARY
-            ]
-        if NotificationType.AGENT_APPROVED in data.preferences:
-            update_data["notifyOnAgentApproved"] = data.preferences[
-                NotificationType.AGENT_APPROVED
-            ]
-        if NotificationType.AGENT_REJECTED in data.preferences:
-            update_data["notifyOnAgentRejected"] = data.preferences[
-                NotificationType.AGENT_REJECTED
-            ]
         if data.daily_limit:
             update_data["maxEmailsPerDay"] = data.daily_limit
 
-        user = await PrismaUser.prisma().update(
-            where={"id": user_id},
-            data=update_data,
-        )
+        user = await PrismaUser.prisma().update(where={"id": user_id}, data=update_data)
         if not user:
             raise ValueError(f"User not found with ID: {user_id}")
 
-        # Invalidate cache for this user since notification preferences are part of user data
+        # Invalidate cache for this user since notification preferences are
+        # part of user data
         get_user_by_id.cache_delete(user_id)
-
-        preferences: dict[NotificationType, bool] = {
-            NotificationType.AGENT_RUN: user.notifyOnAgentRun or True,
-            NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or True,
-            NotificationType.LOW_BALANCE: user.notifyOnLowBalance or True,
-            NotificationType.BLOCK_EXECUTION_FAILED: user.notifyOnBlockExecutionFailed
-            or True,
-            NotificationType.CONTINUOUS_AGENT_ERROR: user.notifyOnContinuousAgentError
-            or True,
-            NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or True,
-            NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or True,
-            NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or True,
-            NotificationType.AGENT_APPROVED: user.notifyOnAgentApproved or True,
-            NotificationType.AGENT_REJECTED: user.notifyOnAgentRejected or True,
-        }
-        notification_preference = NotificationPreference(
-            user_id=user.id,
-            email=user.email,
-            preferences=preferences,
-            daily_limit=user.maxEmailsPerDay or 3,
-            # TODO with other changes later, for now we just will email them
-            emails_sent_today=0,
-            last_reset_date=datetime.now(),
-        )
-        return NotificationPreference.model_validate(notification_preference)
-
+        return _preference_from_user(user)
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user notification preference for user {user_id}: {e}"
         ) from e
+
+
+def _preference_from_user(user: PrismaUser) -> NotificationPreference:
+    return NotificationPreference(
+        user_id=user.id,
+        email=user.email,
+        briefing_frequency=BriefingFrequency(user.briefingFrequency),
+        alerts_enabled=user.alertsEnabled,
+        store_verdicts_enabled=user.notifyOnStoreVerdict,
+        daily_limit=user.maxEmailsPerDay or 3,
+    )
 
 
 async def set_user_email_verification(user_id: str, verified: bool) -> None:
@@ -648,24 +569,18 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
 
 
 async def disable_all_user_notifications(user_id: str) -> None:
-    """Disable all notification preferences for a user.
+    """Turn the volume knob all the way down.
 
-    Used when user's email bounces/is inactive to prevent any future notifications.
+    Used when a user's email bounces or is marked inactive, so we stop trying
+    to reach an address that cannot receive mail.
     """
     try:
         await PrismaUser.prisma().update(
             where={"id": user_id},
             data={
-                "notifyOnAgentRun": False,
-                "notifyOnZeroBalance": False,
-                "notifyOnLowBalance": False,
-                "notifyOnBlockExecutionFailed": False,
-                "notifyOnContinuousAgentError": False,
-                "notifyOnDailySummary": False,
-                "notifyOnWeeklySummary": False,
-                "notifyOnMonthlySummary": False,
-                "notifyOnAgentApproved": False,
-                "notifyOnAgentRejected": False,
+                "briefingFrequency": BriefingFrequency.OFF,
+                "alertsEnabled": False,
+                "notifyOnStoreVerdict": False,
             },
         )
         # Invalidate cache for this user
@@ -725,21 +640,17 @@ async def unsubscribe_user_by_token(token: str) -> None:
             raise ValueError("Invalid token signature")
 
         user = await get_user_by_id(user_id)
+        # One-click unsubscribe turns everything off, including store
+        # verdicts — this is the trapdoor, and the volume knob in the Briefing
+        # footer is what most people should be using instead.
         await update_user_notification_preference(
             user.id,
             NotificationPreferenceDTO(
                 email=user.email,
+                briefing_frequency=BriefingFrequency.OFF,
+                alerts_enabled=False,
+                store_verdicts_enabled=False,
                 daily_limit=0,
-                preferences={
-                    NotificationType.AGENT_RUN: False,
-                    NotificationType.ZERO_BALANCE: False,
-                    NotificationType.LOW_BALANCE: False,
-                    NotificationType.BLOCK_EXECUTION_FAILED: False,
-                    NotificationType.CONTINUOUS_AGENT_ERROR: False,
-                    NotificationType.DAILY_SUMMARY: False,
-                    NotificationType.WEEKLY_SUMMARY: False,
-                    NotificationType.MONTHLY_SUMMARY: False,
-                },
             ),
         )
     except Exception as e:

@@ -1,0 +1,28 @@
+{#- Renders two lines: line 1 = subject, line 2 = preheader.
+    subject_note is an optional short server-built phrase, e.g.
+    "Lead Scout found 41 leads" (from the top highlight). -#}
+{%- set runs = totals.runs -%}
+{%- set failed = totals.failed | default(0) -%}
+{%- set attn = attention | default([]) -%}
+{%- set attn_count = attn | length -%}
+{%- set runs_fmt = '{:,}'.format(runs) -%}
+{%- set run_word = 'run' if runs == 1 else 'runs' -%}
+{%- set active = totals.agents_active -%}
+{%- set quiet = (mode | default('standard')) == 'quiet' -%}
+{%- set bad_period = (not quiet) and runs > 0 and failed >= 3 and failed * 3 >= runs -%}
+{%- if quiet -%}
+Quiet {{ period.adjective }}: {{ subject_note | default(runs_fmt ~ ' ' ~ run_word ~ ', nothing needed you') }}
+{% if highlights %}{{ highlights[0].agent }} {{ highlights[0].gist }}{% else %}Everything ran on schedule; no issues and nothing waiting on you.{% endif %}
+{%- elif bad_period -%}
+{{ failed }} of {{ runs_fmt }} runs failed {{ period.noun }}{% if attn_count > 0 %} — {{ attn_count }} {{ 'thing needs' if attn_count == 1 else 'things need' }} you{% endif %}
+{% if attn %}{{ attn[0].title }}{% if attn_count == 2 %} and 1 more is waiting on you{% elif attn_count > 2 %} and {{ attn_count - 1 }} more are waiting on you{% endif %}.{% else %}See what went wrong and where.{% endif %}
+{%- elif attn_count > 0 -%}
+{{ runs_fmt }} {{ run_word }}, {{ '1 thing needs' if attn_count == 1 else attn_count ~ ' things need' }} you{% if subject_note %} · {{ subject_note }}{% endif %}
+{{ attn[0].title }}{% if attn_count > 1 %} and {{ attn_count - 1 }} more{% endif %}{% if failed == 0 %} — the rest ran clean.{% else %} — plus {{ failed }} failed {{ 'run' if failed == 1 else 'runs' }}.{% endif %}
+{%- elif failed > 0 -%}
+{{ runs_fmt }} {{ run_word }}, {{ failed }} failed — nothing blocked on you{% if subject_note %} · {{ subject_note }}{% endif %}
+{% if highlights %}{{ highlights[0].agent }} {{ highlights[0].gist }}{% else %}The failures didn’t block anything; details inside.{% endif %}
+{%- else -%}
+All clear: {{ runs_fmt }} {{ run_word }}{% if active > 1 %} across {{ active }} agents{% endif %}{% if subject_note %} · {{ subject_note }}{% endif %}
+{% if highlights %}{{ highlights[0].agent }} {{ highlights[0].gist }}{% else %}Every run finished clean; nothing is waiting on you.{% endif %}
+{%- endif -%}

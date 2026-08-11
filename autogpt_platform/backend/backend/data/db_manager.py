@@ -95,7 +95,9 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
-from backend.data.generate_data import get_user_execution_summary_data
+from backend.data.alerts import raise_condition as raise_alert_condition
+from backend.data.alerts import resolve_condition as resolve_alert_condition
+from backend.data.briefing_data import count_scheduled_agents
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -115,15 +117,6 @@ from backend.data.human_review import (
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
-)
-from backend.data.notifications import (
-    clear_all_user_notification_batches,
-    create_or_add_to_user_notification_batch,
-    empty_user_notification_batch,
-    get_all_batches_by_type,
-    get_user_notification_batch,
-    get_user_notification_oldest_message_in_batch,
-    remove_notifications_from_batch,
 )
 from backend.data.onboarding import increment_onboarding_runs
 from backend.data.org_credit import get_org_credits as _get_org_credits_raw
@@ -343,19 +336,6 @@ class DatabaseManager(AppService):
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
 
-    # ============ Notifications ============ #
-    clear_all_user_notification_batches = _(clear_all_user_notification_batches)
-    create_or_add_to_user_notification_batch = _(
-        create_or_add_to_user_notification_batch
-    )
-    empty_user_notification_batch = _(empty_user_notification_batch)
-    remove_notifications_from_batch = _(remove_notifications_from_batch)
-    get_all_batches_by_type = _(get_all_batches_by_type)
-    get_user_notification_batch = _(get_user_notification_batch)
-    get_user_notification_oldest_message_in_batch = _(
-        get_user_notification_oldest_message_in_batch
-    )
-
     # ============ Library ============ #
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
@@ -404,8 +384,10 @@ class DatabaseManager(AppService):
     cleanup_orphaned_embeddings = _(cleanup_orphaned_embeddings)
     unified_hybrid_search = _(unified_hybrid_search)
 
-    # ============ Summary Data ============ #
-    get_user_execution_summary_data = _(get_user_execution_summary_data)
+    # ============ Alerts ============ #
+    raise_alert_condition = _(raise_alert_condition)
+    resolve_alert_condition = _(resolve_alert_condition)
+    count_scheduled_agents = _(count_scheduled_agents)
 
     # ============ Chat Sharing ============ #
     # Exposed so the run_agent tool (running in the CoPilotExecutor
@@ -670,18 +652,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_email_verification = d.get_user_email_verification
     get_user_notification_preference = d.get_user_notification_preference
 
-    # ============ Notifications ============ #
-    clear_all_user_notification_batches = d.clear_all_user_notification_batches
-    create_or_add_to_user_notification_batch = (
-        d.create_or_add_to_user_notification_batch
-    )
-    empty_user_notification_batch = d.empty_user_notification_batch
-    remove_notifications_from_batch = d.remove_notifications_from_batch
-    get_all_batches_by_type = d.get_all_batches_by_type
-    get_user_notification_batch = d.get_user_notification_batch
-    get_user_notification_oldest_message_in_batch = (
-        d.get_user_notification_oldest_message_in_batch
-    )
+    # ============ Alerts ============ #
+    raise_alert_condition = d.raise_alert_condition
+    resolve_alert_condition = d.resolve_alert_condition
+    count_scheduled_agents = d.count_scheduled_agents
 
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message
@@ -735,9 +709,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Search ============ #
     unified_hybrid_search = d.unified_hybrid_search
-
-    # ============ Summary Data ============ #
-    get_user_execution_summary_data = d.get_user_execution_summary_data
 
     # ============ Chat Sharing ============ #
     link_new_execution_to_chat_share = d.link_new_execution_to_chat_share

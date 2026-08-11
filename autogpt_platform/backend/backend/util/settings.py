@@ -424,6 +424,64 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Senders are separated so subscription mail, product notifications and
+    # internal ops mail each carry their own reputation. Marketing mail (the
+    # onboarding tour and the monthly changelog) is sent from MailerLite as
+    # hello@news.agpt.co and has no sender here.
+    billing_sender_email: str = Field(
+        default="AutoGPT <billing@agpt.co>",
+        description="Sender for subscription and account service messages",
+    )
+    product_sender_email: str = Field(
+        default="AutoGPT <notify@agpt.co>",
+        description="Sender for the Briefing, Alert and Verdict families",
+    )
+    ops_sender_email: str = Field(
+        default="AutoGPT Platform <platform@agpt.co>",
+        description="Sender for internal ops mail to the refunds team",
+    )
+    postmark_transactional_stream: str = Field(
+        default="outbound",
+        description=(
+            "Postmark message stream for Alerts, Briefings and account mail. "
+            "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    email_asset_base_url: str = Field(
+        default="https://cdn.agpt.co/email",
+        description=(
+            "Base URL the email hero art and logo are served from. Outlook "
+            "does not render inline SVG and Gmail does not display data-URI "
+            "images, so these must be hosted files."
+        ),
+    )
+    docs_base_url: str = Field(
+        default="https://docs.agpt.co",
+        description="Documentation site linked from emails",
+    )
+    discord_invite_url: str = Field(
+        default="https://discord.gg/autogpt",
+        description="Discord invite linked from email footers",
+    )
+    admin_panel_base_url: str = Field(
+        default="https://admin.agpt.co",
+        description="Admin panel base URL, deep-linked from internal ops mail",
+    )
+
+    # MailerLite owns the onboarding tour and the monthly changelog. The
+    # backend's only job is managing who is in each audience.
+    mailerlite_onboarding_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group whose membership triggers the six-email "
+            "'Subscription Onboarding — White Glove Tour' automation"
+        ),
+    )
+    mailerlite_changelog_group_id: str = Field(
+        default="",
+        description="MailerLite group that receives the monthly changelog campaign",
+    )
+
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",
@@ -713,6 +771,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     postmark_webhook_token: str = Field(
         default="",
         description="The token to use for the Postmark webhook",
+    )
+
+    mailerlite_api_token: str = Field(
+        default="",
+        description="MailerLite API token used to manage tour and changelog audiences",
     )
 
     unsubscribe_secret_key: str = Field(

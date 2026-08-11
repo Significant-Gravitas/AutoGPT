@@ -21,7 +21,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType, SubscriptionTier
+from prisma.enums import BriefingFrequency, CreditTransactionType, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -77,29 +77,17 @@ class User(BaseModel):
         default=SubscriptionTier.NO_TIER, description="User subscription tier"
     )
 
-    # Notification preferences
+    # Notification preferences: the volume knob, not a checkbox list.
     max_emails_per_day: int = Field(default=3, description="Maximum emails per day")
-    notify_on_agent_run: bool = Field(default=True, description="Notify on agent run")
-    notify_on_zero_balance: bool = Field(
-        default=True, description="Notify on zero balance"
+    briefing_frequency: BriefingFrequency = Field(
+        default=BriefingFrequency.WEEKLY,
+        description="How often the Briefing digest is delivered (OFF = alerts only)",
     )
-    notify_on_low_balance: bool = Field(
-        default=True, description="Notify on low balance"
+    alerts_enabled: bool = Field(
+        default=True, description="Send Alerts when something is blocked on the user"
     )
-    notify_on_block_execution_failed: bool = Field(
-        default=True, description="Notify on block execution failure"
-    )
-    notify_on_continuous_agent_error: bool = Field(
-        default=True, description="Notify on continuous agent error"
-    )
-    notify_on_daily_summary: bool = Field(
-        default=True, description="Notify on daily summary"
-    )
-    notify_on_weekly_summary: bool = Field(
-        default=True, description="Notify on weekly summary"
-    )
-    notify_on_monthly_summary: bool = Field(
-        default=True, description="Notify on monthly summary"
+    notify_on_store_verdict: bool = Field(
+        default=True, description="Notify when a store submission is reviewed"
     )
 
     # User timezone for scheduling and time display
@@ -152,16 +140,9 @@ class User(BaseModel):
             top_up_config=top_up_config,
             subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.NO_TIER,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
-            notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
-            notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
-            notify_on_low_balance=prisma_user.notifyOnLowBalance or True,
-            notify_on_block_execution_failed=prisma_user.notifyOnBlockExecutionFailed
-            or True,
-            notify_on_continuous_agent_error=prisma_user.notifyOnContinuousAgentError
-            or True,
-            notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
-            notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
-            notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
+            briefing_frequency=BriefingFrequency(prisma_user.briefingFrequency),
+            alerts_enabled=prisma_user.alertsEnabled,
+            notify_on_store_verdict=prisma_user.notifyOnStoreVerdict,
             timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
         )
 

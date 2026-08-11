@@ -7,21 +7,16 @@ from .late_execution_monitor import (
     LateExecutionMonitor,
     report_late_executions,
 )
-from .notification_monitor import (
-    NotificationJobArgs,
-    process_existing_batches,
-    process_weekly_summary,
-)
+from .notification_monitor import flush_matured_alerts, send_due_briefings
 
 __all__ = [
     "AccuracyMonitor",
     "BlockErrorMonitor",
     "LateExecutionMonitor",
     "LateExecutionException",
-    "NotificationJobArgs",
     "report_execution_accuracy_alerts",
     "report_block_error_rates",
     "report_late_executions",
-    "process_existing_batches",
-    "process_weekly_summary",
+    "flush_matured_alerts",
+    "send_due_briefings",
 ]

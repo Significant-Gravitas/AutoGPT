@@ -29,6 +29,7 @@ from backend.copilot.constants import (
     parse_node_id_from_exec_id,
 )
 from backend.data.execution import get_graph_execution_meta
+from backend.notifications.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
 
 if TYPE_CHECKING:
@@ -237,6 +238,9 @@ async def get_or_create_human_review(
 
     # If pending, return None to continue waiting, otherwise return the review result
     if review.status == ReviewStatus.WAITING:
+        # Nothing sends until a human acts, which is exactly the shape of an
+        # Alert. The engine debounces and coalesces from here.
+        await sync_awaiting_review(user_id, graph_id)
         return None
     else:
         return ReviewResult(
@@ -652,6 +656,11 @@ async def process_all_reviews_for_execution(
     # Execute all updates in parallel and get updated reviews
     updated_reviews = await asyncio.gather(*update_tasks) if update_tasks else []
 
+    # Re-derive the "waiting on your review" alert from the live queue, so
+    # clearing the last item resolves it rather than leaving a stale alert.
+    for review in {(r.userId, r.graphId) for r in reviews_to_process}:
+        await sync_awaiting_review(review[0], review[1])
+
     # Note: Execution resumption is now handled at the API layer after ALL reviews
     # for an execution are processed (both approved and rejected)
 
@@ -722,6 +731,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             "reviewedAt": datetime.now(timezone.utc),
         },
     )
+    await sync_awaiting_review(user_id, graph_exec.graph_id)
     return result
 
 

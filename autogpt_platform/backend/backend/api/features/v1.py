@@ -115,6 +115,7 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.redis_client import get_redis_async
+from backend.notifications import lifecycle
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.tally import extract_business_understanding
 from backend.data.tenancy import get_user_team_ids
@@ -1392,6 +1393,31 @@ async def _claim_stripe_event(event_id: str) -> bool:
         return True
 
 
+async def _notify_checkout_completed(session: dict) -> None:
+    """Hand the completed checkout to the lifecycle emails.
+
+    Needs the subscription itself, because the plan name, cycle and price the
+    welcome email is written from live on the subscription rather than the
+    session. Failures here must not fail the webhook: the customer has paid,
+    and Stripe retrying the whole event to re-send a welcome would be worse
+    than the welcome arriving late.
+    """
+    if session.get("mode") != "subscription":
+        return
+    subscription_id = session.get("subscription")
+    if not subscription_id:
+        return
+    try:
+        subscription = await stripe.Subscription.retrieve_async(subscription_id)
+        await lifecycle.on_checkout_completed(session, dict(subscription))
+    except Exception:
+        logger.warning(
+            "stripe_webhook: could not queue the welcome email for session %s",
+            session.get("id"),
+            exc_info=True,
+        )
+
+
 async def _release_stripe_event(event_id: str) -> None:
     """Release a previously-claimed dedup key so Stripe's retry can rerun."""
     if not event_id:
@@ -1480,6 +1506,11 @@ async def stripe_webhook(request: Request):
                 return Response(status_code=200)
             await UserCredit().fulfill_checkout(session_id=session_id)
             await sync_tier_from_checkout_session(data_object)
+            # Only `checkout.session.completed` drives the welcome email.
+            # `customer.subscription.created` fires at signup too; listening to
+            # both would double-send.
+            if event_type == "checkout.session.completed":
+                await _notify_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",
@@ -1487,6 +1518,12 @@ async def stripe_webhook(request: Request):
             "customer.subscription.deleted",
         ):
             await sync_subscription_from_stripe(data_object)
+            if event_type == "customer.subscription.updated":
+                await lifecycle.on_subscription_updated(
+                    data_object, event_data.get("previous_attributes") or {}
+                )
+            elif event_type == "customer.subscription.deleted":
+                await lifecycle.on_subscription_deleted(data_object)
 
         # `subscription_schedule.updated` is deliberately omitted: our own
         # `SubscriptionSchedule.create` + `.modify` calls in
@@ -1505,6 +1542,7 @@ async def stripe_webhook(request: Request):
 
         if event_type == "invoice.payment_failed":
             await handle_subscription_payment_failure(data_object)
+            await lifecycle.on_payment_failed(data_object)
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1522,6 +1560,7 @@ async def stripe_webhook(request: Request):
                     await handle_subscription_payment_success(invoice_payload)
                 else:
                     await handle_subscription_payment_failure(invoice_payload)
+                    await lifecycle.on_payment_failed(invoice_payload)
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a

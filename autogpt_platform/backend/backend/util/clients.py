@@ -293,7 +293,7 @@ def openrouter_helper_cost_provider() -> str:
 def get_notification_queue() -> "SyncRabbitMQ":
     """Get a thread-cached SyncRabbitMQ notification queue client."""
     from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.notifications.notifications import create_notification_config
+    from backend.notifications.queue import create_notification_config
 
     client = SyncRabbitMQ(create_notification_config())
     client.connect()
@@ -304,7 +304,7 @@ def get_notification_queue() -> "SyncRabbitMQ":
 async def get_async_notification_queue() -> "AsyncRabbitMQ":
     """Get a thread-cached AsyncRabbitMQ notification queue client."""
     from backend.data.rabbitmq import AsyncRabbitMQ
-    from backend.notifications.notifications import create_notification_config
+    from backend.notifications.queue import create_notification_config
 
     client = AsyncRabbitMQ(create_notification_config())
     await client.connect()

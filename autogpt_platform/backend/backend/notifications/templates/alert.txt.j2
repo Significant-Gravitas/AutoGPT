@@ -1,0 +1,37 @@
+{#- Plain-text part of the Alert, built from the same context as the HTML. -#}
+{%- set also_items = also | default([]) -%}
+NEEDS YOU{% if timestamp_label %} - {{ timestamp_label }}{% endif %}
+
+
+{{ primary.headline }}
+
+{{ primary.body }}
+{% if primary.facts %}
+{% for f in primary.facts %}
+{{ f.label }}: {{ f.value }}
+{% endfor %}
+{% endif %}
+
+{{ primary.cta_label }}: {{ primary.cta_url }}
+{% if primary.microcopy %}
+({{ primary.microcopy }})
+{% endif %}
+{% if also_items %}
+
+{{ also_label | default('Also waiting') }}
+{% for a in also_items[:3] %}
+- {{ a.agent }} {{ a.text }}
+  {{ a.link_label }}: {{ a.url }}
+{% endfor %}
+{% if also_items | length > 3 %}
+- + {{ also_items | length - 3 }} more waiting: {{ urls.dashboard }}
+{% endif %}
+{% endif %}
+
+--
+Alerts only fire when your action is needed - never for a successful run.
+Alert settings: {{ urls.settings }}
+
+This alert is about the AutoGPT account for {{ user_email }}.
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
+Unsubscribe: {{ urls.unsubscribe }}

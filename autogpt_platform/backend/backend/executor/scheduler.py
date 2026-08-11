@@ -42,9 +42,8 @@ from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
-    NotificationJobArgs,
-    process_existing_batches,
-    process_weekly_summary,
+    flush_matured_alerts,
+    send_due_briefings,
     report_block_error_rates,
     report_execution_accuracy_alerts,
     report_late_executions,
@@ -1419,23 +1418,6 @@ def _job_to_info(
     return None
 
 
-class NotificationJobInfo(NotificationJobArgs):
-    id: str
-    name: str
-    next_run_time: str
-
-    @staticmethod
-    def from_db(
-        job_args: NotificationJobArgs, job_obj: JobObj
-    ) -> "NotificationJobInfo":
-        return NotificationJobInfo(
-            id=job_obj.id,
-            name=job_obj.name,
-            next_run_time=job_obj.next_run_time.isoformat(),
-            **job_args.model_dump(),
-        )
-
-
 class Scheduler(AppService):
     scheduler: BackgroundScheduler
 
@@ -1528,25 +1510,28 @@ class Scheduler(AppService):
         )
 
         if self.register_system_tasks:
-            # Notification PROCESS WEEKLY SUMMARY
-            # Runs every Monday at 9 AM UTC
+            # ALERTS — empty the ten-minute debounce window. Runs every
+            # minute so a condition raised at :01 goes out at :11, not at the
+            # next quarter hour.
             self.scheduler.add_job(
-                process_weekly_summary,
-                CronTrigger.from_crontab("0 9 * * 1"),
-                id="process_weekly_summary",
+                flush_matured_alerts,
+                id="flush_matured_alerts",
+                trigger="interval",
+                replace_existing=True,
+                seconds=60,
+                jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
+            )
+
+            # BRIEFINGS — hourly, because "07:30 in the user's own timezone"
+            # is a different UTC hour for each of them.
+            self.scheduler.add_job(
+                send_due_briefings,
+                CronTrigger.from_crontab("30 * * * *"),
+                id="send_due_briefings",
                 kwargs={},
                 replace_existing=True,
                 jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
             )
-
-            # Notification PROCESS EXISTING BATCHES
-            # self.scheduler.add_job(
-            #     process_existing_batches,
-            #     id="process_existing_batches",
-            #     CronTrigger.from_crontab("0 12 * * 5"),
-            #     replace_existing=True,
-            #     jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
-            # )
 
             # Notification LATE EXECUTIONS ALERT
             self.scheduler.add_job(
@@ -2010,12 +1995,12 @@ class Scheduler(AppService):
         return results
 
     @expose
-    def execute_process_existing_batches(self, kwargs: dict):
-        process_existing_batches(**kwargs)
+    def execute_flush_matured_alerts(self):
+        flush_matured_alerts()
 
     @expose
-    def execute_process_weekly_summary(self):
-        process_weekly_summary()
+    def execute_send_due_briefings(self):
+        send_due_briefings()
 
     @expose
     def execute_report_late_executions(self):

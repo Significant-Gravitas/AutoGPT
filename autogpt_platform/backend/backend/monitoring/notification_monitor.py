@@ -1,38 +1,28 @@
-"""Notification processing monitoring module."""
+"""Scheduled passes for the email system.
+
+Two jobs, matching the two families that are not purely event-driven: the
+Alert's debounce window has to be emptied on a timer, and the Briefing has to
+catch each user's local morning.
+"""
 
 import logging
-
-from prisma.enums import NotificationType
-from pydantic import BaseModel
 
 from backend.util.clients import get_notification_manager_client
 
 logger = logging.getLogger(__name__)
 
 
-class NotificationJobArgs(BaseModel):
-    notification_types: list[NotificationType]
-    cron: str
-
-
-def process_existing_batches(**kwargs):
-    """Process existing notification batches."""
-    args = NotificationJobArgs(**kwargs)
+def flush_matured_alerts() -> None:
+    """Send everything that has sat out the ten-minute debounce window."""
     try:
-        logging.info(
-            f"Processing existing batches for notification type {args.notification_types}"
-        )
-        get_notification_manager_client().process_existing_batches(
-            args.notification_types
-        )
+        get_notification_manager_client().flush_matured_alerts()
     except Exception as e:
-        logger.exception(f"Error processing existing batches: {e}")
+        logger.exception(f"Error flushing matured alerts: {e}")
 
 
-def process_weekly_summary(**kwargs):
-    """Process weekly summary notifications."""
+def send_due_briefings() -> None:
+    """Assemble briefings for the users whose local ~07:30 this hour is."""
     try:
-        logging.info("Processing weekly summary")
-        get_notification_manager_client().queue_weekly_summary()
+        get_notification_manager_client().send_due_briefings()
     except Exception as e:
-        logger.exception(f"Error processing weekly summary: {e}")
+        logger.exception(f"Error sending due briefings: {e}")

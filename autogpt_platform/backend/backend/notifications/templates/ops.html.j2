@@ -1,0 +1,135 @@
+{#- ============================================================
+    ops.html.j2 — internal refund mail (REFUND_REQUEST / REFUND_PROCESSED)
+    Goes to the refunds alias, not to a customer. So: no mascot hero,
+    no Discord, no unsubscribe (it is not opt-in mail), no marketing
+    voice. The amount is the hero because that is the number the
+    person on call is deciding about.
+    kind: 'request' | 'processed'
+    ============================================================ -#}
+{%- import "_ui.j2" as ui with context -%}
+{%- set is_request = (kind == 'request') -%}
+{%- set amount_str = '$' ~ '{:,.2f}'.format(amount_cents / 100) -%}
+{%- set balance_str = '$' ~ '{:,.2f}'.format(balance_cents / 100) -%}
+{%- set headline = ('Approve or reject a ' ~ amount_str ~ ' refund') if is_request else (amount_str ~ ' refunded to ' ~ ui.trunc(user_name, 40)) -%}
+<!doctype html>
+<html lang="en">
+<head>
+{{ ui.head_block(subject | default(headline)) }}
+</head>
+<body style="margin:0; padding:0; background-color:#f1efe9; -webkit-text-size-adjust:100%; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+{{ ui.preheader(preheader | default(headline)) }}
+{{ ui.page_open() }}
+{{ ui.header() }}
+{{ ui.ops_band(
+     'REFUND REQUEST' if is_request else 'REFUND PROCESSED',
+     amount_str,
+     ui.trunc(user_name, 30) ~ ' · ' ~ ui.trunc(user_email, 30),
+     ('Needs a decision · raised ' ~ age_label) if (is_request and age_label) else ('Needs a decision' if is_request else 'Completed — no action needed'),
+     '#f5a623' if is_request else '#4ade80') }}
+
+    <!-- Body card -->
+    <tr><td bgcolor="#ffffff" style="border-radius:0 0 14px 14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+        <tr><td class="gutter" style="padding:26px 44px 0;">
+          <div style="font-size:16px; line-height:26px; color:#3b3757;">
+            {%- if is_request %}
+            {{ ui.trunc(user_name, 40) }} asked for {{ amount_str }} back on {{ requested_at_label }}.
+            Their balance right now is {{ balance_str }}.
+            {%- else %}
+            {{ amount_str }} was refunded to {{ ui.trunc(user_name, 40) }} on {{ processed_at_label }}
+            and the credits have been deducted. Their balance is now {{ balance_str }}.
+            This is a record for the log &mdash; nothing is waiting on you.
+            {%- endif %}
+          </div>
+        </td></tr>
+
+        <!-- Why -->
+        {%- if reason and reason | trim | length > 0 %}
+        <tr><td class="gutter" style="padding:22px 44px 0;">
+          {{ ui.note_card('In their words', reason, 'neutral') }}
+        </td></tr>
+        {%- else %}
+        <tr><td class="gutter" style="padding:18px 44px 0;">
+          <div style="font-size:14px; line-height:22px; color:#8a86a3;">
+            No reason was given with this request{{ ', so ask before deciding.' if is_request else '.' }}
+          </div>
+        </td></tr>
+        {%- endif %}
+
+        <!-- Ledger -->
+        <tr><td class="gutter" style="padding:22px 44px 0;">
+          {{ ui.section_label('THE RECORD') }}
+        </td></tr>
+        <tr><td class="gutter" style="padding:12px 44px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f6fc" style="border-radius:10px;">
+            <tr><td style="padding:14px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {{ ui.kv('Customer', user_name, mono=false, first=true) }}
+                {{ ui.kv('Email', user_email, mono=true) }}
+                {{ ui.kv('User ID', user_id, mono=true) }}
+                {{ ui.kv('Transaction', transaction_id, mono=true) }}
+                {{ ui.kv('Request ID', refund_request_id, mono=true) }}
+                {{ ui.kv('Balance ' ~ ('now' if is_request else 'after refund'), balance_str, mono=true) }}
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        {%- if is_request %}
+        <!-- Decision -->
+        <tr><td class="gutter" style="padding:26px 44px 0;">
+          {{ ui.section_label('TO APPROVE') }}
+        </td></tr>
+        <tr><td class="gutter" style="padding:14px 44px 0;">
+          <div style="font-size:14px; line-height:22px; color:#494566; padding-bottom:13px;">
+            Issue the refund in Stripe. The balance adjustment on our side happens automatically once Stripe confirms.
+          </div>
+          {{ ui.btn('Refund ' ~ amount_str ~ ' in Stripe', stripe_url) }}
+        </td></tr>
+
+        <tr><td class="gutter" style="padding:26px 44px 0;">
+          {{ ui.section_label('TO REJECT') }}
+        </td></tr>
+        <tr><td class="gutter" style="padding:14px 44px 0;">
+          <div style="font-size:14px; line-height:22px; color:#494566; padding-bottom:11px;">
+            Open the request in the admin panel, mark it rejected, and write the reason &mdash; the customer sees what you write.
+          </div>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="border:1px solid #d9d5ec; border-radius:8px;">
+              <a href="{{ admin_url }}" style="display:inline-block; padding:11px 20px; font-size:14px; font-weight:700; color:#5d23bb;">Open in the admin panel</a>
+            </td>
+          </tr></table>
+        </td></tr>
+        {%- else %}
+        <tr><td class="gutter" style="padding:22px 44px 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="border:1px solid #d9d5ec; border-radius:8px;">
+              <a href="{{ stripe_url }}" style="display:inline-block; padding:11px 20px; font-size:14px; font-weight:700; color:#5d23bb;">View the transaction in Stripe</a>
+            </td>
+          </tr></table>
+        </td></tr>
+        {%- endif %}
+
+        <tr><td align="center" class="gutter" style="padding:26px 44px 30px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td height="1" bgcolor="#eeecf5" style="font-size:0; line-height:0;">&nbsp;</td></tr>
+            <tr><td align="center" style="padding-top:14px; font-size:12px; line-height:19px; color:#8a86a3;">
+              {%- if is_request %}
+              This request stays open until someone acts on it. If two of you are looking, the admin panel shows who claimed it.
+              {%- else %}
+              Filed automatically when Stripe confirmed the refund.
+              {%- endif %}
+            </td></tr>
+          </table>
+        </td></tr>
+
+      </table>
+    </td></tr>
+{{ ui.page_close() }}
+{{ ui.internal_footer('Internal notification for the AutoGPT refunds team — sent to ' ~ recipient ~ '. Not customer-facing.') }}
+
+</td></tr>
+</table>
+</body>
+</html>

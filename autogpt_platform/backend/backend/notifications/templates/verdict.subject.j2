@@ -1,0 +1,16 @@
+{%- import "_ui.j2" as ui -%}
+{#- Two lines: subject, then preheader.
+    The preheader carries the first slice of the reviewer's note, because on a
+    changes verdict that is the single thing the creator wants to see. -#}
+{%- set approved = (outcome == 'approved') -%}
+{%- set has_note = comments and comments | trim | length > 0 -%}
+{%- set note = (comments | trim | replace('\n', ' ')) if has_note else '' -%}
+{%- set note_short = ui.trunc(note, 110) -%}
+{%- set name = ui.trunc(agent_name, 44) -%}
+{%- if approved -%}
+{{ name }} is live in the AutoGPT Store
+{% if has_note %}{{ reviewer_name }} says: {{ note_short }}{% else %}Version {{ version | default(1) }} passed review — it is discoverable and installable now.{% endif %}
+{%- else -%}
+{{ name }} needs one more pass before it goes live
+{% if changes %}{{ ui.trunc(changes[0], 110) }}{% elif has_note %}{{ note_short }}{% else %}No written feedback was left — reply to this email and it goes straight to the reviewer.{% endif %}
+{%- endif -%}

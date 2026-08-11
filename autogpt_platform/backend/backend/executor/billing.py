@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from backend.blocks import get_block
@@ -10,14 +11,9 @@ from backend.data.credit import UsageTransactionMetadata
 from backend.data.execution import GraphExecutionEntry, NodeExecutionEntry
 from backend.data.expert_spend import add_weekly_spend, add_weekly_spend_sync
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
-from backend.data.notifications import (
-    AgentRunData,
-    LowBalanceData,
-    NotificationEventModel,
-    NotificationType,
-    ZeroBalanceData,
-)
-from backend.notifications.notifications import queue_notification
+from prisma.enums import AlertCause
+
+from backend.notifications.alert_causes import LowBalanceCause, ZeroBalanceCause
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -394,43 +390,6 @@ async def try_send_insufficient_funds_notif(
         )
 
 
-def handle_agent_run_notif(
-    db_client: "DatabaseManagerClient",
-    graph_exec: GraphExecutionEntry,
-    exec_stats: GraphExecutionStats,
-) -> None:
-    metadata = db_client.get_graph_metadata(
-        graph_exec.graph_id, graph_exec.graph_version
-    )
-    outputs = db_client.get_node_executions(
-        graph_exec.graph_exec_id,
-        block_ids=[AgentOutputBlock().id],
-    )
-
-    named_outputs = [
-        {
-            key: value[0] if key == "name" else value
-            for key, value in output.output_data.items()
-        }
-        for output in outputs
-    ]
-
-    queue_notification(
-        NotificationEventModel(
-            user_id=graph_exec.user_id,
-            type=NotificationType.AGENT_RUN,
-            data=AgentRunData(
-                outputs=named_outputs,
-                agent_name=metadata.name if metadata else "Unknown Agent",
-                credits_used=exec_stats.cost,
-                execution_time=exec_stats.walltime,
-                graph_id=graph_exec.graph_id,
-                node_count=exec_stats.node_count,
-            ),
-        )
-    )
-
-
 def handle_insufficient_funds_notif(
     db_client: "DatabaseManagerClient",
     user_id: str,
@@ -468,18 +427,19 @@ def handle_insufficient_funds_notif(
     metadata = db_client.get_graph_metadata(graph_id)
     base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
-    # Queue user email notification
-    queue_notification(
-        NotificationEventModel(
-            user_id=user_id,
-            type=NotificationType.ZERO_BALANCE,
-            data=ZeroBalanceData(
-                current_balance=e.balance,
-                billing_page_link=f"{base_url}/settings/billing",
-                shortfall=shortfall,
-                agent_name=metadata.name if metadata else "Unknown Agent",
-            ),
-        )
+    # Raise the alert condition rather than sending: the alert engine owns
+    # debouncing, coalescing and the daily cap, and folds anything it can't
+    # send into the next Briefing.
+    agent_name = metadata.name if metadata else "Unknown Agent"
+    db_client.raise_alert_condition(
+        user_id=user_id,
+        cause=AlertCause.ZERO_BALANCE,
+        cause_key=f"zero_balance:{graph_id}",
+        data=ZeroBalanceCause(
+            cta_path="/settings/billing",
+            agent=agent_name,
+            shortfall_display=f"{shortfall / 100:,.2f}",
+        ).model_dump(mode="json"),
     )
 
     # Send Discord system alert
@@ -521,15 +481,13 @@ def handle_low_balance(
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
-        queue_notification(
-            NotificationEventModel(
-                user_id=user_id,
-                type=NotificationType.LOW_BALANCE,
-                data=LowBalanceData(
-                    current_balance=current_balance,
-                    billing_page_link=f"{base_url}/settings/billing",
-                ),
-            )
+        db_client.raise_alert_condition(
+            user_id=user_id,
+            cause=AlertCause.LOW_BALANCE,
+            cause_key="low_balance",
+            data=_low_balance_cause(
+                current_balance, transaction_cost, db_client, user_id
+            ).model_dump(mode="json"),
         )
 
         try:
@@ -547,3 +505,24 @@ def handle_low_balance(
             )
         except Exception as e:
             logger.warning(f"Failed to send low balance Discord alert: {e}")
+
+
+def _low_balance_cause(
+    current_balance: int,
+    transaction_cost: int,
+    db_client: "DatabaseManagerClient",
+    user_id: str,
+) -> LowBalanceCause:
+    """Forecast the runway from what this transaction cost, so the alert can
+    say when the credits run out rather than just that they are low."""
+    daily_rate = max(transaction_cost, 1)
+    days_left = max(int(current_balance / daily_rate), 0)
+    runs_out = datetime.now(tz=timezone.utc) + timedelta(days=days_left)
+    return LowBalanceCause(
+        cta_path="/settings/billing",
+        days_left=days_left,
+        daily_rate_display=f"{daily_rate / 100:,.2f} credits",
+        balance_display=f"{current_balance / 100:,.2f} credits",
+        runs_out_label=f"{runs_out.day} {runs_out.strftime('%b')}",
+        scheduled_agents=db_client.count_scheduled_agents(user_id),
+    )

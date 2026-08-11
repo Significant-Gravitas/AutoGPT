@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -19,30 +20,26 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   detectBrowserTimezone,
   dirtyKinds,
-  flagsToPreferenceMap,
   isFormDirty,
-  preferencesToFlags,
-  type NotificationFlags,
-  type NotificationKey,
+  preferencesToSettings,
+  settingsFromFooterLink,
+  type BriefingFrequency,
+  type NotificationSettings,
   type PreferencesFormState,
 } from "./helpers";
 
-const EMPTY_FLAGS: NotificationFlags = {
-  notifyOnAgentRun: false,
-  notifyOnBlockExecutionFailed: false,
-  notifyOnContinuousAgentError: false,
-  notifyOnAgentApproved: false,
-  notifyOnAgentRejected: false,
-  notifyOnZeroBalance: false,
-  notifyOnLowBalance: false,
-  notifyOnDailySummary: false,
-  notifyOnWeeklySummary: false,
-  notifyOnMonthlySummary: false,
+const DEFAULT_SETTINGS: NotificationSettings = {
+  briefingFrequency: "WEEKLY",
+  alertsEnabled: true,
+  storeVerdictsEnabled: true,
 };
 
 export function usePreferencesPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  // The Briefing footer's volume knob links here with ?f=daily|weekly|monthly
+  // |alerts|off, and the choice is applied on load so it really is one click.
+  const footerChoice = useSearchParams().get("f");
 
   const preferencesQuery = useGetV1GetNotificationPreferences({
     query: {
@@ -67,25 +64,26 @@ export function usePreferencesPage() {
   const serverTimezone = timezoneQuery.data ?? "not-set";
   const formTimezone =
     serverTimezone !== "not-set" ? serverTimezone : detectBrowserTimezone();
-  const initialFlags = preferencesQuery.data
-    ? preferencesToFlags(preferencesQuery.data)
-    : EMPTY_FLAGS;
+  const initialSettings = preferencesQuery.data
+    ? preferencesToSettings(preferencesQuery.data)
+    : DEFAULT_SETTINGS;
   const initialFormState: PreferencesFormState = {
     timezone: formTimezone,
-    notifications: initialFlags,
+    notifications:
+      settingsFromFooterLink(footerChoice, initialSettings) ?? initialSettings,
   };
   const initialSavedState: PreferencesFormState = {
     timezone: serverTimezone,
-    notifications: initialFlags,
+    notifications: initialSettings,
   };
 
   const [formState, setFormState] = useState<PreferencesFormState>({
     timezone: detectBrowserTimezone(),
-    notifications: EMPTY_FLAGS,
+    notifications: DEFAULT_SETTINGS,
   });
   const [savedState, setSavedState] = useState<PreferencesFormState>({
     timezone: detectBrowserTimezone(),
-    notifications: EMPTY_FLAGS,
+    notifications: DEFAULT_SETTINGS,
   });
   const [isSaving, setIsSaving] = useState(false);
   const hasInitializedFormState = useRef(false);
@@ -114,19 +112,25 @@ export function usePreferencesPage() {
     setFormState((prev) => ({ ...prev, timezone: value }));
   }
 
-  function toggleNotification(key: NotificationKey, value: boolean) {
+  function setBriefingFrequency(value: BriefingFrequency) {
     setFormState((prev) => ({
       ...prev,
-      notifications: { ...prev.notifications, [key]: value },
+      notifications: { ...prev.notifications, briefingFrequency: value },
     }));
   }
 
-  function setAllInGroup(keys: NotificationKey[], value: boolean) {
-    setFormState((prev) => {
-      const next = { ...prev.notifications };
-      for (const key of keys) next[key] = value;
-      return { ...prev, notifications: next };
-    });
+  function setAlertsEnabled(value: boolean) {
+    setFormState((prev) => ({
+      ...prev,
+      notifications: { ...prev.notifications, alertsEnabled: value },
+    }));
+  }
+
+  function setStoreVerdictsEnabled(value: boolean) {
+    setFormState((prev) => ({
+      ...prev,
+      notifications: { ...prev.notifications, storeVerdictsEnabled: value },
+    }));
   }
 
   function discardChanges() {
@@ -174,8 +178,10 @@ export function usePreferencesPage() {
         await updateNotifications.mutateAsync({
           data: {
             email: user.email ?? "",
-            preferences: flagsToPreferenceMap(snapshot.notifications),
-            daily_limit: 0,
+            briefing_frequency: snapshot.notifications.briefingFrequency,
+            alerts_enabled: snapshot.notifications.alertsEnabled,
+            store_verdicts_enabled:
+              snapshot.notifications.storeVerdictsEnabled,
           },
         });
         await queryClient.invalidateQueries({
@@ -227,8 +233,9 @@ export function usePreferencesPage() {
     dirty,
     isSaving,
     setTimezone,
-    toggleNotification,
-    setAllInGroup,
+    setBriefingFrequency,
+    setAlertsEnabled,
+    setStoreVerdictsEnabled,
     discardChanges,
     savePreferences,
   };
