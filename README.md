@@ -123,11 +123,9 @@ curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
 powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
 ```
 
-**Docker (experimental single-container):**
+[Read the self-hosting guide →](https://docs.agpt.co/platform/getting-started)
 
-Stable AutoGPT Platform releases publish this image as `latest`; historical
-releases are not backfilled. When `latest` is available, replace
-`owner@example.com` with the email address for your first account, then run:
+**Docker (experimental single-container):**
 
 ```bash
 docker run -d \
@@ -138,20 +136,11 @@ docker run -d \
   --ulimit nofile=65536:65536 \
   -p 127.0.0.1:3000:3000 \
   -e AUTOGPT_PUBLIC_URL=http://localhost:3000 \
-  -e AUTH_SIGNUP_ALLOWLIST=owner@example.com \
   -v autogpt-data:/data \
   significantgravitas/autogpt:latest
 ```
 
-The first boot can take several minutes. Wait until Docker reports the
-container as `healthy`, then open [http://localhost:3000](http://localhost:3000).
-Signup starts open for the allowlisted address, while the loopback-only port
-binding keeps it local. After creating your account, follow the operations
-guide to promote it and close registration before exposing AutoGPT to a
-network.
-
-[Read the self-hosting guide →](https://docs.agpt.co/platform/getting-started) ·
-[Single-container operations →](docs/platform/single-container.md)
+[Follow the single-container guide →](https://docs.agpt.co/platform/single-container)
 
 ---
 
