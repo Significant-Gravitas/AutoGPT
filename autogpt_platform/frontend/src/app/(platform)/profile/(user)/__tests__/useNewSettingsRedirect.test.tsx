@@ -1,13 +1,10 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { usePathnameMock, usePlatformChromeMock, replaceMock } = vi.hoisted(
-  () => ({
-    usePathnameMock: vi.fn(() => "/profile"),
-    usePlatformChromeMock: vi.fn(() => ({ isNewLayoutActive: true })),
-    replaceMock: vi.fn(),
-  }),
-);
+const { usePathnameMock, replaceMock } = vi.hoisted(() => ({
+  usePathnameMock: vi.fn(() => "/profile"),
+  replaceMock: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -23,16 +20,16 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({}),
 }));
 
-vi.mock("@/app/(platform)/PlatformChrome/usePlatformChrome", () => ({
-  usePlatformChrome: usePlatformChromeMock,
-}));
-
 import { useNewSettingsRedirect } from "../useNewSettingsRedirect";
+
+function setLocation(url: string) {
+  window.history.replaceState({}, "", url);
+}
 
 describe("useNewSettingsRedirect", () => {
   beforeEach(() => {
     replaceMock.mockClear();
-    usePlatformChromeMock.mockReturnValue({ isNewLayoutActive: true });
+    setLocation("/");
   });
 
   const mappings: [string, string][] = [
@@ -42,7 +39,6 @@ describe("useNewSettingsRedirect", () => {
     ["/profile/integrations", "/settings/integrations"],
     ["/profile/settings", "/settings/account"],
     ["/profile/api-keys", "/settings/api-keys"],
-    ["/profile/oauth-apps", "/settings/oauth-apps"],
   ];
 
   it.each(mappings)("redirects %s to %s", (from, to) => {
@@ -63,9 +59,37 @@ describe("useNewSettingsRedirect", () => {
     expect(replaceMock).toHaveBeenCalledWith("/settings/profile");
   });
 
-  it("does not redirect while the classic layout is active", () => {
-    usePlatformChromeMock.mockReturnValue({ isNewLayoutActive: false });
-    usePathnameMock.mockReturnValue("/profile");
+  it("keeps the #notifications anchor when leaving the legacy settings page", () => {
+    usePathnameMock.mockReturnValue("/profile/settings");
+    setLocation("/profile/settings#notifications");
+
+    renderHook(() => useNewSettingsRedirect());
+
+    expect(replaceMock).toHaveBeenCalledWith("/settings/account#notifications");
+  });
+
+  it("keeps the query string so Stripe return params survive the hop", () => {
+    usePathnameMock.mockReturnValue("/profile/credits");
+    setLocation("/profile/credits?subscription=success");
+
+    renderHook(() => useNewSettingsRedirect());
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/settings/billing?subscription=success",
+    );
+  });
+
+  it("keeps OAuth apps on the legacy page while the new one is a placeholder", () => {
+    usePathnameMock.mockReturnValue("/profile/oauth-apps");
+
+    const { result } = renderHook(() => useNewSettingsRedirect());
+
+    expect(result.current.isRedirecting).toBe(false);
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it("does not redirect paths outside /profile", () => {
+    usePathnameMock.mockReturnValue("/marketplace");
 
     const { result } = renderHook(() => useNewSettingsRedirect());
 
