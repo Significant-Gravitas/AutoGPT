@@ -235,9 +235,33 @@ authorize() {
   echo "allowed=$allowed" >>"$GITHUB_OUTPUT"
 }
 
-inspect_manifest() {
+inspect_manifest_once() {
   local image_ref="$1"
   docker buildx imagetools inspect "$image_ref" --format '{{json .Manifest.Digest}}' | jq -er .
+}
+
+inspect_manifest() {
+  local image_ref="$1"
+  local attempt inspect_output="" inspect_status=0
+
+  for ((attempt = 1; attempt <= 6; attempt++)); do
+    if inspect_output="$(inspect_manifest_once "$image_ref" 2>&1)"; then
+      inspect_status=0
+      if [[ "$inspect_output" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        printf '%s\n' "$inspect_output"
+        return 0
+      fi
+    else
+      inspect_status=$?
+    fi
+    if ((attempt < 6)); then
+      sleep 2
+    fi
+  done
+
+  echo "could not resolve a valid manifest digest for $image_ref after 6 attempts (last status $inspect_status)" >&2
+  [[ -z "$inspect_output" ]] || printf '%s\n' "$inspect_output" >&2
+  return 1
 }
 
 tag_state() {
@@ -326,7 +350,7 @@ ensure_release_tag() {
   local state raw_manifest
 
   release_manifest_digest="$manifest_digest"
-  [[ -n "$release_ref" ]] || return
+  [[ -n "$release_ref" ]] || return 0
   state="$(tag_state "$release_ref")"
   if [[ "$state" == "absent" ]]; then
     docker buildx imagetools create \
@@ -404,7 +428,7 @@ assert_latest_can_move() {
   local state current_version current_digest raw_manifest
 
   state="$(tag_state "${DEPLOY_IMAGE}:latest")"
-  [[ "$state" == "present" ]] || return
+  [[ "$state" == "present" ]] || return 0
   raw_manifest="$(docker buildx imagetools inspect --raw "${DEPLOY_IMAGE}:latest")"
   current_version="$(release_version_from_manifest <<<"$raw_manifest")"
   current_digest="$(inspect_manifest "${DEPLOY_IMAGE}:latest")"
@@ -545,7 +569,7 @@ assert_equal() {
 }
 
 self_test() {
-  local actual authorization_output
+  local actual authorization_output manifest_retry_state
 
   actual="$(platform_from_image_json amd64 <<<'{"os":"linux","architecture":"amd64"}')"
   assert_equal linux/amd64 "$actual" "flat image platform"
@@ -573,12 +597,66 @@ self_test() {
     return 1
   fi
 
+  manifest_retry_state="$(mktemp)"
+  printf '0\n' >"$manifest_retry_state"
+  actual="$(
+    (
+      inspect_manifest_once() {
+        local attempt
+        attempt="$(<"$manifest_retry_state")"
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" >"$manifest_retry_state"
+        if ((attempt < 3)); then
+          return 1
+        fi
+        printf 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
+      }
+      sleep() {
+        :
+      }
+      inspect_manifest docker.io/significantgravitas/autogpt:test
+    )
+  )"
+  assert_equal \
+    sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    "$actual" "manifest digest retry"
+  actual="$(<"$manifest_retry_state")"
+  assert_equal 3 "$actual" "manifest digest retry count"
+  if (
+    inspect_manifest_once() {
+      printf 'null\n'
+    }
+    sleep() {
+      :
+    }
+    inspect_manifest docker.io/significantgravitas/autogpt:test 2>/dev/null
+  ); then
+    echo "invalid manifest digest survived bounded retries" >&2
+    return 1
+  fi
+  rm -f "$manifest_retry_state"
+
   DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
     RELEASE_TAG='' resolve_publication
   assert_equal docker.io/significantgravitas/autogpt:sha-abc123 "$immutable_ref" "dev immutable tag"
   assert_equal '' "$release_ref" "dev release tag"
   assert_equal false "$publish_latest" "dev latest policy"
+
+  release_manifest_digest=""
+  ensure_release_tag sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  assert_equal \
+    sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    "$release_manifest_digest" "no-release manifest path"
+
+  (
+    tag_state() {
+      printf 'absent\n'
+    }
+    DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
+      assert_latest_can_move \
+        sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  )
 
   DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7.1 \
