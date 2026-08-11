@@ -7,23 +7,17 @@ export function useBotsList() {
     useListBotPlatforms({
       query: {
         retry: false,
-        // This page mirrors state changed outside the app — a workspace
-        // install, or linking from inside the chat client. The global 60s
-        // staleTime would serve cache to someone returning from exactly that
-        // round-trip, so always refetch on mount/focus instead.
+        // Links are made outside the app, so the global 60s staleTime would
+        // serve cache to someone returning from exactly that round-trip.
         staleTime: 0,
-        // Off because the listeners below already cover coming back; leaving
-        // it on would queue a second refetch for the same return.
+        // The listeners below cover coming back; this would double it up.
         refetchOnWindowFocus: false,
         refetchOnMount: "always",
       },
     });
 
-  // The install flow ends in the chat client, not back on this page, so the
-  // only signal that the user returned is the tab becoming current again.
-  // Both events are needed: switching tabs fires visibilitychange, while
-  // alt-tabbing back from a desktop app fires focus on an already-visible
-  // tab. Query-level dedupe collapses the overlap into one request.
+  // Both events are needed: tab switches fire visibilitychange, while
+  // alt-tabbing back from the desktop app fires focus on a still-visible tab.
   useEffect(() => {
     function refetchIfVisible() {
       if (document.visibilityState === "visible") refetch();

@@ -168,8 +168,7 @@ function buildSuccessData(args: {
       getPlatformDisplayName(args.confirmResponse.platform) ||
       args.fallbackPlatform,
     serverName,
-    // Carried from the token info: the confirm response has no noun of its
-    // own, and the success copy still names the server type.
+    // From the token info — the confirm response carries no noun.
     serverNoun: args.serverNoun,
     returnUrl: args.confirmResponse.return_url ?? null,
   };
