@@ -122,6 +122,7 @@ Open `http://localhost:3000`, create the intended account, and promote it:
 docker exec autogpt autogpt-admin promote owner@example.com
 ```
 
+Replace `owner@example.com` with the email address of the account you created.
 Sign out and back in after promotion so the new session has the administrator
 role.
 
@@ -397,10 +398,29 @@ with `/data`:
 (
   set -euo pipefail
   BACKUP_IMAGE="$(docker inspect --format '{{.Image}}' autogpt)"
+  BACKUP_VOLUME="$(docker inspect --format \
+    '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' \
+    autogpt)"
   BACKUP_DIR="${PWD}/autogpt-backups"
   BACKUP_FILE="autogpt-platform-data-$(date -u +%Y%m%dT%H%M%SZ).tgz"
   PARTIAL_FILE="${BACKUP_FILE}.partial"
+  # Invoked by the EXIT trap below.
+  # shellcheck disable=SC2329
+  restart_autogpt() {
+    local exit_status="$1"
+    trap - EXIT
+    if ! docker start autogpt >/dev/null; then
+      echo "Backup finished but the autogpt container could not restart" >&2
+      exit_status=1
+    fi
+    exit "${exit_status}"
+  }
 
+  : "${BACKUP_VOLUME:?Container has no named volume mounted at /data}"
+  if [[ "$(docker inspect --format '{{.State.Running}}' autogpt)" != true ]]; then
+    echo "Refusing backup because the autogpt container is not running" >&2
+    exit 1
+  fi
   mkdir -p "${BACKUP_DIR}"
   chmod 700 "${BACKUP_DIR}"
   if [[ -e "${BACKUP_DIR}/${BACKUP_FILE}" || \
@@ -409,6 +429,7 @@ with `/data`:
     exit 1
   fi
 
+  trap 'restart_autogpt "$?"' EXIT
   docker stop --time 360 autogpt
   umask 077
   touch "${BACKUP_DIR}/${PARTIAL_FILE}"
@@ -416,7 +437,7 @@ with `/data`:
 
   docker run --rm \
     --entrypoint tar \
-    --volume autogpt-platform-data:/data:ro \
+    --volume "${BACKUP_VOLUME}:/data:ro" \
     --volume "${BACKUP_DIR}:/backup" \
     "${BACKUP_IMAGE}" \
     -czf "/backup/${PARTIAL_FILE}" -C /data .
@@ -427,10 +448,11 @@ with `/data`:
 )
 ```
 
-Restart the unchanged installation when the archive completes:
+The exit trap restarts the unchanged installation after the archive succeeds or
+if a later backup command fails. Verify that it is running again:
 
 ```bash
-docker start autogpt
+docker inspect --format '{{.State.Status}}' autogpt
 ```
 
 Record the exact image reference or digest, environment file, Git commit, and
