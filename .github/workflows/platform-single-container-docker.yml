@@ -5,25 +5,29 @@ on:
     branches: [dev]
     paths:
       - ".dockerignore"
+      - ".github/scripts/platform-single-container-publish.sh"
       - ".github/scripts/platform-single-container-smoke.sh"
       - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/**"
   pull_request:
     paths:
       - ".dockerignore"
+      - ".github/scripts/platform-single-container-publish.sh"
       - ".github/scripts/platform-single-container-smoke.sh"
       - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/**"
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish a dev release or this PR branch's canary image to Docker Hub"
+        description: "Publish the current dev commit to Docker Hub"
         required: true
         type: boolean
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'release') && 'publication' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -33,8 +37,30 @@ env:
   DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
 
 jobs:
+  authorize-publication:
+    name: Authorize publication source
+    runs-on: ubuntu-24.04
+    outputs:
+      allowed: ${{ steps.policy.outputs.allowed }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate publication source
+        id: policy
+        shell: bash
+        env:
+          PUBLISH_REQUESTED: ${{ inputs.publish }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: bash .github/scripts/platform-single-container-publish.sh authorize
+
   build-and-scan:
     name: Build, smoke, and scan (${{ matrix.platform }})
+    needs: authorize-publication
+    if: ${{ github.event_name != 'release' || needs.authorize-publication.outputs.allowed == 'true' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     strategy:
@@ -56,6 +82,10 @@ jobs:
       - name: Test appliance runtime helpers
         shell: bash
         run: python3 -m unittest discover -s autogpt_platform/single-container/tests -p 'test_*.py' -v
+
+      - name: Test publication helpers
+        shell: bash
+        run: bash .github/scripts/platform-single-container-publish.sh self-test
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -110,8 +140,8 @@ jobs:
 
   publish-platform-digests:
     name: Publish, smoke, and scan (${{ matrix.platform }})
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/codex/single-container-publish') && needs.build-and-scan.result == 'success' }}
-    needs: build-and-scan
+    if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.build-and-scan.result == 'success' }}
+    needs: [authorize-publication, build-and-scan]
     environment: dockerhub-publish
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
@@ -240,12 +270,17 @@ jobs:
 
   publish-manifest:
     name: Publish multi-platform manifest
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/codex/single-container-publish') && needs.publish-platform-digests.result == 'success' }}
-    needs: publish-platform-digests
+    if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.publish-platform-digests.result == 'success' }}
+    needs: [authorize-publication, publish-platform-digests]
     environment: dockerhub-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Download verified digests
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
@@ -266,168 +301,19 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Verify Docker Hub repository is public
-        shell: bash
-        run: |
-          set -euo pipefail
-          repository_metadata="$(
-            curl --fail --silent --show-error --retry 5 --retry-all-errors \
-              --connect-timeout 10 --max-time 60 \
-              https://hub.docker.com/v2/repositories/significantgravitas/autogpt/
-          )"
-          if ! jq -e '
-            .namespace == "significantgravitas"
-            and .name == "autogpt"
-            and .is_private == false
-          ' <<<"$repository_metadata" >/dev/null; then
-            echo "Docker Hub repository significantgravitas/autogpt must be public" >&2
-            exit 1
-          fi
-
       - name: Publish and verify manifest
         shell: bash
         env:
           DIGEST_DIR: ${{ runner.temp }}/platform-single-container-publish-digests
           MANIFEST_METADATA: ${{ runner.temp }}/platform-single-container-manifest.json
-        run: |
-          set -euo pipefail
-          mapfile -t digest_files < <(find "$DIGEST_DIR" -maxdepth 1 -type f -print | sort)
-          if (( ${#digest_files[@]} != 2 )); then
-            echo "expected exactly two verified platform digests" >&2
-            exit 1
-          fi
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: bash .github/scripts/platform-single-container-publish.sh publish
 
-          declare -A seen_platforms=()
-          image_refs=()
-          for digest_file in "${digest_files[@]}"; do
-            descriptor="$(basename "$digest_file")"
-            # Producer writes <arch>-<digest>; reject any other cross-job input.
-            if [[ ! "$descriptor" =~ ^(amd64|arm64)-([0-9a-f]{64})$ ]]; then
-              echo "invalid digest artifact name: $descriptor" >&2
-              exit 1
-            fi
-            expected_arch="${BASH_REMATCH[1]}"
-            digest_hex="${BASH_REMATCH[2]}"
-            if [[ -n "${seen_platforms[$expected_arch]:-}" ]]; then
-              echo "duplicate digest for linux/${expected_arch}" >&2
-              exit 1
-            fi
-            seen_platforms[$expected_arch]=1
-            image_ref="${DEPLOY_IMAGE}@sha256:${digest_hex}"
-            actual_platform="$(
-              docker buildx imagetools inspect "$image_ref" --format '{{json .Image}}' |
-                jq -er '
-                  if has("os") and has("architecture") then
-                    "\(.os)/\(.architecture)"
-                  else
-                    to_entries
-                    | map(select(.value.os? != null and .value.architecture? != null))
-                    | if length == 1 then
-                        "\(.[0].value.os)/\(.[0].value.architecture)"
-                      else
-                        error("expected exactly one runnable platform")
-                      end
-                  end
-                '
-            )"
-            if [[ "$actual_platform" != "linux/${expected_arch}" ]]; then
-              echo "$image_ref is $actual_platform, expected linux/${expected_arch}" >&2
-              exit 1
-            fi
-            image_refs+=("$image_ref")
-          done
-          if [[ -z "${seen_platforms[amd64]:-}" || -z "${seen_platforms[arm64]:-}" ]]; then
-            echo "both linux/amd64 and linux/arm64 digests are required" >&2
-            exit 1
-          fi
-
-          if [[ "$GITHUB_REF" == "refs/heads/dev" ]]; then
-            immutable_ref="${DEPLOY_IMAGE}:sha-${GITHUB_SHA}"
-            publish_latest=true
-            publication_name="Single-container image published"
-          elif [[ "$GITHUB_REF" == "refs/heads/codex/single-container-publish" ]]; then
-            immutable_ref="${DEPLOY_IMAGE}:canary-sha-${GITHUB_SHA}"
-            publish_latest=false
-            publication_name="Single-container PR canary published"
-          else
-            echo "refusing to publish from $GITHUB_REF" >&2
-            exit 1
-          fi
-
-          # Workflow concurrency serializes this guard; registry policy covers external writers.
-          set +e
-          inspect_output="$(docker buildx imagetools inspect "$immutable_ref" 2>&1)"
-          inspect_status=$?
-          set -e
-          if (( inspect_status == 0 )); then
-            echo "refusing to overwrite immutable tag $immutable_ref" >&2
-            exit 1
-          fi
-          if ! grep -Eqi '(manifest unknown|not found)' <<<"$inspect_output"; then
-            echo "could not prove that $immutable_ref is absent" >&2
-            printf '%s\n' "$inspect_output" >&2
-            exit 1
-          fi
-
-          docker buildx imagetools create \
-            --metadata-file "$MANIFEST_METADATA" \
-            --tag "$immutable_ref" \
-            "${image_refs[@]}"
-          manifest_digest="$(jq -er '."containerimage.descriptor".digest' "$MANIFEST_METADATA")"
-          if [[ ! "$manifest_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "manifest creation did not return a valid sha256 digest" >&2
-            exit 1
-          fi
-          resolved_immutable_digest="$(
-            docker buildx imagetools inspect "$immutable_ref" --format '{{json .Manifest.Digest}}' |
-              jq -er .
-          )"
-          if [[ "$resolved_immutable_digest" != "$manifest_digest" ]]; then
-            echo "immutable tag resolved to an unexpected digest" >&2
-            exit 1
-          fi
-          # Attestations use unknown/unknown and are not runnable platforms.
-          if ! docker buildx imagetools inspect --raw "$immutable_ref" |
-            jq -e '
-              [
-                .manifests[]
-                | select(
-                    ((.annotations // {})["vnd.docker.reference.type"] // "") != "attestation-manifest"
-                    and (.platform.os // "unknown") != "unknown"
-                    and (.platform.architecture // "unknown") != "unknown"
-                  )
-                | "\(.platform.os)/\(.platform.architecture)"
-              ]
-              | sort == ["linux/amd64", "linux/arm64"]
-            ' >/dev/null; then
-            echo "published manifest does not contain exactly linux/amd64 and linux/arm64" >&2
-            exit 1
-          fi
-
-          if [[ "$publish_latest" == true ]]; then
-            latest_ref="${DEPLOY_IMAGE}:latest"
-            docker buildx imagetools create --tag "$latest_ref" "${DEPLOY_IMAGE}@${manifest_digest}"
-            resolved_latest_digest="$(
-              docker buildx imagetools inspect "$latest_ref" --format '{{json .Manifest.Digest}}' |
-                jq -er .
-            )"
-            if [[ "$resolved_latest_digest" != "$manifest_digest" ]]; then
-              echo "latest did not resolve to the verified manifest digest" >&2
-              exit 1
-            fi
-          fi
-
-          {
-            echo "## $publication_name"
-            echo
-            echo "\`${immutable_ref}\`"
-            if [[ "$publish_latest" == true ]]; then
-              echo "\`${latest_ref}\`"
-            else
-              echo "\`latest\` was not changed"
-            fi
-            echo
-            echo "Digest: \`${manifest_digest}\`"
-            echo
-            echo "Platforms: \`linux/amd64\`, \`linux/arm64\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Update Docker Hub Overview
+        uses: peter-evans/dockerhub-description@e98e4d1628a5f3be2be7c231e50981aee98723ae # v4.0.0
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: significantgravitas/autogpt
+          short-description: Run the AutoGPT Platform, including FalkorDB-backed memory, in one container.
+          readme-filepath: ./autogpt_platform/single-container/README.md
