@@ -260,6 +260,7 @@ if [ "${1:-}" = start ]; then
 	exit 0
 fi
 if [ "${1:-}" = inspect ]; then
+	[ "${FAKE_HEALTH_INSPECT_FAIL:-false}" != true ] || exit 1
 	printf 'running healthy\n'
 	exit 0
 fi
@@ -351,6 +352,15 @@ multiple_digests='significantgravitas/autogpt@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbb
 assert_fake_fails 'exactly one native repository digest; found 2' "$multiple_digest_dir" \
 	env FAKE_IMAGE_DIGESTS="$multiple_digests" bash "$installer" --skip-preflight --dir "$multiple_digest_dir"
 
+: >"$volume_state"
+aliased_digest_dir="${test_root}/aliased-digest"
+aliased_digests='significantgravitas/autogpt@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\ndocker.io/significantgravitas/autogpt@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'
+(
+	export FAKE_IMAGE_DIGESTS="$aliased_digests"
+	run_installer "$aliased_digest_dir"
+)
+grep -Fxq 'contract=1 lifecycle=established volume=autogpt-platform-data install-id='"$(cat "${aliased_digest_dir}/install-id")" "${aliased_digest_dir}/install-state"
+
 wrong_arch_dir="${test_root}/wrong-image-arch"
 assert_fake_fails 'does not match Docker daemon architecture' "$wrong_arch_dir" \
 	env FAKE_IMAGE_ARCH=arm64 bash "$installer" --skip-preflight --dir "$wrong_arch_dir"
@@ -368,6 +378,16 @@ assert_contains 'container inspect --format' "$(cat "$docker_log")"
 : >"$docker_log"
 FAKE_CONTAINER_EXISTS=true FAKE_CONTAINER_STATE=exited run_installer "$default_dir"
 assert_contains 'start autogpt' "$(cat "$docker_log")"
+
+: >"$docker_log"
+FAKE_CONTAINER_EXISTS=true FAKE_CONTAINER_HEALTH=starting run_installer "$default_dir"
+assert_not_contains 'run --detach' "$(cat "$docker_log")"
+assert_contains 'inspect --format' "$(cat "$docker_log")"
+
+: >"$volume_state"
+inspect_failure_dir="${test_root}/health-inspect-failure"
+assert_fake_fails 'Could not inspect appliance container autogpt; it may have been removed' "$inspect_failure_dir" \
+	env FAKE_HEALTH_INSPECT_FAIL=true bash "$installer" --skip-preflight --dir "$inspect_failure_dir"
 
 drift_dir="${test_root}/runtime-drift"
 mkdir -m 0700 "$drift_dir"

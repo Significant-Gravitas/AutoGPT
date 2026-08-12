@@ -419,7 +419,7 @@ validate_docker() {
 }
 
 validate_image() {
-	local title source revision image_os raw_arch image_arch digest_output digest line count=0
+	local title source revision image_os raw_arch image_arch digest_output digest_hashes unique_digests digest line count=0
 	title="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.title"}}' "$IMAGE")" || die 'Could not inspect appliance image title.'
 	source="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.source"}}' "$IMAGE")" || die 'Could not inspect appliance image source.'
 	revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE")" || die 'Could not inspect appliance image revision.'
@@ -432,16 +432,23 @@ validate_image() {
 	[ "$image_arch" = "$DAEMON_ARCH" ] || die "Image architecture ${image_arch} does not match Docker daemon architecture ${DAEMON_ARCH}."
 
 	digest_output="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$IMAGE")" || die 'Could not resolve the appliance repository digest.'
+	digest_hashes=''
 	while IFS= read -r line; do
 		[ -n "$line" ] || continue
-		count=$((count + 1))
 		digest="${line##*@}"
 		case "$line" in
 		docker.io/significantgravitas/autogpt@* | significantgravitas/autogpt@*) ;;
 		*) die "Image ${IMAGE} resolved to an unexpected repository digest: ${line}" ;;
 		esac
 		[[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "Image ${IMAGE} has an invalid repository digest."
+		digest_hashes="${digest_hashes}${digest}"$'\n'
 	done <<<"$digest_output"
+	unique_digests="$(printf '%s' "$digest_hashes" | sort -u)" || die 'Could not deduplicate appliance repository digests.'
+	while IFS= read -r line; do
+		[ -n "$line" ] || continue
+		count=$((count + 1))
+		digest="$line"
+	done <<<"$unique_digests"
 	[ "$count" -eq 1 ] || die "Image ${IMAGE} must resolve to exactly one native repository digest; found ${count}."
 	IMAGE_DIGEST="${DEPLOY_IMAGE}@${digest}"
 	ok "Appliance identity: ${IMAGE_DIGEST}"
@@ -503,8 +510,11 @@ reuse_existing_container() {
 	case "$state" in
 	running)
 		health="$(inspect_container '{{if .State.Health}}{{.State.Health.Status}}{{end}}')" || die "Could not inspect existing container health."
-		[ "$health" = healthy ] || die "Existing installer-owned container is running but not healthy (health=${health:-none})."
-		ok 'Existing installer-owned appliance already matches the requested immutable contract.'
+		case "$health" in
+		healthy) ok 'Existing installer-owned appliance already matches the requested immutable contract.' ;;
+		starting) info 'Existing installer-owned appliance is still starting; continuing to the health wait.' ;;
+		*) die "Existing installer-owned container is running but not healthy (health=${health:-none})." ;;
+		esac
 		;;
 	created | exited)
 		step 'Starting the existing installer-owned appliance'
@@ -543,9 +553,11 @@ start_appliance() {
 
 wait_for_healthy() {
 	step 'Waiting for the appliance to become healthy'
-	local attempt state health
+	local attempt status state health
 	for ((attempt = 1; attempt <= 180; attempt++)); do
-		read -r state health < <(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CONTAINER_NAME")
+		status="$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CONTAINER_NAME")" ||
+			die "Could not inspect appliance container ${CONTAINER_NAME}; it may have been removed."
+		read -r state health <<<"$status"
 		if [ "${state}:${health}" = running:healthy ]; then ok 'AutoGPT is healthy'; return; fi
 		case "${state}:${health}" in
 		exited:* | dead:* | removing:* | *:unhealthy)
