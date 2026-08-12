@@ -186,7 +186,7 @@ def test_codex_runtime_pool_shutdown_runs_once():
     transport.close_runtime_pool = AsyncMock()
 
     with patch(
-        "backend.integrations.codex.transport.get_codex_transport",
+        "backend.copilot.executor.manager.get_codex_transport",
         return_value=transport,
     ) as mock_get_transport:
         executor._close_codex_runtime_pool("[test]")
