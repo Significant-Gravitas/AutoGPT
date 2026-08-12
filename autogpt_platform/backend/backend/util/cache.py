@@ -17,6 +17,7 @@ import logging
 import pickle
 import threading
 import time
+import weakref
 from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
@@ -98,6 +99,28 @@ class CachedValue:
 
     result: Any
     timestamp: float
+
+
+class _AsyncKeyedLockPool:
+    """Keep one live asyncio lock per event loop and cache key."""
+
+    def __init__(self) -> None:
+        self._locks: weakref.WeakValueDictionary[
+            tuple[asyncio.AbstractEventLoop, tuple[Any, ...]], asyncio.Lock
+        ] = weakref.WeakValueDictionary()
+        self._mutex = threading.Lock()
+
+    def get(self, key: tuple[Any, ...]) -> asyncio.Lock:
+        pool_key = (asyncio.get_running_loop(), key)
+        with self._mutex:
+            lock = self._locks.get(pool_key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[pool_key] = lock
+            return lock
+
+    def __len__(self) -> int:
+        return len(self._locks)
 
 
 def _make_hashable_key(
@@ -219,7 +242,7 @@ def cached(
     def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
         func_name = target_func.__name__
         cache_storage: dict[tuple, CachedValue] = {}
-        _event_loop_locks: dict[Any, asyncio.Lock] = {}
+        async_lock_pool = _AsyncKeyedLockPool()
 
         def _get_from_redis(redis_key: str) -> Any:
             """Get value from Redis, optionally refreshing TTL.
@@ -291,17 +314,6 @@ def cached(
 
         if inspect.iscoroutinefunction(target_func):
 
-            def _get_cache_lock():
-                """Get or create an asyncio.Lock for the current event loop."""
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop not in _event_loop_locks:
-                    return _event_loop_locks.setdefault(loop, asyncio.Lock())
-                return _event_loop_locks[loop]
-
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
                 key = _make_hashable_key(args, kwargs)
@@ -318,7 +330,7 @@ def cached(
                         return result
 
                 # Slow path: acquire lock for cache miss/expiry
-                async with _get_cache_lock():
+                async with async_lock_pool.get(key):
                     # Double-check: another coroutine might have populated cache
                     if shared_cache:
                         result = _get_from_redis(redis_key)

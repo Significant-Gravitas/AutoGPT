@@ -9,14 +9,21 @@ This module tests the thread-local caching functionality including:
 """
 
 import asyncio
+import gc
 import threading
 import time
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
 
 import pytest
 
-from backend.util.cache import cached, clear_thread_cache, thread_cached
+from backend.util.cache import (
+    _AsyncKeyedLockPool,
+    cached,
+    clear_thread_cache,
+    thread_cached,
+)
 
 
 class TestThreadCached:
@@ -426,6 +433,76 @@ class TestCache:
         # All results should be the same
         assert all(result == 49 for result in results)
         # Only one coroutine should have executed the expensive operation
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_async_single_flight_is_scoped_to_cache_key(self):
+        entered: set[str] = set()
+        release = asyncio.Event()
+        both_keys_entered = asyncio.Event()
+        call_counts: dict[str, int] = {}
+
+        @cached(ttl_seconds=300)
+        async def keyed_function(key: str) -> str:
+            call_counts[key] = call_counts.get(key, 0) + 1
+            entered.add(key)
+            if entered == {"a", "b"}:
+                both_keys_entered.set()
+            await release.wait()
+            return key
+
+        tasks = [
+            asyncio.create_task(keyed_function(key))
+            for key in ("a", "a", "a", "b", "b", "b")
+        ]
+        await asyncio.wait_for(both_keys_entered.wait(), timeout=1)
+        release.set()
+
+        assert await asyncio.gather(*tasks) == ["a", "a", "a", "b", "b", "b"]
+        assert call_counts == {"a": 1, "b": 1}
+
+    @pytest.mark.asyncio
+    async def test_async_keyed_lock_pool_releases_idle_locks(self):
+        pool = _AsyncKeyedLockPool()
+        lock = pool.get((("key",), ()))
+        lock_ref = weakref.ref(lock)
+
+        async with lock:
+            assert len(pool) == 1
+
+        del lock
+        gc.collect()
+
+        assert lock_ref() is None
+        assert len(pool) == 0
+
+    @pytest.mark.asyncio
+    async def test_async_single_flight_survives_waiter_cancellation(self):
+        leader_started = asyncio.Event()
+        release_leader = asyncio.Event()
+        call_count = 0
+
+        @cached(ttl_seconds=300)
+        async def cached_function(key: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            leader_started.set()
+            await release_leader.wait()
+            return key
+
+        leader = asyncio.create_task(cached_function("same"))
+        await leader_started.wait()
+        canceled_waiter = asyncio.create_task(cached_function("same"))
+        surviving_waiter = asyncio.create_task(cached_function("same"))
+        await asyncio.sleep(0)
+
+        canceled_waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await canceled_waiter
+
+        release_leader.set()
+        assert await leader == "same"
+        assert await surviving_waiter == "same"
         assert call_count == 1
 
     def test_ttl_functionality(self):
@@ -1032,15 +1109,18 @@ class TestSharedCache:
 
     @pytest.mark.asyncio
     async def test_shared_cache_concurrent_different_keys(self):
-        """Test that concurrent calls with different keys work correctly."""
+        """Different keys do not wait behind one function-wide lock."""
         call_counts = {}
+        all_keys_started = asyncio.Event()
 
         @cached(ttl_seconds=30, shared_cache=True)
         async def multi_key_function(key: str) -> str:
             if key not in call_counts:
                 call_counts[key] = 0
             call_counts[key] += 1
-            await asyncio.sleep(0.05)
+            if len(call_counts) == len(keys):
+                all_keys_started.set()
+            await asyncio.wait_for(all_keys_started.wait(), timeout=1)
             return f"result_{key}"
 
         # Clear cache
