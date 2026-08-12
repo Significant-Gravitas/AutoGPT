@@ -10,7 +10,7 @@ from backend.api.features.integrations.router import (
     to_meta_response,
 )
 from backend.copilot.model import ChatSession
-from backend.data.model import is_sdk_default
+from backend.data.model import Credentials, is_sdk_default
 from backend.integrations.credentials_store import (
     SYSTEM_CREDENTIAL_IDS,
     provider_matches,
@@ -119,12 +119,12 @@ class ListUserCredentialsTool(BaseTool):
                 session_id=session_id,
             )
 
-        metas, wanted = _serialize_connected_credentials(all_creds, provider)
+        metas = _serialize_connected_credentials(all_creds, wanted_provider)
         providers = sorted({m.provider for m in metas})
 
         return CredentialListResponse(
             message=_build_inventory_message(
-                metas, providers, wanted, provisioning_complete
+                metas, providers, wanted_provider, provisioning_complete
             ),
             credentials=metas,
             providers=providers,
@@ -135,11 +135,9 @@ class ListUserCredentialsTool(BaseTool):
 
 
 def _serialize_connected_credentials(
-    all_creds: list[Any], provider: str | None
-) -> tuple[list[CredentialsMetaResponse], str]:
+    all_creds: list[Credentials], wanted: str
+) -> list[CredentialsMetaResponse]:
     """Strip secrets and drop non-user credentials, then apply the provider filter."""
-    wanted = provider.strip().lower() if provider else ""
-
     # System credentials (platform-provided API keys) and SDK defaults are
     # not user-connected integrations, so they'd mislead the model here. Filter
     # on the raw credentials (including the provider filter) before serializing,
@@ -152,10 +150,10 @@ def _serialize_connected_credentials(
         and (not wanted or provider_matches(cred.provider, wanted))
     ]
 
-    return metas, wanted
+    return metas
 
 
-def _to_safe_meta_response(cred: Any) -> CredentialsMetaResponse:
+def _to_safe_meta_response(cred: Credentials) -> CredentialsMetaResponse:
     """Serialize credential metadata without secrets embedded in URLs."""
     meta = to_meta_response(cred)
     if meta.host and provider_matches(cred.provider, "mcp"):

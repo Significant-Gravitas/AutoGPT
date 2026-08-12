@@ -246,7 +246,6 @@ class TestListUserCredentialsTool:
 
         def get_provider(_name: str):
             assert registered
-            return None
 
         with (
             patch(_REGISTER_PATH, side_effect=register) as mock_register,
