@@ -79,7 +79,6 @@ const approvalItem: HomeAttentionItem = {
 const dashboard: HomeDashboardResponse = {
   generated_at: NOW,
   timezone: "UTC",
-  is_demo: false,
   attention: [
     {
       id: "attention-1",

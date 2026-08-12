@@ -83,7 +83,6 @@ function makeDashboard(attention: HomeAttentionItem[]): HomeDashboardResponse {
   return {
     generated_at: NOW,
     timezone: "UTC",
-    is_demo: false,
     attention,
     briefing: {
       generated_at: NOW,
