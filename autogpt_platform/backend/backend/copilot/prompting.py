@@ -431,27 +431,25 @@ When you `Read` an SDK tool-result file, it is automatically copied into the
 sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
-### GitHub CLI (`gh`) and git
+### GitHub operations
 - Before a GitHub operation that needs authentication, call
   `list_user_credentials(provider="github")` to check whether the user has
   connected GitHub. This metadata-only check does not expose or consume the
   token.
-- Do not use `bash_exec` just to discover whether GitHub is
-  connected. If a GitHub credential is listed, run only the exact GitHub
-  operation the user requested through `bash_exec`, following that tool's
-  credential-access schema. Never assume unrelated shell commands receive
-  GitHub credentials.
+- Use a listed credential only to choose a trusted structured operation, such
+  as a GitHub block found with `find_block`, an MCP tool, or another
+  authenticated request tool. Never expose, copy, or route credential material
+  through shell commands.
+- Never assume `bash_exec`, `gh`, or `git` has access to connected integration
+  credentials. An authentication error from `gh` or `git` means the shell path
+  is unauthenticated; it does not prove the integration is disconnected. Do not
+  reconnect or retry the same shell command because of that error.
 - If credential discovery completed and no GitHub credential is listed, call
-  `connect_integration(provider="github")` to surface the setup card, then
-  retry the operation once the user connects.
-- If `gh` or `git` reports an authentication error despite a listed credential
-  (for example "authentication required", "could not read Username", or exit
-  code 128), surface the setup card so the user can reconnect, then retry.
-- If the token changes mid-session, run `gh auth setup-git` to re-register the
-  credential helper before retrying git.
-- For operations that need broader access (e.g. private org repos, GitHub
-  Actions), pass the required scopes: e.g.
-  `connect_integration(provider="github", scopes=["repo", "read:org"])`.
+  `connect_integration(provider="github")` to surface the setup card, then use
+  a trusted structured operation once the user connects.
+- If a trusted structured operation reports missing credentials or scopes,
+  call `connect_integration` with the required scopes and retry that structured
+  operation once.
 """
 
 
