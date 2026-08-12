@@ -13,13 +13,19 @@ const LEGACY_TO_NEW_SETTINGS: Record<string, string> = {
   "/profile/dashboard": "/settings/creator-dashboard",
   "/profile/credits": "/settings/billing",
   "/profile/integrations": "/settings/integrations",
-  "/profile/settings": "/settings/account",
   "/profile/api-keys": "/settings/api-keys",
 };
 
-// /settings/oauth-apps is still a "Coming soon" placeholder, so sending users
-// there would take a working page away. Drop this once it ships.
-const KEEP_ON_LEGACY = new Set(["/profile/oauth-apps"]);
+// Legacy pages whose /settings replacement isn't ready to receive them yet —
+// redirecting would take working functionality away. Each is a one-line
+// removal once the new surface catches up.
+//   /profile/oauth-apps → /settings/oauth-apps is a "Coming soon" placeholder.
+//   /profile/settings   → /settings/account only shows notification
+//     preferences behind the ``settings-notifications`` flag (AGPT staff while
+//     the design is reworked), and this is exactly where every notification
+//     email — plus the List-Unsubscribe header — deep-links with
+//     #notifications. Drop this once the flag is on for everyone.
+const KEEP_ON_LEGACY = new Set(["/profile/oauth-apps", "/profile/settings"]);
 
 export function useNewSettingsRedirect() {
   const pathname = usePathname();
@@ -36,8 +42,7 @@ export function useNewSettingsRedirect() {
   useEffect(() => {
     if (!redirectTo) return;
     // Carry the query string and hash across so deep links keep working —
-    // e.g. /profile/settings#notifications lands on the notifications card,
-    // and Stripe's ?subscription=success still reaches /settings/billing.
+    // e.g. Stripe's ?subscription=success still reaches /settings/billing.
     const { search, hash } = window.location;
     router.replace(`${redirectTo}${search}${hash}`);
   }, [redirectTo, router]);

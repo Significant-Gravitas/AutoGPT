@@ -37,7 +37,6 @@ describe("useNewSettingsRedirect", () => {
     ["/profile/dashboard", "/settings/creator-dashboard"],
     ["/profile/credits", "/settings/billing"],
     ["/profile/integrations", "/settings/integrations"],
-    ["/profile/settings", "/settings/account"],
     ["/profile/api-keys", "/settings/api-keys"],
   ];
 
@@ -59,13 +58,15 @@ describe("useNewSettingsRedirect", () => {
     expect(replaceMock).toHaveBeenCalledWith("/settings/profile");
   });
 
-  it("keeps the #notifications anchor when leaving the legacy settings page", () => {
-    usePathnameMock.mockReturnValue("/profile/settings");
-    setLocation("/profile/settings#notifications");
+  it("keeps the hash so anchored deep links survive the hop", () => {
+    usePathnameMock.mockReturnValue("/profile/dashboard");
+    setLocation("/profile/dashboard#submissions");
 
     renderHook(() => useNewSettingsRedirect());
 
-    expect(replaceMock).toHaveBeenCalledWith("/settings/account#notifications");
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/settings/creator-dashboard#submissions",
+    );
   });
 
   it("keeps the query string so Stripe return params survive the hop", () => {
@@ -79,8 +80,23 @@ describe("useNewSettingsRedirect", () => {
     );
   });
 
-  it("keeps OAuth apps on the legacy page while the new one is a placeholder", () => {
-    usePathnameMock.mockReturnValue("/profile/oauth-apps");
+  const keptOnLegacy = ["/profile/oauth-apps", "/profile/settings"];
+
+  it.each(keptOnLegacy)(
+    "keeps %s on the legacy page while the new one lacks its features",
+    (pathname) => {
+      usePathnameMock.mockReturnValue(pathname);
+
+      const { result } = renderHook(() => useNewSettingsRedirect());
+
+      expect(result.current.isRedirecting).toBe(false);
+      expect(replaceMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the #notifications anchor reachable on the legacy settings page", () => {
+    usePathnameMock.mockReturnValue("/profile/settings");
+    setLocation("/profile/settings#notifications");
 
     const { result } = renderHook(() => useNewSettingsRedirect());
 
