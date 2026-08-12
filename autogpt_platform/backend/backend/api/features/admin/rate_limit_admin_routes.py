@@ -18,6 +18,7 @@ from backend.copilot.rate_limit import (
     set_user_tier,
 )
 from backend.data.user import get_user_by_email, get_user_email_by_id, search_users
+from backend.util.subscription_tiers import SubscriptionTierCacheInvalidationError
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +235,16 @@ async def set_user_rate_limit_tier(
     )
     try:
         await set_user_tier(request.user_id, request.tier)
+    except SubscriptionTierCacheInvalidationError as e:
+        logger.exception(
+            "User tier committed, but cache propagation failed for user %s",
+            request.user_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Tier updated, but cache propagation failed; retry to repair",
+            headers={"Retry-After": "1"},
+        ) from e
     except Exception as e:
         logger.exception("Failed to set user tier")
         raise HTTPException(status_code=500, detail="Failed to set tier") from e

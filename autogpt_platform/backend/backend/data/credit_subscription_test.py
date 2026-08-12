@@ -29,6 +29,7 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
 )
+from backend.util.subscription_tiers import SubscriptionTierCacheInvalidationError
 
 
 class _CacheClearable(Protocol):
@@ -44,32 +45,143 @@ def _clear_cache(fn: _CacheClearable) -> None:
     fn.cache_clear()
 
 
+@pytest.fixture
+def mock_pending_tier_cache_delete():
+    cache_delete = MagicMock()
+    with patch(
+        "backend.data.credit.get_pending_subscription_change.cache_delete",
+        new=cache_delete,
+    ):
+        yield cache_delete
+
+
 @pytest.mark.asyncio
-async def test_set_subscription_tier_updates_db():
+async def test_set_subscription_tier_updates_db(mock_pending_tier_cache_delete):
     with (
         patch(
             "backend.data.credit.User.prisma",
             return_value=MagicMock(update=AsyncMock()),
         ) as mock_prisma,
-        patch("backend.data.credit.get_user_by_id"),
+        patch("backend.data.credit.get_user_by_id", new=MagicMock()),
+        patch(
+            "backend.data.credit._invalidate_subscription_tier_security_caches",
+            new_callable=AsyncMock,
+        ) as invalidate_tier,
     ):
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
         update_call = mock_prisma.return_value.update.await_args
         assert update_call.kwargs["where"] == {"id": "user-1"}
         assert update_call.kwargs["data"]["subscriptionTier"] == SubscriptionTier.PRO
+        invalidate_tier.assert_awaited_once_with("user-1")
+        mock_pending_tier_cache_delete.assert_called_once_with("user-1")
 
 
 @pytest.mark.asyncio
-async def test_set_subscription_tier_downgrade():
+async def test_set_subscription_tier_downgrade(mock_pending_tier_cache_delete):
     with (
         patch(
             "backend.data.credit.User.prisma",
             return_value=MagicMock(update=AsyncMock()),
         ),
-        patch("backend.data.credit.get_user_by_id"),
+        patch("backend.data.credit.get_user_by_id", new=MagicMock()),
+        patch(
+            "backend.data.credit._invalidate_subscription_tier_security_caches",
+            new_callable=AsyncMock,
+        ),
     ):
         # Downgrade to BASIC should not raise
         await set_subscription_tier("user-1", SubscriptionTier.BASIC)
+        mock_pending_tier_cache_delete.assert_called_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_set_subscription_tier_fences_security_caches_after_commit(
+    mock_pending_tier_cache_delete,
+):
+    events: list[str] = []
+
+    async def update(**_kwargs):
+        events.append("db")
+
+    async def invalidate(_user_id: str):
+        events.append("security-caches")
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(update=AsyncMock(side_effect=update)),
+        ),
+        patch(
+            "backend.data.credit._invalidate_subscription_tier_security_caches",
+            side_effect=invalidate,
+        ),
+        patch("backend.data.credit.get_user_by_id", new=MagicMock()),
+    ):
+        await set_subscription_tier("user-1", SubscriptionTier.PRO)
+
+    assert events == ["db", "security-caches"]
+    mock_pending_tier_cache_delete.assert_called_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_set_subscription_tier_surfaces_post_commit_cache_failure():
+    update = AsyncMock()
+    auxiliary_delete = MagicMock()
+    pending_delete = MagicMock()
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(update=update),
+        ),
+        patch(
+            "backend.data.credit._invalidate_subscription_tier_security_caches",
+            new=AsyncMock(
+                side_effect=SubscriptionTierCacheInvalidationError(("legacy",))
+            ),
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id.cache_delete",
+            new=auxiliary_delete,
+        ),
+        patch(
+            "backend.data.credit.get_pending_subscription_change.cache_delete",
+            new=pending_delete,
+        ),
+    ):
+        with pytest.raises(SubscriptionTierCacheInvalidationError):
+            await set_subscription_tier("user-1", SubscriptionTier.PRO)
+
+    update.assert_awaited_once()
+    auxiliary_delete.assert_called_once_with("user-1")
+    pending_delete.assert_called_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_set_subscription_tier_auxiliary_failures_are_independent():
+    pending_delete = MagicMock()
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(update=AsyncMock()),
+        ),
+        patch(
+            "backend.data.credit._invalidate_subscription_tier_security_caches",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id.cache_delete",
+            side_effect=ConnectionError("auxiliary cache down"),
+        ),
+        patch(
+            "backend.data.credit.get_pending_subscription_change.cache_delete",
+            new=pending_delete,
+        ),
+    ):
+        await set_subscription_tier("user-1", SubscriptionTier.PRO)
+
+    pending_delete.assert_called_once_with("user-1")
 
 
 def _make_user(
@@ -263,9 +375,121 @@ async def test_sync_subscription_from_stripe_idempotent_no_write_if_unchanged():
         patch(
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
+        patch(
+            "backend.data.credit._invalidate_subscription_tier_security_caches",
+            new_callable=AsyncMock,
+        ) as repair_caches,
     ):
         await sync_subscription_from_stripe(stripe_sub)
         mock_set.assert_not_awaited()
+        repair_caches.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_retries_failed_idempotent_cache_repair():
+    mock_user = _make_user(tier=SubscriptionTier.PRO)
+    stripe_sub = {
+        "id": "sub_new",
+        "customer": "cus_123",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
+    }
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+            return "price_pro_monthly"
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit._invalidate_subscription_tier_security_caches",
+            new=AsyncMock(
+                side_effect=SubscriptionTierCacheInvalidationError(("legacy",))
+            ),
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ) as mock_set,
+    ):
+        with pytest.raises(SubscriptionTierCacheInvalidationError):
+            await sync_subscription_from_stripe(stripe_sub)
+
+    mock_set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_emits_once_before_retrying_cache_fence():
+    mock_user = _make_user(tier=SubscriptionTier.PRO)
+    stripe_sub = {
+        "id": "sub_new",
+        "customer": "cus_123",
+        "status": "active",
+        "metadata": {"billing_cycle": "monthly"},
+        "items": {"data": [{"price": {"id": "price_biz_monthly"}}]},
+    }
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if tier == SubscriptionTier.BUSINESS and billing_cycle == "monthly":
+            return "price_biz_monthly"
+        return None
+
+    empty_list = MagicMock()
+    empty_list.data = []
+    empty_list.has_more = False
+    track_event = MagicMock()
+    pending_delete = MagicMock()
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=empty_list,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new=AsyncMock(
+                side_effect=SubscriptionTierCacheInvalidationError(("generation",))
+            ),
+        ),
+        patch("backend.data.credit._track_billing_event", new=track_event),
+        patch(
+            "backend.data.credit.get_pending_subscription_change.cache_delete",
+            new=pending_delete,
+        ),
+    ):
+        with pytest.raises(SubscriptionTierCacheInvalidationError):
+            await sync_subscription_from_stripe(stripe_sub)
+
+    track_event.assert_called_once_with(
+        "subscription_upgraded",
+        "user-1",
+        {
+            "previous_subscription_tier": SubscriptionTier.PRO.value,
+            "subscription_tier": SubscriptionTier.BUSINESS.value,
+            "billing_cycle": "monthly",
+        },
+    )
+    pending_delete.assert_called_once_with("user-1")
 
 
 @pytest.mark.asyncio
@@ -2846,6 +3070,65 @@ async def test_modify_stripe_subscription_skips_emit_when_db_flip_fails():
 
     assert result is True
     track_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_succeeds_when_post_commit_cache_fence_fails():
+    """A cache fence error means the DB commit landed, so a charged upgrade is
+    successful and may emit analytics; the Stripe webhook repairs the cache."""
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro"}}]},
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+    track_mock = MagicMock()
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_biz_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+        ) as modify,
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new=AsyncMock(
+                side_effect=SubscriptionTierCacheInvalidationError(("legacy",))
+            ),
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch.object(get_pending_subscription_change, "cache_delete"),
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.BUSINESS
+        )
+
+    assert result is True
+    modify.assert_awaited_once()
+    track_mock.assert_called_once()
 
 
 @pytest.mark.asyncio

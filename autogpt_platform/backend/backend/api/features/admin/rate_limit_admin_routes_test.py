@@ -10,6 +10,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
 from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
+from backend.util.subscription_tiers import SubscriptionTierCacheInvalidationError
 
 from .rate_limit_admin_routes import router as rate_limit_admin_router
 
@@ -491,6 +492,38 @@ def test_set_user_tier_db_failure(
     )
 
     assert response.status_code == 500
+
+
+def test_set_user_tier_cache_failure_reports_committed_update(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.BASIC,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.set_user_tier",
+        new_callable=AsyncMock,
+        side_effect=SubscriptionTierCacheInvalidationError(("generation",)),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "PRO"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "1"
+    assert response.json() == {
+        "detail": "Tier updated, but cache propagation failed; retry to repair"
+    }
 
 
 def test_tier_endpoints_require_admin_role(mock_jwt_user) -> None:

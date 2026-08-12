@@ -67,6 +67,10 @@ from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from backend.util.subscription_tiers import (
+    invalidate_subscription_tier_auxiliary_caches,
+    invalidate_subscription_tier_caches,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -914,9 +918,8 @@ async def _decr_counter_floor_zero(
 class _UserNotFoundError(Exception):
     """Raised when a user record is missing or has no subscription tier.
 
-    Raising (rather than returning ``DEFAULT_TIER``) prevents ``@cached``
-    from persisting the fallback, which would otherwise keep serving FREE
-    for up to the TTL after the user's real tier is set.
+    Raising prevents ``@cached`` from persisting the fallback, which would
+    otherwise keep serving NO_TIER after the user's real tier is set.
     """
 
 
@@ -1029,10 +1032,12 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     return tier
 
 
-# Expose cache management on the public function so callers (including tests)
-# never need to reach into the private ``_fetch_user_tier``.
-get_user_tier.cache_clear = _fetch_user_tier.cache_clear  # type: ignore[attr-defined]
-get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-defined]
+def clear_legacy_user_tier_cache() -> None:
+    _fetch_user_tier.cache_clear()
+
+
+def invalidate_legacy_user_tier_cache(user_id: str) -> None:
+    _fetch_user_tier.cache_delete(user_id)
 
 
 async def get_workspace_storage_limit_bytes(user_id: str) -> int:
@@ -1063,15 +1068,17 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         where={"id": user_id},
         data={"subscriptionTier": tier.value},
     )
-    get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Local import: backend.data.credit imports from this module.
-    from backend.data.credit import get_pending_subscription_change
 
-    get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
-    get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
-
-    # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
-    asyncio.ensure_future(_drift_check_background(user_id, tier))
+    try:
+        await invalidate_subscription_tier_caches(
+            user_id,
+            invalidate_legacy_user_tier_cache,
+        )
+    finally:
+        invalidate_subscription_tier_auxiliary_caches(user_id)
+        # The DB write committed, so run diagnostics even when cache propagation
+        # failed and the caller is asked to retry the fence.
+        asyncio.ensure_future(_drift_check_background(user_id, tier))
 
 
 async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:

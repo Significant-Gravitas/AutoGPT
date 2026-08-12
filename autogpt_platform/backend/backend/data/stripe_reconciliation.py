@@ -26,6 +26,7 @@ from backend.data.credit import (
     log_tier_reconciliation_discrepancy,
     set_subscription_tier,
 )
+from backend.util.subscription_tier_order import subscription_tier_rank
 
 logger = logging.getLogger(__name__)
 
@@ -262,15 +263,7 @@ def _record_subscription(
     if tier is None:
         return
     existing = tiers.get(customer)
-    if existing is None or _TIER_RANK[tier] > _TIER_RANK[existing]:
+    if existing is None or subscription_tier_rank(tier) > subscription_tier_rank(
+        existing
+    ):
         tiers[customer] = tier
-
-
-_TIER_RANK: dict[SubscriptionTier, int] = {
-    SubscriptionTier.NO_TIER: 0,
-    SubscriptionTier.BASIC: 1,
-    SubscriptionTier.PRO: 2,
-    SubscriptionTier.MAX: 3,
-    SubscriptionTier.BUSINESS: 4,
-    SubscriptionTier.ENTERPRISE: 5,
-}

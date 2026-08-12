@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import BehaveAs, Settings
+from backend.util.subscription_tier_order import subscription_tier_at_least
 
 
 class Entitlement(str, Enum):
@@ -28,16 +29,6 @@ ENTITLEMENT_POLICIES: Mapping[Entitlement, EntitlementPolicy] = MappingProxyType
         ),
     }
 )
-
-_TIER_ORDER = (
-    SubscriptionTier.NO_TIER,
-    SubscriptionTier.BASIC,
-    SubscriptionTier.PRO,
-    SubscriptionTier.MAX,
-    SubscriptionTier.BUSINESS,
-    SubscriptionTier.ENTERPRISE,
-)
-_TIER_RANK = {tier: rank for rank, tier in enumerate(_TIER_ORDER)}
 
 settings = Settings()
 
@@ -73,7 +64,7 @@ async def has_entitlement(user_id: str, entitlement: Entitlement) -> bool:
         return True
 
     tier = await _get_user_subscription_tier(user_id)
-    return _TIER_RANK[tier] >= _TIER_RANK[policy.minimum_tier]
+    return subscription_tier_at_least(tier, policy.minimum_tier)
 
 
 async def require_entitlement(user_id: str, entitlement: Entitlement) -> None:

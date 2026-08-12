@@ -48,6 +48,12 @@ from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
+from backend.util.subscription_tier_order import subscription_tier_rank
+from backend.util.subscription_tiers import (
+    SubscriptionTierCacheInvalidationError,
+    invalidate_subscription_tier_auxiliary_caches,
+    invalidate_subscription_tier_caches,
+)
 
 if TYPE_CHECKING:
     from backend.blocks._base import Block, BlockCost
@@ -1520,6 +1526,16 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     get_user_by_id.cache_delete(user_id)
 
 
+async def _invalidate_subscription_tier_security_caches(user_id: str) -> None:
+    # Local import avoids a credit <-> rate_limit cycle at module load.
+    from backend.copilot.rate_limit import invalidate_legacy_user_tier_cache
+
+    await invalidate_subscription_tier_caches(
+        user_id,
+        invalidate_legacy_user_tier_cache,
+    )
+
+
 async def set_subscription_tier(
     user_id: str,
     tier: SubscriptionTier,
@@ -1529,18 +1545,10 @@ async def set_subscription_tier(
         "subscriptionTier": tier,
     }
     await User.prisma().update(where={"id": user_id}, data=data)
-    get_user_by_id.cache_delete(user_id)
-    # Also invalidate the rate-limit tier cache so CoPilot picks up the new
-    # tier immediately rather than waiting up to 5 minutes for the TTL to expire.
-    from backend.copilot.rate_limit import get_user_tier  # local import avoids circular
-
-    get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Invalidate the pending-change cache too — an admin tier override or the
-    # webhook-driven phase transition means any cached pending-change state
-    # (schedule, cancel_at_period_end) is likely stale. Without this the
-    # billing page can show a pending change for up to 30s after the tier
-    # has already flipped.
-    get_pending_subscription_change.cache_delete(user_id)
+    try:
+        await _invalidate_subscription_tier_security_caches(user_id)
+    finally:
+        invalidate_subscription_tier_auxiliary_caches(user_id)
 
 
 async def _cancel_customer_subscriptions(
@@ -1702,26 +1710,12 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
 # Ordered from least- to most-privileged. Used to distinguish upgrades
 # (move right) from downgrades (move left); ENTERPRISE is admin-managed and
 # never reached via self-service flows.
-_TIER_ORDER: tuple[SubscriptionTier, ...] = (
-    SubscriptionTier.NO_TIER,
-    SubscriptionTier.BASIC,
-    SubscriptionTier.PRO,
-    SubscriptionTier.MAX,
-    SubscriptionTier.BUSINESS,
-    SubscriptionTier.ENTERPRISE,
-)
-
-
-def _tier_rank(tier: SubscriptionTier) -> int:
-    return _TIER_ORDER.index(tier)
-
-
 def is_tier_upgrade(current: SubscriptionTier, target: SubscriptionTier) -> bool:
-    return _tier_rank(target) > _tier_rank(current)
+    return subscription_tier_rank(target) > subscription_tier_rank(current)
 
 
 def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bool:
-    return _tier_rank(target) < _tier_rank(current)
+    return subscription_tier_rank(target) < subscription_tier_rank(current)
 
 
 class PendingChangeUnknown(Exception):
@@ -2098,6 +2092,16 @@ async def modify_stripe_subscription_for_tier(
         try:
             await set_subscription_tier(user_id, tier)
             db_flip_succeeded = True
+        except SubscriptionTierCacheInvalidationError:
+            db_flip_succeeded = True
+            logger.exception(
+                "modify_stripe_subscription_for_tier: Stripe modify and DB tier"
+                " flip on sub %s succeeded for user %s → %s, but the cache"
+                " fence failed; the Stripe webhook retry will repair it",
+                sub_id,
+                user_id,
+                tier,
+            )
         except (PrismaError, ConnectionError, asyncio.TimeoutError):
             logger.exception(
                 "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
@@ -2780,9 +2784,10 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             return
         tier = SubscriptionTier.NO_TIER
     # Idempotency: Stripe retries webhooks on delivery failure, and several event
-    # types map to the same final tier. Skip the DB write + cache invalidation
-    # when the tier is already correct to avoid redundant writes on replay.
+    # types map to the same final tier. Skip the redundant DB write, but re-run
+    # cache invalidation in case a prior post-commit fence failed.
     if current_tier == tier:
+        await _invalidate_subscription_tier_security_caches(user.id)
         return
     # When a new subscription becomes active (e.g. paid-to-paid tier upgrade
     # via a fresh Checkout Session), cancel any OTHER active subscriptions for
@@ -2805,7 +2810,11 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier)
+    cache_invalidation_error: SubscriptionTierCacheInvalidationError | None = None
+    try:
+        await set_subscription_tier(user.id, tier)
+    except SubscriptionTierCacheInvalidationError as exc:
+        cache_invalidation_error = exc
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
@@ -2822,6 +2831,8 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
     # Tier changed — bust any cached pending-change view so the next
     # dashboard fetch reflects the new state immediately.
     get_pending_subscription_change.cache_delete(user.id)
+    if cache_invalidation_error is not None:
+        raise cache_invalidation_error
 
 
 async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:

@@ -29,6 +29,7 @@ from .rate_limit import (
     acquire_reset_lock,
     build_budget_ctx,
     check_rate_limit,
+    clear_legacy_user_tier_cache,
     get_daily_reset_count,
     get_global_rate_limits,
     get_remaining_usd_budget,
@@ -1281,7 +1282,7 @@ class TestGetUserTier:
     @pytest.fixture(autouse=True)
     def _clear_tier_cache(self):
         """Clear the get_user_tier cache before each test."""
-        get_user_tier.cache_clear()  # type: ignore[attr-defined]
+        clear_legacy_user_tier_cache()
 
     def _mock_user_db(
         self, subscription_tier: str | None = None, raises: Exception | None = None
@@ -1459,7 +1460,7 @@ class TestMaybeReconcileStripeTier:
     async def test_get_user_tier_survives_reconcile_failure(self):
         """Reconcile failure stays non-fatal for rate limiting: get_user_tier
         still resolves the DB-confirmed NO_TIER instead of raising."""
-        get_user_tier.cache_clear()  # type: ignore[attr-defined]
+        clear_legacy_user_tier_cache()
         mock_user = MagicMock()
         mock_user.subscription_tier = None
         mock_db = AsyncMock()
@@ -1488,7 +1489,30 @@ class TestSetUserTier:
     @pytest.fixture(autouse=True)
     def _clear_tier_cache(self):
         """Clear the get_user_tier cache before each test."""
-        get_user_tier.cache_clear()  # type: ignore[attr-defined]
+        values: dict[object, object] = {}
+        redis = MagicMock()
+        redis.scan_iter.return_value = []
+        redis.get.side_effect = values.get
+        redis.getex.side_effect = lambda key, **_kwargs: values.get(key)
+        redis.setex.side_effect = lambda key, _ttl, value: values.__setitem__(
+            key, value
+        )
+        redis.delete.side_effect = lambda key: int(values.pop(key, None) is not None)
+
+        with patch("backend.util.cache._get_redis", return_value=redis):
+            clear_legacy_user_tier_cache()
+            yield
+
+    @pytest.fixture(autouse=True)
+    def _stub_generation_invalidation(self):
+        async def invalidate(_user_id: str, legacy_cache_delete):
+            legacy_cache_delete(_user_id)
+
+        with patch(
+            "backend.copilot.rate_limit.invalidate_subscription_tier_caches",
+            side_effect=invalidate,
+        ):
+            yield
 
     @pytest.mark.asyncio
     async def test_updates_db_and_invalidates_cache(self):
@@ -1506,6 +1530,108 @@ class TestSetUserTier:
             where={"id": _USER},
             data={"subscriptionTier": "PRO"},
         )
+
+    @pytest.mark.asyncio
+    async def test_security_invalidation_runs_after_db_commit(self):
+        events: list[str] = []
+        mock_prisma = AsyncMock()
+
+        async def update(**_kwargs):
+            events.append("db")
+
+        async def invalidate(_user_id: str, _legacy_cache_delete):
+            events.append("security-caches")
+
+        mock_prisma.update = AsyncMock(side_effect=update)
+        with (
+            patch(
+                "backend.copilot.rate_limit.PrismaUser.prisma",
+                return_value=mock_prisma,
+            ),
+            patch(
+                "backend.copilot.rate_limit.invalidate_subscription_tier_caches",
+                side_effect=invalidate,
+            ),
+        ):
+            await set_user_tier(_USER, SubscriptionTier.PRO)
+
+        assert events == ["db", "security-caches"]
+
+    @pytest.mark.asyncio
+    async def test_security_invalidation_failure_surfaces_after_commit(self):
+        from backend.util.subscription_tiers import (
+            SubscriptionTierCacheInvalidationError,
+        )
+
+        mock_prisma = AsyncMock()
+        mock_prisma.update = AsyncMock(return_value=None)
+        auxiliary_delete = MagicMock()
+        pending_delete = MagicMock()
+        drift_check = AsyncMock()
+
+        def close_scheduled_coroutine(coroutine):
+            coroutine.close()
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.PrismaUser.prisma",
+                return_value=mock_prisma,
+            ),
+            patch(
+                "backend.copilot.rate_limit.invalidate_subscription_tier_caches",
+                new=AsyncMock(
+                    side_effect=SubscriptionTierCacheInvalidationError(("generation",))
+                ),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id.cache_delete",
+                new=auxiliary_delete,
+            ),
+            patch(
+                "backend.data.credit.get_pending_subscription_change.cache_delete",
+                new=pending_delete,
+            ),
+            patch(
+                "backend.copilot.rate_limit._drift_check_background",
+                new=drift_check,
+            ),
+            patch(
+                "backend.copilot.rate_limit.asyncio.ensure_future",
+                side_effect=close_scheduled_coroutine,
+            ) as ensure_future,
+        ):
+            with pytest.raises(SubscriptionTierCacheInvalidationError):
+                await set_user_tier(_USER, SubscriptionTier.PRO)
+
+        mock_prisma.update.assert_awaited_once()
+        auxiliary_delete.assert_called_once_with(_USER)
+        pending_delete.assert_called_once_with(_USER)
+        drift_check.assert_called_once_with(_USER, SubscriptionTier.PRO)
+        ensure_future.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_auxiliary_cache_failures_are_independent_and_best_effort(self):
+        mock_prisma = AsyncMock()
+        mock_prisma.update = AsyncMock(return_value=None)
+        pending_delete = MagicMock()
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.PrismaUser.prisma",
+                return_value=mock_prisma,
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id.cache_delete",
+                side_effect=ConnectionError("auxiliary cache down"),
+            ),
+            patch(
+                "backend.data.credit.get_pending_subscription_change.cache_delete",
+                new=pending_delete,
+            ),
+        ):
+            await set_user_tier(_USER, SubscriptionTier.PRO)
+
+        pending_delete.assert_called_once_with(_USER)
 
     @pytest.mark.asyncio
     async def test_record_not_found_propagates(self):
@@ -1572,6 +1698,8 @@ class TestSetUserTier:
 
         mock_user = MagicMock()
         mock_user.stripe_customer_id = "cus_abc"
+        get_user = AsyncMock(return_value=mock_user)
+        get_user.cache_delete = MagicMock()
 
         mock_sub = MagicMock()
         mock_sub.id = "sub_abc"
@@ -1584,8 +1712,7 @@ class TestSetUserTier:
             ),
             patch(
                 "backend.copilot.rate_limit.get_user_by_id",
-                new_callable=AsyncMock,
-                return_value=mock_user,
+                new=get_user,
             ),
             patch(
                 "backend.data.credit._get_active_subscription",
