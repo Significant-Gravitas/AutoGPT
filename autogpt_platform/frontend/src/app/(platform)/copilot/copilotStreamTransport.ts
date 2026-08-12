@@ -1,6 +1,7 @@
 import { environment } from "@/services/environment";
 import { DefaultChatTransport } from "ai";
 import type { ChatTransport, FileUIPart, UIMessage } from "ai";
+import { v4 as uuidv4 } from "uuid";
 
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getCopilotAuthHeaders } from "./helpers";
@@ -96,7 +97,10 @@ export function createCopilotTransport({
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
           mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
-          message_id: crypto.randomUUID(),
+          // Supplying options forces uuid's getRandomValues path. Unlike
+          // crypto.randomUUID, getRandomValues is available on plain-HTTP LAN
+          // origins used by the local single-container appliance.
+          message_id: uuidv4({}),
         },
         headers: await getCopilotAuthHeaders(),
       };
