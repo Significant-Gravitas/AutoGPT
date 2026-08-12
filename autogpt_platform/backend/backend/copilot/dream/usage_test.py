@@ -213,14 +213,40 @@ def test_contradiction_and_retraction_reasons_override_protection():
             recall_count=9,
             last_recalled_at=_ago(hours=2),
             prev_recalled_at=_ago(days=1),
-        )
+        ),
+        _fact("witness"),
     ]
     demotions = [
-        DreamDemotion(edge_uuid="hot", reason="contradicted_by:abc-123"),
+        # Cites a fact this pass actually fetched — a verifiable claim.
+        DreamDemotion(edge_uuid="hot", reason="contradicted_by:witness"),
         DreamDemotion(edge_uuid="hot", reason="web_contradicted:https://x.test"),
         DreamDemotion(edge_uuid="hot", reason="user_signal"),
     ]
     assert drop_recently_used_demotions("p-5", demotions, facts) == demotions
+
+
+def test_contradiction_citing_an_unknown_uuid_does_not_override():
+    """Every demotion reason is model-authored, and the model reads
+    attacker-influencable web/tool content. A ``contradicted_by:`` reason
+    citing a uuid this pass never fetched is unverifiable, so it must not
+    unlock the destructive path — otherwise an injected reason string is
+    all it takes to demote a load-bearing fact."""
+    facts = [
+        _fact(
+            "hot",
+            recall_count=9,
+            last_recalled_at=_ago(hours=2),
+            prev_recalled_at=_ago(days=1),
+        )
+    ]
+    demotions = [
+        DreamDemotion(edge_uuid="hot", reason="contradicted_by:never-seen-uuid"),
+        DreamDemotion(edge_uuid="hot", reason="contradicted_by:"),
+        # Cites a real fetched uuid (whitespace-padded) — citation checks
+        # out, so this one is honoured.
+        DreamDemotion(edge_uuid="hot", reason="contradicted_by:  hot  "),
+    ]
+    assert drop_recently_used_demotions("p-5b", demotions, facts) == [demotions[2]]
 
 
 def test_unknown_and_staleness_reasons_stay_blocked_for_protected_facts():

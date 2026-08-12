@@ -441,6 +441,77 @@ class TestPhaseChaining:
             assert call.args == ("u1", "tok-u1")
 
     @pytest.mark.asyncio
+    async def test_bundle_facts_and_refresh_flag_reach_apply(self, fake_redis):
+        """The batch path's demotion guards are only as good as what it
+        forwards. ``facts`` carries the recall stamps the usage guard
+        reads, and ``refresh_usage`` is what makes apply re-read them —
+        this bundle is hours stale by callback time. A silent regression
+        to ``facts=None`` or a dropped flag would quietly restore the
+        pre-PR behaviour with every other test still green."""
+        from backend.copilot.dream.batch_callbacks import _write_phase_to_state
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput, FactRow
+
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
+        now = datetime.now(timezone.utc)
+        fact = FactRow(
+            uuid="f-1",
+            source=None,
+            target=None,
+            name=None,
+            fact="user prefers dark mode",
+            scope="real:global",
+            confidence=0.9,
+            status="active",
+            created_at=None,
+            recall_count=3,
+        )
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1",
+                group_id="user_u1",
+                window_start=now,
+                window_end=now,
+                facts=[fact],
+                known_fact_uuids={"f-1"},
+            ),
+        )
+        for phase, content in (
+            ("consolidate", _CONSOLIDATE_CONTENT),
+            ("recombine", _RECOMBINE_CONTENT),
+        ):
+            await _write_phase_to_state(
+                pass_id="p1",
+                phase=phase,
+                row=_row(custom_id=f"p1:{phase}", content=content),
+            )
+
+        apply = AsyncMock(return_value={"writes": 0, "snapshot": "..."})
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_complete", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._delete_state", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.delete_input_bundle", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        kwargs = apply.await_args.kwargs
+        assert [f.uuid for f in kwargs["facts"]] == ["f-1"]
+        assert kwargs["facts"][0].recall_count == 3
+        assert kwargs["known_fact_uuids"] == {"f-1"}
+        assert kwargs["refresh_usage"] is True
+
+    @pytest.mark.asyncio
     async def test_apply_gate_redis_outage_fails_pass_not_silent_success(
         self, fake_redis
     ):

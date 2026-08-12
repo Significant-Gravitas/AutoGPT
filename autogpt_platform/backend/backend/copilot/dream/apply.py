@@ -231,6 +231,7 @@ async def _filter_demotions(
     demotions: list[DreamDemotion],
     known_fact_uuids: set[str] | None,
     facts: list[FactRow] | None,
+    refresh_usage: bool,
 ) -> list[DreamDemotion]:
     """Code-level pre-flight for LLM-proposed demotion targets.
 
@@ -290,7 +291,7 @@ async def _filter_demotions(
             )
     if not kept:
         return kept
-    return await _drop_usage_protected(user_id, pass_id, kept, facts)
+    return await _drop_usage_protected(user_id, pass_id, kept, facts, refresh_usage)
 
 
 async def _drop_usage_protected(
@@ -298,21 +299,32 @@ async def _drop_usage_protected(
     pass_id: str,
     demotions: list[DreamDemotion],
     facts: list[FactRow] | None,
+    refresh_usage: bool,
 ) -> list[DreamDemotion]:
-    """Usage guard over the snapshot plus a targeted stamp refresh.
+    """Usage guard over the snapshot, optionally re-reading the stamps.
 
-    Facts the snapshot ALREADY protects need no refresh — their
-    demotions are dropped either way — so only the rest are re-read.
-    On the sync path, where the snapshot is seconds old, that usually
-    leaves nothing to fetch and skips the driver open entirely; on the
-    batch path it is the fresh read that keeps a fact recalled since
-    submission protected.
+    ``refresh_usage`` is the batch path only. There, submission and
+    callback are hours apart, so a fact recalled in between is protected
+    only by re-reading its stamps. The sync path's snapshot is seconds
+    old and ``_clamp_operations`` has already applied this same guard
+    against it, so a re-read there would cost a driver open plus a query
+    on every pass to catch a recall that happened within those seconds —
+    all cost, no signal.
+
+    When it does refresh, facts the snapshot ALREADY protects are left
+    out of the re-read: their demotions are dropped either way.
     """
     snapshot_protected = protected_fact_uuids(facts) if facts else set()
-    stale_targets = [
+    if not refresh_usage:
+        return drop_recently_used_demotions(pass_id, demotions, facts)
+    targets_needing_refresh = [
         d.edge_uuid for d in demotions if d.edge_uuid not in snapshot_protected
     ]
-    fresh = await fetch_usage_rows(user_id, stale_targets) if stale_targets else []
+    fresh = (
+        await fetch_usage_rows(user_id, targets_needing_refresh)
+        if targets_needing_refresh
+        else []
+    )
     combined = (facts or []) + (fresh or [])
     return drop_recently_used_demotions(pass_id, demotions, combined or None)
 
@@ -598,6 +610,7 @@ async def apply_operations(
     *,
     known_fact_uuids: set[str] | None = None,
     facts: list[FactRow] | None = None,
+    refresh_usage: bool = False,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
 ) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
@@ -634,6 +647,11 @@ async def apply_operations(
     context writes. Demotions targeting recently-and-repeatedly
     recalled facts are dropped alongside the unknown-uuid ones.
     ``None`` means "no usage data" and the guard fails open.
+
+    ``refresh_usage`` re-reads those stamps from the graph right before
+    the guard runs. The batch path sets it because its bundle is hours
+    stale by callback time; the sync path leaves it off, its bundle
+    being seconds old (see ``_drop_usage_protected``).
 
     ``ingestion_drain_timeout`` bounds the in-line wait for the enqueued
     episodes to land (see ``_drain_ingestion``). The sync path keeps the
@@ -774,7 +792,7 @@ async def apply_operations(
     )
 
     demotions = await _filter_demotions(
-        user_id, pass_id, ops.demotions, known_fact_uuids, facts
+        user_id, pass_id, ops.demotions, known_fact_uuids, facts, refresh_usage
     )
     demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
         user_id, group_id, demotions

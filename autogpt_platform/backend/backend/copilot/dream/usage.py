@@ -27,12 +27,17 @@ logger = logging.getLogger(__name__)
 #
 # The window matches the cadence a user is actually observed over: a
 # fact pulled into context inside the last week is demonstrably still
-# part of their working set, and a nightly pass has seven more chances
-# to demote it once it goes quiet. Longer would ossify the graph
-# (stale-but-recently-read facts could never be pruned); shorter would
-# leave weekly-cadence work (a project touched every Monday)
-# unprotected.
-RECENT_RECALL_WINDOW = timedelta(days=7)
+# part of their working set, and a nightly pass has a week of further
+# chances to demote it once it goes quiet. Longer would ossify the
+# graph (stale-but-recently-read facts could never be pruned).
+#
+# EIGHT days, not seven, and the extra day is the whole point: for
+# weekly-cadence work (a project touched every Monday) the prior
+# deduped recall is already seven days PLUS however many hours separate
+# the recall from the nightly pass. A flat 7d window puts exactly the
+# cadence this constant exists to protect just outside it, so the
+# guarantee would read well and never fire. The +1d absorbs that offset.
+RECENT_RECALL_WINDOW = timedelta(days=8)
 
 # Lives here, beside RECENT_RECALL_WINDOW, despite being consumed only
 # by the stamp WRITER (``ratification._stamp_recall``): the two are one
@@ -61,11 +66,24 @@ RECALL_DEDUPE_INTERVAL = timedelta(hours=24)
 # free-text reasons the model invents) stays blocked for protected
 # facts: fail conservative in the destructive direction.
 OVERRIDE_REASONS = frozenset({"user_signal"})
-OVERRIDE_REASON_PREFIXES = ("contradicted_by:", "web_contradicted:")
+OVERRIDE_REASON_PREFIXES = ("web_contradicted:",)
+
+# Every reason is model-authored, and the model reads web/tool content
+# that an attacker may control — so the one override carrying a
+# checkable claim gets checked. ``contradicted_by:{uuid}`` must cite a
+# fact THIS pass actually fetched: those are the only uuids the model
+# legitimately saw, so an invented or injected citation fails the test
+# and the protection holds. Unverifiable is treated as non-overriding,
+# erring away from the destructive outcome.
+CONTRADICTION_PREFIX = "contradicted_by:"
 
 
-def _reason_overrides_protection(reason: str) -> bool:
-    return reason in OVERRIDE_REASONS or reason.startswith(OVERRIDE_REASON_PREFIXES)
+def _reason_overrides_protection(reason: str, citable_uuids: set[str]) -> bool:
+    if reason in OVERRIDE_REASONS:
+        return True
+    if reason.startswith(CONTRADICTION_PREFIX):
+        return reason[len(CONTRADICTION_PREFIX) :].strip() in citable_uuids
+    return reason.startswith(OVERRIDE_REASON_PREFIXES)
 
 
 def drop_recently_used_demotions(
@@ -88,10 +106,12 @@ def drop_recently_used_demotions(
     if not protected:
         return demotions
 
+    citable_uuids = {f.uuid for f in facts}
     kept = [
         d
         for d in demotions
-        if d.edge_uuid not in protected or _reason_overrides_protection(d.reason)
+        if d.edge_uuid not in protected
+        or _reason_overrides_protection(d.reason, citable_uuids)
     ]
     dropped = len(demotions) - len(kept)
     if dropped:

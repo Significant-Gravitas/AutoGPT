@@ -102,6 +102,18 @@ async def test_fetch_usage_rows_returns_current_stamps(mocker):
     assert by_uuid["cold"].prev_recalled_at is None
     driver.close.assert_awaited_once()
 
+    # The mock echoes whatever it's handed, so these aliases are the only
+    # thing tying the rows above to real columns. A renamed alias or a
+    # dropped toString() would leave this test green while the refresh
+    # silently returned nothing usable.
+    query = driver.execute_query.await_args.args[0]
+    assert "e.recall_count AS recall_count" in query
+    assert "toString(e.last_recalled_at) AS last_recalled_at" in query
+    assert "toString(e.prev_recalled_at) AS prev_recalled_at" in query
+    # Retracted edges are out of scope here exactly as they are for the
+    # stamp writer — reader and writer must agree on what "live" means.
+    assert "e.expired_at IS NULL" in query
+
 
 @pytest.mark.asyncio
 async def test_fetch_usage_rows_returns_none_on_query_failure(mocker):

@@ -381,6 +381,14 @@ async def _stamp_recall(
 
     Returns the number of edges stamped (0 on failure).
     """
+    # INVARIANT: the dedupe comparison below is a LEXICOGRAPHIC string
+    # compare, which orders correctly only because every write to
+    # ``last_recalled_at`` goes through the ``$now`` binding — a UTC
+    # ``datetime.isoformat()``, so fixed-width with a "+00:00" suffix. A
+    # future writer using a "Z" suffix, a non-UTC offset, or a
+    # variable-precision format would silently break the ordering (and
+    # with it the dedupe) without any query error. Keep this function
+    # the only writer of that property.
     query = """
     UNWIND $uuids AS target_uuid
     MATCH ()-[e:RELATES_TO]->()

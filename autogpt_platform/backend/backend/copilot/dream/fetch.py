@@ -61,6 +61,46 @@ class FactRow(BaseModel):
     last_recalled_at: str | None = None  # ISO timestamp
     prev_recalled_at: str | None = None  # ISO timestamp
 
+    @classmethod
+    def usage_only(
+        cls,
+        *,
+        uuid: str,
+        recall_count: int | None,
+        last_recalled_at: str | None,
+        prev_recalled_at: str | None,
+    ) -> "FactRow":
+        """A row carrying ONLY usage stamps, for the demotion guard.
+
+        Identity and content fields are null by construction: the
+        ``fetch_usage_rows`` projection never reads them. Centralising the
+        null-filling here keeps a future required field on ``FactRow`` from
+        silently producing a half-built row at the call site.
+        """
+        return cls(
+            uuid=uuid,
+            source=None,
+            target=None,
+            name=None,
+            fact=None,
+            scope=None,
+            confidence=None,
+            status=None,
+            created_at=None,
+            recall_count=recall_count,
+            last_recalled_at=last_recalled_at,
+            prev_recalled_at=prev_recalled_at,
+        )
+
+
+# Shared by the full-fact fetch and the usage-only refresh: a prop added
+# to one projection must reach the other, or the demotion guard silently
+# loses that signal on whichever path missed it.
+USAGE_PROJECTION = """
+                   e.recall_count AS recall_count,
+                   toString(e.last_recalled_at) AS last_recalled_at,
+                   toString(e.prev_recalled_at) AS prev_recalled_at"""
+
 
 class SessionRow(BaseModel):
     session_id: str
@@ -229,10 +269,9 @@ async def _fetch_active_facts(
                    e.scope AS scope,
                    e.confidence AS confidence,
                    e.status AS status,
-                   toString(e.created_at) AS created_at,
-                   e.recall_count AS recall_count,
-                   toString(e.last_recalled_at) AS last_recalled_at,
-                   toString(e.prev_recalled_at) AS prev_recalled_at
+                   toString(e.created_at) AS created_at,"""
+            + USAGE_PROJECTION
+            + """
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
@@ -297,11 +336,10 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
             """
             UNWIND $uuids AS target_uuid
             MATCH ()-[e:RELATES_TO]->()
-            WHERE e.uuid = target_uuid
-            RETURN e.uuid AS uuid,
-                   e.recall_count AS recall_count,
-                   toString(e.last_recalled_at) AS last_recalled_at,
-                   toString(e.prev_recalled_at) AS prev_recalled_at
+            WHERE e.uuid = target_uuid AND e.expired_at IS NULL
+            RETURN e.uuid AS uuid,"""
+            + USAGE_PROJECTION
+            + """
             """,
             uuids=edge_uuids,
         )
@@ -317,20 +355,9 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
     finally:
         await driver.close()
     rows = result[0] if result else []
-    # Usage-only projection: identity/content fields are intentionally
-    # null. These rows exist to feed the demotion guard's uuid → usage
-    # lookup and must not be treated as complete facts.
     return [
-        FactRow(
+        FactRow.usage_only(
             uuid=str(r.get("uuid", "")),
-            source=None,
-            target=None,
-            name=None,
-            fact=None,
-            scope=None,
-            confidence=None,
-            status=None,
-            created_at=None,
             recall_count=r.get("recall_count"),
             last_recalled_at=r.get("last_recalled_at"),
             prev_recalled_at=r.get("prev_recalled_at"),

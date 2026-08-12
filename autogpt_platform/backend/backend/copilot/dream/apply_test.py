@@ -413,10 +413,57 @@ async def test_usage_refresh_protects_fact_recalled_after_submission(mocker):
         ops=ops,
         known_fact_uuids={"hot"},
         facts=[_unused_fact("hot")],
+        refresh_usage=True,
     )
 
     apply_mod.fetch_usage_rows.assert_awaited_once_with("u-refresh", ["hot"])
     apply_mod.mark_edges_superseded.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_path_does_not_re_read_usage_stamps(mocker):
+    """The sync bundle is seconds old and ``_clamp_operations`` has
+    already run this same guard against it, so an apply-time re-read
+    would buy a driver open plus a query per pass to catch a recall from
+    within those seconds. Default is therefore no refresh."""
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="cold", reason="stale_fact")],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-sync-norefresh",
+        pass_id="p-sync-norefresh",
+        ops=ops,
+        known_fact_uuids={"cold"},
+        facts=[_unused_fact("cold")],
+    )
+
+    apply_mod.fetch_usage_rows.assert_not_awaited()
+    # The snapshot guard still ran — it just used the bundle it was given.
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_refresh_skips_uuids_the_snapshot_already_protects(mocker):
+    """Scoping the re-read: a fact the snapshot already protects has its
+    demotion dropped either way, so re-reading it is pure cost. Only the
+    unprotected targets are fetched."""
+    mocker.patch.object(apply_mod, "fetch_usage_rows", AsyncMock(return_value=[]))
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+            DreamDemotion(edge_uuid="cold", reason="stale_fact"),
+        ],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-scope",
+        pass_id="p-scope",
+        ops=ops,
+        known_fact_uuids={"hot", "cold"},
+        facts=[_used_fact("hot"), _unused_fact("cold")],
+        refresh_usage=True,
+    )
+
+    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-scope", ["cold"])
 
 
 @pytest.mark.asyncio
@@ -427,7 +474,8 @@ async def test_contradiction_demotion_overrides_usage_protection():
     most worth correcting."""
     ops = DreamOperations(
         demotions=[
-            DreamDemotion(edge_uuid="hot", reason="contradicted_by:other-edge"),
+            # Cites hot3, a fact this pass fetched — a checkable claim.
+            DreamDemotion(edge_uuid="hot", reason="contradicted_by:hot3"),
             DreamDemotion(edge_uuid="hot2", reason="user_signal"),
             DreamDemotion(edge_uuid="hot3", reason="stale_fact"),
         ],
