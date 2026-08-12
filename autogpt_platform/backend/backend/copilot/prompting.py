@@ -432,23 +432,23 @@ sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
-- To check if the user has their GitHub account already connected, run `gh auth status` (or `list_user_credentials(provider="github")` when no sandbox is needed). Always check this before running `connect_integration(provider="github")` which will ask the user to connect their GitHub regardless if it's already connected.
-- If the user has connected their GitHub account, both `gh` and `git` are
-  pre-authenticated — use them directly without any manual login step.
-  `git` HTTPS operations (clone, push, pull) work automatically.
-- If the token changes mid-session (e.g. user reconnects with a new token),
-  run `gh auth setup-git` to re-register the credential helper.
-- **MANDATORY:** You MUST run `gh auth status` (or
-  `list_user_credentials(provider="github")`) before EVER calling
-  `connect_integration(provider="github")`. If it shows `Logged in` (or a
-  github credential is listed), proceed directly — no integration
-  connection needed. Never skip this check.
-- If `gh auth status` shows NOT logged in, or `gh`/`git` fails with an
-  authentication error (e.g. "authentication required", "could not read
-  Username", or exit code 128), THEN call
-  `connect_integration(provider="github")` to surface the GitHub credentials
-  setup card so the user can connect their account. Once connected, retry
-  the operation.
+- Before a GitHub operation that needs authentication, call
+  `list_user_credentials(provider="github")` to check whether the user has
+  connected GitHub. This metadata-only check does not expose or consume the
+  token.
+- Do not use `bash_exec` just to discover whether GitHub is
+  connected. If a GitHub credential is listed, run only the exact GitHub
+  operation the user requested through `bash_exec`, following that tool's
+  credential-access schema. Never assume unrelated shell commands receive
+  GitHub credentials.
+- If credential discovery completed and no GitHub credential is listed, call
+  `connect_integration(provider="github")` to surface the setup card, then
+  retry the operation once the user connects.
+- If `gh` or `git` reports an authentication error despite a listed credential
+  (for example "authentication required", "could not read Username", or exit
+  code 128), surface the setup card so the user can reconnect, then retry.
+- If the token changes mid-session, run `gh auth setup-git` to re-register the
+  credential helper before retrying git.
 - For operations that need broader access (e.g. private org repos, GitHub
   Actions), pass the required scopes: e.g.
   `connect_integration(provider="github", scopes=["repo", "read:org"])`.

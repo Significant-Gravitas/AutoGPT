@@ -1,12 +1,13 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
-  KeyIcon,
-  PlugsConnectedIcon,
+  AlertDiamondIcon,
+  Key01Icon,
+  PlugSocketIcon,
   UserIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
+} from "@hugeicons/core-free-icons";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -41,20 +42,12 @@ function ToolStatusIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  return (
-    <PlugsConnectedIcon
-      size={14}
-      weight="regular"
-      className="text-neutral-400"
-    />
-  );
+  return <Icon icon={PlugSocketIcon} size={14} className="text-neutral-400" />;
 }
 
 function CredentialCard({ credential }: { credential: CredentialMeta }) {
@@ -62,7 +55,7 @@ function CredentialCard({ credential }: { credential: CredentialMeta }) {
     <ContentCard>
       <ContentCardHeader>
         <div className="flex items-center gap-2">
-          <KeyIcon size={14} weight="fill" className="text-neutral-600" />
+          <Icon icon={Key01Icon} size={14} className="text-neutral-600" />
           <ContentCardTitle>
             {formatProviderName(credential.provider)}
           </ContentCardTitle>
@@ -76,7 +69,7 @@ function CredentialCard({ credential }: { credential: CredentialMeta }) {
       </ContentHint>
       {credential.username && (
         <div className="mt-1 flex items-center gap-1.5">
-          <UserIcon size={12} weight="duotone" className="text-neutral-600" />
+          <Icon icon={UserIcon} size={12} className="text-neutral-600" />
           <span className="text-xs text-zinc-600">{credential.username}</span>
         </div>
       )}
@@ -130,7 +123,7 @@ export function ListCredentialsTool({ part }: Props) {
 
       {list && (
         <ToolAccordion
-          icon={<PlugsConnectedIcon size={32} weight="light" />}
+          icon={<Icon icon={PlugSocketIcon} size={32} />}
           title={
             list.count > 0
               ? `${list.count} connected integration${list.count !== 1 ? "s" : ""}`

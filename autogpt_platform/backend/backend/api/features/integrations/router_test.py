@@ -420,12 +420,13 @@ class TestEnsureManagedCredentials:
         _PROVIDERS["test_provider"] = provider
         _provisioned_users.pop("user-1", None)
         try:
-            await ensure_managed_credentials("user-1", store)
+            provisioning_complete = await ensure_managed_credentials("user-1", store)
         finally:
             _PROVIDERS.clear()
             _PROVIDERS.update(saved)
             _provisioned_users.pop("user-1", None)
 
+        assert provisioning_complete is True
         provider.provision.assert_awaited_once_with("user-1", store)
         store.add_managed_credential.assert_awaited_once_with("user-1", cred)
 
@@ -512,13 +513,33 @@ class TestEnsureManagedCredentials:
         _PROVIDERS["test_provider"] = provider
         _provisioned_users.pop("user-1", None)
         try:
-            await ensure_managed_credentials("user-1", store)
+            provisioning_complete = await ensure_managed_credentials("user-1", store)
         finally:
             _PROVIDERS.clear()
             _PROVIDERS.update(saved)
             _provisioned_users.pop("user-1", None)
 
-        # No exception raised — provisioning failure is swallowed.
+        assert provisioning_complete is False
+
+    @pytest.mark.asyncio
+    async def test_empty_registry_is_incomplete(self):
+        from backend.integrations.managed_credentials import (
+            _PROVIDERS,
+            _provisioned_users,
+            ensure_managed_credentials,
+        )
+
+        saved = dict(_PROVIDERS)
+        _PROVIDERS.clear()
+        _provisioned_users.pop("empty-registry-user", None)
+        try:
+            provisioning_complete = await ensure_managed_credentials(
+                "empty-registry-user", MagicMock()
+            )
+        finally:
+            _PROVIDERS.update(saved)
+
+        assert provisioning_complete is False
 
 
 class TestCleanupManagedCredentials:

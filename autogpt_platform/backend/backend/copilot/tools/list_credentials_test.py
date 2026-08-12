@@ -10,6 +10,7 @@ from backend.copilot.tools.list_credentials import (
     CredentialListResponse,
     ListUserCredentialsTool,
     _ensure_managed_credentials_bounded,
+    _managed_provision_tasks,
 )
 from backend.copilot.tools.models import ErrorResponse, ResponseType
 from backend.data.model import (
@@ -24,6 +25,8 @@ _CREDS_PATH = "backend.copilot.tools.list_credentials.get_user_credentials"
 _MANAGED_PATH = (
     "backend.copilot.tools.list_credentials._ensure_managed_credentials_bounded"
 )
+_REGISTER_PATH = "backend.copilot.tools.list_credentials.register_all"
+_GET_MANAGED_PATH = "backend.copilot.tools.list_credentials.get_managed_provider"
 
 
 @pytest.fixture(autouse=True)
@@ -73,14 +76,16 @@ def _mcp_oauth() -> OAuth2Credentials:
         title="Linear MCP",
         access_token=SecretStr("mcp_access_secret"),
         scopes=[],
-        metadata={"mcp_server_url": "https://mcp.linear.app/mcp"},
+        metadata={
+            "mcp_server_url": "https://user:mcp_url_secret@mcp.linear.app/mcp?key=hidden"
+        },
     )
 
 
 def _managed_cred() -> APIKeyCredentials:
     return APIKeyCredentials(
         id="55555555-5555-5555-5555-555555555555",
-        provider="agentmail",
+        provider="agent_mail",
         title="AgentMail (managed)",
         api_key=SecretStr("managed_secret"),
         expires_at=None,
@@ -165,12 +170,27 @@ class TestListUserCredentialsTool:
         host_scoped = next(c for c in result.credentials if c.type == "host_scoped")
         assert host_scoped.host == "api.example.com"
         mcp = next(c for c in result.credentials if c.provider == "mcp")
-        assert mcp.host == "https://mcp.linear.app/mcp"
+        assert mcp.host == "mcp.linear.app"
 
         payload = result.model_dump_json()
         assert "host_scoped_secret" not in payload
         assert "Authorization" not in payload
         assert "mcp_access_secret" not in payload
+        assert "mcp_url_secret" not in payload
+        assert "hidden" not in payload
+
+    @pytest.mark.asyncio
+    async def test_malformed_mcp_url_is_omitted(self, tool, mock_session):
+        malformed = _mcp_oauth().model_copy(
+            update={
+                "metadata": {"mcp_server_url": "mcp_url_secret without a valid host"}
+            }
+        )
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[malformed]):
+            result = await tool._execute(user_id="user-1", session=mock_session)
+
+        assert result.credentials[0].host is None
+        assert "mcp_url_secret" not in result.model_dump_json()
 
     @pytest.mark.asyncio
     async def test_filters_sdk_default_credentials(self, tool, mock_session):
@@ -200,8 +220,45 @@ class TestListUserCredentialsTool:
 
         assert isinstance(result, CredentialListResponse)
         assert result.count == 1
-        assert result.providers == ["agentmail"]
+        assert result.providers == ["agent_mail"]
         assert result.credentials[0].is_managed is True
+
+    @pytest.mark.asyncio
+    async def test_managed_provider_filter_runs_provisioning_sweep(
+        self, tool, mock_session, stub_managed_credentials_sweep
+    ):
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[_managed_cred()]):
+            result = await tool._execute(
+                user_id="user-1", session=mock_session, provider="agent_mail"
+            )
+
+        assert result.count == 1
+        assert result.providers == ["agent_mail"]
+        stub_managed_credentials_sweep.assert_awaited_once_with("user-1")
+
+    @pytest.mark.asyncio
+    async def test_registers_managed_providers_before_lookup(self, tool, mock_session):
+        registered = False
+
+        def register():
+            nonlocal registered
+            registered = True
+
+        def get_provider(_name: str):
+            assert registered
+            return None
+
+        with (
+            patch(_REGISTER_PATH, side_effect=register) as mock_register,
+            patch(_GET_MANAGED_PATH, side_effect=get_provider),
+            patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[_github_oauth()]),
+        ):
+            result = await tool._execute(
+                user_id="user-1", session=mock_session, provider="github"
+            )
+
+        assert result.count == 1
+        mock_register.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_skips_managed_sweep_for_non_managed_provider(
@@ -227,6 +284,21 @@ class TestListUserCredentialsTool:
 
         assert result.count == 1
         assert result.providers == ["github"]
+        assert "for provider 'github'" in result.message
+        assert "across" not in result.message
+
+    @pytest.mark.asyncio
+    async def test_provider_filter_matches_legacy_provider_value(
+        self, tool, mock_session
+    ):
+        legacy_mcp = _mcp_oauth().model_copy(update={"provider": "ProviderName.MCP"})
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[legacy_mcp]):
+            result = await tool._execute(
+                user_id="user-1", session=mock_session, provider="mcp"
+            )
+
+        assert result.count == 1
+        assert result.providers == ["mcp"]
 
     @pytest.mark.asyncio
     async def test_provider_filter_no_match(self, tool, mock_session):
@@ -264,6 +336,18 @@ class TestListUserCredentialsTool:
         assert result.provisioning_complete is False
         assert "do not treat their absence as authoritative" in result.message
         stub_managed_credentials_sweep.assert_awaited_once_with("user-1")
+
+    @pytest.mark.asyncio
+    async def test_incomplete_empty_inventory_does_not_recommend_sign_in(
+        self, tool, mock_session, stub_managed_credentials_sweep
+    ):
+        stub_managed_credentials_sweep.return_value = False
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[]):
+            result = await tool._execute(user_id="user-1", session=mock_session)
+
+        assert result.provisioning_complete is False
+        assert "Credential discovery is incomplete" in result.message
+        assert "connect_integration" not in result.message
 
     @pytest.mark.asyncio
     async def test_empty_credentials(self, tool, mock_session):
@@ -308,30 +392,64 @@ class TestEnsureManagedCredentialsBounded:
 
     @pytest.mark.asyncio
     async def test_returns_true_on_success(self):
-        with patch(_MGR_PATH), patch(
-            _ENSURE_PATH, new_callable=AsyncMock
-        ) as mock_ensure:
+        with (
+            patch(_MGR_PATH),
+            patch(
+                _ENSURE_PATH, new_callable=AsyncMock, return_value=True
+            ) as mock_ensure,
+        ):
             result = await _ensure_managed_credentials_bounded("user-1")
 
         assert result is True
         mock_ensure.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_returns_false_on_timeout(self):
-        async def _hang(*_args, **_kwargs):
-            await asyncio.sleep(1)
-
-        with patch(_MGR_PATH), patch(_ENSURE_PATH, _hang), patch(
-            "backend.copilot.tools.list_credentials._MANAGED_PROVISION_TIMEOUT_S", 0.01
+    async def test_returns_false_when_sweep_is_incomplete(self):
+        with (
+            patch(_MGR_PATH),
+            patch(_ENSURE_PATH, new_callable=AsyncMock, return_value=False),
         ):
-            result = await _ensure_managed_credentials_bounded("user-1")
+            result = await _ensure_managed_credentials_bounded("incomplete-user")
 
         assert result is False
 
     @pytest.mark.asyncio
+    async def test_timeout_does_not_cancel_provisioning(self):
+        started = asyncio.Event()
+        release = asyncio.Event()
+        finished = False
+
+        async def slow_sweep(*_args, **_kwargs):
+            nonlocal finished
+            started.set()
+            await release.wait()
+            finished = True
+            return True
+
+        with (
+            patch(_MGR_PATH),
+            patch(_ENSURE_PATH, slow_sweep),
+            patch(
+                "backend.copilot.tools.list_credentials._MANAGED_PROVISION_TIMEOUT_S",
+                0.01,
+            ),
+        ):
+            result = await _ensure_managed_credentials_bounded("timeout-user")
+            await started.wait()
+            assert result is False
+            assert finished is False
+            release.set()
+            await _managed_provision_tasks["timeout-user"]
+
+        assert finished is True
+
+    @pytest.mark.asyncio
     async def test_returns_false_on_error(self):
-        with patch(_MGR_PATH), patch(
-            _ENSURE_PATH, new_callable=AsyncMock, side_effect=RuntimeError("boom")
+        with (
+            patch(_MGR_PATH),
+            patch(
+                _ENSURE_PATH, new_callable=AsyncMock, side_effect=RuntimeError("boom")
+            ),
         ):
             result = await _ensure_managed_credentials_bounded("user-1")
 

@@ -172,7 +172,8 @@ class AutoPilotBlock(Block):
             description=(
                 "Tool names to filter. Works with tools_exclude to form an "
                 "allow-list or deny-list. "
-                "Leave empty to apply no tool filter."
+                "Leave empty to apply no tool filter. Credential inventory "
+                "is sensitive and must be explicitly included in allow-list mode."
             ),
             default=[],
             advanced=True,
@@ -651,6 +652,9 @@ _inherited_permissions: contextvars.ContextVar["CopilotPermissions | None"] = (
 )
 
 
+_AUTOPILOT_EXPLICIT_OPT_IN_TOOLS = frozenset({"list_user_credentials"})
+
+
 async def _build_and_validate_permissions(
     input_data: "AutoPilotBlock.Input",
 ) -> "CopilotPermissions | str":
@@ -671,8 +675,12 @@ async def _build_and_validate_permissions(
                 "You may also use the first 8 characters of a block UUID."
             )
 
+    tools: list[str] = [str(tool) for tool in input_data.tools]
+    if input_data.tools_exclude:
+        tools = sorted(set(tools) | _AUTOPILOT_EXPLICIT_OPT_IN_TOOLS)
+
     return CopilotPermissions(
-        tools=list(input_data.tools),
+        tools=tools,
         tools_exclude=input_data.tools_exclude,
         blocks=input_data.blocks,
         blocks_exclude=input_data.blocks_exclude,
