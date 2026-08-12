@@ -54,7 +54,17 @@ function ArtifactContentLoader({
   }
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto">
+    <div
+      ref={scrollRef}
+      className="flex-1 overflow-y-auto"
+      // Vaul's mobile drawer sets `touch-action: none` on its
+      // `[data-vaul-drawer]` root so its own JS can drive the swipe-to-close
+      // gesture. That blocks native touch scrolling for anything rendered
+      // directly inside it (unlike HTML previews, which scroll fine because
+      // they live in a separate iframe document). Override it here so touch
+      // scroll works on mobile.
+      style={{ touchAction: "pan-y" }}
+    >
       <ArtifactErrorBoundary
         artifactID={artifact.id}
         artifactTitle={artifact.title}
