@@ -476,6 +476,31 @@ class TestCache:
         assert lock_ref() is None
         assert len(pool) == 0
 
+    @pytest.mark.asyncio
+    async def test_async_single_flight_survives_gc_during_contention(self):
+        leader_started = asyncio.Event()
+        release_leader = asyncio.Event()
+        call_count = 0
+
+        @cached(ttl_seconds=300)
+        async def cached_function(key: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            leader_started.set()
+            await release_leader.wait()
+            return key
+
+        leader = asyncio.create_task(cached_function("same"))
+        await leader_started.wait()
+        waiters = [asyncio.create_task(cached_function("same")) for _ in range(10)]
+        await asyncio.sleep(0)
+
+        gc.collect()
+        release_leader.set()
+
+        assert await asyncio.gather(leader, *waiters) == ["same"] * 11
+        assert call_count == 1
+
     def test_async_keyed_lock_pool_isolates_event_loops(self):
         pool = _AsyncKeyedLockPool()
         key = (("key",), ())
