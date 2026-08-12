@@ -606,9 +606,7 @@ class TestFetchAuthoritativeUserTierErrorPropagation:
 
     @pytest.mark.asyncio
     async def test_missing_user_collapses_to_local_user_not_found(self, mocker):
-        from backend.util.subscription_tiers import (
-            SubscriptionTierUserNotFoundError,
-        )
+        from backend.util.subscription_tiers import SubscriptionTierUserNotFoundError
 
         from .rate_limit import _fetch_authoritative_user_tier, _UserNotFoundError
 

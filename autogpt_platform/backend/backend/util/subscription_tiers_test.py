@@ -1,17 +1,23 @@
 import asyncio
+import socket
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest.mock import AsyncMock, MagicMock, call, patch
+from uuid import uuid4
 
 import pytest
 from prisma.enums import SubscriptionTier
 
 from backend.util import cache as cache_module
 from backend.util import subscription_tiers
+from backend.util.service import UnhealthyServiceError
 from backend.util.subscription_tier_order import (
     SUBSCRIPTION_TIER_ORDER,
     subscription_tier_at_least,
     subscription_tier_rank,
 )
 from backend.util.subscription_tiers import (
+    _GET_OR_CREATE_GENERATION_SCRIPT,
     SUBSCRIPTION_TIER_GENERATION_TTL_SECONDS,
     SubscriptionTierCacheInvalidationError,
     SubscriptionTierUserNotFoundError,
@@ -19,7 +25,6 @@ from backend.util.subscription_tiers import (
     invalidate_subscription_tier_auxiliary_caches,
     invalidate_subscription_tier_caches,
 )
-from backend.util.service import UnhealthyServiceError
 
 
 class _MemoryValueRedis:
@@ -80,6 +85,73 @@ def _database_client(*tiers: SubscriptionTier | Exception):
     client = MagicMock()
     client.get_user_subscription_tier = AsyncMock(side_effect=tiers)
     return client
+
+
+def test_generation_lua_contract_against_live_redis_cluster():
+    """Execute the fencing primitive against the configured Redis cluster."""
+    from backend.data import redis_client
+
+    try:
+        with socket.create_connection(
+            (redis_client.HOST, redis_client.PORT), timeout=0.25
+        ):
+            pass
+    except OSError:
+        pytest.skip("local Redis cluster is unavailable")
+
+    client = redis_client.connect()
+    user_id = f"subscription-tier-lua-{uuid4().hex}"
+    key = _generation_key(user_id)
+    ttl_seconds = 10
+    candidates = [uuid4().hex for _ in range(8)]
+    barrier = Barrier(len(candidates))
+
+    def get_or_create(candidate: str) -> str:
+        barrier.wait()
+        return client.eval(
+            _GET_OR_CREATE_GENERATION_SCRIPT,
+            1,
+            key,
+            candidate,
+            ttl_seconds,
+        )
+
+    try:
+        client.delete(key)
+        with ThreadPoolExecutor(max_workers=len(candidates)) as executor:
+            generations = list(executor.map(get_or_create, candidates))
+
+        assert len(set(generations)) == 1
+        original = generations[0]
+        assert original in candidates
+        assert 0 < client.ttl(key) <= ttl_seconds
+
+        client.expire(key, 1)
+        hit = client.eval(
+            _GET_OR_CREATE_GENERATION_SCRIPT,
+            1,
+            key,
+            uuid4().hex,
+            ttl_seconds,
+        )
+        assert hit == original
+        assert client.ttl(key) >= ttl_seconds - 1
+
+        client.delete(key)
+        replacement = uuid4().hex
+        miss = client.eval(
+            _GET_OR_CREATE_GENERATION_SCRIPT,
+            1,
+            key,
+            replacement,
+            ttl_seconds,
+        )
+        assert miss == replacement
+        assert miss != original
+        assert 0 < client.ttl(key) <= ttl_seconds
+    finally:
+        client.delete(key)
+        client.close()
 
 
 def test_subscription_tier_order_covers_every_enum_value_once():
