@@ -24559,8 +24559,7 @@
       "SubscriptionTier": {
         "type": "string",
         "enum": ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
-        "title": "SubscriptionTier",
-        "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
+        "title": "SubscriptionTier"
       },
       "SubscriptionTierRequest": {
         "properties": {

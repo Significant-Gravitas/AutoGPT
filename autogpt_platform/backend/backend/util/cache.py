@@ -17,11 +17,16 @@ import logging
 import pickle
 import threading
 import time
+import weakref
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
+from redis.backoff import NoBackoff
 from redis.cluster import ClusterNode, RedisCluster
+from redis.exceptions import RedisError
+from redis.retry import Retry
 
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
@@ -36,6 +41,13 @@ settings = Settings()
 
 # Length of the HMAC-SHA256 signature prefix on cached values.
 _HMAC_SIG_LEN = 32
+_SHARED_CACHE_REDIS_TIMEOUT_SECONDS = 1.0
+_SHARED_CACHE_REDIS_COOLDOWN_SECONDS = 1.0
+_SHARED_CACHE_LOCAL_FALLBACK_TTL_SECONDS = 1.0
+_shared_cache_redis: RedisCluster | None = None
+_shared_cache_redis_init_lock = threading.Lock()
+_shared_cache_redis_retry_at = 0.0
+_monotonic = time.monotonic
 
 # RECOMMENDED REDIS CONFIGURATION FOR PRODUCTION:
 # Configure Redis with the following settings for optimal caching performance:
@@ -44,10 +56,8 @@ _HMAC_SIG_LEN = 32
 #   save ""                         # Disable persistence if using Redis purely for caching
 
 
-@cache
-@conn_retry("Redis", "Acquiring cache connection")
-def _get_redis() -> RedisCluster:
-    """Lazily-initialized shared-cache Redis Cluster client (singleton)."""
+@conn_retry("Redis", "Acquiring cache connection", max_retry=0)
+def _create_redis() -> RedisCluster:
     # Local import breaks the redis_client <-> cache module cycle.
     from backend.data.redis_client import _address_remap
 
@@ -59,12 +69,65 @@ def _get_redis() -> RedisCluster:
         decode_responses=False,  # Binary mode for pickle
         max_connections=50,
         socket_keepalive=True,
-        socket_connect_timeout=5,
-        retry_on_timeout=True,
+        socket_connect_timeout=_SHARED_CACHE_REDIS_TIMEOUT_SECONDS,
+        socket_timeout=_SHARED_CACHE_REDIS_TIMEOUT_SECONDS,
+        retry=Retry(NoBackoff(), retries=0),
         address_remap=_address_remap,
     )
-    c.ping()
+    try:
+        c.ping()
+    except Exception:
+        with suppress(Exception):
+            c.close()
+        raise
     return c
+
+
+def _get_redis() -> RedisCluster:
+    """Lazily initialize the best-effort shared-cache Redis client once."""
+    global _shared_cache_redis, _shared_cache_redis_retry_at
+
+    if _shared_cache_redis is not None:
+        return _shared_cache_redis
+    if _monotonic() < _shared_cache_redis_retry_at:
+        raise ConnectionError("Shared-cache Redis initialization is cooling down")
+
+    with _shared_cache_redis_init_lock:
+        if _shared_cache_redis is None:
+            if _monotonic() < _shared_cache_redis_retry_at:
+                raise ConnectionError(
+                    "Shared-cache Redis initialization is cooling down"
+                )
+            try:
+                _shared_cache_redis = _create_redis()
+            except Exception:
+                _shared_cache_redis_retry_at = (
+                    _monotonic() + _SHARED_CACHE_REDIS_COOLDOWN_SECONDS
+                )
+                raise
+            _shared_cache_redis_retry_at = 0.0
+        return _shared_cache_redis
+
+
+def _redis_cooldown_is_open() -> bool:
+    return _shared_cache_redis is None and _monotonic() < _shared_cache_redis_retry_at
+
+
+def _mark_redis_unavailable(failed_client: RedisCluster) -> bool:
+    """Open the short cache circuit if the active client failed."""
+    global _shared_cache_redis, _shared_cache_redis_retry_at
+
+    with _shared_cache_redis_init_lock:
+        if _shared_cache_redis is not failed_client:
+            return False
+        _shared_cache_redis = None
+        _shared_cache_redis_retry_at = (
+            _monotonic() + _SHARED_CACHE_REDIS_COOLDOWN_SECONDS
+        )
+
+    with suppress(Exception):
+        failed_client.close()
+    return True
 
 
 class _MissingType:
@@ -92,12 +155,38 @@ class _MissingType:
 _MISSING = _MissingType()
 
 
+class _UnavailableType:
+    """Sentinel returned when the shared cache cannot be reached."""
+
+
+_UNAVAILABLE = _UnavailableType()
+
+
 @dataclass
 class CachedValue:
     """Wrapper for cached values with timestamp to avoid tuple ambiguity."""
 
     result: Any
     timestamp: float
+
+
+class _AsyncKeyedLockPool:
+    """Keep one live asyncio lock per event loop and cache key."""
+
+    def __init__(self) -> None:
+        self._locks: weakref.WeakValueDictionary[
+            tuple[asyncio.AbstractEventLoop, tuple[Any, ...]], asyncio.Lock
+        ] = weakref.WeakValueDictionary()
+        self._mutex = threading.Lock()
+
+    def get(self, key: tuple[Any, ...]) -> asyncio.Lock:
+        pool_key = (asyncio.get_running_loop(), key)
+        with self._mutex:
+            lock = self._locks.get(pool_key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[pool_key] = lock
+            return lock
 
 
 def _make_hashable_key(
@@ -191,6 +280,8 @@ def cached(
         maxsize: Maximum number of cached entries (only for in-memory cache)
         ttl_seconds: Time to live in seconds. Required - entries must expire.
         shared_cache: If True, use Redis for cross-process caching
+            and reuse freshly computed local values for up to one second only
+            while the shared Redis circuit is open.
         refresh_ttl_on_get: If True, refresh TTL when cache entry is accessed (LRU behavior)
         cache_none: If True (default) ``None`` is cached like any other value.
             Set to ``False`` for functions that return ``None`` to signal a
@@ -219,7 +310,7 @@ def cached(
     def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
         func_name = target_func.__name__
         cache_storage: dict[tuple, CachedValue] = {}
-        _event_loop_locks: dict[Any, asyncio.Lock] = {}
+        async_lock_pool = _AsyncKeyedLockPool()
 
         def _get_from_redis(redis_key: str) -> Any:
             """Get value from Redis, optionally refreshing TTL.
@@ -234,11 +325,13 @@ def cached(
             discarded and treated as cache misses, so the caller recomputes and
             re-stores them with a valid signature.
             """
+            client: RedisCluster | None = None
             try:
+                client = _get_redis()
                 if refresh_ttl_on_get:
-                    cached_bytes = _get_redis().getex(redis_key, ex=ttl_seconds)
+                    cached_bytes = client.getex(redis_key, ex=ttl_seconds)
                 else:
-                    cached_bytes = _get_redis().get(redis_key)
+                    cached_bytes = client.get(redis_key)
 
                 if cached_bytes and isinstance(cached_bytes, bytes):
                     payload = _verify_and_strip(cached_bytes)
@@ -250,19 +343,30 @@ def cached(
                         )
                         return _MISSING
                     return pickle.loads(payload)
+            except (OSError, RedisError) as e:
+                if client is not None and _mark_redis_unavailable(client):
+                    logger.error(f"Redis error during cache check for {func_name}: {e}")
+                return _UNAVAILABLE
             except Exception as e:
                 logger.error(f"Redis error during cache check for {func_name}: {e}")
             return _MISSING
 
-        def _set_to_redis(redis_key: str, value: Any) -> None:
+        def _set_to_redis(redis_key: str, value: Any) -> bool:
             """Set HMAC-signed pickled value in Redis with TTL."""
+            client: RedisCluster | None = None
             try:
                 pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-                _get_redis().setex(redis_key, ttl_seconds, _sign_payload(pickled))
+                client = _get_redis()
+                client.setex(redis_key, ttl_seconds, _sign_payload(pickled))
+                return True
+            except (OSError, RedisError) as e:
+                if client is not None and _mark_redis_unavailable(client):
+                    logger.error(f"Redis error storing cache for {func_name}: {e}")
             except Exception as e:
                 logger.error(f"Redis error storing cache for {func_name}: {e}")
+            return False
 
-        def _get_from_memory(key: tuple) -> Any:
+        def _get_from_memory(key: tuple, max_age_seconds: float = ttl_seconds) -> Any:
             """Get value from in-memory cache, checking TTL.
 
             Returns the cached value (which may be ``None``) on a hit, or the
@@ -271,7 +375,7 @@ def cached(
             """
             if key in cache_storage:
                 cached_data = cache_storage[key]
-                if time.time() - cached_data.timestamp < ttl_seconds:
+                if time.time() - cached_data.timestamp < max_age_seconds:
                     logger.debug(
                         f"Cache hit for {func_name} args: {key[0]} kwargs: {key[1]}"
                     )
@@ -291,26 +395,27 @@ def cached(
 
         if inspect.iscoroutinefunction(target_func):
 
-            def _get_cache_lock():
-                """Get or create an asyncio.Lock for the current event loop."""
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop not in _event_loop_locks:
-                    return _event_loop_locks.setdefault(loop, asyncio.Lock())
-                return _event_loop_locks[loop]
-
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
                 key = _make_hashable_key(args, kwargs)
                 redis_key = _make_redis_key(key, func_name) if shared_cache else ""
+                redis_unavailable = False
 
                 # Fast path: check cache without lock
                 if shared_cache:
-                    result = _get_from_redis(redis_key)
-                    if result is not _MISSING:
+                    if _redis_cooldown_is_open():
+                        redis_unavailable = True
+                        result = _get_from_memory(
+                            key, _SHARED_CACHE_LOCAL_FALLBACK_TTL_SECONDS
+                        )
+                    else:
+                        result = await asyncio.to_thread(_get_from_redis, redis_key)
+                        if result is _UNAVAILABLE:
+                            redis_unavailable = True
+                            result = _get_from_memory(
+                                key, _SHARED_CACHE_LOCAL_FALLBACK_TTL_SECONDS
+                            )
+                    if result is not _MISSING and result is not _UNAVAILABLE:
                         return result
                 else:
                     result = _get_from_memory(key)
@@ -318,11 +423,22 @@ def cached(
                         return result
 
                 # Slow path: acquire lock for cache miss/expiry
-                async with _get_cache_lock():
+                async with async_lock_pool.get(key):
                     # Double-check: another coroutine might have populated cache
                     if shared_cache:
-                        result = _get_from_redis(redis_key)
-                        if result is not _MISSING:
+                        if redis_unavailable or _redis_cooldown_is_open():
+                            redis_unavailable = True
+                            result = _get_from_memory(
+                                key, _SHARED_CACHE_LOCAL_FALLBACK_TTL_SECONDS
+                            )
+                        else:
+                            result = await asyncio.to_thread(_get_from_redis, redis_key)
+                            if result is _UNAVAILABLE:
+                                redis_unavailable = True
+                                result = _get_from_memory(
+                                    key, _SHARED_CACHE_LOCAL_FALLBACK_TTL_SECONDS
+                                )
+                        if result is not _MISSING and result is not _UNAVAILABLE:
                             return result
                     else:
                         result = _get_from_memory(key)
@@ -337,7 +453,10 @@ def cached(
                     # caching it — used for transient-error sentinels).
                     if cache_none or result is not None:
                         if shared_cache:
-                            _set_to_redis(redis_key, result)
+                            if redis_unavailable or not await asyncio.to_thread(
+                                _set_to_redis, redis_key, result
+                            ):
+                                _set_to_memory(key, result)
                         else:
                             _set_to_memory(key, result)
 
@@ -353,11 +472,17 @@ def cached(
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs):
                 key = _make_hashable_key(args, kwargs)
                 redis_key = _make_redis_key(key, func_name) if shared_cache else ""
+                redis_unavailable = False
 
                 # Fast path: check cache without lock
                 if shared_cache:
                     result = _get_from_redis(redis_key)
-                    if result is not _MISSING:
+                    if result is _UNAVAILABLE:
+                        redis_unavailable = True
+                        result = _get_from_memory(
+                            key, _SHARED_CACHE_LOCAL_FALLBACK_TTL_SECONDS
+                        )
+                    if result is not _MISSING and result is not _UNAVAILABLE:
                         return result
                 else:
                     result = _get_from_memory(key)
@@ -368,8 +493,19 @@ def cached(
                 with cache_lock:
                     # Double-check: another thread might have populated cache
                     if shared_cache:
-                        result = _get_from_redis(redis_key)
-                        if result is not _MISSING:
+                        if redis_unavailable or _redis_cooldown_is_open():
+                            redis_unavailable = True
+                            result = _get_from_memory(
+                                key, _SHARED_CACHE_LOCAL_FALLBACK_TTL_SECONDS
+                            )
+                        else:
+                            result = _get_from_redis(redis_key)
+                            if result is _UNAVAILABLE:
+                                redis_unavailable = True
+                                result = _get_from_memory(
+                                    key, _SHARED_CACHE_LOCAL_FALLBACK_TTL_SECONDS
+                                )
+                        if result is not _MISSING and result is not _UNAVAILABLE:
                             return result
                     else:
                         result = _get_from_memory(key)
@@ -384,7 +520,10 @@ def cached(
                     # caching it — used for transient-error sentinels).
                     if cache_none or result is not None:
                         if shared_cache:
-                            _set_to_redis(redis_key, result)
+                            if redis_unavailable or not _set_to_redis(
+                                redis_key, result
+                            ):
+                                _set_to_memory(key, result)
                         else:
                             _set_to_memory(key, result)
 
@@ -396,6 +535,7 @@ def cached(
         def cache_clear(pattern: str | None = None) -> None:
             """Clear cache entries. If pattern provided, clear matching entries."""
             if shared_cache:
+                cache_storage.clear()
                 # SCAN must fan out across every primary on a cluster — without
                 # target_nodes the scan only walks the shard the client is
                 # bound to, leaving stale keys on the other shards.
@@ -447,15 +587,20 @@ def cached(
         def cache_delete(*args, **kwargs) -> bool:
             """Delete a specific cache entry. Returns True if entry existed."""
             key = _make_hashable_key(args, kwargs)
+            local_deleted = cache_storage.pop(key, _MISSING) is not _MISSING
             if shared_cache:
                 redis_key = _make_redis_key(key, func_name)
-                deleted_count = cast(int, _get_redis().delete(redis_key))
-                return deleted_count > 0
+                client: RedisCluster | None = None
+                try:
+                    client = _get_redis()
+                    deleted_count = cast(int, client.delete(redis_key))
+                except (OSError, RedisError):
+                    if client is not None:
+                        _mark_redis_unavailable(client)
+                    raise
+                return deleted_count > 0 or local_deleted
             else:
-                if key in cache_storage:
-                    del cache_storage[key]
-                    return True
-                return False
+                return local_deleted
 
         setattr(wrapper, "cache_clear", cache_clear)
         setattr(wrapper, "cache_info", cache_info)

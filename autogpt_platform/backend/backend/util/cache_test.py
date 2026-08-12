@@ -12,9 +12,10 @@ import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.util.cache import cached, clear_thread_cache, thread_cached
 
@@ -428,6 +429,31 @@ class TestCache:
         # Only one coroutine should have executed the expensive operation
         assert call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_async_single_flight_is_scoped_to_cache_key(self):
+        started: set[str] = set()
+        both_started = asyncio.Event()
+        release = asyncio.Event()
+        call_counts: dict[str, int] = {}
+
+        @cached(ttl_seconds=300)
+        async def cached_function(key: str) -> str:
+            call_counts[key] = call_counts.get(key, 0) + 1
+            started.add(key)
+            if started == {"a", "b"}:
+                both_started.set()
+            await release.wait()
+            return key
+
+        tasks = [
+            asyncio.create_task(cached_function(key)) for key in ("a", "a", "b", "b")
+        ]
+        await asyncio.wait_for(both_started.wait(), timeout=1)
+        release.set()
+
+        assert await asyncio.gather(*tasks) == ["a", "a", "b", "b"]
+        assert call_counts == {"a": 1, "b": 1}
+
     def test_ttl_functionality(self):
         """Test TTL functionality with sync function."""
         call_count = 0
@@ -679,6 +705,73 @@ class TestCache:
 class TestSharedCache:
     """Tests for shared_cache (Redis-backed) functionality."""
 
+    def test_shared_cache_connection_is_bounded_and_not_retried(self, monkeypatch):
+        from backend.util import cache as cache_module
+
+        client = Mock()
+        client.ping.side_effect = ConnectionError("redis unavailable")
+        redis_cluster = Mock(return_value=client)
+        monkeypatch.setattr(cache_module, "RedisCluster", redis_cluster)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis", None)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis_retry_at", 0.0)
+        monkeypatch.setattr(cache_module, "_monotonic", lambda: 100.0)
+        with pytest.raises(ConnectionError, match="redis unavailable"):
+            cache_module._get_redis()
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            attempts = [executor.submit(cache_module._get_redis) for _ in range(8)]
+            for attempt in attempts:
+                with pytest.raises(ConnectionError, match="cooling down"):
+                    attempt.result(timeout=1)
+
+        redis_cluster.assert_called_once()
+        client.close.assert_called_once()
+        kwargs = redis_cluster.call_args.kwargs
+        assert kwargs["socket_connect_timeout"] == 1.0
+        assert kwargs["socket_timeout"] == 1.0
+        assert kwargs["retry"].get_retries() == 0
+        assert "cluster_error_retry_attempts" not in kwargs
+
+    def test_shared_cache_connection_initializes_once_under_contention(
+        self, monkeypatch
+    ):
+        from backend.util import cache as cache_module
+
+        workers = 8
+        start = threading.Barrier(workers + 1)
+        ping_entered = threading.Event()
+        release_ping = threading.Event()
+        client = Mock()
+
+        def ping() -> bool:
+            ping_entered.set()
+            assert release_ping.wait(timeout=1)
+            return True
+
+        client.ping.side_effect = ping
+        redis_cluster = Mock(return_value=client)
+        monkeypatch.setattr(cache_module, "RedisCluster", redis_cluster)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis", None)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis_retry_at", 0.0)
+
+        def get_client():
+            start.wait()
+            return cache_module._get_redis()
+
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [executor.submit(get_client) for _ in range(workers)]
+                start.wait()
+                assert ping_entered.wait(timeout=1)
+                time.sleep(0.05)
+                redis_cluster.assert_called_once()
+                release_ping.set()
+                assert {id(future.result(timeout=1)) for future in futures} == {
+                    id(client)
+                }
+        finally:
+            release_ping.set()
+
     def test_sync_shared_cache_basic(self):
         """Test basic shared cache functionality with sync function."""
         call_count = 0
@@ -742,6 +835,187 @@ class TestSharedCache:
 
         # Cleanup
         shared_async_function.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_async_shared_cache_does_not_block_event_loop(self, monkeypatch):
+        redis_entered = threading.Event()
+        release_redis = threading.Event()
+        event_loop_progressed = threading.Event()
+        progress_seen_while_blocked: list[bool] = []
+
+        class BlockingRedis:
+            def get(self, _key: str):
+                redis_entered.set()
+                release_redis.wait(timeout=1)
+                progress_seen_while_blocked.append(event_loop_progressed.is_set())
+                return None
+
+            def setex(self, _key: str, _ttl: int, _value: bytes):
+                return True
+
+        monkeypatch.setattr(
+            "backend.util.cache._get_redis",
+            lambda: BlockingRedis(),
+        )
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def cached_function() -> str:
+            return "value"
+
+        async def mark_event_loop_progress() -> None:
+            await asyncio.sleep(0)
+            event_loop_progressed.set()
+
+        release_timer = threading.Timer(0.2, release_redis.set)
+        release_timer.start()
+        try:
+            cache_task = asyncio.create_task(cached_function())
+            progress_task = asyncio.create_task(mark_event_loop_progress())
+            assert await cache_task == "value"
+            await progress_task
+        finally:
+            release_redis.set()
+            release_timer.join()
+
+        assert redis_entered.is_set()
+        assert progress_seen_while_blocked[0] is True
+
+    @pytest.mark.asyncio
+    async def test_async_shared_cache_command_outage_collapses_database_work(
+        self, monkeypatch
+    ):
+        from backend.util import cache as cache_module
+
+        class UnavailableRedis:
+            def __init__(self) -> None:
+                self.get_calls = 0
+                self.setex_calls = 0
+                self.close_calls = 0
+
+            def get(self, _key: str):
+                self.get_calls += 1
+                raise RedisConnectionError("redis unavailable")
+
+            def setex(self, _key: str, _ttl: int, _value: bytes):
+                self.setex_calls += 1
+                raise AssertionError("circuit-open calls must not write to Redis")
+
+            def close(self) -> None:
+                self.close_calls += 1
+
+        redis = UnavailableRedis()
+        monkeypatch.setattr(cache_module, "_shared_cache_redis", redis)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis_retry_at", 0.0)
+        monkeypatch.setattr(cache_module, "_monotonic", lambda: 100.0)
+        call_count = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def cached_function() -> str:
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.05)
+            return "value"
+
+        results = await asyncio.gather(*(cached_function() for _ in range(8)))
+
+        assert results == ["value"] * 8
+        assert call_count == 1
+        assert redis.get_calls >= 1
+        assert redis.setex_calls == 0
+        assert redis.close_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_async_shared_cache_open_circuit_skips_thread_dispatch(
+        self, monkeypatch
+    ):
+        from backend.util import cache as cache_module
+
+        monkeypatch.setattr(cache_module, "_shared_cache_redis", None)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis_retry_at", 101.0)
+        monkeypatch.setattr(cache_module, "_monotonic", lambda: 100.0)
+        monkeypatch.setattr(
+            cache_module.asyncio,
+            "to_thread",
+            AsyncMock(side_effect=AssertionError("thread dispatch during cooldown")),
+        )
+        call_count = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def cached_function() -> str:
+            nonlocal call_count
+            call_count += 1
+            return "value"
+
+        assert await cached_function() == "value"
+        assert await cached_function() == "value"
+        assert call_count == 1
+
+    def test_shared_cache_cooldown_is_not_extended_by_traffic(self, monkeypatch):
+        from backend.util import cache as cache_module
+
+        clock = [100.0]
+        redis = Mock()
+        monkeypatch.setattr(cache_module, "_shared_cache_redis", redis)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis_retry_at", 0.0)
+        monkeypatch.setattr(cache_module, "_monotonic", lambda: clock[0])
+
+        assert cache_module._mark_redis_unavailable(redis) is True
+        assert cache_module._shared_cache_redis_retry_at == 101.0
+
+        clock[0] = 100.5
+        assert cache_module._mark_redis_unavailable(redis) is False
+        assert cache_module._shared_cache_redis_retry_at == 101.0
+
+        replacement = Mock()
+        create_redis = Mock(return_value=replacement)
+        monkeypatch.setattr(cache_module, "_create_redis", create_redis)
+        clock[0] = 101.1
+
+        assert cache_module._get_redis() is replacement
+        create_redis.assert_called_once_with()
+
+    def test_late_failure_from_old_client_does_not_close_replacement(self, monkeypatch):
+        from backend.util import cache as cache_module
+
+        clock = [100.0]
+        old_client = Mock()
+        new_client = Mock()
+        monkeypatch.setattr(cache_module, "_shared_cache_redis", old_client)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis_retry_at", 0.0)
+        monkeypatch.setattr(cache_module, "_monotonic", lambda: clock[0])
+
+        assert cache_module._mark_redis_unavailable(old_client) is True
+        clock[0] = 101.1
+        monkeypatch.setattr(
+            cache_module, "_create_redis", Mock(return_value=new_client)
+        )
+        assert cache_module._get_redis() is new_client
+
+        assert cache_module._mark_redis_unavailable(old_client) is False
+        assert cache_module._shared_cache_redis is new_client
+        assert cache_module._shared_cache_redis_retry_at == 0.0
+        new_client.close.assert_not_called()
+
+    def test_shared_cache_delete_failure_opens_circuit(self, monkeypatch):
+        from backend.util import cache as cache_module
+
+        redis = Mock()
+        redis.delete.side_effect = RedisConnectionError("redis unavailable")
+        monkeypatch.setattr(cache_module, "_shared_cache_redis", redis)
+        monkeypatch.setattr(cache_module, "_shared_cache_redis_retry_at", 0.0)
+        monkeypatch.setattr(cache_module, "_monotonic", lambda: 100.0)
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        def cached_function(user_id: str) -> str:
+            return user_id
+
+        with pytest.raises(RedisConnectionError, match="redis unavailable"):
+            cached_function.cache_delete("user-1")
+        with pytest.raises(ConnectionError, match="cooling down"):
+            cached_function.cache_delete("user-2")
+
+        redis.delete.assert_called_once()
+        redis.close.assert_called_once()
 
     def test_shared_cache_ttl_refresh(self):
         """Test TTL refresh functionality with shared cache."""

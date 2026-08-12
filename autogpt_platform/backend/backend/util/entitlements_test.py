@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from prisma.enums import SubscriptionTier
@@ -6,19 +6,15 @@ from prisma.enums import SubscriptionTier
 from backend.util import entitlements
 from backend.util.entitlements import Entitlement, EntitlementRequiredError
 from backend.util.settings import BehaveAs
-
-
-def _database_client(*tiers: SubscriptionTier | Exception):
-    client = MagicMock()
-    client.get_user_subscription_tier = AsyncMock(side_effect=tiers)
-    return client
+from backend.util.subscription_tiers import SubscriptionTierUserNotFoundError
 
 
 @pytest.mark.asyncio
 async def test_local_entitlement_bypasses_database_manager():
+    tier_lookup = AsyncMock()
     with (
         patch.object(entitlements.settings.config, "behave_as", BehaveAs.LOCAL),
-        patch.object(entitlements, "get_database_manager_async_client") as get_db,
+        patch.object(entitlements, "get_user_subscription_tier", tier_lookup),
     ):
         assert await entitlements.has_entitlement(
             "user-1",
@@ -29,7 +25,7 @@ async def test_local_entitlement_bypasses_database_manager():
             Entitlement.CODEX_SUBSCRIPTION_TRANSPORT,
         )
 
-    get_db.assert_not_called()
+    tier_lookup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -48,14 +44,10 @@ async def test_cloud_entitlement_uses_minimum_tier_order(
     tier: SubscriptionTier,
     allowed: bool,
 ):
-    client = _database_client(tier)
+    tier_lookup = AsyncMock(return_value=tier)
     with (
         patch.object(entitlements.settings.config, "behave_as", BehaveAs.CLOUD),
-        patch.object(
-            entitlements,
-            "get_database_manager_async_client",
-            return_value=client,
-        ),
+        patch.object(entitlements, "get_user_subscription_tier", tier_lookup),
     ):
         result = await entitlements.has_entitlement(
             "user-1",
@@ -63,44 +55,15 @@ async def test_cloud_entitlement_uses_minimum_tier_order(
         )
 
     assert result is allowed
-    client.get_user_subscription_tier.assert_awaited_once_with("user-1")
-
-
-@pytest.mark.asyncio
-async def test_repeated_checks_repeat_database_manager_lookup():
-    client = _database_client(SubscriptionTier.MAX, SubscriptionTier.PRO)
-    with (
-        patch.object(entitlements.settings.config, "behave_as", BehaveAs.CLOUD),
-        patch.object(
-            entitlements,
-            "get_database_manager_async_client",
-            return_value=client,
-        ),
-    ):
-        first = await entitlements.has_entitlement(
-            "user-1",
-            Entitlement.CODEX_SUBSCRIPTION_TRANSPORT,
-        )
-        second = await entitlements.has_entitlement(
-            "user-1",
-            Entitlement.CODEX_SUBSCRIPTION_TRANSPORT,
-        )
-
-    assert first is True
-    assert second is False
-    assert client.get_user_subscription_tier.await_count == 2
+    tier_lookup.assert_awaited_once_with("user-1")
 
 
 @pytest.mark.asyncio
 async def test_require_entitlement_raises_below_minimum_tier():
-    client = _database_client(SubscriptionTier.PRO)
+    tier_lookup = AsyncMock(return_value=SubscriptionTier.PRO)
     with (
         patch.object(entitlements.settings.config, "behave_as", BehaveAs.CLOUD),
-        patch.object(
-            entitlements,
-            "get_database_manager_async_client",
-            return_value=client,
-        ),
+        patch.object(entitlements, "get_user_subscription_tier", tier_lookup),
     ):
         with pytest.raises(EntitlementRequiredError) as exc_info:
             await entitlements.require_entitlement(
@@ -114,14 +77,10 @@ async def test_require_entitlement_raises_below_minimum_tier():
 
 @pytest.mark.asyncio
 async def test_database_manager_error_propagates():
-    client = _database_client(RuntimeError("database unavailable"))
+    tier_lookup = AsyncMock(side_effect=RuntimeError("database unavailable"))
     with (
         patch.object(entitlements.settings.config, "behave_as", BehaveAs.CLOUD),
-        patch.object(
-            entitlements,
-            "get_database_manager_async_client",
-            return_value=client,
-        ),
+        patch.object(entitlements, "get_user_subscription_tier", tier_lookup),
     ):
         with pytest.raises(RuntimeError, match="database unavailable"):
             await entitlements.has_entitlement(
@@ -132,14 +91,10 @@ async def test_database_manager_error_propagates():
 
 @pytest.mark.asyncio
 async def test_missing_user_is_treated_as_no_tier():
-    client = _database_client(ValueError("User not found"))
+    tier_lookup = AsyncMock(side_effect=SubscriptionTierUserNotFoundError("missing"))
     with (
         patch.object(entitlements.settings.config, "behave_as", BehaveAs.CLOUD),
-        patch.object(
-            entitlements,
-            "get_database_manager_async_client",
-            return_value=client,
-        ),
+        patch.object(entitlements, "get_user_subscription_tier", tier_lookup),
     ):
         allowed = await entitlements.has_entitlement(
             "missing-user",
