@@ -133,7 +133,7 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
-        codex_credentials: CodexAutoPilotCredentials | None = CredentialsField(
+        codex_credentials: CodexAutoPilotCredentials = CredentialsField(
             title="ChatGPT / Codex connection",
             description=(
                 "Optional connected ChatGPT plan. Leave empty to use the "

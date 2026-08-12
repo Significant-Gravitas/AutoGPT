@@ -102,6 +102,7 @@ class TemporaryCodexHome:
 
 def _prepare_root(root: Path | None) -> Path:
     candidate = (root or Path(tempfile.gettempdir()) / "autogpt-codex").absolute()
+    candidate = _canonicalize_trusted_temp_base(candidate)
     for component in (candidate, *candidate.parents):
         if os.path.lexists(component) and component.is_symlink():
             raise ValueError("Codex temporary root cannot contain symbolic links")
@@ -115,6 +116,28 @@ def _prepare_root(root: Path | None) -> Path:
     if os.name != "nt" and stat.S_IMODE(resolved.stat().st_mode) != 0o700:
         raise PermissionError("Codex temporary root must have mode 0700")
     return resolved
+
+
+def _canonicalize_trusted_temp_base(candidate: Path) -> Path:
+    for base in sorted(
+        _trusted_system_temp_bases(), key=lambda path: len(path.parts), reverse=True
+    ):
+        if not os.path.lexists(base):
+            continue
+        try:
+            relative = candidate.relative_to(base)
+        except ValueError:
+            continue
+        if relative == Path("."):
+            return candidate
+        return base.resolve() / relative
+    return candidate
+
+
+def _trusted_system_temp_bases() -> tuple[Path, ...]:
+    if os.name == "nt":
+        return ()
+    return (Path("/tmp"), Path("/var"))
 
 
 def _validate_managed_target(path: Path, root: Path) -> None:

@@ -219,6 +219,60 @@ def test_temporary_home_rejects_a_symlink_parent(tmp_path):
         temporary_home._prepare_root(link / "autogpt-codex")
 
 
+def test_temporary_home_accepts_a_symlinked_system_temp_base(tmp_path, monkeypatch):
+    target = tmp_path / "private-temp"
+    target.mkdir()
+    link = tmp_path / "system-temp"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
+    monkeypatch.setattr(temporary_home.tempfile, "gettempdir", lambda: str(link))
+    monkeypatch.setattr(temporary_home, "_trusted_system_temp_bases", lambda: (link,))
+
+    root = temporary_home._prepare_root(None)
+
+    assert root == target / "autogpt-codex"
+    assert root.is_dir()
+    assert not root.is_symlink()
+
+
+def test_temporary_home_rejects_a_symlink_below_system_temp_base(tmp_path, monkeypatch):
+    target = tmp_path / "private-temp"
+    target.mkdir()
+    system_link = tmp_path / "system-temp"
+    attacker_target = tmp_path / "attacker-controlled"
+    attacker_target.mkdir()
+    managed_link = target / "managed-parent"
+    try:
+        system_link.symlink_to(target, target_is_directory=True)
+        managed_link.symlink_to(attacker_target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
+    monkeypatch.setattr(temporary_home.tempfile, "gettempdir", lambda: str(system_link))
+    monkeypatch.setattr(
+        temporary_home, "_trusted_system_temp_bases", lambda: (system_link,)
+    )
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        temporary_home._prepare_root(system_link / "managed-parent" / "autogpt-codex")
+
+
+def test_temporary_home_does_not_trust_a_symlink_from_gettempdir(tmp_path, monkeypatch):
+    target = tmp_path / "private-temp"
+    target.mkdir()
+    link = tmp_path / "user-temp"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
+    monkeypatch.setattr(temporary_home.tempfile, "gettempdir", lambda: str(link))
+    monkeypatch.setattr(temporary_home, "_trusted_system_temp_bases", lambda: ())
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        temporary_home._prepare_root(None)
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not ACLs")
 def test_temporary_home_rejects_root_when_private_mode_cannot_be_set(
     tmp_path, monkeypatch
