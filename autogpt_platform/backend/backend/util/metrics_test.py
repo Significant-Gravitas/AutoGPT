@@ -9,7 +9,11 @@ rather than a Sentry alert flood.
 
 from __future__ import annotations
 
+import json
 import sys
+
+from sentry_sdk.consts import DEFAULT_OPTIONS
+from sentry_sdk.utils import event_from_exception
 
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -131,6 +135,69 @@ def test_pika_reconnect_signatures_cover_all_four_known_patterns() -> None:
         "connection_lost",
     }
     assert expected == set(_PIKA_RECONNECT_SIGNATURES)
+
+
+def test_before_send_scrubs_secrets_from_actual_exception_event() -> None:
+    secrets = {
+        "id": "FAKE-ID-SECRET-991",
+        "access": "FAKE-ACCESS-SECRET-992",
+        "refresh": "FAKE-REFRESH-SECRET-993",
+        "bearer": "FAKE-BEARER-SECRET-994",
+        "provider": "FAKE-PROVIDER-SECRET-995",
+        "device_code": "FAKE-DEVICE-CODE-996",
+    }
+    payload = {
+        "tokens": {
+            "id_token": secrets["id"],
+            "access_token": secrets["access"],
+            "refresh_token": secrets["refresh"],
+        },
+        "safe": "safe-frame-value",
+    }
+    try:
+        raise RuntimeError("materialization failed")
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(),
+            client_options=DEFAULT_OPTIONS,
+        )
+
+    event.update(
+        {
+            "extra": {"payload": payload},
+            "breadcrumbs": {
+                "values": [
+                    {
+                        "data": {
+                            "message": f"Authorization: Bearer {secrets['bearer']}",
+                            "safe": "safe-breadcrumb-value",
+                        }
+                    }
+                ]
+            },
+            "contexts": {
+                "codex": {
+                    "provider_state": secrets["provider"],
+                    "user_code": secrets["device_code"],
+                    "safe": "safe-context-value",
+                }
+            },
+            "request": {
+                "data": {"access_token": secrets["access"]},
+                "headers": {"Authorization": f"Bearer {secrets['bearer']}"},
+            },
+        }
+    )
+
+    scrubbed = _before_send(event, hint)
+
+    assert scrubbed is event
+    serialized = json.dumps(scrubbed, default=str)
+    for name, secret in secrets.items():
+        assert secret not in serialized, name
+    assert "safe-frame-value" in serialized
+    assert "safe-breadcrumb-value" in serialized
+    assert "safe-context-value" in serialized
 
 
 # ---------- FalkorDB connection-teardown noise → dropped ----------

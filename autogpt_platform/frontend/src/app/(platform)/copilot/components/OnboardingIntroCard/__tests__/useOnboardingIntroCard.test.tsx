@@ -52,6 +52,7 @@ const PENDING_INTRO: IntroCardResponse = {
   path: "A",
   greeting: "",
   greeting_done: false,
+  greeting_pending: true,
   prompts: [],
 };
 
@@ -342,6 +343,28 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
 
     expect(result.current.isVisible).toBe(false);
     expect(result.current.greeting).toBe("");
+    // The orb sits centered for exactly this window; only the greeting
+    // itself anchors the page to the top.
+    expect(result.current.anchorTop).toBe(false);
+  });
+
+  it("releases the loader when the server sends no greeting and no pending flag", async () => {
+    // A terminally-empty Path A (generation gave up server-side): there is
+    // nothing coming, so holding the orb up would strand the composer.
+    server.use(
+      getGetBrainDumpIntroMockHandler200({
+        path: "A",
+        greeting: "",
+        greeting_done: false,
+        greeting_pending: false,
+        prompts: [],
+      }),
+    );
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(false));
+
+    expect(result.current.isVisible).toBe(false);
   });
 
   it("polls past the pending answer and reveals the greeting when it lands", async () => {
@@ -378,6 +401,32 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
     expect(result.current.isVisible).toBe(false);
     expect(result.current.isAwaitingGreeting).toBe(false);
     expect(urls).toHaveLength(1);
+  });
+
+  it("never paints the card for a done verdict that still carries a greeting", async () => {
+    // The verdict is cached in an effect, which runs after the render that
+    // first saw it — reading only the cached copy flashed the card for the
+    // paint in between.
+    countIntroRequests({
+      path: "A",
+      greeting: "Welcome back.",
+      greeting_done: true,
+    });
+    const painted: boolean[] = [];
+
+    renderHook(
+      () => {
+        const value = useOnboardingIntroCard();
+        painted.push(value.isVisible);
+        return value;
+      },
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() =>
+      expect(window.localStorage.getItem(GREETING_DONE_KEY)).toBe("user-1"),
+    );
+
+    expect(painted).not.toContain(true);
   });
 
   it("writes no cache entry while the user record is still loading", async () => {

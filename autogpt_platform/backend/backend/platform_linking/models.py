@@ -184,6 +184,9 @@ class LinkTokenInfoResponse(BaseModel):
     platform: str
     link_type: LinkType
     server_name: str | None = None
+    # See BotPlatformInfo.server_noun — the confirmation page uses it so it
+    # never offers to connect "this Slack server".
+    server_noun: str = "server"
 
 
 class ResolveResponse(BaseModel):
@@ -207,6 +210,17 @@ class PlatformUserLinkInfo(BaseModel):
     linked_at: datetime
 
 
+class PendingInstallInfo(BaseModel):
+    """The caller added the bot to a server but hasn't linked an account yet.
+
+    ``open_bot_url`` deep-links into the bot's chat on the platform, where the
+    next step (the bot's Link Account prompt) is waiting.
+    """
+
+    server_name: str | None = None
+    open_bot_url: str
+
+
 class BotPlatformInfo(BaseModel):
     """A bot platform enabled on this deployment plus the caller's links to it.
 
@@ -217,9 +231,15 @@ class BotPlatformInfo(BaseModel):
     platform: str
     display_name: str
     icon: str
+    # The platform's own word for a server ("workspace", "group", "team"), so
+    # the UI never calls a Slack workspace a server.
+    server_noun: str = "server"
     add_bot_url: str | None = None
     dm_link: PlatformUserLinkInfo | None = None
     server_links: list[PlatformLinkInfo] = Field(default_factory=list)
+    # Set while an install by this user awaits its account link (currently
+    # only Slack can know this — its install flow round-trips our backend).
+    pending_install: PendingInstallInfo | None = None
 
 
 class ConfirmLinkResponse(BaseModel):
@@ -228,6 +248,8 @@ class ConfirmLinkResponse(BaseModel):
     platform: str
     platform_server_id: str
     server_name: str | None
+    # Deep link back to the bot chat the flow started from, when derivable.
+    return_url: str | None = None
 
 
 class ConfirmUserLinkResponse(BaseModel):
@@ -235,6 +257,7 @@ class ConfirmUserLinkResponse(BaseModel):
     link_type: LinkType = LinkType.USER
     platform: str
     platform_user_id: str
+    return_url: str | None = None
 
 
 class DeleteLinkResponse(BaseModel):

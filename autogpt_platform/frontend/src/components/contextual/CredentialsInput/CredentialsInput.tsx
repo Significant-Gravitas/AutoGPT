@@ -168,7 +168,7 @@ export function CredentialsInput({
             <OAuthFlowWaitingModal
               open={isOAuth2FlowInProgress}
               onClose={cancelOAuthFlow}
-              providerName={providerName}
+              providerName={provider === "codex" ? "ChatGPT" : providerName}
               popupBlocked={oAuthPopupBlocked}
             />
           )}

@@ -32,6 +32,7 @@ describe("openOAuthPopup popup-close grace window", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   test("rejects with WINDOW_CLOSED after grace if no result arrives", async () => {
@@ -214,6 +215,101 @@ describe("openOAuthPopup popup-close grace window", () => {
     expect((onReject.mock.calls[0][0] as Error).message).toMatch(/timed out/i);
   });
 
+  test("timeout cancels provider-side pending state exactly once", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-server-timeout",
+      cancelUrl: "/api/oauth/pending/cancel",
+      timeout: 1000,
+    });
+    promise.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(1100);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/oauth/pending/cancel"),
+      expect.objectContaining({ method: "POST", keepalive: true }),
+    );
+  });
+
+  test("manual abort cancels provider-side pending state exactly once", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-server-abort",
+      cancelUrl: "/api/oauth/pending/cancel",
+    });
+    promise.catch(() => {});
+
+    cleanup.abort();
+    cleanup.abort();
+    await vi.runAllTicks();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(popup.close).toHaveBeenCalledTimes(1);
+  });
+
+  test("popup close cancels provider-side pending state exactly once", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-server-close",
+      cancelUrl: "/api/oauth/pending/cancel",
+    });
+    promise.catch(() => {});
+
+    popup.closed = true;
+    await vi.advanceTimersByTimeAsync(500);
+    cleanup.abort();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("successful result does not cancel provider-side state", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-success",
+      cancelUrl: "/api/oauth/pending/cancel",
+    });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          message_type: "oauth_popup_result",
+          success: true,
+          code: "auth-code",
+          state: "tok-success",
+        },
+      }),
+    );
+
+    await expect(promise).resolves.toEqual({
+      code: "auth-code",
+      state: "tok-success",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("state-mismatch message is ignored and does not resolve the promise", async () => {
     const popup = makePopupStub();
     setupPopup(popup);
@@ -255,6 +351,7 @@ describe("preOpenedWindow option", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   test("navigates the pre-opened window instead of calling window.open again", () => {
@@ -304,7 +401,8 @@ describe("preOpenedWindow option", () => {
   });
 
   test("null preOpenedWindow goes straight to the new-tab fallback", () => {
-    const openSpy = setupPopup(makePopupStub());
+    const fallback = makePopupStub();
+    const openSpy = setupPopup(fallback);
 
     const { promise, cleanup, popupBlocked, fallbackBlocked } = openOAuthPopup(
       "https://example.com/oauth",
@@ -322,6 +420,7 @@ describe("preOpenedWindow option", () => {
     expect(openSpy).toHaveBeenCalledWith("https://example.com/oauth", "_blank");
 
     cleanup.abort();
+    expect(fallback.close).toHaveBeenCalledOnce();
   });
 
   test("preOpenOAuthPopup opens a blank popup window", () => {
@@ -358,6 +457,26 @@ describe("preOpenedWindow option", () => {
     expect((onReject.mock.calls[0][0] as Error).message).toBe(
       OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
     );
+  });
+
+  test("blocked popup and fallback cancel provider-side state exactly once", async () => {
+    setupPopup(null);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { promise, cleanup } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-server-blocked",
+      preOpenedWindow: null,
+      cancelUrl: "/api/oauth/pending/cancel",
+    });
+    promise.catch(() => {});
+
+    cleanup.abort();
+    await vi.runAllTicks();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test("rejects immediately when window.open is blocked for both attempts", async () => {
