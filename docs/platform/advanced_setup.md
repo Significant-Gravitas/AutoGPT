@@ -65,6 +65,100 @@ cd ../backend
 prisma migrate dev --schema postgres/schema.prisma
 ```
 
+## Cache and coordination engine
+
+Alongside PostgreSQL and RabbitMQ, the platform depends on a Redis-compatible engine for caching, distributed locking, rate limiting, spend and usage counters, session metadata, pending-message buffers, and the server-sent-event streams that carry agent output to the browser.
+
+The Docker Compose stack ships `redis:7`; the single-container image runs Valkey. Either engine serves this workload. The sections below cover the topology both must provide, how to substitute Valkey into the Compose stack, and what a managed deployment has to support.
+
+### Cluster mode is required
+
+The backend always connects with a cluster client, so **a single standalone node will not work** — regardless of which engine you pick. Local development deliberately runs a real multi-shard cluster so that cross-slot bugs surface on a laptop rather than in production.
+
+The self-hosting distributions each bring up a three-shard, no-replica cluster on ports `17000`, `17001` and `17002` (cluster bus ports `27000`–`27002`):
+
+| Distribution | Engine | How the cluster is formed |
+|---|---|---|
+| Docker Compose stack (`autogpt_platform/docker-compose.platform.yml`) | `redis:7` | Three `redis-server` containers plus a one-shot `redis-init` sidecar that runs `redis-cli --cluster create`. Each shard announces its own Compose hostname. |
+| Single-container image (`autogpt_platform/single-container`) | Valkey | Three supervised `valkey-server` processes inside the container, formed by `valkey-cli --cluster create`. Each shard announces `127.0.0.1`. |
+
+{% hint style="info" %}
+`make start-core` brings up this cluster along with the platform's other dependencies — PostgreSQL, RabbitMQ, FalkorDB, ClamAV and the database migration job — not a single cache node.
+{% endhint %}
+
+FalkorDB is a separate service that also speaks the Redis protocol, but it is the CoPilot graph store and depends on the FalkorDB graph module. It is not part of the cache and coordination layer, and Redis or Valkey cannot serve it.
+
+### Running the Compose stack on Valkey
+
+Connection settings are engine-neutral: `REDIS_HOST`, `REDIS_PORT` and `REDIS_PASSWORD` mean the same thing for both engines and need no change. (`REDIS_CLUSTER_HOST` and `REDIS_CLUSTER_PORT` take precedence over the first two when they are set.) The Valkey image ships `redis-server` and `redis-cli` as symlinks, so the cluster command lines and health checks in the Compose file work unaltered.
+
+Create a Compose override file in `autogpt_platform/`:
+
+```yaml
+# autogpt_platform/docker-compose.override.yml
+x-valkey-node: &valkey-node
+  image: valkey/valkey:8.1
+  # The Valkey entrypoint only drops privileges when it is invoked as
+  # `valkey-server`, and the Compose command lines call the `redis-server`
+  # symlink — so pin the unprivileged account explicitly. 999:999 is
+  # `valkey` in the Valkey image and `redis` in the Redis image.
+  user: "999:999"
+
+services:
+  redis-0: *valkey-node
+  redis-1: *valkey-node
+  redis-2: *valkey-node
+  redis-init: *valkey-node
+```
+
+Then bring the stack up as usual — Docker Compose merges `docker-compose.override.yml` automatically:
+
+```bash
+cd autogpt_platform/
+docker compose up -d deps
+```
+
+The service names stay `redis-0`/`redis-1`/`redis-2` and the sidecar stays `redis-init`.
+
+{% hint style="warning" %}
+Omit the `user:` line and the shards run as root, which the stock `redis:7` image does not do. Keep it unless you have a reason not to.
+{% endhint %}
+
+### Using a managed or external deployment
+
+For a cluster you run yourself — Amazon ElastiCache for Valkey, Google Memorystore for Valkey, or a self-managed cluster — the deployment must provide:
+
+- **Cluster mode enabled.** A single-node or cluster-mode-disabled deployment cannot serve this platform, because the backend speaks only the cluster protocol.
+- **Sharded pub/sub** (`SPUBLISH`, `SSUBSCRIBE`, `SUNSUBSCRIBE`). Agent output streaming and websocket reconnection depend on it; it is not optional.
+- **Announced shard addresses that resolve from the platform**, together with `REDIS_USE_ANNOUNCED_ADDRESS=true`. Without that variable the backend rewrites every shard address to the seed host, keeping only the announced port. Managed clusters give each shard a distinct hostname on a shared port, so the rewrite collapses all shards onto one node and sharded pub/sub is pinned to the wrong shard. The Compose stack already sets this variable; set it yourself if you run the backend outside Compose.
+
+To point the Compose stack at an external cluster, change `REDIS_HOST` and `REDIS_PORT` in the `x-backend-env` block of `docker-compose.platform.yml`. The backend services take their values from there, so editing `backend/.env` alone will not move them. `REDIS_PASSWORD` is the exception: it is absent from that block, so `backend/.env` does set it.
+
+If you would rather not edit a tracked file, set the same variables per backend service in `docker-compose.override.yml` — a service-level `environment:` entry overrides the value merged in from `x-backend-env`. You have to list every backend service you run, which is why the block above is the shorter route.
+
+Then start the dependencies you still need directly instead of through `deps`, which always brings up the bundled shards:
+
+```bash
+docker compose up -d db rabbitmq clamav falkordb migrate
+```
+
+### Engine version floor
+
+The commands the backend issues imply these minimums, for either engine:
+
+| Requirement | Commands |
+|---|---|
+| Redis 7.0-equivalent semantics | Sharded pub/sub (`SPUBLISH`/`SSUBSCRIBE`/`SUNSUBSCRIBE`), `EXPIRE … NX` |
+| Redis 6.2-equivalent semantics | `LPOP` with a `count` argument, `GETEX` |
+
+Valkey 8.1 and Redis 7 both clear this floor.
+
+The cache and coordination layer uses **no Redis modules** — no `FT.*`, `JSON.*`, `BF.*` or `TS.*` commands appear in the backend — so there is no module bundle to install or license on either engine. It does rely on Redis Streams, server-side Lua (`EVAL`), and transactions within a single hash slot, which a thin protocol proxy may not implement in full.
+
+{% hint style="warning" %}
+This guidance covers self-hosting and local development. Behaviour under sustained production load, failover and persistence tuning depends on how you size and operate the deployment, and is outside the scope of these instructions.
+{% endhint %}
+
 ## AutoGPT Agent Server Advanced set up
 
 This guide walks you through a dockerized set up, with an external DB (postgres)
