@@ -521,9 +521,12 @@ class CodexRuntime:
                 coroutine = execute_handler()
                 try:
                     future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-                except BaseException:
+                except RuntimeError:
                     coroutine.close()
                     return _dynamic_tool_error("codex_tool_execution_failed")
+                except BaseException:
+                    coroutine.close()
+                    raise
                 futures.add(future)
             try:
                 result = future.result(timeout=timeout_seconds)
@@ -664,11 +667,13 @@ class CodexRuntime:
 def _install_concurrent_server_request_dispatcher(client: AsyncCodex) -> None:
     try:
         sync_client = client._client._sync
-        sync_client._read_message
-        sync_client._write_message
-        sync_client._handle_server_request
-        sync_client._coerce_notification
-        sync_client._router
+        _ = (
+            sync_client._read_message,
+            sync_client._write_message,
+            sync_client._handle_server_request,
+            sync_client._coerce_notification,
+            sync_client._router,
+        )
     except AttributeError as exc:
         raise CodexRuntimeError("Pinned Codex SDK reader layout changed") from exc
 

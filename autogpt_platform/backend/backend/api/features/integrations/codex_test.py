@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fastapi
 import fastapi.testclient
 import pytest
+from autogpt_libs.auth import get_optional_user_id
 from pydantic import SecretStr
 
 from backend.api.features.integrations.codex import (
@@ -38,6 +39,7 @@ def setup_auth(mocker):
         "role": "user",
         "email": "test@example.com",
     }
+    app.dependency_overrides[get_optional_user_id] = lambda: TEST_USER_ID
     mocker.patch(
         "backend.api.features.integrations.router.has_codex_access_for_discovery",
         new=AsyncMock(return_value=True),
@@ -144,6 +146,33 @@ def test_codex_login_start_failure_is_sanitized(caplog):
     assert "ABCD-EFGH" not in caplog.text
     assert "secret.example" not in response.text
     assert "secret.example" not in caplog.text
+
+
+def test_codex_login_preserves_state_store_error_when_cancel_fails():
+    login = CodexDeviceLogin(
+        login_id="login-123",
+        verification_url="https://auth.openai.com/codex/device",
+        user_code="ABCD-EFGH",
+    )
+    with (
+        patch(
+            "backend.api.features.integrations.router.codex_login_coordinator"
+        ) as coordinator,
+        patch("backend.api.features.integrations.router.creds_manager") as manager,
+        patch("backend.api.features.integrations.router.settings") as settings,
+    ):
+        settings.config.frontend_base_url = "http://localhost:3000"
+        settings.config.codex_login_timeout_seconds = 900
+        coordinator.start = AsyncMock(return_value=login)
+        coordinator.cancel = AsyncMock(side_effect=RuntimeError("cancel failed"))
+        manager.store.store_state_token = AsyncMock(
+            side_effect=RuntimeError("state store failed")
+        )
+
+        with pytest.raises(RuntimeError, match="state store failed"):
+            client.get("/codex/login")
+
+    coordinator.cancel.assert_awaited_once_with(TEST_USER_ID, "login-123")
 
 
 def test_codex_login_rejects_user_without_required_plan():
@@ -261,6 +290,26 @@ def test_codex_callback_rejects_login_id_mismatch():
     coordinator.complete.assert_not_awaited()
 
 
+def test_codex_callback_rejects_non_ascii_login_id_without_server_error():
+    with (
+        patch(
+            "backend.api.features.integrations.router.codex_login_coordinator"
+        ) as coordinator,
+        patch("backend.api.features.integrations.router.creds_manager") as manager,
+    ):
+        manager.store.verify_state_token = AsyncMock(return_value=_oauth_state())
+        coordinator.complete = AsyncMock()
+
+        response = client.post(
+            "/codex/callback",
+            json={"code": "lógin-123", "state_token": "state-123"},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid Codex login completion"
+    coordinator.complete.assert_not_awaited()
+
+
 def test_client_cannot_post_codex_credentials():
     with patch("backend.api.features.integrations.router.creds_manager") as manager:
         manager.create = AsyncMock()
@@ -288,7 +337,7 @@ def test_client_cannot_post_codex_credentials():
 
 
 def test_device_login_page_reads_fragment_and_contains_no_tokens():
-    page = render_device_login_page()
+    page = render_device_login_page("test-nonce")
 
     assert "<script>alert(1)</script>" not in page
     assert "ABCD-&lt;EFGH&gt;" not in page
@@ -299,6 +348,9 @@ def test_device_login_page_reads_fragment_and_contains_no_tokens():
     assert "/cancel" in page
     assert "pagehide" in page
     assert "/auth/integrations/oauth_callback" in page
+    assert "try {\n          loginID = decodeURIComponent" in page
+    assert "response.status === 404" in page
+    assert "pollDeadline" in page
 
 
 def test_device_login_status_enforces_user_ownership():
@@ -329,6 +381,27 @@ def test_device_login_status_returns_only_nonsecret_state():
     assert response.status_code == 200
     assert response.json() == {"status": "completed", "error": None}
     assert "ABCD-EFGH" not in response.text
+
+
+def test_device_login_cancel_is_best_effort_when_runtime_cancel_fails():
+    with patch(
+        "backend.api.features.integrations.codex.codex_login_coordinator"
+    ) as coordinator:
+        coordinator.cancel = AsyncMock(side_effect=RuntimeError("dead runtime"))
+        response = client.post("/codex/device-login/login-123/cancel")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+def test_device_login_cancel_returns_not_found_for_unknown_login():
+    with patch(
+        "backend.api.features.integrations.codex.codex_login_coordinator"
+    ) as coordinator:
+        coordinator.cancel = AsyncMock(return_value=False)
+        response = client.post("/codex/device-login/missing/cancel")
+
+    assert response.status_code == 404
 
 
 def test_provider_discovery_includes_codex_when_user_has_access():
@@ -379,6 +452,35 @@ def test_provider_discovery_omits_codex_when_user_lacks_access():
     assert response.status_code == 200
     assert [provider["name"] for provider in response.json()] == ["github"]
     access.assert_awaited_once_with(TEST_USER_ID)
+
+
+def test_provider_discovery_remains_public_and_omits_codex_anonymously():
+    access = AsyncMock(return_value=True)
+    app.dependency_overrides[get_optional_user_id] = lambda: None
+    with (
+        patch("backend.blocks.load_all_blocks"),
+        patch(
+            "backend.api.features.integrations.router.has_codex_access_for_discovery",
+            new=access,
+        ),
+        patch(
+            "backend.api.features.integrations.router.get_all_provider_names",
+            return_value=["codex", "github"],
+        ),
+        patch(
+            "backend.api.features.integrations.router.get_provider_description",
+            return_value=None,
+        ),
+        patch(
+            "backend.api.features.integrations.router.get_supported_auth_types",
+            return_value=[],
+        ),
+    ):
+        response = client.get("/providers")
+
+    assert response.status_code == 200
+    assert [provider["name"] for provider in response.json()] == ["github"]
+    access.assert_not_awaited()
 
 
 def test_device_login_page_has_no_store_and_restrictive_browser_headers():

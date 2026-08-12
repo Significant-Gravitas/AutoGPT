@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from typing import Literal
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -130,7 +130,7 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
     manager = MagicMock()
     manager.get = AsyncMock(return_value=credentials)
     manager.acquire_lease = AsyncMock()
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
     block = _block_with_credentials(
         {"codex_credentials": CodexCredentialsInput},
         captured,
@@ -150,7 +150,7 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
     assert outputs == [("response", "ok")]
     manager.get.assert_awaited_once_with("user-1", "cred-1")
     manager.acquire_lease.assert_not_awaited()
-    assert captured["input_data"]["codex_credentials"] == metadata  # type: ignore[index]
+    assert captured["input_data"]["codex_credentials"] == metadata
     assert "codex_credentials" not in captured
     assert "credential_leases" not in captured
 

@@ -586,9 +586,9 @@ Generate or refactor code using an OpenAI API key or a connected ChatGPT plan th
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses OpenAI's Codex model optimized for code generation and refactoring. Provide a prompt describing the code you need, and optionally a system prompt with coding guidelines or context.
+Choose `openai_api` to call the selected Codex model through the OpenAI Responses API with an OpenAI API key. This path applies `model`, `max_output_tokens` (up to 128,000), and every reasoning effort except `ultra`; `none` omits the reasoning configuration. It rejects non-OpenAI API-key credentials and unsupported `ultra` requests before making an API call.
 
-Configure reasoning_effort to control how much the model "thinks" before responding. The block returns generated code along with any reasoning the model produced.
+Choose `codex_app_server` to use a connected ChatGPT plan. This path requires matching Codex OAuth credentials and an active credential lease, selects the subscription model from the live App Server catalog, and uses the plan's output-token limit. The `model` and `max_output_tokens` inputs therefore do not affect App Server requests, while all listed reasoning efforts are forwarded through the App Server mapping. Missing or mismatched credentials fail validation, and transport failures are returned through the block's standard `error` output. Successful responses include the generated text, any reasoning summary, and the transport response ID; usage may be absent without failing the response.
 <!-- END MANUAL -->
 
 ### Inputs

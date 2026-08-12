@@ -27,8 +27,6 @@ export interface ChatContainerProps {
   status: string;
   error: Error | undefined;
   sessionId: string | null;
-  sessionLlmAuthProvider?: "platform" | "codex" | null;
-  isSessionLlmRouteResolved?: boolean;
   sessionChatStatus?: string;
   isLoadingSession: boolean;
   isSessionError?: boolean;
@@ -79,8 +77,6 @@ export const ChatContainer = ({
   status,
   error,
   sessionId,
-  sessionLlmAuthProvider = null,
-  isSessionLlmRouteResolved = true,
   sessionChatStatus,
   isLoadingSession,
   isSessionError,
@@ -241,8 +237,6 @@ export const ChatContainer = ({
                         droppedFiles={droppedFiles}
                         onDroppedFilesConsumed={onDroppedFilesConsumed}
                         hasSession={!!sessionId}
-                        sessionLlmAuthProvider={sessionLlmAuthProvider}
-                        isSessionLlmRouteResolved={isSessionLlmRouteResolved}
                       />
                     </div>
                   </TooltipTrigger>

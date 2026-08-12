@@ -1442,8 +1442,8 @@ def _build_catalog() -> CatalogPayload:
             ),
         ],
         # Platform-funded Copilot cells deliberately remain env-controlled.
-        # Codex has no deployment-wide model env: its separate surface is
-        # resolved against the models advertised by each connected account.
+        # Codex routes are pinned here, then validated against the models
+        # advertised by each connected account with safe account fallbacks.
         routing={
             "copilot_codex": {
                 "fast": {

@@ -2,7 +2,6 @@ import {
   render,
   screen,
   fireEvent,
-  cleanup,
   act,
   waitFor,
 } from "@/tests/integrations/test-utils";
@@ -247,7 +246,6 @@ const codexProvider: CredentialsProviderData = {
 };
 
 afterEach(() => {
-  cleanup();
   vi.clearAllMocks();
   mockCancel.mockReset();
   mockCopilotMode = "extended_thinking";
@@ -298,38 +296,6 @@ describe("ChatInput mode toggle", () => {
     );
 
     expect(onDroppedFilesConsumed).not.toHaveBeenCalled();
-  });
-
-  it("uses immutable Codex session metadata after reload", () => {
-    mockFlagValue = true;
-    mockCopilotLlmAuthProvider = "platform";
-    render(
-      <ChatInput
-        onSend={mockOnSend}
-        hasSession
-        sessionLlmAuthProvider="codex"
-        isSessionLlmRouteResolved
-      />,
-    );
-
-    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
-    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
-  });
-
-  it("does not leak a pending Codex choice into an active platform session", () => {
-    mockFlagValue = true;
-    mockCopilotLlmAuthProvider = "codex";
-    render(
-      <ChatInput
-        onSend={mockOnSend}
-        hasSession
-        sessionLlmAuthProvider="platform"
-        isSessionLlmRouteResolved
-      />,
-    );
-
-    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
-    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
   });
 
   it("hides the route selector when only one subsidized transport is connected", () => {

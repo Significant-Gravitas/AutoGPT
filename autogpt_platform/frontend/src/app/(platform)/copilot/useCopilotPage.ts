@@ -59,7 +59,6 @@ export function useCopilotPage() {
 
   const {
     sessionId,
-    sessionLlmAuthProvider,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
@@ -87,8 +86,6 @@ export function useCopilotPage() {
       ? (expertsById.get(activeExpertId) ?? null)
       : null;
 
-  const isSessionLlmRouteResolved =
-    !sessionId || sessionLlmAuthProvider !== null;
   const {
     messages: currentMessages,
     setMessages,
@@ -276,8 +273,6 @@ export function useCopilotPage() {
 
   return {
     sessionId,
-    sessionLlmAuthProvider,
-    isSessionLlmRouteResolved,
     messages: displayMessages,
     status,
     error,

@@ -107,12 +107,23 @@ def test_materialized_bundles_do_not_cross_users(tmp_path: Path):
     assert tokens_b[2] not in target_a.read_text(encoding="utf-8")
 
 
-def test_auth_bundle_rejects_api_key_and_unknown_fields(tmp_path: Path):
+def test_auth_bundle_rejects_api_key_auth(tmp_path: Path):
     auth_path = tmp_path / "auth.json"
     auth_path.write_text(
         json.dumps({"auth_mode": "apiKey", "OPENAI_API_KEY": "secret"}),
         encoding="utf-8",
     )
+
+    with pytest.raises(CodexAuthBundleError):
+        read_auth_bundle(auth_path, "0.144.4")
+
+
+def test_auth_bundle_rejects_unknown_fields(tmp_path: Path):
+    auth_path = tmp_path / "auth.json"
+    _write_auth(auth_path, "alpha")
+    payload = json.loads(auth_path.read_text(encoding="utf-8"))
+    payload["unexpected"] = "secret"
+    auth_path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(CodexAuthBundleError):
         read_auth_bundle(auth_path, "0.144.4")

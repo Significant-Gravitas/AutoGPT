@@ -1,6 +1,7 @@
 import asyncio
 import os
 import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -72,6 +73,27 @@ async def test_temporary_home_cleans_up_after_cancellation(tmp_path):
         await task
 
     assert not path.exists()
+
+
+@pytest.mark.asyncio
+async def test_async_exit_runs_cleanup_off_the_event_loop(tmp_path, monkeypatch):
+    home = TemporaryCodexHome.create(tmp_path)
+    event_loop_thread = threading.get_ident()
+    cleanup_threads: list[int] = []
+    cleanup = home.cleanup
+
+    def observed_cleanup() -> None:
+        cleanup_threads.append(threading.get_ident())
+        cleanup()
+
+    monkeypatch.setattr(home, "cleanup", observed_cleanup)
+
+    async with home:
+        pass
+
+    assert cleanup_threads
+    assert cleanup_threads[0] != event_loop_thread
+    assert not home.path.exists()
 
 
 def test_cleanup_is_idempotent(tmp_path):
@@ -171,6 +193,45 @@ def test_temporary_home_rejects_a_filesystem_root():
         temporary_home._prepare_root(filesystem_root)
 
 
+def test_temporary_home_rejects_a_preexisting_symlink_root(tmp_path):
+    target = tmp_path / "attacker-controlled"
+    target.mkdir()
+    link = tmp_path / "autogpt-codex"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        temporary_home._prepare_root(link)
+
+
+def test_temporary_home_rejects_a_symlink_parent(tmp_path):
+    target = tmp_path / "attacker-controlled"
+    target.mkdir()
+    link = tmp_path / "managed-parent"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        temporary_home._prepare_root(link / "autogpt-codex")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not ACLs")
+def test_temporary_home_rejects_root_when_private_mode_cannot_be_set(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "shared"
+    root.mkdir(mode=0o755)
+    os.chmod(root, 0o755)
+    monkeypatch.setattr(temporary_home.os, "chmod", lambda *_args: None)
+
+    with pytest.raises(PermissionError, match="mode 0700"):
+        temporary_home._prepare_root(root)
+
+
 def test_reaper_recovers_a_marked_quarantine_after_restart(tmp_path):
     root = temporary_home._prepare_root(tmp_path)
     quarantined = root / ".quarantine-autogpt-codex-stale"
@@ -179,11 +240,18 @@ def test_reaper_recovers_a_marked_quarantine_after_restart(tmp_path):
     marker = root / f".reap-{quarantined.name}"
     marker.touch(mode=0o600)
 
-    temporary_home._schedule_existing_reaps(root)
+    try:
+        temporary_home._schedule_existing_reaps(root)
 
-    deadline = time.monotonic() + 2
-    while (quarantined.exists() or marker.exists()) and time.monotonic() < deadline:
-        time.sleep(0.01)
+        deadline = time.monotonic() + 2
+        while (quarantined.exists() or marker.exists()) and time.monotonic() < deadline:
+            time.sleep(0.01)
 
-    assert not quarantined.exists()
-    assert not marker.exists()
+        assert not quarantined.exists()
+        assert not marker.exists()
+    finally:
+        with temporary_home._REAPER_LOCK:
+            temporary_home._REAPER_TARGETS.clear()
+            reaper = temporary_home._REAPER_THREAD
+        if reaper is not None:
+            reaper.join(timeout=2)

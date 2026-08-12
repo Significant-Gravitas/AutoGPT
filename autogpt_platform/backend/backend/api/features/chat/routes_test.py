@@ -11,6 +11,7 @@ from pydantic import SecretStr
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
+from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import (
@@ -249,7 +250,7 @@ def test_stream_chat_rejects_too_many_file_ids():
 def _mock_stream_internals(
     mocker: pytest_mock.MockerFixture,
     *,
-    llm_auth_provider: str = "platform",
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
 ):
     """Mock the async internals of stream_chat_post so tests can exercise
     validation and enrichment logic without needing RabbitMQ.
@@ -800,14 +801,14 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
         organization_id: str | None = None,
         team_id: str | None = None,
         source_platform: str | None = None,
-        llm_auth_provider: str = "platform",
+        llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
     ):
         return ChatSession.new(
             user_id,
             dry_run=dry_run,
-            llm_auth_provider=llm_auth_provider,  # type: ignore[arg-type]
+            llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
         )

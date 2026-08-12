@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from openai import AsyncOpenAI
 from openai.types.responses import Response as OpenAIResponse
@@ -53,7 +53,7 @@ class CodexModel(str, Enum):
 
 
 class CodexReasoningEffort(str, Enum):
-    """Configuration for the Responses API reasoning effort."""
+    """Reasoning effort supported by either Codex execution transport."""
 
     NONE = "none"
     LOW = "low"
@@ -138,7 +138,9 @@ class CodeGenerationBlock(Block):
                 "You are Codex, an elite software engineer. "
                 "Favor concise, working code and highlight important caveats."
             ),
-            description="Optional instructions injected via the Responses API instructions field.",
+            description=(
+                "Optional instructions passed to the selected Codex transport."
+            ),
             advanced=True,
         )
         transport: CodexExecutionTransport = SchemaField(
@@ -162,7 +164,10 @@ class CodeGenerationBlock(Block):
         reasoning_effort: CodexReasoningEffort = SchemaField(
             title="Reasoning Effort",
             default=CodexReasoningEffort.MEDIUM,
-            description="Controls the Responses API reasoning budget. Select 'none' to skip reasoning configs.",
+            description=(
+                "Controls the selected transport's reasoning effort. OpenAI API "
+                "does not support 'ultra'; select 'none' to omit reasoning config."
+            ),
             advanced=True,
         )
         max_output_tokens: int | None = SchemaField(
@@ -185,7 +190,7 @@ class CodeGenerationBlock(Block):
             default="",
         )
         response_id: str = SchemaField(
-            description="ID of the Responses API call for auditing/debugging.",
+            description="Transport response ID for auditing and debugging.",
             default="",
         )
 
@@ -221,7 +226,7 @@ class CodeGenerationBlock(Block):
         )
         self.execution_stats = NodeExecutionStats()
 
-    _MODEL_USD_PER_1M: dict[CodexModel, tuple[float, float]] = {
+    _MODEL_USD_PER_1M: ClassVar[dict[CodexModel, tuple[float, float]]] = {
         CodexModel.GPT5_6_SOL: (5.0, 30.0),
         CodexModel.GPT5_6_TERRA: (2.5, 15.0),
         CodexModel.GPT5_6_LUNA: (1.0, 6.0),
@@ -321,6 +326,10 @@ class CodeGenerationBlock(Block):
     ) -> CodexCallResult:
         if credentials.type != "api_key" or credentials.provider != "openai":
             raise ValueError("OpenAI API transport requires an OpenAI API key")
+        if input_data.reasoning_effort == CodexReasoningEffort.ULTRA:
+            raise ValueError(
+                "OpenAI API transport does not support 'ultra' reasoning effort"
+            )
         return await self.call_codex(
             credentials=credentials,
             model=input_data.model,
@@ -363,16 +372,17 @@ class CodeGenerationBlock(Block):
         self,
         response: CodexInvocationResult,
     ) -> None:
-        usage = response.usage
-        self.execution_stats.input_token_count = usage.input_tokens if usage else 0
-        self.execution_stats.cache_read_token_count = (
-            usage.cached_input_tokens if usage else 0
-        )
-        self.execution_stats.output_token_count = usage.output_tokens if usage else 0
         self.execution_stats.llm_call_count += 1
-        self.execution_stats.provider_cost = usage.total_tokens if usage else None
-        self.execution_stats.provider_cost_type = "tokens" if usage else None
         self.execution_stats.billing_mode = "user_subscription"
         self.execution_stats.auth_provider = "codex"
         self.execution_stats.execution_path = "codex_app_server"
         self.execution_stats.resolved_model = response.resolved_model
+        usage = response.usage
+        if usage is None:
+            return
+
+        self.execution_stats.input_token_count = usage.input_tokens
+        self.execution_stats.cache_read_token_count = usage.cached_input_tokens
+        self.execution_stats.output_token_count = usage.output_tokens
+        self.execution_stats.provider_cost = usage.total_tokens
+        self.execution_stats.provider_cost_type = "tokens"

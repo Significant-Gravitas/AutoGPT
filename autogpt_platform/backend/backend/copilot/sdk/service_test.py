@@ -5,6 +5,7 @@ import base64
 import os
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
+from .codex_compat_gateway import CodexAnthropicGateway
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
@@ -84,7 +86,10 @@ class TestCodexGatewayCleanup:
     @pytest.mark.asyncio
     async def test_returns_checkpoint_failure_for_deferred_raise(self):
         failure = RuntimeError("credential checkpoint failed")
-        gateway = SimpleNamespace(close=AsyncMock(side_effect=failure))
+        gateway = cast(
+            CodexAnthropicGateway,
+            SimpleNamespace(close=AsyncMock(side_effect=failure)),
+        )
 
         result = await _close_codex_gateway_for_finally(gateway, "[test]")
 

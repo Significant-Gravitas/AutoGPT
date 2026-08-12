@@ -379,7 +379,9 @@ class CodexAnthropicGateway:
                 raise _DuplicateToolResultError(
                     "This tool-result request refers to a closed model call"
                 )
-            return None
+            raise _DuplicateToolResultError(
+                "This tool-result request refers to a completed model call"
+            )
 
         conversation = claimable[0][0].conversation
         if any(record.conversation is not conversation for record, _ in claimable):
@@ -760,7 +762,7 @@ def _safe_tool_name(original: str, used: set[str]) -> str:
     counter = 1
     while candidate in used:
         suffix = f"_{counter}"
-        candidate = f"{normalized[: 128 - len(suffix)]}{suffix}"
+        candidate = f"{normalized[: 116 - len(suffix)]}_{digest}{suffix}"
         counter += 1
     return candidate
 

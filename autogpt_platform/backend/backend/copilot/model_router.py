@@ -43,7 +43,7 @@ payload, or LD failure all fall through to the next layer.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import Literal, NamedTuple
 
 import sentry_sdk
 
@@ -52,12 +52,13 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.model import RoutingSource
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
+from backend.integrations.codex.transport import (
+    PooledCodexRuntimeLease,
+    get_codex_transport,
+)
+from backend.integrations.credential_lease import CredentialLease
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
-
-if TYPE_CHECKING:
-    from backend.integrations.codex.transport import PooledCodexRuntimeLease
-    from backend.integrations.credential_lease import CredentialLease
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -101,7 +102,7 @@ _CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort
 }
 
 
-def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
+def _catalog_lookup(slug: str) -> llm_registry.RegistryModel | None:
     """Look up *slug* in the catalog, tolerating transport spellings.
 
     The catalog registers Claude models under bare canonical enum slugs
@@ -330,80 +331,104 @@ async def resolve_codex_model_route(
     mode: ModelMode,
     tier: ModelTier,
     credential_lease: CredentialLease | PooledCodexRuntimeLease,
-    config: ChatConfig,
 ) -> ResolvedCodexModel:
     """Resolve a Codex model against both the catalog and the account."""
-    del config
-    from backend.integrations.codex.transport import (
-        PooledCodexRuntimeLease,
-        get_codex_transport,
-    )
+    advertised = await _advertised_codex_models(credential_lease)
 
-    if isinstance(credential_lease, PooledCodexRuntimeLease):
-        advertised = await credential_lease.models()
-    else:
-        advertised = await get_codex_transport().models(credential_lease)
-    by_slug = {model.model: model for model in advertised}
+    if catalog_route := _codex_catalog_route(advertised, mode, tier):
+        return catalog_route
 
-    catalog_slug = llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier)
-    if catalog_slug:
-        model = by_slug.get(catalog_slug)
-        if model is not None and _codex_catalog_allows(catalog_slug):
-            return ResolvedCodexModel(
-                model.model,
-                _codex_effort(model, mode, tier),
-                "catalog",
-            )
-        logger.warning(
-            "[model_router] Codex catalog route %r is disabled or unavailable "
-            "for this account; falling through for (%s, %s)",
-            catalog_slug,
-            mode,
-            tier,
-        )
+    if preferred_route := _codex_preferred_route(advertised, mode, tier):
+        return preferred_route
 
-    preferred_slug = _CODEX_PREFERRED_MODELS[(mode, tier)]
-    preferred = by_slug.get(preferred_slug)
-    if preferred is not None and _codex_catalog_allows(preferred_slug):
-        return ResolvedCodexModel(
-            preferred.model,
-            _codex_effort(preferred, mode, tier),
-            "preferred",
-        )
-
-    account_default = next(
-        (
-            model
-            for model in advertised
-            if model.is_default
-            and not model.hidden
-            and _codex_account_fallback_allowed(model.model)
-        ),
-        None,
-    )
-    if account_default is not None:
-        return ResolvedCodexModel(
-            account_default.model,
-            _codex_effort(account_default, mode, tier),
-            "account_default",
-        )
-
-    account_available = next(
-        (
-            model
-            for model in advertised
-            if not model.hidden and _codex_account_fallback_allowed(model.model)
-        ),
-        None,
-    )
-    if account_available is not None:
-        return ResolvedCodexModel(
-            account_available.model,
-            _codex_effort(account_available, mode, tier),
-            "account_available",
-        )
+    if account_route := _codex_account_route(advertised, mode, tier):
+        return account_route
 
     raise RuntimeError("codex_model_unavailable")
+
+
+async def _advertised_codex_models(
+    credential_lease: CredentialLease | PooledCodexRuntimeLease,
+) -> list[CodexModelInfo]:
+    if isinstance(credential_lease, PooledCodexRuntimeLease):
+        return await credential_lease.models()
+    return await get_codex_transport().models(credential_lease)
+
+
+def _codex_catalog_route(
+    advertised: list[CodexModelInfo],
+    mode: ModelMode,
+    tier: ModelTier,
+) -> ResolvedCodexModel | None:
+    catalog_slug = llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier)
+    if not catalog_slug:
+        return None
+
+    model = next((item for item in advertised if item.model == catalog_slug), None)
+    if model is not None and _codex_catalog_allows(catalog_slug):
+        return _resolved_codex_model(model, mode, tier, "catalog")
+
+    logger.warning(
+        "[model_router] Codex catalog route %r is disabled or unavailable "
+        "for this account; falling through for (%s, %s)",
+        catalog_slug,
+        mode,
+        tier,
+    )
+    return None
+
+
+def _codex_preferred_route(
+    advertised: list[CodexModelInfo],
+    mode: ModelMode,
+    tier: ModelTier,
+) -> ResolvedCodexModel | None:
+    preferred_slug = _CODEX_PREFERRED_MODELS[(mode, tier)]
+    preferred = next(
+        (model for model in advertised if model.model == preferred_slug),
+        None,
+    )
+    if preferred is None or not _codex_catalog_allows(preferred_slug):
+        return None
+    return _resolved_codex_model(preferred, mode, tier, "preferred")
+
+
+def _codex_account_route(
+    advertised: list[CodexModelInfo],
+    mode: ModelMode,
+    tier: ModelTier,
+) -> ResolvedCodexModel | None:
+    candidates: tuple[tuple[CodexRoutingSource, bool], ...] = (
+        ("account_default", True),
+        ("account_available", False),
+    )
+    for source, default_only in candidates:
+        model = next(
+            (
+                item
+                for item in advertised
+                if (not default_only or item.is_default)
+                and not item.hidden
+                and _codex_account_fallback_allowed(item.model)
+            ),
+            None,
+        )
+        if model is not None:
+            return _resolved_codex_model(model, mode, tier, source)
+    return None
+
+
+def _resolved_codex_model(
+    model: CodexModelInfo,
+    mode: ModelMode,
+    tier: ModelTier,
+    source: CodexRoutingSource,
+) -> ResolvedCodexModel:
+    return ResolvedCodexModel(
+        model.model,
+        _codex_effort(model, mode, tier),
+        source,
+    )
 
 
 def _codex_catalog_allows(slug: str) -> bool:

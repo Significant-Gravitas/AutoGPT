@@ -50,7 +50,10 @@ async def test_release_stops_heartbeat_before_unlocking():
     lease = CredentialLease(credentials, lock, AsyncMock())
 
     lease.start_heartbeat()
-    await asyncio.sleep(0.02)
+    for _ in range(100):
+        if lock.extend.await_count:
+            break
+        await asyncio.sleep(0.001)
     await lease.release()
 
     lock.extend.assert_awaited()

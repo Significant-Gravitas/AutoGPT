@@ -14,8 +14,8 @@ import type { RJSFSchema } from "@rjsf/utils";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/components/atoms/Select/Select", () => ({
-  Select: ({
+vi.mock("@/components/atoms/Select/Select", () => {
+  function Select({
     id,
     value,
     onValueChange,
@@ -25,20 +25,24 @@ vi.mock("@/components/atoms/Select/Select", () => ({
     value?: string;
     onValueChange?: (value: string) => void;
     options: { value: string; label: string }[];
-  }) => (
-    <select
-      aria-label={id}
-      value={value ?? ""}
-      onChange={(event) => onValueChange?.(event.target.value)}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  ),
-}));
+  }) {
+    return (
+      <select
+        aria-label={id}
+        value={value ?? ""}
+        onChange={(event) => onValueChange?.(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return { Select };
+});
 
 const codeGenerationSchema = {
   type: "object",

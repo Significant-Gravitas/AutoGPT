@@ -379,8 +379,6 @@ class CodexLoginCoordinator:
                 state.error = message
                 await self._state_store.write(state, login_id)
                 should_cancel = True
-            elif state.status == "canceled":
-                should_cancel = True
         return True, should_cancel
 
     async def _wait_for_login(
@@ -515,14 +513,35 @@ class CodexLoginCoordinator:
                     state.error = "ChatGPT sign-in ownership was lost. Try again."
                     await self._state_store.write(state, login_id)
                     return
-                stored = await self._credentials_manager.upsert_single_provider_locked(
-                    user_id, credentials
+                commit = asyncio.create_task(
+                    self._commit_completed_login(
+                        user_id,
+                        login_id,
+                        state,
+                        credentials,
+                    )
                 )
-                if not _is_codex_credentials(stored):
-                    raise RuntimeError("Stored Codex credential type changed")
-                state.status = "completed"
-                state.credential_id = stored.id
-                await self._state_store.write(state, login_id)
+                try:
+                    await asyncio.shield(commit)
+                except asyncio.CancelledError:
+                    await commit
+                    raise
+
+    async def _commit_completed_login(
+        self,
+        user_id: str,
+        login_id: str,
+        state: CodexSharedLoginState,
+        credentials: OAuth2Credentials,
+    ) -> None:
+        stored = await self._credentials_manager.upsert_single_provider_locked(
+            user_id, credentials
+        )
+        if not _is_codex_credentials(stored):
+            raise RuntimeError("Stored Codex credential type changed")
+        state.status = "completed"
+        state.credential_id = stored.id
+        await self._state_store.write(state, login_id)
 
     async def _mark_failed(self, user_id: str, login_id: str, message: str) -> None:
         async with self._state_store.locked(user_id):

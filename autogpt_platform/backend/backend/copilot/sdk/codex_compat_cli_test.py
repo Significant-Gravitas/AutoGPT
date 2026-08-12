@@ -87,6 +87,7 @@ class _ClaudeHarnessTransport:
         yield self.session
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     tmp_path,

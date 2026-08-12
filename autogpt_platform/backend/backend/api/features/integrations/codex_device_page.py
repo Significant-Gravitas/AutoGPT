@@ -1,7 +1,7 @@
 import html
 
 
-def render_device_login_page(nonce: str | None = None) -> str:
+def render_device_login_page(nonce: str) -> str:
     page = """<!doctype html>
 <html lang="en">
   <head>
@@ -50,7 +50,10 @@ def render_device_login_page(nonce: str | None = None) -> str:
         const state = fragment.get("state");
         const userCode = fragment.get("user_code");
         const rawVerificationUrl = fragment.get("verification_url");
-        const loginID = decodeURIComponent(window.location.pathname.split("/").pop());
+        let loginID = "";
+        try {
+          loginID = decodeURIComponent(window.location.pathname.split("/").pop());
+        } catch (_) {}
         window.history.replaceState(null, "", window.location.pathname);
 
         const codeElement = document.getElementById("user-code");
@@ -63,6 +66,12 @@ def render_device_login_page(nonce: str | None = None) -> str:
           statusElement.textContent = "";
           errorElement.textContent = message;
         }
+
+        window.addEventListener("pagehide", function () {
+          if (!finished) {
+            navigator.sendBeacon(window.location.pathname + "/cancel");
+          }
+        });
 
         let verificationUrl;
         try {
@@ -88,13 +97,24 @@ def render_device_login_page(nonce: str | None = None) -> str:
           }
         });
 
+        const pollDeadline = Date.now() + 20 * 60 * 1000;
         async function poll() {
+          if (Date.now() >= pollDeadline) {
+            finished = true;
+            fail("ChatGPT sign-in expired. Close this window and try again.");
+            return;
+          }
           try {
             const response = await fetch(window.location.pathname + "/status", {
               cache: "no-store",
               credentials: "same-origin",
               headers: { Accept: "application/json" },
             });
+            if (response.status === 404) {
+              finished = true;
+              fail("ChatGPT sign-in expired. Close this window and try again.");
+              return;
+            }
             if (!response.ok) throw new Error();
             const result = await response.json();
             if (result.status === "completed") {
@@ -115,11 +135,6 @@ def render_device_login_page(nonce: str | None = None) -> str:
           window.setTimeout(poll, 1000);
         }
 
-        window.addEventListener("pagehide", function () {
-          if (!finished) {
-            navigator.sendBeacon(window.location.pathname + "/cancel");
-          }
-        });
         poll();
       })();
     </script>

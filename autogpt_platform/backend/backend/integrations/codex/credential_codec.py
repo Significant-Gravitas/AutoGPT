@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import cast
 
 from pydantic import SecretStr
 
@@ -71,6 +70,6 @@ def checkpoint_credentials_from_bundle(
 
 def restore_credentials(payload: dict[str, object]) -> OAuth2Credentials:
     restored = CREDENTIALS_ADAPTER.validate_python(payload)
-    if restored.type != "oauth2":
+    if not isinstance(restored, OAuth2Credentials):
         raise CodexAuthBundleError("Codex credential type changed")
-    return cast(OAuth2Credentials, restored)
+    return restored

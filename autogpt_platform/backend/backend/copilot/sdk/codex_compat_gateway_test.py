@@ -306,6 +306,18 @@ def test_non_reserved_valid_tool_name_is_unchanged() -> None:
     assert _safe_tool_name("regular_tool", set()) == "regular_tool"
 
 
+def test_non_reserved_tool_name_collision_preserves_digest() -> None:
+    original = "regular tool"
+    first = _safe_tool_name(original, set())
+
+    collided = _safe_tool_name(original, {first})
+
+    digest = first.rsplit("_", 1)[-1]
+    assert collided.endswith(f"_{digest}_1")
+    assert collided != first
+    assert len(collided) <= 128
+
+
 @pytest.mark.asyncio
 async def test_streams_codex_text_as_anthropic_events() -> None:
     session = _FakeAgentSession()
@@ -746,6 +758,52 @@ async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() 
         content="one result",
         success=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_completed_tool_result_cannot_start_a_new_conversation() -> None:
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+            completed = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            assert completed.status == 200
+            await completed.read()
+
+            replay = _tool_result_request(gateway_call_id, "one result")
+            replay_messages = replay["messages"]
+            assert isinstance(replay_messages, list)
+            replay_messages.insert(
+                0,
+                {"role": "user", "content": "different request fingerprint"},
+            )
+            duplicate = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=replay,
+            )
+            duplicate_payload = await duplicate.json()
+
+    assert duplicate.status == 409
+    assert duplicate_payload["error"]["message"] == (
+        "This tool-result request refers to a completed model call"
+    )
+    assert len(agent_session.requests) == 1
 
 
 @pytest.mark.asyncio

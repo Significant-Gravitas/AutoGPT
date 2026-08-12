@@ -21,6 +21,7 @@ import pytest
 
 from backend.copilot.config import CopilotMode
 from backend.copilot.executor.processor import (
+    _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
     resolve_effective_mode,
     resolve_use_sdk_for_mode,
@@ -427,7 +428,7 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
     transport.acquire_runtime_lease.assert_awaited_once_with(
         "user-1",
         "cred-1",
-        lock_timeout_seconds=5.0,
+        lock_timeout_seconds=_CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     )
     lease.release.assert_awaited_once()
     resolve_mode.assert_awaited_once_with("extended_thinking", "user-1")

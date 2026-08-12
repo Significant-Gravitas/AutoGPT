@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import shutil
@@ -77,7 +78,7 @@ class TemporaryCodexHome:
         _exc: BaseException | None,
         _traceback: TracebackType | None,
     ) -> None:
-        self.cleanup()
+        await asyncio.to_thread(self.cleanup)
 
     def cleanup(self) -> None:
         if self._cleaned:
@@ -100,12 +101,19 @@ class TemporaryCodexHome:
 
 
 def _prepare_root(root: Path | None) -> Path:
-    candidate = root or Path(tempfile.gettempdir()) / "autogpt-codex"
+    candidate = (root or Path(tempfile.gettempdir()) / "autogpt-codex").absolute()
+    for component in (candidate, *candidate.parents):
+        if os.path.lexists(component) and component.is_symlink():
+            raise ValueError("Codex temporary root cannot contain symbolic links")
+    candidate.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if candidate.is_symlink():
+        raise ValueError("Codex temporary root cannot contain symbolic links")
     resolved = candidate.resolve()
     if resolved == Path(resolved.anchor):
         raise ValueError("Codex temporary root cannot be a filesystem root")
-    resolved.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(resolved, 0o700)
+    if os.name != "nt" and stat.S_IMODE(resolved.stat().st_mode) != 0o700:
+        raise PermissionError("Codex temporary root must have mode 0700")
     return resolved
 
 

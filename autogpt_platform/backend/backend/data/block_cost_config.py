@@ -406,7 +406,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_type=BlockCostType.COST_USD,
             cost_filter={
-                "model": CodexModel.GPT5_6_SOL,
+                "model": model,
                 "credentials": {
                     "id": openai_credentials.id,
                     "provider": openai_credentials.provider,
@@ -414,55 +414,8 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
             cost_amount=150,
-        ),
-        BlockCost(
-            cost_type=BlockCostType.COST_USD,
-            cost_filter={
-                "model": CodexModel.GPT5_6_TERRA,
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
-            cost_amount=150,
-        ),
-        BlockCost(
-            cost_type=BlockCostType.COST_USD,
-            cost_filter={
-                "model": CodexModel.GPT5_6_LUNA,
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
-            cost_amount=150,
-        ),
-        BlockCost(
-            cost_type=BlockCostType.COST_USD,
-            cost_filter={
-                "model": CodexModel.GPT5_3_CODEX,
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
-            cost_amount=150,
-        ),
-        BlockCost(
-            cost_type=BlockCostType.COST_USD,
-            cost_filter={
-                "model": CodexModel.GPT5_1_CODEX,
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
-            cost_amount=150,
-        ),
+        )
+        for model in CodexModel
     ],
     # D-ID: $5.90/min of generated video. Median 10-sec clip ≈ $0.98 →
     # 148 cr at 1.5x. 100 cr flat is a conservative middle; long clips

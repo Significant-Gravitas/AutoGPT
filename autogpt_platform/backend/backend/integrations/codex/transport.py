@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import inspect
 import logging
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -75,6 +76,9 @@ class RuntimeLogin(Protocol):
 
 
 class RuntimeClient(Protocol):
+    @property
+    def closed(self) -> bool: ...
+
     async def start_device_code_login(self) -> RuntimeLogin: ...
 
     async def account(
@@ -157,7 +161,7 @@ class CodexAgentSession:
 
     @property
     def closed(self) -> bool:
-        return bool(getattr(self._runtime.runtime, "closed", False))
+        return self._runtime.runtime.closed
 
     @property
     def failure(self) -> BaseException | None:
@@ -960,33 +964,41 @@ class _CodexRuntimePool:
                 raise close_error
             return
         if not leader:
-            completed = await asyncio.to_thread(
-                close_complete.wait,
-                self._cleanup_timeout_seconds,
-            )
-            if not completed:
-                raise CodexTransportError("Codex runtime pool shutdown timed out")
-            with self._state_lock:
-                close_error = self._close_error
-            if close_error is not None:
-                raise close_error
+            await self._wait_for_close(close_complete)
             return
+        close_error, loop = await self._close_as_leader(loop, thread, ready)
+        with self._state_lock:
+            if self._loop is loop:
+                self._loop = None
+                self._thread = None
+                self._loop_ready = None
+            self._close_error = close_error
+            self._closed = True
+            close_complete.set()
+        if close_error is not None:
+            raise close_error
+
+    async def _wait_for_close(self, close_complete: threading.Event) -> None:
+        completed = await asyncio.to_thread(
+            close_complete.wait,
+            self._cleanup_timeout_seconds,
+        )
+        if not completed:
+            raise CodexTransportError("Codex runtime pool shutdown timed out")
+        with self._state_lock:
+            close_error = self._close_error
+        if close_error is not None:
+            raise close_error
+
+    async def _close_as_leader(
+        self,
+        loop: asyncio.AbstractEventLoop | None,
+        thread: threading.Thread | None,
+        ready: threading.Event | None,
+    ) -> tuple[BaseException | None, asyncio.AbstractEventLoop | None]:
+        close_error: BaseException | None = None
         try:
-            if thread is not None and loop is None:
-                if ready is None or not await asyncio.to_thread(
-                    ready.wait,
-                    self._cleanup_timeout_seconds,
-                ):
-                    raise CodexTransportError(
-                        "Codex runtime pool loop startup timed out during shutdown"
-                    )
-                with self._state_lock:
-                    loop = self._loop
-                    start_error = self._loop_start_error
-                if start_error is not None:
-                    raise CodexTransportError(
-                        "Codex runtime pool loop failed to start"
-                    ) from start_error
+            loop = await self._resolve_shutdown_loop(loop, thread, ready)
             if loop is not None and not loop.is_closed():
                 future = asyncio.run_coroutine_threadsafe(
                     self._close_all_on_actor_loop(), loop
@@ -998,32 +1010,54 @@ class _CodexRuntimePool:
                 )
         except BaseException as error:
             close_error = error
-        finally:
-            try:
-                if loop is not None and not loop.is_closed():
-                    loop.call_soon_threadsafe(loop.stop)
-                if thread is not None:
-                    await asyncio.to_thread(
-                        thread.join,
-                        self._cleanup_timeout_seconds,
-                    )
-                    if thread.is_alive() and close_error is None:
-                        close_error = CodexTransportError(
-                            "Codex runtime pool loop did not stop"
-                        )
-            except BaseException as error:
-                if close_error is None:
-                    close_error = error
-            with self._state_lock:
-                if self._loop is loop:
-                    self._loop = None
-                    self._thread = None
-                    self._loop_ready = None
-                self._close_error = close_error
-                self._closed = True
-                close_complete.set()
-        if close_error is not None:
-            raise close_error
+        stop_error = await self._stop_actor_loop(loop, thread)
+        if close_error is not None and stop_error is not None:
+            close_error.add_note(
+                f"Actor-loop stop failure: "
+                f"{type(stop_error).__name__}: {stop_error}"
+            )
+        return close_error or stop_error, loop
+
+    async def _resolve_shutdown_loop(
+        self,
+        loop: asyncio.AbstractEventLoop | None,
+        thread: threading.Thread | None,
+        ready: threading.Event | None,
+    ) -> asyncio.AbstractEventLoop | None:
+        if thread is None or loop is not None:
+            return loop
+        if ready is None or not await asyncio.to_thread(
+            ready.wait,
+            self._cleanup_timeout_seconds,
+        ):
+            raise CodexTransportError(
+                "Codex runtime pool loop startup timed out during shutdown"
+            )
+        with self._state_lock:
+            loop = self._loop
+            start_error = self._loop_start_error
+        if start_error is not None:
+            raise CodexTransportError(
+                "Codex runtime pool loop failed to start"
+            ) from start_error
+        return loop
+
+    async def _stop_actor_loop(
+        self,
+        loop: asyncio.AbstractEventLoop | None,
+        thread: threading.Thread | None,
+    ) -> BaseException | None:
+        try:
+            if loop is not None and not loop.is_closed():
+                loop.call_soon_threadsafe(loop.stop)
+            if thread is None:
+                return None
+            await asyncio.to_thread(thread.join, self._cleanup_timeout_seconds)
+            if thread.is_alive():
+                return CodexTransportError("Codex runtime pool loop did not stop")
+        except BaseException as error:
+            return error
+        return None
 
     @property
     def _cleanup_timeout_seconds(self) -> float:
@@ -1379,9 +1413,15 @@ class _CodexRuntimePool:
                 ):
                     errors.append(result)
         if errors:
-            raise CodexTransportError(
+            cleanup_error = CodexTransportError(
                 f"Codex runtime pool cleanup failed ({len(errors)} error(s))"
-            ) from errors[0]
+            )
+            for additional_error in errors[1:]:
+                cleanup_error.add_note(
+                    f"Additional cleanup failure: "
+                    f"{type(additional_error).__name__}: {additional_error}"
+                )
+            raise cleanup_error from errors[0]
 
     def _active_actor(
         self,
@@ -1503,9 +1543,8 @@ async def _run_with_lease_guard(
 
 
 def _close_unused_awaitable(operation: Awaitable[Any]) -> None:
-    close = getattr(operation, "close", None)
-    if callable(close):
-        close()
+    if inspect.iscoroutine(operation):
+        operation.close()
 
 
 async def _bounded_phase(

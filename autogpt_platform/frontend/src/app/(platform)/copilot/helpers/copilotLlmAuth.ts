@@ -1,7 +1,7 @@
 import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
 import type { CopilotLlmAuthSelection } from "../store";
 
-export function getAvailableLlmTransports(
+export function getAvailableLLMTransports(
   transports: ChatTransportResponse[] | null | undefined,
 ): ChatTransportResponse[] {
   return (transports ?? []).filter(
@@ -25,11 +25,11 @@ export function getChatTransportSelection(
   };
 }
 
-export function findSelectedLlmTransport(
+export function findSelectedLLMTransport(
   transports: ChatTransportResponse[] | null | undefined,
   selection: CopilotLlmAuthSelection,
 ): ChatTransportResponse | undefined {
-  return getAvailableLlmTransports(transports).find(
+  return getAvailableLLMTransports(transports).find(
     (transport) =>
       transport.auth_provider === selection.authProvider &&
       (transport.auth_provider === "platform" ||
@@ -37,14 +37,14 @@ export function findSelectedLlmTransport(
   );
 }
 
-export function resolveCopilotLlmAuthSelection(
+export function resolveCopilotLLMAuthSelection(
   transports: ChatTransportResponse[] | null | undefined,
   currentSelection: CopilotLlmAuthSelection,
 ): CopilotLlmAuthSelection | null {
   if (transports == null) return null;
 
-  const availableTransports = getAvailableLlmTransports(transports);
-  const selectedTransport = findSelectedLlmTransport(
+  const availableTransports = getAvailableLLMTransports(transports);
+  const selectedTransport = findSelectedLLMTransport(
     availableTransports,
     currentSelection,
   );

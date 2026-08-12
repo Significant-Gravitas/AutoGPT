@@ -361,12 +361,20 @@ export default function CredentialsProvider({
       return;
     }
 
+    let isCurrent = true;
     Promise.all([api.listProviders(), api.listSystemProviders()])
       .then(([names, systemList]) => {
+        if (!isCurrent) return;
         setProviderNames(names);
         setSystemProviders(new Set(systemList));
       })
-      .catch(onFailToast("Load provider names"));
+      .catch((error) => {
+        if (isCurrent) onFailToast("Load provider names")(error);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
   }, [api, isLoggedIn, onFailToast]);
 
   useEffect(() => {

@@ -13,7 +13,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "../../../../store";
-import { LlmRouteSelector } from "../LlmRouteSelector";
+import { LLMRouteSelector } from "../LlmRouteSelector";
 
 const testState = vi.hoisted(() => ({
   transports: [] as ChatTransportResponse[] | null,
@@ -110,7 +110,7 @@ function SelectorHarness() {
     <CredentialsProvidersContext.Provider
       value={{ codex: makeCodexProvider() }}
     >
-      <LlmRouteSelector />
+      <LLMRouteSelector />
     </CredentialsProvidersContext.Provider>
   );
 }
@@ -127,7 +127,7 @@ afterEach(() => {
   });
 });
 
-describe("LlmRouteSelector", () => {
+describe("LLMRouteSelector", () => {
   it("hides when the hosted platform is the only available route", () => {
     testState.transports = [hostedPlatform];
 

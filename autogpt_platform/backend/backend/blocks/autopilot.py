@@ -133,7 +133,7 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
-        codex_credentials: CodexAutoPilotCredentials = CredentialsField(
+        codex_credentials: CodexAutoPilotCredentials | None = CredentialsField(
             title="ChatGPT / Codex connection",
             description=(
                 "Optional connected ChatGPT plan. Leave empty to use the "
@@ -748,7 +748,11 @@ async def _enqueue_for_recovery(
 
         session = await get_chat_session(session_id, user_id)
         if session is None:
-            raise RuntimeError("copilot_session_not_found")
+            logger.warning(
+                "AutoPilot session %s: copilot_session_not_found",
+                session_id[:12],
+            )
+            return
 
         await asyncio.wait_for(
             enqueue_copilot_turn(

@@ -48,7 +48,7 @@ def test_transport_selector_is_visible_before_transport_specific_fields():
     assert list(properties).index("transport") < list(properties).index("credentials")
 
 
-def test_subscription_none_effort_omits_model_specific_reasoning_value():
+def test_subscription_effort_mapping_includes_none_and_high():
     assert _app_server_effort(CodexReasoningEffort.NONE) is None
     assert _app_server_effort(CodexReasoningEffort.HIGH) == "high"
 
@@ -114,6 +114,40 @@ async def test_openai_api_transport_preserves_existing_call_path():
         max_output_tokens=input_data.max_output_tokens,
         reasoning_effort=input_data.reasoning_effort,
     )
+
+
+@pytest.mark.asyncio
+async def test_openai_api_accepts_max_but_rejects_app_server_only_ultra():
+    block = CodeGenerationBlock()
+    block.call_codex = AsyncMock(
+        return_value=CodexCallResult(
+            response="implemented",
+            reasoning="",
+            response_id="response-1",
+        )
+    )
+    credentials = APIKeyCredentials(
+        id="openai-cred-1",
+        provider="openai",
+        api_key=SecretStr("secret"),
+    )
+
+    max_input = CodeGenerationBlock.Input(
+        prompt="preserve max",
+        reasoning_effort=CodexReasoningEffort.MAX,
+        credentials=_credential_metadata(credentials),
+    )
+    await block._run_openai_api(max_input, credentials)
+    block.call_codex.assert_awaited_once()
+
+    ultra_input = CodeGenerationBlock.Input(
+        prompt="reject ultra",
+        reasoning_effort=CodexReasoningEffort.ULTRA,
+        credentials=_credential_metadata(credentials),
+    )
+    with pytest.raises(ValueError, match="does not support 'ultra'"):
+        await block._run_openai_api(ultra_input, credentials)
+    block.call_codex.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -191,6 +225,30 @@ async def test_codex_app_server_rejects_execution_without_credential_lease():
 
     with pytest.raises(ValueError, match="credential lease"):
         await anext(block.run(input_data, credentials=credentials, user_id="user-1"))
+
+
+@pytest.mark.asyncio
+async def test_codex_app_server_rejects_mismatched_credential_lease():
+    block = CodeGenerationBlock()
+    credentials = _codex_credentials()
+    other_credentials = credentials.model_copy(update={"id": "codex-cred-2"})
+    input_data = CodeGenerationBlock.Input(
+        prompt="implement it",
+        transport=CodexExecutionTransport.CODEX_APP_SERVER,
+        credentials=_credential_metadata(credentials),
+    )
+
+    with pytest.raises(ValueError, match="credential lease"):
+        await anext(
+            block.run(
+                input_data,
+                credentials=credentials,
+                credential_leases={
+                    "credentials": MagicMock(credentials=other_credentials)
+                },
+                user_id="user-1",
+            )
+        )
 
 
 def _codex_credentials() -> OAuth2Credentials:

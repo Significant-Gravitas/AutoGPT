@@ -114,7 +114,7 @@ def build_sdk_env(
     # --- Mode 1: Claude Code subscription auth ---
     elif config.use_claude_code_subscription:
         validate_subscription()
-        env: dict[str, str] = {
+        env = {
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",

@@ -23,6 +23,7 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
+from backend.integrations.codex.transport import get_codex_transport
 from backend.util.decorator import error_logged
 from backend.util.logging import TruncatedLogger
 from backend.util.process import AppProcess
@@ -265,8 +266,6 @@ class CoPilotExecutor(AppProcess):
             self._codex_runtime_pool_closed = True
 
         try:
-            from backend.integrations.codex.transport import get_codex_transport
-
             logger.info(f"{prefix} Closing Codex runtime pool...")
             asyncio.run(get_codex_transport().close_runtime_pool())
         except Exception as e:

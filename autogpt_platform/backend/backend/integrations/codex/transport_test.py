@@ -29,6 +29,7 @@ from backend.integrations.codex.transport import (
     CodexTransport,
     CodexTransportError,
     CodexTransportOverloadedError,
+    _close_unused_awaitable,
     _run_with_lease_guard,
 )
 from backend.integrations.credential_lease import CredentialLease
@@ -77,6 +78,26 @@ def test_process_capacity_is_safe_across_event_loops():
     assert not first.is_alive()
     assert not second.is_alive()
     assert not errors
+
+
+def test_close_unused_awaitable_only_closes_native_coroutines():
+    class CustomAwaitable:
+        def __init__(self) -> None:
+            self.close_called = False
+
+        def __await__(self):
+            if False:
+                yield None
+            return None
+
+        def close(self) -> None:
+            self.close_called = True
+
+    operation = CustomAwaitable()
+
+    _close_unused_awaitable(operation)
+
+    assert not operation.close_called
 
 
 @pytest.mark.asyncio
@@ -1314,10 +1335,11 @@ async def test_runtime_pool_shutdown_cleans_other_actors_after_close_error(
 
     class FailingCloseRuntime(_FakeRuntime):
         async def close(self):
+            self.closed = True
             raise RuntimeError("runtime close failed")
 
     first_runtime = FailingCloseRuntime()
-    second_runtime = _FakeRuntime()
+    second_runtime = FailingCloseRuntime()
     runtimes = iter((first_runtime, second_runtime))
 
     async def runtime_factory(home):
@@ -1351,7 +1373,14 @@ async def test_runtime_pool_shutdown_cleans_other_actors_after_close_error(
 
     assert len(results) == 2
     assert all(isinstance(result, CodexTransportError) for result in results)
+    assert first_runtime.closed
     assert second_runtime.closed
+    assert any(
+        "Additional cleanup failure: RuntimeError: runtime close failed" in note
+        for result in results
+        if isinstance(result, CodexTransportError)
+        for note in result.__notes__
+    )
     first_raw_lease._lock.release.assert_awaited_once()
     second_raw_lease._lock.release.assert_awaited_once()
     assert not tuple(tmp_path.iterdir())
@@ -1496,8 +1525,10 @@ async def test_caller_cancellation_stops_active_runtime_operation(tmp_path):
                 cancelled.set()
 
     runtime = BlockingRuntime()
+    max_active_processes = 2
     transport = CodexTransport(
         temp_root=tmp_path,
+        max_active_processes=max_active_processes,
         runtime_factory=_runtime_factory(runtime),
     )
     invocation = asyncio.create_task(
@@ -1511,7 +1542,7 @@ async def test_caller_cancellation_stops_active_runtime_operation(tmp_path):
 
     assert cancelled.is_set()
     assert runtime.closed
-    assert transport._capacity._value == 4
+    assert transport._capacity._value == max_active_processes
     assert not tuple(tmp_path.iterdir())
 
 

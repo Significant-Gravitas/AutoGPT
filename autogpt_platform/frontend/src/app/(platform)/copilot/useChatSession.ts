@@ -19,8 +19,8 @@ import {
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
 import {
-  getAvailableLlmTransports,
-  resolveCopilotLlmAuthSelection,
+  getAvailableLLMTransports,
+  resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 
@@ -213,11 +213,11 @@ export function useChatSession({
     // has asked for a new thread, auto-navigating them into an old one is
     // never the right recovery.
     sendStartedRef.current = true;
-    const resolvedLlmAuth = resolveCopilotLlmAuthSelection(
+    const resolvedLLMAuth = resolveCopilotLLMAuthSelection(
       chatTransports,
       copilotLlmAuth,
     );
-    const availableTransports = getAvailableLlmTransports(chatTransports);
+    const availableTransports = getAvailableLLMTransports(chatTransports);
     if (transportQuery.isError && chatTransports === undefined) {
       toast({
         variant: "destructive",
@@ -235,7 +235,7 @@ export function useChatSession({
       });
       throw new Error("chat_transport_not_configured");
     }
-    if (!resolvedLlmAuth) {
+    if (!resolvedLLMAuth) {
       const connectionsAreLoading = chatTransports === undefined;
       toast({
         variant: "destructive",
@@ -254,7 +254,7 @@ export function useChatSession({
     }
     if (
       copilotLlmAuth.authProvider !== "platform" &&
-      resolvedLlmAuth.authProvider === "platform"
+      resolvedLLMAuth.authProvider === "platform"
     ) {
       toast({
         title: "AI connections changed",
@@ -265,10 +265,10 @@ export function useChatSession({
 
     try {
       const sessionData: CreateSessionRequest = {
-        llm_auth_provider: resolvedLlmAuth.authProvider,
+        llm_auth_provider: resolvedLLMAuth.authProvider,
       };
-      if (resolvedLlmAuth.authProvider === "codex") {
-        sessionData.llm_credential_id = resolvedLlmAuth.credentialId;
+      if (resolvedLLMAuth.authProvider === "codex") {
+        sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;

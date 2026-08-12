@@ -371,6 +371,27 @@ async def test_same_replica_cancel_promptly_releases_slot_after_owner_cleanup():
 
 
 @pytest.mark.asyncio
+async def test_repeated_cancel_only_cancels_runtime_session_once():
+    user_id = "user-123"
+    session = FakeSession()
+    state_store = MemoryStateStore()
+    coordinator = CodexLoginCoordinator(
+        transport_factory=lambda: _transport(session),
+        state_store=state_store,
+        credentials_manager=MagicMock(),
+        state_poll_interval_seconds=0.001,
+    )
+
+    details = await coordinator.start(user_id)
+    assert await coordinator.cancel(user_id, details.login_id)
+    assert await coordinator.cancel(user_id, details.login_id)
+    await _wait_for_close(session)
+    await _wait_for_active_release(state_store, user_id)
+
+    session.cancel.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_shutdown_cancels_local_sessions_and_releases_active_slots():
     user_id = "user-123"
     session = FakeSession()
@@ -438,6 +459,48 @@ async def test_cancel_during_provider_lock_wait_prevents_stale_persistence():
 
     manager.upsert_single_provider_locked.assert_not_awaited()
     assert user_id not in state_store.active
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_credential_upsert_finishes_state_commit():
+    user_id = "user-123"
+    login_id = "login-123"
+    state_store = MemoryStateStore()
+    state = CodexSharedLoginState(user_id=user_id, status="pending")
+    assert await state_store.claim(state, login_id)
+    upsert_started = asyncio.Event()
+    allow_upsert = asyncio.Event()
+    manager = MagicMock()
+    manager.locked_provider_credentials = MagicMock(
+        side_effect=lambda *_args: _provider_locks()
+    )
+
+    async def blocked_upsert(*_args):
+        upsert_started.set()
+        await allow_upsert.wait()
+        return _credentials()
+
+    manager.upsert_single_provider_locked = AsyncMock(side_effect=blocked_upsert)
+    coordinator = CodexLoginCoordinator(
+        state_store=state_store,
+        credentials_manager=manager,
+    )
+
+    persistence = asyncio.create_task(
+        coordinator._persist_completed_login(user_id, login_id, _completion())
+    )
+    await asyncio.wait_for(upsert_started.wait(), timeout=1)
+    persistence.cancel()
+    allow_upsert.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await persistence
+
+    committed = await state_store.get(user_id, login_id)
+    assert committed is not None
+    assert committed.status == "completed"
+    assert committed.credential_id == "codex-credential"
+    manager.upsert_single_provider_locked.assert_awaited_once()
 
 
 @pytest.mark.asyncio

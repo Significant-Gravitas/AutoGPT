@@ -2,7 +2,6 @@
 
 import { useGetV2ListChatTransports } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,18 +11,18 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import {
-  Alert01Icon,
-  ArrowDown01Icon,
-  Key01Icon,
-} from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { useContext, useEffect } from "react";
 import {
-  findSelectedLlmTransport,
-  getAvailableLlmTransports,
+  PiCaretDown as CaretDownIcon,
+  PiKey as KeyIcon,
+  PiWarningCircle as WarningCircleIcon,
+} from "react-icons/pi";
+import {
+  findSelectedLLMTransport,
+  getAvailableLLMTransports,
   getChatTransportSelection,
-  resolveCopilotLlmAuthSelection,
+  resolveCopilotLLMAuthSelection,
 } from "../../../helpers/copilotLlmAuth";
 import { useCopilotUIStore } from "../../../store";
 
@@ -41,7 +40,7 @@ function getTransportDescription(
     : "Uses this server's configured chat provider";
 }
 
-export function LlmRouteSelector() {
+export function LLMRouteSelector() {
   const providers = useContext(CredentialsProvidersContext);
   const transportQuery = useGetV2ListChatTransports({
     query: { refetchOnWindowFocus: true, staleTime: 0 },
@@ -50,38 +49,41 @@ export function LlmRouteSelector() {
     transportQuery.data?.status === 200
       ? transportQuery.data.data.transports
       : undefined;
-  const availableTransports = getAvailableLlmTransports(transports);
-  const { copilotLlmAuth, setCopilotLlmAuth } = useCopilotUIStore();
-  const resolvedSelection = resolveCopilotLlmAuthSelection(
+  const availableTransports = getAvailableLLMTransports(transports);
+  const {
+    copilotLlmAuth: copilotLLMAuth,
+    setCopilotLlmAuth: setCopilotLLMAuth,
+  } = useCopilotUIStore();
+  const resolvedSelection = resolveCopilotLLMAuthSelection(
     transports,
-    copilotLlmAuth,
+    copilotLLMAuth,
   );
-  const selectedTransport = findSelectedLlmTransport(
+  const selectedTransport = findSelectedLLMTransport(
     availableTransports,
-    copilotLlmAuth,
+    copilotLLMAuth,
   );
   const selectedConnectionMissing =
     transports !== undefined &&
     availableTransports.length > 0 &&
-    copilotLlmAuth.authProvider !== "platform" &&
+    copilotLLMAuth.authProvider !== "platform" &&
     !selectedTransport;
 
   useEffect(() => {
     if (!resolvedSelection) return;
     if (
-      resolvedSelection.authProvider === copilotLlmAuth.authProvider &&
-      resolvedSelection.credentialId === copilotLlmAuth.credentialId
+      resolvedSelection.authProvider === copilotLLMAuth.authProvider &&
+      resolvedSelection.credentialId === copilotLLMAuth.credentialId
     ) {
       return;
     }
 
-    setCopilotLlmAuth(resolvedSelection);
+    setCopilotLLMAuth(resolvedSelection);
   }, [
-    copilotLlmAuth.authProvider,
-    copilotLlmAuth.credentialId,
+    copilotLLMAuth.authProvider,
+    copilotLLMAuth.credentialId,
     resolvedSelection?.authProvider,
     resolvedSelection?.credentialId,
-    setCopilotLlmAuth,
+    setCopilotLLMAuth,
   ]);
 
   useEffect(() => {
@@ -100,9 +102,9 @@ export function LlmRouteSelector() {
     return (
       <span
         aria-label="AI connections unavailable"
-        className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 text-xs font-medium text-red-600"
+        className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-xs font-medium text-destructive"
       >
-        <Icon icon={Alert01Icon} size={14} />
+        <WarningCircleIcon size={14} />
         <span className="hidden sm:inline">Connections unavailable</span>
       </span>
     );
@@ -113,9 +115,9 @@ export function LlmRouteSelector() {
       <Link
         href="/settings/integrations"
         aria-label="Set up an AI connection"
-        className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100"
+        className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
       >
-        <Icon icon={Alert01Icon} size={14} />
+        <WarningCircleIcon size={14} />
         <span className="hidden sm:inline">Set up AI connection</span>
       </Link>
     );
@@ -134,23 +136,23 @@ export function LlmRouteSelector() {
           type="button"
           aria-label={`AI connection: ${selectionLabel} — change connection`}
           className={cn(
-            "ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
-            selectedConnectionMissing ? "text-red-600" : "text-emerald-600",
+            "ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-muted",
+            selectedConnectionMissing ? "text-destructive" : "text-foreground",
           )}
         >
           {selectedConnectionMissing ? (
-            <Icon icon={Alert01Icon} size={14} />
+            <WarningCircleIcon size={14} />
           ) : (
-            <Icon icon={Key01Icon} size={14} />
+            <KeyIcon size={14} />
           )}
           <span className="hidden sm:inline">{selectionLabel}</span>
-          <Icon icon={ArrowDown01Icon} size={12} className="text-zinc-400" />
+          <CaretDownIcon size={12} className="text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72">
         {selectedConnectionMissing && (
-          <DropdownMenuItem disabled className="gap-2 text-red-600">
-            <Icon icon={Alert01Icon} size={16} />
+          <DropdownMenuItem disabled className="gap-2 text-destructive">
+            <WarningCircleIcon size={16} />
             Selected connection is unavailable
           </DropdownMenuItem>
         )}
@@ -169,13 +171,13 @@ export function LlmRouteSelector() {
           return (
             <DropdownMenuItem
               key={`${transport.auth_provider}:${transport.credential_id ?? "deployment"}`}
-              onClick={() => setCopilotLlmAuth(selection)}
-              className={cn("gap-2", isSelected && "bg-zinc-100")}
+              onClick={() => setCopilotLLMAuth(selection)}
+              className={cn("gap-2", isSelected && "bg-muted")}
             >
-              <Icon icon={Key01Icon} size={16} />
+              <KeyIcon size={16} />
               <div className="min-w-0">
                 <div>{transport.label}</div>
-                <div className="truncate text-xs text-zinc-500">
+                <div className="truncate text-xs text-muted-foreground">
                   {getTransportDescription(transport, credential?.title)}
                 </div>
               </div>

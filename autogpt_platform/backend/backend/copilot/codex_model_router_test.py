@@ -1,11 +1,12 @@
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 
-import backend.data.llm_registry.registry as registry
-from backend.copilot.config import ChatConfig
 from backend.copilot.model_router import resolve_codex_model_route
+from backend.data.llm_registry import registry
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
+from backend.integrations.credential_lease import CredentialLease
 
 
 @pytest.fixture(scope="session", name="server")
@@ -16,15 +17,6 @@ def _server_noop():
 @pytest.fixture(scope="session", autouse=True, name="graph_cleanup")
 def _graph_cleanup_noop():
     yield
-
-
-def _config() -> ChatConfig:
-    return ChatConfig(
-        fast_standard_model="anthropic/claude-sonnet-4-6",
-        fast_advanced_model="anthropic/claude-opus-4-7",
-        thinking_standard_model="anthropic/claude-sonnet-4-6",
-        thinking_advanced_model="anthropic/claude-opus-4-7",
-    )
 
 
 def _model(
@@ -44,6 +36,10 @@ def _model(
         supported_reasoning_efforts=efforts or ["low", "medium", "high", "xhigh"],
         input_modalities=["text"],
     )
+
+
+def _lease() -> CredentialLease:
+    return cast(CredentialLease, object())
 
 
 @pytest.fixture
@@ -68,7 +64,7 @@ def _transport(monkeypatch, models: list[CodexModelInfo]):
     transport = AsyncMock()
     transport.models.return_value = models
     monkeypatch.setattr(
-        "backend.integrations.codex.transport.get_codex_transport",
+        "backend.copilot.model_router.get_codex_transport",
         lambda: transport,
     )
     return transport
@@ -98,13 +94,12 @@ async def test_catalog_cells_select_latest_advertised_model(
         _model("gpt-5.6-sol", default=True),
     ]
     transport = _transport(monkeypatch, models)
-    lease = object()
+    lease = _lease()
 
     resolved = await resolve_codex_model_route(
         mode,
         tier,
-        lease,  # type: ignore[arg-type]
-        _config(),
+        lease,
     )
 
     assert resolved == (expected_model, expected_effort, "catalog")
@@ -132,8 +127,7 @@ async def test_unavailable_catalog_model_uses_visible_account_default(
     resolved = await resolve_codex_model_route(
         "thinking",
         "advanced",
-        object(),  # type: ignore[arg-type]
-        _config(),
+        _lease(),
     )
 
     assert resolved == ("gpt-5.4", "low", "account_default")
@@ -152,8 +146,7 @@ async def test_no_default_uses_first_visible_account_model(monkeypatch, catalog_
     resolved = await resolve_codex_model_route(
         "fast",
         "standard",
-        object(),  # type: ignore[arg-type]
-        _config(),
+        _lease(),
     )
 
     assert resolved == ("gpt-5.2", "medium", "account_available")
@@ -167,8 +160,7 @@ async def test_empty_visible_catalog_fails_closed(monkeypatch, catalog_state):
         await resolve_codex_model_route(
             "fast",
             "standard",
-            object(),  # type: ignore[arg-type]
-            _config(),
+            _lease(),
         )
 
 
@@ -190,8 +182,7 @@ async def test_disabled_account_default_is_not_used(monkeypatch, catalog_state):
     resolved = await resolve_codex_model_route(
         "fast",
         "standard",
-        object(),  # type: ignore[arg-type]
-        _config(),
+        _lease(),
     )
 
     assert resolved == ("gpt-5.2", "medium", "account_available")

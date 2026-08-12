@@ -7,6 +7,7 @@ import sys
 import threading
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -320,6 +321,47 @@ async def test_dynamic_tool_timeout_cancels_callback_and_fails_closed(tmp_path):
     }
 
 
+async def test_dynamic_tool_submission_failure_closes_callback_coroutine(
+    tmp_path, monkeypatch
+):
+    sync_client = SimpleNamespace(_approval_handler=None)
+    client = SimpleNamespace(_client=SimpleNamespace(_sync=sync_client))
+    submitted: list[object] = []
+
+    async def execute(_call):
+        return CodexDynamicToolResult(content="unused", success=True)
+
+    def reject_submission(coroutine, _loop):
+        submitted.append(coroutine)
+        raise RuntimeError("event loop is closed")
+
+    monkeypatch.setattr(
+        runtime_module.asyncio, "run_coroutine_threadsafe", reject_submission
+    )
+
+    with TemporaryCodexHome.create(tmp_path) as home:
+        runtime = CodexRuntime(cast(AsyncCodex, client), home)
+        runtime._register_dynamic_tool_handler("thread-1", execute, timeout_seconds=1)
+        response = await asyncio.to_thread(
+            sync_client._approval_handler,
+            "item/tool/call",
+            {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "callId": "call-1",
+                "tool": "find_agent",
+                "arguments": {},
+            },
+        )
+
+    assert len(submitted) == 1
+    assert getattr(submitted[0], "cr_frame") is None
+    assert response == {
+        "contentItems": [{"type": "inputText", "text": "codex_tool_execution_failed"}],
+        "success": False,
+    }
+
+
 async def test_unregister_cancels_tool_reserved_during_dispatch(tmp_path, monkeypatch):
     class ObservedLock:
         def __init__(self) -> None:
@@ -365,8 +407,11 @@ async def test_unregister_cancels_tool_reserved_during_dispatch(tmp_path, monkey
     monkeypatch.setattr(runtime_module.asyncio, "run_coroutine_threadsafe", schedule)
 
     with TemporaryCodexHome.create(tmp_path) as home:
-        runtime = CodexRuntime(client, home)  # type: ignore[arg-type]
-        runtime._dynamic_tool_futures_lock = observed_lock  # type: ignore[assignment]
+        with monkeypatch.context() as construction_patch:
+            construction_patch.setattr(
+                runtime_module.threading, "Lock", lambda: observed_lock
+            )
+            runtime = CodexRuntime(cast(AsyncCodex, client), home)
         runtime._register_dynamic_tool_handler("thread-1", execute, timeout_seconds=1)
         dispatch = asyncio.create_task(
             asyncio.to_thread(
@@ -810,6 +855,7 @@ async def test_cancelled_start_does_not_wait_forever_for_stuck_enter(
 async def test_cancelled_invoke_does_not_wait_for_stuck_turn_start(tmp_path):
     started = asyncio.Event()
     release = asyncio.Event()
+    stopped = asyncio.Event()
 
     class StuckThread:
         async def turn(self, *_args, **_kwargs):
@@ -819,6 +865,7 @@ async def test_cancelled_invoke_does_not_wait_for_stuck_turn_start(tmp_path):
                     await release.wait()
                 except asyncio.CancelledError:
                     continue
+            stopped.set()
             return SimpleNamespace()
 
     client = SimpleNamespace(
@@ -844,7 +891,7 @@ async def test_cancelled_invoke_does_not_wait_for_stuck_turn_start(tmp_path):
 
     client.close.assert_awaited_once()
     release.set()
-    await asyncio.sleep(0)
+    await asyncio.wait_for(stopped.wait(), timeout=1)
 
 
 async def test_cancelled_agent_turn_start_recovers_and_interrupts_without_closing(
@@ -906,6 +953,7 @@ async def test_cancelled_agent_turn_start_poisoned_when_handle_cannot_be_recover
 ):
     started = asyncio.Event()
     release = asyncio.Event()
+    stopped = asyncio.Event()
 
     class StuckThread:
         id = "thread-1"
@@ -917,6 +965,7 @@ async def test_cancelled_agent_turn_start_poisoned_when_handle_cannot_be_recover
                     await release.wait()
                 except asyncio.CancelledError:
                     continue
+            stopped.set()
             return SimpleNamespace(id="turn-1")
 
     client = SimpleNamespace(
@@ -955,7 +1004,7 @@ async def test_cancelled_agent_turn_start_poisoned_when_handle_cannot_be_recover
 
     client.close.assert_awaited_once()
     release.set()
-    await asyncio.sleep(0)
+    await asyncio.wait_for(stopped.wait(), timeout=1)
 
 
 async def test_agent_stream_failure_interrupts_without_closing_sibling_runtime(

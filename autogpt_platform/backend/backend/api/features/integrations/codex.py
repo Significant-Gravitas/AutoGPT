@@ -125,7 +125,14 @@ async def cancel_device_login(
     login_id: Annotated[str, Path(min_length=1)],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> None:
-    if not await codex_login_coordinator.cancel(user_id, login_id):
+    try:
+        found = await codex_login_coordinator.cancel(user_id, login_id)
+    except Exception as error:
+        logger.warning(
+            "Codex device-login cancellation failed with %s", type(error).__name__
+        )
+        return
+    if not found:
         raise _login_not_found()
 
 

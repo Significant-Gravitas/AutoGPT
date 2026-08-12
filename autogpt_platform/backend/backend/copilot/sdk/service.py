@@ -2194,7 +2194,7 @@ def _redact_cli_stderr(line: str, *, secrets: tuple[str, ...] = ()) -> str:
 
 
 async def _close_codex_gateway_for_finally(
-    gateway: Any,
+    gateway: CodexAnthropicGateway,
     log_prefix: str,
 ) -> BaseException | None:
     """Finish gateway checkpointing and return any error for deferred raising."""
@@ -4374,7 +4374,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 route_mode,
                 tier_name,
                 credential_lease,
-                config=config,
             )
             if isinstance(credential_lease, PooledCodexRuntimeLease):
                 codex_gateway = CodexAnthropicGateway(
@@ -5297,7 +5296,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 turn_completion_tokens = codex_usage.output_tokens
                 turn_cache_read_tokens = codex_usage.cached_input_tokens
                 turn_cache_creation_tokens = 0
-                turn_cost_usd = None
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,

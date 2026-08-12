@@ -154,9 +154,6 @@ def test_before_send_scrubs_secrets_from_actual_exception_event() -> None:
         },
         "safe": "safe-frame-value",
     }
-    encoded = json.dumps(payload).encode()
-    assert encoded
-
     try:
         raise RuntimeError("materialization failed")
     except RuntimeError:
@@ -167,6 +164,7 @@ def test_before_send_scrubs_secrets_from_actual_exception_event() -> None:
 
     event.update(
         {
+            "extra": {"payload": payload},
             "breadcrumbs": {
                 "values": [
                     {

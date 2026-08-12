@@ -1,7 +1,6 @@
 import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
 import { server } from "@/mocks/mock-server";
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -114,7 +113,6 @@ function captureCreateRequest() {
 }
 
 afterEach(() => {
-  cleanup();
   server.resetHandlers();
   testState.transports = [];
   testState.transportError = false;

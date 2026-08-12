@@ -525,6 +525,8 @@ class TestBuildSdkEnvLocalTransportGuard:
         assert {"127.0.0.1", "localhost", "::1"} <= set(result["NO_PROXY"].split(","))
         assert result["no_proxy"] == result["NO_PROXY"]
 
+
+class TestBuildSdkEnvCodexGateway:
     def test_codex_override_preserves_existing_no_proxy_hosts(self):
         cfg = _make_config(use_openrouter=False)
         with (

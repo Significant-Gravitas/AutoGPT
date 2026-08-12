@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import secrets
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
     APIRouter,
     Body,
@@ -197,7 +198,8 @@ async def _start_codex_login(
             state_metadata={CODEX_LOGIN_STATE_KEY: login_attempt.login_id},
         )
     except Exception:
-        await codex_login_coordinator.cancel(user_id, login_attempt.login_id)
+        with suppress(Exception):
+            await codex_login_coordinator.cancel(user_id, login_attempt.login_id)
         raise
 
     return LoginResponse(
@@ -268,7 +270,7 @@ async def _complete_codex_login(
 ) -> CredentialsMetaResponse:
     expected_login_id = oauth_state.state_metadata.get(CODEX_LOGIN_STATE_KEY)
     if not isinstance(expected_login_id, str) or not secrets.compare_digest(
-        login_id, expected_login_id
+        login_id.encode(), expected_login_id.encode()
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1453,7 +1455,7 @@ async def get_ayrshare_sso_url(
 # === PROVIDER DISCOVERY ENDPOINTS ===
 @router.get("/providers", response_model=List[ProviderMetadata])
 async def list_providers(
-    user_id: Annotated[str, Security(get_user_id)],
+    user_id: Annotated[str | None, Security(get_optional_user_id)],
 ) -> List[ProviderMetadata]:
     """
     Get metadata for every available provider.
@@ -1476,7 +1478,7 @@ async def list_providers(
         logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
     all_providers = get_all_provider_names()
-    if not await has_codex_access_for_discovery(user_id):
+    if user_id is None or not await has_codex_access_for_discovery(user_id):
         all_providers = [name for name in all_providers if name != ProviderName.CODEX]
     return [
         ProviderMetadata(
