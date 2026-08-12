@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import weakref
 from typing import Any
 from urllib.parse import urlparse
 
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Mirrors the bound the integrations router puts on its first-time managed
 # credential sweep, so a slow upstream can't hang the tool call.
 _MANAGED_PROVISION_TIMEOUT_S = 10.0
-_managed_provision_tasks: dict[str, asyncio.Task[bool]] = {}
+_managed_provision_tasks_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio.Task[bool]]]" = (weakref.WeakKeyDictionary())
 
 
 class CredentialListResponse(ToolResponseBase):
@@ -212,9 +213,23 @@ def _build_inventory_message(
     return message
 
 
-def _managed_provision_finished(user_id: str, task: asyncio.Task[bool]) -> None:
-    if _managed_provision_tasks.get(user_id) is task:
-        _managed_provision_tasks.pop(user_id, None)
+def _get_managed_provision_tasks() -> dict[str, asyncio.Task[bool]]:
+    """Return the provisioning task cache for the current worker event loop."""
+    loop = asyncio.get_running_loop()
+    tasks = _managed_provision_tasks_by_loop.get(loop)
+    if tasks is None:
+        tasks = {}
+        _managed_provision_tasks_by_loop[loop] = tasks
+    return tasks
+
+
+def _managed_provision_finished(
+    user_id: str,
+    task: asyncio.Task[bool],
+    tasks: dict[str, asyncio.Task[bool]],
+) -> None:
+    if tasks.get(user_id) is task:
+        tasks.pop(user_id, None)
     if task.cancelled():
         return
     error = task.exception()
@@ -227,16 +242,17 @@ def _managed_provision_finished(user_id: str, task: asyncio.Task[bool]) -> None:
 
 
 def _get_managed_provision_task(user_id: str) -> asyncio.Task[bool]:
-    existing = _managed_provision_tasks.get(user_id)
+    tasks = _get_managed_provision_tasks()
+    existing = tasks.get(user_id)
     if existing and not existing.done():
         return existing
 
     task = asyncio.create_task(
         ensure_managed_credentials(user_id, IntegrationCredentialsManager().store)
     )
-    _managed_provision_tasks[user_id] = task
+    tasks[user_id] = task
     task.add_done_callback(
-        lambda completed: _managed_provision_finished(user_id, completed)
+        lambda completed: _managed_provision_finished(user_id, completed, tasks)
     )
     return task
 

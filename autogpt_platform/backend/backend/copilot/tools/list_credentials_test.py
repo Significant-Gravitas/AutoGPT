@@ -10,7 +10,7 @@ from backend.copilot.tools.list_credentials import (
     CredentialListResponse,
     ListUserCredentialsTool,
     _ensure_managed_credentials_bounded,
-    _managed_provision_tasks,
+    _get_managed_provision_tasks,
 )
 from backend.copilot.tools.models import ErrorResponse, ResponseType
 from backend.data.model import (
@@ -389,6 +389,16 @@ _ENSURE_PATH = "backend.copilot.tools.list_credentials.ensure_managed_credential
 class TestEnsureManagedCredentialsBounded:
     """Exercises the real bounded provisioning sweep (not the autouse stub)."""
 
+    def test_provision_tasks_are_scoped_to_event_loop(self):
+        async def get_caches():
+            return _get_managed_provision_tasks(), _get_managed_provision_tasks()
+
+        first_cache, same_loop_cache = asyncio.run(get_caches())
+        second_loop_cache, _ = asyncio.run(get_caches())
+
+        assert first_cache is same_loop_cache
+        assert first_cache is not second_loop_cache
+
     @pytest.mark.asyncio
     async def test_returns_true_on_success(self):
         with (
@@ -438,7 +448,7 @@ class TestEnsureManagedCredentialsBounded:
             assert result is False
             assert finished is False
             release.set()
-            await _managed_provision_tasks["timeout-user"]
+            await _get_managed_provision_tasks()["timeout-user"]
 
         assert finished is True
 
