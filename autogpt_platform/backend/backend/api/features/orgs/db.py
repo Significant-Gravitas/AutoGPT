@@ -228,6 +228,24 @@ async def get_session_tenancy_membership(
         and team_member.Team.orgId == organization_id
     )
     return SessionTenancyMembership(org_active=True, team_active=team_active)
+async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]:
+    """Best-effort default org/team for tenanting newly created rows.
+
+    Wraps ``get_user_default_team`` so tenancy resolution can never abort the
+    operation that needs it (an execution, a library add, a notification): a
+    raised lookup — or an unresolvable org — yields ``(None, None)`` and the
+    row is created untenanted. Callers stamp the returned pair only when
+    non-null.
+    """
+    try:
+        return await get_user_default_team(user_id)
+    except Exception:
+        logger.warning(
+            f"Default org/team lookup failed for user {user_id}; "
+            "creating the row untenanted",
+            exc_info=True,
+        )
+        return None, None
 
 
 async def _create_personal_org_for_user(

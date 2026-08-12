@@ -984,12 +984,38 @@ class MemoryForgetCandidatesResponse(ToolResponseBase):
     candidates: list[dict[str, str]] = Field(default_factory=list)
 
 
+class MemoryForgetFailureCode(str, Enum):
+    """Stable, machine-switchable reason a forget delete failed.
+
+    The frontend/model can branch on this code (retry vs. give up) without
+    parsing the free-text ``reason``. New codes may be added over time, so
+    consumers must tolerate unknown values.
+    """
+
+    NO_MATCH = "no_match"
+    QUERY_ERROR = "query_error"
+
+
+class MemoryForgetFailure(BaseModel):
+    """One edge that could not be deleted, with an actionable reason.
+
+    Surfaced so the assistant (and user) can tell *why* a delete failed —
+    e.g. the edge was not found vs. the query itself errored — instead of a
+    bare "N failed" count that gives the model nothing to act on.
+    """
+
+    uuid: str
+    code: MemoryForgetFailureCode
+    reason: str
+
+
 class MemoryForgetConfirmResponse(ToolResponseBase):
     """Response after deleting specific memory edges."""
 
     type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
     deleted_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
+    failures: list[MemoryForgetFailure] = Field(default_factory=list)
 
 
 # --- Planning ---

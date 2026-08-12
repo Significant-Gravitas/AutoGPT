@@ -29,8 +29,8 @@ from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
-from .config import ChatConfig, CopilotLlmModel
-from .expert_context import build_expert_context
+from .config import ChatConfig, CopilotLLMModel
+from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -51,7 +51,7 @@ _TITLE_ELLIPSIS = "..."
 _TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
 
 
-def resolve_chat_model(tier: CopilotLlmModel | None) -> str:
+def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
     """Return the configured SDK model for the given tier.
 
     The SDK (extended-thinking) path is Anthropic-only — the Claude Agent
@@ -355,7 +355,7 @@ def _sanitize_user_context_field(value: str) -> str:
     reads the original characters but the parser-visible XML structure stays
     intact.
     """
-    return value.replace("<", "&lt;").replace(">", "&gt;")
+    return escape_prompt_xml_tags(value)
 
 
 def format_user_context_prefix(formatted_understanding: str) -> str:

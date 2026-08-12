@@ -3,8 +3,9 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { DeviceMobileIcon } from "@phosphor-icons/react";
 import { useMobileWarning } from "./useMobileWarning";
+import { SmartPhone01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function MobileWarning() {
   const { isOpen, dismiss, suppress } = useMobileWarning();
@@ -21,7 +22,7 @@ export function MobileWarning() {
     >
       <Dialog.Content>
         <div className="flex flex-col items-center gap-4 px-1 py-2 text-center">
-          <DeviceMobileIcon className="h-10 w-10 text-amber-600" />
+          <Icon icon={SmartPhone01Icon} className="h-10 w-10 text-amber-600" />
           <Text variant="body" className="text-zinc-700">
             The agent builder relies on canvas interactions that don&apos;t work
             well on this screen size. For the best experience, switch to a

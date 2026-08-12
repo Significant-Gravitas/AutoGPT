@@ -1,9 +1,10 @@
 "use client";
 
 import { MessageAction } from "@/components/ai-elements/message";
-import { SpeakerHigh, Stop } from "@phosphor-icons/react";
 import { useTextToSpeech } from "@/components/contextual/Chat/components/ChatMessage/useTextToSpeech";
 import { useMemo } from "react";
+import { StopIcon, VolumeHighIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Unicode emoji pattern (covers most emoji ranges including modifiers and ZWJ sequences)
 const EMOJI_RE =
@@ -62,7 +63,11 @@ export function TTSButton({ text }: Props) {
       tooltip={isPlaying ? "Stop reading" : "Read aloud"}
       onClick={toggle}
     >
-      {isPlaying ? <Stop size={16} /> : <SpeakerHigh size={16} />}
+      {isPlaying ? (
+        <Icon icon={StopIcon} size={16} />
+      ) : (
+        <Icon icon={VolumeHighIcon} size={16} />
+      )}
     </MessageAction>
   );
 }

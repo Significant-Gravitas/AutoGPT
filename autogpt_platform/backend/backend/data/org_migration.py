@@ -336,7 +336,7 @@ async def create_orgs_for_existing_users(
         WHERE NOT EXISTS (
             SELECT 1 FROM "OrgMember" om
             JOIN "Organization" o ON o."id" = om."orgId"
-            WHERE om."userId" = u."id" AND om."isOwner" = true AND o."isPersonal" = true
+            WHERE om."userId" = u."id" AND om."isOwner" = true AND o."isPersonal" = true AND o."deletedAt" IS NULL
         )
         """,
     )
@@ -534,7 +534,7 @@ async def migrate_org_balances() -> int:
         SELECT o."id", ub."balance", ub."updatedAt"
         FROM "UserBalance" ub
         JOIN "OrgMember" om ON om."userId" = ub."userId" AND om."isOwner" = true
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         WHERE NOT EXISTS (
             SELECT 1 FROM "OrgBalance" ob WHERE ob."orgId" = o."id"
         )
@@ -563,7 +563,7 @@ async def migrate_credit_transactions() -> int:
             ct."amount", ct."type", ct."runningBalance", ct."isActive", ct."metadata"
         FROM "CreditTransaction" ct
         JOIN "OrgMember" om ON om."userId" = ct."userId" AND om."isOwner" = true
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         WHERE NOT EXISTS (
             SELECT 1 FROM "OrgCreditTransaction" oct
             WHERE oct."transactionKey" = ct."transactionKey" AND oct."orgId" = o."id"
@@ -643,7 +643,7 @@ async def assign_resources_to_teams(
         UPDATE "AgentGraph" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
@@ -656,7 +656,7 @@ async def assign_resources_to_teams(
         UPDATE "AgentGraphExecution" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true
           AND t."id" IN (
@@ -665,7 +665,7 @@ async def assign_resources_to_teams(
               JOIN "OrgMember" om2
                 ON om2."userId" = t2."userId" AND om2."isOwner" = true
               JOIN "Organization" o2
-                ON o2."id" = om2."orgId" AND o2."isPersonal" = true
+                ON o2."id" = om2."orgId" AND o2."isPersonal" = true AND o2."deletedAt" IS NULL
               JOIN "Team" w2
                 ON w2."orgId" = o2."id" AND w2."isDefault" = true
               WHERE t2."organizationId" IS NULL
@@ -681,7 +681,7 @@ async def assign_resources_to_teams(
         UPDATE "ChatSession" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true
           AND t."id" IN (
@@ -690,7 +690,7 @@ async def assign_resources_to_teams(
               JOIN "OrgMember" om2
                 ON om2."userId" = t2."userId" AND om2."isOwner" = true
               JOIN "Organization" o2
-                ON o2."id" = om2."orgId" AND o2."isPersonal" = true
+                ON o2."id" = om2."orgId" AND o2."isPersonal" = true AND o2."deletedAt" IS NULL
               JOIN "Team" w2
                 ON w2."orgId" = o2."id" AND w2."isDefault" = true
               WHERE t2."organizationId" IS NULL
@@ -705,7 +705,7 @@ async def assign_resources_to_teams(
         UPDATE "AgentPreset" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
@@ -717,7 +717,7 @@ async def assign_resources_to_teams(
         UPDATE "LibraryAgent" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
@@ -729,7 +729,7 @@ async def assign_resources_to_teams(
         UPDATE "LibraryFolder" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
@@ -741,7 +741,7 @@ async def assign_resources_to_teams(
         UPDATE "IntegrationWebhook" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
@@ -753,7 +753,7 @@ async def assign_resources_to_teams(
         UPDATE "APIKey" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
@@ -765,7 +765,7 @@ async def assign_resources_to_teams(
         UPDATE "UserNotificationBatch" t
         SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
@@ -779,7 +779,7 @@ async def assign_resources_to_teams(
         UPDATE "BuilderSearchHistory" t
         SET "organizationId" = o."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
         renew_lock=renew_lock,
@@ -790,7 +790,7 @@ async def assign_resources_to_teams(
         UPDATE "PendingHumanReview" t
         SET "organizationId" = o."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """,
         renew_lock=renew_lock,
@@ -803,7 +803,7 @@ async def assign_resources_to_teams(
         FROM "StoreListingVersion" v
         JOIN "StoreListing" sl ON sl."id" = v."storeListingId"
         JOIN "OrgMember" om ON om."userId" = sl."owningUserId" AND om."isOwner" = true
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         WHERE slv."id" = v."id" AND slv."organizationId" IS NULL
         """,
         renew_lock=renew_lock,
@@ -826,7 +826,7 @@ async def migrate_store_listings() -> int:
         UPDATE "StoreListing" sl
         SET "owningOrgId" = o."id"
         FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
         WHERE sl."owningUserId" = om."userId"
           AND om."isOwner" = true
           AND sl."owningOrgId" IS NULL

@@ -13,6 +13,7 @@ from pydantic import SecretStr
 
 from backend.blocks._base import BlockCostType
 from backend.blocks.ai_condition import AIConditionBlock
+from backend.blocks.codex import CodeGenerationBlock, CodexModel
 from backend.data.block_cost_config import BLOCK_COSTS, LLM_COST
 from backend.data.model import APIKeyCredentials, NodeExecutionStats
 
@@ -147,11 +148,8 @@ def test_perplexity_record_openrouter_cost_tags_only_on_concrete_value(
 
 
 def test_codex_registered_as_cost_usd_150():
-    from backend.blocks.codex import CodeGenerationBlock
-
     entries = BLOCK_COSTS[CodeGenerationBlock]
-    # Both Codex models (GPT5_3_CODEX, GPT5_1_CODEX) are COST_USD 150.
-    assert len(entries) == 2
+    assert len(entries) == len(CodexModel)
     for entry in entries:
         assert entry.cost_type == BlockCostType.COST_USD
         assert entry.cost_amount == 150
@@ -166,7 +164,6 @@ def test_all_codex_models_have_cost():
 
 def test_validate_codex_costs_catches_missing_model():
     """A Codex model without a BlockCost is rejected, not billed as free."""
-    from backend.blocks.codex import CodeGenerationBlock
     from backend.data.block_cost_config import _validate_codex_costs
 
     with patch.dict(BLOCK_COSTS, {CodeGenerationBlock: []}):
@@ -191,10 +188,8 @@ def test_codex_computes_provider_cost_usd_from_token_counts(
     to the wrong rate constants (e.g. swapping the $1.25 input rate for
     GPT-4o's $2.50) would fail this test.
     """
-    from backend.blocks.codex import CodeGenerationBlock
-
     assert CodeGenerationBlock._compute_token_usd(
-        input_tokens, output_tokens
+        CodexModel.GPT5_1_CODEX, input_tokens, output_tokens
     ) == pytest.approx(expected_usd)
 
 

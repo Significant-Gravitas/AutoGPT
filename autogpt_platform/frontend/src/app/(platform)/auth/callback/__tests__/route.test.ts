@@ -87,13 +87,14 @@ afterEach(() => {
 
 describe("auth callback GET — session handling", () => {
   it("redirects to the auth-code-error page when there is no session", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
     getServerSessionMock.mockResolvedValue(null);
 
     const response = await GET(makeCallbackRequest());
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      `${origin}/auth/auth-code-error`,
+      "https://autogpt.example.com/auth/auth-code-error",
     );
     expect(postV1GetOrCreateUserMock).not.toHaveBeenCalled();
   });
@@ -148,31 +149,51 @@ describe("auth callback GET — account creation tracking", () => {
 });
 
 describe("auth callback GET — redirect target resolution", () => {
-  it("honors the next query parameter in development without consulting x-forwarded-host", async () => {
+  it("uses the canonical HTTPS origin and ignores a malicious forwarded host", async () => {
     vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
     loggedInWithCompletedSetup();
 
     const response = await GET(
       makeCallbackRequest("/auth/callback?next=/marketplace", {
-        "x-forwarded-host": "app.example.com",
-      }),
-    );
-
-    expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
-  });
-
-  it("redirects through the forwarded host in production", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    loggedInWithCompletedSetup();
-
-    const response = await GET(
-      makeCallbackRequest("/auth/callback?next=/marketplace", {
-        "x-forwarded-host": "app.example.com",
+        "x-forwarded-host": "evil.example.com",
       }),
     );
 
     expect(response.headers.get("location")).toBe(
-      "https://app.example.com/marketplace",
+      "https://autogpt.example.com/marketplace",
+    );
+  });
+
+  it("preserves a canonical HTTP origin for LAN deployments", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BETTER_AUTH_URL", "http://192.168.1.20:3000");
+    loggedInWithCompletedSetup();
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?next=/marketplace", {
+        "x-forwarded-host": "evil.example.com",
+      }),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "http://192.168.1.20:3000/marketplace",
+    );
+  });
+
+  it("falls back to NEXT_PUBLIC_FRONTEND_BASE_URL for the canonical origin", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://public.example.com");
+    loggedInWithCompletedSetup();
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?next=/marketplace", {
+        "x-forwarded-host": "evil.example.com",
+      }),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "https://public.example.com/marketplace",
     );
   });
 
@@ -187,20 +208,21 @@ describe("auth callback GET — redirect target resolution", () => {
     expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
   });
 
-  it("ignores an off-site next and cannot open-redirect via the forwarded host", async () => {
+  it("ignores an off-site next and cannot open-redirect via forwarded headers", async () => {
     vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
     loggedInWithCompletedSetup(); // shouldShowOnboarding: false -> /copilot
 
     for (const evil of ["@evil.com", "//evil.com", "https://evil.com"]) {
       const response = await GET(
         makeCallbackRequest(`/auth/callback?next=${encodeURIComponent(evil)}`, {
-          "x-forwarded-host": "app.example.com",
+          "x-forwarded-host": "evil.example.com",
         }),
       );
       // sanitizeAuthNext drops the crafted value, so we land on the resolved
       // in-app target under our own host — never evil.com.
       expect(response.headers.get("location")).toBe(
-        "https://app.example.com/copilot",
+        "https://autogpt.example.com/copilot",
       );
     }
   });
@@ -212,6 +234,7 @@ describe("auth callback GET — user creation failures", () => {
   });
 
   it("redirects to auth-token-invalid when the backend rejects with 401", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
     postV1GetOrCreateUserMock.mockRejectedValue(
       new BackendApiErrorStub("Unauthorized", 401),
     );
@@ -219,7 +242,7 @@ describe("auth callback GET — user creation failures", () => {
     const response = await GET(makeCallbackRequest());
 
     expect(response.headers.get("location")).toBe(
-      `${origin}/error?message=auth-token-invalid`,
+      "https://autogpt.example.com/error?message=auth-token-invalid",
     );
   });
 

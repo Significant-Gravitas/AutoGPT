@@ -103,6 +103,7 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
     assert metadata["file_ids"] == ["f1", "f2"]
     assert metadata["mode"] == "extended_thinking"
     assert metadata["model"] == "advanced"
+    assert metadata["llm_auth_provider"] == "platform"
     assert metadata["permissions"] == {"tool_filter": "allow"}
     assert metadata["request_arrival_at"] == 123.45
     # Session is flipped idle → queued.
@@ -112,9 +113,10 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enqueue_turn_omits_null_fields_from_metadata() -> None:
-    """A turn with no extra params leaves ``metadata`` NULL on the row
-    instead of an empty object."""
+async def test_enqueue_turn_only_includes_default_transport_without_extra_params() -> (
+    None
+):
+    """A turn with no extra params only persists its default LLM transport."""
     db = MagicMock()
     db.get_next_sequence = AsyncMock(return_value=1)
     db.add_chat_message = AsyncMock(return_value=_pyd_message())
@@ -125,7 +127,9 @@ async def test_enqueue_turn_omits_null_fields_from_metadata() -> None:
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
     ):
         await turn_queue.enqueue_turn(user_id="u1", session_id="s1", message="hello")
-    assert db.add_chat_message.call_args.kwargs["metadata"] is None
+    assert db.add_chat_message.call_args.kwargs["metadata"] == {
+        "llm_auth_provider": "platform"
+    }
 
 
 # ── cancel_queued_turn ─────────────────────────────────────────────────
@@ -244,6 +248,88 @@ async def test_dispatch_leaves_queued_when_user_paywalled() -> None:
         promoted = await turn_queue.dispatch_next_for_user("u1")
     assert promoted is False
     db.update_chat_session_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_codex_dispatch_skips_platform_billing_gates() -> None:
+    head = _mock_session()
+    head.metadata.llm_auth_provider = "codex"
+    head.metadata.llm_credential_id = "cred-1"
+    pending = _pyd_message()
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+    paywall_check = AsyncMock(side_effect=AssertionError("platform paywall checked"))
+    global_limits = AsyncMock(side_effect=AssertionError("USD limits fetched"))
+    rate_limit_check = AsyncMock(side_effect=AssertionError("USD limit checked"))
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=paywall_check,
+        ),
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=global_limits,
+        ),
+        patch(
+            "backend.copilot.turn_queue.check_rate_limit",
+            new=rate_limit_check,
+        ),
+        patch.object(
+            turn_queue,
+            "has_codex_access",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=dispatch_turn_mock,
+        ),
+        patch.object(
+            turn_queue,
+            "invalidate_session_cache",
+            new=AsyncMock(),
+        ),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    paywall_check.assert_not_awaited()
+    global_limits.assert_not_awaited()
+    rate_limit_check.assert_not_awaited()
+    dispatch_turn_mock.assert_awaited_once()
+    assert dispatch_turn_mock.call_args.kwargs["llm_auth_provider"] == "codex"
+    assert dispatch_turn_mock.call_args.kwargs["llm_credential_id"] == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_codex_dispatch_leaves_queued_when_user_lacks_access() -> None:
+    head = _mock_session()
+    head.metadata.llm_auth_provider = "codex"
+    head.metadata.llm_credential_id = "cred-1"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock()
+    dispatch_turn_mock = AsyncMock()
+    access = AsyncMock(return_value=False)
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=access),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=dispatch_turn_mock,
+        ),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    access.assert_awaited_once_with("u1")
+    db.update_chat_session_status.assert_not_awaited()
+    dispatch_turn_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
