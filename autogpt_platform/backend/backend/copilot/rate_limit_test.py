@@ -1365,6 +1365,46 @@ class TestGetUserTier:
         assert tier1 == DEFAULT_TIER
         assert tier2 == SubscriptionTier.PRO
 
+    @pytest.mark.asyncio
+    async def test_successful_reconcile_rereads_recovered_tier(self):
+        lookup = AsyncMock(side_effect=[SubscriptionTier.NO_TIER, SubscriptionTier.PRO])
+        reconcile = AsyncMock(return_value=True)
+        with (
+            patch(
+                "backend.copilot.rate_limit._fetch_authoritative_user_tier", new=lookup
+            ),
+            patch(
+                "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+                new=reconcile,
+            ),
+        ):
+            tier = await get_user_tier(_USER)
+
+        assert tier == SubscriptionTier.PRO
+        assert lookup.await_count == 2
+        reconcile.assert_awaited_once_with(_USER)
+
+    @pytest.mark.asyncio
+    async def test_successful_reconcile_tolerates_reread_failure(self):
+        lookup = AsyncMock(
+            side_effect=[SubscriptionTier.NO_TIER, RuntimeError("DB unavailable")]
+        )
+        reconcile = AsyncMock(return_value=True)
+        with (
+            patch(
+                "backend.copilot.rate_limit._fetch_authoritative_user_tier", new=lookup
+            ),
+            patch(
+                "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+                new=reconcile,
+            ),
+        ):
+            tier = await get_user_tier(_USER)
+
+        assert tier == SubscriptionTier.NO_TIER
+        assert lookup.await_count == 2
+        reconcile.assert_awaited_once_with(_USER)
+
 
 # ---------------------------------------------------------------------------
 # _maybe_reconcile_stripe_tier
@@ -1539,6 +1579,96 @@ class TestSetUserTier:
             await set_user_tier(_USER, SubscriptionTier.PRO)
 
         assert events == ["db", "security-caches"]
+
+    @pytest.mark.asyncio
+    async def test_set_user_tier_fences_next_canonical_read(self):
+        from backend.util import subscription_tiers
+
+        value_cache: dict[str, bytes] = {}
+        value_redis = MagicMock()
+        value_redis.get.side_effect = value_cache.get
+        value_redis.setex.side_effect = lambda key, _ttl, value: (
+            value_cache.__setitem__(key, value)
+        )
+        value_redis.delete.side_effect = lambda key: int(
+            value_cache.pop(key, None) is not None
+        )
+
+        generations: dict[str, str] = {}
+        generation_redis = MagicMock()
+
+        async def get_or_create_generation(
+            _script: str,
+            _num_keys: int,
+            key: str,
+            candidate: str,
+            _ttl: int,
+        ) -> str:
+            return generations.setdefault(key, candidate)
+
+        async def rotate_generation(key: str, value: str, *, ex: int) -> bool:
+            assert ex == subscription_tiers.SUBSCRIPTION_TIER_GENERATION_TTL_SECONDS
+            generations[key] = value
+            return True
+
+        generation_redis.eval = AsyncMock(side_effect=get_or_create_generation)
+        generation_redis.set = AsyncMock(side_effect=rotate_generation)
+
+        async def get_generation_redis():
+            return generation_redis
+
+        tier_state = {"value": SubscriptionTier.BUSINESS.value}
+        database_manager = MagicMock()
+        database_manager.get_user_subscription_tier = AsyncMock(
+            side_effect=lambda _user_id: tier_state["value"]
+        )
+        mock_prisma = MagicMock()
+
+        async def update_tier(*, where, data):
+            assert where == {"id": _USER}
+            tier_state["value"] = data["subscriptionTier"]
+
+        mock_prisma.update = AsyncMock(side_effect=update_tier)
+
+        def close_scheduled_coroutine(coroutine):
+            coroutine.close()
+
+        with (
+            patch("backend.util.cache._get_redis", return_value=value_redis),
+            patch(
+                "backend.util.subscription_tiers.get_redis_async",
+                new=get_generation_redis,
+            ),
+            patch(
+                "backend.util.subscription_tiers.get_database_manager_async_client",
+                return_value=database_manager,
+            ),
+            patch(
+                "backend.copilot.rate_limit.PrismaUser.prisma",
+                return_value=mock_prisma,
+            ),
+            patch(
+                "backend.copilot.rate_limit.invalidate_subscription_tier_caches",
+                new=subscription_tiers.invalidate_subscription_tier_caches,
+            ),
+            patch(
+                "backend.copilot.rate_limit.invalidate_subscription_tier_auxiliary_caches"
+            ),
+            patch(
+                "backend.copilot.rate_limit.asyncio.ensure_future",
+                side_effect=close_scheduled_coroutine,
+            ),
+        ):
+            assert await get_user_tier(_USER) == SubscriptionTier.BUSINESS
+            generation_before = next(iter(generations.values()))
+
+            await set_user_tier(_USER, SubscriptionTier.ENTERPRISE)
+
+            assert next(iter(generations.values())) != generation_before
+            assert await get_user_tier(_USER) == SubscriptionTier.ENTERPRISE
+
+        assert database_manager.get_user_subscription_tier.await_count == 2
+        generation_redis.set.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_security_invalidation_failure_surfaces_after_commit(self):

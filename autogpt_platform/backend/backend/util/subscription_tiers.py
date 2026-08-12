@@ -95,6 +95,7 @@ async def _load_authoritative_subscription_tier(
             user_id
         )
     except UnhealthyServiceError:
+        # This subclasses ValueError; preserve outages before mapping missing users.
         raise
     except ValueError as exc:
         raise SubscriptionTierUserNotFoundError(user_id) from exc
