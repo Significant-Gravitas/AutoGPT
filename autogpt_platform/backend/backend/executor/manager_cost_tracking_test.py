@@ -268,6 +268,49 @@ class TestLogSystemCredentialCost:
         db_client.log_platform_cost.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_logs_codex_user_subscription_without_usd_cost(self):
+        db_client = _make_db_client()
+        with (
+            patch(
+                "backend.executor.cost_tracking.is_system_credential",
+                return_value=False,
+            ),
+            patch(
+                "backend.executor.cost_tracking.block_usage_cost",
+                return_value=(0, None),
+            ),
+        ):
+            node_exec = _make_node_exec(
+                inputs={
+                    "credentials": {
+                        "id": "codex-user-cred",
+                        "provider": "codex",
+                        "type": "oauth2",
+                    },
+                    "model": "gpt-5.6-sol",
+                }
+            )
+            block = _make_block()
+            stats = NodeExecutionStats(
+                input_token_count=500,
+                output_token_count=200,
+                provider_cost=700,
+                provider_cost_type="tokens",
+            )
+            await log_system_credential_cost(node_exec, block, stats, db_client)
+            await asyncio.sleep(0)
+
+        db_client.log_platform_cost.assert_awaited_once()
+        entry = db_client.log_platform_cost.call_args[0][0]
+        assert entry.provider == "codex"
+        assert entry.credential_id == "codex-user-cred"
+        assert entry.cost_microdollars is None
+        assert entry.tracking_type == "tokens"
+        assert entry.tracking_amount == 700
+        assert entry.metadata["billing_mode"] == "user_subscription"
+        assert entry.metadata["execution_path"] == "codex_app_server"
+
+    @pytest.mark.asyncio
     async def test_logs_with_system_credential(self):
         db_client = _make_db_client()
         with (
@@ -515,6 +558,20 @@ class TestMergeStats:
         stats = NodeExecutionStats(provider_cost_type="tokens")
         stats += NodeExecutionStats(provider_cost_type="items")
         assert stats.provider_cost_type == "items"
+
+    def test_subscription_route_metadata_survives_merge(self):
+        stats = NodeExecutionStats()
+        stats += NodeExecutionStats(
+            billing_mode="user_subscription",
+            auth_provider="codex",
+            execution_path="codex_app_server",
+            resolved_model="gpt-live",
+        )
+
+        assert stats.billing_mode == "user_subscription"
+        assert stats.auth_provider == "codex"
+        assert stats.execution_path == "codex_app_server"
+        assert stats.resolved_model == "gpt-live"
 
 
 # ---------------------------------------------------------------------------
