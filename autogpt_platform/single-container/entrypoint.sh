@@ -7,7 +7,8 @@ source "${AUTOGPT_ASSET_DIR:-/opt/autogpt/single-container}/common.sh"
 
 readonly AUTOGPT_PYTHON="${AUTOGPT_PYTHON:-${AUTOGPT_BACKEND_DIR}/.venv/bin/python}"
 readonly POSTGRES_BINDIR="${POSTGRES_BINDIR:-/usr/lib/postgresql/15/bin}"
-readonly CLAMAV_SEED_DIR="${CLAMAV_SEED_DIR:-/opt/clamav-seed}"
+readonly CODEX_TEMP_ROOT=/dev/shm/autogpt-codex
+export CODEX_TEMP_ROOT
 
 main() {
   [[ "$(id -u)" -eq 0 ]] || fatal "entrypoint must start as root so services can drop privileges"
@@ -17,11 +18,13 @@ main() {
   initialize_backend_config
   "${AUTOGPT_PYTHON}" "${AUTOGPT_ASSET_DIR}/runtime_config.py" ensure \
     --path "${AUTOGPT_RUNTIME_ENV}"
+  chown root:root "${AUTOGPT_RUNTIME_ENV}"
+  chmod 0600 "${AUTOGPT_RUNTIME_ENV}"
   load_runtime_config
   configure_environment
+  write_valkey_configs
   initialize_postgres
   write_rabbitmq_config
-  seed_clamav_database
   write_falkordb_config
   rm -f "${AUTOGPT_READY_FILE}"
 
@@ -37,7 +40,9 @@ prepare_directories() {
   for managed_path in \
     /data/config /data/postgres /data/rabbitmq /data/valkey \
     /data/valkey/17000 /data/valkey/17001 /data/valkey/17002 /data/falkordb \
-    /data/clamav /data/workspaces /data/home /data/cache /data/cache/next; do
+    /data/workspaces /data/home /data/frontend-home \
+    /data/cache /data/cache/backend /data/cache/next \
+    "${CODEX_TEMP_ROOT}"; do
     [[ ! -L "${managed_path}" ]] || fatal "refusing symlink at managed data path: ${managed_path}"
   done
   install -d -m 0710 -o root -g autogpt /data/config
@@ -48,27 +53,29 @@ prepare_directories() {
   install -d -m 0750 -o autogpt-valkey -g autogpt-valkey /data/valkey/17001
   install -d -m 0750 -o autogpt-valkey -g autogpt-valkey /data/valkey/17002
   install -d -m 0750 -o autogpt-falkor -g autogpt-falkor /data/falkordb
-  install -d -m 0750 -o clamav -g clamav /data/clamav
   install -d -m 0750 -o autogpt -g autogpt /data/workspaces
   install -d -m 0750 -o autogpt -g autogpt /data/home
-  install -d -m 0750 -o autogpt -g autogpt /data/cache
-  install -d -m 0750 -o autogpt -g autogpt /data/cache/next
+  install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/frontend-home
+  install -d -m 0711 -o root -g root /data/cache
+  install -d -m 0750 -o autogpt -g autogpt /data/cache/backend
+  install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/cache/next
+  install -d -m 0700 -o autogpt -g autogpt "${CODEX_TEMP_ROOT}"
   install -d -m 0755 -o postgres -g postgres /run/postgresql
-  install -d -m 0750 -o clamav -g clamav /run/clamav
-  install -m 0640 -o clamav -g clamav /dev/null /run/clamav/clamd.log
-  install -m 0640 -o clamav -g clamav /dev/null /run/clamav/freshclam.log
   # Service-specific runtime directories and files carry the restrictive
   # permissions. Keep only execute permission on their common parent so the
   # unprivileged PostgreSQL, RabbitMQ, FalkorDB, and app users can traverse to
   # their own assets without being able to list or modify sibling state.
   install -d -m 0711 -o root -g root "${AUTOGPT_RUNTIME_DIR}"
   install -d -m 0700 -o rabbitmq -g rabbitmq "${AUTOGPT_RUNTIME_DIR}/rabbitmq"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/client"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/proxy"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/fastcgi"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/uwsgi"
-  install -d -m 0750 -o autogpt -g autogpt "${AUTOGPT_RUNTIME_DIR}/nginx/scgi"
+  install -d -m 0711 -o root -g root "${AUTOGPT_RUNTIME_DIR}/valkey"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/home"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/cache"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/client"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/proxy"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/fastcgi"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/uwsgi"
+  install -d -m 0700 -o autogpt_proxy -g autogpt_proxy "${AUTOGPT_RUNTIME_DIR}/nginx/scgi"
 }
 
 initialize_backend_config() {
@@ -86,12 +93,11 @@ initialize_backend_config() {
 
 configure_environment() {
   validate_legacy_auth
-  normalize_toggle AUTOGPT_ENABLE_FALKORDB true
-  normalize_toggle AUTOGPT_ENABLE_CLAMAV true
   normalize_toggle AUTOGPT_ENABLE_BOT_SERVICES false
-  normalize_toggle AUTH_REQUIRE_EMAIL_VERIFICATION false
-  normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS true
-  normalize_integer DB_CONNECTION_LIMIT 5 1 20
+  if [[ "${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}" != false ]]; then
+    fatal "email verification is not supported by the single-container distribution"
+  fi
+  normalize_integer DB_CONNECTION_LIMIT 5 1 5
   normalize_integer DB_CONNECT_TIMEOUT 60 1 600
   normalize_integer DB_POOL_TIMEOUT 300 1 3600
 
@@ -100,6 +106,9 @@ configure_environment() {
       validate-public-url "${AUTOGPT_PUBLIC_URL:-http://localhost:3000}"
   )"
   export AUTOGPT_PUBLIC_URL
+  log "public URL: ${AUTOGPT_PUBLIC_URL}"
+  configure_account_registration
+  configure_backend_cors_origin
   write_nginx_public_url_config
 
   export PGDATA=/data/postgres
@@ -113,7 +122,7 @@ configure_environment() {
   export DIRECT_URL="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/postgres?schema=platform&connect_timeout=${DB_CONNECT_TIMEOUT}"
   export PRISMA_SCHEMA="${AUTOGPT_BACKEND_DIR}/schema.prisma" AUTH_DB_SCHEMA=platform
 
-  export REDIS_HOST=127.0.0.1 REDIS_PORT=17000 REDIS_PASSWORD=
+  export REDIS_HOST=127.0.0.1 REDIS_PORT=17000 REDIS_PASSWORD
   export REDIS_CLUSTER_HOST=127.0.0.1 REDIS_CLUSTER_PORT=17000
   export REDIS_USE_ANNOUNCED_ADDRESS=false
   export RABBITMQ_HOST=127.0.0.1 RABBITMQ_PORT=5672
@@ -123,8 +132,9 @@ configure_environment() {
   export RABBITMQ_NODENAME=rabbit@localhost
   export RABBITMQ_CONFIG_FILE="${AUTOGPT_RUNTIME_DIR}/rabbitmq/rabbitmq"
   export GRAPHITI_FALKORDB_HOST=127.0.0.1 GRAPHITI_FALKORDB_PORT=6380
-  export CLAMAV_SERVICE_HOST=127.0.0.1 CLAMAV_SERVICE_PORT=3310
-  export CLAMAV_SERVICE_ENABLED="${AUTOGPT_ENABLE_CLAMAV}"
+  # The appliance bundles no antivirus daemon. Force the scanner off so uploads
+  # short-circuit as clean instead of failing on an unreachable ClamAV service.
+  export CLAMAV_SERVICE_ENABLED=false
 
   export PYRO_HOST=127.0.0.1
   export AGENTSERVER_HOST=127.0.0.1 SCHEDULER_HOST=127.0.0.1
@@ -135,11 +145,16 @@ configure_environment() {
   # The persistent backend JSON contains user-tunable product settings, but it
   # must not be able to move or expose appliance services. Environment values
   # have higher Pydantic priority, so pin the fixed internal topology here.
-  export WEBSOCKET_SERVER_PORT=8001 EXECUTION_MANAGER_PORT=8002
-  export EXECUTION_SCHEDULER_PORT=8003 DATABASE_API_PORT=8005
-  export AGENT_API_PORT=8006 NOTIFICATION_SERVICE_PORT=8007
-  export COPILOT_EXECUTOR_PORT=8008 PLATFORM_LINKING_SERVICE_PORT=8009
-  export COPILOT_CHAT_BRIDGE_PORT=8010 BATCH_EXECUTOR_PORT=8011
+  export WEBSOCKET_SERVER_PORT="${AUTOGPT_WEBSOCKET_PORT}"
+  export EXECUTION_MANAGER_PORT="${AUTOGPT_EXECUTION_MANAGER_PORT}"
+  export EXECUTION_SCHEDULER_PORT="${AUTOGPT_EXECUTION_SCHEDULER_PORT}"
+  export DATABASE_API_PORT="${AUTOGPT_DATABASE_API_PORT}"
+  export AGENT_API_PORT="${AUTOGPT_AGENT_API_PORT}"
+  export NOTIFICATION_SERVICE_PORT="${AUTOGPT_NOTIFICATION_SERVICE_PORT}"
+  export COPILOT_EXECUTOR_PORT="${AUTOGPT_COPILOT_EXECUTOR_PORT}"
+  export PLATFORM_LINKING_SERVICE_PORT="${AUTOGPT_PLATFORM_LINKING_SERVICE_PORT}"
+  export COPILOT_CHAT_BRIDGE_PORT="${AUTOGPT_COPILOT_CHAT_BRIDGE_PORT}"
+  export BATCH_EXECUTOR_PORT="${AUTOGPT_BATCH_EXECUTOR_PORT}"
   # Keep self-hosted product behavior without enabling LOCAL-only API docs and
   # asyncio debug mode on the public REST process.
   export APP_ENV=dev BEHAVE_AS=local ENABLE_AUTH=true
@@ -150,15 +165,30 @@ configure_environment() {
   export FRONTEND_BASE_URL="${AUTOGPT_PUBLIC_URL}"
   export PLATFORM_BASE_URL="${AUTOGPT_PUBLIC_URL}/_agpt"
   export PLATFORM_LINK_BASE_URL="${AUTOGPT_PUBLIC_URL}/link"
-  export AGPT_SERVER_URL=http://127.0.0.1:8006/api
-  export AGPT_WS_SERVER_URL=ws://127.0.0.1:8001/ws
+  export AGPT_SERVER_URL="http://127.0.0.1:${AUTOGPT_AGENT_API_PORT}/api"
+  export AGPT_WS_SERVER_URL="ws://127.0.0.1:${AUTOGPT_WEBSOCKET_PORT}/ws"
   export WORKSPACE_STORAGE_DIR=/data/workspaces
   export VAPID_CLAIM_EMAIL="${VAPID_CLAIM_EMAIL:-mailto:admin@localhost}"
-  export AUTH_REQUIRE_EMAIL_VERIFICATION="${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}"
+  export AUTH_REQUIRE_EMAIL_VERIFICATION=false
   export NODE_ENV=production
   # Python imports this directory's sitecustomize module before each service
   # entry point, suppressing HTTP access targets and redacting WS query tokens.
   export PYTHONPATH="${AUTOGPT_ASSET_DIR}/python"
+}
+
+configure_backend_cors_origin() {
+  export BACKEND_CORS_ALLOW_ORIGINS="[\"${AUTOGPT_PUBLIC_URL}\"]"
+}
+
+configure_account_registration() {
+  normalize_toggle AUTH_ALLOW_NEW_ACCOUNTS true
+  if [[ "${AUTH_ALLOW_NEW_ACCOUNTS}" == true ]]; then
+    log "WARNING: open account registration is enabled; anyone who can reach the app can sign up"
+    log "after creating the intended accounts, set AUTH_ALLOW_NEW_ACCOUNTS=false and recreate the container"
+  else
+    log "account registration is closed; temporarily set AUTH_ALLOW_NEW_ACCOUNTS=true to create intended accounts"
+    log "after signup, run 'docker exec <container> autogpt-admin promote <email>', disable registration, and restart"
+  fi
 }
 
 write_nginx_public_url_config() {
@@ -166,7 +196,7 @@ write_nginx_public_url_config() {
   local public_scheme="${AUTOGPT_PUBLIC_URL%%://*}"
   local public_host="${AUTOGPT_PUBLIC_URL#*://}"
   [[ ! -L "${path}" ]] || fatal "refusing symlink at nginx public URL config"
-  install -m 0600 -o autogpt -g autogpt /dev/null "${path}"
+  install -m 0600 -o autogpt_proxy -g autogpt_proxy /dev/null "${path}"
   {
     printf "set \$autogpt_public_url \"%s\";\n" "${AUTOGPT_PUBLIC_URL}"
     printf "set \$autogpt_public_host \"%s\";\n" "${public_host}"
@@ -195,58 +225,8 @@ normalize_toggle() {
     true | false) ;;
     *) fatal "${name} must be true or false" ;;
   esac
-  case "${name}" in
-    AUTOGPT_ENABLE_FALKORDB)
-      AUTOGPT_ENABLE_FALKORDB="${value}"
-      export AUTOGPT_ENABLE_FALKORDB
-      ;;
-    AUTOGPT_ENABLE_CLAMAV)
-      AUTOGPT_ENABLE_CLAMAV="${value}"
-      export AUTOGPT_ENABLE_CLAMAV
-      ;;
-    AUTOGPT_ENABLE_BOT_SERVICES)
-      AUTOGPT_ENABLE_BOT_SERVICES="${value}"
-      export AUTOGPT_ENABLE_BOT_SERVICES
-      ;;
-    AUTH_REQUIRE_EMAIL_VERIFICATION)
-      AUTH_REQUIRE_EMAIL_VERIFICATION="${value}"
-      export AUTH_REQUIRE_EMAIL_VERIFICATION
-      ;;
-    AUTH_ALLOW_NEW_ACCOUNTS)
-      AUTH_ALLOW_NEW_ACCOUNTS="${value}"
-      export AUTH_ALLOW_NEW_ACCOUNTS
-      ;;
-    *) fatal "unsupported toggle: ${name}" ;;
-  esac
-}
-
-validate_legacy_auth() {
-  case "${AUTOGPT_ENABLE_LEGACY_AUTH:-false}" in
-    true)
-      if [[ -n "${JWT_VERIFY_KEY:-}" && -n "${SUPABASE_JWT_SECRET:-}" && \
-        "${JWT_VERIFY_KEY}" != "${SUPABASE_JWT_SECRET}" ]]; then
-        fatal "JWT_VERIFY_KEY and SUPABASE_JWT_SECRET must match during legacy auth migration"
-      fi
-      local legacy_secret="${JWT_VERIFY_KEY:-${SUPABASE_JWT_SECRET:-}}"
-      ((${#legacy_secret} >= 32)) || \
-        fatal "legacy auth requires a shared secret of at least 32 characters"
-      JWT_VERIFY_KEY="${legacy_secret}"
-      SUPABASE_JWT_SECRET="${legacy_secret}"
-      export JWT_VERIFY_KEY SUPABASE_JWT_SECRET
-      log "legacy symmetric JWT verification is explicitly enabled"
-      ;;
-    false | "")
-      if [[ -n "${JWT_VERIFY_KEY:-}" || -n "${SUPABASE_JWT_SECRET:-}" ]]; then
-        fatal "legacy JWT secrets were supplied; remove them or explicitly set AUTOGPT_ENABLE_LEGACY_AUTH=true"
-      fi
-      JWT_VERIFY_KEY=''
-      SUPABASE_JWT_SECRET=''
-      export JWT_VERIFY_KEY SUPABASE_JWT_SECRET
-      ;;
-    *)
-      fatal "AUTOGPT_ENABLE_LEGACY_AUTH must be true or false"
-      ;;
-  esac
+  printf -v "${name}" '%s' "${value}"
+  export "${name?}"
 }
 
 initialize_postgres() {
@@ -281,9 +261,43 @@ initialize_postgres() {
   trap - RETURN
 }
 
+write_valkey_configs() {
+  local port
+  local target
+  local temporary
+  for port in 17000 17001 17002; do
+    target="${AUTOGPT_RUNTIME_DIR}/valkey/${port}.conf"
+    [[ ! -L "${target}" ]] || fatal "refusing symlink at Valkey config path"
+    temporary="$(mktemp "${AUTOGPT_RUNTIME_DIR}/valkey/.${port}.conf.XXXXXX")"
+    trap 'rm -f "${temporary}"' RETURN
+    chmod 0600 "${temporary}"
+    {
+      printf 'bind 127.0.0.1\n'
+      printf 'protected-mode yes\n'
+      printf 'port %s\n' "${port}"
+      printf 'dir /data/valkey/%s\n' "${port}"
+      printf 'appendonly yes\n'
+      printf 'cluster-enabled yes\n'
+      printf 'cluster-config-file nodes.conf\n'
+      printf 'cluster-node-timeout 5000\n'
+      printf 'cluster-require-full-coverage no\n'
+      printf 'cluster-announce-ip 127.0.0.1\n'
+      printf 'cluster-announce-port %s\n' "${port}"
+      printf 'cluster-announce-bus-port %s\n' "$((port + 10000))"
+      printf 'requirepass %s\n' "${REDIS_PASSWORD}"
+      printf 'masterauth %s\n' "${REDIS_PASSWORD}"
+    } >"${temporary}"
+    chown autogpt-valkey:autogpt-valkey "${temporary}"
+    chmod 0400 "${temporary}"
+    mv -f "${temporary}" "${target}"
+    trap - RETURN
+  done
+}
+
 write_rabbitmq_config() {
   local temporary
   temporary="$(mktemp "${AUTOGPT_RUNTIME_DIR}/rabbitmq/rabbitmq.conf.XXXXXX")"
+  trap 'rm -f "${temporary}"' RETURN
   chmod 0600 "${temporary}"
   {
     cat "${AUTOGPT_ASSET_DIR}/rabbitmq/rabbitmq.conf"
@@ -293,27 +307,13 @@ write_rabbitmq_config() {
   } >"${temporary}"
   chown rabbitmq:rabbitmq "${temporary}"
   mv -f "${temporary}" "${AUTOGPT_RUNTIME_DIR}/rabbitmq/rabbitmq.conf"
-}
-
-seed_clamav_database() {
-  [[ "${AUTOGPT_ENABLE_CLAMAV}" == true ]] || return 0
-  if find /data/clamav -maxdepth 1 -type l -print -quit | grep -q .; then
-    fatal "refusing symlink in ClamAV data directory"
-  fi
-  if find /data/clamav -maxdepth 1 -type f \( -name '*.cvd' -o -name '*.cld' \) \
-    -print -quit | grep -q .; then
-    return 0
-  fi
-  [[ -d "${CLAMAV_SEED_DIR}" ]] || fatal "ClamAV seed database is missing"
-  log "seeding ClamAV signature database"
-  cp -a "${CLAMAV_SEED_DIR}/." /data/clamav/
-  chown -R clamav:clamav /data/clamav
+  trap - RETURN
 }
 
 write_falkordb_config() {
-  [[ "${AUTOGPT_ENABLE_FALKORDB}" == true ]] || return 0
   local temporary
   temporary="$(mktemp "${AUTOGPT_RUNTIME_DIR}/falkordb.conf.XXXXXX")"
+  trap 'rm -f "${temporary}"' RETURN
   chmod 0600 "${temporary}"
   {
     printf 'bind 127.0.0.1\n'
@@ -323,10 +323,14 @@ write_falkordb_config() {
     printf 'dir /data/falkordb\n'
     printf 'appendonly yes\n'
     printf 'requirepass %s\n' "${GRAPHITI_FALKORDB_PASSWORD}"
-    printf 'loadmodule /opt/falkordb/falkordb.so\n'
+    printf '%s\n' \
+      'loadmodule /opt/falkordb/falkordb.so MAX_QUEUED_QUERIES 25 TIMEOUT 1000 RESULTSET_SIZE 10000'
   } >"${temporary}"
   chown autogpt-falkor:autogpt-falkor "${temporary}"
   mv -f "${temporary}" "${AUTOGPT_RUNTIME_DIR}/falkordb.conf"
+  trap - RETURN
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

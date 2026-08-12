@@ -20,14 +20,22 @@ import asyncio
 import logging
 import re
 import uuid as uuidlib
+from collections.abc import Sequence
 from datetime import datetime, timezone
+from typing import TypeVar
 
 from backend.copilot.config import ChatConfig
 from backend.util.feature_flag import Flag, is_feature_enabled
 
-from .apply import apply_operations
+from .apply import apply_operations, drain_status_from_stats
 from .billing import check_dream_budget, record_phase_cost
-from .fetch import DreamInput, gather_dream_input
+from .fetch import (
+    DreamInput,
+    EpisodeRow,
+    gather_dream_input,
+    is_dream_authored_episode,
+    parse_episode_timestamp,
+)
 from .llm import (
     CompletionUsage,
     DreamLLMError,
@@ -60,6 +68,7 @@ from .schemas import (
     DreamPassResult,
     DreamPassUsage,
     PhaseUsage,
+    ProposedFinding,
     RecombinationOutput,
 )
 
@@ -82,6 +91,49 @@ CONSOLIDATE_MAX_TOKENS = 4096
 RECOMBINE_MAX_TOKENS = 16384
 SANITIZE_MAX_TOKENS = 16384
 
+# Per-phase LLM wall-clock ceilings, passed through structured_completion
+# → call_provider. The shared DEFAULT_REQUEST_TIMEOUT_SECONDS (120s) is
+# sized for short chat completions; recombine/sanitize carry 16384-token
+# output budgets precisely because real responses exceed 8192 tokens, and
+# at real decode speeds (Opus-class ~40-60 tok/s via OpenRouter) an 8-16K
+# response takes 150-400s — the 120s wall killed exactly the responses
+# the token-cap raise above was meant to save.
+#
+# A conservative ~20 tok/s decode floor would ask for max_output_tokens/20
+# ≈ 205s / 819s / 819s per phase, but that sums to 1843s of LLM budget
+# alone — past both SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS (1800s,
+# scheduler.py) and DEFAULT_LOCK_TTL_SECONDS (1800s, locks.py) before
+# fetch/apply even run. So the phases get values that fit the envelope
+# instead. Budget math (three explicit line items, with real slack):
+#
+#   consolidate 240s + recombine 600s + sanitize 480s   = 1320s LLM ceiling
+#   + apply.INGESTION_DRAIN_TIMEOUT_SECONDS 300s          drain cap
+#   + DREAM_NON_LLM_HEADROOM_SECONDS 120s (budget check + fetch + enqueue
+#     + demotions + summary + cost logging, EXCLUDING the drain)
+#   = 1740s <= 1800s SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS  (60s slack)
+#
+# The drain no longer counts against the lock TTL: apply renews the dream
+# lock to a fresh budget right before the drain (see
+# apply.LOCK_DRAIN_RENEWAL_SECONDS), so the lock only has to cover
+# LLM + non-drain headroom = 1440s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS (1620s)
+# with genuine margin, and the drain itself runs under the renewed lock.
+# Both invariants are pinned by
+# test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
+# bumping any value here fails that test until the budget is re-balanced.
+#
+# Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
+# the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
+# on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
+# Consolidate's 4096-token budget fits 240s at ~17 tok/s.
+CONSOLIDATE_TIMEOUT_SECONDS = 240
+RECOMBINE_TIMEOUT_SECONDS = 600
+SANITIZE_TIMEOUT_SECONDS = 480
+# Reserved for the non-LLM segments of the pass OTHER than the ingestion
+# drain (budget check, fetch, enqueue, demotions, summary write, cost
+# logging). The drain is budgeted separately as
+# apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
+DREAM_NON_LLM_HEADROOM_SECONDS = 120
+
 # Entity invalidation is the most destructive op the sanitizer can emit:
 # each one single-hop demotes EVERY :RELATES_TO edge on the entity, so a
 # hub entity multiplies the blast radius far past the demotion caps. We
@@ -93,9 +145,96 @@ SANITIZE_MAX_TOKENS = 16384
 # work that doesn't belong in this sync clamp.
 MAX_ENTITY_INVALIDATIONS_PER_PASS = 2
 
+# Per-user marker stamped after a successful (non-skipped) sync apply so
+# the next nightly pass can skip all three LLM phases when no new episode
+# landed since. Single key — prod Redis runs in cluster mode (see
+# locks.py), so no multi-key primitives. The 35-day TTL comfortably
+# outlives the 14-day episode window; an expired or missing marker just
+# means one extra full pass (fail-open). The batch path does NOT stamp
+# this marker yet — batch users simply never benefit from the skip.
+LAST_COMPLETED_KEY_PREFIX = "dream:last_completed:"
+LAST_COMPLETED_TTL_SECONDS = 35 * 24 * 60 * 60
+
 
 def _resolve_lock_ttl(transport_is_local: bool) -> int:
     return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
+
+
+# High-precision filter for "transient intent" facts — content that
+# records what the user is ASKING/wants to KNOW rather than a durable
+# fact about them. The sanitize prompt is told to drop these, but
+# prompt-only sanitization leaks them (#13388: "User is asking how
+# Kubernetes works", "User is interested in knowing which PRs are open"),
+# so this is a deterministic belt-and-suspenders gate.
+#
+# Deliberately NARROW to knowledge-seeking intent. We do NOT match goals
+# like "user wants to create/build X" — those are legitimate durable
+# memories. Generic world-knowledge pollution ("Kubernetes uses pods…")
+# is left to the sanitize prompt: it needs LLM judgment (is the subject
+# the user?) that a regex can't do without false-positives.
+#
+# Interrogative complements are the sharp edge — several verbs are durable
+# aspirations on their own but transient questions once they take a
+# question word:
+#   * ``asking`` — "asking FOR weekly reports" / "asking the agent TO
+#     monitor PRs" are durable requests (semantically like "wants X"), so
+#     only interrogative ``asking HOW/WHAT/…`` counts as transient.
+#   * ``learn``/``understand``/``find out`` — "wants to learn Spanish",
+#     "wants to understand distributed systems", "wants to find out about
+#     new markets" are durable skill/aspiration GOALS; they only read as
+#     transient with an interrogative ("wants to learn HOW X works").
+#   * ``curious`` — "curious ABOUT X" is transient, but "curious by nature"
+#     is a durable personality trait, so a ``curious about`` complement is
+#     required (mirroring ``confused about``/``unsure about``).
+# ``know`` stays complement-free: "wants to know X" is transient curiosity
+# regardless of phrasing (there is no durable "wants to know" aspiration —
+# that role is served by ``learn``).
+# Known limitation (nice-to-have, low frequency): a standing notification
+# preference phrased "wants to know when X happens" is dropped; separating
+# it from a one-off "wants to know when the deploy is" isn't reliably
+# regex-able, so it's left to the sanitize prompt + human review.
+#
+# Subject scope: the gate deliberately anchors on the generic ``user``
+# subject only. Name-phrased transient intent ("Nick is asking how the
+# auth flow works") is intentionally NOT matched here — broadening the
+# subject to arbitrary proper nouns would risk false-positives on
+# non-user entities ("Kubernetes is asking for more nodes"), so
+# name-first phrasing is left to the sanitize prompt's LLM judgment. The
+# leading auxiliary allows perfect-progressive forms ("has been asking").
+_TRANSIENT_INTENT_RE = re.compile(
+    r"^(the\s+)?user\s+(?:(?:is|has|was)\s+(?:been\s+)?)?"
+    r"(asking\s+(how|what|why|whether|if|when|where|who|which|about)\b"
+    r"|wondering\b"
+    r"|curious\s+about\b"
+    r"|confused\s+about\b"
+    r"|unsure\s+about\b"
+    r"|trying\s+to\s+understand\b"
+    r"|interested\s+in\s+(knowing|understanding)\b"
+    r"|interested\s+in\s+learning\s+(how|what|why|whether|if|when|where)\b"
+    r"|wants?\s+to\s+know\b"
+    r"|wants?\s+to\s+(understand|find\s+out)\s+(how|what|why|whether|if|when|where)\b"
+    r"|wants?\s+to\s+learn\s+(how|what|why|whether|if|when|where)\b"
+    r"|asked\s+(how|what|why|whether|if|when|where|about)\b)",
+    re.IGNORECASE,
+)
+
+
+def _is_transient_intent(content: str) -> bool:
+    """True when ``content`` reads as a question/knowledge-seeking intent
+    rather than a durable fact about the user."""
+    return bool(_TRANSIENT_INTENT_RE.match(content.strip()))
+
+
+_ContentItem = TypeVar("_ContentItem", ConsolidatedFact, ProposedFinding)
+
+
+def _drop_transient_intent(
+    items: Sequence[_ContentItem],
+) -> tuple[list[_ContentItem], int]:
+    """Filter ConsolidatedFact / ProposedFinding items whose ``.content``
+    is a transient intent. Returns (kept, dropped_count)."""
+    kept = [it for it in items if not _is_transient_intent(it.content)]
+    return kept, len(items) - len(kept)
 
 
 # Intra-pass near-duplicate write rejection (#13387). The consolidate
@@ -358,18 +497,29 @@ def _clamp_operations(
     elif active_fact_count > 0:
         demotion_cap = min(MAX_DEMOTIONS_PER_PASS, max(1, active_fact_count * 5 // 100))
 
+    # Drop transient-intent pollution ("user is asking…") before the cap
+    # slice so a leaked question never displaces a real fact (#13388).
+    writes, w_intent_dropped = _drop_transient_intent(ops.writes)
+    proposals, p_intent_dropped = _drop_transient_intent(ops.proposals)
+    if w_intent_dropped or p_intent_dropped:
+        logger.info(
+            "Dream clamp: dropped %d transient-intent write(s) and %d "
+            "proposal(s) (questions captured as facts)",
+            w_intent_dropped,
+            p_intent_dropped,
+        )
     # Collapse intra-pass near-duplicate writes before the cap slice so the
     # cap counts distinct facts, not paraphrases of one (#13387).
-    writes, w_dropped = _dedupe_near_duplicate_writes(ops.writes)
-    if w_dropped:
+    writes, w_dup_dropped = _dedupe_near_duplicate_writes(writes)
+    if w_dup_dropped:
         logger.info(
             "Dream clamp: collapsed %d near-duplicate write(s) into their "
             "canonical (longest) phrasing",
-            w_dropped,
+            w_dup_dropped,
         )
     return DreamOperations(
         writes=writes[:MAX_WRITES_PER_PASS],
-        proposals=ops.proposals[:MAX_PROPOSALS_PER_PASS],
+        proposals=proposals[:MAX_PROPOSALS_PER_PASS],
         demotions=demotions[:demotion_cap],
         entity_invalidations=ops.entity_invalidations[
             :MAX_ENTITY_INVALIDATIONS_PER_PASS
@@ -389,6 +539,7 @@ async def _run_consolidate(
         response_model=ConsolidationOutput,
         temperature=CONSOLIDATE_TEMP,
         max_output_tokens=CONSOLIDATE_MAX_TOKENS,
+        timeout_seconds=CONSOLIDATE_TIMEOUT_SECONDS,
     )
 
 
@@ -405,6 +556,7 @@ async def _run_recombine(
         response_model=RecombinationOutput,
         temperature=RECOMBINE_TEMP,
         max_output_tokens=RECOMBINE_MAX_TOKENS,
+        timeout_seconds=RECOMBINE_TIMEOUT_SECONDS,
     )
 
 
@@ -426,6 +578,7 @@ async def _run_sanitize(
         response_model=DreamOperations,
         temperature=SANITIZE_TEMP,
         max_output_tokens=SANITIZE_MAX_TOKENS,
+        timeout_seconds=SANITIZE_TIMEOUT_SECONDS,
     )
 
 
@@ -485,6 +638,97 @@ def _aggregate_usage(
         total_cost_usd=total_cost,
         discount_applied=execution_path_discount(execution_path),
     )
+
+
+def _last_completed_key(user_id: str) -> str:
+    return f"{LAST_COMPLETED_KEY_PREFIX}{user_id}"
+
+
+async def _read_last_completed_marker(user_id: str) -> datetime | None:
+    """When the user's last dream pass completed, or ``None``.
+
+    Best-effort: a Redis error or an unparseable value fails open
+    (``None`` ⇒ the pass runs) — the marker only exists to save LLM
+    spend, so it must never block a dream.
+    """
+    # Lazy import matching locks.py — keeps the module cheap to import
+    # in tests that mock redis.
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(_last_completed_key(user_id))
+    except Exception:
+        logger.warning(
+            "Failed to read dream last-completed marker for user %s — "
+            "running the pass",
+            user_id[:12],
+            exc_info=True,
+        )
+        return None
+    if raw is None:
+        return None
+    try:
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        marker = datetime.fromisoformat(str(raw))
+    except (UnicodeDecodeError, ValueError):
+        logger.warning(
+            "Unparseable dream last-completed marker for user %s — running the pass",
+            user_id[:12],
+        )
+        return None
+    return marker if marker.tzinfo else marker.replace(tzinfo=timezone.utc)
+
+
+async def _stamp_last_completed_marker(user_id: str, as_of: datetime) -> None:
+    """Record the upper bound of the episode window the pass consolidated.
+
+    ``as_of`` must be the gather snapshot time (``DreamInput.window_end``),
+    NOT apply-completion time: the three LLM phases + apply take minutes,
+    and an episode enqueued in that window was absent from the bundle —
+    stamping "now" would mark it as already consolidated and skip it until
+    the next genuinely-new episode (or the marker TTL).
+
+    Best-effort: a failed stamp only costs one extra full pass on the
+    next nightly tick.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            _last_completed_key(user_id),
+            as_of.isoformat(),
+            ex=LAST_COMPLETED_TTL_SECONDS,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to stamp dream last-completed marker for user %s",
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def _has_new_episodes_since(episodes: list[EpisodeRow], marker: datetime) -> bool:
+    """True when any *user* episode is newer than the last-completed marker.
+
+    Dream-authored episodes are excluded: a productive pass enqueues its
+    own writes with ``valid_at = now()`` (after the stamped ``window_end``),
+    so counting them would make every subsequent nightly run a paid no-op
+    that only re-reads its own output.
+
+    An episode with no parseable timestamp counts as new — we can't
+    prove it's old, and skipping a pass we owed the user is worse than
+    running one we didn't.
+    """
+    for episode in episodes:
+        if is_dream_authored_episode(episode):
+            continue
+        episode_at = parse_episode_timestamp(episode)
+        if episode_at is None or episode_at > marker:
+            return True
+    return False
 
 
 async def _execute_dream_pass_async(
@@ -563,6 +807,44 @@ async def _execute_dream_pass_async(
                     execution_path=execution_path,
                     skipped=True,
                     skip_reason="no_input",
+                )
+
+            # No NEW activity since the last completed pass — every episode
+            # in the bundle predates the marker, so re-running all three
+            # LLM phases would only re-chew already-consolidated material
+            # (and, before the empty-pass guard in apply.py, manufacture an
+            # empty dream chat). Marker read is best-effort: missing,
+            # unparseable, or Redis-down all mean "run the pass".
+            #
+            # Manual admin triggers (the only callers that set status_id)
+            # bypass the marker: "dream now" is the memory-debugging tool
+            # for re-running a pass after prompt/flag/model changes, and a
+            # silent no_new_activity skip would neuter it for up to the
+            # marker's 35-day TTL.
+            last_completed = (
+                await _read_last_completed_marker(user_id)
+                if status_id is None
+                else None
+            )
+            if last_completed is not None and not _has_new_episodes_since(
+                input_bundle.episodes, last_completed
+            ):
+                logger.info(
+                    "Dream pass %s skipped for user %s — no episodes newer "
+                    "than last completed pass at %s",
+                    pass_id,
+                    user_id[:12],
+                    last_completed.isoformat(),
+                )
+                return DreamPassResult(
+                    user_id=user_id,
+                    pass_id=pass_id,
+                    started_at=started_at,
+                    completed_at=datetime.now(timezone.utc),
+                    elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
+                    execution_path=execution_path,
+                    skipped=True,
+                    skip_reason="no_new_activity",
                 )
 
             # ---- Anthropic batch path -----------------------------------
@@ -681,14 +963,27 @@ async def _execute_dream_pass_async(
                 pass_id,
                 ops,
                 known_fact_uuids=input_bundle.known_fact_uuids,
+                lock_handle=dream_lock_handle,
             )
+            # Apply succeeded (even as a no-op) — stamp the marker so the
+            # next nightly pass can skip when nothing new has landed.
+            # Stamped with the gather-window end so episodes that arrived
+            # mid-pass still count as new next time. Sync path only: batch
+            # apply runs hours later in batch_callbacks, which doesn't
+            # stamp yet.
+            await _stamp_last_completed_marker(user_id, input_bundle.window_end)
 
             completed_at = datetime.now(timezone.utc)
             snapshot = apply_stats.get("snapshot")
+            raw_session_id = apply_stats.get("session_id")
 
             def _as_int(key: str) -> int:
                 v = apply_stats.get(key, 0)
                 return int(v) if isinstance(v, (int, str)) and v else 0
+
+            # Fail-closed: a missing/malformed drain flag reads as
+            # ``timed_out`` (writes at risk), never a confirmed drain.
+            ingestion_drain_status = drain_status_from_stats(apply_stats)
 
             return DreamPassResult(
                 user_id=user_id,
@@ -702,7 +997,12 @@ async def _execute_dream_pass_async(
                 demotion_count=_as_int("demotion_count"),
                 entity_invalidation_count=_as_int("entity_invalidation_count"),
                 summary_for_user=ops.summary_for_user,
-                dream_session_id=str(apply_stats.get("session_id") or ""),
+                ingestion_drain_status=ingestion_drain_status,
+                # ``None`` (key absent) on an empty pass — apply skipped the
+                # dream session entirely, so there is no id to surface.
+                dream_session_id=(
+                    raw_session_id if isinstance(raw_session_id, str) else None
+                ),
                 operations=(
                     snapshot if isinstance(snapshot, DreamOperationsSnapshot) else None
                 ),
@@ -864,7 +1164,27 @@ async def _submit_dream_pass_batch(
     # Phase 1 is enqueued — hand the dream lock to the batch callback so it
     # spans the full async lifetime (apply runs hours later). Extend the TTL
     # to the batch window first; the callback releases it on terminal/failure.
-    await dream_lock_handle.extend(BATCH_LOCK_TTL_SECONDS)
+    # A failed extend means the lock expired before the handoff — a newer
+    # pass may already own the graph, so the just-submitted batch must never
+    # be applied: revoke the pending entry (the poller then never dispatches
+    # the callback chain) and drop the input bundle. The provider batch is
+    # orphaned; its results are discarded. The lock is NOT disowned, so the
+    # context manager's compare-and-delete release stays a safe no-op.
+    if not await dream_lock_handle.extend(BATCH_LOCK_TTL_SECONDS):
+        from backend.executor.batch_executor import remove_pending
+
+        from .batch_submit import delete_input_bundle
+
+        await remove_pending(submission.provider_batch_id)
+        await delete_input_bundle(pass_id)
+        return _failure_result(
+            user_id,
+            pass_id,
+            started_at,
+            monotonic_start,
+            execution_path,
+            "anthropic_batch: dream lock lost before handoff — batch revoked",
+        )
     dream_lock_handle.disown()
     return DreamPassResult(
         user_id=user_id,

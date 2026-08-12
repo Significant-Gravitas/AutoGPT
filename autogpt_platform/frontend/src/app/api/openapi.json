@@ -2873,6 +2873,34 @@
         }
       }
     },
+    "/api/briefings/latest": {
+      "get": {
+        "tags": ["briefings"],
+        "summary": "Get Latest Briefing",
+        "description": "Return the user's current briefing, or None if there isn't a fresh one.\n\nOnly briefings covering today or yesterday qualify; anything older is\nhistory, not \"this morning\".\n\nStored content that fails to validate against the current BriefingContent\nshape (e.g. written by an older/newer version of the composer) is skipped\nrather than 500ing the request — and rather than hiding every older\nbriefing behind one unreadable row on the newest date.",
+        "operationId": "getBriefingsGet latest briefing",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/BriefingResponse" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Getbriefingsget Latest Briefing"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/builder/blocks": {
       "get": {
         "tags": ["v2"],
@@ -4070,6 +4098,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuggestedPromptsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/transports": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Chat Transports",
+        "operationId": "getV2ListChatTransports",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTransportsResponse"
                 }
               }
             }
@@ -5554,6 +5605,130 @@
         }
       }
     },
+    "/api/experts/{expert_id}/detach-preview": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Detach Preview",
+        "description": "What archiving this expert would pause — schedules and triggers —\nso the client can show a clear confirmation prompt.",
+        "operationId": "get_expert_detach_preview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertDetachPreview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/schedules/resume": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Resume Expert Schedules",
+        "description": "One-click reversal of a budget/archive pause.",
+        "operationId": "resume_expert_schedules",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/soul": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Soul",
+        "operationId": "update_expert_soul",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertSoulUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/workflows": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -6458,6 +6633,29 @@
         }
       }
     },
+    "/api/home": {
+      "get": {
+        "tags": ["home", "private"],
+        "summary": "Get Home Dashboard",
+        "operationId": "get_home_dashboard",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeDashboardResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -6478,6 +6676,92 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/integrations/codex/credentials/{credential_id}/account": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Codex Account",
+        "operationId": "getV1CodexAccount",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexAccountSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/codex/credentials/{credential_id}/rate-limits": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Codex Rate Limits",
+        "operationId": "getV1CodexRateLimits",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexRateLimitsSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/integrations/credentials": {
@@ -6526,7 +6810,8 @@
               }
             }
           }
-        }
+        },
+        "security": [{ "HTTPBearer": [] }]
       }
     },
     "/api/integrations/providers/constants": {
@@ -8929,6 +9214,238 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump": {
+      "delete": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Discard Brain Dump",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
+        "operationId": "discard_brain_dump",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "recording_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+                { "type": "null" }
+              ],
+              "title": "Recording Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onboarding/brain-dump/finalize": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Finalize Brain Dump",
+        "description": "Close out a take: assemble, scan, store, transcribe.\n\nExtraction and greeting generation continue in the background after\nthis responds — the preparing step polls ``/status`` until\n``greeting_ready``. Idempotent per ``recording_id`` — a client that\nretries after a timeout gets the stored result rather than a second\ntranscription.",
+        "operationId": "finalize_brain_dump",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FinalizeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FinalizeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Intro",
+        "description": "Content for the copilot home's onboarding greeting.\n\nPre-generated during finalize, so this is a plain row read — the\ncopilot home never waits on a model to render its first screen.\n``greeting_done=true`` means the client should show nothing and cache\nthat locally.",
+        "operationId": "get_brain_dump_intro",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IntroCardResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/intro/complete": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Complete Brain Dump Greeting",
+        "description": "Mark the greeting as done — called when the first message is sent.\n\nPermanent and content-preserving: the flag flips, the stored greeting\nstays in the row.",
+        "operationId": "complete_brain_dump_greeting",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreetingDoneResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/parts": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Upload Brain Dump Part",
+        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.",
+        "operationId": "upload_brain_dump_part",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_brain_dump_part"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadPartResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recommended-providers": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Recommended Providers",
+        "description": "Provider picks for the welcome dialog's \"Connect your tools\" panel.\n\nWritten by a background job that runs beside the greeting one; a plain\nrow read here. ``ready=false`` means keep polling.",
+        "operationId": "get_brain_dump_recommended_providers",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/recording": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Download Brain Dump Recording",
+        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "operationId": "download_brain_dump_recording",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/status": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Status",
+        "description": "Polled by the loading screen while the pipeline runs.",
+        "operationId": "get_brain_dump_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DumpStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
@@ -9028,8 +9545,12 @@
                 "AGENT_NEW_RUN",
                 "AGENT_INPUT",
                 "CONGRATS",
-                "VISIT_COPILOT",
-                "BUILDER_OPEN"
+                "ONBOARDING_COMPLETE",
+                "BUILDER_OPEN",
+                "CAPABILITY_CARDS",
+                "AGENTS_TAB_INTRO",
+                "MARKETPLACE_TAB_INTRO",
+                "BUILD_TAB_INTRO"
               ],
               "type": "string",
               "title": "Step"
@@ -14638,6 +15159,24 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "Body_upload_brain_dump_part": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" },
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
+          "part_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Part Index"
+          }
+        },
+        "type": "object",
+        "required": ["file", "recording_id", "part_index"],
+        "title": "Body_upload_brain_dump_part"
+      },
       "BotAnalyticsSummary": {
         "properties": {
           "platform": {
@@ -14725,6 +15264,11 @@
           "platform": { "type": "string", "title": "Platform" },
           "display_name": { "type": "string", "title": "Display Name" },
           "icon": { "type": "string", "title": "Icon" },
+          "server_noun": {
+            "type": "string",
+            "title": "Server Noun",
+            "default": "server"
+          },
           "add_bot_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
@@ -14739,6 +15283,12 @@
             "items": { "$ref": "#/components/schemas/PlatformLinkInfo" },
             "type": "array",
             "title": "Server Links"
+          },
+          "pending_install": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingInstallInfo" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -14780,6 +15330,170 @@
         "type": "object",
         "required": ["date", "messages", "replies", "errors"],
         "title": "BotTimeseriesPoint"
+      },
+      "BrainDumpInputMode": {
+        "type": "string",
+        "enum": ["voice", "typed", "skipped"],
+        "title": "BrainDumpInputMode"
+      },
+      "BrainDumpStatus": {
+        "type": "string",
+        "enum": [
+          "recording_uploaded",
+          "transcribing",
+          "transcribed",
+          "extracting",
+          "completed",
+          "failed"
+        ],
+        "title": "BrainDumpStatus"
+      },
+      "BriefingContent": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "zero_expert_fallback": {
+            "type": "boolean",
+            "title": "Zero Expert Fallback"
+          },
+          "run_items": {
+            "items": { "$ref": "#/components/schemas/BriefingRunItem" },
+            "type": "array",
+            "title": "Run Items"
+          },
+          "decision_items": {
+            "items": { "$ref": "#/components/schemas/BriefingDecisionItem" },
+            "type": "array",
+            "title": "Decision Items"
+          },
+          "decision_total": {
+            "type": "integer",
+            "title": "Decision Total",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "timezone",
+          "zero_expert_fallback",
+          "run_items",
+          "decision_items"
+        ],
+        "title": "BriefingContent"
+      },
+      "BriefingDecisionItem": {
+        "properties": {
+          "node_exec_id": { "type": "string", "title": "Node Exec Id" },
+          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" },
+          "title": { "type": "string", "title": "Title" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "link": { "type": "string", "title": "Link" }
+        },
+        "type": "object",
+        "required": [
+          "node_exec_id",
+          "graph_exec_id",
+          "title",
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "link"
+        ],
+        "title": "BriefingDecisionItem"
+      },
+      "BriefingResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "briefing_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Briefing Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "delivered_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Delivered At"
+          },
+          "content": { "$ref": "#/components/schemas/BriefingContent" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "briefing_date",
+          "created_at",
+          "delivered_at",
+          "content"
+        ],
+        "title": "BriefingResponse"
+      },
+      "BriefingRunItem": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "agent_name",
+          "graph_id",
+          "execution_id",
+          "library_agent_id",
+          "status",
+          "summary",
+          "link"
+        ],
+        "title": "BriefingRunItem"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -14867,6 +15581,16 @@
             "title": "Dry Run",
             "default": false
           },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Credential Id"
+          },
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
@@ -14920,6 +15644,43 @@
         "type": "object",
         "title": "ChatShareStateResponse",
         "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state — sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
+      },
+      "ChatTransportResponse": {
+        "properties": {
+          "auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Auth Provider"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "label": { "type": "string", "title": "Label" },
+          "available": { "type": "boolean", "title": "Available" },
+          "default": { "type": "boolean", "title": "Default" }
+        },
+        "type": "object",
+        "required": [
+          "auth_provider",
+          "credential_id",
+          "label",
+          "available",
+          "default"
+        ],
+        "title": "ChatTransportResponse"
+      },
+      "ChatTransportsResponse": {
+        "properties": {
+          "transports": {
+            "items": { "$ref": "#/components/schemas/ChatTransportResponse" },
+            "type": "array",
+            "title": "Transports"
+          }
+        },
+        "type": "object",
+        "required": ["transports"],
+        "title": "ChatTransportsResponse"
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -14987,6 +15748,96 @@
         "type": "object",
         "title": "CoPilotUsagePublic",
         "description": "Current usage status for a user — public (client-safe) shape."
+      },
+      "CodexAccountSnapshot": {
+        "properties": {
+          "connected": { "type": "boolean", "title": "Connected" },
+          "requires_openai_auth": {
+            "type": "boolean",
+            "title": "Requires Openai Auth"
+          },
+          "account_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Account Type"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "plan_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["connected", "requires_openai_auth"],
+        "title": "CodexAccountSnapshot"
+      },
+      "CodexRateLimitWindow": {
+        "properties": {
+          "used_percent": { "type": "integer", "title": "Used Percent" },
+          "window_duration_mins": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Window Duration Mins"
+          },
+          "resets_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Resets At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["used_percent"],
+        "title": "CodexRateLimitWindow"
+      },
+      "CodexRateLimitsSnapshot": {
+        "properties": {
+          "plan_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Type"
+          },
+          "limit_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Limit Id"
+          },
+          "limit_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Limit Name"
+          },
+          "rate_limit_reached_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Rate Limit Reached Type"
+          },
+          "primary": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CodexRateLimitWindow" },
+              { "type": "null" }
+            ]
+          },
+          "secondary": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CodexRateLimitWindow" },
+              { "type": "null" }
+            ]
+          },
+          "has_credits": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Has Credits"
+          },
+          "unlimited_credits": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Unlimited Credits"
+          },
+          "bucket_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Bucket Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CodexRateLimitsSnapshot"
       },
       "CommunityListResponse": {
         "properties": {
@@ -15117,6 +15968,10 @@
           "server_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Server Name"
+          },
+          "return_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Return Url"
           }
         },
         "type": "object",
@@ -15136,7 +15991,11 @@
             "default": "USER"
           },
           "platform": { "type": "string", "title": "Platform" },
-          "platform_user_id": { "type": "string", "title": "Platform User Id" }
+          "platform_user_id": { "type": "string", "title": "Platform User Id" },
+          "return_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Return Url"
+          }
         },
         "type": "object",
         "required": ["success", "platform", "platform_user_id"],
@@ -15539,6 +16398,19 @@
             ],
             "title": "Builder Graph Id"
           },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Llm Credential Id"
+          },
           "expert_id": {
             "anyOf": [
               { "type": "string", "maxLength": 128 },
@@ -15562,7 +16434,11 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "default": {
+              "dry_run": false,
+              "llm_auth_provider": "platform",
+              "kind": "normal"
+            }
           },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -16178,6 +17054,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dream Session Id"
           },
+          "ingestion_drain_status": {
+            "$ref": "#/components/schemas/IngestionDrainStatus",
+            "default": "drained"
+          },
           "operations": {
             "anyOf": [
               { "$ref": "#/components/schemas/DreamOperationsSnapshot" },
@@ -16249,6 +17129,38 @@
         "type": "object",
         "title": "DreamPassUsage",
         "description": "Aggregate usage across all phases of one dream pass.\n\nSurfaced on ``DreamPassResult.usage`` so eval / admin UI / billing\ncan read tokens + cost without recomputing. Written to\n``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;\ncharged against the user's rate-limit window via\n``persist_and_record_usage`` so dream-pass spend rolls into the\nsame daily/weekly subscription tier budget as chat-execution\noverage."
+      },
+      "DumpStatusResponse": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpStatus" },
+              { "type": "null" }
+            ]
+          },
+          "input_mode": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BrainDumpInputMode" },
+              { "type": "null" }
+            ]
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          },
+          "has_audio": {
+            "type": "boolean",
+            "title": "Has Audio",
+            "default": false
+          },
+          "greeting_ready": {
+            "type": "boolean",
+            "title": "Greeting Ready",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "DumpStatusResponse"
       },
       "EnableShareRequest": {
         "properties": {
@@ -16729,6 +17641,16 @@
             "title": "Skills"
           },
           "identity": { "type": "string", "title": "Identity" },
+          "voice_preferences": {
+            "type": "string",
+            "title": "Voice Preferences"
+          },
+          "boundaries": { "type": "string", "title": "Boundaries" },
+          "protected_soul_rules": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Protected Soul Rules"
+          },
           "is_template": { "type": "boolean", "title": "Is Template" },
           "source_template_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -16739,6 +17661,33 @@
             "items": { "$ref": "#/components/schemas/ExpertWorkflowRef" },
             "type": "array",
             "title": "Workflows"
+          },
+          "last_run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Run At"
+          },
+          "last_run_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Run Status"
+          },
+          "weekly_budget": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Weekly Budget"
+          },
+          "weekly_spend": {
+            "type": "integer",
+            "title": "Weekly Spend",
+            "default": 0
+          },
+          "schedules_paused_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Schedules Paused At"
           }
         },
         "type": "object",
@@ -16751,12 +17700,62 @@
           "bio",
           "skills",
           "identity",
+          "voice_preferences",
+          "boundaries",
+          "protected_soul_rules",
           "is_template",
           "source_template_id",
           "is_archived",
           "workflows"
         ],
         "title": "Expert"
+      },
+      "ExpertDetachPreview": {
+        "properties": {
+          "schedule_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Schedule Names"
+          },
+          "trigger_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Trigger Names"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_names", "trigger_names"],
+        "title": "ExpertDetachPreview",
+        "description": "What archiving the expert would pause — drives the confirm dialog."
+      },
+      "ExpertSoulUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "identity": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "voice_preferences": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Voice Preferences"
+          },
+          "boundaries": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Boundaries"
+          }
+        },
+        "type": "object",
+        "required": ["name", "identity", "voice_preferences", "boundaries"],
+        "title": "ExpertSoulUpdate"
       },
       "ExpertWorkflowRef": {
         "properties": {
@@ -16780,6 +17779,14 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Cron"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
           }
         },
         "type": "object",
@@ -16910,6 +17917,58 @@
         "required": ["executions", "total"],
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
+      },
+      "FinalizeRequest": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Recording Id"
+          },
+          "input_mode": {
+            "$ref": "#/components/schemas/BrainDumpInputMode",
+            "default": "voice"
+          },
+          "duration_secs": {
+            "anyOf": [
+              { "type": "number", "maximum": 14400.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Duration Secs"
+          },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "text": {
+            "anyOf": [
+              { "type": "string", "maxLength": 20000 },
+              { "type": "null" }
+            ],
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "FinalizeRequest",
+        "description": "Finalize one take.\n\n``text`` is the typed fallback: when set, no audio is expected and the\ndump is stored with ``input_mode=typed``. ``input_mode=skipped``\nrecords the deliberate skip so Path B can be chosen server-side."
+      },
+      "FinalizeResponse": {
+        "properties": {
+          "status": { "$ref": "#/components/schemas/BrainDumpStatus" },
+          "input_mode": { "$ref": "#/components/schemas/BrainDumpInputMode" },
+          "transcript_preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript Preview"
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": ["status", "input_mode"],
+        "title": "FinalizeResponse"
       },
       "FolderCreateRequest": {
         "properties": {
@@ -17178,6 +18237,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -17246,6 +18309,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -17351,6 +18418,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -17451,6 +18522,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           },
           "stats": {
             "anyOf": [
@@ -17856,6 +18931,14 @@
         "required": ["provider", "config_schema", "credentials_input_name"],
         "title": "GraphTriggerInfo"
       },
+      "GreetingDoneResponse": {
+        "properties": {
+          "greeting_done": { "type": "boolean", "title": "Greeting Done" }
+        },
+        "type": "object",
+        "required": ["greeting_done"],
+        "title": "GreetingDoneResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -17894,6 +18977,351 @@
         "type": "object",
         "required": ["expert", "failed_preloads"],
         "title": "HireResult"
+      },
+      "HomeAction": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "href": { "type": "string", "title": "Href" }
+        },
+        "type": "object",
+        "required": ["label", "href"],
+        "title": "HomeAction"
+      },
+      "HomeActiveTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "status": {
+            "type": "string",
+            "enum": ["running", "queued"],
+            "title": "Status"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title", "status"],
+        "title": "HomeActiveTask"
+      },
+      "HomeAgentStatus": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/HomeExpert" },
+          "status": {
+            "type": "string",
+            "enum": ["ready", "working", "needs_setup", "paused", "failed"],
+            "title": "Status"
+          },
+          "detail": { "type": "string", "title": "Detail" },
+          "next_run_time": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Next Run Time"
+          }
+        },
+        "type": "object",
+        "required": ["expert", "status", "detail"],
+        "title": "HomeAgentStatus"
+      },
+      "HomeAttentionItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["approval", "setup", "paused", "credits"],
+            "title": "Kind"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["high", "normal"],
+            "title": "Priority"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "description": { "type": "string", "title": "Description" },
+          "why_it_matters": { "type": "string", "title": "Why It Matters" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
+          "preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Preview"
+          },
+          "review": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingHumanReviewModel" },
+              { "type": "null" }
+            ]
+          },
+          "primary_action": { "$ref": "#/components/schemas/HomeAction" },
+          "secondary_action": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeAction" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "priority",
+          "title",
+          "description",
+          "why_it_matters",
+          "primary_action"
+        ],
+        "title": "HomeAttentionItem"
+      },
+      "HomeBriefing": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "window_started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window Started At"
+          },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" },
+          "routine_count": { "type": "integer", "title": "Routine Count" },
+          "outcomes": {
+            "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
+            "type": "array",
+            "title": "Outcomes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "window_started_at",
+          "completed_count",
+          "failed_count",
+          "routine_count",
+          "outcomes"
+        ],
+        "title": "HomeBriefing"
+      },
+      "HomeBriefingOutcome": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "status": {
+            "type": "string",
+            "enum": ["completed", "failed"],
+            "title": "Status"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "summary": { "type": "string", "title": "Summary" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "occurred_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Occurred At"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["id", "status", "title", "summary", "agent_name"],
+        "title": "HomeBriefingOutcome"
+      },
+      "HomeDailyActivity": {
+        "properties": {
+          "date": { "type": "string", "format": "date", "title": "Date" },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "review_count": { "type": "integer", "title": "Review Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" }
+        },
+        "type": "object",
+        "required": ["date", "completed_count", "review_count", "failed_count"],
+        "title": "HomeDailyActivity"
+      },
+      "HomeDashboardResponse": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "attention": {
+            "items": { "$ref": "#/components/schemas/HomeAttentionItem" },
+            "type": "array",
+            "title": "Attention"
+          },
+          "briefing": { "$ref": "#/components/schemas/HomeBriefing" },
+          "active_tasks": {
+            "items": { "$ref": "#/components/schemas/HomeActiveTask" },
+            "type": "array",
+            "title": "Active Tasks"
+          },
+          "upcoming_tasks": {
+            "items": { "$ref": "#/components/schemas/HomeUpcomingTask" },
+            "type": "array",
+            "title": "Upcoming Tasks"
+          },
+          "team": { "$ref": "#/components/schemas/HomeTeamSummary" },
+          "agents": {
+            "items": { "$ref": "#/components/schemas/HomeAgentStatus" },
+            "type": "array",
+            "title": "Agents"
+          },
+          "week": { "$ref": "#/components/schemas/HomeWeekSummary" }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "timezone",
+          "attention",
+          "briefing",
+          "active_tasks",
+          "upcoming_tasks",
+          "team",
+          "agents",
+          "week"
+        ],
+        "title": "HomeDashboardResponse"
+      },
+      "HomeExpert": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "role", "avatar_url"],
+        "title": "HomeExpert"
+      },
+      "HomeTeamSummary": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "ready": { "type": "integer", "title": "Ready" },
+          "working": { "type": "integer", "title": "Working" },
+          "needs_attention": { "type": "integer", "title": "Needs Attention" }
+        },
+        "type": "object",
+        "required": ["total", "ready", "working", "needs_attention"],
+        "title": "HomeTeamSummary"
+      },
+      "HomeUpcomingTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "kind": {
+            "type": "string",
+            "enum": ["agent", "followup"],
+            "title": "Kind"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "next_run_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Run Time"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title", "kind", "next_run_time"],
+        "title": "HomeUpcomingTask"
+      },
+      "HomeWeekSummary": {
+        "properties": {
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "review_count": { "type": "integer", "title": "Review Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" },
+          "total_runtime_seconds": {
+            "type": "number",
+            "title": "Total Runtime Seconds"
+          },
+          "timed_run_count": { "type": "integer", "title": "Timed Run Count" },
+          "total_cost_cents": {
+            "type": "integer",
+            "title": "Total Cost Cents"
+          },
+          "credits_balance": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Credits Balance"
+          },
+          "daily": {
+            "items": { "$ref": "#/components/schemas/HomeDailyActivity" },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_count",
+          "completed_count",
+          "review_count",
+          "failed_count",
+          "total_runtime_seconds",
+          "timed_run_count",
+          "total_cost_cents",
+          "credits_balance",
+          "daily"
+        ],
+        "title": "HomeWeekSummary"
       },
       "HostScopedCredentials": {
         "properties": {
@@ -17947,6 +19375,12 @@
         "required": ["image_url"],
         "title": "ImageURLResponse"
       },
+      "IngestionDrainStatus": {
+        "type": "string",
+        "enum": ["drained", "skipped", "timed_out"],
+        "title": "IngestionDrainStatus",
+        "description": "Fate of a dream pass's enqueued graph writes at the moment the pass\nwas reported complete.\n\nThree distinct states, so consumers (and a future Memory Visualizer)\ncan tell a healthy by-design skip from a real failure:\n\n  * ``drained`` — the pass's own episodes were confirmed landed in the\n    graph before the pass returned (sync path), or the pass enqueued\n    nothing to drain. Healthy.\n  * ``skipped`` — the drain was intentionally not run to avoid stalling\n    a shared serial loop (batch path). The episodes process\n    fire-and-forget; healthy by design, NOT a failure signal.\n  * ``timed_out`` — the sync-path drain was attempted but did not finish\n    within its budget. The reported write/proposal counts include\n    episodes still queued in-process, which are lost if the worker's pod\n    restarts. This is the only value that warrants an operator warning."
+      },
       "InputValidationErrorResponse": {
         "properties": {
           "type": {
@@ -17994,6 +19428,36 @@
         "type": "object",
         "required": ["store_listing_version_id"],
         "title": "InstallWorkflowRequest"
+      },
+      "IntroCardResponse": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "greeting": { "type": "string", "title": "Greeting" },
+          "prompts": {
+            "items": { "$ref": "#/components/schemas/SuggestedPrompt" },
+            "type": "array",
+            "title": "Prompts",
+            "default": []
+          },
+          "greeting_done": {
+            "type": "boolean",
+            "title": "Greeting Done",
+            "default": false
+          },
+          "greeting_pending": {
+            "type": "boolean",
+            "title": "Greeting Pending",
+            "default": false
+          },
+          "transcript": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Transcript"
+          }
+        },
+        "type": "object",
+        "required": ["path", "greeting"],
+        "title": "IntroCardResponse",
+        "description": "Content for the copilot home's onboarding greeting.\n\n``path`` is \"A\" when we have something to reflect back and \"B\" when\nthe greeting's job is to invite a recording instead. ``greeting_done``\nis the server-side \"already seen it\" flag — when true the client\nshows nothing and caches the fact locally."
       },
       "InvitationCreateResponse": {
         "properties": {
@@ -18366,6 +19830,10 @@
               { "$ref": "#/components/schemas/Webhook" },
               { "type": "null" }
             ]
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
@@ -18677,6 +20145,11 @@
           "server_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Server Name"
+          },
+          "server_noun": {
+            "type": "string",
+            "title": "Server Noun",
+            "default": "server"
           }
         },
         "type": "object",
@@ -18741,7 +20214,11 @@
       "LoginResponse": {
         "properties": {
           "login_url": { "type": "string", "title": "Login Url" },
-          "state_token": { "type": "string", "title": "State Token" }
+          "state_token": { "type": "string", "title": "State Token" },
+          "cancel_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cancel Url"
+          }
         },
         "type": "object",
         "required": ["login_url", "state_token"],
@@ -18961,12 +20438,34 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Failed Uuids"
+          },
+          "failures": {
+            "items": { "$ref": "#/components/schemas/MemoryForgetFailure" },
+            "type": "array",
+            "title": "Failures"
           }
         },
         "type": "object",
         "required": ["message"],
         "title": "MemoryForgetConfirmResponse",
         "description": "Response after deleting specific memory edges."
+      },
+      "MemoryForgetFailure": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "code": { "$ref": "#/components/schemas/MemoryForgetFailureCode" },
+          "reason": { "type": "string", "title": "Reason" }
+        },
+        "type": "object",
+        "required": ["uuid", "code", "reason"],
+        "title": "MemoryForgetFailure",
+        "description": "One edge that could not be deleted, with an actionable reason.\n\nSurfaced so the assistant (and user) can tell *why* a delete failed —\ne.g. the edge was not found vs. the query itself errored — instead of a\nbare \"N failed\" count that gives the model nothing to act on."
+      },
+      "MemoryForgetFailureCode": {
+        "type": "string",
+        "enum": ["no_match", "query_error"],
+        "title": "MemoryForgetFailureCode",
+        "description": "Stable, machine-switchable reason a forget delete failed.\n\nThe frontend/model can branch on this code (retry vs. give up) without\nparsing the free-text ``reason``. New codes may be added over time, so\nconsumers must tolerate unknown values."
       },
       "MemoryOverview": {
         "properties": {
@@ -19551,6 +21050,23 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
+          },
+          "refresh_strategy": {
+            "type": "string",
+            "enum": ["oauth_handler", "provider_runtime"],
+            "title": "Refresh Strategy",
+            "default": "oauth_handler"
+          },
+          "provider_state": {
+            "anyOf": [
+              { "type": "string", "format": "password", "writeOnly": true },
+              { "type": "null" }
+            ],
+            "title": "Provider State"
+          },
+          "provider_state_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Provider State Version"
           }
         },
         "type": "object",
@@ -19681,11 +21197,11 @@
           "AGENT_NEW_RUN",
           "AGENT_INPUT",
           "CONGRATS",
-          "VISIT_COPILOT",
+          "ONBOARDING_COMPLETE",
           "GET_RESULTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
-          "MARKETPLACE_RUN_AGENT",
+          "LIBRARY_RUN_AGENT",
           "BUILDER_SAVE_AGENT",
           "RE_RUN_AGENT",
           "SCHEDULE_AGENT",
@@ -19695,9 +21211,14 @@
           "RUN_14_DAYS",
           "RUN_AGENTS_100",
           "BUILDER_OPEN",
-          "BUILDER_RUN_AGENT"
+          "BUILDER_RUN_AGENT",
+          "CAPABILITY_CARDS",
+          "AGENTS_TAB_INTRO",
+          "MARKETPLACE_TAB_INTRO",
+          "BUILD_TAB_INTRO"
         ],
-        "title": "OnboardingStep"
+        "title": "OnboardingStep",
+        "description": "Application-level onboarding step identifiers."
       },
       "OrgAliasResponse": {
         "properties": {
@@ -19934,6 +21455,34 @@
             "title": "Review Message",
             "description": "Optional message from the reviewer"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id",
+            "description": "Expert attributed to the requesting run"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name",
+            "description": "Display name of the agent that requested the review"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id",
+            "description": "For run deep links"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Chat session id for copilot run_block reviews"
+          },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Was Edited",
@@ -19982,6 +21531,19 @@
         ],
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
+      },
+      "PendingInstallInfo": {
+        "properties": {
+          "server_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Name"
+          },
+          "open_bot_url": { "type": "string", "title": "Open Bot Url" }
+        },
+        "type": "object",
+        "required": ["open_bot_url"],
+        "title": "PendingInstallInfo",
+        "description": "The caller added the bot to a server but hasn't linked an account yet.\n\n``open_bot_url`` deep-links into the bot's chat on the platform, where the\nnext step (the bot's Link Account prompt) is waiting."
       },
       "PhaseUsage": {
         "properties": {
@@ -21072,6 +22634,31 @@
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
       },
+      "RecommendedProvider": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
+        },
+        "type": "object",
+        "required": ["provider"],
+        "title": "RecommendedProvider",
+        "description": "One provider Claude picked from the transcript.\n\n``provider`` is a registry id (validated against the live provider\nlist before storage); ``reason`` is the one-liner shown under it in\nthe welcome dialog's Recommended section."
+      },
+      "RecommendedProvidersResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "providers": {
+            "items": { "$ref": "#/components/schemas/RecommendedProvider" },
+            "type": "array",
+            "title": "Providers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["ready"],
+        "title": "RecommendedProvidersResponse",
+        "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -21424,6 +23011,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Timezone",
             "description": "User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC."
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id",
+            "description": "Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow."
           }
         },
         "type": "object",
@@ -21790,7 +23382,11 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "default": {
+              "dry_run": false,
+              "llm_auth_provider": "platform",
+              "kind": "normal"
+            }
           },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23034,6 +24630,17 @@
         "required": ["message", "suggested_goal"],
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
+      },
+      "SuggestedPrompt": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "prompt": { "type": "string", "title": "Prompt" },
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" }
+        },
+        "type": "object",
+        "required": ["title", "prompt"],
+        "title": "SuggestedPrompt",
+        "description": "One pickable prompt under the greeting.\n\n``title`` is the short line the user sees; ``prompt`` is the full\nmessage that gets sent when they pick it. ``icon`` is a Phosphor icon\nslug from ``intro.PROMPT_ICONS`` — the frontend maps it to the actual\nicon component and falls back to a sparkle for anything unknown."
       },
       "SuggestedPromptsResponse": {
         "properties": {
@@ -24939,6 +26546,22 @@
         "title": "UploadCopilotSkillRequest",
         "description": "Body for the library UI's \"upload skill\" action.\n\nCarries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the\nuser picked from disk; the server parses + validates it so the upload and\nthe copilot's ``store_skill`` tool share one source of truth."
       },
+      "UploadPartResponse": {
+        "properties": {
+          "recording_id": { "type": "string", "title": "Recording Id" },
+          "part_index": { "type": "integer", "title": "Part Index" },
+          "received_bytes": { "type": "integer", "title": "Received Bytes" },
+          "total_bytes": { "type": "integer", "title": "Total Bytes" }
+        },
+        "type": "object",
+        "required": [
+          "recording_id",
+          "part_index",
+          "received_bytes",
+          "total_bytes"
+        ],
+        "title": "UploadPartResponse"
+      },
       "UsageWindowPublic": {
         "properties": {
           "percent_used": {
@@ -25021,7 +26644,22 @@
         "properties": {
           "date": { "type": "string", "format": "date", "title": "Date" },
           "cost_cents": { "type": "integer", "title": "Cost Cents" },
-          "run_count": { "type": "integer", "title": "Run Count" }
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "success_count": {
+            "type": "integer",
+            "title": "Success Count",
+            "default": 0
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          }
         },
         "type": "object",
         "required": ["date", "cost_cents", "run_count"],
@@ -25038,6 +26676,31 @@
           "failed_cost_cents": {
             "type": "integer",
             "title": "Failed Cost Cents"
+          },
+          "success_run_count": {
+            "type": "integer",
+            "title": "Success Run Count",
+            "default": 0
+          },
+          "failed_run_count": {
+            "type": "integer",
+            "title": "Failed Run Count",
+            "default": 0
+          },
+          "review_run_count": {
+            "type": "integer",
+            "title": "Review Run Count",
+            "default": 0
+          },
+          "total_duration_seconds": {
+            "type": "number",
+            "title": "Total Duration Seconds",
+            "default": 0
+          },
+          "duration_run_count": {
+            "type": "integer",
+            "title": "Duration Run Count",
+            "default": 0
           },
           "by_agent": {
             "items": { "$ref": "#/components/schemas/UserAgentCostRollup" },

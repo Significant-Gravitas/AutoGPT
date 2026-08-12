@@ -16,6 +16,7 @@ main() {
   ensure_valkey_cluster
   verify_rabbitmq_user
   migrate_database
+  configure_frontend_database_role
   publish_readiness
   log "bootstrap complete"
 }
@@ -23,17 +24,15 @@ main() {
 wait_for_infrastructure() {
   wait_until "PostgreSQL" 180 \
     "${POSTGRES_BINDIR}/pg_isready" -q -h 127.0.0.1 -p 5432 -U postgres
-  wait_until "Valkey node 17000" 120 "${PROBE[@]}" redis --port 17000
-  wait_until "Valkey node 17001" 120 "${PROBE[@]}" redis --port 17001
-  wait_until "Valkey node 17002" 120 "${PROBE[@]}" redis --port 17002
-  wait_until "RabbitMQ" 240 run_rabbitmq_cli /opt/rabbitmq/sbin/rabbitmq-diagnostics -q ping
-  if [[ "${AUTOGPT_ENABLE_FALKORDB:-true}" == true ]]; then
-    wait_until "FalkorDB" 120 "${PROBE[@]}" redis --port 6380 \
-      --password-env GRAPHITI_FALKORDB_PASSWORD
-  fi
-  if [[ "${AUTOGPT_ENABLE_CLAMAV:-true}" == true ]]; then
-    wait_until "ClamAV" 300 "${PROBE[@]}" clam --port 3310
-  fi
+  wait_until "Valkey node 17000" 120 "${PROBE[@]}" redis --port 17000 \
+    --password-env REDIS_PASSWORD
+  wait_until "Valkey node 17001" 120 "${PROBE[@]}" redis --port 17001 \
+    --password-env REDIS_PASSWORD
+  wait_until "Valkey node 17002" 120 "${PROBE[@]}" redis --port 17002 \
+    --password-env REDIS_PASSWORD
+  wait_until "RabbitMQ" 240 run_rabbitmq_cli /opt/rabbitmq/sbin/rabbitmq-diagnostics -q check_running
+  wait_until "FalkorDB" 120 "${PROBE[@]}" redis --port 6380 \
+    --password-env GRAPHITI_FALKORDB_PASSWORD
 }
 
 wait_until() {
@@ -50,16 +49,19 @@ wait_until() {
 }
 
 ensure_valkey_cluster() {
-  if "${PROBE[@]}" redis --port 17000 --cluster >/dev/null 2>&1; then
+  if "${PROBE[@]}" redis --port 17000 --cluster \
+    --password-env REDIS_PASSWORD >/dev/null 2>&1; then
     log "Valkey cluster is already healthy"
     return 0
   fi
 
   local known_nodes
   local fresh_cluster=true
+  local port
   for port in 17000 17001 17002; do
     known_nodes="$(
-      valkey-cli -h 127.0.0.1 -p "${port}" cluster info 2>/dev/null |
+      REDISCLI_AUTH="${REDIS_PASSWORD}" \
+        valkey-cli -h 127.0.0.1 -p "${port}" cluster info 2>/dev/null |
         awk -F: '$1 == "cluster_known_nodes" {gsub("\r", "", $2); print $2}'
     )"
     [[ "${known_nodes}" == "1" ]] || fresh_cluster=false
@@ -67,10 +69,11 @@ ensure_valkey_cluster() {
 
   if [[ "${fresh_cluster}" == true ]]; then
     log "forming three-node Valkey cluster"
-    valkey-cli --cluster create \
+    REDISCLI_AUTH="${REDIS_PASSWORD}" valkey-cli --cluster create \
       127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 \
       --cluster-replicas 0 --cluster-yes >/dev/null
-    wait_until "Valkey cluster" 60 "${PROBE[@]}" redis --port 17000 --cluster
+    wait_until "Valkey cluster" 60 "${PROBE[@]}" redis --port 17000 --cluster \
+      --password-env REDIS_PASSWORD
     return 0
   fi
 
@@ -78,7 +81,8 @@ ensure_valkey_cluster() {
   # restart. Never destructively recreate a partially known cluster.
   local elapsed=0
   while ((elapsed < 90)); do
-    if "${PROBE[@]}" redis --port 17000 --cluster >/dev/null 2>&1; then
+    if "${PROBE[@]}" redis --port 17000 --cluster \
+      --password-env REDIS_PASSWORD >/dev/null 2>&1; then
       log "Valkey cluster recovered"
       return 0
     fi
@@ -116,6 +120,97 @@ migrate_database() {
     cd "${AUTOGPT_BACKEND_DIR}"
     prisma migrate deploy
   )
+}
+
+configure_frontend_database_role() {
+  log "configuring least-privilege frontend database role"
+  PGPASSWORD="${POSTGRES_PASSWORD}" \
+    "${POSTGRES_BINDIR}/psql" \
+    --host=127.0.0.1 \
+    --port=5432 \
+    --username=postgres \
+    --dbname=postgres \
+    --set=ON_ERROR_STOP=1 \
+    --quiet <<'SQL'
+BEGIN;
+
+DO $role$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'autogpt_frontend'
+  ) THEN
+    CREATE ROLE autogpt_frontend LOGIN;
+  END IF;
+END
+$role$;
+
+ALTER ROLE autogpt_frontend
+  LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
+  CONNECTION LIMIT 10 PASSWORD NULL;
+ALTER ROLE autogpt_frontend RESET ALL;
+ALTER ROLE autogpt_frontend IN DATABASE postgres RESET ALL;
+
+REVOKE ALL PRIVILEGES ON DATABASE postgres FROM autogpt_frontend;
+REVOKE TEMPORARY ON DATABASE postgres FROM PUBLIC;
+GRANT CONNECT ON DATABASE postgres TO autogpt_frontend;
+
+REVOKE ALL PRIVILEGES ON SCHEMA platform FROM PUBLIC, autogpt_frontend;
+GRANT USAGE ON SCHEMA platform TO autogpt_frontend;
+
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA platform
+  FROM PUBLIC, autogpt_frontend;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA platform
+  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA platform
+  FROM PUBLIC, autogpt_frontend;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA platform
+  FROM PUBLIC, autogpt_frontend;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+  platform."UserAuthIdentity",
+  platform."UserAuthSession",
+  platform."UserAuthAccount",
+  platform."UserAuthVerification",
+  platform."UserAuthJwks"
+TO autogpt_frontend;
+
+GRANT SELECT (id, email), UPDATE (email, "updatedAt")
+  ON TABLE platform."User"
+  TO autogpt_frontend;
+
+DO $membership$
+DECLARE
+  frontend_role_oid oid;
+BEGIN
+  SELECT oid INTO STRICT frontend_role_oid
+  FROM pg_catalog.pg_roles
+  WHERE rolname = 'autogpt_frontend';
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_auth_members membership
+    WHERE membership.member = frontend_role_oid
+  ) THEN
+    RAISE EXCEPTION 'autogpt_frontend must not belong to another database role';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_database WHERE datdba = frontend_role_oid
+    UNION ALL
+    SELECT 1 FROM pg_catalog.pg_namespace WHERE nspowner = frontend_role_oid
+    UNION ALL
+    SELECT 1 FROM pg_catalog.pg_class WHERE relowner = frontend_role_oid
+    UNION ALL
+    SELECT 1 FROM pg_catalog.pg_proc WHERE proowner = frontend_role_oid
+  ) THEN
+    RAISE EXCEPTION 'autogpt_frontend must not own database objects';
+  END IF;
+END
+$membership$;
+
+COMMIT;
+SQL
 }
 
 publish_readiness() {

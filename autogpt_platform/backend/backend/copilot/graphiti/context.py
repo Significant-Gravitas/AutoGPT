@@ -95,6 +95,22 @@ async def _fetch(user_id: str, message: str) -> str | None:
     return _format_context(edges, episodes)
 
 
+# Strong refs to in-flight hit tasks — the event loop holds only weak
+# references, so an unretained fire-and-forget task can be GC'd
+# mid-execution and silently drop the hit recording. Same pattern as
+# ``backend/data/user.py``'s ``_background_tasks``.
+_pending_hit_tasks: set[asyncio.Task] = set()
+
+
+def _on_hit_task_done(task: asyncio.Task) -> None:
+    _pending_hit_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("Ratification hit task %s failed", task.get_name(), exc_info=exc)
+
+
 def _spawn_ratification_hits(user_id: str, edges) -> None:
     """Fire-and-forget the ratification hit-hook for retrieved edges.
 
@@ -109,10 +125,12 @@ def _spawn_ratification_hits(user_id: str, edges) -> None:
 
     from backend.copilot.dream.ratification import try_ratify_on_hit
 
-    asyncio.create_task(
+    task = asyncio.create_task(
         try_ratify_on_hit(user_id, edge_uuids),
         name=f"ratify-hits-{user_id[:12]}",
     )
+    _pending_hit_tasks.add(task)
+    task.add_done_callback(_on_hit_task_done)
 
 
 def _format_context(edges, episodes) -> str | None:

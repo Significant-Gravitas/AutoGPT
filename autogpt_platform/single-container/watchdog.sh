@@ -6,6 +6,7 @@ set -Eeuo pipefail
 source "${AUTOGPT_ASSET_DIR:-/opt/autogpt/single-container}/common.sh"
 
 readonly SUPERVISOR_PID_FILE="${AUTOGPT_RUNTIME_DIR}/supervisord.pid"
+readonly WATCHDOG_ARMED_FILE="${AUTOGPT_RUNTIME_DIR}/watchdog-armed"
 readonly FAILURE_LIMIT=3
 readonly CHECK_INTERVAL=30
 readonly CHECK_TIMEOUT=60
@@ -14,8 +15,9 @@ readonly INITIAL_HEALTH_TIMEOUT=600
 main() {
   local failures=0
   local output
+  rm -f "${WATCHDOG_ARMED_FILE}"
   output="$(mktemp "${AUTOGPT_RUNTIME_DIR}/watchdog-health.XXXXXX")"
-  trap 'rm -f "${output}"' EXIT
+  trap 'rm -f "${output}" "${WATCHDOG_ARMED_FILE}"' EXIT
 
   wait_for_ready_file
   wait_for_initial_health "${output}"
@@ -30,7 +32,8 @@ main() {
     log "watchdog health failure ${failures}/${FAILURE_LIMIT}" >&2
     sed -n '1,120p' "${output}" >&2
     if ((failures >= FAILURE_LIMIT)); then
-      stop_appliance "watchdog stopping the unhealthy appliance for Docker restart"
+      stop_appliance \
+        "watchdog stopping the unhealthy appliance; a Docker restart policy is required to restart it automatically"
     fi
   done
 }
@@ -46,7 +49,8 @@ wait_for_initial_health() {
   local deadline=$((SECONDS + INITIAL_HEALTH_TIMEOUT))
   while ((SECONDS < deadline)); do
     if run_healthcheck "${output}"; then
-      log "watchdog armed after initial healthy state"
+      install -m 0600 /dev/null "${WATCHDOG_ARMED_FILE}"
+      log "watchdog armed after initial healthy state; automatic fatal recovery requires a Docker restart policy"
       return 0
     fi
     log "watchdog waiting for initial healthy state" >&2

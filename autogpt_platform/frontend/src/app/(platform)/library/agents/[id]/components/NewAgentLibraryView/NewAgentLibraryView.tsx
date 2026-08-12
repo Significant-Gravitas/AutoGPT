@@ -5,7 +5,6 @@ import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/Pub
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { AgentSettingsModal } from "./components/modals/AgentSettingsModal/AgentSettingsModal";
@@ -26,9 +25,12 @@ import { SelectedTriggerAgentView } from "./components/selected-views/SelectedTr
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
+import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NewAgentLibraryView() {
   const {
@@ -66,6 +68,7 @@ export function NewAgentLibraryView() {
   } = useMarketplaceUpdate({ agent });
 
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const { isNewLayoutActive } = usePlatformChrome();
 
   useEffect(() => {
     if (agent) {
@@ -224,8 +227,24 @@ export function NewAgentLibraryView() {
 
   return (
     <>
-      <div className="mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
-        <SectionWrap className="mb-3 block">
+      <div
+        className={cn(
+          isNewLayoutActive
+            ? // New sidebar layout: detail panel sits next to the app sidebar,
+              // the runs list becomes a fixed column on the right, and both
+              // panels own their scroll on desktop (h-svh + minmax rows)
+              // instead of assuming a top-navbar page. Children's mb-3 (from
+              // the classic layout) would overflow the viewport-sized rows.
+              "grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pb-3 pt-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0"
+            : "mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]",
+        )}
+      >
+        <SectionWrap
+          className={cn(
+            "mb-3 block",
+            isNewLayoutActive && "lg:order-2 lg:flex lg:min-h-0 lg:flex-col",
+          )}
+        >
           <div
             className={cn(
               "border-b border-zinc-100 pb-5",
@@ -240,7 +259,7 @@ export function NewAgentLibraryView() {
                   className="w-full"
                   disabled={isTemplateLoading && activeTab === "templates"}
                 >
-                  <PlusIcon size={16} /> New agent task
+                  <Icon icon={PlusSignIcon} size={16} /> New agent task
                 </Button>
               }
               agent={agent}
@@ -252,15 +271,25 @@ export function NewAgentLibraryView() {
             />
           </div>
 
-          <SidebarRunsList
-            agent={agent}
-            selectedRunId={activeItemId ?? undefined}
-            onSelectRun={handleSelectRun}
-            onClearSelectedRun={handleClearSelectedRun}
-            onScheduleDeleted={handleScheduleDeleted}
-            onTabChange={setActiveTab}
-            onCountsChange={handleCountsChange}
-          />
+          {/* The tabs panel inside SidebarRunsList is flex-1 with basis 0, so
+              it collapses (clipping the cards) unless its root is stretched to
+              fill the column height. */}
+          <div
+            className={cn(
+              isNewLayoutActive &&
+                "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:[&>div]:min-h-0 lg:[&>div]:flex-1",
+            )}
+          >
+            <SidebarRunsList
+              agent={agent}
+              selectedRunId={activeItemId ?? undefined}
+              onSelectRun={handleSelectRun}
+              onClearSelectedRun={handleClearSelectedRun}
+              onScheduleDeleted={handleScheduleDeleted}
+              onTabChange={setActiveTab}
+              onCountsChange={handleCountsChange}
+            />
+          </div>
         </SectionWrap>
 
         {activeItemId ? (

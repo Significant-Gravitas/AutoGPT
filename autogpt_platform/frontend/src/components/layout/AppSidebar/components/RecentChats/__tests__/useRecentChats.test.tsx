@@ -130,6 +130,51 @@ describe("useRecentChats — rename", () => {
   });
 });
 
+describe("useRecentChats — pin", () => {
+  it("sends the flipped is_pinned value", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.patch("*/api/chat/sessions/:id/pinned", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({});
+      }),
+    );
+    const { result } = renderHook(() => useRecentChats(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.togglePin("s1", false));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toEqual({ is_pinned: true });
+
+    act(() => result.current.togglePin("s1", true));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toEqual({ is_pinned: false });
+  });
+
+  it("toasts when the pin request fails", async () => {
+    server.use(
+      http.patch("*/api/chat/sessions/:id/pinned", () =>
+        HttpResponse.json({ detail: "nope" }, { status: 500 }),
+      ),
+    );
+    const { result } = renderHook(() => useRecentChats(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.togglePin("s1", false));
+
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Failed to update chat",
+          variant: "destructive",
+        }),
+      );
+    });
+  });
+});
+
 describe("useRecentChats — export", () => {
   it("toasts success after a successful export", async () => {
     server.use(

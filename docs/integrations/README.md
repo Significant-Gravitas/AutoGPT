@@ -225,7 +225,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AI Video Generator](block-integrations/fal/ai_video_generator.md#ai-video-generator) | Generate videos using FAL AI models |
 | [Bannerbear Text Overlay](block-integrations/bannerbear/text_overlay.md#bannerbear-text-overlay) | Add text overlay to images using Bannerbear templates |
 | [Claude Code](block-integrations/llm.md#claude-code) | Execute tasks using Claude Code in an E2B sandbox |
-| [Code Generation](block-integrations/llm.md#code-generation) | Generate or refactor code using OpenAI's Codex (Responses API) |
+| [Code Generation](block-integrations/llm.md#code-generation) | Generate or refactor code using an OpenAI API key or a connected ChatGPT plan through Codex App Server |
 | [Create Talking Avatar Video](block-integrations/llm.md#create-talking-avatar-video) | This block integrates with D-ID to create video clips and retrieve their URLs |
 | [Exa Answer](block-integrations/exa/answers.md#exa-answer) | Get an LLM answer to a question informed by Exa search results |
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
@@ -298,6 +298,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
 | [Search The Web](block-integrations/jina/search.md#search-the-web) | This block searches the internet for the given search query |
+| [Tavily Crawl](block-integrations/tavily/crawl.md#tavily-crawl) | Crawls a website with Tavily, following links from the root URL and extracting page content |
+| [Tavily Extract](block-integrations/tavily/extract.md#tavily-extract) | Extracts page content from one or more URLs using Tavily, optimized for LLM consumption |
+| [Tavily Map](block-integrations/tavily/map.md#tavily-map) | Maps a website's structure with Tavily, discovering its URLs without extracting content |
+| [Tavily Search](block-integrations/tavily/search.md#tavily-search) | Searches the web using Tavily's AI-native search API |
 | [Validate Emails](block-integrations/zerobounce/validate_emails.md#validate-emails) | Validate emails |
 
 ## Social Media and Content

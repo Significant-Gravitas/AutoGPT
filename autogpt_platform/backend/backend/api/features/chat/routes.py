@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
+from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -22,7 +22,12 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
-from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
+from backend.copilot.config import (
+    ChatConfig,
+    CopilotLlmAuthProvider,
+    CopilotLLMModel,
+    CopilotMode,
+)
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.model import (
@@ -111,17 +116,27 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+from backend.data.model import Credentials
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.integrations.codex.access import (
+    enforce_codex_access_http,
+    has_codex_access_for_discovery,
+)
+from backend.integrations.codex.auth_bundle import CodexAuthBundleError
+from backend.integrations.codex.credential_codec import bundle_from_credentials
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
-from backend.util.settings import Settings
+from backend.util.settings import BehaveAs, Settings
 
 settings = Settings()
 
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
+credentials_manager = IntegrationCredentialsManager()
 
 
 async def _validate_and_get_session(
@@ -216,7 +231,7 @@ class StreamChatRequest(BaseModel):
         description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
         "If None, uses the server default (extended_thinking).",
     )
-    model: CopilotLlmModel | None = Field(
+    model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
         "If None, the server applies per-user LD targeting then falls back to config.",
@@ -291,6 +306,8 @@ class CreateSessionRequest(BaseModel):
 
     dry_run: bool = False
     builder_graph_id: str | None = Field(default=None, max_length=128)
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = Field(default=None, max_length=128)
     expert_id: str | None = Field(default=None, max_length=128)
 
 
@@ -302,6 +319,18 @@ class CreateSessionResponse(BaseModel):
     user_id: str | None
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
+
+
+class ChatTransportResponse(BaseModel):
+    auth_provider: CopilotLlmAuthProvider
+    credential_id: str | None
+    label: str
+    available: bool
+    default: bool
+
+
+class ChatTransportsResponse(BaseModel):
+    transports: list[ChatTransportResponse]
 
 
 class ActiveStreamInfo(BaseModel):
@@ -459,10 +488,152 @@ async def list_sessions(
     )
 
 
-@router.post(
-    "/sessions",
-    dependencies=[Depends(enforce_payment_paywall)],
+def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
+    if credentials is None or credentials.type != "oauth2":
+        return False
+    try:
+        bundle_from_credentials(credentials)
+    except CodexAuthBundleError:
+        return False
+    return True
+
+
+def _is_deployment_chat_available() -> bool:
+    if settings.config.behave_as == BehaveAs.CLOUD:
+        return True
+    api_key, _ = config.main_client_credentials
+    return bool(config.test_mode or config.use_claude_code_subscription or api_key)
+
+
+async def _get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
+    deployment_available = _is_deployment_chat_available()
+    transports = [
+        ChatTransportResponse(
+            auth_provider="platform",
+            credential_id=None,
+            label=(
+                "AutoGPT Platform"
+                if settings.config.behave_as == BehaveAs.CLOUD
+                else "Self-hosted chat"
+            ),
+            available=deployment_available,
+            default=deployment_available,
+        )
+    ]
+
+    codex_credentials = (
+        await credentials_manager.store.get_creds_by_provider(user_id, "codex")
+        if await has_codex_access_for_discovery(user_id)
+        else []
+    )
+    valid_codex_credentials = [
+        credentials
+        for credentials in codex_credentials
+        if _is_valid_codex_credentials(credentials)
+    ]
+    codex_is_default = not deployment_available and len(valid_codex_credentials) == 1
+    transports.extend(
+        ChatTransportResponse(
+            auth_provider="codex",
+            credential_id=credentials.id,
+            label="ChatGPT",
+            available=True,
+            default=codex_is_default,
+        )
+        for credentials in valid_codex_credentials
+    )
+    return transports
+
+
+@router.get(
+    "/transports",
+    dependencies=[Security(auth.requires_user)],
 )
+async def list_chat_transports(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ChatTransportsResponse:
+    return ChatTransportsResponse(transports=await _get_chat_transports(user_id))
+
+
+async def _resolve_new_session_llm_route(
+    user_id: str,
+    request: CreateSessionRequest | None,
+) -> tuple[CopilotLlmAuthProvider, str | None]:
+    auth_provider = request.llm_auth_provider if request else "platform"
+    credential_id = request.llm_credential_id if request else None
+
+    if auth_provider == "codex":
+        await enforce_codex_access_http(user_id)
+
+    if request is not None and request.builder_graph_id is not None:
+        if auth_provider == "codex" or credential_id is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="codex_builder_session_unsupported",
+            )
+        if not _is_deployment_chat_available():
+            raise HTTPException(
+                status_code=503,
+                detail="chat_transport_not_configured",
+            )
+        return "platform", None
+
+    transports = await _get_chat_transports(user_id)
+    if request is not None:
+        route_was_explicit = bool(
+            {"llm_auth_provider", "llm_credential_id"} & request.model_fields_set
+        )
+        if route_was_explicit:
+            if auth_provider == "platform" and credential_id is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="codex_credential_not_allowed",
+                )
+            if auth_provider == "codex" and credential_id is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="codex_credential_required",
+                )
+            selected_route = next(
+                (
+                    transport
+                    for transport in transports
+                    if transport.auth_provider == auth_provider
+                    and transport.credential_id == credential_id
+                    and transport.available
+                ),
+                None,
+            )
+            if selected_route is None:
+                if auth_provider == "codex":
+                    raise HTTPException(
+                        status_code=404,
+                        detail="codex_credential_not_found",
+                    )
+                raise HTTPException(
+                    status_code=503,
+                    detail="chat_transport_not_configured",
+                )
+            return auth_provider, credential_id
+
+    default_route = next(
+        (transport for transport in transports if transport.default),
+        None,
+    )
+    if default_route is not None:
+        return default_route.auth_provider, default_route.credential_id
+    if any(transport.available for transport in transports):
+        raise HTTPException(
+            status_code=409,
+            detail="chat_transport_selection_required",
+        )
+    raise HTTPException(
+        status_code=503,
+        detail="chat_transport_not_configured",
+    )
+
+
+@router.post("/sessions")
 async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
@@ -508,6 +679,13 @@ async def create_session(
         if expert is None or expert.is_archived:
             raise HTTPException(status_code=404, detail="Expert not found")
 
+    llm_auth_provider, llm_credential_id = await _resolve_new_session_llm_route(
+        user_id, request
+    )
+
+    if llm_auth_provider == "platform":
+        await enforce_payment_paywall(user_id)
+
     logger.info(
         f"Creating session with user_id: "
         f"...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
@@ -517,6 +695,11 @@ async def create_session(
     )
 
     if builder_graph_id:
+        if llm_auth_provider == "codex":
+            raise HTTPException(
+                status_code=422,
+                detail="codex_builder_session_unsupported",
+            )
         session = await get_or_create_builder_session(
             user_id,
             builder_graph_id,
@@ -529,6 +712,8 @@ async def create_session(
             dry_run=dry_run,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
             expert_id=expert_id,
         )
 
@@ -1144,7 +1329,6 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
             "header before retrying."
         },
     },
-    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def stream_chat_post(
     session_id: str,
@@ -1170,8 +1354,21 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
-    import asyncio
     import time
+
+    # Fire-and-forget; per-user Redis dedup inside the helper provides
+    # cross-process / cross-restart idempotency. Same pattern as
+    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
+    from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
+
+    # Spawned through the shared helper: the loop only holds a weak
+    # reference, so an unretained task can be GC'd mid-flight — leaving the
+    # Redis marker unwritten and making every subsequent turn redo the whole
+    # registration.
+    spawn_background_task(
+        ensure_morning_briefing_scheduled(user_id),
+        name=f"morning-briefing-register-{user_id[:12]}",
+    )
 
     stream_start_time = time.perf_counter()
     # Wall-clock arrival time, propagated to the executor so the turn-start
@@ -1187,6 +1384,11 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_session(session_id, user_id)
+    is_platform_route = session.metadata.llm_auth_provider == "platform"
+    if is_platform_route:
+        await enforce_payment_paywall(user_id)
+    elif session.metadata.llm_auth_provider == "codex":
+        await enforce_codex_access_http(user_id)
 
     # Session-anchored tenancy: the ChatSession row is the authoritative
     # org/team for every turn in it — a user whose active header org
@@ -1241,12 +1443,11 @@ async def stream_chat_post(
         },
     )
 
-    # Pre-turn rate limit check (cost-based, microdollars).
-    # Entitlement (NO_TIER + ENABLE_PLATFORM_PAYMENT) is gated upstream by
-    # the route-level ``enforce_payment_paywall`` dependency; here we only
-    # enforce per-window USD caps. Global defaults sourced from
-    # LaunchDarkly, falling back to config.
-    if user_id:
+    # Subscription-backed Codex turns do not spend platform model dollars, so
+    # neither the platform paywall nor its USD usage windows apply. Admission,
+    # pending-message frequency, and concurrent-turn caps remain enforced by
+    # the shared scheduling path below.
+    if user_id and is_platform_route:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(
                 user_id,
@@ -1307,6 +1508,8 @@ async def stream_chat_post(
             team_id=turn_team_id,
             mode=request.mode,
             model=request.model,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
             permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
         )
@@ -1329,6 +1532,8 @@ async def stream_chat_post(
                 file_ids=sanitized_file_ids,
                 mode=request.mode,
                 model=request.model,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
                 permissions=(
                     builder_permissions.model_dump(exclude_none=True)
                     if builder_permissions
@@ -1512,7 +1717,9 @@ async def queue_pending_message(
     user_id: str = Security(auth.get_user_id),
 ):
     """Queue a follow-up message while the session has an active turn."""
-    await _validate_and_get_session(session_id, user_id)
+    session = await _validate_and_get_session(session_id, user_id)
+    if session.metadata.llm_auth_provider == "codex":
+        await enforce_codex_access_http(user_id)
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
     except StreamRegistryUnavailable as exc:

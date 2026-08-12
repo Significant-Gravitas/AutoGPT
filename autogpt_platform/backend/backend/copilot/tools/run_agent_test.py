@@ -5,6 +5,7 @@ import orjson
 import pytest
 
 from backend.data.execution import ExecutionStatus
+from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.exceptions import GraphValidationError
 
@@ -683,6 +684,105 @@ async def test_run_agent_schedule_credential_race_returns_setup_card(
     # credentials — the important thing is that the card renders instead of
     # a generic error or Builder redirect).
     assert "missing_credentials" in result_data["setup_info"]["user_readiness"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_schedule_in_expert_session_stamps_expert_id(
+    setup_test_data,
+):
+    """A schedule created from an expert-scoped chat session must carry the
+    session's expert_id, otherwise it never shows on the Team card / expert
+    page and archive-time cleanup misses it."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    expert_id = str(uuid.uuid4())
+    session = make_session(user_id=user.id, expert_id=expert_id)
+
+    fake_scheduler = AsyncMock()
+    fake_scheduler.add_execution_schedule.return_value = GraphExecutionJobInfo(
+        id=str(uuid.uuid4()),
+        name="My Schedule",
+        next_run_time="",
+        timezone="UTC",
+        user_id=user.id,
+        graph_id=str(uuid.uuid4()),
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+        expert_id=expert_id,
+    )
+
+    with patch(
+        "backend.copilot.tools.run_agent.get_scheduler_client",
+        return_value=fake_scheduler,
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=agent_marketplace_id,
+            inputs={"test_input": "value"},
+            schedule_name="My Schedule",
+            cron="0 9 * * *",
+            dry_run=False,
+            session=session,
+        )
+
+    assert response is not None
+    assert fake_scheduler.add_execution_schedule.await_count == 1
+    schedule_kwargs = fake_scheduler.add_execution_schedule.await_args.kwargs
+    assert schedule_kwargs["expert_id"] == expert_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_schedule_in_plain_session_has_no_expert_id(
+    setup_test_data,
+):
+    """A schedule created from a plain Autopilot session (no expert) must not
+    be expert-attributed — expert_id stays None."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    session = make_session(user_id=user.id)
+
+    fake_scheduler = AsyncMock()
+    fake_scheduler.add_execution_schedule.return_value = GraphExecutionJobInfo(
+        id=str(uuid.uuid4()),
+        name="My Schedule",
+        next_run_time="",
+        timezone="UTC",
+        user_id=user.id,
+        graph_id=str(uuid.uuid4()),
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+    )
+
+    with patch(
+        "backend.copilot.tools.run_agent.get_scheduler_client",
+        return_value=fake_scheduler,
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=agent_marketplace_id,
+            inputs={"test_input": "value"},
+            schedule_name="My Schedule",
+            cron="0 9 * * *",
+            dry_run=False,
+            session=session,
+        )
+
+    assert response is not None
+    assert fake_scheduler.add_execution_schedule.await_count == 1
+    schedule_kwargs = fake_scheduler.add_execution_schedule.await_args.kwargs
+    assert schedule_kwargs["expert_id"] is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
