@@ -176,18 +176,39 @@ jobs:
     # merge_group that is fatal: `Check PR Status` treats a non-success check as
     # a failure and GitHub ejects the PR from the merge queue. This is a guard
     # against a hung job, not a performance budget - keep it well above p99.
+    name: test (${{ matrix.python-version }}, ${{ matrix.cache-image }})
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
+        # Engine for the 3-shard cluster started below. Mirrors REDIS_IMAGE in
+        # autogpt_platform/.env.default.
+        cache-image: ["redis:7"]
+        # One extra leg on Valkey, on the newest supported Python only.
+        # `single-container/` already ships a Valkey cluster, and the cache and
+        # coordination layer uses no Redis modules and no post-7.0 command
+        # semantics — this leg is what keeps that true instead of leaving it a
+        # claim in the docs. Because the include entry would have to overwrite
+        # `cache-image` on every existing combination, Actions cannot merge it
+        # into one and adds a 4th leg instead; redis:7 coverage on 3.13 stays.
+        #
+        # `optional` makes the engine-specific steps below non-blocking (see
+        # their `continue-on-error`), because redis:7 remains the supported
+        # default and a Valkey regression should be visible without gating
+        # anyone's merge. Delete the `optional` line to promote the leg to a
+        # required one; nothing else needs to change.
+        include:
+          - python-version: "3.13"
+            cache-image: "valkey/valkey:8.1"
+            optional: true
     runs-on: ubuntu-latest
 
     services:
-      # Redis is provisioned as a real 3-shard cluster below via docker
-      # run (see the "Start Redis Cluster" step). GHA services can't
-      # override the image CMD or stand up multi-container clusters, so
-      # that setup is inlined — it mirrors the topology of the local dev
+      # The cache cluster is provisioned as a real 3-shard cluster below
+      # via docker run (see the "Start Redis Cluster" step). GHA services
+      # can't override the image CMD or stand up multi-container clusters,
+      # so that setup is inlined — it mirrors the topology of the local dev
       # compose stack (autogpt_platform/docker-compose.platform.yml) and
       # prod helm chart.
       rabbitmq:
@@ -271,7 +292,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Start Redis Cluster (3 shards)
+      - name: Start Redis Cluster (3 shards, ${{ matrix.cache-image }})
+        # Step-level, not job-level: `continue-on-error` on the *job* still
+        # leaves the job's own check run concluding `failure`, and
+        # `Check PR Status` — the only required check — fails on any check run
+        # not concluding success/skipped/neutral, so a red advisory leg would
+        # eject PRs from the merge queue. Tolerating the failure at the step
+        # level is what actually makes the job conclude `success`.
+        continue-on-error: ${{ matrix.optional || false }}
         run: |
           # 3-master Redis Cluster matching the local compose stack
           # (autogpt_platform/docker-compose.platform.yml) and prod. Each
@@ -286,14 +314,23 @@ jobs:
           # validates the full file even when only some services are ``up``
           # — pulling it in would needlessly couple CI to the full
           # local-dev stack.
+          #
+          # ``--user 999:999`` mirrors the compose stack. Both images gate
+          # their privilege drop on being invoked as their own server binary
+          # (``redis-server`` for Redis, ``valkey-server`` for Valkey) and the
+          # command below is ``redis-server``, a symlink under Valkey — so
+          # without the pin the Valkey leg would run as root while the Redis
+          # legs do not. 999 is ``redis``/``valkey`` respectively, and /data is
+          # owned by it in both images.
           docker network create redis-cluster-ci
           for i in 0 1 2; do
             port=$((17000 + i))
             bus=$((27000 + i))
             docker run -d --name redis-$i --network redis-cluster-ci \
               --network-alias redis-$i \
+              --user 999:999 \
               -p $port:$port \
-              redis:7 \
+              "$CACHE_IMAGE" \
               redis-server --port $port \
                 --cluster-enabled yes \
                 --cluster-config-file nodes.conf \
@@ -314,7 +351,7 @@ jobs:
           done
           # Form the cluster from an init container on the same network so
           # --cluster-preferred-endpoint-type hostname resolves redis-0/1/2.
-          docker run --rm --network redis-cluster-ci redis:7 \
+          docker run --rm --network redis-cluster-ci --user 999:999 "$CACHE_IMAGE" \
             redis-cli --cluster create \
               redis-0:17000 redis-1:17001 redis-2:17002 \
               --cluster-replicas 0 --cluster-yes
@@ -322,15 +359,19 @@ jobs:
           for _ in $(seq 1 30); do
             state=$(docker exec redis-0 redis-cli -p 17000 cluster info | awk -F: '/^cluster_state:/ {print $2}' | tr -d '[:cntrl:]')
             if [ "$state" = "ok" ]; then
-              echo "Redis Cluster ready (3 shards, state=ok)"
+              echo "Cluster ready ($CACHE_IMAGE, 3 shards, state=ok)"
+              docker exec redis-0 redis-cli -p 17000 info server | grep -Ei '^(redis|valkey)_version:' || true
               docker exec redis-0 redis-cli -p 17000 cluster nodes
               exit 0
             fi
             sleep 1
           done
-          echo "Redis Cluster failed to reach ok state" >&2
+          echo "Cluster ($CACHE_IMAGE) failed to reach ok state" >&2
           docker exec redis-0 redis-cli -p 17000 cluster info >&2 || true
+          docker logs redis-0 >&2 || true
           exit 1
+        env:
+          CACHE_IMAGE: ${{ matrix.cache-image }}
 
       - id: get_date
         name: Get date
@@ -444,6 +485,8 @@ jobs:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
       - name: Run pytest with coverage
+        # Advisory on the optional engine leg — see "Start Redis Cluster".
+        continue-on-error: ${{ matrix.optional || false }}
         run: |
           if [[ "${{ runner.debug }}" == "1" ]]; then
             poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG \
@@ -460,6 +503,10 @@ jobs:
           REDIS_HOST: "localhost"
           REDIS_PORT: "17000"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
+          # Without this the isolated cluster below would come up on the
+          # default engine even on a non-default leg, quietly testing Redis
+          # twice. Read only by e2e_redis_restart_test.py.
+          REDIS_IMAGE: ${{ matrix.cache-image }}
           # Opt-in: lets backend/data/e2e_redis_restart_test.py spin up its
           # own isolated 3-shard cluster (ports 27110–27112) and exercise
           # ``docker restart <shard>`` mid-stream. Off locally so a
@@ -467,7 +514,10 @@ jobs:
           E2E_RESTART_ISOLATED: "1"
 
       - name: Upload coverage reports to Codecov
-        if: ${{ !cancelled() }}
+        # Skipped on the optional engine leg: it runs the same suite as the
+        # 3.13 default leg, so its report would only duplicate a `platform-backend`
+        # upload — and a partial one if the advisory pytest step failed.
+        if: ${{ !cancelled() && !matrix.optional }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
