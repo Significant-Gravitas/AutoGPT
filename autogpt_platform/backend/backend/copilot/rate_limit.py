@@ -68,6 +68,8 @@ from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 from backend.util.subscription_tiers import (
+    SubscriptionTierUserNotFoundError,
+    get_authoritative_subscription_tier,
     invalidate_subscription_tier_auxiliary_caches,
     invalidate_subscription_tier_caches,
 )
@@ -915,27 +917,20 @@ async def _decr_counter_floor_zero(
     await redis.eval(_DECR_FLOOR_ZERO_SCRIPT, 1, key, delta)
 
 
-class _UserNotFoundError(Exception):
-    """Raised when a user record is missing or has no subscription tier.
+class _UserNotFoundError(SubscriptionTierUserNotFoundError):
+    """Raised when the authoritative user record is missing.
 
-    Raising prevents ``@cached`` from persisting the fallback, which would
-    otherwise keep serving NO_TIER after the user's real tier is set.
+    The local subtype preserves the rate-limit helper's existing contract.
     """
 
 
 @cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
-    """Fetch the user's rate-limit tier, cached across pods.
+    """Legacy rollout cache retained only so mixed-version pods can evict it.
 
-    Only successful lookups are cached. Missing users raise
-    ``_UserNotFoundError`` so ``@cached`` never stores the fallback.
-
-    Distinguishes "row genuinely missing" (``user_db().get_user_by_id``
-    raises ``ValueError``) from "transient DB / Prisma error" (other
-    exceptions propagate as-is). Without this distinction a Supabase
-    blip would silently degrade every paying user to NO_TIER and
-    ``enforce_payment_paywall`` would 402 them — contradicting its
-    503-on-blip contract.
+    New reads use the canonical generation-fenced cache below. This function's
+    name and key format remain during the rollout so writers can invalidate
+    entries still consumed by phase-one or rolled-back pods.
     """
     try:
         user = await user_db().get_user_by_id(user_id)
@@ -945,6 +940,14 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
     if user.subscription_tier:
         return SubscriptionTier(user.subscription_tier)
     raise _UserNotFoundError(user_id)
+
+
+async def _fetch_authoritative_user_tier(user_id: str) -> SubscriptionTier:
+    try:
+        tier = await get_authoritative_subscription_tier(user_id)
+    except SubscriptionTierUserNotFoundError as exc:
+        raise _UserNotFoundError(user_id) from exc
+    return SubscriptionTier(tier.value)
 
 
 _STRIPE_RECONCILE_PREFIX = "stripe_reconcile:"
@@ -989,8 +992,8 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
 async def get_user_tier(user_id: str) -> SubscriptionTier:
     """Look up the user's rate-limit tier from the database.
 
-    Successful results are cached for 5 minutes (via ``_fetch_user_tier``)
-    to avoid a DB round-trip on every rate-limit check.
+    Successful results share the canonical generation-fenced cache with
+    entitlement checks, avoiding duplicate DB lookups and cache decisions.
 
     Falls back to ``DEFAULT_TIER`` **without caching** when the DB is
     unreachable or returns an unrecognised value, so the next call retries
@@ -1002,7 +1005,7 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     """
     tier_from_db = True
     try:
-        tier = await _fetch_user_tier(user_id)
+        tier = await _fetch_authoritative_user_tier(user_id)
     except _UserNotFoundError:
         # Row missing or tier is NULL — DB-confirmed NO_TIER, eligible for reconciliation.
         tier = SubscriptionTier.NO_TIER
@@ -1021,7 +1024,7 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
 
     if tier_from_db and await _maybe_reconcile_stripe_tier(user_id):
         try:
-            return await _fetch_user_tier(user_id)
+            return await _fetch_authoritative_user_tier(user_id)
         except Exception as exc:
             logger.warning(
                 "get_user_tier: tier re-read failed after reconciliation for %s: %s",
@@ -1311,7 +1314,7 @@ async def is_user_paywalled(user_id: str) -> bool:
     background job → fail-open).
     """
     try:
-        tier = await _fetch_user_tier(user_id)
+        tier = await _fetch_authoritative_user_tier(user_id)
     except _UserNotFoundError:
         # No DB row / no subscription_tier set — fresh signup that hasn't
         # been provisioned yet, or row missing entirely. Logged at debug
@@ -1348,7 +1351,7 @@ async def enforce_payment_paywall(
     exception handler → HTTP 402) if the user is on NO_TIER with
     ``ENABLE_PLATFORM_PAYMENT`` on. Tier-lookup failures map to
     **HTTP 503 + Retry-After** so the client retries instead of
-    treating a transient Supabase / LD blip as a permanent paywall.
+    treating a transient Database Manager / LD blip as a permanent paywall.
 
     Background callers (scheduled cron, webhook handlers, copilot
     internal tools) skip this function and call :func:`is_user_paywalled`

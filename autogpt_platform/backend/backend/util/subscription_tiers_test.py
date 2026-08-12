@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from prisma.enums import SubscriptionTier
 
+from backend.util import cache as cache_module
+from backend.util import subscription_tiers
 from backend.util.subscription_tier_order import (
     SUBSCRIPTION_TIER_ORDER,
     subscription_tier_at_least,
@@ -12,10 +14,75 @@ from backend.util.subscription_tier_order import (
 from backend.util.subscription_tiers import (
     SUBSCRIPTION_TIER_GENERATION_TTL_SECONDS,
     SubscriptionTierCacheInvalidationError,
+    SubscriptionTierUserNotFoundError,
     _generation_key,
     invalidate_subscription_tier_auxiliary_caches,
     invalidate_subscription_tier_caches,
 )
+from backend.util.service import UnhealthyServiceError
+
+
+class _MemoryValueRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, bytes] = {}
+
+    def get(self, key: str) -> bytes | None:
+        return self.values.get(key)
+
+    def setex(self, key: str, _ttl: int, value: bytes) -> bool:
+        self.values[key] = value
+        return True
+
+
+class _MemoryGenerationRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+        self.fail_read = False
+        self.fail_write = False
+
+    async def eval(
+        self,
+        script: str,
+        _num_keys: int,
+        key: str,
+        value: str,
+        _ttl: int,
+    ) -> str:
+        if self.fail_read:
+            raise ConnectionError("Redis unavailable")
+        assert 'redis.call("GET"' in script
+        self.values.setdefault(key, value)
+        return self.values[key]
+
+    async def set(self, key: str, value: str, *, ex: int) -> bool:
+        if self.fail_write:
+            raise ConnectionError("Redis unavailable")
+        assert ex == SUBSCRIPTION_TIER_GENERATION_TTL_SECONDS
+        self.values[key] = value
+        return True
+
+
+@pytest.fixture
+def isolated_tier_cache(monkeypatch: pytest.MonkeyPatch):
+    values = _MemoryValueRedis()
+    generations = _MemoryGenerationRedis()
+
+    async def get_generation_redis() -> _MemoryGenerationRedis:
+        return generations
+
+    monkeypatch.setattr(cache_module, "_get_redis", lambda: values)
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_redis_async",
+        get_generation_redis,
+    )
+    return values, generations
+
+
+def _database_client(*tiers: SubscriptionTier | Exception):
+    client = MagicMock()
+    client.get_user_subscription_tier = AsyncMock(side_effect=tiers)
+    return client
 
 
 def test_subscription_tier_order_covers_every_enum_value_once():
@@ -200,3 +267,242 @@ def test_generation_key_hides_user_id_and_is_user_specific():
     assert "person@example.com" not in first
     assert first == _generation_key("person@example.com")
     assert first != second
+
+
+@pytest.mark.asyncio
+async def test_successful_lookup_is_shared_across_concurrent_callers(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_tier_cache,
+):
+    client = _database_client(SubscriptionTier.MAX)
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_database_manager_async_client",
+        lambda: client,
+    )
+
+    results = await asyncio.gather(
+        *(
+            subscription_tiers.get_authoritative_subscription_tier("same-user")
+            for _ in range(8)
+        )
+    )
+
+    assert results == [SubscriptionTier.MAX] * 8
+    client.get_user_subscription_tier.assert_awaited_once_with("same-user")
+
+
+@pytest.mark.asyncio
+async def test_different_users_are_cached_without_cross_user_leakage(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_tier_cache,
+):
+    async def read_tier(user_id: str) -> SubscriptionTier:
+        return {
+            "max-user": SubscriptionTier.MAX,
+            "pro-user": SubscriptionTier.PRO,
+        }[user_id]
+
+    client = MagicMock()
+    client.get_user_subscription_tier = AsyncMock(side_effect=read_tier)
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_database_manager_async_client",
+        lambda: client,
+    )
+
+    first = await asyncio.gather(
+        subscription_tiers.get_authoritative_subscription_tier("max-user"),
+        subscription_tiers.get_authoritative_subscription_tier("pro-user"),
+    )
+    second = await asyncio.gather(
+        subscription_tiers.get_authoritative_subscription_tier("max-user"),
+        subscription_tiers.get_authoritative_subscription_tier("pro-user"),
+    )
+
+    assert first == second == [SubscriptionTier.MAX, SubscriptionTier.PRO]
+    assert client.get_user_subscription_tier.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_missing_user_and_transient_failure_are_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_tier_cache,
+):
+    client = _database_client(
+        ValueError("missing"),
+        RuntimeError("database unavailable"),
+        SubscriptionTier.BUSINESS,
+    )
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_database_manager_async_client",
+        lambda: client,
+    )
+
+    with pytest.raises(SubscriptionTierUserNotFoundError):
+        await subscription_tiers.get_authoritative_subscription_tier("retry-user")
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await subscription_tiers.get_authoritative_subscription_tier("retry-user")
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("retry-user")
+        == SubscriptionTier.BUSINESS
+    )
+    assert client.get_user_subscription_tier.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_unhealthy_database_manager_is_not_mapped_to_missing_user(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_tier_cache,
+):
+    client = _database_client(
+        UnhealthyServiceError("database manager unavailable"),
+        SubscriptionTier.MAX,
+    )
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_database_manager_async_client",
+        lambda: client,
+    )
+
+    with pytest.raises(UnhealthyServiceError, match="database manager unavailable"):
+        await subscription_tiers.get_authoritative_subscription_tier("health-outage")
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("health-outage")
+        == SubscriptionTier.MAX
+    )
+    assert client.get_user_subscription_tier.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_invalidation_is_selective(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_tier_cache,
+):
+    client = _database_client(
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+        SubscriptionTier.PRO,
+    )
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_database_manager_async_client",
+        lambda: client,
+    )
+
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("changed-user")
+        == SubscriptionTier.MAX
+    )
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("stable-user")
+        == SubscriptionTier.BUSINESS
+    )
+
+    legacy_delete = MagicMock()
+    await invalidate_subscription_tier_caches("changed-user", legacy_delete)
+
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("changed-user")
+        == SubscriptionTier.PRO
+    )
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("stable-user")
+        == SubscriptionTier.BUSINESS
+    )
+    legacy_delete.assert_called_once_with("changed-user")
+    assert client.get_user_subscription_tier.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_invalidation_fences_an_in_flight_stale_fill(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_tier_cache,
+):
+    first_read_started = asyncio.Event()
+    release_first_read = asyncio.Event()
+    calls = 0
+
+    async def read_tier(_user_id: str) -> SubscriptionTier:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            first_read_started.set()
+            await release_first_read.wait()
+            return SubscriptionTier.MAX
+        return SubscriptionTier.PRO
+
+    client = MagicMock()
+    client.get_user_subscription_tier = AsyncMock(side_effect=read_tier)
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_database_manager_async_client",
+        lambda: client,
+    )
+
+    stale_read = asyncio.create_task(
+        subscription_tiers.get_authoritative_subscription_tier("downgraded-user")
+    )
+    await first_read_started.wait()
+    await invalidate_subscription_tier_caches("downgraded-user", MagicMock())
+    release_first_read.set()
+
+    assert await stale_read == SubscriptionTier.MAX
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("downgraded-user")
+        == SubscriptionTier.PRO
+    )
+    assert client.get_user_subscription_tier.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_evicted_generation_never_reuses_an_old_cache_key(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_tier_cache,
+):
+    client = _database_client(SubscriptionTier.MAX, SubscriptionTier.PRO)
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_database_manager_async_client",
+        lambda: client,
+    )
+
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("evicted-user")
+        == SubscriptionTier.MAX
+    )
+    _, generations = isolated_tier_cache
+    generations.values.clear()
+
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("evicted-user")
+        == SubscriptionTier.PRO
+    )
+    assert client.get_user_subscription_tier.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_generation_read_failure_bypasses_value_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_tier_cache,
+):
+    client = _database_client(SubscriptionTier.MAX, SubscriptionTier.PRO)
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_database_manager_async_client",
+        lambda: client,
+    )
+    values, generations = isolated_tier_cache
+    generations.fail_read = True
+
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("redis-down")
+        == SubscriptionTier.MAX
+    )
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("redis-down")
+        == SubscriptionTier.PRO
+    )
+    assert values.values == {}
+    assert client.get_user_subscription_tier.await_count == 2

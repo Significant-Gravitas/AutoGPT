@@ -5,9 +5,12 @@ from typing import Mapping
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, ConfigDict
 
-from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import BehaveAs, Settings
 from backend.util.subscription_tier_order import subscription_tier_at_least
+from backend.util.subscription_tiers import (
+    SubscriptionTierUserNotFoundError,
+    get_authoritative_subscription_tier,
+)
 
 
 class Entitlement(str, Enum):
@@ -43,18 +46,10 @@ class EntitlementRequiredError(Exception):
 
 
 async def _get_user_subscription_tier(user_id: str) -> SubscriptionTier:
-    """Resolve a tier through DatabaseManager without caching this result.
-
-    A missing user has no entitlement. Other database and transport failures
-    propagate so callers can retry instead of treating an outage as a denial.
-    """
     try:
-        tier = await get_database_manager_async_client().get_user_subscription_tier(
-            user_id
-        )
-    except ValueError:
+        return await get_authoritative_subscription_tier(user_id)
+    except SubscriptionTierUserNotFoundError:
         return SubscriptionTier.NO_TIER
-    return SubscriptionTier(tier)
 
 
 async def has_entitlement(user_id: str, entitlement: Entitlement) -> bool:

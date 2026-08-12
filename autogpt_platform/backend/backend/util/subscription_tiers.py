@@ -5,12 +5,27 @@ import uuid
 from collections.abc import Callable
 from typing import Any, cast
 
+from prisma.enums import SubscriptionTier
+
 from backend.data.redis_client import get_redis_async
+from backend.util.cache import cached
+from backend.util.clients import get_database_manager_async_client
+from backend.util.service import UnhealthyServiceError
 
 logger = logging.getLogger(__name__)
 
+SUBSCRIPTION_TIER_CACHE_TTL_SECONDS = 300
 SUBSCRIPTION_TIER_GENERATION_TTL_SECONDS = 3600
 _GENERATION_KEY_PREFIX = "subscription-tier-cache:generation:"
+_GET_OR_CREATE_GENERATION_SCRIPT = """
+local generation = redis.call("GET", KEYS[1])
+if generation then
+    redis.call("EXPIRE", KEYS[1], ARGV[2])
+    return generation
+end
+redis.call("SET", KEYS[1], ARGV[1], "EX", ARGV[2])
+return ARGV[1]
+"""
 
 
 class SubscriptionTierCacheInvalidationError(RuntimeError):
@@ -22,6 +37,10 @@ class SubscriptionTierCacheInvalidationError(RuntimeError):
             "Subscription tier was updated, but cache invalidation failed for: "
             + ", ".join(failed_caches)
         )
+
+
+class SubscriptionTierUserNotFoundError(Exception):
+    pass
 
 
 def _generation_key(user_id: str) -> str:
@@ -41,6 +60,71 @@ async def _rotate_subscription_tier_generation(user_id: str) -> None:
     )
     if not written:
         raise RuntimeError("Redis did not acknowledge the generation update")
+
+
+async def _read_subscription_tier_generation(user_id: str) -> str | None:
+    try:
+        redis = await get_redis_async()
+        generation = await cast(Any, redis.eval)(
+            _GET_OR_CREATE_GENERATION_SCRIPT,
+            1,
+            _generation_key(user_id),
+            uuid.uuid4().hex,
+            SUBSCRIPTION_TIER_GENERATION_TTL_SECONDS,
+        )
+        if isinstance(generation, bytes):
+            generation = generation.decode()
+        if not isinstance(generation, str) or not generation:
+            raise RuntimeError("Redis returned an invalid tier-cache generation")
+        return generation
+    except Exception as exc:
+        logger.warning(
+            "Subscription-tier cache generation unavailable for user %s; "
+            "bypassing cache: %s",
+            user_id[:8],
+            exc,
+        )
+        return None
+
+
+async def _load_authoritative_subscription_tier(
+    user_id: str,
+) -> SubscriptionTier:
+    try:
+        tier = await get_database_manager_async_client().get_user_subscription_tier(
+            user_id
+        )
+    except UnhealthyServiceError:
+        raise
+    except ValueError as exc:
+        raise SubscriptionTierUserNotFoundError(user_id) from exc
+    return SubscriptionTier(tier)
+
+
+@cached(
+    maxsize=1000,
+    ttl_seconds=SUBSCRIPTION_TIER_CACHE_TTL_SECONDS,
+    shared_cache=True,
+)
+async def _fetch_subscription_tier_for_generation(
+    user_id: str,
+    generation: str,
+) -> SubscriptionTier:
+    del generation
+    return await _load_authoritative_subscription_tier(user_id)
+
+
+async def get_authoritative_subscription_tier(user_id: str) -> SubscriptionTier:
+    """Return the DB-backed tier while sharing successful reads across processes.
+
+    Cache availability never becomes an authorization dependency. A generation
+    lookup failure bypasses both cache reads and writes, and missing users or DB
+    failures are raised without populating the value cache.
+    """
+    generation = await _read_subscription_tier_generation(user_id)
+    if generation is None:
+        return await _load_authoritative_subscription_tier(user_id)
+    return await _fetch_subscription_tier_for_generation(user_id, generation)
 
 
 async def _run_dual_cache_invalidation(
