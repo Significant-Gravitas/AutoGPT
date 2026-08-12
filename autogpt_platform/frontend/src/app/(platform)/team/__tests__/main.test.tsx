@@ -2,6 +2,8 @@ import {
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
+  getUpdateExpertSoulMockHandler,
+  getUpdateExpertSoulMockHandler422,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
@@ -13,9 +15,11 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
+const toastMock = vi.hoisted(() => vi.fn());
 const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
 }));
@@ -26,6 +30,15 @@ beforeEach(() => {
 
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+  toastMock.mockReset();
+});
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return { ...actual, toast: toastMock };
 });
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -70,6 +83,12 @@ const hiredMaria: Expert = {
   skills: [],
   tagline: "Grows your brand while you sleep",
   identity: "You are Maria, a senior marketing strategist.",
+  voice_preferences: "Warm, concise, and direct.",
+  boundaries: "Never invent customer evidence.",
+  protected_soul_rules: [
+    "The expert discloses that it is AI when acting externally.",
+    "External actions require approval.",
+  ],
   is_template: false,
   source_template_id: "template-maria",
   is_archived: false,
@@ -242,6 +261,161 @@ describe("TeamPage", () => {
     await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
   });
 
+  test("opens the current Soul document from the expert card", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
+
+    expect(screen.getByRole("dialog", { name: "Maria's Soul" })).toBeDefined();
+    expect(
+      (screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value,
+    ).toBe("Maria");
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Identity and personality",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe("You are Maria, a senior marketing strategist.");
+    expect(
+      (screen.getByRole("textbox", { name: "Voice" }) as HTMLTextAreaElement)
+        .value,
+    ).toBe("Warm, concise, and direct.");
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Boundaries",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe("Never invent customer evidence.");
+    expect(
+      screen.getByText(
+        "The expert discloses that it is AI when acting externally.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText("External actions require approval."),
+    ).toBeDefined();
+    expect(screen.getAllByRole("textbox")).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
+  });
+
+  test("keeps the Soul drawer mounted for its exit animation", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
+    const dialog = screen.getByRole("dialog", { name: "Maria's Soul" });
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(dialog.getAttribute("data-state")).toBe("closed");
+    });
+    expect(dialog.textContent).toContain("Maria's Soul");
+  });
+
+  test("opens only the Soul drawer when activated with the keyboard", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    const editSoul = await screen.findByRole("button", { name: "Edit Soul" });
+    editSoul.focus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByRole("dialog", { name: "Maria's Soul" })).toBeDefined();
+    expect(screen.queryByRole("dialog", { name: "Maria" })).toBeNull();
+  });
+
+  test("keeps nested card actions independent for keyboard users", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    const installWorkflow = await screen.findByRole("button", {
+      name: "Install workflow",
+    });
+    installWorkflow.focus();
+    await user.keyboard("{Enter}");
+
+    expect(
+      screen.getByRole("dialog", { name: /Install a workflow/ }),
+    ).toBeDefined();
+    expect(screen.queryByRole("dialog", { name: "Maria" })).toBeNull();
+  });
+
+  test("saves Soul edits and refreshes the experts query", async () => {
+    const user = userEvent.setup();
+    let listRequests = 0;
+    let requestBody: unknown;
+    const updatedMaria = { ...hiredMaria, name: "Mara" };
+    server.use(
+      getListExpertsMockHandler(() => {
+        listRequests += 1;
+        return listRequests === 1 ? [hiredMaria] : [updatedMaria];
+      }),
+      getUpdateExpertSoulMockHandler(async ({ request }) => {
+        requestBody = await request.json();
+        return updatedMaria;
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
+    const nameInput = screen.getByRole("textbox", { name: "Name" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "Mara");
+    await user.click(screen.getByRole("button", { name: "Save Soul" }));
+
+    await waitFor(() => expect(listRequests).toBeGreaterThan(1));
+    expect(requestBody).toEqual({
+      name: "Mara",
+      identity: hiredMaria.identity,
+      voice_preferences: hiredMaria.voice_preferences,
+      boundaries: hiredMaria.boundaries,
+    });
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Soul saved", variant: "success" }),
+    );
+  });
+
+  test("preserves Soul edits and shows feedback when saving fails", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getUpdateExpertSoulMockHandler422(),
+    );
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
+    const voiceInput = screen.getByRole("textbox", { name: "Voice" });
+    await user.clear(voiceInput);
+    await user.type(voiceInput, "Calm and conversational.");
+    await user.click(screen.getByRole("button", { name: "Save Soul" }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't save Soul",
+          variant: "destructive",
+        }),
+      ),
+    );
+    expect((voiceInput as HTMLTextAreaElement).value).toBe(
+      "Calm and conversational.",
+    );
+    expect(screen.getByRole("dialog", { name: "Maria's Soul" })).toBeDefined();
+  });
+
   test("shows empty state linking to the marketplace when no experts are hired", async () => {
     server.use(getListExpertsMockHandler([]));
 
@@ -263,6 +437,13 @@ describe("TeamPage", () => {
   });
 
   test("calls notFound() when the flag is resolved and disabled", () => {
+    let listRequests = 0;
+    server.use(
+      getListExpertsMockHandler(() => {
+        listRequests += 1;
+        return [hiredMaria];
+      }),
+    );
     setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: true });
     notFoundMock.mockClear();
 
@@ -274,5 +455,7 @@ describe("TeamPage", () => {
     }
 
     expect(notFoundMock).toHaveBeenCalled();
+    expect(listRequests).toBe(0);
+    expect(screen.queryByRole("button", { name: "Edit Soul" })).toBeNull();
   });
 });

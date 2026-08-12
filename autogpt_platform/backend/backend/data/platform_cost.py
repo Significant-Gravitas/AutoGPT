@@ -297,9 +297,8 @@ async def _ids_matching_metadata_filter(
     hydrates the full row + User join via
     ``find_many({"id": {"in": ids}})``.
 
-    Only used when ``execution_path`` or ``source`` is set. The
-    happy-path query without metadata filters stays on the typed
-    Prisma helpers for speed + type-safety.
+    The raw predicate also excludes user-subscription rows from platform-cost
+    views. Those rows remain persisted for dedicated usage reporting.
     """
     clauses: list[str] = []
     params: list = []
@@ -340,6 +339,7 @@ async def _ids_matching_metadata_filter(
         _add("metadata->>'execution_path' = {0}", execution_path)
     if source:
         _add("metadata->>'source' = {0}", source)
+    clauses.append("metadata->>'billing_mode' IS DISTINCT FROM 'user_subscription'")
 
     where_sql = " AND ".join(clauses) if clauses else "TRUE"
 
@@ -371,6 +371,7 @@ def _build_raw_where(
     block_name: str | None = None,
     tracking_type: str | None = None,
     graph_exec_id: str | None = None,
+    default_tracking_type: str | None = "cost_usd",
 ) -> tuple[str, list]:
     """Build a parameterised WHERE clause for raw SQL queries.
 
@@ -385,10 +386,13 @@ def _build_raw_where(
 
     # Always filter by tracking type — defaults to cost_usd for percentile /
     # bucket queries that only make sense on cost-denominated rows.
-    tt = tracking_type if tracking_type is not None else "cost_usd"
-    clauses.append(f'"trackingType" = ${idx}')
-    params.append(tt)
-    idx += 1
+    tt = tracking_type if tracking_type is not None else default_tracking_type
+    if tt is not None:
+        clauses.append(f'"trackingType" = ${idx}')
+        params.append(tt)
+        idx += 1
+
+    clauses.append("metadata->>'billing_mode' IS DISTINCT FROM 'user_subscription'")
 
     if start is not None:
         clauses.append(f'"createdAt" >= ${idx}::timestamptz')
@@ -428,6 +432,47 @@ def _build_raw_where(
     return (" AND ".join(clauses), params)
 
 
+async def _group_platform_cost_logs(
+    *,
+    by: tuple[str, ...],
+    sum_fields: tuple[str, ...],
+    where_sql: str,
+    params: list,
+) -> list[dict]:
+    """Run a platform-cost aggregation with the metadata exclusion applied."""
+    allowed_fields = {
+        "provider",
+        "trackingType",
+        "model",
+        "userId",
+        "costMicrodollars",
+        "inputTokens",
+        "outputTokens",
+        "cacheReadTokens",
+        "cacheCreationTokens",
+        "duration",
+        "trackingAmount",
+    }
+    if not set(by + sum_fields) <= allowed_fields:
+        raise ValueError("Unsupported PlatformCostLog aggregation field")
+
+    group_columns = ", ".join(f'"{field}"' for field in by)
+    sum_pairs = ", ".join(
+        f"'{field}', COALESCE(SUM(\"{field}\"), 0)" for field in sum_fields
+    )
+    select_parts = [group_columns]
+    if sum_pairs:
+        select_parts.append(f'jsonb_build_object({sum_pairs}) AS "_sum"')
+    select_parts.append("jsonb_build_object('_all', COUNT(*)) AS \"_count\"")
+
+    return await query_raw_with_schema(
+        f"SELECT {', '.join(select_parts)} "
+        f'FROM {{schema_prefix}}"PlatformCostLog" '
+        f"WHERE {where_sql} GROUP BY {group_columns}",
+        *params,
+    )
+
+
 @cached(ttl_seconds=30)
 async def get_platform_cost_dashboard(
     start: datetime | None = None,
@@ -453,15 +498,18 @@ async def get_platform_cost_dashboard(
     if start is None:
         start = datetime.now(timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
-    where = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type, graph_exec_id
+    raw_where_all, raw_params_all = _build_raw_where(
+        start,
+        end,
+        provider,
+        user_id,
+        model,
+        block_name,
+        tracking_type,
+        graph_exec_id,
+        default_tracking_type=None,
     )
-
-    # For per-user tracking-type breakdown we intentionally omit the
-    # tracking_type filter so cost_usd and tokens rows are always present.
-    # This ensures cost_bearing_request_count is correct even when the caller
-    # is filtering the main view by a different tracking_type.
-    where_no_tracking_type = _build_prisma_where(
+    raw_where_no_tracking_type, raw_params_no_tracking_type = _build_raw_where(
         start,
         end,
         provider,
@@ -470,17 +518,8 @@ async def get_platform_cost_dashboard(
         block_name,
         tracking_type=None,
         graph_exec_id=graph_exec_id,
+        default_tracking_type=None,
     )
-
-    sum_fields = {
-        "costMicrodollars": True,
-        "inputTokens": True,
-        "outputTokens": True,
-        "cacheReadTokens": True,
-        "cacheCreationTokens": True,
-        "duration": True,
-        "trackingAmount": True,
-    }
 
     # Build parameterised WHERE clause for the raw SQL percentile/bucket
     # queries.  Uses _build_raw_where so filter logic is shared with
@@ -501,47 +540,51 @@ async def get_platform_cost_dashboard(
 
     # Queries that always run regardless of tracking_type filter.
     common_queries = [
-        # (provider, trackingType, model) aggregation — no ORDER BY in ORM;
-        # sort by total cost descending in Python after fetch.
-        PrismaLog.prisma().group_by(
-            by=["provider", "trackingType", "model"],
-            where=where,
-            sum=sum_fields,
-            count=True,
+        _group_platform_cost_logs(
+            by=("provider", "trackingType", "model"),
+            sum_fields=(
+                "costMicrodollars",
+                "inputTokens",
+                "outputTokens",
+                "cacheReadTokens",
+                "cacheCreationTokens",
+                "duration",
+                "trackingAmount",
+            ),
+            where_sql=raw_where_all,
+            params=raw_params_all,
         ),
-        # userId aggregation — emails fetched separately below.
-        PrismaLog.prisma().group_by(
-            by=["userId"],
-            where=where,
-            sum=sum_fields,
-            count=True,
+        _group_platform_cost_logs(
+            by=("userId",),
+            sum_fields=(
+                "costMicrodollars",
+                "inputTokens",
+                "outputTokens",
+                "cacheReadTokens",
+                "cacheCreationTokens",
+                "duration",
+                "trackingAmount",
+            ),
+            where_sql=raw_where_all,
+            params=raw_params_all,
         ),
-        # Per-user cost-bearing request count: group by (userId, trackingType)
-        # so we can compute the correct denominator for per-user avg cost.
-        # Uses where_no_tracking_type so cost_usd rows are always included
-        # even when the caller filters the main view by a different tracking_type.
-        PrismaLog.prisma().group_by(
-            by=["userId", "trackingType"],
-            where=where_no_tracking_type,
-            count=True,
+        _group_platform_cost_logs(
+            by=("userId", "trackingType"),
+            sum_fields=(),
+            where_sql=raw_where_no_tracking_type,
+            params=raw_params_no_tracking_type,
         ),
-        # Distinct user count: group by userId, count groups.
-        PrismaLog.prisma().group_by(
-            by=["userId"],
-            where=where,
-            count=True,
+        _group_platform_cost_logs(
+            by=("userId",),
+            sum_fields=(),
+            where_sql=raw_where_all,
+            params=raw_params_all,
         ),
-        # Total aggregate (filtered): group by (provider, trackingType) so we can
-        # compute cost-bearing and token-bearing denominators for avg stats.
-        PrismaLog.prisma().group_by(
-            by=["provider", "trackingType"],
-            where=where,
-            sum={
-                "costMicrodollars": True,
-                "inputTokens": True,
-                "outputTokens": True,
-            },
-            count=True,
+        _group_platform_cost_logs(
+            by=("provider", "trackingType"),
+            sum_fields=("costMicrodollars", "inputTokens", "outputTokens"),
+            where_sql=raw_where_all,
+            params=raw_params_all,
         ),
         # Percentile distribution of cost per request (respects all filters).
         query_raw_with_schema(
@@ -590,19 +633,11 @@ async def get_platform_cost_dashboard(
     # tracking types and reusing it avoids a redundant full aggregation.
     if tracking_type is not None:
         common_queries.append(
-            # Total aggregate (no tracking_type filter): used to compute
-            # cost_bearing_requests and token_bearing_requests denominators so
-            # global avg stats remain meaningful when the caller filters the
-            # main view by a specific tracking_type (e.g. 'tokens').
-            PrismaLog.prisma().group_by(
-                by=["provider", "trackingType"],
-                where=where_no_tracking_type,
-                sum={
-                    "costMicrodollars": True,
-                    "inputTokens": True,
-                    "outputTokens": True,
-                },
-                count=True,
+            _group_platform_cost_logs(
+                by=("provider", "trackingType"),
+                sum_fields=("costMicrodollars", "inputTokens", "outputTokens"),
+                where_sql=raw_where_no_tracking_type,
+                params=raw_params_no_tracking_type,
             )
         )
 
@@ -794,57 +829,28 @@ async def get_platform_cost_logs(
 
     offset = (page - 1) * page_size
 
-    if execution_path or source:
-        # Metadata-filtered path: typed Prisma ``count`` (an aggregate
-        # under the hood) and ``find_many`` both reject JSON-column
-        # filters with ``Could not find field at
-        # aggregatePlatformCostLog.where.metadata.string_equals``.
-        # Use raw SQL to identify the matching IDs + total, then
-        # hydrate via ``find_many({"id": {"in": ids}})`` so the User
-        # join + return-shape match the unfiltered path.
-        ids, total = await _ids_matching_metadata_filter(
-            start=start,
-            end=end,
-            provider=provider,
-            user_id=user_id,
-            model=model,
-            block_name=block_name,
-            tracking_type=tracking_type,
-            graph_exec_id=graph_exec_id,
-            execution_path=execution_path,
-            source=source,
-            limit=page_size,
-            offset=offset,
+    ids, total = await _ids_matching_metadata_filter(
+        start=start,
+        end=end,
+        provider=provider,
+        user_id=user_id,
+        model=model,
+        block_name=block_name,
+        tracking_type=tracking_type,
+        graph_exec_id=graph_exec_id,
+        execution_path=execution_path,
+        source=source,
+        limit=page_size,
+        offset=offset,
+    )
+    if ids:
+        rows = await PrismaLog.prisma().find_many(
+            where={"id": {"in": ids}},
+            include={"User": True},
+            order=[{"createdAt": "desc"}, {"id": "desc"}],
         )
-        if ids:
-            rows = await PrismaLog.prisma().find_many(
-                where={"id": {"in": ids}},
-                include={"User": True},
-                order=[{"createdAt": "desc"}, {"id": "desc"}],
-            )
-        else:
-            rows = []
     else:
-        where = _build_prisma_where(
-            start,
-            end,
-            provider,
-            user_id,
-            model,
-            block_name,
-            tracking_type,
-            graph_exec_id,
-        )
-        total, rows = await asyncio.gather(
-            PrismaLog.prisma().count(where=where),
-            PrismaLog.prisma().find_many(
-                where=where,
-                include={"User": True},
-                order=[{"createdAt": "desc"}, {"id": "desc"}],
-                take=page_size,
-                skip=offset,
-            ),
-        )
+        rows = []
 
     logs = [
         CostLogRow(
@@ -1034,46 +1040,28 @@ async def get_platform_cost_logs_for_export(
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
-    if execution_path or source:
-        ids, _ = await _ids_matching_metadata_filter(
-            start=start,
-            end=end,
-            provider=provider,
-            user_id=user_id,
-            model=model,
-            block_name=block_name,
-            tracking_type=tracking_type,
-            graph_exec_id=graph_exec_id,
-            execution_path=execution_path,
-            source=source,
-            limit=EXPORT_MAX_ROWS + 1,
-            offset=0,
-        )
-        if ids:
-            rows = await PrismaLog.prisma().find_many(
-                where={"id": {"in": ids}},
-                include={"User": True},
-                order=[{"createdAt": "desc"}, {"id": "desc"}],
-            )
-        else:
-            rows = []
-    else:
-        where = _build_prisma_where(
-            start,
-            end,
-            provider,
-            user_id,
-            model,
-            block_name,
-            tracking_type,
-            graph_exec_id,
-        )
+    ids, _ = await _ids_matching_metadata_filter(
+        start=start,
+        end=end,
+        provider=provider,
+        user_id=user_id,
+        model=model,
+        block_name=block_name,
+        tracking_type=tracking_type,
+        graph_exec_id=graph_exec_id,
+        execution_path=execution_path,
+        source=source,
+        limit=EXPORT_MAX_ROWS + 1,
+        offset=0,
+    )
+    if ids:
         rows = await PrismaLog.prisma().find_many(
-            where=where,
+            where={"id": {"in": ids}},
             include={"User": True},
             order=[{"createdAt": "desc"}, {"id": "desc"}],
-            take=EXPORT_MAX_ROWS + 1,
         )
+    else:
+        rows = []
 
     truncated = len(rows) > EXPORT_MAX_ROWS
     rows = rows[:EXPORT_MAX_ROWS]

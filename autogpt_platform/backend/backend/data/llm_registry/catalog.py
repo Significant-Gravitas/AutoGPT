@@ -1441,11 +1441,19 @@ def _build_catalog() -> CatalogPayload:
                 cost=CatalogModelCost(run_credits=1),
             ),
         ],
-        # Routing cells deliberately ship EMPTY. Setting a cell is the
-        # explicit act of moving that (mode, tier)'s control from env vars
-        # into the catalog — shipping populated defaults would silently
-        # shadow the CHAT_*_MODEL env config of any deployment whose env
-        # differs from code defaults, and would flip models during LD
-        # outages. Cells apply on cloud deployments (behave_as=CLOUD) only.
-        routing={},
+        # Platform-funded Copilot cells deliberately remain env-controlled.
+        # Codex routes are pinned here, then validated against the models
+        # advertised by each connected account with safe account fallbacks.
+        routing={
+            "copilot_codex": {
+                "fast": {
+                    "standard": "gpt-5.6-luna",
+                    "advanced": "gpt-5.6-terra",
+                },
+                "thinking": {
+                    "standard": "gpt-5.6-terra",
+                    "advanced": "gpt-5.6-sol",
+                },
+            }
+        },
     )

@@ -132,6 +132,9 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           id={props.id}
           disabled={props.disabled}
           value={props.value}
+          maxLength={props.maxLength}
+          name={props.name}
+          required={props.required}
         />
       );
     }

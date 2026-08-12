@@ -2873,6 +2873,34 @@
         }
       }
     },
+    "/api/briefings/latest": {
+      "get": {
+        "tags": ["briefings"],
+        "summary": "Get Latest Briefing",
+        "description": "Return the user's current briefing, or None if there isn't a fresh one.\n\nOnly briefings covering today or yesterday qualify; anything older is\nhistory, not \"this morning\".\n\nStored content that fails to validate against the current BriefingContent\nshape (e.g. written by an older/newer version of the composer) is skipped\nrather than 500ing the request — and rather than hiding every older\nbriefing behind one unreadable row on the newest date.",
+        "operationId": "getBriefingsGet latest briefing",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/BriefingResponse" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Getbriefingsget Latest Briefing"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/builder/blocks": {
       "get": {
         "tags": ["v2"],
@@ -4070,6 +4098,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuggestedPromptsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/transports": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Chat Transports",
+        "operationId": "getV2ListChatTransports",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTransportsResponse"
                 }
               }
             }
@@ -5632,6 +5683,52 @@
         }
       }
     },
+    "/api/experts/{expert_id}/soul": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Soul",
+        "operationId": "update_expert_soul",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertSoulUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/workflows": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -6536,6 +6633,29 @@
         }
       }
     },
+    "/api/home": {
+      "get": {
+        "tags": ["home", "private"],
+        "summary": "Get Home Dashboard",
+        "operationId": "get_home_dashboard",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeDashboardResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -6556,6 +6676,92 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/integrations/codex/credentials/{credential_id}/account": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Codex Account",
+        "operationId": "getV1CodexAccount",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexAccountSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/codex/credentials/{credential_id}/rate-limits": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Codex Rate Limits",
+        "operationId": "getV1CodexRateLimits",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexRateLimitsSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/integrations/credentials": {
@@ -6604,7 +6810,8 @@
               }
             }
           }
-        }
+        },
+        "security": [{ "HTTPBearer": [] }]
       }
     },
     "/api/integrations/providers/constants": {
@@ -9340,7 +9547,10 @@
                 "CONGRATS",
                 "ONBOARDING_COMPLETE",
                 "BUILDER_OPEN",
-                "CAPABILITY_CARDS"
+                "CAPABILITY_CARDS",
+                "AGENTS_TAB_INTRO",
+                "MARKETPLACE_TAB_INTRO",
+                "BUILD_TAB_INTRO"
               ],
               "type": "string",
               "title": "Step"
@@ -15054,6 +15264,11 @@
           "platform": { "type": "string", "title": "Platform" },
           "display_name": { "type": "string", "title": "Display Name" },
           "icon": { "type": "string", "title": "Icon" },
+          "server_noun": {
+            "type": "string",
+            "title": "Server Noun",
+            "default": "server"
+          },
           "add_bot_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
@@ -15068,6 +15283,12 @@
             "items": { "$ref": "#/components/schemas/PlatformLinkInfo" },
             "type": "array",
             "title": "Server Links"
+          },
+          "pending_install": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingInstallInfo" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -15126,6 +15347,153 @@
           "failed"
         ],
         "title": "BrainDumpStatus"
+      },
+      "BriefingContent": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "zero_expert_fallback": {
+            "type": "boolean",
+            "title": "Zero Expert Fallback"
+          },
+          "run_items": {
+            "items": { "$ref": "#/components/schemas/BriefingRunItem" },
+            "type": "array",
+            "title": "Run Items"
+          },
+          "decision_items": {
+            "items": { "$ref": "#/components/schemas/BriefingDecisionItem" },
+            "type": "array",
+            "title": "Decision Items"
+          },
+          "decision_total": {
+            "type": "integer",
+            "title": "Decision Total",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "timezone",
+          "zero_expert_fallback",
+          "run_items",
+          "decision_items"
+        ],
+        "title": "BriefingContent"
+      },
+      "BriefingDecisionItem": {
+        "properties": {
+          "node_exec_id": { "type": "string", "title": "Node Exec Id" },
+          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" },
+          "title": { "type": "string", "title": "Title" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "link": { "type": "string", "title": "Link" }
+        },
+        "type": "object",
+        "required": [
+          "node_exec_id",
+          "graph_exec_id",
+          "title",
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "link"
+        ],
+        "title": "BriefingDecisionItem"
+      },
+      "BriefingResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "briefing_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Briefing Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "delivered_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Delivered At"
+          },
+          "content": { "$ref": "#/components/schemas/BriefingContent" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "briefing_date",
+          "created_at",
+          "delivered_at",
+          "content"
+        ],
+        "title": "BriefingResponse"
+      },
+      "BriefingRunItem": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "agent_name",
+          "graph_id",
+          "execution_id",
+          "library_agent_id",
+          "status",
+          "summary",
+          "link"
+        ],
+        "title": "BriefingRunItem"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -15213,6 +15581,16 @@
             "title": "Dry Run",
             "default": false
           },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Credential Id"
+          },
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
@@ -15266,6 +15644,43 @@
         "type": "object",
         "title": "ChatShareStateResponse",
         "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state — sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
+      },
+      "ChatTransportResponse": {
+        "properties": {
+          "auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Auth Provider"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "label": { "type": "string", "title": "Label" },
+          "available": { "type": "boolean", "title": "Available" },
+          "default": { "type": "boolean", "title": "Default" }
+        },
+        "type": "object",
+        "required": [
+          "auth_provider",
+          "credential_id",
+          "label",
+          "available",
+          "default"
+        ],
+        "title": "ChatTransportResponse"
+      },
+      "ChatTransportsResponse": {
+        "properties": {
+          "transports": {
+            "items": { "$ref": "#/components/schemas/ChatTransportResponse" },
+            "type": "array",
+            "title": "Transports"
+          }
+        },
+        "type": "object",
+        "required": ["transports"],
+        "title": "ChatTransportsResponse"
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -15333,6 +15748,96 @@
         "type": "object",
         "title": "CoPilotUsagePublic",
         "description": "Current usage status for a user — public (client-safe) shape."
+      },
+      "CodexAccountSnapshot": {
+        "properties": {
+          "connected": { "type": "boolean", "title": "Connected" },
+          "requires_openai_auth": {
+            "type": "boolean",
+            "title": "Requires Openai Auth"
+          },
+          "account_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Account Type"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "plan_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["connected", "requires_openai_auth"],
+        "title": "CodexAccountSnapshot"
+      },
+      "CodexRateLimitWindow": {
+        "properties": {
+          "used_percent": { "type": "integer", "title": "Used Percent" },
+          "window_duration_mins": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Window Duration Mins"
+          },
+          "resets_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Resets At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["used_percent"],
+        "title": "CodexRateLimitWindow"
+      },
+      "CodexRateLimitsSnapshot": {
+        "properties": {
+          "plan_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Type"
+          },
+          "limit_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Limit Id"
+          },
+          "limit_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Limit Name"
+          },
+          "rate_limit_reached_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Rate Limit Reached Type"
+          },
+          "primary": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CodexRateLimitWindow" },
+              { "type": "null" }
+            ]
+          },
+          "secondary": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CodexRateLimitWindow" },
+              { "type": "null" }
+            ]
+          },
+          "has_credits": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Has Credits"
+          },
+          "unlimited_credits": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Unlimited Credits"
+          },
+          "bucket_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Bucket Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CodexRateLimitsSnapshot"
       },
       "CommunityListResponse": {
         "properties": {
@@ -15463,6 +15968,10 @@
           "server_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Server Name"
+          },
+          "return_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Return Url"
           }
         },
         "type": "object",
@@ -15482,7 +15991,11 @@
             "default": "USER"
           },
           "platform": { "type": "string", "title": "Platform" },
-          "platform_user_id": { "type": "string", "title": "Platform User Id" }
+          "platform_user_id": { "type": "string", "title": "Platform User Id" },
+          "return_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Return Url"
+          }
         },
         "type": "object",
         "required": ["success", "platform", "platform_user_id"],
@@ -15885,6 +16398,19 @@
             ],
             "title": "Builder Graph Id"
           },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Llm Credential Id"
+          },
           "expert_id": {
             "anyOf": [
               { "type": "string", "maxLength": 128 },
@@ -15908,7 +16434,11 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "default": {
+              "dry_run": false,
+              "llm_auth_provider": "platform",
+              "kind": "normal"
+            }
           },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -17111,6 +17641,16 @@
             "title": "Skills"
           },
           "identity": { "type": "string", "title": "Identity" },
+          "voice_preferences": {
+            "type": "string",
+            "title": "Voice Preferences"
+          },
+          "boundaries": { "type": "string", "title": "Boundaries" },
+          "protected_soul_rules": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Protected Soul Rules"
+          },
           "is_template": { "type": "boolean", "title": "Is Template" },
           "source_template_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -17160,6 +17700,9 @@
           "bio",
           "skills",
           "identity",
+          "voice_preferences",
+          "boundaries",
+          "protected_soul_rules",
           "is_template",
           "source_template_id",
           "is_archived",
@@ -17184,6 +17727,35 @@
         "required": ["schedule_names", "trigger_names"],
         "title": "ExpertDetachPreview",
         "description": "What archiving the expert would pause — drives the confirm dialog."
+      },
+      "ExpertSoulUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "identity": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "voice_preferences": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Voice Preferences"
+          },
+          "boundaries": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Boundaries"
+          }
+        },
+        "type": "object",
+        "required": ["name", "identity", "voice_preferences", "boundaries"],
+        "title": "ExpertSoulUpdate"
       },
       "ExpertWorkflowRef": {
         "properties": {
@@ -18406,6 +18978,351 @@
         "required": ["expert", "failed_preloads"],
         "title": "HireResult"
       },
+      "HomeAction": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "href": { "type": "string", "title": "Href" }
+        },
+        "type": "object",
+        "required": ["label", "href"],
+        "title": "HomeAction"
+      },
+      "HomeActiveTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "status": {
+            "type": "string",
+            "enum": ["running", "queued"],
+            "title": "Status"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title", "status"],
+        "title": "HomeActiveTask"
+      },
+      "HomeAgentStatus": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/HomeExpert" },
+          "status": {
+            "type": "string",
+            "enum": ["ready", "working", "needs_setup", "paused", "failed"],
+            "title": "Status"
+          },
+          "detail": { "type": "string", "title": "Detail" },
+          "next_run_time": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Next Run Time"
+          }
+        },
+        "type": "object",
+        "required": ["expert", "status", "detail"],
+        "title": "HomeAgentStatus"
+      },
+      "HomeAttentionItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["approval", "setup", "paused", "credits"],
+            "title": "Kind"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["high", "normal"],
+            "title": "Priority"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "description": { "type": "string", "title": "Description" },
+          "why_it_matters": { "type": "string", "title": "Why It Matters" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
+          "preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Preview"
+          },
+          "review": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingHumanReviewModel" },
+              { "type": "null" }
+            ]
+          },
+          "primary_action": { "$ref": "#/components/schemas/HomeAction" },
+          "secondary_action": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeAction" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "priority",
+          "title",
+          "description",
+          "why_it_matters",
+          "primary_action"
+        ],
+        "title": "HomeAttentionItem"
+      },
+      "HomeBriefing": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "window_started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window Started At"
+          },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" },
+          "routine_count": { "type": "integer", "title": "Routine Count" },
+          "outcomes": {
+            "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
+            "type": "array",
+            "title": "Outcomes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "window_started_at",
+          "completed_count",
+          "failed_count",
+          "routine_count",
+          "outcomes"
+        ],
+        "title": "HomeBriefing"
+      },
+      "HomeBriefingOutcome": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "status": {
+            "type": "string",
+            "enum": ["completed", "failed"],
+            "title": "Status"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "summary": { "type": "string", "title": "Summary" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "occurred_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Occurred At"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["id", "status", "title", "summary", "agent_name"],
+        "title": "HomeBriefingOutcome"
+      },
+      "HomeDailyActivity": {
+        "properties": {
+          "date": { "type": "string", "format": "date", "title": "Date" },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "review_count": { "type": "integer", "title": "Review Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" }
+        },
+        "type": "object",
+        "required": ["date", "completed_count", "review_count", "failed_count"],
+        "title": "HomeDailyActivity"
+      },
+      "HomeDashboardResponse": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "attention": {
+            "items": { "$ref": "#/components/schemas/HomeAttentionItem" },
+            "type": "array",
+            "title": "Attention"
+          },
+          "briefing": { "$ref": "#/components/schemas/HomeBriefing" },
+          "active_tasks": {
+            "items": { "$ref": "#/components/schemas/HomeActiveTask" },
+            "type": "array",
+            "title": "Active Tasks"
+          },
+          "upcoming_tasks": {
+            "items": { "$ref": "#/components/schemas/HomeUpcomingTask" },
+            "type": "array",
+            "title": "Upcoming Tasks"
+          },
+          "team": { "$ref": "#/components/schemas/HomeTeamSummary" },
+          "agents": {
+            "items": { "$ref": "#/components/schemas/HomeAgentStatus" },
+            "type": "array",
+            "title": "Agents"
+          },
+          "week": { "$ref": "#/components/schemas/HomeWeekSummary" }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "timezone",
+          "attention",
+          "briefing",
+          "active_tasks",
+          "upcoming_tasks",
+          "team",
+          "agents",
+          "week"
+        ],
+        "title": "HomeDashboardResponse"
+      },
+      "HomeExpert": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "role", "avatar_url"],
+        "title": "HomeExpert"
+      },
+      "HomeTeamSummary": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "ready": { "type": "integer", "title": "Ready" },
+          "working": { "type": "integer", "title": "Working" },
+          "needs_attention": { "type": "integer", "title": "Needs Attention" }
+        },
+        "type": "object",
+        "required": ["total", "ready", "working", "needs_attention"],
+        "title": "HomeTeamSummary"
+      },
+      "HomeUpcomingTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "kind": {
+            "type": "string",
+            "enum": ["agent", "followup"],
+            "title": "Kind"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "next_run_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Run Time"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title", "kind", "next_run_time"],
+        "title": "HomeUpcomingTask"
+      },
+      "HomeWeekSummary": {
+        "properties": {
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "review_count": { "type": "integer", "title": "Review Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" },
+          "total_runtime_seconds": {
+            "type": "number",
+            "title": "Total Runtime Seconds"
+          },
+          "timed_run_count": { "type": "integer", "title": "Timed Run Count" },
+          "total_cost_cents": {
+            "type": "integer",
+            "title": "Total Cost Cents"
+          },
+          "credits_balance": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Credits Balance"
+          },
+          "daily": {
+            "items": { "$ref": "#/components/schemas/HomeDailyActivity" },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_count",
+          "completed_count",
+          "review_count",
+          "failed_count",
+          "total_runtime_seconds",
+          "timed_run_count",
+          "total_cost_cents",
+          "credits_balance",
+          "daily"
+        ],
+        "title": "HomeWeekSummary"
+      },
       "HostScopedCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -18525,6 +19442,11 @@
           "greeting_done": {
             "type": "boolean",
             "title": "Greeting Done",
+            "default": false
+          },
+          "greeting_pending": {
+            "type": "boolean",
+            "title": "Greeting Pending",
             "default": false
           },
           "transcript": {
@@ -19223,6 +20145,11 @@
           "server_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Server Name"
+          },
+          "server_noun": {
+            "type": "string",
+            "title": "Server Noun",
+            "default": "server"
           }
         },
         "type": "object",
@@ -19287,7 +20214,11 @@
       "LoginResponse": {
         "properties": {
           "login_url": { "type": "string", "title": "Login Url" },
-          "state_token": { "type": "string", "title": "State Token" }
+          "state_token": { "type": "string", "title": "State Token" },
+          "cancel_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cancel Url"
+          }
         },
         "type": "object",
         "required": ["login_url", "state_token"],
@@ -20119,6 +21050,23 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
+          },
+          "refresh_strategy": {
+            "type": "string",
+            "enum": ["oauth_handler", "provider_runtime"],
+            "title": "Refresh Strategy",
+            "default": "oauth_handler"
+          },
+          "provider_state": {
+            "anyOf": [
+              { "type": "string", "format": "password", "writeOnly": true },
+              { "type": "null" }
+            ],
+            "title": "Provider State"
+          },
+          "provider_state_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Provider State Version"
           }
         },
         "type": "object",
@@ -20264,7 +21212,10 @@
           "RUN_AGENTS_100",
           "BUILDER_OPEN",
           "BUILDER_RUN_AGENT",
-          "CAPABILITY_CARDS"
+          "CAPABILITY_CARDS",
+          "AGENTS_TAB_INTRO",
+          "MARKETPLACE_TAB_INTRO",
+          "BUILD_TAB_INTRO"
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
@@ -20504,6 +21455,34 @@
             "title": "Review Message",
             "description": "Optional message from the reviewer"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id",
+            "description": "Expert attributed to the requesting run"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name",
+            "description": "Display name of the agent that requested the review"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id",
+            "description": "For run deep links"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Chat session id for copilot run_block reviews"
+          },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Was Edited",
@@ -20552,6 +21531,19 @@
         ],
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
+      },
+      "PendingInstallInfo": {
+        "properties": {
+          "server_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Name"
+          },
+          "open_bot_url": { "type": "string", "title": "Open Bot Url" }
+        },
+        "type": "object",
+        "required": ["open_bot_url"],
+        "title": "PendingInstallInfo",
+        "description": "The caller added the bot to a server but hasn't linked an account yet.\n\n``open_bot_url`` deep-links into the bot's chat on the platform, where the\nnext step (the bot's Link Account prompt) is waiting."
       },
       "PhaseUsage": {
         "properties": {
@@ -22390,7 +23382,11 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "default": {
+              "dry_run": false,
+              "llm_auth_provider": "platform",
+              "kind": "normal"
+            }
           },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -25648,7 +26644,22 @@
         "properties": {
           "date": { "type": "string", "format": "date", "title": "Date" },
           "cost_cents": { "type": "integer", "title": "Cost Cents" },
-          "run_count": { "type": "integer", "title": "Run Count" }
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "success_count": {
+            "type": "integer",
+            "title": "Success Count",
+            "default": 0
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          }
         },
         "type": "object",
         "required": ["date", "cost_cents", "run_count"],
@@ -25665,6 +26676,31 @@
           "failed_cost_cents": {
             "type": "integer",
             "title": "Failed Cost Cents"
+          },
+          "success_run_count": {
+            "type": "integer",
+            "title": "Success Run Count",
+            "default": 0
+          },
+          "failed_run_count": {
+            "type": "integer",
+            "title": "Failed Run Count",
+            "default": 0
+          },
+          "review_run_count": {
+            "type": "integer",
+            "title": "Review Run Count",
+            "default": 0
+          },
+          "total_duration_seconds": {
+            "type": "number",
+            "title": "Total Duration Seconds",
+            "default": 0
+          },
+          "duration_run_count": {
+            "type": "integer",
+            "title": "Duration Run Count",
+            "default": 0
           },
           "by_agent": {
             "items": { "$ref": "#/components/schemas/UserAgentCostRollup" },
