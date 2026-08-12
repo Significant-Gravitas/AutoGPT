@@ -1,12 +1,16 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { LinkSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
 import { type LinkRow, MAX_LINKS } from "../../helpers";
+import {
+  Delete02Icon,
+  Link02Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   links: LinkRow[];
@@ -56,9 +60,9 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
               >
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center gap-2 rounded-3xl border border-zinc-200 bg-white px-4 transition-colors duration-150 focus-within:border-purple-400 focus-within:ring-1 focus-within:ring-purple-400">
-                    <LinkSimpleIcon
+                    <Icon
+                      icon={Link02Icon}
                       size={16}
-                      weight="regular"
                       className="text-zinc-400"
                     />
                     <input
@@ -76,7 +80,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                     aria-label={`Remove link ${index + 1}`}
                     onClick={() => onRemove(index)}
                   >
-                    <TrashIcon size={16} />
+                    <Icon icon={Delete02Icon} size={16} />
                   </Button>
                 </div>
               </motion.div>
@@ -94,7 +98,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
           <Button
             variant="ghost"
             size="small"
-            leftIcon={<PlusIcon size={16} />}
+            leftIcon={<Icon icon={PlusSignIcon} size={16} />}
             onClick={onAdd}
             disabled={!canAdd}
           >

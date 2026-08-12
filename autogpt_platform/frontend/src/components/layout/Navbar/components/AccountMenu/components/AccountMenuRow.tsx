@@ -1,8 +1,9 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";
-import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import Link, { useLinkStatus } from "next/link";
 import * as React from "react";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   icon: React.ReactNode;
@@ -48,7 +49,8 @@ function RowBody({
           aria-hidden="true"
         />
       ) : external ? (
-        <ArrowSquareOutIcon
+        <Icon
+          icon={LinkSquare01Icon}
           className="relative z-10 shrink-0 text-neutral-700"
           size={16}
           aria-hidden="true"

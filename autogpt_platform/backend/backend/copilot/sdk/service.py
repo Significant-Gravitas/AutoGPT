@@ -41,13 +41,23 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.copilot.model_router import (
+    ResolvedModel,
+    RoutingSource,
+    resolve_codex_model_route,
+    resolve_model_route,
+)
+from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
+from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
+from backend.integrations.codex.transport import PooledCodexRuntimeLease
+from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotLlmModel, CopilotMode
+from ..config import ChatConfig, CopilotLLMModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -61,7 +71,8 @@ from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
-from ..model_router import resolve_model
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
+
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
     override_cost_usd as _override_cost_for_moonshot,
@@ -120,6 +131,7 @@ from ..builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
+from ..expert_context import build_expert_identity_suffix
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -1562,11 +1574,15 @@ async def _apply_building_mode_restart(
             f"{log_prefix} Building-mode restart: guide suffix "
             f"empty — continuing without prompt upgrade"
         )
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id, session.expert_id
+    )
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b)
         + graphiti_supplement
         + building_suffix
+        + expert_session_suffix
     )
     sdk_options_restart = copy(sdk_options)
     sdk_options_restart.system_prompt = _build_system_prompt_value(
@@ -1942,15 +1958,17 @@ def _resolve_sdk_model() -> str | None:
 
 
 async def _resolve_thinking_model_for_user(
-    tier: "CopilotLlmModel",
+    tier: "CopilotLLMModel",
     user_id: str | None,
-) -> str:
+) -> ResolvedModel:
     """LD-aware thinking-tier model pick for a specific user.
 
     Consults ``copilot-model-routing[thinking][{tier}]`` and falls back
-    to the ``ChatConfig`` default on missing user / missing flag.
+    to the ``ChatConfig`` default on missing user / missing flag. Returns
+    the model together with which routing layer picked it, so persisted
+    assistant messages can be stamped for product-intelligence.
     """
-    return await resolve_model("thinking", tier, user_id, config=config)
+    return await resolve_model_route("thinking", tier, user_id, config=config)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -1976,11 +1994,11 @@ def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str
 
 
 async def _resolve_sdk_model_for_request(
-    model: "CopilotLlmModel | None",
+    model: "CopilotLLMModel | None",
     session_id: str,
     user_id: str | None = None,
-) -> str | None:
-    """Resolve the SDK model string for a turn.
+) -> tuple[str | None, RoutingSource]:
+    """Resolve the SDK model string for a turn, plus which layer picked it.
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
@@ -1996,9 +2014,9 @@ async def _resolve_sdk_model_for_request(
     4. ``ChatConfig`` static default for the tier.
     """
     if config.claude_agent_model:
-        return config.claude_agent_model
+        return config.claude_agent_model, "env"
 
-    tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
+    tier_name: "CopilotLLMModel" = "advanced" if model == "advanced" else "standard"
     # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
     # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
     # comparison below spuriously diverge — ``resolve_model`` already strips
@@ -2020,7 +2038,7 @@ async def _resolve_sdk_model_for_request(
     # must be honoured.  Without this, a subscription-mode deployment
     # silently ignores the ``copilot-model-routing[thinking][standard]``
     # flag entirely, which defeats the point of cohort-based routing.
-    ld_overrides_default = resolved != tier_default
+    ld_overrides_default = resolved.model != tier_default
     if (
         not ld_overrides_default
         and tier_name == "standard"
@@ -2030,9 +2048,9 @@ async def _resolve_sdk_model_for_request(
             "[SDK] [%s] Subscription default (tier=standard, LD unset)",
             session_id[:12] if session_id else "?",
         )
-        return None
+        return None, "env"
     try:
-        sdk_model = _normalize_model_name(resolved)
+        sdk_model = _normalize_model_name(resolved.model)
     except ValueError as exc:
         # The per-user LD value didn't pass ``_normalize_model_name``'s
         # vendor check (most commonly: a ``moonshotai/kimi-*`` slug on a
@@ -2054,19 +2072,27 @@ async def _resolve_sdk_model_for_request(
             "[SDK] [%s] LD model %r rejected for tier=%s (%s); falling "
             "back to tier default %s",
             session_id[:12] if session_id else "?",
-            resolved,
+            resolved.model,
             tier_name,
             exc,
             sdk_model,
         )
-        return sdk_model
+        return sdk_model, "env"
     logger.info(
         "[SDK] [%s] Resolved model for tier=%s: %s",
         session_id[:12] if session_id else "?",
         tier_name,
         sdk_model,
     )
-    return sdk_model
+    return sdk_model, resolved.source
+
+
+def _codex_gateway_usage(
+    gateway: CodexAnthropicGateway,
+) -> CodexTokenUsage | None:
+    """Read authoritative aggregate usage from a completed Codex gateway."""
+    result = gateway.result
+    return result.usage if result is not None else None
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -2149,6 +2175,54 @@ def _is_fallback_stderr(line: str) -> bool:
     without wiring up the full ``_on_stderr`` closure.
     """
     return "fallback model" in line.lower()
+
+
+_CLI_STDERR_AUTH_RE = re.compile(
+    r"(?i)(?P<prefix>\b(?:authorization|proxy-authorization|x-api-key|"
+    r"anthropic[_-]auth[_-]token)\b[\"']?\s*[:=]\s*[\"']?)"
+    r"(?:(?:bearer|basic)\s+)?[^,\s;\"'}\]]+"
+)
+
+
+def _redact_cli_stderr(line: str, *, secrets: tuple[str, ...] = ()) -> str:
+    """Remove known capabilities and authorization values from CLI logs."""
+    redacted = _CLI_STDERR_AUTH_RE.sub(r"\g<prefix>[REDACTED]", line)
+    for secret in secrets:
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
+
+
+async def _close_codex_gateway_for_finally(
+    gateway: CodexAnthropicGateway,
+    log_prefix: str,
+) -> BaseException | None:
+    """Finish gateway checkpointing and return any error for deferred raising."""
+    close_task = asyncio.create_task(gateway.close())
+    try:
+        await asyncio.shield(close_task)
+    except asyncio.CancelledError as cancellation:
+        try:
+            await close_task
+        except BaseException as cleanup_error:
+            logger.exception("%s Codex gateway cleanup failed", log_prefix)
+            return cleanup_error
+        return cancellation
+    except Exception as cleanup_error:
+        logger.exception("%s Codex gateway cleanup failed", log_prefix)
+        return cleanup_error
+    return None
+
+
+def _raise_deferred_codex_cleanup_error(
+    cleanup_error: BaseException | None,
+    turn_error: BaseException | None,
+) -> None:
+    if cleanup_error is None:
+        return
+    if turn_error is not None and turn_error is not cleanup_error:
+        raise cleanup_error from turn_error
+    raise cleanup_error
 
 
 def _build_system_prompt_value(
@@ -3913,10 +3987,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
     mode: CopilotMode | None = None,
-    model: CopilotLlmModel | None = None,
+    model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
+    credential_lease: CredentialLease | PooledCodexRuntimeLease | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -3949,6 +4024,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    # Stamping state for THIS turn: messages beyond this index were created
+    # by the current turn and get model/routing_source at persist time.
+    # Pre-feature history rows (NULL model) must never be back-stamped.
+    routing_source: "RoutingSource" = "env"
+
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
     if session.organization_id is None and organization_id:
@@ -3976,6 +4056,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
     prune_orphan_tool_calls(session.messages, log_prefix=f"[SDK] [{session_id[:12]}]")
+
+    # Capture the turn-start boundary AFTER the error-marker and orphan-tool
+    # cleanup above: those pops shrink session.messages, so a count taken
+    # before them would overshoot and leave this turn's first assistant
+    # row(s) below _stamp_turn_messages' start_index — unstamped — exactly
+    # on the error-recovery turns whose routing we most want recorded.
+    pre_turn_message_count = len(session.messages)
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
@@ -4100,6 +4187,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
+    codex_effort: "CodexReasoningEffort | None" = None
+    codex_gateway: CodexAnthropicGateway | None = None
+    deferred_codex_cleanup_error: BaseException | None = None
+    is_codex_transport = credential_lease is not None
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
     # files created during THIS turn contribute gen-IDs.  Without this
@@ -4200,11 +4291,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # guide is already in this turn's cached system prompt.
         session.sdk_turn_active = True
         session.guide_in_system_prompt = bool(builder_session_suffix)
+        expert_session_suffix = await build_expert_identity_suffix(
+            session.user_id, session.expert_id
+        )
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + graphiti_supplement
             + builder_session_suffix
+            + expert_session_suffix
         )
 
         transcript_content = _restore.transcript_content
@@ -4216,7 +4311,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        if mode == "fast":
+        if mode == "fast" and not is_codex_transport:
             # The request asked for Fast but this turn runs on the SDK
             # engine (building-mode pin or engine-switch continuation).
             # Tell stale pickers — a client that missed the original
@@ -4231,7 +4326,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             permissions=permissions,
         )
 
-        if not config.api_key and not config.use_claude_code_subscription:
+        if (
+            not is_codex_transport
+            and not config.api_key
+            and not config.use_claude_code_subscription
+        ):
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
                 "CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
@@ -4266,8 +4365,35 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Resolve model (request tier → LD per-user override → config default).
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
-        sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
-        fallback_model = _resolve_fallback_model()
+        if credential_lease is not None:
+            tier_name: "CopilotLLMModel" = (
+                "advanced" if model == "advanced" else "standard"
+            )
+            route_mode = "fast" if mode == "fast" else "thinking"
+            sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
+                route_mode,
+                tier_name,
+                credential_lease,
+            )
+            if isinstance(credential_lease, PooledCodexRuntimeLease):
+                codex_gateway = CodexAnthropicGateway(
+                    agent_session=credential_lease,
+                    model=sdk_model,
+                    effort=codex_effort,
+                )
+            else:
+                codex_gateway = CodexAnthropicGateway(
+                    credential_lease=credential_lease,
+                    model=sdk_model,
+                    effort=codex_effort,
+                )
+            await codex_gateway.start()
+            fallback_model = None
+        else:
+            sdk_model, routing_source = await _resolve_sdk_model_for_request(
+                model, session_id, user_id
+            )
+            fallback_model = _resolve_fallback_model()
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
@@ -4276,6 +4402,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id=user_id,
             sdk_cwd=sdk_cwd,
             model=_resolve_env_model(sdk_model, fallback_model),
+            codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
+            codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -4302,7 +4430,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             """Log a stderr line emitted by the Claude CLI subprocess."""
             nonlocal fallback_model_activated_per_attempt
             sid = session_id[:12] if session_id else "?"
-            logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
+            capability = codex_gateway.auth_token if codex_gateway is not None else ""
+            safe_line = _redact_cli_stderr(line, secrets=(capability,))
+            logger.info("[SDK] [%s] CLI stderr: %s", sid, safe_line.rstrip())
             # Detect SDK fallback-model activation via the module-level pure
             # helper so the detection logic can be unit-tested independently.
             # Sets the per-attempt flag which is preserved across transient
@@ -4337,27 +4467,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             cwd=sdk_cwd,
             max_buffer_size=config.claude_agent_max_buffer_size,
             stderr=_on_stderr,
-            # --- P0 guardrails ---
-            # fallback_model: SDK auto-retries with this cheaper model on
-            # 529 (overloaded) errors, avoiding user-visible failures.
-            fallback_model=fallback_model,
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
             max_turns=config.agent_max_turns,
-            # max_budget_usd: per-query spend ceiling enforced by the CLI.
-            # Sized to the smaller of the configured per-query default and
-            # the user's *actual* remaining daily/weekly USD cap so the
-            # CLI's "wrap up gracefully" reminder fires when they're close
-            # to the real limit, not the static $10 default.
-            max_budget_usd=await _resolve_dynamic_max_budget_usd(user_id),
-            # thinking: specify extended thinking mode. Thinking tokens are
-            # billed at output rate ($75/M for Opus) and account for ~54%
-            # of total cost.  The CLI silently ignores this field for
-            # models without native extended thinking, so it is safe to
-            # pass unconditionally.
-            # NOTE: Claude 4.7+ does not support capped thinking token
-            # budget: use `effort` instead to steer thinking effort.
-            thinking={"type": "adaptive"},
             # effort: applies to models with extended thinking (Sonnet,
             # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
             # extension (#12871).
@@ -4367,11 +4479,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 else (config.claude_agent_thinking_effort or "high")
             ),
         )
-        # max_thinking_tokens: legacy cost cap retained for non-4.7 models
-        # and Kimi K2.6.  Setting to 0 acts as the kill switch (same as
-        # baseline): omit the kwarg so the CLI falls back to its default.
-        if config.claude_agent_max_thinking_tokens > 0:
-            sdk_options.max_thinking_tokens = config.claude_agent_max_thinking_tokens
+        if not is_codex_transport:
+            # The Claude/OpenRouter paths use provider-USD controls. A Codex
+            # subscription consumes the connected account's allowance, so
+            # presenting a fabricated USD ceiling or provider fallback to the
+            # CLI would produce incorrect policy and accounting behavior.
+            sdk_options.fallback_model = fallback_model
+            sdk_options.max_budget_usd = await _resolve_dynamic_max_budget_usd(user_id)
+            sdk_options.thinking = {"type": "adaptive"}
+            if config.claude_agent_max_thinking_tokens > 0:
+                sdk_options.max_thinking_tokens = (
+                    config.claude_agent_max_thinking_tokens
+                )
         if sdk_model:
             sdk_options.model = sdk_model
         if config.sdk_include_partial_messages:
@@ -4564,6 +4683,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session_ctx=session_ctx_content,
                 skills_ctx=skills_ctx_content,
                 user_id=user_id,
+                expert_id=session.expert_id,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -5155,10 +5275,27 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         raise
     finally:
+        turn_error = sys.exception()
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
         # nothing to clean up here — any message pushed after that
         # point belongs to the next turn.
+
+        if codex_gateway is not None:
+            deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
+                codex_gateway,
+                log_prefix,
+            )
+
+            turn_cost_usd = None
+            codex_usage = _codex_gateway_usage(codex_gateway)
+            if codex_usage is not None:
+                turn_prompt_tokens = max(
+                    0, codex_usage.input_tokens - codex_usage.cached_input_tokens
+                )
+                turn_completion_tokens = codex_usage.output_tokens
+                turn_cache_read_tokens = codex_usage.cached_input_tokens
+                turn_cache_creation_tokens = 0
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,
@@ -5214,7 +5351,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             list(state.generation_ids) if state is not None else []
         )
         _use_openrouter_reconcile = bool(
-            config.openrouter_active
+            not is_codex_transport
+            and config.openrouter_active
             and config.sdk_reconcile_openrouter_cost
             and collected_gen_ids
         )
@@ -5233,7 +5371,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 encode_cwd_for_cli(sdk_cwd),
             )
 
-        if _use_openrouter_reconcile:
+        if is_codex_transport:
+            await persist_and_record_usage(
+                session=session,
+                user_id=user_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=0,
+                log_prefix=log_prefix,
+                cost_usd=None,
+                model=effective_model,
+                provider="codex",
+                credential_id_override=(
+                    credential_lease.credentials.id if credential_lease else None
+                ),
+                extra_metadata={"billing_mode": "user_subscription"},
+                execution_path="codex_claude_sdk",
+            )
+        elif _use_openrouter_reconcile:
             # Defer the single cost-and-rate-limit write to a background
             # task that queries OpenRouter's authoritative
             # ``/generation?id=`` for every round in this turn.  Covers
@@ -5312,6 +5468,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
+            # sdk_model (not effective_model): in subscription mode no
+            # model was requested — the CLI's default must not read as a
+            # fallback divergence against a fabricated "request".
+            _stamp_turn_messages(
+                session.messages,
+                start_index=pre_turn_message_count,
+                requested_model=sdk_model,
+                actual_model=state.observed_model if state is not None else None,
+                routing_source=routing_source,
+            )
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(
@@ -5466,6 +5632,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # Release stream lock to allow new streams for this session
             await lock.release()
 
+        _raise_deferred_codex_cleanup_error(
+            deferred_codex_cleanup_error,
+            turn_error,
+        )
+
     # -------------------------------------------------------------------------
     # Auto-continue: drain any messages the user queued AFTER the turn-start
     # drain window and process them as a new turn automatically.
@@ -5522,10 +5693,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     message=_auto_combined,
                     is_user_message=True,
                     user_id=user_id,
+                    session=session,
                     file_ids=None,
                     permissions=permissions,
                     mode=mode,
                     model=model,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                    credential_lease=credential_lease,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False
@@ -5574,3 +5749,65 @@ async def _fetch_graphiti_context(
 
     ctx = await fetch_warm_context(user_id, message or "") or ""
     return True, ctx
+
+
+def _canonical_model(model: str) -> str:
+    """Spelling-insensitive model identity for fallback detection:
+    vendor prefix stripped, dots→dashes, trailing -YYYYMMDD dropped."""
+    tail = model.lower().split("/")[-1]
+    if tail.startswith("anthropic."):
+        tail = tail[len("anthropic.") :]
+    return MODEL_DATE_SUFFIX_RE.sub("", tail.replace(".", "-"))
+
+
+def _same_model(a: str, b: str | None) -> bool:
+    return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
+def _stamp_turn_messages(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    requested_model: str | None,
+    actual_model: str | None,
+    routing_source: "RoutingSource",
+) -> None:
+    """Stamp THIS turn's assistant messages with the serving model and
+    routing layer.
+
+    The SDK adapters build messages far from the resolution context, so
+    the stamp lands at persist time — bounded to ``start_index`` (the
+    session length when the turn began) so pre-feature history rows with
+    NULL model are never back-stamped with today's values, and never
+    overwriting an already-stamped row.
+
+    ``actual_model`` is the model observed on ``AssistantMessage.model``
+    (survives retries). When it names a DIFFERENT MODEL than the requested
+    resolution the CLI's overload fallback served the turn — the stamp
+    records the actual model with ``routing_source="fallback"`` so
+    analytics never attribute a fallback-served turn to the layer that
+    routed a different model. The comparison is canonicalized (vendor
+    prefix, dot/dash, date-suffix spellings) so a spelling difference
+    between the request and the CLI's report never fakes a fallback.
+
+    ``requested_model=None`` means no specific model was requested
+    (subscription mode lets the CLI pick its default) — there is nothing
+    to diverge from, so the observed model stamps with the original
+    routing source, never "fallback".
+    """
+    model = actual_model or requested_model
+    if (
+        actual_model is not None
+        and requested_model is not None
+        and not _same_model(actual_model, requested_model)
+    ):
+        routing_source = "fallback"
+    for msg in messages[start_index:]:
+        if msg.role == "assistant" and msg.model is None:
+            msg.model = model
+            msg.routing_source = routing_source
+            if msg.sequence is not None:
+                # Row already flushed to the DB mid-turn — flag it so the
+                # save path back-fills the columns (insert only covers
+                # unsequenced rows).
+                msg.stamps_pending_save = True

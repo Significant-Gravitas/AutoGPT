@@ -1,7 +1,8 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
+import { parseAsString, useQueryState } from "nuqs";
 import { useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./helpers";
@@ -14,10 +15,18 @@ import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
+import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
+import {
+  peekGreetingDone,
+  setGreetingDone,
+  takeIntroAwaitingFollowup,
+} from "@/services/onboarding/brain-dump-handoff";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
   const lastUserIndex = messages.findLastIndex(
@@ -37,13 +46,21 @@ function hasAssistantTail(messages: UIMessage[]) {
 }
 
 export function useCopilotPage() {
-  const { isUserLoading, isLoggedIn } = useSupabase();
+  const { user, isUserLoading, isLoggedIn } = useAuth();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const expertId = isExpertsEnabled ? expertIdParam : null;
+  const { expertsById } = useExpertMap();
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
     sessionId,
+    sessionExpertId,
+    isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
@@ -58,7 +75,16 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
-  } = useChatSession({ dryRun: isDryRun });
+  } = useChatSession({ dryRun: isDryRun, expertId });
+
+  // An open session owns its identity: the URL param only describes who the
+  // NEXT session will address, and it is absent whenever a thread is reached
+  // from global search, a bookmark or a shared link.
+  const activeExpertId = sessionId ? sessionExpertId : expertId;
+  const expertIdentity =
+    isExpertsEnabled && activeExpertId
+      ? (expertsById.get(activeExpertId) ?? null)
+      : null;
 
   const {
     messages: currentMessages,
@@ -182,6 +208,24 @@ export function useCopilotPage() {
       (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
     if (!trimmed && !hasAttachments) return;
 
+    // Sending anything retires the greeting for good: flag it done on
+    // the server (kept in the DB, just never shown again) and cache the
+    // fact locally so no future visit even has to ask.
+    // Gated on the flag: the endpoint 404s without it, and because the
+    // local cache is only written on success, an ungated call retried on
+    // every single message the user ever sent.
+    if (isBrainDumpEnabled && !peekGreetingDone(user?.id)) {
+      completeGreeting(undefined, {
+        onSuccess: () => setGreetingDone(user?.id),
+        // Retiring the greeting is bookkeeping — the worst case is
+        // seeing it once more — so a failure must never surface here.
+        onError: () => undefined,
+      });
+    }
+    if (takeIntroAwaitingFollowup()) {
+      trackBrainDump("intro_followup_sent", { chars: trimmed.length });
+    }
+
     if (sessionId && isInflightRef.current) {
       if (hasAttachments) {
         toast({
@@ -261,5 +305,7 @@ export function useCopilotPage() {
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
     sessionChatStatus,
+    expertIdentity,
+    isAdoptingExpertSession,
   };
 }

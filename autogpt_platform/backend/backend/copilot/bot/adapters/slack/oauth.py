@@ -19,6 +19,7 @@ from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
+from pydantic import BaseModel
 from slack_sdk.web.async_client import AsyncWebClient
 
 from backend.data.bot_analytics import record_guild_joined
@@ -27,6 +28,7 @@ from backend.platform_linking.models import BotGuildInput, Platform
 from backend.util.settings import Settings
 
 from . import config
+from .pending import PendingSlackInstall, bot_dm_url, mark_pending
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,11 @@ _SCOPES = (
 )
 
 _STATE_TTL_SECONDS = 600
+
+# ``u`` params are minted when the Bots page renders, and the page may sit
+# open a while before the user clicks — allow much longer than the OAuth
+# round-trip itself.
+_USER_PARAM_TTL_SECONDS = 24 * 3600
 
 
 def is_enabled() -> bool:
@@ -79,13 +86,18 @@ def _redirect_uri() -> str:
     return f"{base}{CALLBACK_PATH}"
 
 
-async def _handle_install() -> Response:
+async def _handle_install(request: Request) -> Response:
+    # ``u`` is an HMAC-signed platform user id minted by the authenticated
+    # Bots settings route. Folding it into the OAuth state is what lets the
+    # callback attribute the install to an account; the public marketing-page
+    # button has no ``u`` and installs anonymously.
+    user_id = _verify_user_param(request.query_params.get("u", ""))
     params = urlencode(
         {
             "client_id": config.get_client_id(),
             "scope": ",".join(_SCOPES),
             "redirect_uri": _redirect_uri(),
-            "state": _make_state(),
+            "state": _make_state(user_id),
         }
     )
     return RedirectResponse(
@@ -101,7 +113,8 @@ async def _handle_callback(
         return _done(ok=False, detail=error)
     state = request.query_params.get("state", "")
     code = request.query_params.get("code", "")
-    if not _verify_state(state):
+    user_id = _verify_state(state)
+    if user_id is None:  # "" is a valid anonymous install; None is a bad state.
         return PlainTextResponse("invalid or expired state", status_code=400)
     if not code:
         return PlainTextResponse("missing code", status_code=400)
@@ -116,33 +129,100 @@ async def _handle_callback(
         logger.warning("Slack oauth.v2.access failed: %s", resp.get("error"))
         return _done(ok=False, detail=resp.get("error") or "exchange failed")
 
-    token = resp.get("access_token") or ""
     team = resp.get("team") or {}
-    team_id = team.get("id") or ""
-    if not token or not team_id:
+    install = _Install(
+        team_id=team.get("id") or "",
+        team_name=team.get("name"),
+        token=resp.get("access_token") or "",
+        app_id=resp.get("app_id") or "",
+        bot_user_id=resp.get("bot_user_id"),
+    )
+    if not install.token or not install.team_id:
         return _done(ok=False, detail="incomplete install response")
 
+    await _store_install(install)
+    if on_installed is not None:
+        on_installed(install.team_id)
+    if user_id:
+        await _mark_install_pending(user_id, install)
+    return _post_install_response(install)
+
+
+class _Install(BaseModel):
+    """The fields we need out of an oauth.v2.access response."""
+
+    team_id: str
+    team_name: str | None
+    token: str
+    app_id: str
+    bot_user_id: str | None
+
+
+async def _store_install(install: _Install) -> None:
     await upsert_bot_install(
         platform=Platform.SLACK,
-        team_id=team_id,
-        bot_token=token,
-        bot_user_id=resp.get("bot_user_id"),
-        app_id=resp.get("app_id"),
-        name=team.get("name"),
+        team_id=install.team_id,
+        bot_token=install.token,
+        bot_user_id=install.bot_user_id,
+        app_id=install.app_id or None,
+        name=install.team_name,
     )
-    if on_installed is not None:
-        on_installed(team_id)
     try:
         await record_guild_joined(
             BotGuildInput(
-                platform=Platform.SLACK, server_id=team_id, name=team.get("name")
+                platform=Platform.SLACK,
+                server_id=install.team_id,
+                name=install.team_name,
             )
         )
     except Exception:
         logger.warning(
-            "Failed to record BotGuild for Slack install %s", team_id, exc_info=True
+            "Failed to record BotGuild for Slack install %s",
+            install.team_id,
+            exc_info=True,
         )
-    return _done(ok=True, detail=team.get("name") or team_id)
+
+
+async def _mark_install_pending(user_id: str, install: _Install) -> None:
+    """Flag the install as awaiting the user's DM, so the Bots page can say so."""
+    await mark_pending(
+        user_id,
+        PendingSlackInstall(
+            team_id=install.team_id,
+            team_name=install.team_name,
+            app_id=install.app_id or None,
+        ),
+    )
+
+
+def _post_install_response(install: _Install) -> Response:
+    if not install.app_id:
+        return _done(ok=True, detail=install.team_name or install.team_id)
+    # Our own page rather than Slack's: it opens the bot DM via the desktop
+    # deep link and then returns the tab to the Bots settings page, so the
+    # install doesn't strand a dead browser tab.
+    return RedirectResponse(
+        _installed_page_url(
+            team_id=install.team_id,
+            app_id=install.app_id,
+            bot_user_id=install.bot_user_id,
+        )
+        or bot_dm_url(install.app_id, install.team_id),
+        status_code=302,
+    )
+
+
+def _installed_page_url(
+    *, team_id: str, app_id: str, bot_user_id: str | None
+) -> str | None:
+    """Our post-install handoff page, or None when no frontend is configured."""
+    base = (Settings().config.frontend_base_url or "").rstrip("/")
+    if not base:
+        return None
+    params = {"team": team_id, "app": app_id}
+    if bot_user_id:
+        params["bot"] = bot_user_id
+    return f"{base}/link/slack/installed?{urlencode(params)}"
 
 
 def _done(*, ok: bool, detail: str) -> Response:
@@ -160,24 +240,58 @@ def _done(*, ok: bool, detail: str) -> Response:
     return PlainTextResponse(f"Slack install failed: {detail}", status_code=400)
 
 
-def _make_state() -> str:
-    nonce = secrets.token_urlsafe(24)
-    payload = f"{nonce}.{int(time.time())}"
+def make_install_user_param(user_id: str) -> str:
+    """Signed ``u`` value the authenticated Bots route appends to the install
+    URL, so the unauthenticated OAuth flow can attribute the install to an
+    account without trusting the query string."""
+    payload = f"{user_id}.{int(time.time())}"
     return f"{payload}.{_sign(payload)}"
 
 
-def _verify_state(state: str) -> bool:
+def _verify_user_param(value: str) -> str:
+    """Return the user id from a valid ``u`` param, else "" (anonymous)."""
     try:
-        nonce, ts, sig = state.rsplit(".", 2)
+        user_id, ts, sig = value.rsplit(".", 2)
     except ValueError:
-        return False
-    payload = f"{nonce}.{ts}"
+        return ""
+    payload = f"{user_id}.{ts}"
     if not hmac.compare_digest(sig, _sign(payload)):
-        return False
+        return ""
     try:
-        return (int(time.time()) - int(ts)) <= _STATE_TTL_SECONDS
+        if (int(time.time()) - int(ts)) > _USER_PARAM_TTL_SECONDS:
+            return ""
     except ValueError:
-        return False
+        return ""
+    return user_id
+
+
+def _make_state(user_id: str = "") -> str:
+    nonce = secrets.token_urlsafe(24)
+    payload = f"{nonce}.{int(time.time())}.{user_id}"
+    return f"{payload}.{_sign(payload)}"
+
+
+def _verify_state(state: str) -> str | None:
+    """Return the embedded user id ("" for anonymous installs), or None when
+    the state is forged or expired."""
+    try:
+        payload, sig = state.rsplit(".", 1)
+    except ValueError:
+        return None
+    if not hmac.compare_digest(sig, _sign(payload)):
+        return None
+    # Split off the two fixed leading fields, not on every dot: the user id
+    # is last and a dotted one would otherwise fail attribution.
+    try:
+        _nonce, ts, user_id = payload.split(".", 2)
+    except ValueError:
+        return None
+    try:
+        if (int(time.time()) - int(ts)) > _STATE_TTL_SECONDS:
+            return None
+    except ValueError:
+        return None
+    return user_id
 
 
 def _sign(payload: str) -> str:

@@ -6,7 +6,7 @@ import {
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import { resolveResponse } from "@/app/api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLDClient } from "launchdarkly-react-client-sdk";
@@ -23,9 +23,10 @@ import {
 const LD_INIT_TIMEOUT_SECONDS = 5;
 
 // SessionStorage ceiling for the wizard. The backend's `completedSteps`
-// only records VISIT_COPILOT at the very end (the 5 in-wizard steps aren't
-// tracked individually), so resume / fast-forward guardrails are enforced
-// client-side: the user can only land on a step they've previously reached.
+// only records ONBOARDING_COMPLETE at the very end (the 5 in-wizard steps
+// aren't tracked individually), so resume / fast-forward guardrails are
+// enforced client-side: the user can only land on a step they've previously
+// reached.
 const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
 
 function parseStepParam(value: string | null, maxStep: number): Step | null {
@@ -54,7 +55,7 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn, isUserLoading, refreshSession } = useSupabase();
+  const { isLoggedIn, isUserLoading, refreshSession } = useAuth();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -92,8 +93,18 @@ export function useOnboardingPage() {
     paymentEnabledSnapshot.current = livePaymentEnabled;
   }
 
+  // Snapshotted for the same reason as the paywall flag: the brain dump
+  // and the pillboxes occupy the same step, and swapping them under a
+  // user who is already recording would drop the take.
+  const liveBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const brainDumpEnabledSnapshot = useRef<boolean | null>(null);
+  if (brainDumpEnabledSnapshot.current === null && areFlagsReady) {
+    brainDumpEnabledSnapshot.current = liveBrainDumpEnabled;
+  }
+  const isBrainDumpEnabled = brainDumpEnabledSnapshot.current ?? false;
+
   // Skip the paywall for users already on a paid tier (admin grants or
-  // pre-VISIT_COPILOT accounts) so they aren't asked to pay again to escape.
+  // pre-ONBOARDING_COMPLETE accounts) so they aren't asked to pay again to escape.
   const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
     query: {
       enabled: isLoggedIn,
@@ -167,7 +178,7 @@ export function useOnboardingPage() {
     async function checkCompletion() {
       try {
         const onboarding = await resolveResponse(getV1OnboardingState());
-        if (onboarding.completedSteps.includes("VISIT_COPILOT")) {
+        if (onboarding.completedSteps.includes("ONBOARDING_COMPLETE")) {
           clearHighestStep();
           // Clear the persisted form data without touching in-memory state.
           // `reset()` would set currentStep=1 and trip the URL-sync effect
@@ -230,7 +241,7 @@ export function useOnboardingPage() {
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
+        await postV1CompleteOnboardingStep({ step: "ONBOARDING_COMPLETE" });
         clearHighestStep();
         useOnboardingWizardStore.persist.clearStorage();
         router.replace("/copilot");
@@ -249,6 +260,7 @@ export function useOnboardingPage() {
     isLoading: isOnboardingStateLoading || !isReady,
     handlePreparingComplete,
     isPaymentEnabled,
+    isBrainDumpEnabled,
     steps,
     preparingStep,
     totalSteps,

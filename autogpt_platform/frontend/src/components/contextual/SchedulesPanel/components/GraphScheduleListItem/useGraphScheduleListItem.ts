@@ -23,10 +23,11 @@ export function useGraphScheduleListItem({ schedule }: Args) {
   const nextRunDate = schedule.next_run_time
     ? new Date(schedule.next_run_time)
     : null;
-  const nextRunLabel =
+  const nextRunRelative =
     nextRunDate && !Number.isNaN(nextRunDate.valueOf())
-      ? `Next ${formatDistanceToNow(nextRunDate, { addSuffix: true })}`
-      : "Pending";
+      ? formatDistanceToNow(nextRunDate, { addSuffix: true })
+      : null;
+  const nextRunLabel = nextRunRelative ? `Next ${nextRunRelative}` : "Pending";
   const nextRunTitle = nextRunDate ? nextRunDate.toString() : undefined;
 
   const recurrenceLabel = schedule.cron
@@ -69,6 +70,7 @@ export function useGraphScheduleListItem({ schedule }: Args) {
 
   return {
     nextRunLabel,
+    nextRunRelative,
     nextRunTitle,
     recurrenceLabel,
     agentLabel,
