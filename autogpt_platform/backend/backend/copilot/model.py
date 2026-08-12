@@ -30,7 +30,7 @@ from backend.data.redis_client import get_redis_async
 from backend.util import json
 from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
-from .config import ChatConfig
+from .config import ChatConfig, CopilotLlmAuthProvider
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -41,7 +41,15 @@ config = ChatConfig()
 # stamped column and model_router / the SDK service import the ONE
 # definition instead of re-declaring the Literal. ("fallback" is stamped,
 # never routed: it marks a CLI 529-overload fallback to a different model.)
-RoutingSource = Literal["ld", "catalog", "env", "fallback"]
+RoutingSource = Literal[
+    "ld",
+    "catalog",
+    "env",
+    "fallback",
+    "preferred",
+    "account_default",
+    "account_available",
+]
 
 
 # Redis cache key prefix for chat sessions
@@ -73,6 +81,8 @@ class ChatSessionMetadata(BaseModel):
     """
 
     dry_run: bool = False
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = None
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
@@ -115,7 +125,7 @@ class ChatMessage(BaseModel):
 
     # Which LLM served this assistant turn ("model" — visible to clients,
     # the model-badge UX) and which routing layer picked it
-    # ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+    # (platform and Codex routing sources, plus "fallback" when the CLI's
     # overload fallback served a different model than the routed one).
     # Product-intelligence mirrors these to segment quality judgments by
     # model. None on user/tool rows.
@@ -375,6 +385,8 @@ class ChatSession(ChatSessionInfo):
         source_platform: str | None = None,
         organization_id: str | None = None,
         team_id: str | None = None,
+        llm_auth_provider: CopilotLlmAuthProvider = "platform",
+        llm_credential_id: str | None = None,
         expert_id: str | None = None,
     ) -> Self:
         return cls(
@@ -390,6 +402,8 @@ class ChatSession(ChatSessionInfo):
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1153,6 +1167,8 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
@@ -1180,6 +1196,8 @@ async def create_chat_session(
         source_platform=source_platform,
         organization_id=organization_id,
         team_id=team_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
         expert_id=expert_id,
     )
 

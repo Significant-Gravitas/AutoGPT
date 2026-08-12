@@ -86,6 +86,19 @@ export type CredentialsData =
       upgradeableCredentials: CredentialsMetaResponse[];
     });
 
+export function getSupportedCredentialTypes(
+  schema: BlockIOCredentialsSubSchema,
+  discriminatorValue: string | undefined,
+) {
+  if (schema.discriminator_type_mapping) {
+    return (
+      schema.discriminator_type_mapping[discriminatorValue ?? ""] ??
+      schema.credentials_types
+    );
+  }
+  return schema.credentials_types;
+}
+
 export default function useCredentials(
   credsInputSchema: BlockIOCredentialsSubSchema,
   nodeInputValues?: Record<string, any>,
@@ -128,12 +141,18 @@ export default function useCredentials(
     return null;
   }
 
-  const supportsApiKey = credsInputSchema.credentials_types.includes("api_key");
-  const supportsOAuth2 = credsInputSchema.credentials_types.includes("oauth2");
-  const supportsUserPassword =
-    credsInputSchema.credentials_types.includes("user_password");
-  const supportsHostScoped =
-    credsInputSchema.credentials_types.includes("host_scoped");
+  const supportedTypes = getSupportedCredentialTypes(
+    credsInputSchema,
+    discriminatorValue,
+  );
+  const effectiveSchema = {
+    ...credsInputSchema,
+    credentials_types: supportedTypes,
+  };
+  const supportsApiKey = supportedTypes.includes("api_key");
+  const supportsOAuth2 = supportedTypes.includes("oauth2");
+  const supportsUserPassword = supportedTypes.includes("user_password");
+  const supportsHostScoped = supportedTypes.includes("host_scoped");
 
   // No provider means maybe it's still loading
   if (!provider) {
@@ -142,14 +161,14 @@ export default function useCredentials(
 
   const { savedCredentials, upgradeableCredentials } = classifyCredentials(
     provider.savedCredentials,
-    credsInputSchema,
+    effectiveSchema,
     discriminatorValue,
   );
 
   return {
     ...provider,
     provider: providerName,
-    schema: credsInputSchema,
+    schema: effectiveSchema,
     supportsApiKey,
     supportsOAuth2,
     supportsUserPassword,
