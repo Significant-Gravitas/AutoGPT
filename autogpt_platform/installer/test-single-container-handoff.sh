@@ -453,7 +453,7 @@ if [ "${INSTALLER_REAL_DOCKER_TEST:-false}" = true ]; then
 		real_volume="autogpt-installer-contract-smoke-${suffix}"
 		real_container="autogpt-installer-contract-smoke-${suffix}"
 		# ShellCheck cannot infer that EXIT invokes this callback.
-		# shellcheck disable=SC2317
+		# shellcheck disable=SC2317,SC2329
 		cleanup_real_contract() {
 			docker container rm -f "$real_container" >/dev/null 2>&1 || true
 			docker volume rm "$real_volume" >/dev/null 2>&1 || true
