@@ -476,6 +476,19 @@ class TestCache:
         assert lock_ref() is None
         assert len(pool) == 0
 
+    def test_async_keyed_lock_pool_isolates_event_loops(self):
+        pool = _AsyncKeyedLockPool()
+        key = (("key",), ())
+
+        async def get_lock() -> asyncio.Lock:
+            return pool.get(key)
+
+        first_loop_lock = asyncio.run(get_lock())
+        second_loop_lock = asyncio.run(get_lock())
+
+        assert first_loop_lock is not second_loop_lock
+        assert len(pool) == 2
+
     @pytest.mark.asyncio
     async def test_async_single_flight_survives_waiter_cancellation(self):
         leader_started = asyncio.Event()
