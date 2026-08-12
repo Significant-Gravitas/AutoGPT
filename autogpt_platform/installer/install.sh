@@ -199,6 +199,7 @@ path_has_extended_acl() {
 walk_existing_path() {
 	local requested="$1" current='' component owner
 	local -a components
+	[ "$requested" != / ] || return 0
 	IFS='/' read -r -a components <<<"${requested#/}"
 	for component in "${components[@]}"; do
 		case "$component" in

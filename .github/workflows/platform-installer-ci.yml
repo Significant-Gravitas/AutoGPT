@@ -88,5 +88,5 @@ jobs:
           autogpt_platform/installer/install.sh
           autogpt_platform/installer/test-single-container-handoff.sh
 
-      - name: Test macOS installer paths, ACLs, and mocked Docker handoff
-        run: bash autogpt_platform/installer/test-single-container-handoff.sh
+      - name: Test macOS installer paths, ACLs, and mocked Docker handoff with system Bash
+        run: /bin/bash autogpt_platform/installer/test-single-container-handoff.sh

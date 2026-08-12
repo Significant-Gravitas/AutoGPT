@@ -102,6 +102,7 @@ assert_fails_with 'Unknown flag: --branch' bash "$installer" --resolve-only --br
 assert_fails_with 'needs a value, not another option' bash "$installer" --release --resolve-only
 assert_fails_with 'needs a value, not another option' bash "$installer" --dir --resolve-only
 
+# macOS /bin/bash 3.2 must reject root without expanding an unset empty array.
 assert_fails_with 'Refusing broad or system install directory: /' bash "$installer" --check-dir-only --dir /
 assert_fails_with 'Refusing broad or system install directory' bash "$installer" --check-dir-only --dir "$HOME"
 assert_fails_with "contains an unsafe '.' component" bash "$installer" --check-dir-only --dir "$HOME/."
