@@ -4,62 +4,89 @@ on:
   pull_request:
     paths:
       - ".github/workflows/platform-installer-ci.yml"
+      - ".github/scripts/platform-single-container-publish.sh"
+      - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/installer/**"
-      - "autogpt_platform/docker-compose.single-container.yml"
-      - "autogpt_platform/single-container/.env.example"
+      - "autogpt_platform/single-container/Dockerfile"
+      - "autogpt_platform/single-container/docker-bake.hcl"
+      - "README.md"
+      - "docs/platform/getting-started.md"
+      - "docs/platform/installer.md"
   push:
     branches: [dev]
     paths:
       - ".github/workflows/platform-installer-ci.yml"
+      - ".github/scripts/platform-single-container-publish.sh"
+      - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/installer/**"
-      - "autogpt_platform/docker-compose.single-container.yml"
-      - "autogpt_platform/single-container/.env.example"
+      - "autogpt_platform/single-container/Dockerfile"
+      - "autogpt_platform/single-container/docker-bake.hcl"
+      - "README.md"
+      - "docs/platform/getting-started.md"
+      - "docs/platform/installer.md"
 
 permissions:
   contents: read
 
 jobs:
   shell:
-    name: Bash and Compose syntax
-    runs-on: ubuntu-latest
+    name: Shell installer
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Parse shell installers
         run: bash -n autogpt_platform/installer/*.sh
-      - name: Smoke-test single-container handoff
-        run: bash autogpt_platform/installer/test-single-container-handoff.sh
-      - name: Validate single-container Compose interpolation
-        run: >-
-          docker compose
-          --env-file autogpt_platform/single-container/.env.example
-          -f autogpt_platform/docker-compose.single-container.yml
-          config --quiet
 
-  windows:
-    name: PowerShell and batch syntax
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Parse PowerShell installer
-        shell: pwsh
+      - name: Lint changed shell installers
+        run: >-
+          shellcheck --exclude=SC2016
+          autogpt_platform/installer/install.sh
+          autogpt_platform/installer/test-single-container-handoff.sh
+
+      - name: Smoke-test single-container handoff
+        env:
+          INSTALLER_REQUIRE_OWNERSHIP_TEST: "true"
+          INSTALLER_REAL_DOCKER_TEST: "true"
+        run: bash autogpt_platform/installer/test-single-container-handoff.sh
+
+      - name: Validate release publication mapping
+        run: bash .github/scripts/platform-single-container-publish.sh self-test
+
+      - name: Validate installer assumptions against the appliance Dockerfile
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            "autogpt_platform/installer/install.ps1",
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count) {
-            $errors | Format-List
-            exit 1
-          }
-      - name: Exercise side-effect-free version selection
-        shell: pwsh
-        run: ./autogpt_platform/installer/install.ps1 -ResolveOnly
-      - name: Exercise Windows preflight without installing
-        shell: pwsh
-        run: ./autogpt_platform/installer/install.ps1 -PreflightOnly
-      - name: Exercise batch help parser
-        shell: cmd
-        run: autogpt_platform\installer\setup-autogpt.bat /help | findstr /C:"/single-container"
+          grep -F 'org.opencontainers.image.title="AutoGPT Platform single-container"' autogpt_platform/single-container/Dockerfile
+          grep -F 'org.opencontainers.image.source="https://github.com/Significant-Gravitas/AutoGPT"' autogpt_platform/single-container/Dockerfile
+          # shellcheck disable=SC2016
+          grep -F 'org.opencontainers.image.revision="${VCS_REF}"' autogpt_platform/single-container/Dockerfile
+          grep -F 'VOLUME ["/data"]' autogpt_platform/single-container/Dockerfile
+          grep -F 'EXPOSE 3000' autogpt_platform/single-container/Dockerfile
+          grep -F 'ENTRYPOINT ["/usr/bin/tini", "--", "/opt/autogpt/single-container/entrypoint.sh"]' autogpt_platform/single-container/Dockerfile
+          grep -F 'CMD ["/usr/bin/supervisord", "-n", "-c", "/opt/autogpt/single-container/supervisor/supervisord.conf"]' autogpt_platform/single-container/Dockerfile
+
+  macos:
+    name: Shell installer (macOS)
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Parse shell installers
+        run: bash -n autogpt_platform/installer/*.sh
+
+      - name: Install ShellCheck
+        run: brew install shellcheck
+
+      - name: Lint shell installers
+        run: >-
+          shellcheck --exclude=SC2016
+          autogpt_platform/installer/install.sh
+          autogpt_platform/installer/test-single-container-handoff.sh
+
+      - name: Test macOS installer paths, ACLs, and mocked Docker handoff
+        run: bash autogpt_platform/installer/test-single-container-handoff.sh

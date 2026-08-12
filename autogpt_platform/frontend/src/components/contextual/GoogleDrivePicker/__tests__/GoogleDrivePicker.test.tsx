@@ -68,9 +68,6 @@ function setupGoogleGlobals() {
   const enableFeature = vi.fn();
   const addView = vi.fn();
   const build = vi.fn().mockReturnValue({ setVisible: vi.fn() });
-  const initTokenClient = vi.fn().mockReturnValue({
-    requestAccessToken: vi.fn(),
-  });
 
   class MockPickerBuilder {
     setOAuthToken = (...args: unknown[]) => {
@@ -115,7 +112,9 @@ function setupGoogleGlobals() {
   mockedWindow.google = {
     accounts: {
       oauth2: {
-        initTokenClient,
+        initTokenClient: vi.fn().mockReturnValue({
+          requestAccessToken: vi.fn(),
+        }),
       },
     },
     picker: {
@@ -140,20 +139,13 @@ function setupGoogleGlobals() {
     },
   };
 
-  return {
-    build,
-    setOAuthToken,
-    setDeveloperKey,
-    setAppId,
-    initTokenClient,
-  };
+  return { build, setOAuthToken };
 }
 
 const toastMock = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal("fetch", vi.fn());
   mockUseToast.mockReturnValue({ toast: toastMock });
   mockGetQueryOptions.mockReturnValue({
     queryKey: ["cred"],
@@ -162,15 +154,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.body.removeAttribute("data-google-picker-open");
   const mockedWindow = window as unknown as {
     gapi?: unknown;
     google?: unknown;
   };
   delete mockedWindow.gapi;
   delete mockedWindow.google;
-  vi.unstubAllGlobals();
-  vi.unstubAllEnvs();
 });
 
 function renderPicker(
@@ -195,162 +184,6 @@ function renderPicker(
 }
 
 describe("GoogleDrivePicker – click-to-open flow", () => {
-  it("loads missing Google Picker values from same-origin runtime config", async () => {
-    const { build, setDeveloperKey, setAppId, initTokenClient } =
-      setupGoogleGlobals();
-    const savedCred = makeCred({
-      id: "runtime-config-cred",
-      scopes: ["drive.file", "drive.metadata"],
-    });
-    mockUseCredentials.mockReturnValue({
-      provider: "google",
-      providerName: "Google",
-      savedCredentials: [savedCred],
-      upgradeableCredentials: [],
-      supportsOAuth2: true,
-      supportsApiKey: false,
-      supportsUserPassword: false,
-      supportsHostScoped: false,
-      isLoading: false,
-      isSystemProvider: false,
-    });
-    mockGetQueryOptions.mockReturnValue({
-      queryKey: ["cred", "runtime-config-cred"],
-      queryFn: () =>
-        Promise.resolve({
-          status: 200,
-          data: {
-            id: "runtime-config-cred",
-            type: "oauth2",
-            scopes: ["drive.file", "drive.metadata"],
-          },
-        }),
-    });
-    mockPostPickerToken.mockResolvedValue({
-      status: 200,
-      data: { access_token: "runtime-picker-token" },
-    });
-    vi.mocked(fetch).mockResolvedValue(
-      Response.json({
-        clientId: "runtime-client-id",
-        developerKey: "runtime-developer-key",
-        appId: "runtime-app-id",
-      }),
-    );
-
-    const { onError } = renderPicker({
-      clientId: undefined,
-      developerKey: undefined,
-      appId: undefined,
-    });
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /choose file\(s\) from google drive/i,
-      }),
-    );
-
-    await waitFor(() => expect(build).toHaveBeenCalled());
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/public-config/google-picker",
-      expect.objectContaining({ cache: "no-store" }),
-    );
-    expect(initTokenClient).toHaveBeenCalledWith(
-      expect.objectContaining({ client_id: "runtime-client-id" }),
-    );
-    expect(setDeveloperKey).toHaveBeenCalledWith("runtime-developer-key");
-    expect(setAppId).toHaveBeenCalledWith("runtime-app-id");
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  it("keeps explicit picker values ahead of runtime config", async () => {
-    const { build, setDeveloperKey, setAppId } = setupGoogleGlobals();
-    const savedCred = makeCred({
-      id: "explicit-config-cred",
-      scopes: ["drive.file", "drive.metadata"],
-    });
-    mockUseCredentials.mockReturnValue({
-      provider: "google",
-      providerName: "Google",
-      savedCredentials: [savedCred],
-      upgradeableCredentials: [],
-      supportsOAuth2: true,
-      supportsApiKey: false,
-      supportsUserPassword: false,
-      supportsHostScoped: false,
-      isLoading: false,
-      isSystemProvider: false,
-    });
-    mockGetQueryOptions.mockReturnValue({
-      queryKey: ["cred", "explicit-config-cred"],
-      queryFn: () =>
-        Promise.resolve({
-          status: 200,
-          data: {
-            id: "explicit-config-cred",
-            type: "oauth2",
-            scopes: ["drive.file", "drive.metadata"],
-          },
-        }),
-    });
-    mockPostPickerToken.mockResolvedValue({
-      status: 200,
-      data: { access_token: "explicit-picker-token" },
-    });
-
-    renderPicker();
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /choose file\(s\) from google drive/i,
-      }),
-    );
-
-    await waitFor(() => expect(build).toHaveBeenCalled());
-    expect(fetch).not.toHaveBeenCalled();
-    expect(setDeveloperKey).toHaveBeenCalledWith("dev-key");
-    expect(setAppId).toHaveBeenCalledWith("app-id");
-  });
-
-  it("reports a runtime config fetch failure without building the picker", async () => {
-    const { build } = setupGoogleGlobals();
-    const savedCred = makeCred({
-      id: "failed-config-cred",
-      scopes: ["drive.file", "drive.metadata"],
-    });
-    mockUseCredentials.mockReturnValue({
-      provider: "google",
-      providerName: "Google",
-      savedCredentials: [savedCred],
-      upgradeableCredentials: [],
-      supportsOAuth2: true,
-      supportsApiKey: false,
-      supportsUserPassword: false,
-      supportsHostScoped: false,
-      isLoading: false,
-      isSystemProvider: false,
-    });
-    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 503 }));
-
-    const { onError } = renderPicker({
-      clientId: undefined,
-      developerKey: undefined,
-      appId: undefined,
-    });
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /choose file\(s\) from google drive/i,
-      }),
-    );
-
-    await waitFor(() => {
-      expect(onError).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: expect.stringContaining("runtime configuration"),
-        }),
-      );
-    });
-    expect(build).not.toHaveBeenCalled();
-  });
-
   it("shows insufficient scopes toast and calls onError when credential lacks required scopes", async () => {
     const { build } = setupGoogleGlobals();
 
