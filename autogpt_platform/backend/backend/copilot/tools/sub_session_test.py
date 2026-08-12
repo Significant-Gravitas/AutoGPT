@@ -243,14 +243,19 @@ class TestRunSubSession:
             "backend.copilot.tools.run_sub_session.get_current_permissions",
             lambda: perms,
         )
+        parent = _session("alice")
+        parent.organization_id = "org-parent"
+        parent.team_id = "team-parent"
         await RunSubSessionTool()._execute(
             user_id="alice",
-            session=_session("alice"),
+            session=parent,
             prompt="hi",
             wait_for_result=0,
         )
         mock_waiter.assert_awaited_once()
         assert mock_waiter.await_args.kwargs["permissions"] is perms
+        assert mock_waiter.await_args.kwargs["organization_id"] == "org-parent"
+        assert mock_waiter.await_args.kwargs["team_id"] == "team-parent"
 
     @pytest.mark.asyncio
     async def test_wait_for_result_zero_returns_running(

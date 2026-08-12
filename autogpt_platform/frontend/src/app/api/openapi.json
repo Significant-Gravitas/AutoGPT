@@ -3729,12 +3729,13 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": { "description": "Codex subscription required" },
           "403": {
             "description": "No longer a member of the session's organization"
           },
           "404": { "description": "Session not found or access denied" },
           "409": {
-            "description": "Session has no active turn to receive pending messages"
+            "description": "No active turn or workspace access changed"
           },
           "422": {
             "description": "Validation Error",
@@ -3746,7 +3747,7 @@
           },
           "429": { "description": "Call-frequency cap exceeded" },
           "503": {
-            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+            "description": "Chat authorization or runtime state temporarily unavailable; client should honour Retry-After before retrying."
           }
         }
       }
@@ -4021,6 +4022,9 @@
             "description": "No longer a member of the session's organization"
           },
           "404": { "description": "Session not found or access denied" },
+          "409": {
+            "description": "Workspace access changed during an active turn"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4033,7 +4037,7 @@
             "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded"
           },
           "503": {
-            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
+            "description": "Chat authorization or runtime state temporarily unavailable; client should honour Retry-After before retrying."
           }
         }
       }

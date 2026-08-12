@@ -228,6 +228,8 @@ async def get_session_tenancy_membership(
         and team_member.Team.orgId == organization_id
     )
     return SessionTenancyMembership(org_active=True, team_active=team_active)
+
+
 async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]:
     """Best-effort default org/team for tenanting newly created rows.
 

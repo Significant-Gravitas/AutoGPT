@@ -462,6 +462,7 @@ def _mock_membership_stream_internals(
     team_id: str | None,
     org_member: object,
     team_member: object,
+    turn_in_flight: bool = False,
 ):
     """Stream-endpoint stubs for tenancy tests.
 
@@ -473,17 +474,31 @@ def _mock_membership_stream_internals(
     """
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=mocker.MagicMock(organization_id=organization_id, team_id=team_id),
+        return_value=mocker.MagicMock(
+            organization_id=organization_id,
+            team_id=team_id,
+            metadata=mocker.MagicMock(
+                llm_auth_provider="platform", llm_credential_id=None
+            ),
+        ),
     )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
-        return_value=False,
+        return_value=turn_in_flight,
     )
     mock_schedule = mocker.patch(
         "backend.api.features.chat.routes.schedule_chat_turn",
         new_callable=AsyncMock,
         return_value="turn-id-mock",
+    )
+    mock_pending = mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
     )
     # Keep the tenancy assertions independent of the cost rate-limiter (which
     # reads real Redis): make the limit generous and the check a no-op so the
@@ -502,7 +517,10 @@ def _mock_membership_stream_internals(
         mocker, org_member=org_member, team_member=team_member
     )
     return types.SimpleNamespace(
-        enqueue=mock_schedule, org_find=org_find, team_find=team_find
+        enqueue=mock_schedule,
+        pending=mock_pending,
+        org_find=org_find,
+        team_find=team_find,
     )
 
 
@@ -534,6 +552,25 @@ def test_revoked_org_member_turn_is_forbidden(mocker: pytest_mock.MockerFixture)
     assert response.status_code == 403
     assert "no longer a member" in response.json()["detail"].lower()
     mocks.enqueue.assert_not_called()
+
+
+def test_turn_membership_lookup_failure_is_retryable_503(
+    mocker: pytest_mock.MockerFixture,
+):
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id="session-org",
+        team_id=None,
+        org_member=_org_member(),
+        team_member=None,
+    )
+    mocks.org_find.side_effect = RuntimeError("membership unavailable")
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "30"
+    mocks.enqueue.assert_not_awaited()
 
 
 def test_suspended_org_member_turn_is_forbidden(mocker: pytest_mock.MockerFixture):
@@ -626,6 +663,26 @@ def test_stale_team_valid_org_strips_team_to_org_home(
     assert kwargs["team_id"] is None
 
 
+def test_stale_team_cannot_feed_running_turn(
+    mocker: pytest_mock.MockerFixture,
+):
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id="session-org",
+        team_id="session-team",
+        org_member=_org_member(),
+        team_member=None,
+        turn_in_flight=True,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "follow-up"})
+
+    assert response.status_code == 409
+    assert "workspace access changed" in response.json()["detail"].lower()
+    mocks.pending.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
+
+
 def test_team_outside_session_org_strips_team_to_org_home(
     mocker: pytest_mock.MockerFixture,
 ):
@@ -694,6 +751,25 @@ def test_untagged_session_uses_ctx_org_without_membership_recheck(
     mocks.org_find.assert_not_called()
 
 
+def test_untagged_running_session_rejects_unverifiable_pending_injection(
+    mocker: pytest_mock.MockerFixture,
+):
+    mocks = _mock_membership_stream_internals(
+        mocker,
+        organization_id=None,
+        team_id=None,
+        org_member=None,
+        team_member=None,
+        turn_in_flight=True,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "follow-up"})
+
+    assert response.status_code == 409
+    assert "cannot be verified" in response.json()["detail"].lower()
+    mocks.pending.assert_not_awaited()
+
+
 def _mock_pending_message_internals(
     mocker: pytest_mock.MockerFixture,
     *,
@@ -701,11 +777,18 @@ def _mock_pending_message_internals(
     team_id: str | None,
     org_member: object,
     team_member: object,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
 ):
     """Stubs for the sibling pending-message choke point."""
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=mocker.MagicMock(organization_id=organization_id, team_id=team_id),
+        return_value=mocker.MagicMock(
+            organization_id=organization_id,
+            team_id=team_id,
+            metadata=mocker.MagicMock(
+                llm_auth_provider=llm_auth_provider, llm_credential_id=None
+            ),
+        ),
     )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
@@ -719,7 +802,16 @@ def _mock_pending_message_internals(
             buffer_length=1, max_buffer_length=10, turn_in_flight=True
         ),
     )
-    _patch_membership_reads(mocker, org_member=org_member, team_member=team_member)
+    org_find, _ = _patch_membership_reads(
+        mocker, org_member=org_member, team_member=team_member
+    )
+    codex_access = mocker.patch.object(
+        chat_routes,
+        "enforce_codex_access_http",
+        new=AsyncMock(),
+    )
+    mock_queue.org_find = org_find
+    mock_queue.codex_access = codex_access
     return mock_queue
 
 
@@ -746,6 +838,27 @@ def test_pending_message_forbidden_for_revoked_org_member(
     mock_queue.assert_not_called()
 
 
+def test_pending_membership_lookup_failure_is_retryable_503(
+    mocker: pytest_mock.MockerFixture,
+):
+    mock_queue = _mock_pending_message_internals(
+        mocker,
+        organization_id="session-org",
+        team_id=None,
+        org_member=_org_member(),
+        team_member=None,
+    )
+    mock_queue.org_find.side_effect = RuntimeError("membership unavailable")
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "follow-up"}
+    )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "30"
+    mock_queue.assert_not_awaited()
+
+
 def test_pending_message_accepted_for_active_org_member(
     mocker: pytest_mock.MockerFixture,
 ):
@@ -764,6 +877,119 @@ def test_pending_message_accepted_for_active_org_member(
 
     assert response.status_code == 200
     mock_queue.assert_awaited_once()
+
+
+def test_pending_message_rejects_untagged_running_session(
+    mocker: pytest_mock.MockerFixture,
+):
+    mock_queue = _mock_pending_message_internals(
+        mocker,
+        organization_id=None,
+        team_id=None,
+        org_member=None,
+        team_member=None,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "follow-up"}
+    )
+
+    assert response.status_code == 409
+    assert "cannot be verified" in response.json()["detail"].lower()
+    mock_queue.assert_not_awaited()
+
+
+def test_pending_message_rejects_stale_team_while_turn_is_running(
+    mocker: pytest_mock.MockerFixture,
+):
+    mock_queue = _mock_pending_message_internals(
+        mocker,
+        organization_id="session-org",
+        team_id="session-team",
+        org_member=_org_member(),
+        team_member=None,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "follow-up"}
+    )
+
+    assert response.status_code == 409
+    assert "cannot be verified" in response.json()["detail"].lower()
+    mock_queue.assert_not_awaited()
+
+
+def test_pending_stale_team_idle_session_keeps_no_active_turn_error(
+    mocker: pytest_mock.MockerFixture,
+):
+    mock_queue = _mock_pending_message_internals(
+        mocker,
+        organization_id="session-org",
+        team_id="session-team",
+        org_member=_org_member(),
+        team_member=None,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new=AsyncMock(return_value=False),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "follow-up"}
+    )
+
+    assert response.status_code == 409
+    assert "no active turn" in response.json()["detail"].lower()
+    mock_queue.assert_not_awaited()
+
+
+def test_pending_codex_revoked_org_blocks_before_entitlement(
+    mocker: pytest_mock.MockerFixture,
+):
+    mock_queue = _mock_pending_message_internals(
+        mocker,
+        organization_id="session-org",
+        team_id=None,
+        org_member=None,
+        team_member=None,
+        llm_auth_provider="codex",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "follow-up"}
+    )
+
+    assert response.status_code == 403
+    mock_queue.codex_access.assert_not_awaited()
+    mock_queue.assert_not_awaited()
+
+
+def test_pending_codex_active_org_without_entitlement_returns_402(
+    mocker: pytest_mock.MockerFixture,
+):
+    mock_queue = _mock_pending_message_internals(
+        mocker,
+        organization_id="session-org",
+        team_id=None,
+        org_member=_org_member(),
+        team_member=None,
+        llm_auth_provider="codex",
+    )
+    mock_queue.codex_access.side_effect = fastapi.HTTPException(
+        status_code=402,
+        detail="A Max plan or higher is required to use ChatGPT.",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "follow-up"}
+    )
+
+    assert response.status_code == 402
+    assert response.json()["detail"] == (
+        "A Max plan or higher is required to use ChatGPT."
+    )
+    mock_queue.codex_access.assert_awaited_once_with(TEST_USER_ID)
+    mock_queue.assert_not_awaited()
 
 
 # ─── Rate limit → 429 ─────────────────────────────────────────────────
@@ -1836,6 +2062,7 @@ def _mock_stream_queue_internals(
     turn_in_flight: bool = True,
     call_count: int = 1,
     push_length: int | None = 1,
+    organization_id: str | None = "org-1",
 ):
     """Mock dependencies for the pending-message queue path."""
     if session_exists:
@@ -1843,7 +2070,13 @@ def _mock_stream_queue_internals(
         # auto-MagicMock: the choke point re-verifies membership when it is
         # set, and a MagicMock org id would be sent to Prisma. None models a
         # legacy untagged session (the membership check is skipped).
-        mock_session = mocker.MagicMock(organization_id=None, team_id=None)
+        mock_session = mocker.MagicMock(
+            organization_id=organization_id,
+            team_id=None,
+            metadata=mocker.MagicMock(
+                llm_auth_provider="platform", llm_credential_id=None
+            ),
+        )
         mock_session.id = "sess-1"
         mocker.patch(
             "backend.api.features.chat.routes._validate_and_get_session",
@@ -1857,6 +2090,16 @@ def _mock_stream_queue_internals(
                 status_code=404, detail="Session not found."
             ),
         )
+    mocker.patch(
+        "backend.api.features.chat.routes.resolve_session_tenancy",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
@@ -2049,20 +2292,18 @@ def test_queue_pending_message_passes_none_context_when_omitted(
     assert queue_spy.await_args.kwargs["context"] is None
 
 
-def test_stream_chat_queues_legacy_inflight_post_but_returns_sse(
+def test_stream_chat_rejects_legacy_inflight_post_without_tenant_snapshot(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """POST /stream must not return JSON to an AI SDK transport."""
-    _mock_stream_queue_internals(mocker)
+    """A DB-null active turn cannot be safely authorized for injection."""
+    _mock_stream_queue_internals(mocker, organization_id=None)
 
     response = client.post(
         "/sessions/sess-1/stream",
         json={"message": "follow-up", "is_user_message": True},
     )
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/event-stream")
-    assert '"type":"finish"' in response.text
+    assert response.status_code == 409
 
 
 # ─── get_pending_messages (GET /sessions/{session_id}/messages/pending) ─────

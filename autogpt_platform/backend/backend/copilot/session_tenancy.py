@@ -9,9 +9,13 @@ who is later removed or suspended from that org would otherwise keep acting
 under the stale org through every existing session — spending credits and
 running agents under a tenancy they no longer belong to.
 
-:func:`resolve_session_tenancy` re-verifies membership at every
-turn-dispatch choke point (the HTTP ``/stream`` handler, the pending-message
-endpoint, and the queue-promotion hook), enforcing exactly the checks
+:func:`resolve_session_tenancy` is applied at complementary authorization
+boundaries: HTTP ``/stream`` and pending-message handlers reject stale access
+early, queue promotion checks queued work before claiming it, and the CoPilot
+processor re-reads authoritative database metadata immediately before either
+execution engine starts. Scheduled followups also check before creating a
+fresh session. Together these boundaries cover non-HTTP dispatch and close
+request-to-execution races while enforcing the same checks
 :func:`autogpt_libs.auth.get_request_context` runs for the *header* org:
 
 - Org is a hard gate. No ACTIVE ``OrgMember``, or a soft-deleted

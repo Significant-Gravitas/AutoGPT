@@ -1,7 +1,7 @@
 """Tests for AutoPilotBlock: recursion guard, streaming, validation, and error paths."""
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 
@@ -14,6 +14,7 @@ from backend.blocks.autopilot import (
     _check_recursion,
     _reset_recursion,
 )
+from backend.copilot.sdk.session_waiter import SessionAdmissionError
 from backend.data.execution import ExecutionContext
 
 
@@ -26,6 +27,8 @@ def _make_context(user_id: str = "test-user-123") -> ExecutionContext:
         graph_version=1,
         node_id="node-1",
         node_exec_id="nexec-1",
+        organization_id="org-exec",
+        team_id="team-exec",
     )
 
 
@@ -200,8 +203,8 @@ class TestRunValidation:
         block.create_session.assert_called_once_with(
             ctx.user_id,
             dry_run=True,
-            organization_id=None,
-            team_id=None,
+            organization_id=ctx.organization_id,
+            team_id=ctx.team_id,
             llm_auth_provider="platform",
             llm_credential_id=None,
         )
@@ -287,6 +290,9 @@ class TestRecoveryEnqueue:
             ctx.user_id,
             "do work",
             False,
+            organization_id="org-exec",
+            team_id="team-exec",
+            permissions=ANY,
         )
 
     @pytest.mark.asyncio
@@ -310,6 +316,24 @@ class TestRecoveryEnqueue:
         mock_enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
+    async def test_recovery_not_enqueued_for_admission_failure(self, block):
+        block.execute_copilot = AsyncMock(
+            side_effect=SessionAdmissionError("session_organization_access_revoked")
+        )
+        block.create_session = AsyncMock(return_value="sess-denied")
+
+        with patch("backend.blocks.autopilot._enqueue_for_recovery") as mock_enqueue:
+            outputs = {}
+            async for name, value in block.run(
+                block.Input(prompt="do work", max_recursion_depth=3),
+                execution_context=_make_context(),
+            ):
+                outputs[name] = value
+
+        assert outputs["error"] == "session_organization_access_revoked"
+        mock_enqueue.assert_not_awaited()
+
     async def test_recovery_not_enqueued_for_dry_run(self, block):
         """dry_run=True sessions must not be enqueued (no real consumers)."""
         block.execute_copilot = AsyncMock(side_effect=RuntimeError("transient"))

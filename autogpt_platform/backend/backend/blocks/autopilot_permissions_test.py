@@ -206,7 +206,9 @@ class TestMergeInheritedPermissions:
 
 @pytest.mark.asyncio
 class TestAutoPilotBlockRunPermissions:
-    async def _collect_outputs(self, block, input_data, user_id="test-user"):
+    async def _collect_outputs(
+        self, block, input_data, user_id="test-user", organization_id=None, team_id=None
+    ):
         """Helper to collect all yields from block.run()."""
         ctx = ExecutionContext(
             user_id=user_id,
@@ -214,6 +216,8 @@ class TestAutoPilotBlockRunPermissions:
             graph_exec_id="ge1",
             node_exec_id="ne1",
             node_id="n1",
+            organization_id=organization_id,
+            team_id=team_id,
         )
         outputs = {}
         async for key, val in block.run(input_data, execution_context=ctx):
@@ -252,6 +256,8 @@ class TestAutoPilotBlockRunPermissions:
 
         async def fake_execute_copilot(self_inner, **kwargs):
             captured["permissions"] = kwargs.get("permissions")
+            captured["organization_id"] = kwargs.get("organization_id")
+            captured["team_id"] = kwargs.get("team_id")
             return (
                 "ok",
                 [],
@@ -264,10 +270,14 @@ class TestAutoPilotBlockRunPermissions:
             AutoPilotBlock, "create_session", new=AsyncMock(return_value="test-sid")
         ), patch.object(AutoPilotBlock, "execute_copilot", new=fake_execute_copilot):
             inp = _make_input(tools=["run_block"], tools_exclude=False)
-            outputs = await self._collect_outputs(block, inp)
+            outputs = await self._collect_outputs(
+                block, inp, organization_id="org-exec", team_id="team-exec"
+            )
 
         assert "error" not in outputs
         perms = captured.get("permissions")
         assert isinstance(perms, CopilotPermissions)
         assert perms.tools == ["run_block"]
         assert perms.tools_exclude is False
+        assert captured["organization_id"] == "org-exec"
+        assert captured["team_id"] == "team-exec"

@@ -107,6 +107,8 @@ async def try_enqueue_turn(
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
@@ -132,6 +134,8 @@ async def try_enqueue_turn(
         file_ids=file_ids,
         mode=mode,
         model=model,
+        organization_id=organization_id,
+        team_id=team_id,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
         permissions=permissions,
@@ -150,6 +154,8 @@ async def enqueue_turn(
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
@@ -173,6 +179,9 @@ async def enqueue_turn(
         metadata["mode"] = mode
     if model is not None:
         metadata["model"] = model
+    if organization_id is not None:
+        metadata["organization_id"] = organization_id
+        metadata["team_id"] = team_id
     metadata["llm_auth_provider"] = llm_auth_provider
     if llm_credential_id is not None:
         metadata["llm_credential_id"] = llm_credential_id
@@ -264,7 +273,13 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     queued = await list_queued_sessions(user_id)
     if not queued:
         return False
-    head = queued[0]
+    # Resolve the first still-authorized session before applying provider-specific
+    # eligibility checks. A revoked head may be followed by a session using a
+    # different auth provider, whose entitlement/billing policy must govern it.
+    promotable = await _resolve_promotable_head(user_id, queued)
+    if promotable is None:
+        return False
+    head, promoted_team_id = promotable
 
     if head.metadata.llm_auth_provider == "codex":
         if not await has_codex_access(user_id):
@@ -312,15 +327,6 @@ async def dispatch_next_for_user(user_id: str) -> bool:
                 user_id,
             )
             return False
-
-    # Per-turn tenancy re-check before promoting — policy lives in
-    # ``backend/copilot/session_tenancy.py``'s module docstring.  A turn
-    # queued while the user was a member can sit here until a slot frees,
-    # and the user may have lost the session's org in that window.
-    promotable = await _resolve_promotable_head(user_id, queued)
-    if promotable is None:
-        return False
-    head, promoted_team_id = promotable
 
     # Claim by transitioning the session ``queued`` → ``running``.  A
     # parallel cancel between validation and claim rejects this
@@ -374,8 +380,12 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             # org context on promotion.  ``promoted_team_id`` is the session
             # team stripped to org-home if the user's team membership went
             # stale while the turn waited (org membership re-verified above).
-            organization_id=head.organization_id,
-            team_id=promoted_team_id,
+            organization_id=(head.organization_id or metadata.get("organization_id")),
+            team_id=(
+                promoted_team_id
+                if head.organization_id is not None
+                else metadata.get("team_id")
+            ),
             mode=metadata.get("mode"),
             model=metadata.get("model"),
             llm_auth_provider=head.metadata.llm_auth_provider,
@@ -455,4 +465,11 @@ async def _resolve_promotable_head(
                 status=CHAT_STATUS_IDLE,
             )
             await invalidate_session_cache(session.session_id)
+        except Exception:
+            logger.exception(
+                "dispatch_next_for_user: tenancy check unavailable for "
+                "session=%s; leaving it queued",
+                session.session_id,
+            )
+            return None
     return None

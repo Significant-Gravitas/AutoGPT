@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_mock
 
 from backend.copilot.config import CopilotMode
 from backend.copilot.executor.processor import (
@@ -30,10 +31,23 @@ from backend.copilot.executor.processor import (
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.copilot.session_tenancy import SessionOrgMembershipRevoked
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
 )
+
+
+@pytest.fixture(autouse=True)
+def authoritative_session_db(mocker: pytest_mock.MockerFixture):
+    db = MagicMock()
+    db.get_chat_session_metadata = AsyncMock(
+        return_value=SimpleNamespace(
+            user_id="user-1", organization_id=None, team_id=None
+        )
+    )
+    mocker.patch("backend.copilot.executor.processor.chat_db", return_value=db)
+    return db
 
 
 class TestResolveUseSdkForMode:
@@ -276,6 +290,19 @@ def _make_entry() -> CoPilotExecutionEntry:
     )
 
 
+def _platform_session(
+    *, organization_id: str | None = None, team_id: str | None = None
+) -> ChatSession:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
+    session.session_id = "sess-1"
+    return session
+
+
 def _make_log() -> CoPilotLogMetadata:
     return CoPilotLogMetadata(logger=logging.getLogger("test-copilot"))
 
@@ -339,6 +366,296 @@ class TestExecuteAsyncAclose:
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
+
+
+class TestExecuteAsyncSessionTenancy:
+    def _patches(
+        self,
+        *,
+        session: ChatSession,
+        published: _TrackedStream,
+        dummy_stream: MagicMock,
+        mark_completed: AsyncMock,
+    ):
+        return (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=MagicMock(test_mode=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                dummy_stream,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                return_value=published,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                mark_completed,
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_stale_team_is_stripped_from_runtime_session_and_stream_entry(
+        self, authoritative_session_db
+    ):
+        persisted = _platform_session(
+            organization_id="org-session", team_id="team-stale"
+        )
+        authoritative_session_db.get_chat_session_metadata.return_value = (
+            SimpleNamespace(
+                user_id="user-1",
+                organization_id="org-session",
+                team_id="team-stale",
+            )
+        )
+        published = _TrackedStream(events=[])
+        dummy_stream = MagicMock(return_value=MagicMock())
+        mark_completed = AsyncMock()
+        resolve = AsyncMock(return_value=None)
+        patches = self._patches(
+            session=persisted,
+            published=published,
+            dummy_stream=dummy_stream,
+            mark_completed=mark_completed,
+        )
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patch(
+                "backend.copilot.executor.processor.resolve_session_tenancy",
+                new=resolve,
+            ),
+        ):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+
+        resolve.assert_awaited_once_with(
+            user_id="user-1",
+            organization_id="org-session",
+            team_id="team-stale",
+        )
+        kwargs = dummy_stream.call_args.kwargs
+        assert kwargs["organization_id"] == "org-session"
+        assert kwargs["team_id"] is None
+        assert kwargs["session"].organization_id == "org-session"
+        assert kwargs["session"].team_id is None
+        assert persisted.team_id == "team-stale"
+
+    @pytest.mark.asyncio
+    async def test_persisted_session_org_overrides_mismatched_turn_entry(
+        self, authoritative_session_db
+    ):
+        persisted = _platform_session(
+            organization_id="org-session", team_id="team-session"
+        )
+        authoritative_session_db.get_chat_session_metadata.return_value = (
+            SimpleNamespace(
+                user_id="user-1",
+                organization_id="org-session",
+                team_id="team-session",
+            )
+        )
+        entry = _make_entry().model_copy(
+            update={"organization_id": "org-entry", "team_id": "team-entry"}
+        )
+        published = _TrackedStream(events=[])
+        dummy_stream = MagicMock(return_value=MagicMock())
+        mark_completed = AsyncMock()
+        resolve = AsyncMock(return_value="team-session")
+        patches = self._patches(
+            session=persisted,
+            published=published,
+            dummy_stream=dummy_stream,
+            mark_completed=mark_completed,
+        )
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patch(
+                "backend.copilot.executor.processor.resolve_session_tenancy",
+                new=resolve,
+            ),
+        ):
+            await CoPilotProcessor()._execute_async(
+                entry, threading.Event(), MagicMock(), _make_log()
+            )
+
+        resolve.assert_awaited_once_with(
+            user_id="user-1",
+            organization_id="org-session",
+            team_id="team-session",
+        )
+        kwargs = dummy_stream.call_args.kwargs
+        assert kwargs["organization_id"] == "org-session"
+        assert kwargs["team_id"] == "team-session"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("failure", "expected_error"),
+        [
+            (
+                SessionOrgMembershipRevoked("org-session"),
+                "session_organization_access_revoked",
+            ),
+            (
+                RuntimeError("membership service unavailable"),
+                "session_tenancy_unavailable",
+            ),
+        ],
+    )
+    async def test_membership_failure_stops_before_stream(
+        self,
+        failure: Exception,
+        expected_error: str,
+        authoritative_session_db,
+    ):
+        persisted = _platform_session(organization_id="org-session")
+        authoritative_session_db.get_chat_session_metadata.return_value = (
+            SimpleNamespace(
+                user_id="user-1", organization_id="org-session", team_id=None
+            )
+        )
+        published = _TrackedStream(events=[])
+        dummy_stream = MagicMock()
+        mark_completed = AsyncMock()
+        patches = self._patches(
+            session=persisted,
+            published=published,
+            dummy_stream=dummy_stream,
+            mark_completed=mark_completed,
+        )
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patch(
+                "backend.copilot.executor.processor.resolve_session_tenancy",
+                new=AsyncMock(side_effect=failure),
+            ),
+            pytest.raises(RuntimeError, match=expected_error),
+        ):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+
+        dummy_stream.assert_not_called()
+        mark_completed.assert_awaited_once_with("sess-1", error_message=expected_error)
+
+    @pytest.mark.asyncio
+    async def test_legacy_db_row_uses_validated_entry_not_sticky_cache(
+        self, authoritative_session_db
+    ):
+        cached = _platform_session(
+            organization_id="org-sticky-cache", team_id="team-sticky-cache"
+        )
+        authoritative_session_db.get_chat_session_metadata.return_value = (
+            SimpleNamespace(user_id="user-1", organization_id=None, team_id=None)
+        )
+        entry = _make_entry().model_copy(
+            update={"organization_id": "org-entry", "team_id": "team-entry"}
+        )
+        published = _TrackedStream(events=[])
+        dummy_stream = MagicMock(return_value=MagicMock())
+        mark_completed = AsyncMock()
+        resolve = AsyncMock(return_value="team-entry")
+        patches = self._patches(
+            session=cached,
+            published=published,
+            dummy_stream=dummy_stream,
+            mark_completed=mark_completed,
+        )
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patch(
+                "backend.copilot.executor.processor.resolve_session_tenancy",
+                new=resolve,
+            ),
+        ):
+            await CoPilotProcessor()._execute_async(
+                entry, threading.Event(), MagicMock(), _make_log()
+            )
+
+        resolve.assert_awaited_once_with(
+            user_id="user-1",
+            organization_id="org-entry",
+            team_id="team-entry",
+        )
+        kwargs = dummy_stream.call_args.kwargs
+        assert kwargs["organization_id"] == "org-entry"
+        assert kwargs["team_id"] == "team-entry"
+        assert kwargs["session"].organization_id == "org-entry"
+        assert cached.organization_id == "org-sticky-cache"
+
+    @pytest.mark.asyncio
+    async def test_legacy_null_entry_clears_sticky_cached_tenancy(
+        self, authoritative_session_db
+    ):
+        cached = _platform_session(
+            organization_id="org-sticky-cache", team_id="team-sticky-cache"
+        )
+        authoritative_session_db.get_chat_session_metadata.return_value = (
+            SimpleNamespace(user_id="user-1", organization_id=None, team_id=None)
+        )
+        entry = _make_entry().model_copy(
+            update={"organization_id": None, "team_id": "team-malformed"}
+        )
+        published = _TrackedStream(events=[])
+        dummy_stream = MagicMock(return_value=MagicMock())
+        mark_completed = AsyncMock()
+        resolve = AsyncMock()
+        patches = self._patches(
+            session=cached,
+            published=published,
+            dummy_stream=dummy_stream,
+            mark_completed=mark_completed,
+        )
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patch(
+                "backend.copilot.executor.processor.resolve_session_tenancy",
+                new=resolve,
+            ),
+        ):
+            await CoPilotProcessor()._execute_async(
+                entry, threading.Event(), MagicMock(), _make_log()
+            )
+
+        resolve.assert_not_awaited()
+        kwargs = dummy_stream.call_args.kwargs
+        assert kwargs["organization_id"] is None
+        assert kwargs["team_id"] is None
+        assert kwargs["session"].organization_id is None
+        assert kwargs["session"].team_id is None
+        assert cached.organization_id == "org-sticky-cache"
+        assert cached.team_id == "team-sticky-cache"
 
 
 def _codex_entry(
