@@ -15,20 +15,30 @@ repo-permission lookup, not the unreliable `author_association`):
 
 | Command | Effect |
 |---|---|
-| `/batch` | Add this PR to the current batch; rebuild + redeploy the shared preview |
-| `/batch-remove` | Remove this PR from the batch; rebuild + redeploy |
-| `/batch-merge` | Land every PR in the batch together (enables auto-merge on the rollup) |
+| `/batch` | Add this PR to the `default` batch; rebuild + redeploy its preview |
+| `/batch <name>` | Add this PR to the named batch `<name>` (e.g. `/batch hotfix`) |
+| `/batch-remove` | Remove this PR from its batch; rebuild + redeploy |
+| `/batch-merge` | Land every PR in this PR's batch together (auto-merge on its rollup) |
 | `/batch help` | Post the command list |
+
+Up to **`BATCH_MAX` (default 4)** named batches run concurrently, each with its own
+label, rollup branch, rollup PR, and isolated preview. A PR belongs to **one** batch
+at a time — re-batching it into another moves it. `never`, `help`, `remove` and
+`merge` are reserved and can't be batch names; names are lowercased and must match
+`[a-z0-9][a-z0-9-]*`.
 
 ## How it works
 
-- **Membership** = the `batch` label. No database; the label is the source of truth.
-- On every change the bot **rebuilds `batch/rollup`** from a fresh `dev` by
+- **Membership** = the `batch:<key>` label (e.g. `batch:default`, `batch:hotfix`). No
+  database; the labels are the source of truth. `batch:never` is the opt-out. Labels
+  are created on demand.
+- On every change the bot **rebuilds `batch/rollup-<key>`** from a fresh `dev` by
   sequentially `git merge`-ing each member. A member that is a fork branch, has an
   unsafe ref name, or conflicts with the group is **ejected** (label removed,
   author told to rebase) so one bad PR never stalls the batch.
-- A **rollup PR** (`batch/rollup` → `dev`) is the sticky status surface, the thing
-  the preview env deploys, and the thing `/batch-merge` lands.
+- A per-batch **rollup PR** (`batch/rollup-<key>` → `dev`) is the sticky status
+  surface, the thing the preview env deploys, and the thing `/batch-merge` lands.
+  Each rollup PR gets its own preview namespace, so multiple batches deploy at once.
 - **Preview:** the bot reuses the repo's existing per-PR preview system. On each
   batch change it posts a bare **`!deploy`** comment on the rollup PR, which the
   `platform-dev-deploy-event-dispatcher.yml` → `AutoGPT_cloud_infrastructure`
@@ -72,8 +82,10 @@ suggestions:
    rollup PR, so a maintainer approving it is never a self-approval. Keep `dev`'s
    required-review rule; do **not** add a bot self-approve or a review bypass.
 2. **Enable "dismiss stale reviews on push"** on `dev`, and **protect
-   `batch/rollup`** so only the bot identity can push to it. Otherwise a member
-   could get the rollup approved, then push, and land on a stale approval.
+   `batch/rollup-*`** — a ruleset targeting `refs/heads/batch/rollup-*` that
+   restricts create/update/delete to the bot App (bypass actor) — so only the bot
+   can push to any rollup branch. Otherwise a member could get the rollup approved,
+   then push, and land on a stale approval.
 3. **Preview isolation.** `/batch` deploys code that is not yet code-reviewed (that
    is the point — test early), co-locating multiple authors' code + migration SQL in
    one environment. This is handled by the existing per-PR preview system
@@ -81,7 +93,8 @@ suggestions:
    Postgres schema `pr_<n>`, and URLs — non-prod and per-PR isolated. Confirm those
    previews use non-prod secrets (they do by design). Nuance: isolation is
    schema-level within a shared preview Postgres cluster, not separate DB servers —
-   fine for non-prod previews. Optionally set `BATCH_REQUIRE_APPROVAL=1` to require
+   fine for non-prod previews. Optionally set the repository variable
+   `BATCH_REQUIRE_APPROVAL=1` (wired into `batch-command-handler.yml`) to require
    an approval before a PR can be added to the batch.
 4. **Pinned actions.** All actions are pinned to commit SHAs (`slash-command-dispatch`,
    `checkout`, `setup-node`); keep them pinned when bumping.
@@ -91,30 +104,33 @@ suggestions:
 
 ## Setup
 
-### 1. Bot token — `BATCH_BOT_TOKEN` (repo secret)
+### 1. Bot identity — GitHub App (`BATCH_BOT_APP_ID` variable + `BATCH_BOT_PRIVATE_KEY` secret)
 
-Needed (not just `GITHUB_TOKEN`) because a `repository_dispatch` made with
-`GITHUB_TOKEN` won't trigger the handler, and pushes by `GITHUB_TOKEN` won't
-trigger the preview-deploy — and the payoff is the rollup push kicking off one
-preview.
+Both workflows mint a short-lived installation token per run via
+`actions/create-github-app-token`. A real identity (not `GITHUB_TOKEN`) is required
+because a `repository_dispatch` made with `GITHUB_TOKEN` won't trigger the handler,
+and pushes by `GITHUB_TOKEN` won't trigger the preview-deploy — the payoff is the
+rollup push kicking off one preview.
 
-**Prefer a GitHub App installation token** (short-lived, auto-rotating,
-repo-scoped) over a PAT. If you must use a PAT, make it **fine-grained,
-single-repo, with an expiry** — never a classic PAT. Either way grant only:
+Create a **GitHub App** (org-owned preferred) and grant only these **repository**
+permissions:
 
 | Permission | Level | Why |
 |---|---|---|
-| Contents | Read/write | create + update the ephemeral `batch/rollup` branch |
+| Contents | Read/write | create + update the ephemeral `batch/rollup-*` branches |
 | Pull requests | Read/write | label, comment, open/update/merge the rollup PR |
 | Issues | Read/write | label CRUD + PR conversation comments |
 | Actions | Read | read member CI status before batch/merge |
 | Metadata | Read | required baseline |
 
-Add the identity as a **write collaborator**. Do **not** grant admin or a
-review-bypass — that would turn the token into a review-bypass primitive.
+Store the App's **App ID** as the repo variable `BATCH_BOT_APP_ID` and its **private
+key** (`.pem` contents) as the secret `BATCH_BOT_PRIVATE_KEY`, then **install the App
+on this repo**. All three workflows (listener, handler, reconcile) mint their token
+from these — there is no PAT fallback. Do **not** grant admin or a review-bypass —
+that would turn the token into a review-bypass primitive.
 
-Optional repo **variables**: `BATCH_BASE_BRANCH` (default `dev`), `BATCH_BOT_NAME`,
-`BATCH_BOT_EMAIL`.
+Optional repo **variables**: `BATCH_BASE_BRANCH` (default `dev`), `BATCH_MAX`
+(default `4`, max concurrent batches), `BATCH_BOT_NAME`, `BATCH_BOT_EMAIL`.
 
 ### 2. Preview environment
 
@@ -122,9 +138,10 @@ No new preview infra needed — the bot reuses the repo's existing per-PR previe
 system by posting `!deploy` on the rollup PR (handled by
 `platform-dev-deploy-event-dispatcher.yml` → `AutoGPT_cloud_infrastructure`'s
 `autogpt-platform-preview-env-cd.yml`). Two prerequisites: that per-PR preview
-system is enabled, and the bot identity is a **write collaborator** so the deploy
-dispatcher honors its `!deploy`/`!undeploy` comments (the dispatcher gates on the
-commenter's `author_association`).
+system is enabled, and the App bot's `!deploy`/`!undeploy` comments clear the deploy
+dispatcher's gate on the commenter's `author_association` — verify this end-to-end,
+since an App bot comment can read as `NONE`; if it doesn't qualify, add the bot to
+the dispatcher's allowlist (or keep the write-collaborator PAT fallback for deploys).
 
 ## Opt-out
 

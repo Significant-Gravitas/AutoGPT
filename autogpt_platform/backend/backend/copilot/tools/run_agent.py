@@ -24,7 +24,13 @@ from backend.util.timezone_utils import (
 )
 
 from .base import BaseTool
-from .execution_utils import get_execution_outputs, wait_for_execution
+from .execution_utils import (
+    NodeFailureSummary,
+    build_run_health_warning,
+    get_execution_outputs,
+    summarize_node_failures,
+    wait_for_execution,
+)
 from .helpers import get_inputs_from_schema
 from .models import (
     AgentDetails,
@@ -842,6 +848,16 @@ class RunAgentTool(BaseTool):
         # defend against a race (creds deleted between prereq and
         # execute) by turning credential errors back into the inline
         # setup card.
+        # The chat session is the tenancy anchor: an agent launched from an
+        # org's copilot chat attributes/bills to that org, not to whatever
+        # the user's default org happens to be. Default-team resolution is
+        # only the fallback for sessions predating org tagging.
+        org_id, team_id = session.organization_id, session.team_id
+        if org_id is None:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, team_id = await get_user_default_team(user_id)
+
         try:
             execution = await execution_utils.add_graph_execution(
                 graph_id=library_agent.graph_id,
@@ -849,6 +865,8 @@ class RunAgentTool(BaseTool):
                 inputs=inputs,
                 graph_credentials_inputs=graph_credentials,
                 dry_run=dry_run,
+                organization_id=org_id,
+                team_id=team_id,
                 preset_id=preset_id,
             )
         except GraphValidationError as e:
@@ -892,21 +910,26 @@ class RunAgentTool(BaseTool):
 
             if completed and completed.status == ExecutionStatus.COMPLETED:
                 outputs = get_execution_outputs(completed)
-                # Inline the per-node execution trace on dry-runs so the
-                # LLM can inspect "did every block run, what did each
-                # produce?" without a follow-up view_agent_output call.
-                # Empty final outputs on a COMPLETED dry-run almost always
-                # mean a node silently produced nothing / a link was wired
-                # wrong — the trace is what lets the model debug that.
+                # A COMPLETED graph run can still contain FAILED nodes (node
+                # errors don't fail the run), so always fetch the per-node
+                # trace to check run health. The full trace is inlined in the
+                # response only on dry-runs — where the LLM needs it to debug
+                # wiring ("did every block run, what did each produce?")
+                # without a follow-up view_agent_output call — to keep wet-run
+                # responses small.
                 node_executions_data = None
-                if dry_run:
-                    try:
-                        detailed = await execution_db().get_graph_execution(
-                            user_id=user_id,
-                            execution_id=execution.id,
-                            include_node_executions=True,
+                node_failures: list[NodeFailureSummary] = []
+                try:
+                    detailed = await execution_db().get_graph_execution(
+                        user_id=user_id,
+                        execution_id=execution.id,
+                        include_node_executions=True,
+                    )
+                    if isinstance(detailed, GraphExecutionWithNodes):
+                        node_failures = summarize_node_failures(
+                            detailed.node_executions
                         )
-                        if isinstance(detailed, GraphExecutionWithNodes):
+                        if dry_run:
                             node_executions_data = [
                                 {
                                     "node_id": ne.node_id,
@@ -925,21 +948,30 @@ class RunAgentTool(BaseTool):
                                 }
                                 for ne in detailed.node_executions
                             ]
-                    except Exception:
-                        logger.warning(
-                            "run_agent: failed to load node executions for "
-                            "dry-run %s; returning summary only",
-                            execution.id,
-                            exc_info=True,
-                        )
+                except Exception:
+                    logger.warning(
+                        "run_agent: failed to load node executions for "
+                        "execution %s; returning summary only",
+                        execution.id,
+                        exc_info=True,
+                    )
                 await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
-                return AgentOutputResponse(
-                    message=(
+                health_warning = build_run_health_warning(outputs, node_failures)
+                if health_warning:
+                    message = (
+                        f"Agent '{library_agent.name}' finished with status "
+                        f"COMPLETED. {health_warning} "
+                        f"View at {library_agent_link}."
+                    )
+                else:
+                    message = (
                         f"Agent '{library_agent.name}' completed successfully. "
                         f"View at {library_agent_link}."
-                    ),
+                    )
+                return AgentOutputResponse(
+                    message=message,
                     session_id=session_id,
                     agent_name=library_agent.name,
                     agent_id=library_agent.graph_id,
@@ -952,6 +984,7 @@ class RunAgentTool(BaseTool):
                         ended_at=completed.ended_at,
                         outputs=outputs or {},
                         node_executions=node_executions_data,
+                        nodes_failed=node_failures or None,
                     ),
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
@@ -1097,6 +1130,18 @@ class RunAgentTool(BaseTool):
         # validation drift could hit here — turn credential errors back
         # into the inline ``SetupRequirementsResponse`` so the user
         # sees the credential setup card instead of a generic error.
+        # Session-anchored tenancy, mirroring ``_run_agent``: fire-time
+        # executions of this schedule attribute to the chat session's org.
+        # Likewise for expert attribution: a schedule created in an
+        # expert-scoped chat belongs to that expert, so it surfaces on her
+        # Team card / expert page, counts toward her weekly credit budget,
+        # and is cleaned up when she is archived.
+        org_id, team_id = session.organization_id, session.team_id
+        if org_id is None:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, team_id = await get_user_default_team(user_id)
+
         try:
             result = await get_scheduler_client().add_execution_schedule(
                 user_id=user_id,
@@ -1107,6 +1152,9 @@ class RunAgentTool(BaseTool):
                 input_data=inputs,
                 input_credentials=graph_credentials,
                 user_timezone=user_timezone,
+                organization_id=org_id,
+                team_id=team_id,
+                expert_id=session.expert_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(

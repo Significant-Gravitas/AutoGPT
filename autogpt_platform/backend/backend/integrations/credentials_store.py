@@ -55,13 +55,6 @@ ollama_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
-revid_credentials = APIKeyCredentials(
-    id="fdb7f412-f519-48d1-9b5f-d2f73d0e01fe",
-    provider="revid",
-    api_key=SecretStr(settings.secrets.revid_api_key),
-    title="Use Credits for Revid",
-    expires_at=None,
-)
 ideogram_credentials = APIKeyCredentials(
     id="760f84fc-b270-42de-91f6-08efe1b512d0",
     provider="ideogram",
@@ -258,7 +251,6 @@ elevenlabs_credentials = APIKeyCredentials(
 
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
-    revid_credentials,
     ideogram_credentials,
     replicate_credentials,
     openai_credentials,
@@ -330,9 +322,13 @@ class IntegrationCredentialsStore:
     ) -> list[Credentials]:
         """Return only the persisted (user-stored) credentials — no side effects.
 
+        Reads the IntegrationCredential table (source of truth since the
+        blob→table migration; the UserIntegrations blob is retained only
+        as a rollback artifact).
+
         **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
-        return list((await self._get_user_integrations(user_id)).credentials)
+        return list(await self.db_manager.get_user_credentials(user_id=user_id))
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
@@ -360,15 +356,12 @@ class IntegrationCredentialsStore:
 
         **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
-        user_integrations = await self._get_user_integrations(user_id)
-        all_credentials = list(user_integrations.credentials)
+        all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 
         # These will always be added
         all_credentials.append(ollama_credentials)
 
         # These will only be added if the API key is set
-        if settings.secrets.revid_api_key:
-            all_credentials.append(revid_credentials)
         if settings.secrets.ideogram_api_key:
             all_credentials.append(ideogram_credentials)
         if settings.secrets.groq_api_key:
@@ -484,6 +477,52 @@ class IntegrationCredentialsStore:
             ]
             await self._set_user_integration_creds(user_id, updated_credentials_list)
 
+    async def upsert_single_provider_creds(
+        self,
+        user_id: str,
+        credentials: Credentials,
+    ) -> Credentials:
+        if credentials.id in SYSTEM_CREDENTIAL_IDS or credentials.is_managed:
+            raise ValueError("Single-provider upsert requires user-owned credentials")
+
+        async with await self.locked_user_integrations(user_id):
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            matching = [
+                credential
+                for credential in persisted
+                if provider_matches(credential.provider, credentials.provider)
+            ]
+            if any(credential.is_managed for credential in matching):
+                raise ValueError("Cannot replace a managed credential")
+
+            replacement = credentials
+            compatible = next(
+                (
+                    credential
+                    for credential in matching
+                    if type(credential) is type(credentials)
+                ),
+                None,
+            )
+            if compatible is not None:
+                replacement = credentials.model_copy(
+                    update={
+                        "id": compatible.id,
+                        "title": compatible.title or credentials.title,
+                    }
+                )
+
+            kept = [
+                credential
+                for credential in persisted
+                if not provider_matches(credential.provider, credentials.provider)
+            ]
+            await self._set_user_integration_creds(
+                user_id,
+                [*kept, replacement],
+            )
+            return replacement
+
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
         if credentials_id in SYSTEM_CREDENTIAL_IDS:
             raise ValueError(f"System credential #{credentials_id} cannot be deleted")
@@ -501,11 +540,8 @@ class IntegrationCredentialsStore:
 
     async def has_managed_credential(self, user_id: str, provider: str) -> bool:
         """Check if a managed credential exists for *provider*."""
-        user_integrations = await self._get_user_integrations(user_id)
-        return any(
-            c.provider == provider and c.is_managed
-            for c in user_integrations.credentials
-        )
+        persisted = await self.db_manager.get_user_credentials(user_id=user_id)
+        return any(c.provider == provider and c.is_managed for c in persisted)
 
     async def add_managed_credential(
         self, user_id: str, credential: Credentials
@@ -517,13 +553,14 @@ class IntegrationCredentialsStore:
         """
         if not credential.is_managed:
             raise ValueError("credential.is_managed must be True")
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.credentials = [
+        async with await self.locked_user_integrations(user_id):
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            kept = [
                 c
-                for c in user_integrations.credentials
+                for c in persisted
                 if not (c.provider == credential.provider and c.is_managed)
             ]
-            user_integrations.credentials.append(credential)
+            await self._set_user_integration_creds(user_id, [*kept, credential])
 
     # ===================== OAUTH STATES ===================== #
 
@@ -533,6 +570,7 @@ class IntegrationCredentialsStore:
         provider: str,
         scopes: list[str],
         use_pkce: bool = False,
+        expires_in_seconds: int = 600,
         # New parameters for external API OAuth flows
         callback_url: Optional[str] = None,
         state_metadata: Optional[dict] = None,
@@ -540,7 +578,7 @@ class IntegrationCredentialsStore:
         credential_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
 
         (code_challenge, code_verifier) = self._generate_code_challenge()
 
@@ -616,11 +654,9 @@ class IntegrationCredentialsStore:
     async def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
-        integrations = await self._get_user_integrations(user_id)
         # Remove default credentials from the list
         credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
-        integrations.credentials = credentials
-        await self.db_manager.update_user_integrations(user_id, integrations)
+        await self.db_manager.set_user_credentials(user_id, credentials)
 
     async def _get_user_integrations(self, user_id: str) -> UserIntegrations:
         return await self.db_manager.get_user_integrations(user_id=user_id)

@@ -7,11 +7,20 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from pydantic import SecretStr
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
+from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.rate_limit import SubscriptionTier
+from backend.data.model import OAuth2Credentials
+from backend.integrations.codex.auth_bundle import (
+    CodexAuthBundleV1,
+    CodexAuthTokensV1,
+    encode_provider_state,
+)
 from backend.util.exceptions import NotFoundError
+from backend.util.settings import BehaveAs
 
 app = fastapi.FastAPI()
 app.include_router(chat_routes.router)
@@ -28,14 +37,42 @@ async def _not_found_handler(
 client = fastapi.testclient.TestClient(app)
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+VALID_CODEX_PROVIDER_STATE = encode_provider_state(
+    CodexAuthBundleV1(
+        tokens=CodexAuthTokensV1(
+            id_token=SecretStr("id-token"),
+            access_token=SecretStr("access-token"),
+            refresh_token=SecretStr("refresh-token"),
+        ),
+        codex_runtime_version="0.144.4",
+    )
+)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
+    mocker.patch.object(
+        chat_routes.credentials_manager.store,
+        "get_creds_by_provider",
+        new=AsyncMock(return_value=[]),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "has_codex_access_for_discovery",
+        new=AsyncMock(return_value=True),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "enforce_codex_access_http",
+        new=AsyncMock(),
+    )
+    mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.CLOUD)
     yield
     app.dependency_overrides.clear()
 
@@ -210,7 +247,11 @@ def test_stream_chat_rejects_too_many_file_ids():
     assert response.status_code == 422
 
 
-def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
+def _mock_stream_internals(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+):
     """Mock the async internals of stream_chat_post so tests can exercise
     validation and enrichment logic without needing RabbitMQ.
 
@@ -220,14 +261,27 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
     """
     import types
 
+    # The route anchors turn tenancy on the session row
+    # (session.organization_id / session.team_id), so the stub must carry
+    # both — None exercises the legacy ctx-fallback path.
+    mock_session = mocker.MagicMock(organization_id=None, team_id=None)
+    mock_session.metadata.llm_auth_provider = llm_auth_provider
+    mock_session.metadata.llm_credential_id = (
+        "cred-codex" if llm_auth_provider == "codex" else None
+    )
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=None,
+        return_value=mock_session,
     )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
         return_value=False,
+    )
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+        return_value=None,
     )
     # ``schedule_chat_turn`` owns acquire-slot + persist-message + dispatch
     # in one call. Patching it at the route boundary lets tests exercise
@@ -239,7 +293,13 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
         new_callable=AsyncMock,
         return_value="turn-id-mock",
     )
-    return types.SimpleNamespace(enqueue=mock_schedule)
+    mocker.patch.object(
+        chat_routes.stream_registry,
+        "subscribe_to_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    return types.SimpleNamespace(enqueue=mock_schedule, paywall=mock_paywall)
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -373,6 +433,11 @@ def test_stream_chat_returns_429_on_daily_rate_limit(mocker: pytest_mock.MockerF
     mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
     mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
     mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
         "backend.api.features.chat.routes.check_rate_limit",
         side_effect=RateLimitExceeded("daily", datetime.now(UTC) + timedelta(hours=1)),
     )
@@ -383,6 +448,56 @@ def test_stream_chat_returns_429_on_daily_rate_limit(mocker: pytest_mock.MockerF
     )
     assert response.status_code == 429
     assert "daily" in response.json()["detail"].lower()
+
+
+def test_stream_chat_codex_skips_platform_paywall_and_cost_limit(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker, llm_auth_provider="codex")
+    mocks.paywall.side_effect = fastapi.HTTPException(
+        status_code=402,
+        detail="subscription required",
+    )
+    mock_global_limits = mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        side_effect=AssertionError("platform cost limits must not run for Codex"),
+    )
+    mock_cost_limit = mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        new_callable=AsyncMock,
+        side_effect=AssertionError("platform cost limits must not run for Codex"),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+
+    assert response.status_code == 200
+    mocks.paywall.assert_not_awaited()
+    mock_global_limits.assert_not_awaited()
+    mock_cost_limit.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
+
+
+def test_stream_chat_platform_still_enforces_paywall(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.paywall.side_effect = fastapi.HTTPException(
+        status_code=402,
+        detail="subscription required",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+
+    assert response.status_code == 402
+    mocks.paywall.assert_awaited_once()
+    mocks.enqueue.assert_not_awaited()
 
 
 def test_stream_chat_returns_429_on_weekly_rate_limit(
@@ -678,14 +793,243 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
     """Mock create_chat_session to return a fake session."""
     from backend.copilot.model import ChatSession
 
-    async def _fake_create(user_id: str, *, dry_run: bool):
-        return ChatSession.new(user_id, dry_run=dry_run)
+    async def _fake_create(
+        user_id: str,
+        *,
+        dry_run: bool,
+        builder_graph_id: str | None = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        source_platform: str | None = None,
+        llm_auth_provider: CopilotLlmAuthProvider = "platform",
+        llm_credential_id: str | None = None,
+        expert_id: str | None = None,
+    ):
+        return ChatSession.new(
+            user_id,
+            dry_run=dry_run,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
+        )
 
     return mocker.patch(
         "backend.api.features.chat.routes.create_chat_session",
         new_callable=AsyncMock,
         side_effect=_fake_create,
     )
+
+
+def _codex_credentials(
+    credential_id: str = "cred-codex",
+    *,
+    provider_state: str | None = VALID_CODEX_PROVIDER_STATE,
+    provider_state_version: int = 1,
+) -> OAuth2Credentials:
+    return OAuth2Credentials(
+        id=credential_id,
+        provider="codex",
+        access_token=SecretStr("access"),
+        refresh_token=SecretStr("refresh"),
+        scopes=[],
+        refresh_strategy="provider_runtime",
+        provider_state=SecretStr(provider_state) if provider_state else None,
+        provider_state_version=provider_state_version,
+    )
+
+
+def _set_self_hosted_chat_config(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    configured: bool,
+) -> None:
+    mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.LOCAL)
+    self_hosted_config = MagicMock()
+    self_hosted_config.test_mode = False
+    self_hosted_config.use_claude_code_subscription = False
+    self_hosted_config.main_client_credentials = (
+        ("configured-key", "http://llm.example/v1")
+        if configured
+        else (None, "https://api.anthropic.com/v1/")
+    )
+    mocker.patch.object(chat_routes, "config", self_hosted_config)
+
+
+def test_list_chat_transports_hosted_platform_only(
+    test_user_id: str,
+) -> None:
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transports": [
+            {
+                "auth_provider": "platform",
+                "credential_id": None,
+                "label": "AutoGPT Platform",
+                "available": True,
+                "default": True,
+            }
+        ]
+    }
+
+
+def test_list_chat_transports_hosted_defaults_to_platform_with_codex(
+    test_user_id: str,
+) -> None:
+    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+        _codex_credentials()
+    ]
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transports": [
+            {
+                "auth_provider": "platform",
+                "credential_id": None,
+                "label": "AutoGPT Platform",
+                "available": True,
+                "default": True,
+            },
+            {
+                "auth_provider": "codex",
+                "credential_id": "cred-codex",
+                "label": "ChatGPT",
+                "available": True,
+                "default": False,
+            },
+        ]
+    }
+
+
+def test_list_chat_transports_hosted_omits_codex_without_required_plan(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    access = mocker.patch.object(
+        chat_routes,
+        "has_codex_access_for_discovery",
+        new=AsyncMock(return_value=False),
+    )
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup.return_value = [_codex_credentials()]
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transports": [
+            {
+                "auth_provider": "platform",
+                "credential_id": None,
+                "label": "AutoGPT Platform",
+                "available": True,
+                "default": True,
+            }
+        ]
+    }
+    access.assert_awaited_once_with(test_user_id)
+    lookup.assert_not_awaited()
+
+
+def test_list_chat_transports_omits_invalid_codex_credentials(
+    test_user_id: str,
+) -> None:
+    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+        _codex_credentials(provider_state=None)
+    ]
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert [
+        transport["auth_provider"] for transport in response.json()["transports"]
+    ] == ["platform"]
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_list_chat_transports_self_hosted_platform_availability(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured: bool,
+) -> None:
+    _set_self_hosted_chat_config(mocker, configured=configured)
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transports": [
+            {
+                "auth_provider": "platform",
+                "credential_id": None,
+                "label": "Self-hosted chat",
+                "available": configured,
+                "default": configured,
+            }
+        ]
+    }
+
+
+def test_list_chat_transports_self_hosted_codex_is_default_without_deployment(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _set_self_hosted_chat_config(mocker, configured=False)
+    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+        _codex_credentials()
+    ]
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert response.json()["transports"] == [
+        {
+            "auth_provider": "platform",
+            "credential_id": None,
+            "label": "Self-hosted chat",
+            "available": False,
+            "default": False,
+        },
+        {
+            "auth_provider": "codex",
+            "credential_id": "cred-codex",
+            "label": "ChatGPT",
+            "available": True,
+            "default": True,
+        },
+    ]
+
+
+def test_list_chat_transports_self_hosted_deployment_stays_default_with_codex(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _set_self_hosted_chat_config(mocker, configured=True)
+    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+        _codex_credentials()
+    ]
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    platform, codex = response.json()["transports"]
+    assert platform == {
+        "auth_provider": "platform",
+        "credential_id": None,
+        "label": "Self-hosted chat",
+        "available": True,
+        "default": True,
+    }
+    assert codex == {
+        "auth_provider": "codex",
+        "credential_id": "cred-codex",
+        "label": "ChatGPT",
+        "available": True,
+        "default": False,
+    }
 
 
 def test_create_session_dry_run_true(
@@ -726,6 +1070,377 @@ def test_create_session_rejects_nested_metadata(
     )
 
     assert response.status_code == 422
+
+
+def test_create_session_rejects_credential_on_platform_route() -> None:
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "platform", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "codex_credential_not_allowed"
+
+
+def test_create_session_requires_credential_for_codex_route() -> None:
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "codex_credential_required"
+
+
+def test_create_session_codex_route_rejects_unowned_credential(
+    test_user_id: str,
+) -> None:
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "other-cred"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "codex_credential_not_found"
+    lookup.assert_awaited_once_with(test_user_id, "codex")
+
+
+def test_create_session_codex_route_rejects_user_without_required_plan(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    gate = mocker.patch.object(
+        chat_routes,
+        "enforce_codex_access_http",
+        new=AsyncMock(
+            side_effect=fastapi.HTTPException(
+                status_code=402,
+                detail="A Max plan or higher is required to use ChatGPT.",
+            )
+        ),
+    )
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    mock_create = mocker.patch.object(
+        chat_routes,
+        "create_chat_session",
+        new=AsyncMock(),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 402
+    assert response.json()["detail"] == (
+        "A Max plan or higher is required to use ChatGPT."
+    )
+    gate.assert_awaited_once_with(test_user_id)
+    lookup.assert_not_awaited()
+    mock_create.assert_not_awaited()
+
+
+def test_create_session_codex_route_persists_owned_credential(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(
+            status_code=402,
+            detail="subscription required",
+        ),
+    )
+    credential = _codex_credentials("cred-1")
+    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+        credential
+    ]
+
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["llm_auth_provider"] == "codex"
+    assert response.json()["metadata"]["llm_credential_id"] == "cred-1"
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "codex"
+    assert mock_create.call_args.kwargs["llm_credential_id"] == "cred-1"
+    mock_paywall.assert_not_awaited()
+
+
+def test_create_session_hosted_defaults_to_platform_with_codex_connected(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    credential = _codex_credentials()
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup.return_value = [credential]
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions", json={})
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["llm_auth_provider"] == "platform"
+    assert response.json()["metadata"]["llm_credential_id"] is None
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
+    assert mock_create.call_args.kwargs["llm_credential_id"] is None
+    lookup.assert_awaited_once_with(test_user_id, "codex")
+    mock_paywall.assert_awaited_once_with(test_user_id)
+
+
+def test_create_session_self_hosted_defaults_to_codex_when_unconfigured(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _set_self_hosted_chat_config(mocker, configured=False)
+    credential = _codex_credentials()
+    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+        credential
+    ]
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions", json={})
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["llm_auth_provider"] == "codex"
+    assert response.json()["metadata"]["llm_credential_id"] == "cred-codex"
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "codex"
+    assert mock_create.call_args.kwargs["llm_credential_id"] == "cred-codex"
+    mock_paywall.assert_not_awaited()
+
+
+def test_create_session_self_hosted_without_any_transport_returns_setup_error(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _set_self_hosted_chat_config(mocker, configured=False)
+    mock_create = _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions", json={})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "chat_transport_not_configured"
+    mock_create.assert_not_awaited()
+
+
+def test_create_session_self_hosted_rejects_explicit_unconfigured_platform(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _set_self_hosted_chat_config(mocker, configured=False)
+    mock_create = _mock_create_chat_session(mocker)
+
+    response = client.post(
+        "/sessions",
+        json={"llm_auth_provider": "platform"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "chat_transport_not_configured"
+    mock_create.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("provider_state", "provider_state_version"),
+    [
+        (None, 1),
+        ("{}", 1),
+        (VALID_CODEX_PROVIDER_STATE, 2),
+    ],
+)
+def test_create_session_self_hosted_rejects_invalid_codex_as_unconfigured(
+    mocker: pytest_mock.MockerFixture,
+    provider_state: str | None,
+    provider_state_version: int,
+) -> None:
+    _set_self_hosted_chat_config(mocker, configured=False)
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup.return_value = [
+        _codex_credentials(
+            provider_state=provider_state,
+            provider_state_version=provider_state_version,
+        )
+    ]
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions", json={})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "chat_transport_not_configured"
+    mock_create.assert_not_awaited()
+    mock_paywall.assert_not_awaited()
+
+
+def test_create_session_self_hosted_requires_selection_for_multiple_codex_routes(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _set_self_hosted_chat_config(mocker, configured=False)
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup.return_value = [
+        _codex_credentials("cred-one"),
+        _codex_credentials("cred-two"),
+    ]
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions", json={})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "chat_transport_selection_required"
+    mock_create.assert_not_awaited()
+    mock_paywall.assert_not_awaited()
+
+
+def test_create_session_respects_explicit_platform_route(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions", json={"llm_auth_provider": "platform"})
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["llm_auth_provider"] == "platform"
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
+    lookup.assert_awaited_once()
+
+
+def test_create_session_platform_route_still_enforces_paywall(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(
+            status_code=402,
+            detail="subscription required",
+        ),
+    )
+
+    response = client.post("/sessions", json={"llm_auth_provider": "platform"})
+
+    assert response.status_code == 402
+    mock_paywall.assert_awaited_once()
+    mock_create.assert_not_awaited()
+
+
+# ─── Create session: expert_id ──────────────────────────────────────────
+
+
+def _make_expert(expert_id: str = "expert-1", *, is_archived: bool = False):
+    from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+
+    return Expert(
+        id=expert_id,
+        name="Maria",
+        avatar_url=None,
+        role="Marketing",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="You are Maria, a marketing expert.",
+        voice_preferences="Direct and concise.",
+        boundaries="Ask before external actions.",
+        protected_soul_rules=list(PROTECTED_SOUL_RULES),
+        is_template=False,
+        source_template_id="tpl-1",
+        is_archived=is_archived,
+        workflows=[],
+    )
+
+
+def _mock_get_expert(mocker: pytest_mock.MockerFixture, return_value):
+    """Mock experts_db.get_expert at the chat routes import site."""
+    return mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=return_value,
+    )
+
+
+def test_create_session_with_expert_id_persists_it(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """A valid owned expert id is validated and threaded into the session."""
+    mock_create = _mock_create_chat_session(mocker)
+    mock_get = _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert response.json()["expert_id"] == "expert-1"
+    mock_get.assert_called_once_with(test_user_id, "expert-1")
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["expert_id"] == "expert-1"
+
+
+def test_create_session_with_other_users_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """get_expert scopes by owner — another user's expert looks like None."""
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, None)
+
+    response = client.post("/sessions", json={"expert_id": "expert-other"})
+
+    assert response.status_code == 404
+    mock_create.assert_not_called()
+
+
+def test_create_session_with_archived_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Archived experts are not chat targets."""
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1", is_archived=True))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 404
+    mock_create.assert_not_called()
+
+
+def test_create_session_rejects_builder_graph_id_with_expert_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The builder branch ignores expert_id, so the combo is rejected upfront
+    instead of silently dropping the expert scoping."""
+    mock_create = _mock_create_chat_session(mocker)
+    mock_get = _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post(
+        "/sessions",
+        json={"builder_graph_id": "graph-1", "expert_id": "expert-1"},
+    )
+
+    assert response.status_code == 422
+    mock_get.assert_not_called()
+    mock_create.assert_not_called()
 
 
 class TestStreamChatRequestModeValidation:
@@ -1216,6 +1931,7 @@ def _make_session_info(
     title: str | None = "Test",
     source_platform: str | None = None,
     is_pinned: bool = False,
+    expert_id: str | None = None,
 ):
     """Build a minimal ChatSessionInfo-like mock."""
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
@@ -1229,6 +1945,7 @@ def _make_session_info(
         updated_at=datetime.now(UTC),
         metadata=ChatSessionMetadata(source_platform=source_platform),
         is_pinned=is_pinned,
+        expert_id=expert_id,
     )
 
 
@@ -1312,6 +2029,35 @@ def test_list_sessions_returns_is_pinned(
 
     assert response.status_code == 200
     assert response.json()["sessions"][0]["is_pinned"] is True
+
+
+def test_list_sessions_filters_by_expert_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """GET /sessions?expert_id=... passes the filter through and echoes it."""
+    session = _make_session_info("sess-expert", expert_id="expert-1")
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([session], 1),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=["done"])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get("/sessions?expert_id=expert-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["sessions"][0]["expert_id"] == "expert-1"
+    assert mock_get.call_args.kwargs["expert_id"] == "expert-1"
 
 
 def test_list_sessions_marks_running_as_processing(
@@ -2256,7 +3002,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
     ``get_or_create_builder_session`` and returns a session bound to the graph."""
     from backend.copilot.model import ChatSession
 
-    async def _fake_get_or_create(user_id: str, graph_id: str) -> ChatSession:
+    async def _fake_get_or_create(
+        user_id: str,
+        graph_id: str,
+        *,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+    ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
@@ -2268,6 +3020,8 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
         new_callable=AsyncMock,
         side_effect=_fake_get_or_create,
     )
+    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup.return_value = [_codex_credentials()]
 
     response = client.post("/sessions", json={"builder_graph_id": "graph-1"})
 
@@ -2275,6 +3029,8 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
     body = response.json()
     assert body["metadata"]["builder_graph_id"] == "graph-1"
     assert body["metadata"]["dry_run"] is False
+    assert body["metadata"]["llm_auth_provider"] == "platform"
+    lookup.assert_not_awaited()
 
 
 def test_create_session_with_builder_graph_id_returns_404_when_not_owned(
@@ -2284,7 +3040,7 @@ def test_create_session_with_builder_graph_id_returns_404_when_not_owned(
     """``get_or_create_builder_session`` raises ``NotFoundError`` when the
     user doesn't own the graph; the route must map that to HTTP 404."""
 
-    async def _fake_get_or_create(user_id: str, graph_id: str):
+    async def _fake_get_or_create(user_id: str, graph_id: str, **_kwargs):
         raise NotFoundError(f"Graph {graph_id} not found")
 
     mocker.patch(
@@ -2312,7 +3068,7 @@ def test_create_session_without_builder_graph_id_creates_fresh(
         new_callable=AsyncMock,
     )
 
-    async def _fake_create(user_id: str, *, dry_run: bool) -> ChatSession:
+    async def _fake_create(user_id: str, *, dry_run: bool, **_kwargs) -> ChatSession:
         return ChatSession.new(user_id, dry_run=dry_run)
 
     mocker.patch(

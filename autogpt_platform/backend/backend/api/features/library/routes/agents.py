@@ -3,9 +3,8 @@ from typing import Literal, Optional
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
-from prisma.enums import OnboardingStep
 
-from backend.data.onboarding import complete_onboarding_step
+from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
 from .. import db as library_db
 from .. import model as library_model
@@ -24,6 +23,9 @@ router = APIRouter(
 )
 async def list_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
@@ -69,6 +71,7 @@ async def list_library_agents(
         folder_id=folder_id,
         include_root_only=include_root_only,
         is_hidden=is_hidden,
+        organization_id=getattr(ctx, "org_id", None),
     )
 
 

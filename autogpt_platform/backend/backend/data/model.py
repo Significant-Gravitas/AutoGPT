@@ -21,13 +21,14 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType, OnboardingStep, SubscriptionTier
+from prisma.enums import CreditTransactionType, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     GetCoreSchemaHandler,
     SecretStr,
+    TypeAdapter,
     field_serializer,
     model_validator,
 )
@@ -40,6 +41,7 @@ from pydantic_core import (
 )
 from typing_extensions import TypedDict
 
+from backend.data.onboarding_steps import OnboardingStep
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
@@ -338,6 +340,9 @@ class _BaseCredentials(BaseModel):
         return value
 
 
+OAuthRefreshStrategy = Literal["oauth_handler", "provider_runtime"]
+
+
 class OAuth2Credentials(_BaseCredentials):
     type: Literal["oauth2"] = "oauth2"
     username: Optional[str] = None
@@ -349,6 +354,9 @@ class OAuth2Credentials(_BaseCredentials):
     refresh_token_expires_at: Optional[int] = None
     """Unix timestamp (seconds) indicating when the refresh token expires (if at all)"""
     scopes: list[str]
+    refresh_strategy: OAuthRefreshStrategy = "oauth_handler"
+    provider_state: Optional[SecretStr] = None
+    provider_state_version: Optional[int] = None
 
     def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"
@@ -444,6 +452,10 @@ Credentials = Annotated[
     | HostScopedCredentials,
     Field(discriminator="type"),
 ]
+
+# For validating a bare Credentials union outside a parent model (e.g.
+# decrypted IntegrationCredential row payloads).
+CREDENTIALS_ADAPTER: TypeAdapter[Credentials] = TypeAdapter(Credentials)
 
 
 CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
@@ -607,8 +619,10 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     required_scopes: Optional[frozenset[str]] = Field(None, alias="credentials_scopes")
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
+    discriminator_type_mapping: Optional[dict[str, frozenset[CT]]] = None
     discriminator_values: set[Any] = Field(default_factory=set)
     is_auto_credential: bool = False
+    credential_reference_only: bool = False
     input_field_name: Optional[str] = None
 
     @classmethod
@@ -707,8 +721,12 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     credentials_scopes=frozenset(all_scopes) or None,
                     discriminator=combined.discriminator,
                     discriminator_mapping=combined.discriminator_mapping,
+                    discriminator_type_mapping=combined.discriminator_type_mapping,
                     discriminator_values=set(all_discriminator_values),
                     is_auto_credential=combined.is_auto_credential,
+                    credential_reference_only=all(
+                        field.credential_reference_only for _, field in group
+                    ),
                     input_field_name=combined.input_field_name,
                 ),
                 combined_keys,
@@ -728,14 +746,25 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                 "It may have been deprecated. Please update your agent configuration."
             )
 
+        supported_types = self.supported_types
+        if self.discriminator_type_mapping is not None:
+            try:
+                supported_types = self.discriminator_type_mapping[discriminator_value]
+            except KeyError:
+                raise ValueError(
+                    f"Credential types for '{discriminator_value}' are not configured."
+                ) from None
+
         return CredentialsFieldInfo(
             credentials_provider=frozenset([provider]),
-            credentials_types=self.supported_types,
+            credentials_types=supported_types,
             credentials_scopes=self.required_scopes,
             discriminator=self.discriminator,
             discriminator_mapping=self.discriminator_mapping,
+            discriminator_type_mapping=self.discriminator_type_mapping,
             discriminator_values=set(self.discriminator_values),
             is_auto_credential=self.is_auto_credential,
+            credential_reference_only=self.credential_reference_only,
             input_field_name=self.input_field_name,
         )
 
@@ -745,6 +774,7 @@ def CredentialsField(
     *,
     discriminator: Optional[str] = None,
     discriminator_mapping: Optional[dict[str, Any]] = None,
+    discriminator_type_mapping: Optional[dict[str, Any]] = None,
     discriminator_values: Optional[set[Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
@@ -761,7 +791,9 @@ def CredentialsField(
             "credentials_scopes": list(required_scopes) or None,
             "discriminator": discriminator,
             "discriminator_mapping": discriminator_mapping,
+            "discriminator_type_mapping": discriminator_type_mapping,
             "discriminator_values": discriminator_values,
+            "credential_reference_only": kwargs.pop("credential_reference_only", None),
         }.items()
         if v is not None
     }
@@ -891,6 +923,10 @@ class NodeExecutionStats(BaseModel):
     # by a block, resolve_tracking honors this directly instead of
     # guessing from provider name.
     provider_cost_type: Optional[ProviderCostType] = None
+    billing_mode: Optional[str] = None
+    auth_provider: Optional[str] = None
+    execution_path: Optional[str] = None
+    resolved_model: Optional[str] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
     cleared_outputs: Optional[dict[str, list[str]]] = None
@@ -980,6 +1016,10 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
+    # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
+    # the frontend (the DB stores plain strings). The rename migration keeps
+    # existing rows within the enum, and writes are validated on the completion
+    # endpoint via the ``FrontendOnboardingStep`` Literal.
     completedSteps: list[OnboardingStep]
     walletShown: bool
     notified: list[OnboardingStep]

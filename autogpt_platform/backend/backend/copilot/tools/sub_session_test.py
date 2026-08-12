@@ -32,6 +32,10 @@ def _session(user_id: str = "u", session_id: str = "s1") -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
     sess.dry_run = False
+    sess.organization_id = None
+    sess.team_id = None
+    sess.metadata.llm_auth_provider = "platform"
+    sess.metadata.llm_credential_id = None
     return sess
 
 
@@ -126,11 +130,23 @@ def mock_model(monkeypatch):
     fresh uuid each call."""
     created: list[MagicMock] = []
 
-    async def fake_create(user_id: str, *, dry_run: bool):
+    async def fake_create(
+        user_id: str,
+        *,
+        dry_run: bool,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        llm_auth_provider: str = "platform",
+        llm_credential_id: str | None = None,
+    ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"
         sess.user_id = user_id
         sess.dry_run = dry_run
+        sess.organization_id = organization_id
+        sess.team_id = team_id
+        sess.metadata.llm_auth_provider = llm_auth_provider
+        sess.metadata.llm_credential_id = llm_credential_id
         sess.messages = []
         created.append(sess)
         return sess
