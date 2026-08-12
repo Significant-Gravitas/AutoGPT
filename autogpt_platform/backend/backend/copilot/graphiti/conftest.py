@@ -46,6 +46,7 @@ from graphiti_core.llm_client.config import ModelSize
 from graphiti_core.prompts.models import Message
 from pydantic import BaseModel
 
+from .client import _build_graphiti
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
 
@@ -97,25 +98,22 @@ class StubCrossEncoder(CrossEncoderClient):
 def stub_graphiti_client():
     """Factory building a ``Graphiti`` with only the LLM boundary stubbed.
 
-    Call as ``stub_graphiti_client(driver, responses)``. Mirrors
-    ``client._build_graphiti`` (same driver, same coroutine limit) so the
-    ingestion pipeline under test behaves as it does in production, minus
-    the API calls.
-
-    NOTE: the ``Graphiti(...)`` kwargs below are hand-mirrored from
-    ``client._build_graphiti``. A kwarg added to production wiring will not
-    propagate here on its own, which would quietly weaken the "drives the
-    genuine pipeline" guarantee these integration tests rest on — keep the
-    two in sync when touching either.
+    Call as ``stub_graphiti_client(driver, responses)``. Builds through the
+    production factory ``client._build_graphiti``, overriding only the three
+    boundaries that would otherwise make network calls, so the ingestion
+    pipeline under test behaves as it does in production minus the API
+    calls — and so a kwarg added to production wiring reaches these tests
+    instead of drifting from a hand-mirrored copy.
     """
 
     def _build(driver: AutoGPTFalkorDriver, responses: dict[str, dict]) -> Graphiti:
-        return Graphiti(
+        return _build_graphiti(
+            # Unused: the driver below already carries the test database.
+            group_id="",
             llm_client=ScriptedLLMClient(responses),
             embedder=StubEmbedder(),
             cross_encoder=StubCrossEncoder(),
             graph_driver=driver,
-            max_coroutines=graphiti_config.semaphore_limit,
         )
 
     return _build

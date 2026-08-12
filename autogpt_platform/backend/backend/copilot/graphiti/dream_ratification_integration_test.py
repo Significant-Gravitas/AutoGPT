@@ -128,11 +128,14 @@ class _FakeRedis:
     def __init__(self) -> None:
         self.hits: dict[str, int] = {}
 
-    async def get(self, key: str):
-        value = self.hits.get(key, 0)
-        return str(value).encode() if value else None
+    async def get(self, key: str) -> bytes | None:
+        # Key-presence, not truthiness: real Redis returns b"0" for a key
+        # explicitly set to 0, and ``record_memory_hit`` seeds exactly that
+        # before its INCR. Keying off the value would report a seeded
+        # counter as absent.
+        return str(self.hits[key]).encode() if key in self.hits else None
 
-    async def set(self, key: str, value, **kwargs) -> bool:
+    async def set(self, key: str, value: int, **kwargs: object) -> bool:
         # Honour NX like real Redis: ``record_memory_hit`` seeds with
         # ``set(key, 0, nx=True, ex=…)`` before INCR, so an unconditional
         # overwrite would reset the counter on every hit and cap it at 1.
@@ -195,6 +198,11 @@ def stub_boundaries(
     mocker, dream_graph: tuple[AutoGPTFalkorDriver, str], stub_graphiti_client
 ):
     """Replace the three external boundaries ingestion would otherwise reach.
+
+    Intentionally a SYNC fixture depending on the async ``dream_graph``:
+    pytest-asyncio resolves the async dependency before invoking this one, so
+    the tuple is already awaited here. Collection and the live run both pass —
+    the sync/async mix is deliberate, not an oversight.
 
     * ``get_graphiti_client`` — patched on ``ingest`` (where it is used) to
       return a Graphiti wired to the test's real driver with the LLM stubbed.
