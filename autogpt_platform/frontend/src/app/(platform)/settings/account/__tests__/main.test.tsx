@@ -19,6 +19,7 @@ import {
 import SettingsPreferencesPage from "../page";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
+const mockUseGetFlag = vi.hoisted(() => vi.fn());
 
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -27,6 +28,17 @@ vi.mock("@/providers/onboarding/onboarding-provider", () => ({
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: mockUseGetFlag,
+  };
+});
 
 const testUser = {
   id: "user-1",
@@ -89,6 +101,10 @@ describe("SettingsPreferencesPage", () => {
       isLoggedIn: true,
       isUserLoading: false,
     });
+    // Notifications are behind settings-notifications; default the suite to
+    // "on" so the notification cases exercise the card, and flip it off in
+    // the case that asserts it stays hidden.
+    mockUseGetFlag.mockReturnValue(true);
   });
 
   test("renders Account card with current email and reset password link", async () => {
@@ -153,7 +169,7 @@ describe("SettingsPreferencesPage", () => {
     expect((discardButton as HTMLButtonElement).disabled).toBe(true);
   });
 
-  test.skip("toggling a notification enables Save and persists on click", async () => {
+  test("toggling a notification enables Save and persists on click", async () => {
     let submittedPreferences:
       | { email: string; preferences: Record<string, boolean> }
       | undefined;
@@ -367,7 +383,7 @@ describe("SettingsPreferencesPage", () => {
     vi.unstubAllGlobals();
   });
 
-  test.skip("Discard reverts unsaved notification toggles", async () => {
+  test("Discard reverts unsaved notification toggles", async () => {
     setupBaseHandlers();
 
     render(<SettingsPreferencesPage />);
@@ -394,5 +410,16 @@ describe("SettingsPreferencesPage", () => {
       expect((saveButton as HTMLButtonElement).disabled).toBe(true);
       expect(targetSwitch.getAttribute("aria-checked")).toBe(initialChecked);
     });
+  });
+
+  test("hides the notifications card when settings-notifications is off", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+    setupBaseHandlers();
+
+    render(<SettingsPreferencesPage />);
+
+    expect(await screen.findByText("Time zone")).toBeDefined();
+    expect(screen.queryByText("Notifications")).toBeNull();
+    expect(screen.queryAllByRole("switch")).toHaveLength(0);
   });
 });
