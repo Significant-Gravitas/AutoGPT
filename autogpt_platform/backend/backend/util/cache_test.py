@@ -550,6 +550,42 @@ class TestCache:
         assert await surviving_waiter == "same"
         assert call_count == 2
 
+    @pytest.mark.asyncio
+    async def test_async_single_flight_recovers_when_leader_raises(self):
+        first_call_started = asyncio.Event()
+        raise_from_first_call = asyncio.Event()
+        replacement_call_started = asyncio.Event()
+        release_replacement = asyncio.Event()
+        call_count = 0
+
+        @cached(ttl_seconds=300)
+        async def cached_function(key: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                first_call_started.set()
+                await raise_from_first_call.wait()
+                raise ValueError("leader failed")
+            replacement_call_started.set()
+            await release_replacement.wait()
+            return key
+
+        leader = asyncio.create_task(cached_function("same"))
+        await first_call_started.wait()
+        waiters = [asyncio.create_task(cached_function("same")) for _ in range(2)]
+        await asyncio.sleep(0)
+
+        raise_from_first_call.set()
+        with pytest.raises(ValueError, match="leader failed"):
+            await leader
+
+        await asyncio.wait_for(replacement_call_started.wait(), timeout=1)
+        release_replacement.set()
+
+        assert await asyncio.gather(*waiters) == ["same", "same"]
+        assert await cached_function("same") == "same"
+        assert call_count == 2
+
     def test_ttl_functionality(self):
         """Test TTL functionality with sync function."""
         call_count = 0
@@ -1155,6 +1191,7 @@ class TestSharedCache:
     @pytest.mark.asyncio
     async def test_shared_cache_concurrent_different_keys(self):
         """Different keys do not wait behind one function-wide lock."""
+        keys = ["a", "b", "c", "d", "e"]
         call_counts = {}
         all_keys_started = asyncio.Event()
 
@@ -1172,7 +1209,6 @@ class TestSharedCache:
         multi_key_function.cache_clear()
 
         # Launch concurrent tasks with different keys
-        keys = ["a", "b", "c", "d", "e"]
         tasks = []
         for key in keys:
             # Multiple calls per key
