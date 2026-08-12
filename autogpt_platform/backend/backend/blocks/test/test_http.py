@@ -10,6 +10,7 @@ from backend.blocks.http import (
     HttpCredentials,
     HttpMethod,
     SendAuthenticatedWebRequestBlock,
+    SendWebRequestBlock,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import HostScopedCredentials
@@ -25,6 +26,48 @@ def make_test_context(
         user_id=user_id,
         graph_exec_id=graph_exec_id,
     )
+
+
+@pytest.mark.asyncio
+@patch("backend.blocks.http.Requests")
+async def test_http_block_parses_structured_json_response(mock_requests_class):
+    response = MagicMock(spec=Response)
+    response.status = 400
+    response.headers = {"content-type": "application/problem+json; charset=utf-8"}
+    response.json.return_value = {
+        "type": "https://example.com/problems/invalid-request",
+        "title": "Invalid request",
+    }
+    response.text.return_value = (
+        '{"type":"https://example.com/problems/invalid-request",'
+        '"title":"Invalid request"}'
+    )
+    mock_requests = AsyncMock()
+    mock_requests.request.return_value = response
+    mock_requests_class.return_value = mock_requests
+
+    outputs = [
+        output
+        async for output in SendWebRequestBlock().run(
+            SendWebRequestBlock.Input(
+                url="https://api.example.com/data",
+                method=HttpMethod.GET,
+            ),
+            execution_context=make_test_context(),
+        )
+    ]
+
+    assert outputs == [
+        (
+            "client_error",
+            {
+                "type": "https://example.com/problems/invalid-request",
+                "title": "Invalid request",
+            },
+        )
+    ]
+    response.json.assert_called_once_with()
+    response.text.assert_not_called()
 
 
 class TestHttpBlockWithHostScopedCredentials:
