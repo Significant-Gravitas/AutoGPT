@@ -518,6 +518,38 @@ class TestCache:
         assert await surviving_waiter == "same"
         assert call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_async_single_flight_recovers_from_leader_cancellation(self):
+        first_call_started = asyncio.Event()
+        replacement_call_started = asyncio.Event()
+        release_replacement = asyncio.Event()
+        call_count = 0
+
+        @cached(ttl_seconds=300)
+        async def cached_function(key: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                first_call_started.set()
+                await asyncio.Event().wait()
+            replacement_call_started.set()
+            await release_replacement.wait()
+            return key
+
+        leader = asyncio.create_task(cached_function("same"))
+        await first_call_started.wait()
+        surviving_waiter = asyncio.create_task(cached_function("same"))
+
+        leader.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await leader
+
+        await asyncio.wait_for(replacement_call_started.wait(), timeout=1)
+        release_replacement.set()
+
+        assert await surviving_waiter == "same"
+        assert call_count == 2
+
     def test_ttl_functionality(self):
         """Test TTL functionality with sync function."""
         call_count = 0
