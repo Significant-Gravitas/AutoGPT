@@ -29,11 +29,23 @@ def make_test_context(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_type",
+    [
+        "application/problem+json; charset=utf-8",
+        " APPLICATION/PROBLEM+JSON ; charset=utf-8",
+        "application/json; charset=utf-8",
+        "application/vnd.api+json",
+    ],
+)
 @patch("backend.blocks.http.Requests")
-async def test_http_block_parses_structured_json_response(mock_requests_class):
+async def test_http_block_parses_structured_json_response(
+    mock_requests_class,
+    content_type,
+):
     response = MagicMock(spec=Response)
     response.status = 400
-    response.headers = {"content-type": "application/problem+json; charset=utf-8"}
+    response.headers = {"content-type": content_type}
     response.json.return_value = {
         "type": "https://example.com/problems/invalid-request",
         "title": "Invalid request",
