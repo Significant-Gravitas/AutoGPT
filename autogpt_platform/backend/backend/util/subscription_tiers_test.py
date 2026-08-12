@@ -38,7 +38,6 @@ class _MemoryGenerationRedis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
         self.fail_read = False
-        self.fail_write = False
 
     async def eval(
         self,
@@ -55,8 +54,6 @@ class _MemoryGenerationRedis:
         return self.values[key]
 
     async def set(self, key: str, value: str, *, ex: int) -> bool:
-        if self.fail_write:
-            raise ConnectionError("Redis unavailable")
         assert ex == SUBSCRIPTION_TIER_GENERATION_TTL_SECONDS
         self.values[key] = value
         return True
@@ -506,3 +503,70 @@ async def test_generation_read_failure_bypasses_value_cache(
     )
     assert values.values == {}
     assert client.get_user_subscription_tier.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_bytes_generation_is_decoded_before_value_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    redis = MagicMock()
+    redis.eval = AsyncMock(return_value=b"byte-generation")
+
+    async def get_generation_redis():
+        return redis
+
+    fetch_tier = AsyncMock(return_value=SubscriptionTier.MAX)
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_redis_async",
+        get_generation_redis,
+    )
+    monkeypatch.setattr(
+        subscription_tiers,
+        "_fetch_subscription_tier_for_generation",
+        fetch_tier,
+    )
+
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("bytes-user")
+        == SubscriptionTier.MAX
+    )
+    fetch_tier.assert_awaited_once_with("bytes-user", "byte-generation")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_generation", [None, "", b""])
+async def test_invalid_generation_bypasses_value_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_generation: str | bytes | None,
+):
+    redis = MagicMock()
+    redis.eval = AsyncMock(return_value=invalid_generation)
+
+    async def get_generation_redis():
+        return redis
+
+    load_tier = AsyncMock(return_value=SubscriptionTier.PRO)
+    fetch_tier = AsyncMock()
+    monkeypatch.setattr(
+        subscription_tiers,
+        "get_redis_async",
+        get_generation_redis,
+    )
+    monkeypatch.setattr(
+        subscription_tiers,
+        "_load_authoritative_subscription_tier",
+        load_tier,
+    )
+    monkeypatch.setattr(
+        subscription_tiers,
+        "_fetch_subscription_tier_for_generation",
+        fetch_tier,
+    )
+
+    assert (
+        await subscription_tiers.get_authoritative_subscription_tier("invalid-user")
+        == SubscriptionTier.PRO
+    )
+    load_tier.assert_awaited_once_with("invalid-user")
+    fetch_tier.assert_not_awaited()

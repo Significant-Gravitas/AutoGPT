@@ -40,7 +40,7 @@ class SubscriptionTierCacheInvalidationError(RuntimeError):
 
 
 class SubscriptionTierUserNotFoundError(Exception):
-    pass
+    """Raised when the authoritative subscription-tier user record is missing."""
 
 
 def _generation_key(user_id: str) -> str:
@@ -110,6 +110,7 @@ async def _fetch_subscription_tier_for_generation(
     user_id: str,
     generation: str,
 ) -> SubscriptionTier:
+    # The generation is a cache-key fence even though the loader does not read it.
     del generation
     return await _load_authoritative_subscription_tier(user_id)
 
@@ -119,7 +120,9 @@ async def get_authoritative_subscription_tier(user_id: str) -> SubscriptionTier:
 
     Cache availability never becomes an authorization dependency. A generation
     lookup failure bypasses both cache reads and writes, and missing users or DB
-    failures are raised without populating the value cache.
+    failures are raised without populating the value cache. Healthy cached reads
+    intentionally resolve the generation before the value, paying two serial
+    Redis operations so a concurrent tier write can fence stale values safely.
     """
     generation = await _read_subscription_tier_generation(user_id)
     if generation is None:

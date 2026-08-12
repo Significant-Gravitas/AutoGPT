@@ -926,11 +926,10 @@ class _UserNotFoundError(SubscriptionTierUserNotFoundError):
 
 @cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
-    """Legacy rollout cache retained only so mixed-version pods can evict it.
+    """Compatibility cache for readers deployed before generation fencing.
 
-    New reads use the canonical generation-fenced cache below. This function's
-    name and key format remain during the rollout so writers can invalidate
-    entries still consumed by phase-one or rolled-back pods.
+    Its stable name and key format let writers evict entries that may still be
+    consumed by older or rolled-back pods. New reads use the canonical cache.
     """
     try:
         user = await user_db().get_user_by_id(user_id)
