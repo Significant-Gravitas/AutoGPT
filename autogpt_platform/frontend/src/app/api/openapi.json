@@ -18913,7 +18913,6 @@
             "title": "Generated At"
           },
           "timezone": { "type": "string", "title": "Timezone" },
-          "is_demo": { "type": "boolean", "title": "Is Demo" },
           "attention": {
             "items": { "$ref": "#/components/schemas/HomeAttentionItem" },
             "type": "array",
@@ -18942,7 +18941,6 @@
         "required": [
           "generated_at",
           "timezone",
-          "is_demo",
           "attention",
           "briefing",
           "active_tasks",
