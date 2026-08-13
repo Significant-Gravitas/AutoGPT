@@ -126,6 +126,7 @@ async def test_empty_window_returns_zeroed_summary(server: SpinTestServer):
             user_id=user_id,
             since=now - timedelta(days=1),
             until=now,
+            include_by_expert=True,
         )
         assert summary.total_cents == 0
         assert summary.run_count == 0
@@ -212,6 +213,7 @@ async def test_by_expert_rolls_up_stamped_runs_and_drops_unattributed(
             user_id=user_id,
             since=now - timedelta(days=1),
             until=now + timedelta(minutes=1),
+            include_by_expert=True,
         )
 
         assert summary.total_cents == 1320
@@ -222,6 +224,16 @@ async def test_by_expert_rolls_up_stamped_runs_and_drops_unattributed(
         assert by_expert[expert_a].run_count == 2
         assert by_expert[expert_b].cost_cents == 900
         assert by_expert[expert_b].run_count == 1
+
+        # The rollup is its own scan, so callers that never render per-expert
+        # spend must not pay for it.
+        without_experts = await get_user_cost_summary(
+            user_id=user_id,
+            since=now - timedelta(days=1),
+            until=now + timedelta(minutes=1),
+        )
+        assert without_experts.by_expert == []
+        assert without_experts.total_cents == 1320
     finally:
         await _cleanup(user_id, [graph_id], [expert_a, expert_b])
 
@@ -386,6 +398,7 @@ async def test_by_expert_covers_a_roster_larger_than_the_by_agent_cap(
             user_id=user_id,
             since=now - timedelta(days=1),
             until=now + timedelta(minutes=1),
+            include_by_expert=True,
         )
 
         assert len(summary.by_expert) == roster_size

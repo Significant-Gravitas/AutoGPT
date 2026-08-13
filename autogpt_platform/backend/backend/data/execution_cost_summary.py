@@ -80,6 +80,7 @@ async def get_user_cost_summary(
     since: datetime | None = None,
     until: datetime | None = None,
     top_runs_limit: int = 10,
+    include_by_expert: bool = False,
 ) -> UserExecutionCostSummary:
     """Aggregate per-user execution costs from AgentGraphExecution.stats JSON.
 
@@ -90,6 +91,10 @@ async def get_user_cost_summary(
     `@@index([userId, isDeleted, createdAt])` is hit on `AgentGraphExecution`
     — bucketing by `startedAt` instead would force a full per-user scan for
     heavy users.
+
+    `include_by_expert` is opt-in because the expert rollup is its own query
+    over the same rows: callers that never render per-expert spend would
+    otherwise pay for a scan they throw away.
     """
     # Hard cap top_runs_limit here too, not just at the FastAPI layer, since
     # this function is callable directly and an unbounded LIMIT would scan
@@ -106,7 +111,7 @@ async def get_user_cost_summary(
     totals, by_agent, by_expert, top_runs, daily = await asyncio.gather(
         _fetch_totals(params),
         _fetch_by_agent(params),
-        _fetch_by_expert(params),
+        _fetch_by_expert(params) if include_by_expert else _no_expert_rollup(),
         _fetch_top_runs(params, top_runs_limit),
         _fetch_daily(params),
     )
@@ -179,6 +184,10 @@ async def _fetch_by_agent(
     ]
 
 
+async def _no_expert_rollup() -> list[UserExpertCostRollup]:
+    return []
+
+
 async def _fetch_by_expert(
     params: tuple[str, datetime, datetime],
 ) -> list[UserExpertCostRollup]:
@@ -187,8 +196,11 @@ async def _fetch_by_expert(
     `by_agent` can afford a top-N cut because it only ever feeds a ranked
     list, but callers sum this rollup into a headline total. A LIMIT here
     would silently under-report that total for anyone whose hired roster
-    outgrew the cap. Row count is bounded by the user's own experts, and
-    the rows are already being scanned for the other aggregates.
+    outgrew the cap; the row count is bounded by the user's own experts.
+
+    This is a separate scan of the same window, not a free rider on the
+    other aggregates — `asyncio.gather` only overlaps its latency. Hence
+    the `include_by_expert` opt-in on `get_user_cost_summary`.
     """
     rows = await query_raw_with_schema(
         "SELECT"
