@@ -45,6 +45,10 @@ _MAX_OUTPUT_TOKENS = 150
 # supply an explicit value — same pattern ``ChatConfig._apply_local_aux_models``
 # uses for ``title_model`` / ``simulation_model``.
 _DEFAULT_MODEL_NAME = "gpt-4o-mini"
+INSUFFICIENT_BALANCE_SUMMARY = (
+    "This run couldn't complete because the available credit balance was insufficient. "
+    "Please add credits to the billed account, or ask its billing owner, before trying again."
+)
 
 
 # Default system prompt template for activity status generation
@@ -213,11 +217,7 @@ def _get_deterministic_failure_response(
 
     if execution_stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE:
         return {
-            "activity_status": (
-                "This run couldn't complete because the available credit balance was insufficient. "
-                "Please add credits to the billed account, or ask its billing owner, "
-                "before trying again."
-            ),
+            "activity_status": INSUFFICIENT_BALANCE_SUMMARY,
             "correctness_score": 0.0,
         }
 

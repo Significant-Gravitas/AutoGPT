@@ -13,6 +13,7 @@ from backend.executor.manager import (
     ExecutionProcessor,
     _get_execution_credit_balance,
     _propagate_node_failure,
+    _record_execution_failure,
 )
 from backend.util.decorator import TimingInfo
 from backend.util.exceptions import ExecutionFailureReason, InsufficientBalanceError
@@ -102,6 +103,33 @@ def test_execution_credit_balance_uses_personal_wallet_without_organization():
 
 def test_nested_credit_failure_is_propagated_to_graph_stats():
     graph_stats = GraphExecutionStats()
+    error = InsufficientBalanceError(
+        message="Organization has 0 credits but needs 25",
+        user_id="user-1",
+        balance=0,
+        amount=25,
+    )
+
+    _propagate_node_failure(graph_stats, error)
+
+    assert graph_stats.error == str(error)
+    assert graph_stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
+
+
+def test_graph_error_does_not_erase_promoted_credit_failure_reason():
+    graph_stats = GraphExecutionStats(
+        error="Organization has 0 credits but needs 25",
+        failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE,
+    )
+
+    _record_execution_failure(graph_stats, RuntimeError("Output moderation failed"))
+
+    assert graph_stats.error == "Output moderation failed"
+    assert graph_stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
+
+
+def test_credit_node_failure_replaces_prior_graph_error():
+    graph_stats = GraphExecutionStats(error="Earlier non-credit node error")
     error = InsufficientBalanceError(
         message="Organization has 0 credits but needs 25",
         user_id="user-1",

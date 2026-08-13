@@ -10,6 +10,7 @@ from backend.api.features.admin.execution_analytics_routes import (
     generate_execution_analytics,
 )
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.executor.activity_status_generator import INSUFFICIENT_BALANCE_SUMMARY
 from backend.util.exceptions import ExecutionFailureReason
 
 
@@ -43,6 +44,12 @@ async def test_process_batch_allows_credit_failure_without_openai_key():
     assert results[0].status == "success"
     assert results[0].score == 0.0
     mock_update.assert_awaited_once()
+    update_call = mock_update.await_args.kwargs
+    assert update_call["graph_exec_id"] == "exec-1"
+    updated_stats = update_call["stats"]
+    assert updated_stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
+    assert updated_stats.correctness_score == 0.0
+    assert updated_stats.activity_status == INSUFFICIENT_BALANCE_SUMMARY
     mock_get_openai_client.assert_not_called()
 
 

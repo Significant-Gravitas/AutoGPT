@@ -118,19 +118,30 @@ def _get_execution_credit_balance(
     db_client: "DatabaseManagerClient",
     graph_exec: GraphExecutionEntry,
 ) -> int:
+    """Return the balance for the wallet billed by this execution."""
     organization_id = graph_exec.execution_context.organization_id
     if organization_id:
         return db_client.get_org_credits(org_id=organization_id)
     return db_client.get_credits(graph_exec.user_id)
 
 
+def _record_execution_failure(
+    execution_stats: GraphExecutionStats,
+    error: BaseException,
+) -> None:
+    """Record an error without erasing a trusted reason promoted by a node."""
+    if failure_reason := get_execution_failure_reason(error):
+        execution_stats.failure_reason = failure_reason
+    execution_stats.error = str(error) or type(error).__name__
+
+
 def _propagate_node_failure(
     graph_stats: GraphExecutionStats,
     node_error: BaseException,
 ) -> None:
-    if failure_reason := get_execution_failure_reason(node_error):
-        graph_stats.failure_reason = failure_reason
-        graph_stats.error = str(node_error) or type(node_error).__name__
+    """Promote only trusted, typed node failures to graph-level stats."""
+    if get_execution_failure_reason(node_error):
+        _record_execution_failure(graph_stats, node_error)
 
 
 active_runs_gauge = Gauge(
@@ -971,6 +982,7 @@ class ExecutionProcessor:
             exec_stats = exec_meta.stats.to_db()
             exec_stats.is_dry_run = graph_exec.execution_context.dry_run
 
+        # Clear terminal interpretation from a prior attempt before continuing.
         exec_stats.error = None
         exec_stats.failure_reason = None
         exec_stats.activity_status = None
@@ -1311,8 +1323,7 @@ class ExecutionProcessor:
                     execution_status = ExecutionStatus.COMPLETED
 
             if error:
-                execution_stats.failure_reason = get_execution_failure_reason(error)
-                execution_stats.error = str(error) or type(error).__name__
+                _record_execution_failure(execution_stats, error)
 
             return execution_status
 
@@ -1322,8 +1333,7 @@ class ExecutionProcessor:
                 if isinstance(e, Exception)
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
-            execution_stats.failure_reason = get_execution_failure_reason(error)
-            execution_stats.error = str(error) or type(error).__name__
+            _record_execution_failure(execution_stats, error)
 
             known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):
