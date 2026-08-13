@@ -1132,6 +1132,36 @@ class TestDeterministicFailureResponse:
 
         assert result is None
 
+    def test_terminated_credit_text_does_not_use_deterministic_response(self):
+        stats = GraphExecutionStats(error="You have no credits left to run an agent.")
+
+        result = _get_deterministic_failure_response(stats, ExecutionStatus.TERMINATED)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_non_credit_failed_execution_reaches_llm_path(self):
+        stats = GraphExecutionStats(error="Connection timeout")
+        mock_db_client = AsyncMock()
+
+        with patch(
+            "backend.executor.activity_status_generator.get_openai_client",
+            return_value=None,
+        ) as mock_get_openai_client:
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+                execution_status=ExecutionStatus.FAILED,
+                skip_feature_flag=True,
+            )
+
+        assert result is None
+        mock_get_openai_client.assert_called_once_with(prefer_openrouter=True)
+
     @pytest.mark.asyncio
     async def test_generate_skips_llm_for_structured_credit_failure(self):
         stats = GraphExecutionStats(
