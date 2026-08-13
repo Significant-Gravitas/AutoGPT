@@ -30,10 +30,20 @@ export function AgentRow({ agent }: Props) {
           </Text>
           <StatusBadge status={agent.status} />
         </div>
-        <Text variant="small" className="truncate text-zinc-500">
-          {agent.detail}
-          {spend ? ` · ${spend}` : null}
-        </Text>
+        <div className="flex min-w-0 items-center gap-1 text-zinc-500">
+          <Text variant="small" className="min-w-0 truncate">
+            {agent.detail}
+          </Text>
+          {spend ? (
+            <Text
+              variant="small"
+              className="shrink-0 tabular-nums"
+              unmask={false}
+            >
+              {`· ${spend}`}
+            </Text>
+          ) : null}
+        </div>
       </div>
       {agent.next_run_time ? (
         <Text

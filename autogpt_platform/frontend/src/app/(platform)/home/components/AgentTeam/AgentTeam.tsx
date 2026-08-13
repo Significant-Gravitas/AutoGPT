@@ -52,7 +52,7 @@ export function AgentTeam({ dashboard, className }: Props) {
         </div>
       }
       header={
-        <Text variant="large" className="text-zinc-600">
+        <Text variant="large" className="text-zinc-600" unmask={!teamSpend}>
           {teamSpend ? `${statusLine} · ${teamSpend}` : statusLine}
         </Text>
       }
