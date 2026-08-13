@@ -10,23 +10,23 @@ This guide explains how credentials work on the platform, how to add them, and h
 
 ### Platform-Provided Credentials
 
-On the cloud-hosted platform at [platform.agpt.co](https://platform.agpt.co), many credentials are **provided by default**. Services like OpenAI, Anthropic, and Replicate are pre-configured, so you can use AI blocks and many other features without providing your own API keys.
+On the cloud-hosted platform at [platform.agpt.co](https://platform.agpt.co), some plans and account configurations include managed AI providers. If a block requires credentials that are not included, the platform will prompt you to connect your own. See the [pricing page](https://agpt.co/pricing) for current plan details.
 
 ### User-Provided Credentials
 
-For services tied to your personal accounts — such as Google, Linear, GitHub, or Twitter — you'll need to connect your own credentials. This only needs to be done **once per service per account**. After connecting, all agents that use that service will automatically have access.
+For services tied to your personal accounts, connect your own credentials. Credentials can be reused across agents, but you choose which compatible credential an agent or task uses. Managed credentials may be selected automatically when available.
 
 ## Adding Credentials
 
-Credentials are added **in context** — when you encounter a block that needs them, rather than from a central setup page.
+You can connect credentials centrally from **Settings → Integrations → Connect Service**, or in context when a builder block or task asks for one.
 
 ### When Building an Agent
 
-If you add a block to the builder that requires a credential you haven't connected yet, a **credential bar** will appear on the block prompting you to add it.
+If a block needs credentials, select an existing compatible credential or connect a new one from the block.
 
 ### When Running an Agent
 
-If you run an agent (including marketplace agents) that requires credentials, one of the input fields will be the credential selector. This only appears for services you haven't connected yet.
+Credential fields show the credentials that task will use. Select an existing compatible credential or connect a new one.
 
 ### Credential Types
 
@@ -35,33 +35,25 @@ Depending on the service, you'll be prompted to authenticate in one of three way
 | Type | Description | Example Services |
 |------|-------------|------------------|
 | **OAuth** | Click to authorise via the service's login page | Google, GitHub, Twitter |
-| **API Key** | Paste your API key from the service's dashboard | Linear, OpenAI (if self-hosting) |
+| **API Key** | Paste your API key from the service's dashboard | Linear, OpenAI |
 | **Username & Password** | Enter your account credentials | Varies by service |
 
 {% hint style="info" %}
-You only need to connect a credential **once per service**. For example, after adding your Linear API key, every agent that uses Linear blocks will have access automatically.
+Credentials are reusable, but each block or task retains its selected credential reference.
 {% endhint %}
 
 ## Managing Credentials
 
-### Viewing Connected Integrations
+1. Open **Settings**.
+2. Select **Integrations**.
+3. Use **Connect Service** to add a credential, or manage/remove credentials already listed.
 
-To view and manage your connected integrations:
-
-1. Click your **profile picture** in the top-right corner
-2. Select **Integrations**
-3. You'll see a list of all your connected integrations
-
-**URL:** [platform.agpt.co/profile/integrations](https://platform.agpt.co/profile/integrations)
-
-### Removing a Credential
-
-From the integrations page, you can **browse** your list of connected integrations and **delete** any you no longer need.
+**URL:** [platform.agpt.co/settings/integrations](https://platform.agpt.co/settings/integrations)
 
 {% hint style="warning" %}
-You **cannot add** new integrations from the integrations management screen. New credentials are only added when you encounter a block or agent that requires them.
+Removing a credential can break agents, workflows, or active webhooks that reference it. Review the dependency warning before confirming removal.
 {% endhint %}
 
 ## Self-Hosted Credentials
 
-If you're running the platform locally via self-hosting, you'll need to provide your own API keys for all services, including AI providers. These are configured in the `autogpt_platform/backend/.env` file. See the [Self-Hosting Guide](getting-started.md) for details.
+When self-hosting, configure deployment-level provider keys and OAuth application credentials in `autogpt_platform/backend/.env`, then connect end-user accounts from **Settings → Integrations** as needed. See the [Self-Hosting Guide](getting-started.md) for details.

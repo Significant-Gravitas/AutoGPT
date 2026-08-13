@@ -9,7 +9,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { okData } from "@/app/api/helpers";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import * as React from "react";
@@ -23,7 +23,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const user = useSupabaseStore((state) => state.user);
+  const user = useAuthStore((state) => state.user);
 
   // Get marketplace data if agent has marketplace listing
   const { data: storeAgentData } = useGetV2GetSpecificAgent(
@@ -47,7 +47,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       {
         query: {
           // Only fetch if user is the creator
-          enabled: !!(user?.id && agent?.owner_user_id === user.id),
+          enabled: !!(user?.id && agent?.can_access_graph),
         },
       },
     );
@@ -90,19 +90,19 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       };
     }
 
-    const isUserCreator = agent?.owner_user_id === user?.id;
+    const isUserCreator = !!(agent?.can_access_graph && user?.id);
 
     const submissionsResponse = okData(submissionsData) as any;
     const agentSubmissions =
       submissionsResponse?.submissions?.filter(
-        (submission: StoreSubmission) => submission.agent_id === agent.graph_id,
+        (submission: StoreSubmission) => submission.graph_id === agent.graph_id,
       ) || [];
 
     const highestSubmittedVersion =
       agentSubmissions.length > 0
         ? Math.max(
             ...agentSubmissions.map(
-              (submission: StoreSubmission) => submission.agent_version,
+              (submission: StoreSubmission) => submission.graph_version,
             ),
           )
         : 0;

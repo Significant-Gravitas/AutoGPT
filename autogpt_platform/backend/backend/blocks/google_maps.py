@@ -3,7 +3,7 @@ from typing import Literal
 import googlemaps
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -14,6 +14,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -116,6 +117,11 @@ class GoogleMapsSearchBlock(Block):
             input_data.query,
             input_data.radius,
             input_data.max_results,
+        )
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(len(places)), provider_cost_type="items"
+            )
         )
         for place in places:
             yield "place", place

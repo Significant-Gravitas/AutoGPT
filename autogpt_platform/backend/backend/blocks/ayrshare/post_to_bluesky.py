@@ -1,16 +1,20 @@
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
+from ._cost import AYRSHARE_POST_COSTS
+from ._util import BaseAyrshareInput, create_ayrshare_client
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToBlueskyBlock(Block):
     """Block for posting to Bluesky with Bluesky-specific options."""
 
@@ -57,16 +61,10 @@ class PostToBlueskyBlock(Block):
         self,
         input_data: "PostToBlueskyBlock.Input",
         *,
-        user_id: str,
+        credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
         """Post to Bluesky with Bluesky-specific options."""
-
-        profile_key = await get_profile_key(user_id)
-        if not profile_key:
-            yield "error", "Please link a social account via Ayrshare"
-            return
-
         client = create_ayrshare_client()
         if not client:
             yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
@@ -106,7 +104,7 @@ class PostToBlueskyBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             bluesky_options=bluesky_options if bluesky_options else None,
-            profile_key=profile_key.get_secret_value(),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

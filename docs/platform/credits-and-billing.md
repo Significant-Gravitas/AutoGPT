@@ -2,54 +2,50 @@
 
 ## Overview
 
-The AutoGPT Platform uses a credit system to manage usage. Credits are consumed when blocks execute during agent runs. This guide explains how credits work, how pricing is determined, and how to monitor your spending.
+The AutoGPT Platform uses automation credits for metered agent execution. This guide explains how usage is priced, how to review costs, and how to manage your balance.
 
 {% hint style="info" %}
-The platform is currently in a **pre-release closed beta**. Pricing is subject to change.
+Plans and pricing can change. See the [pricing page](https://agpt.co/pricing) for current details.
 {% endhint %}
 
 ## How Credits Work
 
-Credits are consumed on a **per-block-run** basis. Each time a block executes during an agent run, it costs a certain number of credits. The price of a block covers its compute, development, and operational costs — there are no separate charges for infrastructure or API usage.
+Credits are charged when blocks run. Depending on the block, the final charge may be fixed or based on actual usage, such as tokens, provider cost, elapsed time, data size, or number of items. For usage-based blocks, the platform may estimate a charge before execution and reconcile it against actual usage afterward.
 
 ### Block Pricing
 
-Block prices vary depending on the block:
+Block pricing varies by block, configuration, and usage. Review the estimate shown in the platform before running an agent; the final charge for usage-based blocks may differ from the estimate.
 
-- **Fixed-price blocks**: Some blocks have a flat price regardless of how they are configured (e.g., basic data processing blocks)
-- **Variable-price blocks**: Some blocks have a price that changes based on the settings you choose. For example, the **AI Text Generator** block's price changes depending on which large language model you select
-
-{% hint style="info" %}
-The current pricing system charges a flat rate per model for AI blocks — you are **not** charged per token.
-{% endhint %}
-
-Users are not charged for anything else on the platform beyond block execution. There are no subscription fees, storage fees, or platform access fees.
+Your total cost depends on your plan and automation-credit usage. See the [pricing page](https://agpt.co/pricing) for current subscription and included-credit details.
 
 ## Checking Your Balance
 
-Your credit balance is displayed in the **top-right corner** of the screen at all times, visible from any page on the platform.
+Your balance is available from the automation-credits wallet in the platform navigation and from [Billing settings](https://platform.agpt.co/settings/billing?tab=automation-credits).
 
 ## Viewing Task Costs
 
-To see how many credits a specific agent run consumed:
+To review the cost of a specific agent run:
 
 1. Go to your [Agent Library](agent-library.md)
 2. Open the agent
 3. Click on a completed task in the left-hand pane
-4. The **total credit cost** for that task is displayed at the top of the task detail view
+4. The task detail header displays **Cost** in dollars.
 
 {% hint style="info" %}
-There is no centralised ledger for browsing all credit spend across your account. Credit costs are available on a per-task basis within each agent.
+Use the **Automation Credits** section in [Billing settings](https://platform.agpt.co/settings/billing?tab=automation-credits) for account-level usage and transaction history. Individual task costs are also available within each agent.
 {% endhint %}
 
 ## Running Out of Credits
 
-There are no hard limits on usage beyond your credit balance. If your credit balance reaches zero:
+If your automation-credit balance is exhausted, paid blocks cannot start until credits are added. Scheduled tasks may fail for insufficient balance. Final reconciliation for a usage-based block that already ran can leave the balance below zero.
 
-- **Running agents will stop executing**
-- **Scheduled agents will not run** until credits are replenished
-- You will need to add more credits to continue using the platform
+You can add credits manually or configure auto-refill from Billing settings.
 
 ## Adding Credits
 
-Credits can be added through the platform. Navigate to your profile settings to manage your credit balance.
+1. Open **Settings** from your profile menu.
+2. Select **Billing**.
+3. Open the **Automation Credits** tab.
+4. Select **Add credits** and follow the checkout prompts.
+
+You can also go directly to [Billing settings](https://platform.agpt.co/settings/billing?tab=automation-credits).

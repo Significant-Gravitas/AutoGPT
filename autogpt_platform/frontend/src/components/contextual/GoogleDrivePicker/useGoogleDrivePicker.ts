@@ -1,5 +1,7 @@
-import { getGetV1GetSpecificCredentialByIdQueryOptions } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import type { OAuth2Credentials } from "@/app/api/__generated__/models/oAuth2Credentials";
+import {
+  getGetV1GetSpecificCredentialByIdQueryOptions,
+  postV1GetPickerToken,
+} from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import useCredentials from "@/hooks/useCredentials";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
@@ -16,6 +18,35 @@ import {
   scopesIncludeDrive,
 } from "./helpers";
 import { okData } from "@/app/api/helpers";
+
+export async function fetchPickerAccessToken(
+  credentialId: string,
+): Promise<string> {
+  const response = await postV1GetPickerToken("google", credentialId);
+  const token = okData(response)?.access_token;
+  if (!token) {
+    throw new Error(
+      "Server did not return an access token for the Google Drive picker.",
+    );
+  }
+  return token;
+}
+
+/**
+ * Whether a saved credential's granted scopes cover every scope the picker
+ * is asking for.  Pulled out of openPicker() so the scope-gate can be
+ * exercised directly — the hook flow around it needs a browser env and
+ * is hard to test in isolation.  `undefined` required-scopes is treated
+ * as "no scope requirement".
+ */
+export function hasAllRequiredScopes(
+  credentialScopes: readonly string[] | null | undefined,
+  requiredScopes: readonly string[] | null | undefined,
+): boolean {
+  if (!requiredScopes || requiredScopes.length === 0) return true;
+  const granted = new Set(credentialScopes || []);
+  return requiredScopes.every((scope) => granted.has(scope));
+}
 
 const defaultScopes = ["https://www.googleapis.com/auth/drive.file"];
 
@@ -129,35 +160,29 @@ export function useGoogleDrivePicker(options: Props) {
           const response = await queryClient.fetchQuery(queryOptions);
           const cred = okData(response);
 
-          if (cred) {
-            if (cred.type === "oauth2") {
-              const oauthCred = cred as OAuth2Credentials;
-              if (oauthCred.access_token) {
-                const credentialScopes = new Set(oauthCred.scopes || []);
-                const requiredScopesSet = new Set(requestedScopes);
-                const hasRequiredScopes = Array.from(requiredScopesSet).every(
-                  (scope) => credentialScopes.has(scope),
-                );
-
-                if (!hasRequiredScopes) {
-                  const error = new Error(
-                    "The saved Google OAuth credentials do not have the required permissions. Please sign in again with the correct permissions.",
-                  );
-                  toast({
-                    title: "Insufficient Permissions",
-                    description: error.message,
-                    variant: "destructive",
-                  });
-                  setHasInsufficientScopes(true);
-                  if (onError) onError(error);
-                  return;
-                }
-
-                accessTokenRef.current = oauthCred.access_token;
-                buildAndShowPicker(oauthCred.access_token);
-                return;
-              }
+          if (cred && cred.type === "oauth2") {
+            if (!hasAllRequiredScopes(cred.scopes, requestedScopes)) {
+              const error = new Error(
+                "The saved Google OAuth credentials do not have the required permissions. Please sign in again with the correct permissions.",
+              );
+              toast({
+                title: "Insufficient Permissions",
+                description: error.message,
+                variant: "destructive",
+              });
+              setHasInsufficientScopes(true);
+              if (onError) onError(error);
+              return;
             }
+
+            // The meta endpoint (used above for the scope check) deliberately
+            // strips `access_token` — see TestGetCredentialReturnsMetaOnly in
+            // backend/api/features/integrations/router_test.py. Mint a fresh
+            // access token via the dedicated picker-token endpoint instead.
+            const accessToken = await fetchPickerAccessToken(credentialId);
+            accessTokenRef.current = accessToken;
+            buildAndShowPicker(accessToken);
+            return;
           }
 
           const error = new Error(

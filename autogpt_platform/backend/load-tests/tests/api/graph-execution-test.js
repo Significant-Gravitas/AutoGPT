@@ -22,7 +22,6 @@ function generateTestGraph(name = null) {
           input_default: {
             name: "Load Test Input",
             description: "Test input for load testing",
-            placeholder_values: {},
           },
           input_nodes: [],
           output_nodes: ["output_node"],
@@ -59,11 +58,7 @@ function generateExecutionInputs() {
     "Load Test Input": {
       name: "Load Test Input",
       description: "Test input for load testing",
-      placeholder_values: {
-        test_data: `Test execution at ${new Date().toISOString()}`,
-        test_parameter: Math.random().toString(36).substr(2, 9),
-        numeric_value: Math.floor(Math.random() * 1000),
-      },
+      value: `Test execution at ${new Date().toISOString()}`,
     },
   };
 }

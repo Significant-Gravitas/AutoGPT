@@ -1,17 +1,33 @@
+import asyncio
 import logging
-from typing import List
+from typing import Any, List
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
-from backend.data.execution import get_graph_execution_meta
+from backend.copilot.constants import (
+    is_copilot_synthetic_id,
+    parse_node_id_from_exec_id,
+)
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    get_graph_execution_meta,
+    get_node_executions,
+)
+from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
+    create_auto_approval_record,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
+    get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
+from backend.data.model import USER_TIMEZONE_NOT_SET
+from backend.data.user import get_user_by_id
+from backend.data.workspace import get_or_create_workspace
 from backend.executor.utils import add_graph_execution
 
 from .model import PendingHumanReviewModel, ReviewRequest, ReviewResponse
@@ -23,6 +39,38 @@ router = APIRouter(
     tags=["v2", "executions", "review"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
+
+
+async def _resolve_node_ids(
+    node_exec_ids: list[str],
+    graph_exec_id: str,
+    is_copilot: bool,
+) -> dict[str, str]:
+    """Resolve node_exec_id -> node_id for auto-approval records.
+
+    CoPilot synthetic IDs encode node_id in the format "{node_id}:{random}".
+    Graph executions look up node_id from NodeExecution records.
+    """
+    if not node_exec_ids:
+        return {}
+
+    if is_copilot:
+        return {neid: parse_node_id_from_exec_id(neid) for neid in node_exec_ids}
+
+    node_execs = await get_node_executions(
+        graph_exec_id=graph_exec_id, include_exec_data=False
+    )
+    node_exec_map = {ne.node_exec_id: ne.node_id for ne in node_execs}
+
+    result = {}
+    for neid in node_exec_ids:
+        if neid in node_exec_map:
+            result[neid] = node_exec_map[neid]
+        else:
+            logger.error(
+                f"Failed to resolve node_id for {neid}: Node execution not found."
+            )
+    return result
 
 
 @router.get(
@@ -99,14 +147,16 @@ async def list_pending_reviews_for_execution(
     """
 
     # Verify user owns the graph execution before returning reviews
-    graph_exec = await get_graph_execution_meta(
-        user_id=user_id, execution_id=graph_exec_id
-    )
-    if not graph_exec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Graph execution #{graph_exec_id} not found",
+    # (CoPilot synthetic IDs don't have graph execution records)
+    if not is_copilot_synthetic_id(graph_exec_id):
+        graph_exec = await get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
         )
+        if not graph_exec:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph execution #{graph_exec_id} not found",
+            )
 
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
 
@@ -127,23 +177,138 @@ async def process_review_action(
             detail="At least one review must be provided",
         )
 
-    # Build review decisions map
+    # Batch fetch all requested reviews (regardless of status for idempotent handling)
+    reviews_map = await get_reviews_by_node_exec_ids(
+        list(all_request_node_ids), user_id
+    )
+
+    # Validate all reviews were found (must exist, any status is OK for now)
+    missing_ids = all_request_node_ids - set(reviews_map.keys())
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Review(s) not found: {', '.join(missing_ids)}",
+        )
+
+    # Validate all reviews belong to the same execution
+    graph_exec_ids = {review.graph_exec_id for review in reviews_map.values()}
+    if len(graph_exec_ids) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="All reviews in a single request must belong to the same execution.",
+        )
+
+    graph_exec_id = next(iter(graph_exec_ids))
+    is_copilot = is_copilot_synthetic_id(graph_exec_id)
+
+    # Validate execution status for graph executions (skip for CoPilot synthetic IDs)
+    if not is_copilot:
+        graph_exec_meta = await get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
+        )
+        if not graph_exec_meta:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph execution #{graph_exec_id} not found",
+            )
+        if graph_exec_meta.status not in (
+            ExecutionStatus.REVIEW,
+            ExecutionStatus.INCOMPLETE,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Cannot process reviews while execution status is {graph_exec_meta.status}",
+            )
+
+    # Build review decisions map and track which reviews requested auto-approval
+    # Auto-approved reviews use original data (no modifications allowed)
     review_decisions = {}
+    auto_approve_requests = {}  # Map node_exec_id -> auto_approve_future flag
+
     for review in request.reviews:
         review_status = (
             ReviewStatus.APPROVED if review.approved else ReviewStatus.REJECTED
         )
+        # If this review requested auto-approval, don't allow data modifications
+        reviewed_data = None if review.auto_approve_future else review.reviewed_data
         review_decisions[review.node_exec_id] = (
             review_status,
-            review.reviewed_data,
+            reviewed_data,
             review.message,
         )
+        auto_approve_requests[review.node_exec_id] = review.auto_approve_future
 
     # Process all reviews
     updated_reviews = await process_all_reviews_for_execution(
         user_id=user_id,
         review_decisions=review_decisions,
     )
+
+    # Create auto-approval records for approved reviews that requested it
+    # Deduplicate by node_id to avoid race conditions when multiple reviews
+    # for the same node are processed in parallel
+    async def create_auto_approval_for_node(
+        node_id: str, review_result
+    ) -> tuple[str, bool]:
+        """
+        Create auto-approval record for a node.
+        Returns (node_id, success) tuple for tracking failures.
+        """
+        try:
+            await create_auto_approval_record(
+                user_id=user_id,
+                graph_exec_id=review_result.graph_exec_id,
+                graph_id=review_result.graph_id,
+                graph_version=review_result.graph_version,
+                node_id=node_id,
+                payload=review_result.payload,
+            )
+            return (node_id, True)
+        except Exception as e:
+            logger.error(
+                f"Failed to create auto-approval record for node {node_id}",
+                exc_info=e,
+            )
+            return (node_id, False)
+
+    # Collect node_exec_ids that need auto-approval and resolve their node_ids
+    node_exec_ids_needing_auto_approval = [
+        node_exec_id
+        for node_exec_id, review_result in updated_reviews.items()
+        if review_result.status == ReviewStatus.APPROVED
+        and auto_approve_requests.get(node_exec_id, False)
+    ]
+
+    node_id_map = await _resolve_node_ids(
+        node_exec_ids_needing_auto_approval, graph_exec_id, is_copilot
+    )
+
+    # Deduplicate by node_id — one auto-approval per node
+    nodes_needing_auto_approval: dict[str, Any] = {}
+    for node_exec_id in node_exec_ids_needing_auto_approval:
+        node_id = node_id_map.get(node_exec_id)
+        if node_id and node_id not in nodes_needing_auto_approval:
+            nodes_needing_auto_approval[node_id] = updated_reviews[node_exec_id]
+
+    # Execute all auto-approval creations in parallel (deduplicated by node_id)
+    auto_approval_results = await asyncio.gather(
+        *[
+            create_auto_approval_for_node(node_id, review_result)
+            for node_id, review_result in nodes_needing_auto_approval.items()
+        ],
+        return_exceptions=True,
+    )
+
+    # Count auto-approval failures
+    auto_approval_failed_count = 0
+    for result in auto_approval_results:
+        if isinstance(result, Exception):
+            auto_approval_failed_count += 1
+            logger.error(
+                f"Unexpected exception during auto-approval creation: {result}"
+            )
+        elif isinstance(result, tuple) and len(result) == 2 and not result[1]:
+            auto_approval_failed_count += 1
 
     # Count results
     approved_count = sum(
@@ -157,30 +322,54 @@ async def process_review_action(
         if review.status == ReviewStatus.REJECTED
     )
 
-    # Resume execution if we processed some reviews
-    if updated_reviews:
-        # Get graph execution ID from any processed review
-        first_review = next(iter(updated_reviews.values()))
-        graph_exec_id = first_review.graph_exec_id
-
-        # Check if any pending reviews remain for this execution
+    # Resume graph execution only for real graph executions (not CoPilot)
+    # CoPilot sessions are resumed by the LLM retrying run_block with review_id
+    if not is_copilot and updated_reviews:
         still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
 
         if not still_has_pending:
-            # Resume execution
+            first_review = next(iter(updated_reviews.values()))
+
             try:
+                user = await get_user_by_id(user_id)
+                settings = await get_graph_settings(
+                    user_id=user_id, graph_id=first_review.graph_id
+                )
+
+                user_timezone = (
+                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+                )
+
+                workspace = await get_or_create_workspace(user_id)
+
+                execution_context = ExecutionContext(
+                    human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+                    sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+                    user_timezone=user_timezone,
+                    workspace_id=workspace.id,
+                )
+
                 await add_graph_execution(
                     graph_id=first_review.graph_id,
                     user_id=user_id,
                     graph_exec_id=graph_exec_id,
+                    execution_context=execution_context,
                 )
                 logger.info(f"Resumed execution {graph_exec_id}")
             except Exception as e:
                 logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
 
+    # Build error message if auto-approvals failed
+    error_message = None
+    if auto_approval_failed_count > 0:
+        error_message = (
+            f"{auto_approval_failed_count} auto-approval setting(s) could not be saved. "
+            f"You may need to manually approve these reviews in future executions."
+        )
+
     return ReviewResponse(
         approved_count=approved_count,
         rejected_count=rejected_count,
-        failed_count=0,
-        error=None,
+        failed_count=auto_approval_failed_count,
+        error=error_message,
     )

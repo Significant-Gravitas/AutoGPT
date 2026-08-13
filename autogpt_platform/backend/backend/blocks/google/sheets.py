@@ -7,14 +7,14 @@ from enum import Enum
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from backend.blocks.google._drive import GoogleDriveFile, GoogleDriveFileField
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.google._drive import GoogleDriveFile, GoogleDriveFileField
 from backend.data.model import SchemaField
 from backend.util.settings import Settings
 

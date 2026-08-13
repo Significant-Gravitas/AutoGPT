@@ -1,0 +1,228 @@
+"""SDK environment variable builder — importable without circular deps.
+
+Extracted from ``service.py`` so that ``backend.blocks.orchestrator``
+can reuse the same subscription / OpenRouter / direct-Anthropic logic
+without pulling in the full copilot service module (which would create a
+circular import through ``executor`` → ``credit`` → ``block_cost_config``).
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from urllib.parse import urlparse
+
+from backend.copilot.config import ChatConfig
+from backend.copilot.moonshot import is_moonshot_model
+from backend.copilot.sdk.subscription import validate_subscription
+
+# ChatConfig is stateless (reads env vars) — a separate instance is fine.
+# A singleton would require importing service.py which causes the circular dep
+# this module was created to avoid.
+config = ChatConfig()
+
+# RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
+_HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
+_MAX_HEADER_VALUE_LEN = 128
+_LOOPBACK_NO_PROXY_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def _loopback_no_proxy_value() -> str:
+    entries: list[str] = []
+    for value in (os.environ.get("NO_PROXY", ""), os.environ.get("no_proxy", "")):
+        for entry in value.split(","):
+            entry = entry.strip()
+            if entry and entry.lower() not in {item.lower() for item in entries}:
+                entries.append(entry)
+    for host in _LOOPBACK_NO_PROXY_HOSTS:
+        if host.lower() not in {item.lower() for item in entries}:
+            entries.append(host)
+    return ",".join(entries)
+
+
+def build_sdk_env(
+    session_id: str | None = None,
+    user_id: str | None = None,
+    sdk_cwd: str | None = None,
+    model: str | None = None,
+    codex_gateway_url: str | None = None,
+    codex_gateway_token: str | None = None,
+) -> dict[str, str]:
+    """Build env vars for the SDK CLI subprocess.
+
+    Four modes (checked in order):
+    1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
+    2. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
+    3. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
+       from the parent environment (no overrides needed).
+    4. **OpenRouter** (default) — overrides base URL and auth token to
+       route through the proxy, with Langfuse trace headers.
+
+    All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
+    security hardening env vars to prevent .claude.md loading, prompt
+    history persistence, auto-memory writes, and non-essential traffic.
+
+    *model* is the resolved SDK model slug (e.g. ``"moonshotai/kimi-k2.6"``
+    or ``"anthropic/claude-sonnet-4-6"``).  Used to gate model-specific env
+    vars (currently: ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` is skipped for
+    Moonshot since the cache-cost rationale doesn't apply there).
+    """
+    if (codex_gateway_url is None) != (codex_gateway_token is None):
+        raise ValueError(
+            "codex_gateway_url and codex_gateway_token must be provided together"
+        )
+    if codex_gateway_token is not None and not codex_gateway_token:
+        raise ValueError("Codex gateway token must not be empty")
+    if codex_gateway_url is not None:
+        parsed_gateway = urlparse(codex_gateway_url)
+        if parsed_gateway.scheme != "http" or parsed_gateway.hostname not in {
+            "127.0.0.1",
+            "::1",
+            "localhost",
+        }:
+            raise ValueError("Codex gateway must use a loopback HTTP URL")
+
+    # A connected Codex account is a request-scoped auth transport.  It must
+    # win over the deployment-wide profile, including ``local``: the loopback
+    # gateway speaks the Anthropic wire protocol expected by Claude Code even
+    # when the configured baseline provider does not.
+    if codex_gateway_url is not None and codex_gateway_token is not None:
+        no_proxy = _loopback_no_proxy_value()
+        env: dict[str, str] = {
+            "ANTHROPIC_BASE_URL": codex_gateway_url.rstrip("/"),
+            "ANTHROPIC_AUTH_TOKEN": codex_gateway_token,
+            "ANTHROPIC_API_KEY": "",
+            "CLAUDE_CODE_OAUTH_TOKEN": "",
+            "CLAUDE_CODE_REFRESH_TOKEN": "",
+            "NO_PROXY": no_proxy,
+            "no_proxy": no_proxy,
+        }
+
+    # Transports that don't run the SDK at all (currently: ``local`` —
+    # Ollama et al. don't implement Anthropic's wire protocol) must not
+    # reach this builder. The processor downgrades extended_thinking →
+    # fast for those transports, so an entry here indicates a bug
+    # upstream.  Fail loudly rather than constructing a doomed env.
+    elif not config.transport.supports_sdk:
+        raise RuntimeError(
+            f"build_sdk_env() called under transport "
+            f"{config.transport.name!r}, which doesn't support the SDK. "
+            "The request should have been downgraded to the baseline "
+            "path — see executor.processor.resolve_use_sdk_for_mode."
+        )
+
+    # --- Mode 1: Claude Code subscription auth ---
+    elif config.use_claude_code_subscription:
+        validate_subscription()
+        env = {
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_AUTH_TOKEN": "",
+            "ANTHROPIC_BASE_URL": "",
+        }
+
+    # --- Mode 2: Direct Anthropic (no proxy hop) ---
+    elif not config.openrouter_active:
+        # Clear OAuth tokens so CLI uses ANTHROPIC_API_KEY from parent env
+        # rather than subscription auth if the container has those tokens set.
+        env = {
+            "CLAUDE_CODE_OAUTH_TOKEN": "",
+            "CLAUDE_CODE_REFRESH_TOKEN": "",
+        }
+
+    # --- Mode 3: OpenRouter proxy ---
+    else:
+        base = (config.base_url or "").rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        env = {
+            "ANTHROPIC_BASE_URL": base,
+            "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
+            "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+            "CLAUDE_CODE_OAUTH_TOKEN": "",  # prevent OAuth override of ANTHROPIC_AUTH_TOKEN
+            "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
+        }
+
+        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+        def _safe(v: str) -> str:
+            return _HEADER_SAFE_RE.sub("", v).strip()[:_MAX_HEADER_VALUE_LEN]
+
+        parts = []
+        if session_id:
+            parts.append(f"x-session-id: {_safe(session_id)}")
+        if user_id:
+            parts.append(f"x-user-id: {_safe(user_id)}")
+        if parts:
+            env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
+
+    # --- Common: workspace isolation + security hardening (all modes) ---
+    # Route subagent temp files into the per-session workspace so output
+    # files are accessible (fixes /tmp/claude-0/ permission errors in E2B).
+    if sdk_cwd:
+        env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+
+    # Harden multi-tenant deployment: prevent loading untrusted workspace
+    # .claude.md files, writing auto-memory, and sending non-essential
+    # telemetry traffic.
+    env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
+    env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    # Strip Anthropic-specific beta headers that OpenRouter rejects.
+    # NOTE: this disables ALL experimental betas including
+    # context-management-2025-06-27.  This is intentional: OpenRouter
+    # compatibility takes priority, and Anthropic direct mode ignores this
+    # flag harmlessly (those betas are not enabled there either by default).
+    env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
+
+    # Pin the CLI's perceived context window at the 200K default.  1M context
+    # is GA (no beta header) on Sonnet 4.6+/5 and newer CLIs enable it by
+    # default via their model capability table (native_1m) or server-side
+    # flags; this kill-switch gates every 1M branch in the CLI's window
+    # resolution, so the autocompact trigger below stays anchored to 200K
+    # across SDK upgrades.  (The experimental-betas flag above no longer
+    # covers 1M — it stopped being a beta.)
+    env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
+
+    # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
+    # The override caps Anthropic cache-creation cost; Moonshot routes skip it
+    # because their OpenRouter endpoint returns ``cache_create=0`` (no cache
+    # writes happen, so there's no cost to cap) and an aggressive trigger
+    # against Kimi's larger window cascades into 3+ compactions per turn.
+    # Operators can also set the config to 0 to disable globally.
+    if (
+        not is_moonshot_model(model)
+        and config.claude_agent_autocompact_pct_override > 0
+    ):
+        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(_autocompact_pct_for_model(model))
+
+    # Disable gzip on API responses to prevent ZlibError decompression
+    # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).
+    # Appended to any existing ANTHROPIC_CUSTOM_HEADERS (OpenRouter mode
+    # already sets trace headers above).
+    accept_encoding = "Accept-Encoding: identity"
+    existing = env.get("ANTHROPIC_CUSTOM_HEADERS", "")
+    env["ANTHROPIC_CUSTOM_HEADERS"] = (
+        f"{existing}\n{accept_encoding}" if existing else accept_encoding
+    )
+
+    return env
+
+
+# Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text,
+# so the same 50%-of-200K trigger would compact at ~77% of the *text* budget
+# 4.x sessions get.  Scaling the trigger by the inflation factor keeps the
+# effective text-equivalent context at parity (50% -> 65% = 130K tokens
+# ~= 100K 4.x-tokens' worth), without touching the perceived window.
+_SONNET_5_TOKENIZER_INFLATION = 1.3
+
+
+def _autocompact_pct_for_model(model: str | None) -> int:
+    """Auto-compaction trigger percentage for ``model``.
+
+    Base value from config; Sonnet 5 is scaled up by the tokenizer-inflation
+    factor (capped at 90, below the CLI's ~93% internal ceiling) so its
+    compaction fires at the same text-equivalent point as on 4.x models.
+    """
+    pct = config.claude_agent_autocompact_pct_override
+    if model and "claude-sonnet-5" in model:
+        pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), 90)
+    return pct

@@ -56,27 +56,16 @@ Blocks represent actions and are the building blocks of your workflows, includin
 
 You can learn more under: [Build your own Blocks](new_blocks.md)
 
-## What Models does AutoGPT Support?
+## Available Language Models
 
-AutoGPT provides access to models from a wide range of Large Language Models. Below are a selection of the supported model developers:
+The full model list — models, capabilities, context windows, and pricing — lives in the model catalog checked into the platform itself (`autogpt_platform/backend/backend/data/llm_registry/catalog.py`), so every install ships with the exact list its code supports. The platform comes pre-integrated with cutting-edge LLM providers:
 
-* [Google DeepMind](https://deepmind.google/) — Gemini 3, 2.5, and 2.0
-* [Anthropic](https://www.anthropic.com/) — Claude Opus, Sonnet, and Haiku
-* [DeepSeek](https://www.deepseek.com/) — DeepSeek R1 and V3
-* [Qwen (Alibaba)](https://qwen.readthedocs.io/) — Qwen 3
-* [OpenAI](https://openai.com/) — GPT-5, GPT-4.1, O3, and more
-* [Meta](https://ai.meta.com/) — Llama 4 and Llama 3
-* [Mistral AI](https://mistral.ai/) — Mistral Large, Medium, Small, and Codestral
-* [xAI](https://x.ai/) — Grok 4 and Grok 3
-* [Moonshot AI](https://www.moonshot.cn/) — Kimi K2
-* [Perplexity](https://www.perplexity.ai/) — Sonar, Sonar Pro, and Sonar Deep Research
-* [Amazon](https://aws.amazon.com/ai/) — Nova Pro, Lite, and Micro
-* [Microsoft](https://www.microsoft.com/en-us/research/ai/) — Phi-4 and WizardLM 2
-* [Cohere](https://cohere.com/) — Command A and Command R
-* [Nvidia](https://www.nvidia.com/en-us/ai/) — Nemotron
-* [Nous Research](https://nousresearch.com/) — Hermes
-* [Vercel](https://v0.dev/) — v0
-* [Gryphe](https://gryphe.github.io/) — MythoMax
+* OpenAI - <https://openai.com/>
+* Anthropic - <https://www.anthropic.com/>
+* Groq - <https://groq.com/>
+* Llama - <https://llamaindex.ai/>
+* AI/ML API - <https://aimlapi.com/>
+  * AI/ML API provides 300+ AI models including Deepseek, Gemini, ChatGPT. The models run at enterprise-grade rate limits and uptimes.
 
 ## License Overview
 

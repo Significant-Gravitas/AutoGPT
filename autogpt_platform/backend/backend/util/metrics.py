@@ -1,16 +1,30 @@
 import logging
+import re
 from enum import Enum
+from types import TracebackType
 
-import sentry_sdk
 from pydantic import SecretStr
+from sentry_sdk._init_implementation import init as _sentry_init
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from sentry_sdk.api import flush as _sentry_flush
 from sentry_sdk.integrations import DidNotEnable
-from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
-from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+
+try:
+    from sentry_sdk.integrations.anthropic import AnthropicIntegration
+except ImportError:
+    AnthropicIntegration = None  # type: ignore[assignment,misc]
+
+try:
+    from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
+except ImportError:
+    LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
 
 from backend.util import feature_flag
-from backend.util.settings import Settings
+from backend.util.security import SENSITIVE_FIELD_NAMES
+from backend.util.settings import BehaveAs, Settings
 
 settings = Settings()
 logger = logging.getLogger(__name__)
@@ -21,34 +35,259 @@ class DiscordChannel(str, Enum):
     PRODUCT = "product"  # For product alerts (low balance, zero balance, etc.)
 
 
+_USER_AUTH_KEYWORDS = [
+    "incorrect api key",
+    "invalid x-api-key",
+    "invalid api key",
+    "missing authentication header",
+    "invalid api token",
+    "authentication_error",
+    "bad credentials",
+    "unauthorized",
+    "insufficient authentication scopes",
+    "http 401 error",
+    "http 403 error",
+]
+
+_AMQP_KEYWORDS = [
+    "amqpconnection",
+    "amqpconnector",
+    "connection_forced",
+    "channelinvalidstateerror",
+    "no active transport",
+]
+
+_AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
+
+# Pika reconnect noise: `conn_retry` already handles these. Drop only the
+# four known signatures so genuine pika ERRORs (auth, declare failures) still
+# reach Sentry. (AUTOGPT-SERVER-6JC/6JD/6JE/6JF.)
+_PIKA_RECONNECT_LOGGERS = {
+    "pika.adapters.utils.io_services_utils",
+    "pika.adapters.blocking_connection",
+    "pika.adapters.base_connection",
+}
+_PIKA_RECONNECT_SIGNATURES = (
+    "streamlosterror",
+    "transport indicated eof",
+    "socket eof",
+    "connection_lost",
+)
+
+_SENTRY_SENSITIVE_FIELDS = sorted(
+    set(DEFAULT_DENYLIST)
+    | SENSITIVE_FIELD_NAMES
+    | {
+        "anthropic_auth_token",
+        "client_secret",
+        "codex_access_token",
+        "codex_api_key",
+        "device_code",
+        "id_token",
+        "login_code",
+        "openai_api_key",
+        "provider_state",
+        "secrets",
+        "state_token",
+        "user_code",
+        "verification_url",
+    }
+)
+_SENTRY_EVENT_SCRUBBER = EventScrubber(
+    denylist=_SENTRY_SENSITIVE_FIELDS,
+    recursive=True,
+)
+_EMBEDDED_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
+    r"authorization|client[_-]?secret|password|provider[_-]?state|secret|"
+    r"device[_-]?code|login[_-]?code|state[_-]?token|user[_-]?code|"
+    r"verification[_-]?url)"
+    r"(?:\\?[\"']?)\s*[:=]"
+)
+_TOKEN_SHAPED_VALUE = re.compile(
+    r"(?i)(?:\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}|"
+    r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\b|"
+    r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
+)
+_FILTERED_VALUE = "[Filtered]"
+
+
+def _scrub_embedded_secret_values(value: object) -> object:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            value[key] = _scrub_embedded_secret_values(nested)
+        return value
+    if isinstance(value, list):
+        for index, nested in enumerate(value):
+            value[index] = _scrub_embedded_secret_values(nested)
+        return value
+    if isinstance(value, str) and (
+        _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value)
+    ):
+        return _FILTERED_VALUE
+    return value
+
+
+def _scrub_sentry_event(event: dict) -> None:
+    _SENTRY_EVENT_SCRUBBER.scrub_dict(event)
+    _scrub_embedded_secret_values(event)
+
+
+# FalkorDB (Graphiti CoPilot memory) connection-teardown noise. graphiti-core's
+# ``execute_query`` logs ERROR + re-raises whenever a query races the closing of
+# its redis.asyncio connection — the fire-and-forget cache-eviction close or a
+# per-request ``driver.close()`` in a finally block. Chat degrades gracefully
+# (memory callers swallow it), so these are benign. Drop only the two teardown
+# signatures, scoped to the graphiti driver (by logger for log events, by
+# traceback for exceptions) so genuine query errors (Cypher typos, missing
+# graphs) — and unrelated main-redis outages — still reach Sentry. (SENTRY-1387.)
+_FALKORDB_DRIVER_LOGGER = "graphiti_core.driver.falkordb_driver"
+_FALKORDB_TEARDOWN_SIGNATURES = (
+    "buffer is closed",
+    "connection closed by server",
+)
+
+
+def _raised_from_graphiti_falkordb(exc_tb: TracebackType | None) -> bool:
+    """True if the graphiti FalkorDB driver module appears in the traceback.
+
+    graphiti-core's ``execute_query`` re-raises from that module, so its frame
+    is on the traceback of a teardown error originating there. Scoping to it
+    keeps unrelated redis exceptions (e.g. the platform's main redis) reaching
+    Sentry even when they share the ``connection closed by server`` message.
+    """
+    while exc_tb is not None:
+        if exc_tb.tb_frame.f_globals.get("__name__") == _FALKORDB_DRIVER_LOGGER:
+            return True
+        exc_tb = exc_tb.tb_next
+    return False
+
+
+def _before_send(event, hint):
+    """Filter out expected/transient errors from Sentry to reduce noise."""
+    if "exc_info" in hint:
+        exc_type, exc_value, exc_tb = hint["exc_info"]
+        exc_msg = str(exc_value).lower() if exc_value else ""
+
+        # AMQP/RabbitMQ transient connection errors — expected during deploys
+        if any(kw in exc_msg for kw in _AMQP_KEYWORDS):
+            return None
+
+        # "connection refused" only for AMQP-related exceptions (not other services)
+        if "connection refused" in exc_msg:
+            exc_module = getattr(exc_type, "__module__", "") or ""
+            exc_name = getattr(exc_type, "__name__", "") or ""
+            if any(
+                ind in exc_module.lower() or ind in exc_name.lower()
+                for ind in _AMQP_INDICATORS
+            ) or any(kw in exc_msg for kw in _AMQP_INDICATORS):
+                return None
+
+        # FalkorDB connection-teardown races (eviction/shutdown) — benign, but
+        # only when raised from the graphiti driver, so an unrelated main-redis
+        # outage sharing the message still reaches Sentry.
+        if any(
+            sig in exc_msg for sig in _FALKORDB_TEARDOWN_SIGNATURES
+        ) and _raised_from_graphiti_falkordb(exc_tb):
+            return None
+
+        # User-caused credential/auth/integration errors — not platform bugs
+        if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
+            return None
+
+        # Expected business logic — insufficient balance
+        if "insufficient balance" in exc_msg or "no credits left" in exc_msg:
+            return None
+
+        # Expected security check — blocked IP access
+        if "access to blocked or private ip" in exc_msg:
+            return None
+
+        # Discord bot token misconfiguration — not a platform error
+        if "improper token has been passed" in exc_msg or (
+            exc_type and exc_type.__name__ == "Forbidden" and "50001" in exc_msg
+        ):
+            return None
+
+        # Prisma UniqueViolationError is always handled (FastAPI returns 400).
+        if exc_type and exc_type.__name__ == "UniqueViolationError":
+            return None
+
+        # Google metadata DNS errors — expected in non-GCP environments
+        if (
+            "metadata.google.internal" in exc_msg
+            and settings.config.behave_as != BehaveAs.CLOUD
+        ):
+            return None
+
+        # Inactive email recipients — expected for bounced addresses
+        if "marked as inactive" in exc_msg or "inactive addresses" in exc_msg:
+            return None
+
+    # Also filter log-based events for known noisy messages.
+    # Sentry's LoggingIntegration stores log messages under "logentry", not "message".
+    logentry = event.get("logentry") or {}
+    log_msg = (
+        logentry.get("formatted") or logentry.get("message") or event.get("message")
+    )
+    logger_name = event.get("logger")
+    if logger_name in _PIKA_RECONNECT_LOGGERS and log_msg:
+        if any(sig in log_msg.lower() for sig in _PIKA_RECONNECT_SIGNATURES):
+            return None
+    if logger_name == _FALKORDB_DRIVER_LOGGER and log_msg:
+        if any(sig in log_msg.lower() for sig in _FALKORDB_TEARDOWN_SIGNATURES):
+            return None
+    if logger_name and log_msg:
+        msg = log_msg.lower()
+        noisy_log_patterns = [
+            "amqpconnection",
+            "connection_forced",
+            "unclosed client session",
+            "unclosed connector",
+        ]
+        if any(p in msg for p in noisy_log_patterns):
+            return None
+        if "connection refused" in msg and any(ind in msg for ind in _AMQP_INDICATORS):
+            return None
+        # Same auth keywords — errors logged via logger.error() bypass exc_info
+        if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
+            return None
+
+    _scrub_sentry_event(event)
+    return event
+
+
 def sentry_init():
     sentry_dsn = settings.secrets.sentry_dsn
     integrations = []
-    if feature_flag.is_configured():
+    if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
         try:
             integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
         except DidNotEnable as e:
             logger.error(f"Error enabling LaunchDarklyIntegration for Sentry: {e}")
-    sentry_sdk.init(
+    optional_integrations = (
+        [AnthropicIntegration(include_prompts=False)]
+        if AnthropicIntegration is not None
+        else []
+    )
+    _sentry_init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0,
         environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
-        _experiments={"enable_logs": True},
+        before_send=_before_send,
         integrations=[
             AsyncioIntegration(),
-            LoggingIntegration(sentry_logs_level=logging.INFO),
-            AnthropicIntegration(
-                include_prompts=False,
-            ),
+            LoggingIntegration(),
         ]
+        + optional_integrations
         + integrations,
     )
 
 
 def sentry_capture_error(error: BaseException):
-    sentry_sdk.capture_exception(error)
-    sentry_sdk.flush()
+    _sentry_capture_exception(error)
+    _sentry_flush()
 
 
 async def discord_send_alert(

@@ -19,7 +19,7 @@ Set add_newline to true to insert a line break before the appended content. The 
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to append to | Document | No |
+| document | Select a Google Doc to append to. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | markdown | Markdown content to append to the document | str | Yes |
 | add_newline | Add a newline before the appended content | bool | No |
 
@@ -58,7 +58,7 @@ The block finds the document's end index and inserts the text there, with an opt
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to append to | Document | No |
+| document | Select a Google Doc to append to. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | text | Plain text to append (no formatting applied) | str | Yes |
 | add_newline | Add a newline before the appended text | bool | No |
 
@@ -136,7 +136,7 @@ Use the Get Structure block first to find the correct index positions for conten
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | start_index | Start index of content to delete (must be >= 1, as index 0 is a section break) | int | Yes |
 | end_index | End index of content to delete | int | Yes |
 
@@ -175,7 +175,7 @@ The export preserves document formatting as closely as possible in the target fo
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to export | Document | No |
+| document | Select a Google Doc to export. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | format | Export format | "application/pdf" \| "application/vnd.openxmlformats-officedocument.wordprocessingml.document" \| "application/vnd.oasis.opendocument.text" \| "text/plain" \| "text/html" \| "application/epub+zip" \| "application/rtf" | No |
 
 ### Outputs
@@ -214,7 +214,7 @@ The replacement preserves the surrounding formatting but does not apply any new 
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | find_text | Plain text to find | str | Yes |
 | replace_text | Plain text to replace with (no formatting applied) | str | Yes |
 | match_case | Match case when finding text | bool | No |
@@ -254,7 +254,7 @@ Use the Get Structure block to identify the correct index positions. Multiple fo
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | start_index | Start index of text to format (must be >= 1, as index 0 is a section break) | int | Yes |
 | end_index | End index of text to format | int | Yes |
 | bold | Make text bold | bool | No |
@@ -298,7 +298,7 @@ This metadata is useful for tracking document versions, building document invent
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 
 ### Outputs
 
@@ -338,7 +338,7 @@ The index positions are essential for precise editing operations like formatting
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to analyze | Document | No |
+| document | Select a Google Doc to analyze. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | detailed | Return full hierarchical structure instead of flat segments | bool | No |
 
 ### Outputs
@@ -377,7 +377,7 @@ The Markdown parser handles headers, bold, italic, links, lists, and code format
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to insert into | Document | No |
+| document | Select a Google Doc to insert into. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | markdown | Markdown content to insert | str | Yes |
 | index | Position index to insert at (1 = start of document) | int | No |
 
@@ -416,7 +416,7 @@ Page breaks force subsequent content to start on a new page, useful for separati
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | index | Position to insert page break (0 = end of document) | int | No |
 
 ### Outputs
@@ -454,7 +454,7 @@ Unlike the Markdown insert, text is inserted exactly as provided without any for
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to insert into | Document | No |
+| document | Select a Google Doc to insert into. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | text | Plain text to insert (no formatting applied) | str | Yes |
 | index | Position index to insert at (1 = start of document) | int | No |
 
@@ -493,7 +493,7 @@ Cell content can optionally be formatted as Markdown, enabling rich formatting l
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | rows | Number of rows (ignored if content provided) | int | No |
 | columns | Number of columns (ignored if content provided) | int | No |
 | content | Optional 2D array of cell content, e.g. [['Header1', 'Header2'], ['Row1Col1', 'Row1Col2']]. If provided, rows/columns are derived from this. | List[List[str]] | No |
@@ -535,7 +535,7 @@ Use this for content analysis, text processing, or feeding document content to A
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to read | Document | No |
+| document | Select a Google Doc to read. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 
 ### Outputs
 
@@ -573,7 +573,7 @@ This is ideal for completely regenerating document content from AI-generated Mar
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to replace content in | Document | No |
+| document | Select a Google Doc to replace content in. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | markdown | Markdown content to replace the document with | str | Yes |
 
 ### Outputs
@@ -611,7 +611,7 @@ Use this for template systems where placeholders like {{SECTION}} are replaced w
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | find_text | Text to find and replace (e.g., '{{PLACEHOLDER}}' or any text) | str | Yes |
 | markdown | Markdown content to replace the found text with | str | Yes |
 | match_case | Match case when finding text | bool | No |
@@ -651,7 +651,7 @@ Use Get Structure to find the correct index positions. This enables precise repl
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | markdown | Markdown content to insert in place of the range | str | Yes |
 | start_index | Start index of the range to replace (must be >= 1) | int | Yes |
 | end_index | End index of the range to replace | int | Yes |
@@ -691,7 +691,7 @@ When made public, anyone with the link can access the document according to the 
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc | Document | No |
+| document | Select a Google Doc. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | public | True to make public, False to make private | bool | No |
 | role | Permission role for public access | "reader" \| "commenter" | No |
 
@@ -731,7 +731,7 @@ Leave the email blank to just generate a shareable link. The block returns the s
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| document | Select a Google Doc to share | Document | No |
+| document | Select a Google Doc to share. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Document | No |
 | email | Email address to share with. Leave empty for link sharing. | str | No |
 | role | Permission role for the user | "reader" \| "writer" \| "commenter" | No |
 | send_notification | Send notification email to the user | bool | No |

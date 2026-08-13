@@ -11,7 +11,7 @@ Scheduling lets you run an agent automatically on a recurring basis with pre-con
 ### Setting Up a Schedule
 
 1. Go to your [Agent Library](agent-library.md) and open the agent you want to schedule
-2. Click **New Task** (the same button used for manual runs)
+2. Click **New agent task** (the same button used for manual runs)
 3. Fill in all the input fields with the values you want the agent to use
 4. At the bottom of the input form, you'll see two buttons: **Start Task** and **Schedule Task**
 5. Click **Schedule Task**
@@ -28,7 +28,7 @@ The schedule configuration screen allows you to set:
 | **At** | The time of day to run (hour and minute) |
 | **Timezone** | Schedule runs in your local timezone, displayed on screen |
 
-**Example:** Run "Keyword SEO Expert" every weekday at 9:00 AM CST.
+**Example:** Run "Keyword SEO Expert" every weekday at 9:00 AM in the timezone shown in the schedule form.
 
 ### Managing Schedules
 
@@ -58,8 +58,9 @@ Unlike standard input blocks, **trigger blocks** are a special type of input blo
 #### Step 2: Configure the Trigger in Your Library
 
 1. Go to your [Agent Library](agent-library.md) and open the agent
-2. Click **New Trigger** (this replaces the "New Task" button for trigger-based agents)
-3. Give the trigger a **name** and **description**
+2. Click **New agent task**
+3. Enter the trigger name and description and complete any required inputs or credentials
+4. Click **Set up Trigger**
 
 #### Step 3: Copy the Webhook URL
 
@@ -71,12 +72,12 @@ Once the trigger is created, you'll see a status panel:
 >
 > This trigger is ready to be used. Use the Webhook URL below to set up the trigger connection with the service of your choosing.
 >
-> **Webhook URL:** `https://backend.agpt.co/api/integrations/generic_webhook/webhooks/...`
+> **Webhook URL:** `https://backend.agpt.co/api/integrations/generic_webhook/webhooks/<webhook-id>/ingress`
 
 Copy this webhook URL and provide it to the external platform or code that will be sending events to trigger your agent.
 
 {% hint style="info" %}
-Trigger-based agents cannot be started manually with the "New Task" button. The only way to execute them is by sending data to the webhook URL.
+Trigger-based agents cannot be started manually. Configure them through **New agent task** and **Set up Trigger**, then send data to the webhook URL to execute them.
 {% endhint %}
 
 ### Example Use Cases
@@ -93,4 +94,4 @@ Trigger-based agents cannot be started manually with the "New Task" button. The 
 | **How it starts** | Automatically at configured times | When an external event sends data to the webhook URL |
 | **Input source** | Pre-configured when the schedule is created | Provided by the incoming webhook payload |
 | **Use case** | Recurring tasks with fixed inputs (daily reports, weekly summaries) | Event-driven tasks (new PR opened, form submitted, payment received) |
-| **Setup** | Through the "New Task" → "Schedule Task" flow | Through trigger blocks in the builder + "New Trigger" in the library |
+| **Setup** | Through the **New agent task** → **Schedule Task** flow | Through trigger blocks in the builder, then **New agent task** → **Set up Trigger** in the library |

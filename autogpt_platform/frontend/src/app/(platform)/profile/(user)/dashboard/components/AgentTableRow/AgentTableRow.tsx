@@ -7,103 +7,72 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Status } from "@/components/__legacy__/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import {
-  DotsThreeVerticalIcon,
-  EyeIcon,
-  ImageBroken,
-  StarIcon,
-  TrashIcon,
-  PencilIcon,
-} from "@phosphor-icons/react/dist/ssr";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
+import {
+  Delete02Icon,
+  EyeIcon,
+  ImageNotFound01Icon,
+  MoreVerticalIcon,
+  PencilIcon,
+  StarIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
-export interface AgentTableRowProps {
-  agent_id: string;
-  agent_version: number;
-  agentName: string;
-  sub_heading: string;
-  description: string;
-  imageSrc: string[];
-  dateSubmitted: Date;
-  status: SubmissionStatus;
-  runs: number;
-  rating: number;
-  id: number;
-  video_url?: string;
-  categories?: string[];
-  store_listing_version_id?: string;
-  changes_summary?: string;
-  listing_id?: string;
+export type AgentTableRowProps = {
+  storeAgentSubmission: StoreSubmission;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
   onEditSubmission: (
     submission: StoreSubmissionEditRequest & {
       store_listing_version_id: string | undefined;
-      agent_id: string;
+      graph_id: string;
     },
   ) => void;
-}
+};
 
 export const AgentTableRow = ({
-  agent_id,
-  agent_version,
-  agentName,
-  sub_heading,
-  description,
-  imageSrc,
-  dateSubmitted,
-  status,
-  runs,
-  rating,
-  id,
-  video_url,
-  categories,
-  store_listing_version_id,
-  changes_summary,
-  listing_id,
+  storeAgentSubmission,
   onViewSubmission,
   onDeleteSubmission,
   onEditSubmission,
 }: AgentTableRowProps) => {
   const { handleView, handleDelete, handleEdit } = useAgentTableRow({
-    id,
+    storeAgentSubmission,
     onViewSubmission,
     onDeleteSubmission,
     onEditSubmission,
-    agent_id,
-    agent_version,
-    agentName,
-    sub_heading,
-    description,
-    imageSrc,
-    dateSubmitted,
-    status,
-    runs,
-    rating,
-    video_url,
-    categories,
-    store_listing_version_id,
-    changes_summary,
-    listing_id,
   });
+
+  const {
+    listing_version_id,
+    graph_id,
+    graph_version,
+    name: agentName,
+    description,
+    image_urls,
+    submitted_at,
+    status,
+    run_count,
+    review_avg_rating,
+  } = storeAgentSubmission;
 
   const canModify = status === SubmissionStatus.PENDING;
 
   return (
     <div
       data-testid="agent-table-row"
-      data-agent-id={agent_id}
-      data-submission-id={store_listing_version_id}
+      data-agent-id={graph_id}
+      data-submission-id={listing_version_id}
       className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
     >
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
         {/* Agent info column */}
         <div className="flex items-center gap-4">
-          {imageSrc?.[0] ? (
+          {image_urls?.[0] ? (
             <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
               <Image
-                src={imageSrc?.[0] ?? ""}
+                src={image_urls?.[0] ?? ""}
                 alt={agentName}
                 fill
                 style={{ objectFit: "cover" }}
@@ -111,7 +80,10 @@ export const AgentTableRow = ({
             </div>
           ) : (
             <div className="flex aspect-video w-32 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-zinc-100">
-              <ImageBroken className="h-8 w-8 text-zinc-800" />
+              <Icon
+                icon={ImageNotFound01Icon}
+                className="h-8 w-8 text-zinc-800"
+              />
             </div>
           )}
           <div className="flex flex-col">
@@ -128,7 +100,7 @@ export const AgentTableRow = ({
                 size="small"
                 className="text-neutral-500 dark:text-neutral-400"
               >
-                v{agent_version}
+                v{graph_version}
               </Text>
             </div>
             <Text
@@ -142,7 +114,7 @@ export const AgentTableRow = ({
 
         {/* Date column */}
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
-          {dateSubmitted.toLocaleDateString()}
+          {submitted_at && submitted_at.toLocaleDateString()}
         </div>
 
         {/* Status column */}
@@ -152,15 +124,17 @@ export const AgentTableRow = ({
 
         {/* Runs column */}
         <div className="text-right text-sm text-neutral-600 dark:text-neutral-400">
-          {runs?.toLocaleString() ?? "0"}
+          {run_count?.toLocaleString() ?? "0"}
         </div>
 
         {/* Reviews column */}
         <div className="text-right">
-          {rating ? (
+          {review_avg_rating ? (
             <div className="flex items-center justify-end gap-1">
-              <span className="text-sm font-medium">{rating.toFixed(1)}</span>
-              <StarIcon weight="fill" className="h-2 w-2" />
+              <span className="text-sm font-medium">
+                {review_avg_rating.toFixed(1)}
+              </span>
+              <Icon icon={StarIcon} className="h-2 w-2" />
             </div>
           ) : (
             <span className="text-sm text-neutral-600 dark:text-neutral-400">
@@ -173,7 +147,10 @@ export const AgentTableRow = ({
         <div className="flex justify-end">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger data-testid="agent-table-row-actions">
-              <DotsThreeVerticalIcon className="h-5 w-5 text-neutral-800" />
+              <Icon
+                icon={MoreVerticalIcon}
+                className="h-5 w-5 text-neutral-800"
+              />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
               {canModify ? (
@@ -181,7 +158,10 @@ export const AgentTableRow = ({
                   onSelect={handleEdit}
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <PencilIcon className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <Icon
+                    icon={PencilIcon}
+                    className="mr-2 h-4 w-4 dark:text-gray-100"
+                  />
                   <span className="dark:text-gray-100">Edit</span>
                 </DropdownMenu.Item>
               ) : (
@@ -189,7 +169,10 @@ export const AgentTableRow = ({
                   onSelect={handleView}
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <EyeIcon className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <Icon
+                    icon={EyeIcon}
+                    className="mr-2 h-4 w-4 dark:text-gray-100"
+                  />
                   <span className="dark:text-gray-100">View</span>
                 </DropdownMenu.Item>
               )}
@@ -200,7 +183,10 @@ export const AgentTableRow = ({
                     onSelect={handleDelete}
                     className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
-                    <TrashIcon className="mr-2 h-4 w-4 text-red-500 dark:text-red-400" />
+                    <Icon
+                      icon={Delete02Icon}
+                      className="mr-2 h-4 w-4 text-red-500 dark:text-red-400"
+                    />
                     <span className="dark:text-red-400">Delete</span>
                   </DropdownMenu.Item>
                 </>

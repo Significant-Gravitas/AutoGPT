@@ -1,11 +1,77 @@
-import { FileTextIcon, TrashIcon, UploadIcon } from "@phosphor-icons/react";
-import { Cross2Icon } from "@radix-ui/react-icons";
 import { useRef, useState } from "react";
 import { Button } from "../Button/Button";
 import { formatFileSize, getFileLabel } from "./helpers";
 import { cn } from "@/lib/utils";
-import { Progress } from "../Progress/Progress";
+import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { Text } from "../Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { globalRegistry } from "@/components/contextual/OutputRenderers";
+import {
+  Cancel01Icon,
+  Delete02Icon,
+  EyeIcon,
+  File02Icon,
+  Upload01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+function PreviewButton({
+  value,
+  title,
+  contentType,
+}: {
+  value: string;
+  title: string;
+  contentType?: string;
+}) {
+  const metadata = contentType ? { mimeType: contentType } : undefined;
+  const renderer = globalRegistry.getRenderer(value, metadata);
+  if (!renderer) return null;
+
+  return (
+    <Dialog title={title}>
+      <Dialog.Trigger>
+        <Button
+          variant="outline"
+          size="small"
+          className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-500"
+          type="button"
+          aria-label="Preview file"
+        >
+          <Icon icon={EyeIcon} size={14} />
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Content>
+        <div className="overflow-hidden [&>*]:rounded-xlarge">
+          {renderer.render(value, metadata)}
+        </div>
+      </Dialog.Content>
+    </Dialog>
+  );
+}
+
+function getMimeFromDataURI(value: string): string | null {
+  const match = value.match(/^data:([^;,]+)/);
+  return match?.[1] || null;
+}
+
+function isPreviewableFile(
+  value: string | undefined,
+  contentType: string | undefined,
+): boolean {
+  if (!value) return false;
+  const mimeType =
+    contentType ||
+    parseWorkspaceURI(value)?.mimeType ||
+    (value.startsWith("data:") ? getMimeFromDataURI(value) : null);
+  if (!mimeType) return false;
+  const normalized = mimeType.toLowerCase();
+  return (
+    normalized.startsWith("audio/") ||
+    normalized.startsWith("video/") ||
+    normalized.startsWith("image/")
+  );
+}
 
 type UploadFileResult = {
   file_name: string;
@@ -20,6 +86,7 @@ interface BaseProps {
   value?: string;
   placeholder?: string;
   onChange: (value: string) => void;
+  onDeleteFile?: (fileURI: string) => void;
   className?: string;
   maxFileSize?: number;
   accept?: string | string[];
@@ -30,7 +97,7 @@ interface BaseProps {
 interface UploadModeProps extends BaseProps {
   mode?: "upload";
   onUploadFile: (file: File) => Promise<UploadFileResult>;
-  uploadProgress: number;
+  uploadProgress?: number;
 }
 
 interface Base64ModeProps extends BaseProps {
@@ -45,6 +112,7 @@ export function FileInput(props: Props) {
   const {
     value,
     onChange,
+    onDeleteFile,
     className,
     maxFileSize,
     accept,
@@ -56,8 +124,6 @@ export function FileInput(props: Props) {
 
   const onUploadFile =
     mode === "upload" ? (props as UploadModeProps).onUploadFile : undefined;
-  const uploadProgress =
-    mode === "upload" ? (props as UploadModeProps).uploadProgress : 0;
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -69,8 +135,7 @@ export function FileInput(props: Props) {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const storageNote =
-    "Files are stored securely and will be automatically deleted at most 24 hours after upload.";
+  const storageNote = "Files are stored securely in your workspace.";
 
   function acceptToString(a?: string | string[]) {
     if (!a) return "*/*";
@@ -104,7 +169,43 @@ export function FileInput(props: Props) {
     return false;
   }
 
-  const getFileLabelFromValue = (val: string) => {
+  function getFileLabelFromValue(val: unknown): string {
+    // Handle object format from external API: { name, type, size, data }
+    if (val && typeof val === "object") {
+      const obj = val as Record<string, unknown>;
+      if (typeof obj.name === "string") {
+        return getFileLabel(
+          obj.name,
+          typeof obj.type === "string" ? obj.type : "",
+        );
+      }
+      if (typeof obj.type === "string") {
+        const mimeParts = obj.type.split("/");
+        if (mimeParts.length > 1) {
+          return `${mimeParts[1].toUpperCase()} file`;
+        }
+        return `${obj.type} file`;
+      }
+      return "File";
+    }
+
+    // Handle string values (workspace URIs, data URIs, or file paths)
+    if (typeof val !== "string") {
+      return "File";
+    }
+
+    const wsURI = parseWorkspaceURI(val);
+    if (wsURI) {
+      if (wsURI.mimeType) {
+        const parts = wsURI.mimeType.split("/");
+        if (parts.length > 1) {
+          return `${parts[1].toUpperCase()} file`;
+        }
+        return "File";
+      }
+      return "Uploaded file";
+    }
+
     if (val.startsWith("data:")) {
       const matches = val.match(/^data:([^;]+);/);
       if (matches?.[1]) {
@@ -122,9 +223,9 @@ export function FileInput(props: Props) {
       }
     }
     return "File";
-  };
+  }
 
-  const processFileBase64 = (file: File) => {
+  function processFileBase64(file: File) {
     setIsUploading(true);
     setUploadError(null);
 
@@ -144,9 +245,9 @@ export function FileInput(props: Props) {
       setIsUploading(false);
     };
     reader.readAsDataURL(file);
-  };
+  }
 
-  const uploadFile = async (file: File) => {
+  async function uploadFile(file: File) {
     if (mode === "base64") {
       processFileBase64(file);
       return;
@@ -160,6 +261,8 @@ export function FileInput(props: Props) {
     setIsUploading(true);
     setUploadError(null);
 
+    const oldURI = value;
+
     try {
       const result = await onUploadFile(file);
 
@@ -170,15 +273,20 @@ export function FileInput(props: Props) {
       });
 
       onChange(result.file_uri);
+
+      // Delete the old file only after the new upload succeeds
+      if (oldURI && onDeleteFile) {
+        onDeleteFile(oldURI);
+      }
     } catch (error) {
       console.error("Upload failed:", error);
       setUploadError(error instanceof Error ? error.message : "Upload failed");
     } finally {
       setIsUploading(false);
     }
-  };
+  }
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     // Validate max size
@@ -194,21 +302,24 @@ export function FileInput(props: Props) {
       return;
     }
     uploadFile(file);
-  };
+  }
 
-  const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  function handleFileDrop(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
     if (file) uploadFile(file);
-  };
+  }
 
-  const handleClear = () => {
+  function handleClear() {
+    if (value && onDeleteFile) {
+      onDeleteFile(value);
+    }
     if (inputRef.current) {
       inputRef.current.value = "";
     }
     onChange("");
     setFileInfo(null);
-  };
+  }
 
   const displayName = placeholder || "File";
 
@@ -217,32 +328,22 @@ export function FileInput(props: Props) {
       <div className={cn("flex flex-col gap-1.5", className)}>
         <div className="nodrag flex flex-col gap-1.5">
           {isUploading ? (
-            <div className="flex flex-col gap-1.5 rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-blue-800 dark:bg-blue-950">
-              <div className="flex items-center gap-2">
-                <UploadIcon className="h-4 w-4 animate-pulse text-blue-600 dark:text-blue-400" />
-                <Text
-                  variant="small"
-                  className="text-blue-700 dark:text-blue-300"
-                >
-                  {mode === "base64" ? "Processing..." : "Uploading..."}
-                </Text>
-                {mode === "upload" && (
-                  <Text
-                    variant="small-medium"
-                    className="ml-auto text-blue-600 dark:text-blue-400"
-                  >
-                    {Math.round(uploadProgress)}%
-                  </Text>
-                )}
-              </div>
-              {mode === "upload" && (
-                <Progress value={uploadProgress} className="h-1 w-full" />
-              )}
+            <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-blue-800 dark:bg-blue-950">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600 dark:border-blue-700 dark:border-t-blue-400" />
+              <Text
+                variant="small"
+                className="text-blue-700 dark:text-blue-300"
+              >
+                {mode === "base64" ? "Processing..." : "Uploading..."}
+              </Text>
             </div>
           ) : value ? (
             <div className="flex items-center gap-2">
               <div className="flex flex-1 items-center gap-2 rounded-xlarge border border-gray-300 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-800">
-                <FileTextIcon className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-400" />
+                <Icon
+                  icon={File02Icon}
+                  className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-400"
+                />
 
                 <Text
                   variant="small-medium"
@@ -261,14 +362,26 @@ export function FileInput(props: Props) {
                   </Text>
                 )}
               </div>
+              {isPreviewableFile(value, fileInfo?.content_type) && (
+                <PreviewButton
+                  value={value}
+                  title={
+                    fileInfo
+                      ? getFileLabel(fileInfo.name, fileInfo.content_type)
+                      : "Preview"
+                  }
+                  contentType={fileInfo?.content_type}
+                />
+              )}
               <Button
                 variant="outline"
                 size="small"
                 className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
                 onClick={handleClear}
                 type="button"
+                aria-label="Clear file"
               >
-                <Cross2Icon className="h-3.5 w-3.5" />
+                <Icon icon={Cancel01Icon} size={14} />
               </Button>
             </div>
           ) : (
@@ -281,7 +394,7 @@ export function FileInput(props: Props) {
                 disabled={isUploading}
                 type="button"
               >
-                <UploadIcon className="mr-1.5 h-3.5 w-3.5" />
+                <Icon icon={Upload01Icon} className="mr-1.5 h-3.5 w-3.5" />
                 {`Upload ${displayName}`}
               </Button>
             </div>
@@ -309,33 +422,20 @@ export function FileInput(props: Props) {
       {isUploading ? (
         <div className="space-y-2">
           <div className="flex min-h-14 items-center gap-4">
-            <div className="agpt-border-input flex min-h-14 w-full flex-col justify-center rounded-xl bg-zinc-50 p-4 text-sm">
-              <div className="mb-2 flex items-center gap-2">
-                <UploadIcon className="h-5 w-5 text-blue-600" />
-                <span className="text-gray-700">
-                  {mode === "base64" ? "Processing..." : "Uploading..."}
-                </span>
-                {mode === "upload" && (
-                  <span className="text-gray-500">
-                    {Math.round(uploadProgress)}%
-                  </span>
-                )}
-              </div>
-              {mode === "upload" && (
-                <Progress value={uploadProgress} className="w-full" />
-              )}
+            <div className="agpt-border-input flex min-h-14 w-full items-center gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
+              <span className="text-gray-700">
+                {mode === "base64" ? "Processing..." : "Uploading..."}
+              </span>
             </div>
           </div>
-          {showStorageNote && mode === "upload" && (
-            <p className="text-xs text-gray-500">{storageNote}</p>
-          )}
         </div>
       ) : value ? (
         <div className="space-y-2">
           <div className="flex min-h-14 items-center gap-4">
             <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-zinc-50 p-4 text-sm text-gray-500">
               <div className="flex items-center gap-2">
-                <FileTextIcon className="h-7 w-7 text-black" />
+                <Icon icon={File02Icon} className="h-7 w-7 text-black" />
                 <div className="flex flex-col gap-0.5">
                   <span className="font-normal text-black">
                     {fileInfo
@@ -345,10 +445,29 @@ export function FileInput(props: Props) {
                   <span>{fileInfo ? formatFileSize(fileInfo.size) : ""}</span>
                 </div>
               </div>
-              <TrashIcon
-                className="h-5 w-5 cursor-pointer text-black"
-                onClick={handleClear}
-              />
+              <div className="flex items-center gap-2">
+                {isPreviewableFile(value, fileInfo?.content_type) && (
+                  <PreviewButton
+                    value={value}
+                    title={
+                      fileInfo
+                        ? getFileLabel(fileInfo.name, fileInfo.content_type)
+                        : "Preview"
+                    }
+                    contentType={fileInfo?.content_type}
+                  />
+                )}
+                <Button
+                  variant="outline"
+                  size="small"
+                  type="button"
+                  onClick={handleClear}
+                  aria-label="Clear file"
+                  className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                >
+                  <Icon icon={Delete02Icon} className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </div>
           {showStorageNote && mode === "upload" && (

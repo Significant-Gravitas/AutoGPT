@@ -81,8 +81,10 @@ Every time a new Front-end dependency is added by you or others, you will need t
 - `pnpm lint` - Run ESLint and Prettier checks
 - `pnpm format` - Format code with Prettier
 - `pnpm types` - Run TypeScript type checking
-- `pnpm test` - Run Playwright tests
-- `pnpm test-ui` - Run Playwright tests with UI
+- `pnpm test:unit` - Run the Vitest integration and unit suite with coverage
+- `pnpm test` - Run the Playwright E2E suite used in CI
+- `pnpm test-ui` - Run the same Playwright E2E suite with UI
+- `pnpm test:e2e:no-build` - Run the same Playwright E2E suite against a running app
 - `pnpm fetch:openapi` - Fetch OpenAPI spec from backend
 - `pnpm generate:api-client` - Generate API client from OpenAPI spec
 - `pnpm generate:api` - Fetch OpenAPI spec and generate API client
@@ -155,7 +157,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 - [**Tailwind CSS**](https://tailwindcss.com/) - Utility-first CSS framework
 - [**shadcn/ui**](https://ui.shadcn.com/) - Re-usable components built with Radix UI and Tailwind CSS
 - [**Radix UI**](https://www.radix-ui.com/) - Headless UI components for accessibility
-- [**Phosphor Icons**](https://phosphoricons.com/) - Icon set used across the app
+- [**Hugeicons**](https://hugeicons.com/icons/stroke-rounded) - Icon set used across the app (stroke-rounded)
 - [**Framer Motion**](https://motion.dev/) - Animation library for React
 
 ### Development & Testing
@@ -167,7 +169,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 
 ### Backend & Services
 
-- [**Supabase**](https://supabase.com/) - Backend-as-a-Service (database, auth, storage)
+- [**Better Auth**](https://www.better-auth.com/) - Authentication (sessions, OAuth, JWTs) served from `/api/auth/*`
 - [**Sentry**](https://sentry.io/) - Error monitoring and performance tracking
 
 ### Package Management

@@ -10,7 +10,6 @@ import {
   CredentialsType,
 } from "@/lib/autogpt-server-api/types";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { SlidersHorizontalIcon } from "@phosphor-icons/react";
 import { useContext, useEffect, useMemo, useRef } from "react";
 import {
   areSystemCredentialProvidersLoading,
@@ -19,6 +18,8 @@ import {
   hasMissingRequiredSystemCredentials,
   splitCredentialFieldsBySystem,
 } from "./helpers";
+import { SlidersHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   credentialFields: CredentialField[];
@@ -38,13 +39,8 @@ export function CredentialsGroupedView({
   const allProviders = useContext(CredentialsProvidersContext);
 
   const { userCredentialFields, systemCredentialFields } = useMemo(
-    () =>
-      splitCredentialFieldsBySystem(
-        credentialFields,
-        allProviders,
-        inputCredentials,
-      ),
-    [credentialFields, allProviders, inputCredentials],
+    () => splitCredentialFieldsBySystem(credentialFields, allProviders),
+    [credentialFields, allProviders],
   );
 
   const hasSystemCredentials = systemCredentialFields.length > 0;
@@ -86,11 +82,13 @@ export function CredentialsGroupedView({
       const providerNames = schema.credentials_provider || [];
       const credentialTypes = schema.credentials_types || [];
       const requiredScopes = schema.credentials_scopes;
+      const discriminatorValues = schema.discriminator_values;
       const savedCredential = findSavedCredentialByProviderAndType(
         providerNames,
         credentialTypes,
         requiredScopes,
         allProviders,
+        discriminatorValues,
       );
 
       if (savedCredential) {
@@ -150,7 +148,7 @@ export function CredentialsGroupedView({
           <AccordionItem value="system-credentials" className="border-none">
             <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:no-underline">
               <div className="flex items-center gap-1">
-                <SlidersHorizontalIcon size={16} weight="bold" /> System
+                <Icon icon={SlidersHorizontalIcon} size={16} /> System
                 credentials
                 {hasMissingSystemCredentials && (
                   <span className="text-destructive">(missing)</span>

@@ -11,7 +11,6 @@ import React from "react";
 import { BlockUIType } from "../../../types";
 import { FormCreator } from "../FormCreator";
 import { OutputHandler } from "../OutputHandler";
-import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
 import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
 import { NodeContainer } from "./components/NodeContainer";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
@@ -22,6 +21,12 @@ import { StickyNoteBlock } from "./components/StickyNoteBlock";
 import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
 import { SubAgentUpdateFeature } from "./components/SubAgentUpdate/SubAgentUpdateFeature";
 import { useCustomNode } from "./useCustomNode";
+
+function hasAdvancedFields(schema: RJSFSchema): boolean {
+  const properties = schema?.properties;
+  if (!properties) return false;
+  return Object.values(properties).some((prop: any) => prop.advanced === true);
+}
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -34,7 +39,7 @@ export type CustomNodeData = {
   uiType: BlockUIType;
   block_id: string;
   status?: AgentExecutionStatus;
-  nodeExecutionResult?: NodeExecutionResult;
+  nodeExecutionResults?: NodeExecutionResult[];
   staticOutput?: boolean;
   // TODO : We need better type safety for the following backend fields.
   costs: BlockCost[];
@@ -47,7 +52,10 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
-    const { inputSchema, outputSchema } = useCustomNode({ data, nodeId });
+    const { inputSchema, outputSchema, isMCPWithTool } = useCustomNode({
+      data,
+      nodeId,
+    });
 
     const isAgent = data.uiType === BlockUIType.AGENT;
 
@@ -67,19 +75,25 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       BlockUIType.WEBHOOK_MANUAL,
     ].includes(data.uiType);
 
-    const isAyrshare = data.uiType === BlockUIType.AYRSHARE;
-
     const hasConfigErrors =
       data.errors &&
       Object.values(data.errors).some(
         (value) => value !== null && value !== undefined && value !== "",
       );
 
-    const outputData = data.nodeExecutionResult?.output_data;
+    const latestResult =
+      data.nodeExecutionResults && data.nodeExecutionResults.length > 0
+        ? data.nodeExecutionResults[data.nodeExecutionResults.length - 1]
+        : undefined;
+    const outputData = latestResult?.output_data;
     const hasOutputError =
       typeof outputData === "object" &&
       outputData !== null &&
-      "error" in outputData;
+      "error" in outputData &&
+      Array.isArray(outputData.error) &&
+      outputData.error.some(
+        (v: unknown) => v !== "" && v !== null && v !== undefined,
+      );
 
     const hasErrors = hasConfigErrors || hasOutputError;
 
@@ -89,18 +103,22 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
           <NodeHeader data={data} nodeId={nodeId} />
           {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
-          {isAyrshare && <AyrshareConnectButton />}
           <FormCreator
             jsonSchema={preprocessInputSchema(inputSchema)}
             nodeId={nodeId}
             uiType={data.uiType}
+            isMCPWithTool={isMCPWithTool}
             className={cn(
               "bg-white px-4",
               isWebhook && "pointer-events-none opacity-50",
             )}
             showHandles={showHandles}
           />
-          <NodeAdvancedToggle nodeId={nodeId} />
+          <NodeAdvancedToggle
+            nodeId={nodeId}
+            isLastSection={data.uiType === BlockUIType.OUTPUT}
+            hasAdvancedFields={hasAdvancedFields(inputSchema)}
+          />
           {data.uiType != BlockUIType.OUTPUT && (
             <OutputHandler
               uiType={data.uiType}

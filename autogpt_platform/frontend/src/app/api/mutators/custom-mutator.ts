@@ -3,27 +3,33 @@ import {
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
+import * as Sentry from "@sentry/nextjs";
 
-import {
-  IMPERSONATION_HEADER_NAME,
-  IMPERSONATION_STORAGE_KEY,
-} from "@/lib/constants";
+import { getSystemHeaders } from "@/lib/impersonation";
+import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 
-const FRONTEND_BASE_URL =
-  process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
-const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
-
-const getBaseUrl = (): string => {
+function getBaseURL(): string {
   if (!environment.isServerSide()) {
-    return API_PROXY_BASE_URL;
+    return "/api/proxy";
   } else {
     return environment.getAGPTServerBaseUrl();
   }
-};
+}
 
-const getBody = <T>(c: Response | Request): Promise<T> => {
+const getBody = async <T>(c: Response | Request): Promise<T> => {
+  // 204 No Content responses (and 200s with Content-Length: 0) have no body.
+  // Calling .json() on them throws "Unexpected end of JSON input" because the
+  // backend may still set Content-Type: application/json on 204s. Short-circuit
+  // to null so callers see a normal success rather than a parse error.
+  if (
+    "status" in c &&
+    (c.status === 204 || c.headers.get("Content-Length") === "0")
+  ) {
+    return null as T;
+  }
+
   const contentType = c.headers.get("content-type");
 
   if (contentType && contentType.includes("application/json")) {
@@ -56,19 +62,14 @@ export const customMutator = async <
   };
 
   if (environment.isClientSide()) {
-    try {
-      const impersonatedUserId = sessionStorage.getItem(
-        IMPERSONATION_STORAGE_KEY,
-      );
-      if (impersonatedUserId) {
-        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+    const traceData = Sentry.getTraceData?.() ?? {};
+    for (const [key, value] of Object.entries(traceData)) {
+      if (typeof value === "string") {
+        headers[key] = value;
       }
-    } catch (error) {
-      console.error(
-        "Admin impersonation: Failed to access sessionStorage:",
-        error,
-      );
     }
+    Object.assign(headers, getSystemHeaders());
+    Object.assign(headers, getDatafastAttribution());
   }
 
   const isFormData = data instanceof FormData;
@@ -85,7 +86,7 @@ export const customMutator = async <
     headers["Content-Type"] = "application/json";
   }
 
-  const baseUrl = getBaseUrl();
+  const baseUrl = getBaseURL();
 
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   // here url also contains encoded query params

@@ -482,7 +482,7 @@ class TestSafeJson:
 
     def test_dict_containing_pydantic_models(self):
         """Test that dicts containing Pydantic models are properly serialized."""
-        # This reproduces the bug from PR #11187 where credential_inputs failed
+        # This reproduces the bug where credential_inputs failed
         model1 = SamplePydanticModel(name="Alice", age=30)
         model2 = SamplePydanticModel(name="Bob", age=25)
 

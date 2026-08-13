@@ -7,17 +7,23 @@ import {
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
 import { beautifyString, cn } from "@/lib/utils";
-import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
 import { NodeDataViewer } from "./components/NodeDataViewer/NodeDataViewer";
 import { ContentRenderer } from "./components/ContentRenderer";
 import { useNodeOutput } from "./useNodeOutput";
 import { ViewMoreData } from "./components/ViewMoreData";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
-  const { outputData, copiedKey, handleCopy, executionResultId, inputData } =
-    useNodeOutput(nodeId);
+  const {
+    latestOutputData,
+    copiedKey,
+    handleCopy,
+    executionResultId,
+    latestInputData,
+  } = useNodeOutput(nodeId);
 
-  if (Object.keys(outputData).length === 0) {
+  if (Object.keys(latestOutputData).length === 0) {
     return null;
   }
 
@@ -41,18 +47,19 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
               <div className="space-y-2">
                 <Text variant="small-medium">Input</Text>
 
-                <ContentRenderer value={inputData} shortContent={false} />
+                <ContentRenderer value={latestInputData} shortContent={true} />
 
                 <div className="mt-1 flex justify-end gap-1">
                   <NodeDataViewer
-                    data={inputData}
                     pinName="Input"
+                    nodeId={nodeId}
                     execId={executionResultId}
+                    dataType="input"
                   />
                   <Button
                     variant="secondary"
                     size="small"
-                    onClick={() => handleCopy("input", inputData)}
+                    onClick={() => handleCopy("input", latestInputData)}
                     className={cn(
                       "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
                       copiedKey === "input" &&
@@ -60,78 +67,85 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     )}
                   >
                     {copiedKey === "input" ? (
-                      <CheckIcon size={12} className="text-green-600" />
+                      <Icon
+                        icon={Tick02Icon}
+                        size={12}
+                        className="text-green-600"
+                      />
                     ) : (
-                      <CopyIcon size={12} />
+                      <Icon icon={Copy01Icon} size={12} />
                     )}
                   </Button>
                 </div>
               </div>
 
-              {Object.entries(outputData)
+              {Object.entries(latestOutputData)
                 .slice(0, 2)
-                .map(([key, value]) => (
-                  <div key={key} className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <Text
-                        variant="small-medium"
-                        className="!font-semibold text-slate-600"
-                      >
-                        Pin:
-                      </Text>
-                      <Text variant="small" className="text-slate-700">
-                        {beautifyString(key)}
-                      </Text>
-                    </div>
-                    <div className="w-full space-y-2">
-                      <Text
-                        variant="small"
-                        className="!font-semibold text-slate-600"
-                      >
-                        Data:
-                      </Text>
-                      <div className="relative space-y-2">
-                        {value.map((item, index) => (
-                          <div key={index}>
-                            <ContentRenderer value={item} shortContent={true} />
-                          </div>
-                        ))}
+                .map(([key, value]) => {
+                  return (
+                    <div key={key} className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <Text
+                          variant="small-medium"
+                          className="!font-semibold text-slate-600"
+                        >
+                          Pin:
+                        </Text>
+                        <Text variant="small" className="text-slate-700">
+                          {beautifyString(key)}
+                        </Text>
+                      </div>
+                      <div className="w-full space-y-2">
+                        <Text
+                          variant="small"
+                          className="!font-semibold text-slate-600"
+                        >
+                          Data:
+                        </Text>
+                        <div className="relative space-y-2">
+                          {value.slice(0, 3).map((item, index) => (
+                            <div key={index}>
+                              <ContentRenderer
+                                value={item}
+                                shortContent={true}
+                              />
+                            </div>
+                          ))}
 
-                        <div className="mt-1 flex justify-end gap-1">
-                          <NodeDataViewer
-                            data={value}
-                            pinName={key}
-                            execId={executionResultId}
-                          />
-                          <Button
-                            variant="secondary"
-                            size="small"
-                            onClick={() => handleCopy(key, value)}
-                            className={cn(
-                              "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
-                              copiedKey === key &&
-                                "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
-                            )}
-                          >
-                            {copiedKey === key ? (
-                              <CheckIcon size={12} className="text-green-600" />
-                            ) : (
-                              <CopyIcon size={12} />
-                            )}
-                          </Button>
+                          <div className="mt-1 flex justify-end gap-1">
+                            <NodeDataViewer
+                              pinName={key}
+                              nodeId={nodeId}
+                              execId={executionResultId}
+                            />
+                            <Button
+                              variant="secondary"
+                              size="small"
+                              onClick={() => handleCopy(key, value)}
+                              className={cn(
+                                "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
+                                copiedKey === key &&
+                                  "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
+                              )}
+                            >
+                              {copiedKey === key ? (
+                                <Icon
+                                  icon={Tick02Icon}
+                                  size={12}
+                                  className="text-green-600"
+                                />
+                              ) : (
+                                <Icon icon={Copy01Icon} size={12} />
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
-
-            {Object.keys(outputData).length > 2 && (
-              <ViewMoreData
-                outputData={outputData}
-                execId={executionResultId}
-              />
-            )}
+            <ViewMoreData nodeId={nodeId} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>

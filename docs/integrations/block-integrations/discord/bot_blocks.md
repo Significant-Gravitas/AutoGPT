@@ -132,7 +132,7 @@ The user must be visible to your bot (share a server with your bot).
 ## Read Discord Messages
 
 ### What it is
-Reads messages from a Discord channel using a bot token.
+Reads new messages from a Discord channel using a bot token and triggers when a new message is posted
 
 ### How it works
 <!-- MANUAL: how_it_works -->

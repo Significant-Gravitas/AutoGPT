@@ -1,12 +1,14 @@
 "use client";
 
-import * as React from "react";
-
-import Image from "next/image";
-import { StepHeader } from "./StepHeader";
-import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
-import { usePathname } from "next/navigation";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { ReviewStepper } from "./ReviewStepper";
+import { ShareLinkButton } from "./ShareLinkButton";
+import { ReviewHero } from "./ReviewHero";
+import { SubmissionSummaryCard } from "./SubmissionSummaryCard";
+import { SubmissionMetaGrid } from "./SubmissionMetaGrid";
+import { RejectionFeedback } from "./RejectionFeedback";
+import { ReviewStepFooter } from "./ReviewStepFooter";
+import { useAgentReviewStep } from "./useAgentReviewStep";
 
 interface Props {
   agentName: string;
@@ -15,100 +17,105 @@ interface Props {
   onClose: () => void;
   onDone: () => void;
   onViewProgress: () => void;
+  onEdit?: () => void;
   thumbnailSrc?: string;
+  status?: SubmissionStatus;
+  reviewComments?: string | null;
+  version?: number;
+  category?: string | null;
+  submittedAt?: string | Date | null;
+  reviewedAt?: string | Date | null;
+  runCount?: number;
+  marketplaceUrl?: string;
 }
 
 export function AgentReviewStep({
   agentName,
   subheader,
-  description,
+  description: _description,
   thumbnailSrc,
   onDone,
   onViewProgress,
+  onEdit,
+  status,
+  reviewComments,
+  version,
+  category,
+  submittedAt,
+  reviewedAt,
+  runCount,
+  marketplaceUrl,
 }: Props) {
-  const pathname = usePathname();
-  const isDashboardPage = pathname.includes("/profile/dashboard");
+  const {
+    isDashboardPage,
+    hero,
+    shouldReduceMotion,
+    isApproved,
+    isRejected,
+    isDraft,
+    isPending,
+    showCelebration,
+    showConfetti,
+    metaItems,
+  } = useAgentReviewStep({
+    status,
+    version,
+    category,
+    submittedAt,
+    reviewedAt,
+    runCount,
+  });
 
   return (
-    <div aria-labelledby="modal-title">
-      <StepHeader
-        title="Agent is awaiting review"
-        description={
-          isDashboardPage
-            ? "Once the agent is approved, it will be available in the AutoGPT marketplace."
-            : "In the meantime you can check your progress on your Creator Dashboard page"
-        }
+    <div
+      aria-labelledby="modal-title"
+      className="relative flex flex-col items-center pb-4 pt-10"
+    >
+      <ReviewHero
+        hero={hero}
+        showCelebration={showCelebration}
+        showConfetti={showConfetti}
+        shouldReduceMotion={!!shouldReduceMotion}
       />
 
-      <div className="flex flex-1 flex-col items-center gap-8 px-6 pt-6 sm:gap-6">
-        <div className="mt-4 flex w-full flex-col items-center gap-6 sm:mt-0 sm:gap-4">
-          <div className="gap- flex flex-col items-center">
-            <Text
-              variant="lead"
-              className="line-clamp-1 text-ellipsis text-center font-semibold"
-              data-testid="view-agent-name"
-            >
-              {agentName}
-            </Text>
-            <Text
-              variant="large"
-              className="line-clamp-1 text-ellipsis text-center text-neutral-500"
-            >
-              {subheader}
-            </Text>
-          </div>
+      <SubmissionSummaryCard
+        agentName={agentName}
+        subheader={subheader}
+        thumbnailSrc={thumbnailSrc}
+        isPending={isPending}
+        shouldReduceMotion={!!shouldReduceMotion}
+      />
 
-          <div
-            className="aspect-video h-64 w-full rounded-xl bg-neutral-200"
-            role="img"
-            aria-label={
-              thumbnailSrc ? "Agent thumbnail" : "Thumbnail placeholder"
-            }
-          >
-            {thumbnailSrc && (
-              <Image
-                src={thumbnailSrc}
-                alt="Agent thumbnail"
-                width={400}
-                height={280}
-                className="h-full w-full rounded-xl object-cover"
-                loading="lazy"
-              />
-            )}
-          </div>
+      <SubmissionMetaGrid
+        items={metaItems}
+        shouldReduceMotion={!!shouldReduceMotion}
+      />
 
-          {description ? (
-            <Text
-              variant="large"
-              className="line-clamp-1 text-ellipsis pt-2 text-center text-neutral-500"
-            >
-              {description}
-            </Text>
-          ) : null}
+      {reviewComments && status === SubmissionStatus.REJECTED ? (
+        <RejectionFeedback comments={reviewComments} />
+      ) : null}
+
+      {isPending ? (
+        <ReviewStepper shouldReduceMotion={!!shouldReduceMotion} />
+      ) : null}
+
+      {isApproved && marketplaceUrl ? (
+        <div className="mt-4 flex w-full max-w-md justify-center">
+          <ShareLinkButton url={marketplaceUrl} />
         </div>
-      </div>
-      <div
-        className={`mt-10 flex ${
-          isDashboardPage ? "justify-center" : "justify-between"
-        } gap-4`}
-      >
-        <Button
-          variant={isDashboardPage ? "primary" : "secondary"}
-          onClick={onDone}
-          className={isDashboardPage ? "w-1/2" : "w-full"}
-        >
-          Done
-        </Button>
-        {!isDashboardPage ? (
-          <Button
-            onClick={onViewProgress}
-            className="w-full"
-            data-testid="view-progress-button"
-          >
-            View progress
-          </Button>
-        ) : null}
-      </div>
+      ) : null}
+
+      <ReviewStepFooter
+        onDone={onDone}
+        onViewProgress={onViewProgress}
+        onEdit={onEdit}
+        isApproved={isApproved}
+        isRejected={isRejected}
+        isDraft={isDraft}
+        isPending={isPending}
+        isDashboardPage={isDashboardPage}
+        marketplaceUrl={marketplaceUrl}
+      />
     </div>
   );
 }

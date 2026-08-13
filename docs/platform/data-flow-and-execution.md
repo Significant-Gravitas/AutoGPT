@@ -6,14 +6,14 @@ Understanding how agents execute is key to building effective workflows. This gu
 
 ## Execution Order
 
-Agent execution is entirely **determined by data flow**. There is no separate execution flow or ordering mechanism — data dependencies are the only thing that controls which block runs when.
+Agent execution follows the graph's starting nodes, data connections, configured values, and input validation.
 
 ### How It Works
 
-1. **Execution starts from input blocks**, which yield their data when the agent is triggered (either manually or via a trigger/schedule)
-2. The next block to run is whichever block has **all of its connected inputs satisfied**
-3. This continues block by block, following the data flow, until all blocks have executed
-4. **Output blocks** collect the final results and present them to the user
+1. Execution starts from every starting node: an Agent Input block or any executable block with no inbound links.
+2. A downstream block is queued when its required inputs validate after upstream outputs and configured values are applied.
+3. Execution continues until no more downstream blocks can be queued; conditional branches and skipped nodes mean not every block necessarily runs.
+4. Output blocks collect any results that reach them.
 
 ### Required Inputs
 
@@ -75,8 +75,8 @@ Building robust agents means thinking about what happens when things go wrong. C
 
 | Concept | How It Works |
 |---------|-------------|
-| **Execution order** | Determined entirely by data flow — blocks run when all inputs are ready |
-| **Starting point** | Input blocks yield data first |
+| **Execution order** | Determined by starting nodes, data connections, configured values, and input validation |
+| **Starting point** | Agent Input blocks and executable blocks with no inbound links |
 | **Ending point** | Output blocks collect final results |
 | **Parallel execution** | Blocks with no dependencies on each other can execute in any order |
 | **Error handling** | Failed blocks yield data on their error pin — you decide what to do with it |

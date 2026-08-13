@@ -148,7 +148,7 @@ jobs:
             --entrypoint poetry ${{ env.IMAGE_NAME }} run \
             pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
             --numprocesses=4 --durations=10 \
-            tests/unit tests/integration 2>&1 | tee test_output.txt
+            original_autogpt/tests/unit original_autogpt/tests/integration 2>&1 | tee test_output.txt
 
           test_failure=${PIPESTATUS[0]}
 

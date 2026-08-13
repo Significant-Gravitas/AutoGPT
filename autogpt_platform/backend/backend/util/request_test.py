@@ -1,7 +1,7 @@
 import pytest
 from aiohttp import web
 
-from backend.util.request import pin_url, validate_url
+from backend.util.request import _is_ip_blocked, pin_url, validate_url_host
 
 
 @pytest.mark.parametrize(
@@ -60,9 +60,9 @@ async def test_validate_url_no_dns_rebinding(
 ):
     if should_raise:
         with pytest.raises(ValueError):
-            await validate_url(raw_url, trusted_origins)
+            await validate_url_host(raw_url, trusted_origins)
     else:
-        validated_url, _, _ = await validate_url(raw_url, trusted_origins)
+        validated_url, _, _ = await validate_url_host(raw_url, trusted_origins)
         assert validated_url.geturl() == expected_value
 
 
@@ -101,10 +101,10 @@ async def test_dns_rebinding_fix(
     if expect_error:
         # If any IP is blocked, we expect a ValueError
         with pytest.raises(ValueError):
-            url, _, ip_addresses = await validate_url(hostname, [])
+            url, _, ip_addresses = await validate_url_host(hostname)
             pin_url(url, ip_addresses)
     else:
-        url, _, ip_addresses = await validate_url(hostname, [])
+        url, _, ip_addresses = await validate_url_host(hostname)
         pinned_url = pin_url(url, ip_addresses).geturl()
         # The pinned_url should contain the first valid IP
         assert pinned_url.startswith("http://") or pinned_url.startswith("https://")
@@ -171,3 +171,76 @@ async def test_large_header_handling():
 
     finally:
         await runner.cleanup()
+
+
+# ---------- IPv4-mapped IPv6 bypass tests (GHSA-8qc5-rhmg-r6r6) ----------
+
+
+@pytest.mark.parametrize(
+    "ip, expected_blocked",
+    [
+        # IPv4-mapped IPv6 encoding of blocked IPv4 ranges
+        ("::ffff:127.0.0.1", True),  # Loopback
+        ("::ffff:10.0.0.1", True),  # Private-Use
+        ("::ffff:192.168.1.1", True),  # Private-Use
+        ("::ffff:172.16.0.1", True),  # Private-Use
+        ("::ffff:169.254.1.1", True),  # Link Local
+        ("::ffff:100.64.0.1", True),  # CGNAT (RFC 6598)
+        # Plain IPv4 (should still be blocked)
+        ("127.0.0.1", True),
+        ("10.0.0.1", True),
+        ("100.64.0.1", True),  # CGNAT
+        ("192.0.0.1", True),  # IETF Protocol Assignments
+        ("198.18.0.1", True),  # Benchmarking
+        # Public IPs (should NOT be blocked)
+        ("8.8.8.8", False),
+        ("1.1.1.1", False),
+        ("::ffff:8.8.8.8", False),  # IPv4-mapped but public
+        # Native IPv6 blocked ranges
+        ("::1", True),  # Loopback
+        ("fe80::1", True),  # Link-local
+        ("fc00::1", True),  # ULA
+        # Public IPv6 (should NOT be blocked)
+        ("2607:f8b0:4004:800::200e", False),  # Google
+    ],
+)
+def test_is_ip_blocked(ip: str, expected_blocked: bool):
+    assert (
+        _is_ip_blocked(ip) == expected_blocked
+    ), f"Expected _is_ip_blocked({ip!r}) == {expected_blocked}"
+
+
+@pytest.mark.parametrize(
+    "raw_url, resolved_ips, should_raise",
+    [
+        # IPv4-mapped IPv6 loopback — must be blocked
+        ("mapped-loopback.example.com", ["::ffff:127.0.0.1"], True),
+        # IPv4-mapped IPv6 private — must be blocked
+        ("mapped-private.example.com", ["::ffff:10.0.0.1"], True),
+        # CGNAT range — must be blocked
+        ("cgnat.example.com", ["100.64.0.1"], True),
+        # Mixed: one public, one mapped-private — must be blocked (any blocked = reject)
+        ("mixed.example.com", ["8.8.8.8", "::ffff:192.168.1.1"], True),
+        # All public — should pass
+        ("public.example.com", ["8.8.8.8", "9.9.9.9"], False),
+    ],
+)
+async def test_ipv4_mapped_ipv6_bypass(
+    monkeypatch,
+    raw_url: str,
+    resolved_ips: list[str],
+    should_raise: bool,
+):
+    """Ensures IPv4-mapped IPv6 addresses are checked against IPv4 blocklist."""
+
+    def mock_getaddrinfo(host, port, *args, **kwargs):
+        return [(None, None, None, None, (ip, port)) for ip in resolved_ips]
+
+    monkeypatch.setattr("socket.getaddrinfo", mock_getaddrinfo)
+
+    if should_raise:
+        with pytest.raises(ValueError):
+            await validate_url_host(raw_url)
+    else:
+        url, _, ip_addresses = await validate_url_host(raw_url)
+        assert ip_addresses  # Should have resolved IPs

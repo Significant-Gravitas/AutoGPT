@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/__legacy__/ui/select";
 import { Button } from "@/components/atoms/Button/Button";
-import { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import * as React from "react";
 import { TIMEZONES } from "./helpers";
 import { useTimezoneForm } from "./useTimezoneForm";
@@ -33,7 +33,6 @@ type Props = {
 };
 
 export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
-  console.log("currentTimezone", currentTimezone);
   // If timezone is not set, try to detect it from the browser
   const effectiveTimezone = React.useMemo(() => {
     if (currentTimezone === "not-set") {

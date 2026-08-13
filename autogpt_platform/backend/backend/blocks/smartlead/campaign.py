@@ -1,3 +1,10 @@
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.smartlead._api import SmartLeadClient
 from backend.blocks.smartlead._auth import (
     TEST_CREDENTIALS,
@@ -16,14 +23,7 @@ from backend.blocks.smartlead.models import (
     SaveSequencesResponse,
     Sequence,
 )
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
-)
-from backend.data.model import CredentialsField, SchemaField
+from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
 class CreateCampaignBlock(Block):
@@ -225,6 +225,12 @@ class AddLeadToCampaignBlock(Block):
     ) -> BlockOutput:
         response = await self.add_leads_to_campaign(
             input_data.campaign_id, input_data.lead_list, credentials
+        )
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(len(input_data.lead_list)),
+                provider_cost_type="items",
+            )
         )
 
         yield "campaign_id", input_data.campaign_id

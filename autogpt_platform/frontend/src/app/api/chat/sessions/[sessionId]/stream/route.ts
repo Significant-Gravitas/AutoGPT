@@ -1,11 +1,46 @@
 import { environment } from "@/services/environment";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { NextRequest } from "next/server";
+import { normalizeSSEStream, SSE_HEADERS } from "../../../sse-helpers";
 
-/**
- * SSE Proxy for chat streaming.
- * Supports POST with context (page content + URL) in the request body.
- */
+// Legacy SSE proxy fallback. Primary transport is direct backend SSE.
+// See useCopilotStream.ts for active transport logic.
+export const maxDuration = 800;
+
+const DEBUG_SSE_TIMEOUT_MS = process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS
+  ? Number(process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS)
+  : undefined;
+
+// Bounds the time to ESTABLISH the backend stream (time-to-first-response), so
+// a hung connection can't leave the client spinner waiting forever. It is
+// cleared the moment response headers arrive, so it never truncates a healthy
+// long-lived SSE stream — maxDuration still caps the total stream duration.
+const STREAM_CONNECT_TIMEOUT_MS = 30_000;
+
+async function fetchStream(url: string, init: RequestInit): Promise<Response> {
+  // Debug/testing hook: NEXT_PUBLIC_SSE_TIMEOUT_MS aborts the ENTIRE stream to
+  // simulate a mid-stream proxy timeout.
+  if (DEBUG_SSE_TIMEOUT_MS) {
+    console.warn(
+      `[SSE_DEBUG] Simulating proxy timeout in ${DEBUG_SSE_TIMEOUT_MS}ms`,
+    );
+    return fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(DEBUG_SSE_TIMEOUT_MS),
+    });
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STREAM_CONNECT_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    // Headers arrived (or the request already failed); stop guarding so the
+    // streamed body runs for the full maxDuration window.
+    clearTimeout(timer);
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
@@ -14,26 +49,23 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { message, is_user_message, context } = body;
+    const { message, is_user_message, context, file_ids } = body;
 
-    if (!message) {
+    if (message === undefined) {
       return new Response(
         JSON.stringify({ error: "Missing message parameter" }),
         { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    // Get auth token from server-side session
     const token = await getServerAuthToken();
 
-    // Build backend URL
     const backendUrl = environment.getAGPTServerBaseUrl();
     const streamUrl = new URL(
       `/api/chat/sessions/${sessionId}/stream`,
       backendUrl,
     );
 
-    // Forward request to backend with auth header
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
@@ -45,13 +77,14 @@ export async function POST(
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(streamUrl.toString(), {
+    const response = await fetchStream(streamUrl.toString(), {
       method: "POST",
       headers,
       body: JSON.stringify({
         message,
         is_user_message: is_user_message ?? true,
         context: context || null,
+        file_ids: file_ids || null,
       }),
     });
 
@@ -63,14 +96,15 @@ export async function POST(
       });
     }
 
-    // Return the SSE stream directly
-    return new Response(response.body, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
+    if (!response.body) {
+      return new Response(
+        JSON.stringify({ error: "Empty response from chat service" }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response(normalizeSSEStream(response.body), {
+      headers: SSE_HEADERS,
     });
   } catch (error) {
     console.error("SSE proxy error:", error);
@@ -87,40 +121,21 @@ export async function POST(
   }
 }
 
-/**
- * Legacy GET endpoint for backward compatibility
- */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
   const { sessionId } = await params;
-  const searchParams = request.nextUrl.searchParams;
-  const message = searchParams.get("message");
-  const isUserMessage = searchParams.get("is_user_message");
-
-  if (!message) {
-    return new Response("Missing message parameter", { status: 400 });
-  }
 
   try {
-    // Get auth token from server-side session
     const token = await getServerAuthToken();
 
-    // Build backend URL
     const backendUrl = environment.getAGPTServerBaseUrl();
     const streamUrl = new URL(
       `/api/chat/sessions/${sessionId}/stream`,
       backendUrl,
     );
-    streamUrl.searchParams.set("message", message);
 
-    // Pass is_user_message parameter if provided
-    if (isUserMessage !== null) {
-      streamUrl.searchParams.set("is_user_message", isUserMessage);
-    }
-
-    // Forward request to backend with auth header
     const headers: Record<string, string> = {
       Accept: "text/event-stream",
       "Cache-Control": "no-cache",
@@ -131,10 +146,14 @@ export async function GET(
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(streamUrl.toString(), {
+    const response = await fetchStream(streamUrl.toString(), {
       method: "GET",
       headers,
     });
+
+    if (response.status === 204) {
+      return new Response(null, { status: 204 });
+    }
 
     if (!response.ok) {
       const error = await response.text();
@@ -144,17 +163,18 @@ export async function GET(
       });
     }
 
-    // Return the SSE stream directly
-    return new Response(response.body, {
+    if (!response.body) {
+      return new Response(null, { status: 204 });
+    }
+
+    return new Response(normalizeSSEStream(response.body), {
       headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
+        ...SSE_HEADERS,
+        "x-vercel-ai-ui-message-stream": "v1",
       },
     });
   } catch (error) {
-    console.error("SSE proxy error:", error);
+    console.error("Resume stream proxy error:", error);
     return new Response(
       JSON.stringify({
         error: "Failed to connect to chat service",

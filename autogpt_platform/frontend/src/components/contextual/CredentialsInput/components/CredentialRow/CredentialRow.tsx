@@ -1,4 +1,3 @@
-import { IconKey } from "@/components/__legacy__/ui/icons";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   DropdownMenu,
@@ -7,14 +6,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import { CaretDownIcon, DotsThreeVertical } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { CredentialsType } from "@/lib/autogpt-server-api/types";
 import {
   fallbackIcon,
   getCredentialDisplayName,
+  getCredentialTypeIcon,
+  getCredentialTypeLabel,
   MASKED_KEY_LENGTH,
   providerIcons,
 } from "../../helpers";
+import { ArrowDown01Icon, MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type CredentialRowProps = {
   credential: {
@@ -47,6 +50,16 @@ export function CredentialRow({
   variant = "default",
 }: CredentialRowProps) {
   const ProviderIcon = providerIcons[provider] || fallbackIcon;
+  const isRealCredentialType = [
+    "api_key",
+    "oauth2",
+    "user_password",
+    "host_scoped",
+  ].includes(credential.type);
+  const credType = credential.type as CredentialsType;
+  const TypeIcon = isRealCredentialType
+    ? getCredentialTypeIcon(credType, provider)
+    : fallbackIcon;
   const isNodeVariant = variant === "node";
   const containerRef = useRef<HTMLDivElement>(null);
   const [showMaskedKey, setShowMaskedKey] = useState(true);
@@ -92,22 +105,29 @@ export function CredentialRow({
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900">
         <ProviderIcon className="h-3 w-3 text-white" />
       </div>
-      <IconKey className="h-5 w-5 shrink-0 text-zinc-800" />
+      <TypeIcon className="h-5 w-5 shrink-0 text-zinc-800" />
       <div
         className={cn(
           "relative flex min-w-0 flex-1 flex-nowrap items-center gap-4",
           isNodeVariant && "overflow-hidden",
         )}
       >
-        <Text
-          variant="body"
-          className={cn(
-            "min-w-0 flex-1 tracking-tight",
-            isNodeVariant ? "truncate" : "line-clamp-1 text-ellipsis",
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Text
+            variant="body"
+            className={cn(
+              "min-w-0 shrink tracking-tight",
+              isNodeVariant ? "truncate" : "line-clamp-1 text-ellipsis",
+            )}
+          >
+            {getCredentialDisplayName(credential, displayName)}
+          </Text>
+          {isRealCredentialType && (
+            <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[0.625rem] font-medium leading-tight text-zinc-500">
+              {getCredentialTypeLabel(credType)}
+            </span>
           )}
-        >
-          {getCredentialDisplayName(credential, displayName)}
-        </Text>
+        </div>
         {!(asSelectTrigger && isNodeVariant) && showMaskedKey && (
           <Text
             variant="large"
@@ -121,7 +141,10 @@ export function CredentialRow({
         )}
       </div>
       {(showCaret || (asSelectTrigger && !readOnly)) && (
-        <CaretDownIcon className="h-4 w-4 shrink-0 text-gray-400" />
+        <Icon
+          icon={ArrowDown01Icon}
+          className="h-4 w-4 shrink-0 text-gray-400"
+        />
       )}
       {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
         <DropdownMenu>
@@ -130,7 +153,7 @@ export function CredentialRow({
               className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
               onClick={(e) => e.stopPropagation()}
             >
-              <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+              <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-gray-400" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

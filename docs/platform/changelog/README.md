@@ -2,6 +2,8 @@
 
 What's new in AutoPilot and the AutoGPT Platform. We ship updates regularly and document everything here.
 
+Release windows reflect how changes were grouped for publication and may overlap when work spans consecutive releases.
+
 ## 2026
 
 | Date | Highlights |
