@@ -1,7 +1,34 @@
 import scrollbar from "tailwind-scrollbar";
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
 import { colors } from "./src/components/styles/colors";
+
+const SMOOTH_SHADOW_SM =
+  "0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent), 0 7.5px 19px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 4px 10.5px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 2.3px 5.8px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 1.2px 3.1px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 0.5px 1.3px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent)";
+const SMOOTH_RING =
+  "0 0 0 var(--smooth-ring-width, 1px) var(--smooth-ring-color)";
+
+const smoothShadowRing = plugin(function smoothShadowRing({
+  addBase,
+  addUtilities,
+}) {
+  addBase({
+    ":root": {
+      "--smooth-ring-color": "rgba(0, 0, 0, 0.05)",
+      "--smooth-ring-width": "1px",
+    },
+    '.dark, .dark-mode, [data-theme="dark"]': {
+      "--smooth-ring-color": "rgba(255, 255, 255, 0.18)",
+    },
+  });
+  addUtilities({
+    ".smooth-shadow-ring-sm": {
+      "--smooth-shadow-color": "var(--tw-shadow-color, rgb(0 0 0))",
+      boxShadow: `${SMOOTH_SHADOW_SM}, ${SMOOTH_RING}`,
+    },
+  });
+});
 
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
@@ -249,7 +276,11 @@ const config = {
       },
     },
   },
-  plugins: [tailwindcssAnimate, scrollbar({ nocompatible: true })],
+  plugins: [
+    tailwindcssAnimate,
+    scrollbar({ nocompatible: true }),
+    smoothShadowRing,
+  ],
 } satisfies Config;
 
 export default config;
