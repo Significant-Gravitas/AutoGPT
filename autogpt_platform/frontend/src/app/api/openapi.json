@@ -15372,7 +15372,20 @@
           },
           "decision_total": {
             "type": "integer",
+            "minimum": 0.0,
             "title": "Decision Total",
+            "default": 0
+          },
+          "completed_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Completed Total",
+            "default": 0
+          },
+          "failed_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed Total",
             "default": 0
           }
         },
@@ -15478,6 +15491,29 @@
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
+          },
+          "expert_role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Role"
+          },
+          "title": { "type": "string", "title": "Title", "default": "" },
+          "detail": { "type": "string", "title": "Detail", "default": "" },
+          "occurred_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Occurred At"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
           }
         },
         "type": "object",
@@ -19121,6 +19157,12 @@
             "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
             "type": "array",
             "title": "Outcomes"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["persisted", "live"],
+            "title": "Source",
+            "default": "live"
           }
         },
         "type": "object",

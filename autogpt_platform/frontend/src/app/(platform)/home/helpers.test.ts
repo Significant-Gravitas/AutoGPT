@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import {
+  formatBriefingWindowStart,
   formatCurrency,
   formatDuration,
   formatHeaderDate,
@@ -48,6 +49,16 @@ describe("formatters", () => {
         "en-US",
       ),
     ).toEqual({ weekday: "Monday", calendarDate: "August 10" });
+  });
+
+  it("names the start of the briefing window", () => {
+    expect(
+      formatBriefingWindowStart(
+        new Date("2026-08-09T03:30:00Z"),
+        "Asia/Kolkata",
+        "en-US",
+      ),
+    ).toBe("Sunday 9:00 AM");
   });
 
   it("formats measured runtime and cost", () => {

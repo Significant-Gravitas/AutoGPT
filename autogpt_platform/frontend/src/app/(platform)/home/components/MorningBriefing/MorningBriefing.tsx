@@ -8,6 +8,7 @@ import {
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { formatBriefingWindowStart } from "../../helpers";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
@@ -69,7 +70,12 @@ export function MorningBriefing({ dashboard, className }: Props) {
       }
       header={
         <Text variant="large" className="text-zinc-600">
-          The outcomes worth knowing from the last 24 hours.
+          The outcomes worth knowing since{" "}
+          {formatBriefingWindowStart(
+            briefing.window_started_at,
+            dashboard.timezone,
+          )}
+          .
         </Text>
       }
     >

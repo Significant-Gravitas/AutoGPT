@@ -2,8 +2,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
@@ -12,6 +13,8 @@ from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
 from backend.api.features.library import db as library_db
+from backend.copilot.briefing.models import BriefingContent
+from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
 from backend.data import user as user_db
@@ -23,8 +26,10 @@ from backend.data.execution_cost_summary import (
 )
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
+from .briefing import without_summaries
 from .compose import compose_home_dashboard
 from .models import HomeDashboardResponse
 
@@ -32,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 _EXECUTION_LIMIT = 300
 _REVIEW_LIMIT = 100
+# Enough of a user id to correlate log lines for one user without writing the
+# whole identifier into logs that are retained and widely readable.
+_LOG_ID_CHARS = 12
 
 
 class HomeSourceData(BaseModel):
@@ -61,8 +69,11 @@ async def build_home_dashboard(
         {execution.graph_id for execution in data.executions}
         | {review.graph_id for review in data.reviews}
     )
-    library_refs = await library_db.get_library_agent_refs_by_graph_ids(
-        user_id, graph_ids
+    # Both depend on the gathered data (graph ids / timezone) but not on each
+    # other, so the briefing read costs no extra round-trip.
+    library_refs, persisted_briefing = await asyncio.gather(
+        library_db.get_library_agent_refs_by_graph_ids(user_id, graph_ids),
+        _persisted_briefing(user_id=user_id, timezone_name=data.timezone_name, now=now),
     )
 
     return compose_home_dashboard(
@@ -75,7 +86,54 @@ async def build_home_dashboard(
         cost_summary=data.cost_summary,
         credits_balance=data.credits_balance,
         timezone_name=data.timezone_name,
+        persisted_briefing=persisted_briefing,
     )
+
+
+async def _persisted_briefing(
+    *, user_id: str, timezone_name: str, now: datetime
+) -> BriefingContent | None:
+    """Today's stored briefing, or None when home should compute live instead.
+
+    None covers every way the anchor can be missing: no row yet (a pre-9am
+    signup), a job that failed, and — mirroring `briefings/routes.py` — stored
+    content written by a different composer version that no longer validates.
+
+    `delivered_at` is deliberately not part of that test. An unstamped row
+    means the content was stored but the thread post failed, and
+    `generate_and_deliver_briefing` redelivers *that same stored content* on
+    its next run rather than recomposing it. The undelivered row is therefore
+    already the canonical story; skipping it would put home back on a live
+    recompute that drifts from the message the user is about to receive —
+    exactly the divergence this card exists to remove.
+
+    The date comes off the request's own `now` rather than a second clock read:
+    loading the source data takes long enough to cross local midnight, and the
+    card would then look up tomorrow's row for a dashboard composed against
+    yesterday.
+    """
+    briefing_date = now.astimezone(ZoneInfo(timezone_name)).date()
+    try:
+        record = await briefing_db.get_briefing_for_date(user_id, briefing_date)
+    except Exception:
+        logger.warning(
+            "Home could not load the briefing for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return None
+    if record is None:
+        return None
+    try:
+        content = BriefingContent.model_validate(record.content)
+    except ValidationError:
+        logger.warning(
+            "Briefing %s failed to validate against BriefingContent; "
+            "home is composing its card live instead",
+            record.id,
+        )
+        return None
+    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+        return content
+    return without_summaries(content)
 
 
 async def _load_home_source_data(
@@ -141,7 +199,9 @@ async def _get_schedules(
     try:
         return await get_scheduler_client().get_execution_schedules(user_id=user_id)
     except Exception:
-        logger.warning("Home could not load schedules for user %s", user_id[:12])
+        logger.warning(
+            "Home could not load schedules for user %s", user_id[:_LOG_ID_CHARS]
+        )
         return []
 
 
@@ -150,5 +210,7 @@ async def _get_credits(*, user_id: str, organization_id: str | None) -> int | No
         model = await get_credit_model(user_id, organization_id)
         return await model.get_credits(user_id, organization_id)
     except Exception:
-        logger.warning("Home could not load credits for user %s", user_id[:12])
+        logger.warning(
+            "Home could not load credits for user %s", user_id[:_LOG_ID_CHARS]
+        )
         return None
