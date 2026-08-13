@@ -1,7 +1,9 @@
 "use client";
 
+import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Text } from "@/components/atoms/Text/Text";
+import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AttentionRow } from "./components/AttentionRow";
 import { NeedsYouTitle } from "./components/NeedsYouTitle";
@@ -19,8 +21,6 @@ export function NeedsYou({ dashboard, className }: Props) {
     hasFilters,
     selectedKind,
     selectKind,
-    showAll,
-    setShowAll,
     pendingIDs,
     decide,
   } = useNeedsYou({ items: dashboard.attention });
@@ -38,8 +38,6 @@ export function NeedsYou({ dashboard, className }: Props) {
           selectedKind={selectedKind}
           filterOptions={filterOptions}
           onSelectKind={selectKind}
-          showAll={showAll}
-          onToggleShowAll={() => setShowAll(!showAll)}
         />
       }
       header={
@@ -49,14 +47,11 @@ export function NeedsYou({ dashboard, className }: Props) {
       }
     >
       {itemCount === 0 ? (
-        <div className="rounded-lg bg-zinc-50 px-5 py-7 text-center ring-1 ring-inset ring-zinc-950/[0.05]">
-          <Text variant="body-medium" className="text-zinc-800">
-            You are all caught up
-          </Text>
-          <Text variant="small" className="mt-1 text-zinc-500">
-            Your agents can keep moving without you.
-          </Text>
-        </div>
+        <HomeTileEmpty
+          icon={CheckmarkCircle02Icon}
+          title="You are all caught up"
+          description="Your agents can keep moving without you."
+        />
       ) : (
         <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
           {visibleItems.map((item) => (

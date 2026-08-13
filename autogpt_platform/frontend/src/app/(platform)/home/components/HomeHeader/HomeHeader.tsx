@@ -15,7 +15,7 @@ export function HomeHeader({ greeting, name, dashboard }: Props) {
   const status = getHomeStatusLine(dashboard);
 
   return (
-    <header className="my-6 flex items-start justify-between gap-6 px-1">
+    <header className="my-6 flex items-start justify-between gap-6 px-4 sm:px-5">
       <div className="min-w-0">
         <Text
           variant="h4"

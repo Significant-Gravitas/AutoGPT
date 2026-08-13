@@ -1,11 +1,15 @@
-import { ArrowRight01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import {
+  ArrowRight01Icon,
+  UserAdd01Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AgentRow } from "./components/AgentRow";
-import { EmptyTeam } from "./components/EmptyTeam";
 
 interface Props {
   dashboard: HomeDashboardResponse;
@@ -50,7 +54,12 @@ export function AgentTeam({ dashboard, className }: Props) {
       }
     >
       {agents.length === 0 ? (
-        <EmptyTeam />
+        <HomeTileEmpty
+          icon={UserAdd01Icon}
+          title="Build your team"
+          description="Hire an expert to start delegating work."
+          action={{ href: "/marketplace", label: "Browse experts" }}
+        />
       ) : (
         <div className="divide-y divide-zinc-100">
           {agents.slice(0, 3).map((agent) => (

@@ -18,26 +18,22 @@ const FILTER_LABELS: Partial<Record<AttentionFilter, string>> = {
 
 export function useNeedsYou({ items }: Args) {
   const { pendingIDs, decide } = useAttentionDecisions();
-  const [showAll, setShowAll] = useState(false);
   const [activeKind, setActiveKind] = useState<AttentionFilter>("all");
   const filterKinds = Array.from(new Set(items.map((item) => item.kind)));
   const selectedKind: AttentionFilter =
     activeKind !== "all" && filterKinds.includes(activeKind)
       ? activeKind
       : "all";
-  const filteredItems =
+  const visibleItems =
     selectedKind === "all"
       ? items
       : items.filter((item) => item.kind === selectedKind);
-  const visibleItems = showAll ? filteredItems : filteredItems.slice(0, 3);
 
   function selectKind(kind: AttentionFilter) {
     setActiveKind(kind);
-    setShowAll(false);
   }
 
   return {
-    filteredItems,
     visibleItems,
     filterOptions: (["all", ...filterKinds] as AttentionFilter[]).map(
       (value) => ({ value, label: FILTER_LABELS[value] ?? value }),
@@ -45,8 +41,6 @@ export function useNeedsYou({ items }: Args) {
     hasFilters: filterKinds.length > 1,
     selectedKind,
     selectKind,
-    showAll,
-    setShowAll,
     pendingIDs,
     decide,
   };

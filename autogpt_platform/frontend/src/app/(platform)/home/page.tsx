@@ -72,7 +72,7 @@ function HomeSkeleton() {
   return (
     <main className={SHELL_CLASS} aria-label="Loading Home…">
       <div className={`${CONTENT_CLASS} flex flex-col gap-2.5`}>
-        <div className="my-6 flex items-start justify-between gap-6 px-1">
+        <div className="my-6 flex items-start justify-between gap-6 px-4 sm:px-5">
           <div className="space-y-2">
             <Skeleton className="h-9 w-72" />
             <Skeleton className="h-5 w-96 max-w-full" />

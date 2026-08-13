@@ -118,19 +118,12 @@ function mockDashboard(attention: HomeAttentionItem[]) {
   );
 }
 
-test("collapses past three items until the list is expanded", async () => {
-  const user = userEvent.setup();
+test("lists every attention item without collapsing", async () => {
   mockDashboard([1, 2, 3, 4].map(makeApproval));
 
   render(<HomePage />);
 
   expect(await screen.findByText("Approve item 1")).toBeDefined();
-  expect(screen.queryByText("Approve item 4")).toBeNull();
-
-  await user.click(
-    screen.getByRole("button", { name: "Expand attention items" }),
-  );
-
   expect(screen.getByText("Approve item 4")).toBeDefined();
 });
 

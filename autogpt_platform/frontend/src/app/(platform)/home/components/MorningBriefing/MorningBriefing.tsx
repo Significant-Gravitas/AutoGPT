@@ -2,12 +2,13 @@
 
 import {
   CheckmarkCircle02Icon,
+  InboxIcon,
   TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { HomeTileExpandButton } from "../HomeTileExpandButton/HomeTileExpandButton";
+import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { OutcomeRow } from "./components/OutcomeRow";
@@ -63,10 +64,6 @@ export function MorningBriefing({ dashboard, className }: Props) {
                 onChange={(value) => selectFilter(value as BriefingFilter)}
               />
             ) : null}
-            <HomeTileExpandButton
-              label="Open briefing activity"
-              href="/library"
-            />
           </div>
         </div>
       }
@@ -77,14 +74,11 @@ export function MorningBriefing({ dashboard, className }: Props) {
       }
     >
       {briefing.outcomes.length === 0 ? (
-        <div className="py-10 text-center">
-          <Text variant="body-medium" className="text-zinc-800">
-            No new outcomes yet
-          </Text>
-          <Text variant="small" className="mt-1 text-zinc-500">
-            Completed work and useful exceptions will appear here.
-          </Text>
-        </div>
+        <HomeTileEmpty
+          icon={InboxIcon}
+          title="No new outcomes yet"
+          description="Completed work and useful exceptions will appear here."
+        />
       ) : (
         <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
           {visibleOutcomes.map((outcome) => (

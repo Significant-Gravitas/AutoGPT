@@ -1,7 +1,8 @@
-import { Calendar03Icon } from "@hugeicons/core-free-icons";
+import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { ActiveRow } from "./components/ActiveRow";
 import { UpcomingRow } from "./components/UpcomingRow";
@@ -53,11 +54,11 @@ export function NowNext({ dashboard, className }: Props) {
           Coming up
         </Text>
         {dashboard.upcoming_tasks.length === 0 ? (
-          <div className="py-6 text-center">
-            <Text variant="small" className="text-pretty text-zinc-500">
-              Nothing is scheduled. Your agents are ready when you are.
-            </Text>
-          </div>
+          <HomeTileEmpty
+            icon={Clock01Icon}
+            title="Nothing is scheduled"
+            description="Your agents are ready when you are."
+          />
         ) : (
           <div className="relative mt-1 before:absolute before:bottom-4 before:left-4 before:top-4 before:w-px before:bg-zinc-200">
             {dashboard.upcoming_tasks.map((item) => (

@@ -2,7 +2,6 @@ import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { HomeTileExpandButton } from "../../HomeTileExpandButton/HomeTileExpandButton";
 import { HomeTileFilter } from "../../HomeTileFilter/HomeTileFilter";
 
 type AttentionFilter = "all" | HomeAttentionItem["kind"];
@@ -13,8 +12,6 @@ interface Props {
   selectedKind: AttentionFilter;
   filterOptions: { value: string; label: string }[];
   onSelectKind: (kind: AttentionFilter) => void;
-  showAll: boolean;
-  onToggleShowAll: () => void;
 }
 
 export function NeedsYouTitle({
@@ -23,8 +20,6 @@ export function NeedsYouTitle({
   selectedKind,
   filterOptions,
   onSelectKind,
-  showAll,
-  onToggleShowAll,
 }: Props) {
   return (
     <div className="flex items-start justify-between gap-3">
@@ -55,15 +50,6 @@ export function NeedsYouTitle({
             value={selectedKind}
             options={filterOptions}
             onChange={(value) => onSelectKind(value as AttentionFilter)}
-          />
-        ) : null}
-        {itemCount > 0 ? (
-          <HomeTileExpandButton
-            label={
-              showAll ? "Show fewer attention items" : "Expand attention items"
-            }
-            pressed={showAll}
-            onClick={onToggleShowAll}
           />
         ) : null}
       </div>
