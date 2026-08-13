@@ -54,6 +54,14 @@ class HomeBriefing(BaseModel):
     failed_count: int
     routine_count: int
     outcomes: list[HomeBriefingOutcome]
+    # The AI-voice opening the copilot thread was posted with, read off the
+    # stored briefing. None on the live path (nothing was generated) and
+    # whenever the AI-summary flag is off.
+    narrative: str | None = None
+    # "persisted": anchored on the morning `UserBriefing` the copilot thread was
+    # posted from, plus any run that finished after it. "live": no usable row
+    # for today, so the rolling 24h window was recomputed instead.
+    source: Literal["persisted", "live"] = "live"
 
 
 class HomeActiveTask(BaseModel):
@@ -78,6 +86,8 @@ class HomeAgentStatus(BaseModel):
     status: Literal["ready", "working", "needs_setup", "paused", "failed"]
     detail: str
     next_run_time: datetime | None = None
+    # Expert-attributed spend over the same 7-day window as `HomeWeekSummary`.
+    spend_cents: int = 0
 
 
 class HomeTeamSummary(BaseModel):
@@ -85,6 +95,10 @@ class HomeTeamSummary(BaseModel):
     ready: int
     working: int
     needs_attention: int
+    # Sum of `spend_cents` across the listed agents, so the header total and
+    # the rows under it always reconcile. Spend stamped to an archived expert
+    # is therefore excluded, as is unattributed spend.
+    spend_cents: int = 0
 
 
 class HomeDailyActivity(BaseModel):

@@ -70,7 +70,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
               ) : null}
             </div>
             <Text
-              variant="large"
+              variant="body"
               className="mt-1 line-clamp-2 text-pretty text-zinc-600"
             >
               {item.description}

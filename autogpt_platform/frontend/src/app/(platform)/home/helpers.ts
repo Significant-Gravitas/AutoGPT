@@ -42,6 +42,22 @@ export function formatHeaderDate(
   };
 }
 
+// The briefing card anchors on the persisted 9am briefing and keeps appending
+// runs that finish through the day, so its span is only "the last 24 hours"
+// first thing in the morning. Name the actual start instead of a fixed window.
+export function formatBriefingWindowStart(
+  value: Date,
+  timeZone: string,
+  locale?: string,
+): string {
+  return new Intl.DateTimeFormat(locale, {
+    timeZone,
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function formatDuration(totalSeconds: number): string {
   const totalMinutes = Math.round(totalSeconds / 60);
   const hours = Math.floor(totalMinutes / 60);
@@ -49,6 +65,13 @@ export function formatDuration(totalSeconds: number): string {
   if (hours === 0) return `${minutes}m`;
   if (minutes === 0) return `${hours}h`;
   return `${hours}h ${minutes}m`;
+}
+
+// Null rather than "$0.00 this week" so a brand-new or idle expert reads as
+// having no spend line at all instead of an explicit zero.
+export function formatWeeklySpend(cents: number | undefined): string | null {
+  if (!cents || cents <= 0) return null;
+  return `${formatCurrency(cents)} this week`;
 }
 
 export function formatCurrency(cents: number): string {

@@ -15372,8 +15372,25 @@
           },
           "decision_total": {
             "type": "integer",
+            "minimum": 0.0,
             "title": "Decision Total",
             "default": 0
+          },
+          "completed_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Completed Total",
+            "default": 0
+          },
+          "failed_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed Total",
+            "default": 0
+          },
+          "narrative": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Narrative"
           }
         },
         "type": "object",
@@ -15478,6 +15495,29 @@
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
+          },
+          "expert_role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Role"
+          },
+          "title": { "type": "string", "title": "Title", "default": "" },
+          "detail": { "type": "string", "title": "Detail", "default": "" },
+          "occurred_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Occurred At"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
           }
         },
         "type": "object",
@@ -19033,6 +19073,11 @@
               { "type": "null" }
             ],
             "title": "Next Run Time"
+          },
+          "spend_cents": {
+            "type": "integer",
+            "title": "Spend Cents",
+            "default": 0
           }
         },
         "type": "object",
@@ -19121,6 +19166,16 @@
             "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
             "type": "array",
             "title": "Outcomes"
+          },
+          "narrative": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Narrative"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["persisted", "live"],
+            "title": "Source",
+            "default": "live"
           }
         },
         "type": "object",
@@ -19253,7 +19308,12 @@
           "total": { "type": "integer", "title": "Total" },
           "ready": { "type": "integer", "title": "Ready" },
           "working": { "type": "integer", "title": "Working" },
-          "needs_attention": { "type": "integer", "title": "Needs Attention" }
+          "needs_attention": { "type": "integer", "title": "Needs Attention" },
+          "spend_cents": {
+            "type": "integer",
+            "title": "Spend Cents",
+            "default": 0
+          }
         },
         "type": "object",
         "required": ["total", "ready", "working", "needs_attention"],
@@ -26707,6 +26767,12 @@
             "type": "array",
             "title": "By Agent"
           },
+          "by_expert": {
+            "items": { "$ref": "#/components/schemas/UserExpertCostRollup" },
+            "type": "array",
+            "title": "By Expert",
+            "default": []
+          },
           "top_runs": {
             "items": { "$ref": "#/components/schemas/UserTopRun" },
             "type": "array",
@@ -26729,6 +26795,16 @@
           "daily"
         ],
         "title": "UserExecutionCostSummary"
+      },
+      "UserExpertCostRollup": {
+        "properties": {
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["expert_id", "cost_cents", "run_count"],
+        "title": "UserExpertCostRollup"
       },
       "UserHistoryResponse": {
         "properties": {

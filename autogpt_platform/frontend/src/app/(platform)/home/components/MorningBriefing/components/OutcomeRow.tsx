@@ -36,7 +36,7 @@ export function OutcomeRow({ outcome }: Props) {
           {outcome.title}
         </Text>
         <Text
-          variant="large"
+          variant="body"
           className="mt-1 line-clamp-2 text-pretty text-zinc-600"
         >
           {outcome.summary}

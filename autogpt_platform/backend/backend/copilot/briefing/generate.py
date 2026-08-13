@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 import uuid
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
@@ -26,6 +25,9 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
+from .narrative import compose_narrative
+from .outcome import DEFAULT_AGENT_NAME, compose_run_outcome, run_link
+from .render import render_briefing_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,6 @@ _MAX_DECISION_ITEMS = 10
 _EXECUTION_FETCH_LIMIT = 50
 # Ceiling on both the decisions considered and the reported decision_total.
 _PENDING_REVIEW_PAGE_SIZE = 100
-# Shared fallback for a run whose agent couldn't be resolved in the library.
-_DEFAULT_AGENT_NAME = "Agent"
 _LIBRARY_LINK = "/library"
 
 
@@ -61,35 +61,6 @@ class BriefingResult(TypedDict, total=False):
 class AgentInfo(NamedTuple):
     name: str
     library_agent_id: str | None
-
-
-def _run_link(info: AgentInfo | None, execution_id: str) -> str | None:
-    """Deep link that opens a specific run on the library agent page.
-
-    ``activeTab``/``activeItem`` are the params that page actually parses
-    (see ``NewAgentLibraryView``); ids are percent-encoded so a link target
-    can never carry markdown or URL metacharacters.
-
-    Same route contract as the frontend's ``getReviewLink``
-    (``frontend/src/lib/review-links.ts``) — change both together.
-    """
-    if info and info.library_agent_id:
-        return (
-            f"/library/agents/{quote(info.library_agent_id)}"
-            f"?activeTab=runs&activeItem={quote(execution_id)}"
-        )
-    return None
-
-
-def _activity_summary(stats: GraphExecutionMeta.Stats | dict | None) -> str | None:
-    """Pull the AI-generated activity summary off an execution's stats.
-
-    ``GraphExecutionMeta.stats`` is a ``Stats`` pydantic model in
-    production; tests stub it with a plain dict. Handle both.
-    """
-    if isinstance(stats, dict):
-        return stats.get("activity_status")
-    return getattr(stats, "activity_status", None)
 
 
 def compose_briefing(
@@ -114,24 +85,13 @@ def compose_briefing(
     # FAILED first: the key is False (0) for failures, True (1) otherwise.
     terminal.sort(key=lambda e: str(e.status) != "FAILED")
 
-    run_items = []
-    for execution in terminal[:_MAX_RUN_ITEMS]:
-        info = agent_info_by_graph_id.get(execution.graph_id)
-        expert = experts_by_id.get(execution.expert_id) if execution.expert_id else None
-        run_items.append(
-            BriefingRunItem(
-                expert_id=expert.id if expert else None,
-                expert_name=expert.name if expert else None,
-                expert_avatar_url=expert.avatar_url if expert else None,
-                agent_name=info.name if info else _DEFAULT_AGENT_NAME,
-                graph_id=execution.graph_id,
-                execution_id=execution.id,
-                library_agent_id=info.library_agent_id if info else None,
-                status=str(execution.status),
-                summary=_activity_summary(execution.stats),
-                link=_run_link(info, execution.id),
-            )
-        )
+    run_items = [
+        _run_item(execution, agent_info_by_graph_id, experts_by_id)
+        for execution in terminal[:_MAX_RUN_ITEMS]
+    ]
+    # Counted before the cap: home reports "N completed / N failed" off the
+    # stored row, and len(run_items) would under-report a busy night.
+    failed_total = sum(1 for e in terminal if str(e.status) == "FAILED")
 
     expert_id_by_exec = {e.id: e.expert_id for e in executions}
     decision_items = []
@@ -145,7 +105,10 @@ def compose_briefing(
             link = f"/copilot?sessionId={quote(session_id)}"
         else:
             info = agent_info_by_graph_id.get(review.graph_id)
-            link = _run_link(info, review.graph_exec_id) or _LIBRARY_LINK
+            link = (
+                run_link(info.library_agent_id if info else None, review.graph_exec_id)
+                or _LIBRARY_LINK
+            )
         # _enrich_pending_reviews already resolved expert attribution on the
         # review model (including copilot-session reviews and executions older
         # than the 24h window); the local lookup only backfills gaps.
@@ -174,62 +137,23 @@ def compose_briefing(
         run_items=run_items,
         decision_items=decision_items,
         decision_total=len(reviews),
+        completed_total=len(terminal) - failed_total,
+        failed_total=failed_total,
     )
 
 
-# Agent names, AI-generated summaries and review instructions can all
-# originate from a third-party/marketplace agent. Escaping the markdown
-# metacharacters that carry structure stops that text from breaking out of
-# the link syntax it is interpolated into and spoofing the label or target
-# rendered in the user's thread.
-_MARKDOWN_META_RE = re.compile(r"([\\`*_\[\]()<>])")
-
-
-def _md(text: str) -> str:
-    """Escape untrusted text for inline interpolation into markdown."""
-    collapsed = " ".join(text.split())
-    return _MARKDOWN_META_RE.sub(r"\\\1", collapsed)
-
-
-def _md_link(label: str, target: str | None) -> str:
-    """Render ``label`` as a markdown link, or as plain text if it can't be.
-
-    Composed targets are relative, percent-encoded paths. Enforcing that in
-    code — rather than by convention — keeps an absolute or ``javascript:``
-    target from ever reaching the user's thread as a clickable link.
-    """
-    if not target or not target.startswith("/") or target.startswith("//"):
-        return label
-    return f"[{label}]({target})"
-
-
-def render_briefing_markdown(content: BriefingContent) -> str:
-    lines = ["## ☀️ Your morning briefing", ""]
-    if content.run_items:
-        lines.append("**What ran**")
-        for item in content.run_items:
-            who = f"{_md(item.expert_name)}: " if item.expert_name else ""
-            outcome = "completed" if item.status == "COMPLETED" else "failed"
-            name = _md_link(_md(item.agent_name), item.link)
-            lines.append(f"- {who}{name} — {outcome}")
-        lines.append("")
-    found = [item for item in content.run_items if item.summary]
-    if found:
-        lines.append("**What was found**")
-        lines.extend(
-            f"- **{_md(item.agent_name)}**: {_md(item.summary or '')}" for item in found
-        )
-        lines.append("")
-    if content.decision_items:
-        total = max(content.decision_total, len(content.decision_items))
-        lines.append(f"**Needs your decision ({total})**")
-        lines.extend(
-            f"- {_md_link(_md(d.title), d.link)}" for d in content.decision_items
-        )
-        remaining = total - len(content.decision_items)
-        if remaining > 0:
-            lines.append(f"- …and {remaining} more on your home page")
-    return "\n".join(lines).strip()
+def _run_item(
+    execution: GraphExecutionMeta,
+    agent_info_by_graph_id: dict[str, AgentInfo],
+    experts_by_id: dict[str, Expert],
+) -> BriefingRunItem:
+    info = agent_info_by_graph_id.get(execution.graph_id)
+    return compose_run_outcome(
+        execution,
+        agent_name=info.name if info else DEFAULT_AGENT_NAME,
+        library_agent_id=info.library_agent_id if info else None,
+        expert=experts_by_id.get(execution.expert_id or ""),
+    )
 
 
 # Fixed namespace so the same (user, local calendar date) always derives the
@@ -245,7 +169,7 @@ def _merge_agent_info(agent_info: dict[str, AgentInfo], experts: list[Expert]) -
                 continue
             existing = agent_info.get(wf.graph_id)
             agent_info[wf.graph_id] = AgentInfo(
-                wf.name or (existing.name if existing else _DEFAULT_AGENT_NAME),
+                wf.name or (existing.name if existing else DEFAULT_AGENT_NAME),
                 wf.library_agent_id
                 or (existing.library_agent_id if existing else None),
             )
@@ -299,17 +223,32 @@ async def _compose_fresh_briefing(
     graph_ids = list({e.graph_id for e in executions} | {r.graph_id for r in reviews})
     refs = await library_db().get_library_agent_refs_by_graph_ids(user_id, graph_ids)
     agent_info: dict[str, AgentInfo] = {
-        ref.graph_id: AgentInfo(ref.name or _DEFAULT_AGENT_NAME, ref.id) for ref in refs
+        ref.graph_id: AgentInfo(ref.name or DEFAULT_AGENT_NAME, ref.id) for ref in refs
     }
     _merge_agent_info(agent_info, experts)
 
-    return compose_briefing(
+    content = compose_briefing(
         experts=experts,
         executions=executions,
         reviews=reviews,
         agent_info_by_graph_id=agent_info,
         generated_at=now_local,
         tz_name=tz_name,
+    )
+    if content is None:
+        return None
+    # Written here, once, rather than at render time: the thread post and the
+    # home card must show the same paragraph, and home must not pay for an LLM
+    # call on every poll. `None` on failure — the briefing ships either way.
+    #
+    # Gated at the point of generation, not just of display: the narrative is
+    # AI-written text derived from the run summaries `AI_ACTIVITY_STATUS`
+    # governs, so a flag-off user must neither be billed for it nor see it in
+    # the thread — home's `without_summaries` only covers the card.
+    if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+        return content
+    return content.model_copy(
+        update={"narrative": await compose_narrative(user_id, content, experts)}
     )
 
 
