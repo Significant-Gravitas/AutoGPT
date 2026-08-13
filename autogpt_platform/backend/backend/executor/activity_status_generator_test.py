@@ -17,10 +17,10 @@ from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     _build_execution_summary,
-    _check_obvious_failure,
-    _is_credit_exhaustion,
+    _get_deterministic_failure_response,
     generate_activity_status_for_execution,
 )
+from backend.util.exceptions import ExecutionFailureReason
 
 
 def _make_usage(
@@ -1097,95 +1097,52 @@ class TestIntegration:
             mock_db_client.get_graph.assert_not_called()
 
 
-class TestObviousFailureDetection:
-    """Tests for obvious failure detection that skips LLM analysis."""
+class TestDeterministicFailureResponse:
+    """Tests for structured failures that skip LLM analysis."""
 
-    def test_credit_exhaustion_detected(self):
-        """Credit exhaustion errors should be detected."""
-        assert _is_credit_exhaustion("You have no credits left to run an agent.")
-        assert _is_credit_exhaustion(
-            "Insufficient balance of $0, where this will cost $1"
-        )
-        assert _is_credit_exhaustion(
-            "Insufficient balance to run ReplicateModelBlock: "
-            "dynamic-cost blocks require a positive balance."
+    def test_structured_credit_failure_returns_zero_score(self):
+        stats = GraphExecutionStats(
+            failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE
         )
 
-    def test_credit_exhaustion_case_insensitive(self):
-        """Detection should be case-insensitive."""
-        assert _is_credit_exhaustion("YOU HAVE NO CREDITS LEFT TO RUN AN AGENT.")
-        assert _is_credit_exhaustion("INSUFFICIENT BALANCE OF $0")
-        assert _is_credit_exhaustion("INSUFFICIENT BALANCE TO RUN SOME BLOCK")
-
-    def test_non_credit_errors_not_matched(self):
-        """Non-credit errors should not match."""
-        assert not _is_credit_exhaustion("Connection timeout")
-        assert not _is_credit_exhaustion("API rate limit exceeded")
-        assert not _is_credit_exhaustion("Invalid credentials")
-        assert not _is_credit_exhaustion("")
-        assert not _is_credit_exhaustion("Insufficient balance")  # No trailing "of"
-
-    def test_partial_word_no_false_positive(self):
-        """Similar words like 'credential' should not match 'credit'."""
-        assert not _is_credit_exhaustion("Invalid credential provided")
-        assert not _is_credit_exhaustion("Credential expired")
-
-    def test_check_obvious_failure_credit_exhaustion(self):
-        """Credit exhaustion should return static response."""
-        stats = GraphExecutionStats(error="You have no credits left to run an agent.")
-        result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
+        result = _get_deterministic_failure_response(stats, ExecutionStatus.FAILED)
 
         assert result is not None
-        assert result["correctness_score"] is None
-        assert "credits" in result["activity_status"].lower()
+        assert result["correctness_score"] == 0.0
+        assert "insufficient" in result["activity_status"].lower()
 
-    def test_check_obvious_failure_non_failed_status(self):
-        """Non-FAILED status should always return None."""
-        stats = GraphExecutionStats(error="Some error")
-        assert _check_obvious_failure(stats, ExecutionStatus.COMPLETED) is None
-        assert _check_obvious_failure(stats, ExecutionStatus.TERMINATED) is None
-        assert _check_obvious_failure(stats, None) is None
+    @pytest.mark.parametrize(
+        "status",
+        [ExecutionStatus.COMPLETED, ExecutionStatus.TERMINATED, None],
+    )
+    def test_non_failed_status_does_not_use_deterministic_response(self, status):
+        stats = GraphExecutionStats(
+            failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE
+        )
 
-    def test_check_obvious_failure_unknown_error(self):
-        """Unknown errors should return None (fall through to LLM)."""
-        stats = GraphExecutionStats(error="Some unexpected error occurred")
-        result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
+        assert _get_deterministic_failure_response(stats, status) is None
+
+    def test_credit_like_error_text_is_not_trusted(self):
+        stats = GraphExecutionStats(
+            error="Third-party API says insufficient balance to run this request"
+        )
+
+        result = _get_deterministic_failure_response(stats, ExecutionStatus.FAILED)
+
         assert result is None
-
-    def test_check_obvious_failure_no_error(self):
-        """FAILED status with no error string should return None."""
-        stats = GraphExecutionStats(error=None)
-        result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
-        assert result is None
-
-    def test_check_obvious_failure_with_exception_object(self):
-        """Exception objects (not just strings) should be handled via str()."""
-        error = Exception("You have no credits left to run an agent.")
-        stats = GraphExecutionStats(error=error)
-        result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
-        assert result is not None
-        assert result["correctness_score"] is None
-        assert "credits" in result["activity_status"].lower()
 
     @pytest.mark.asyncio
-    async def test_generate_skips_llm_for_credit_exhaustion(self):
-        """Full integration: credit exhaustion should skip LLM and DB calls."""
+    async def test_generate_skips_llm_for_structured_credit_failure(self):
         stats = GraphExecutionStats(
-            error="You have no credits left to run an agent.",
+            failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE,
             node_count=0,
             node_error_count=0,
         )
         mock_db_client = AsyncMock()
 
-        with (
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.get_openai_client"
-            ) as mock_get_openai_client,
-        ):
+        with patch(
+            "backend.executor.activity_status_generator.get_openai_client"
+        ) as mock_get_openai_client:
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -1194,15 +1151,55 @@ class TestObviousFailureDetection:
                 db_client=mock_db_client,
                 user_id="test_user",
                 execution_status=ExecutionStatus.FAILED,
-                skip_feature_flag=False,
+                skip_feature_flag=True,
             )
 
         assert result is not None
-        assert result["correctness_score"] is None
+        assert result["correctness_score"] == 0.0
         assert "credits" in result["activity_status"].lower()
-
-        # Verify NO database or LLM calls were made
         mock_db_client.get_node_executions.assert_not_called()
         mock_db_client.get_graph_metadata.assert_not_called()
         mock_db_client.get_graph.assert_not_called()
         mock_get_openai_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("correctness_score", "skip_existing", "expect_existing"),
+        [(0.0, True, True), (None, True, False), (0.8, False, False)],
+    )
+    async def test_skip_existing_requires_complete_analysis(
+        self,
+        correctness_score,
+        skip_existing,
+        expect_existing,
+    ):
+        stats = GraphExecutionStats(
+            activity_status="Existing summary",
+            correctness_score=correctness_score,
+        )
+        mock_db_client = AsyncMock()
+
+        with patch(
+            "backend.executor.activity_status_generator.get_openai_client",
+            return_value=None,
+        ) as mock_get_openai_client:
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+                skip_feature_flag=True,
+                skip_existing=skip_existing,
+            )
+
+        if expect_existing:
+            assert result == {
+                "activity_status": "Existing summary",
+                "correctness_score": correctness_score,
+            }
+            mock_get_openai_client.assert_not_called()
+        else:
+            assert result is None
+            mock_get_openai_client.assert_called_once()

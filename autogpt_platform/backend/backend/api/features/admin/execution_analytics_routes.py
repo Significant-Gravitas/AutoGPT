@@ -25,10 +25,8 @@ from backend.executor.activity_status_generator import (
     generate_activity_status_for_execution,
 )
 from backend.executor.manager import get_db_async_client
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 
 class ExecutionAnalyticsRequest(BaseModel):
@@ -217,9 +215,9 @@ async def generate_execution_analytics(
     Generate activity summaries and correctness scores for graph executions.
 
     This endpoint:
-    1. Fetches all completed executions matching the criteria
-    2. Identifies executions missing activity_status or correctness_score
-    3. Generates missing data using AI in batches
+    1. Fetches all terminal executions matching the criteria
+    2. Identifies executions missing a complete activity analysis
+    3. Generates missing data in batches, using deterministic results where available
     4. Updates the database with new stats
     5. Returns a detailed report of the analytics operation
     """
@@ -251,12 +249,11 @@ async def generate_execution_analytics(
         # Filter executions that need analytics generation
         executions_to_process = []
         for execution in executions:
-            # Skip if activity_status already exists. Credit-exhaustion failures
-            # intentionally store correctness_score=None.
             if (
                 request.skip_existing
                 and execution.stats
                 and execution.stats.activity_status
+                and execution.stats.correctness_score is not None
             ):
                 continue
 
@@ -349,9 +346,6 @@ async def _process_batch(
     executions, request: ExecutionAnalyticsRequest, db_client
 ) -> list[ExecutionAnalyticsResult]:
     """Process a batch of executions concurrently."""
-
-    if not settings.secrets.openai_internal_api_key:
-        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
 
     async def process_single_execution(execution) -> ExecutionAnalyticsResult:
         try:

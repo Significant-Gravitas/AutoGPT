@@ -49,7 +49,12 @@ from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.util import type as type_utils
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import (
+    DatabaseError,
+    ExecutionFailureReason,
+    NotFoundError,
+    get_execution_failure_reason,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
@@ -176,6 +181,14 @@ VALID_STATUS_TRANSITIONS = {
     ],
 }
 
+VALID_GRAPH_STATUS_TRANSITIONS = {
+    **VALID_STATUS_TRANSITIONS,
+    ExecutionStatus.RUNNING: [
+        *VALID_STATUS_TRANSITIONS[ExecutionStatus.RUNNING],
+        ExecutionStatus.FAILED,  # For resuming a disturbed execution
+    ],
+}
+
 
 class GraphExecutionMeta(BaseDbModel):
     id: str  # type: ignore # Override base class to make this required
@@ -246,6 +259,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="Error message if any",
         )
+        failure_reason: ExecutionFailureReason | None = Field(
+            default=None,
+            description="Structured reason for a terminal execution failure",
+        )
         activity_status: str | None = Field(
             default=None,
             description="AI-generated summary of what the agent did",
@@ -265,6 +282,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
+                failure_reason=self.failure_reason,
                 activity_status=self.activity_status,
                 correctness_score=self.correctness_score,
             )
@@ -281,6 +299,7 @@ class GraphExecutionMeta(BaseDbModel):
     def from_db(_graph_exec: AgentGraphExecution):
         start_time = _graph_exec.startedAt
         end_time = _graph_exec.endedAt
+        execution_status = ExecutionStatus(_graph_exec.executionStatus)
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -310,7 +329,7 @@ class GraphExecutionMeta(BaseDbModel):
                 dict[str, BlockInput] | None, _graph_exec.nodesInputMasks
             ),
             preset_id=_graph_exec.agentPresetId,
-            status=ExecutionStatus(_graph_exec.executionStatus),
+            status=execution_status,
             started_at=start_time,
             ended_at=end_time,
             stats=(
@@ -326,6 +345,15 @@ class GraphExecutionMeta(BaseDbModel):
                         str(stats.error)
                         if isinstance(stats.error, Exception)
                         else stats.error
+                    ),
+                    failure_reason=stats.failure_reason
+                    or (
+                        get_execution_failure_reason(
+                            stats.error,
+                            allow_legacy_text=True,
+                        )
+                        if execution_status == ExecutionStatus.FAILED
+                        else None
                     ),
                     activity_status=stats.activity_status,
                     correctness_score=stats.correctness_score,
@@ -1149,7 +1177,7 @@ async def update_graph_execution_stats(
     where_clause: AgentGraphExecutionWhereInput = {"id": graph_exec_id}
 
     if status:
-        if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
+        if allowed_from := VALID_GRAPH_STATUS_TRANSITIONS.get(status, []):
             # Add OR clause to check if current status is one of the allowed source statuses
             where_clause["AND"] = [
                 {"id": graph_exec_id},

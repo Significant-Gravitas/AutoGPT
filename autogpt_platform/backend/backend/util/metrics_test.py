@@ -15,6 +15,7 @@ import sys
 from sentry_sdk.consts import DEFAULT_OPTIONS
 from sentry_sdk.utils import event_from_exception
 
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
     _FALKORDB_TEARDOWN_SIGNATURES,
@@ -198,6 +199,29 @@ def test_before_send_scrubs_secrets_from_actual_exception_event() -> None:
     assert "safe-frame-value" in serialized
     assert "safe-breadcrumb-value" in serialized
     assert "safe-context-value" in serialized
+
+
+def test_before_send_keeps_untyped_balance_message() -> None:
+    try:
+        raise RuntimeError("Third-party API reported insufficient balance")
+    except RuntimeError:
+        exc_info = sys.exc_info()
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
+
+
+def test_before_send_drops_typed_insufficient_balance_error() -> None:
+    try:
+        raise InsufficientBalanceError(
+            message="New producer wording without legacy keywords",
+            user_id="user-1",
+            balance=0,
+            amount=1,
+        )
+    except InsufficientBalanceError:
+        exc_info = sys.exc_info()
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is None
 
 
 # ---------- FalkorDB connection-teardown noise → dropped ----------

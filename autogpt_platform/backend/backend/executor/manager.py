@@ -65,10 +65,12 @@ from backend.util.decorator import (
     time_measured,
 )
 from backend.util.exceptions import (
+    ExecutionFailureReason,
     GraphNotFoundError,
     InsufficientBalanceError,
     ModerationError,
     NotFoundError,
+    get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
@@ -110,6 +112,26 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
+
+
+def _get_execution_credit_balance(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> int:
+    organization_id = graph_exec.execution_context.organization_id
+    if organization_id:
+        return db_client.get_org_credits(org_id=organization_id)
+    return db_client.get_credits(graph_exec.user_id)
+
+
+def _propagate_node_failure(
+    graph_stats: GraphExecutionStats,
+    node_error: BaseException,
+) -> None:
+    if failure_reason := get_execution_failure_reason(node_error):
+        graph_stats.failure_reason = failure_reason
+        graph_stats.error = str(node_error) or type(node_error).__name__
+
 
 active_runs_gauge = Gauge(
     "execution_manager_active_runs", "Number of active graph runs"
@@ -720,6 +742,7 @@ class ExecutionProcessor:
             )
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
+                _propagate_node_failure(graph_stats, execution_stats.error)
 
         node_error = execution_stats.error
         node_stats = execution_stats.model_dump()
@@ -948,6 +971,11 @@ class ExecutionProcessor:
             exec_stats = exec_meta.stats.to_db()
             exec_stats.is_dry_run = graph_exec.execution_context.dry_run
 
+        exec_stats.error = None
+        exec_stats.failure_reason = None
+        exec_stats.activity_status = None
+        exec_stats.correctness_score = None
+
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
             cancel=cancel,
@@ -982,11 +1010,9 @@ class ExecutionProcessor:
             if activity_response is not None:
                 exec_stats.activity_status = activity_response["activity_status"]
                 exec_stats.correctness_score = activity_response["correctness_score"]
-                score = activity_response["correctness_score"]
-                score_str = f"{score:.2f}" if score is not None else "N/A"
                 log_metadata.info(
                     f"Generated activity status: {activity_response['activity_status']} "
-                    f"(correctness: {score_str})"
+                    f"(correctness: {activity_response['correctness_score']:.2f})"
                 )
             else:
                 log_metadata.debug(
@@ -1046,16 +1072,15 @@ class ExecutionProcessor:
         running_node_evaluation = self.running_node_evaluation
 
         try:
-            if (
-                not graph_exec.execution_context.dry_run
-                and db_client.get_credits(graph_exec.user_id) <= 0
-            ):
-                raise InsufficientBalanceError(
-                    user_id=graph_exec.user_id,
-                    message="You have no credits left to run an agent.",
-                    balance=0,
-                    amount=1,
-                )
+            if not graph_exec.execution_context.dry_run:
+                credit_balance = _get_execution_credit_balance(db_client, graph_exec)
+                if credit_balance <= 0:
+                    raise InsufficientBalanceError(
+                        user_id=graph_exec.user_id,
+                        message="You have no credits left to run an agent.",
+                        balance=credit_balance,
+                        amount=1,
+                    )
 
             # Input moderation
             try:
@@ -1271,7 +1296,11 @@ class ExecutionProcessor:
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
                 execution_status = ExecutionStatus.TERMINATED
-            elif error is not None:
+            elif (
+                error is not None
+                or execution_stats.failure_reason
+                == ExecutionFailureReason.INSUFFICIENT_BALANCE
+            ):
                 execution_status = ExecutionStatus.FAILED
             else:
                 if db_client.has_pending_reviews_for_graph_exec(
@@ -1282,6 +1311,7 @@ class ExecutionProcessor:
                     execution_status = ExecutionStatus.COMPLETED
 
             if error:
+                execution_stats.failure_reason = get_execution_failure_reason(error)
                 execution_stats.error = str(error) or type(error).__name__
 
             return execution_status
@@ -1292,8 +1322,8 @@ class ExecutionProcessor:
                 if isinstance(e, Exception)
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
-            if not execution_stats.error:
-                execution_stats.error = str(error)
+            execution_stats.failure_reason = get_execution_failure_reason(error)
+            execution_stats.error = str(error) or type(error).__name__
 
             known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):

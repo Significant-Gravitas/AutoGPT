@@ -61,10 +61,18 @@ SELECT
     ge."agentGraphId"                                              AS agentGraphId,
     ge."agentGraphVersion"                                         AS agentGraphVersion,
     CASE
-        WHEN jsonb_exists(ge."stats"::jsonb, 'error')
+        WHEN CAST(ge."executionStatus" AS TEXT) = 'FAILED'
          AND (
-               (ge."stats"::jsonb->>'error') ILIKE '%insufficient balance%'
-            OR (ge."stats"::jsonb->>'error') ILIKE '%you have no credits left%'
+                ge."stats"::jsonb->>'failure_reason' = 'insufficient_balance'
+             OR (
+                    ge."stats"::jsonb->>'failure_reason' IS NULL
+                AND (
+                       ge."stats"::jsonb->>'error' = 'You have no credits left to run an agent.'
+                    OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance of \$-?[0-9]+(\.[0-9]+)?, where this will cost \$-?[0-9]+(\.[0-9]+)?$'
+                    OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance to run .+: dynamic-cost blocks require a positive balance\.$'
+                    OR ge."stats"::jsonb->>'error' ~ '^Organization has -?[0-9]+ credits but needs [0-9]+$'
+                   )
+                )
              )
         THEN 'NO_CREDITS'
         ELSE CAST(ge."executionStatus" AS TEXT)

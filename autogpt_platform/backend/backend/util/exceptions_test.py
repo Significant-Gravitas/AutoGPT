@@ -1,10 +1,69 @@
+import pytest
+
 from backend.util.exceptions import (
     BlockError,
     BlockExecutionError,
     BlockInputError,
     BlockOutputError,
     BlockUnknownError,
+    ExecutionFailureReason,
+    InsufficientBalanceError,
+    get_execution_failure_reason,
 )
+
+
+def test_typed_insufficient_balance_error_is_classified_by_type():
+    error = InsufficientBalanceError(
+        message="New producer wording without legacy keywords",
+        user_id="user-1",
+        balance=0,
+        amount=1,
+    )
+
+    assert (
+        get_execution_failure_reason(error)
+        == ExecutionFailureReason.INSUFFICIENT_BALANCE
+    )
+
+
+def test_untyped_balance_error_is_not_classified():
+    assert (
+        get_execution_failure_reason(
+            RuntimeError("New producer wording without legacy keywords")
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "You have no credits left to run an agent.",
+        "Insufficient balance of $0.0, where this will cost $1.25",
+        "Insufficient balance to run ReplicateModelBlock: "
+        "dynamic-cost blocks require a positive balance.",
+        "Organization has 12 credits but needs 25",
+    ],
+)
+def test_legacy_credit_messages_require_explicit_fallback(message):
+    assert get_execution_failure_reason(message) is None
+    assert (
+        get_execution_failure_reason(message, allow_legacy_text=True)
+        == ExecutionFailureReason.INSUFFICIENT_BALANCE
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Third-party API reported insufficient balance",
+        "Insufficient balance",
+        "prefix: You have no credits left to run an agent.",
+        "Organization has some credits but needs more",
+    ],
+)
+def test_legacy_credit_fallback_rejects_broad_or_embedded_text(message):
+    assert get_execution_failure_reason(message, allow_legacy_text=True) is None
 
 
 class TestBlockError:

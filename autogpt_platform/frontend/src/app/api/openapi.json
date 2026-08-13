@@ -5284,7 +5284,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "execution_analytics"],
         "summary": "Generate Execution Analytics",
-        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
+        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all terminal executions matching the criteria\n2. Identifies executions missing a complete activity analysis\n3. Generates missing data in batches, using deterministic results where available\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
         "operationId": "postV2Generate execution analytics",
         "requestBody": {
           "content": {
@@ -17551,6 +17551,12 @@
         "title": "ExecutionDiagnosticsResponse",
         "description": "Response model for execution diagnostics"
       },
+      "ExecutionFailureReason": {
+        "type": "string",
+        "enum": ["insufficient_balance"],
+        "title": "ExecutionFailureReason",
+        "description": "Structured reasons for terminal graph execution failures."
+      },
       "ExecutionOptions": {
         "properties": {
           "manual": { "type": "boolean", "title": "Manual", "default": true },
@@ -23798,6 +23804,13 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error",
             "description": "Error message if any"
+          },
+          "failure_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExecutionFailureReason" },
+              { "type": "null" }
+            ],
+            "description": "Structured reason for a terminal execution failure"
           },
           "activity_status": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
