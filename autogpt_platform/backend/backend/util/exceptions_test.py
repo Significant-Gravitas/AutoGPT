@@ -40,8 +40,10 @@ def test_untyped_balance_error_is_not_classified():
     [
         "You have no credits left to run an agent.",
         "Insufficient balance of $0.0, where this will cost $1.25",
-        "Insufficient balance to run ReplicateModelBlock: "
-        "dynamic-cost blocks require a positive balance.",
+        (
+            "Insufficient balance to run ReplicateModelBlock: "
+            "dynamic-cost blocks require a positive balance."
+        ),
         "Organization has 12 credits but needs 25",
     ],
 )

@@ -122,12 +122,15 @@ def get_execution_failure_reason(
     """Classify trusted exceptions, with an opt-in fallback for persisted text."""
     if isinstance(error, InsufficientBalanceError):
         return ExecutionFailureReason.INSUFFICIENT_BALANCE
-    if allow_legacy_text and isinstance(error, str):
-        if any(
+    if (
+        allow_legacy_text
+        and isinstance(error, str)
+        and any(
             pattern.fullmatch(error)
             for pattern in _LEGACY_INSUFFICIENT_BALANCE_PATTERNS
-        ):
-            return ExecutionFailureReason.INSUFFICIENT_BALANCE
+        )
+    ):
+        return ExecutionFailureReason.INSUFFICIENT_BALANCE
     return None
 
 
