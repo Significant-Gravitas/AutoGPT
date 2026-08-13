@@ -52,6 +52,10 @@ The image supports `linux/amd64` and `linux/arm64`. Test installations used
 about 5–6 GiB of memory during startup and steady-state health checks, though
 actual usage depends on enabled services and workloads.
 
+ChatGPT/Codex temporary auth homes use `/dev/shm/autogpt-codex` automatically.
+The quick-start command's `--shm-size 2g` keeps that credential material in
+memory rather than the container's writable layer.
+
 ## Tags
 
 - `latest` — most recent fully verified AutoGPT Platform release.
