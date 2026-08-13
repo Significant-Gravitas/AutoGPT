@@ -70,7 +70,7 @@ async def build_home_dashboard(
     # other, so the briefing read costs no extra round-trip.
     library_refs, persisted_briefing = await asyncio.gather(
         library_db.get_library_agent_refs_by_graph_ids(user_id, graph_ids),
-        _persisted_briefing(user_id=user_id, timezone_name=data.timezone_name),
+        _persisted_briefing(user_id=user_id, timezone_name=data.timezone_name, now=now),
     )
 
     return compose_home_dashboard(
@@ -88,15 +88,20 @@ async def build_home_dashboard(
 
 
 async def _persisted_briefing(
-    *, user_id: str, timezone_name: str
+    *, user_id: str, timezone_name: str, now: datetime
 ) -> BriefingContent | None:
     """Today's stored briefing, or None when home should compute live instead.
 
     None covers every way the anchor can be missing: no row yet (a pre-9am
     signup), a job that failed, and — mirroring `briefings/routes.py` — stored
     content written by a different composer version that no longer validates.
+
+    The date comes off the request's own `now` rather than a second clock read:
+    loading the source data takes long enough to cross local midnight, and the
+    card would then look up tomorrow's row for a dashboard composed against
+    yesterday.
     """
-    briefing_date = datetime.now(ZoneInfo(timezone_name)).date()
+    briefing_date = now.astimezone(ZoneInfo(timezone_name)).date()
     try:
         record = await briefing_db.get_briefing_for_date(user_id, briefing_date)
     except Exception:

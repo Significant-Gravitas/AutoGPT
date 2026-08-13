@@ -79,15 +79,20 @@ def split_summary(
     if ". " not in compact:
         return compact[:_TITLE_MAX], fallback_detail
     title, detail = compact.split(". ", 1)
-    return f"{title}.", detail
+    # A first sentence can run past the limit too — clip it like the
+    # single-sentence branch, or one rambling summary becomes a card headline
+    # hundreds of characters wide.
+    return f"{title[: _TITLE_MAX - 1].rstrip()}.", detail
 
 
 def run_link(library_agent_id: str | None, execution_id: str) -> str | None:
     """Deep link that opens a specific run on the library agent page.
 
     ``activeTab``/``activeItem`` are the params that page actually parses
-    (see ``NewAgentLibraryView``); ids are percent-encoded so a link target
-    can never carry markdown or URL metacharacters.
+    (see ``NewAgentLibraryView``). Both ids are encoded with ``safe=""`` so
+    they stay single components: ``quote`` keeps ``/`` by default, and an id
+    carrying one would otherwise redraw the path boundary. That also stops a
+    link target from carrying markdown or URL metacharacters.
 
     Same route contract as the frontend's ``getReviewLink``
     (``frontend/src/lib/review-links.ts``) — change both together.
@@ -95,8 +100,8 @@ def run_link(library_agent_id: str | None, execution_id: str) -> str | None:
     if not library_agent_id:
         return None
     return (
-        f"/library/agents/{quote(library_agent_id)}"
-        f"?activeTab=runs&activeItem={quote(execution_id)}"
+        f"/library/agents/{quote(library_agent_id, safe='')}"
+        f"?activeTab=runs&activeItem={quote(execution_id, safe='')}"
     )
 
 

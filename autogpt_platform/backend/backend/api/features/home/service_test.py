@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -177,6 +177,36 @@ async def test_briefing_is_live_when_no_row_exists_yet(
 
     assert dashboard.briefing.source == "live"
     assert [outcome.id for outcome in dashboard.briefing.outcomes] == ["exec-1"]
+
+
+@pytest.mark.asyncio
+async def test_briefing_date_comes_from_the_requests_own_clock(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """Loading the source data can cross local midnight. The row looked up has
+    to be the one for the date the rest of the dashboard was composed against —
+    a second clock read would fetch tomorrow's row for today's dashboard."""
+    just_before_midnight = datetime(2026, 8, 10, 23, 59, 59, tzinfo=timezone.utc)
+    clock = MagicMock(wraps=datetime)
+    # Any read after the first lands on the next day; only one is allowed.
+    clock.now.side_effect = [
+        just_before_midnight,
+        just_before_midnight + timedelta(seconds=2),
+    ]
+    mocker.patch("backend.api.features.home.service.datetime", clock)
+    lookup = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.home.service.briefing_db.get_briefing_for_date", lookup
+    )
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert lookup.await_args.args[1] == date(2026, 8, 10)
+    assert dashboard.generated_at == just_before_midnight
 
 
 @pytest.mark.asyncio

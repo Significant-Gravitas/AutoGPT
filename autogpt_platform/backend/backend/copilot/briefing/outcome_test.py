@@ -121,6 +121,20 @@ def test_split_summary_clips_a_single_sentence_title() -> None:
     assert detail == "All good"
 
 
+def test_split_summary_clips_a_long_first_sentence() -> None:
+    """A period past the limit must not smuggle an unbounded headline through
+    the split branch."""
+    title, detail = split_summary(
+        "y" * 200 + ". And then some more.",
+        fallback_title="Ran",
+        fallback_detail="All good",
+    )
+
+    assert title == "y" * 119 + "."
+    assert len(title) == 120
+    assert detail == "And then some more."
+
+
 def test_split_summary_splits_on_the_first_sentence() -> None:
     assert split_summary(
         "Sorted 12 emails.  Nothing needed a reply.",
@@ -131,11 +145,19 @@ def test_split_summary_splits_on_the_first_sentence() -> None:
 
 def test_run_link_needs_a_library_agent() -> None:
     assert run_link(None, "execution") is None
-    assert run_link("library agent", "exec/1") == (
-        "/library/agents/library%20agent?activeTab=runs&activeItem=exec/1"
+    assert run_link("library agent", "exec-1") == (
+        "/library/agents/library%20agent?activeTab=runs&activeItem=exec-1"
+    )
+
+
+def test_run_link_keeps_each_id_a_single_url_component() -> None:
+    """`quote` keeps `/` by default; an id carrying one would otherwise move
+    the boundary between the path and the route it addresses."""
+    assert run_link("lib/1", "exec/1") == (
+        "/library/agents/lib%2F1?activeTab=runs&activeItem=exec%2F1"
     )
 
 
 def test_as_utc_pins_naive_timestamps() -> None:
-    assert as_utc(datetime(2026, 8, 10, 9, 0)) == NOW
+    assert as_utc(NOW.replace(tzinfo=None)) == NOW
     assert as_utc(NOW) == NOW
