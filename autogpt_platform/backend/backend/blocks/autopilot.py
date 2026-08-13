@@ -5,7 +5,7 @@ import contextvars
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import field_validator
 from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
@@ -28,7 +28,8 @@ from backend.copilot.permissions import (
     all_known_tool_names,
     validate_block_identifiers,
 )
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
 
 if TYPE_CHECKING:
@@ -88,6 +89,12 @@ class TokenUsage(TypedDict):
     total_tokens: int
 
 
+CodexAutoPilotCredentials = CredentialsMetaInput[
+    Literal[ProviderName.CODEX],
+    Literal["oauth2"],
+]
+
+
 class AutoPilotBlock(Block):
     """Execute tasks using AutoGPT AutoPilot with full access to platform tools.
 
@@ -124,6 +131,20 @@ class AutoPilotBlock(Block):
             ),
             default="",
             advanced=True,
+        )
+
+        codex_credentials: CodexAutoPilotCredentials = CredentialsField(
+            title="ChatGPT / Codex connection",
+            description=(
+                "Optional connected ChatGPT plan. Leave empty to use the "
+                "normal platform-funded AutoPilot transport."
+            ),
+            default=None,
+            credential_reference_only=True,
+            json_schema_extra={
+                "secret": True,
+                "advanced": False,
+            },
         )
 
         session_id: str = SchemaField(
@@ -299,11 +320,27 @@ class AutoPilotBlock(Block):
             },
         )
 
-    async def create_session(self, user_id: str, *, dry_run: bool) -> str:
+    async def create_session(
+        self,
+        user_id: str,
+        *,
+        dry_run: bool,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        llm_auth_provider: Literal["platform", "codex"] = "platform",
+        llm_credential_id: str | None = None,
+    ) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
         from backend.copilot.model import create_chat_session  # avoid circular import
 
-        session = await create_chat_session(user_id, dry_run=dry_run)
+        session = await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+        )
         return session.session_id
 
     async def execute_copilot(
@@ -463,12 +500,36 @@ class AutoPilotBlock(Block):
 
         # Create session eagerly so the user always gets the session_id,
         # even if the downstream stream fails (avoids orphaned sessions).
+        codex_connection = input_data.codex_credentials
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
                 execution_context.user_id,
                 dry_run=input_data.dry_run or execution_context.dry_run,
+                organization_id=execution_context.organization_id,
+                team_id=execution_context.team_id,
+                llm_auth_provider=(
+                    "codex" if codex_connection is not None else "platform"
+                ),
+                llm_credential_id=(
+                    codex_connection.id if codex_connection is not None else None
+                ),
             )
+        elif codex_connection is not None:
+            from backend.copilot.model import get_chat_session
+
+            existing_session = await get_chat_session(
+                sid,
+                execution_context.user_id,
+            )
+            if not (
+                existing_session is not None
+                and existing_session.metadata.llm_auth_provider == "codex"
+                and existing_session.metadata.llm_credential_id == codex_connection.id
+            ):
+                yield "session_id", sid
+                yield "error", "codex_session_route_mismatch"
+                return
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own
         # heartbeat-based timeouts internally.  Wrapping with asyncio.timeout
@@ -683,6 +744,15 @@ async def _enqueue_for_recovery(
         from backend.copilot.executor.utils import (  # avoid circular import
             enqueue_copilot_turn,
         )
+        from backend.copilot.model import get_chat_session
+
+        session = await get_chat_session(session_id, user_id)
+        if session is None:
+            logger.warning(
+                "AutoPilot session %s: copilot_session_not_found",
+                session_id[:12],
+            )
+            return
 
         await asyncio.wait_for(
             enqueue_copilot_turn(
@@ -690,6 +760,8 @@ async def _enqueue_for_recovery(
                 user_id=user_id,
                 message=message,
                 turn_id=str(uuid.uuid4()),
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
             ),
             timeout=10,
         )

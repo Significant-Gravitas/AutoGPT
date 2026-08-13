@@ -41,7 +41,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -101,7 +101,7 @@ jobs:
       - name: Set up Frontend - Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -156,7 +156,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Platform - Copy default supabase .env
+      - name: Set up Platform - Copy default platform .env
         run: |
           cp ../.env.default ../.env
 
@@ -164,6 +164,7 @@ jobs:
         run: |
           cp ../backend/.env.default ../backend/.env
           echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
+          echo "CHAT_TEST_MODE=true" >> ../backend/.env
           echo "SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false" >> ../backend/.env
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
@@ -214,15 +215,13 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /tmp/e2e_test_data.sql
-          key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-fullstack-ci.yml') }}
+          key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/backend/data/user.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-fullstack-ci.yml') }}
 
-      - name: Set up Platform - Start Supabase DB + Auth
+      - name: Set up Platform - Start database
         run: |
-          docker compose -f ../docker-compose.resolved.yml up -d db auth --no-build
+          docker compose -f ../docker-compose.resolved.yml up -d db --no-build
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
-          echo "Waiting for auth service to be ready..."
-          timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db psql -U postgres -d postgres -c "SELECT 1 FROM auth.users LIMIT 1" 2>/dev/null; do sleep 2; done' || echo "Auth schema check timeout, continuing..."
 
       - name: Set up Platform - Run migrations
         run: |
@@ -251,7 +250,11 @@ jobs:
         run: |
           docker compose -f ../docker-compose.resolved.yml up -d --no-build
           echo "Waiting for rest_server to be ready..."
-          timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
+          timeout 180 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || {
+            echo "❌ rest_server did not become healthy in 180s"
+            docker compose -f ../docker-compose.resolved.yml logs --tail=100 rest_server
+            exit 1
+          }
         env:
           NEXT_PUBLIC_PW_TEST: true
 
@@ -266,20 +269,16 @@ jobs:
             exit 1
           }
 
-          # Dump auth.users + platform schema for cache (two separate dumps)
+          # Dump the platform schema for cache (includes the Better Auth
+          # user/session/account tables seeded by e2e_test_data.py)
           echo "Dumping database for cache..."
-          {
-            docker compose -f ../docker-compose.resolved.yml exec -T db \
-              pg_dump -U postgres --data-only --column-inserts \
-              --table='auth.users' postgres
-            docker compose -f ../docker-compose.resolved.yml exec -T db \
-              pg_dump -U postgres --data-only --column-inserts \
-              --schema=platform \
-              --exclude-table='platform._prisma_migrations' \
-              --exclude-table='platform.apscheduler_jobs' \
-              --exclude-table='platform.apscheduler_jobs_batched_notifications' \
-              postgres
-          } > /tmp/e2e_test_data.sql
+          docker compose -f ../docker-compose.resolved.yml exec -T db \
+            pg_dump -U postgres --data-only --column-inserts \
+            --schema=platform \
+            --exclude-table='platform._prisma_migrations' \
+            --exclude-table='platform.apscheduler_jobs' \
+            --exclude-table='platform.apscheduler_jobs_batched_notifications' \
+            postgres > /tmp/e2e_test_data.sql
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 
@@ -291,7 +290,7 @@ jobs:
       - name: Set up tests - Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.18.0"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 

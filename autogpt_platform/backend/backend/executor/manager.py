@@ -36,13 +36,20 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import Link, Node
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.model import (
+    GraphExecutionStats,
+    NodeExecutionStats,
+    OAuth2Credentials,
+)
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
     log_system_credential_cost,
 )
+from backend.integrations.codex.access import enforce_codex_access
+from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.clients import (
@@ -73,7 +80,7 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
-from . import billing
+from . import billing, expert_posts
 from .activity_status_generator import generate_activity_status_for_execution
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
@@ -260,65 +267,107 @@ async def execute_node(
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
     creds_locks: list[AsyncRedisLock] = []
+    credential_leases: dict[str, CredentialLease] = {}
+    runtime_credential_leases: dict[str, CredentialLease] = {}
     input_model = cast(type[BlockSchema], node_block.input_schema)
 
-    # Handle regular credentials fields
-    for field_name, input_type in input_model.get_credentials_fields().items():
-        # Dry-run platform credentials bypass the credential store.
-        # Keep the existing credential metadata so _execute's input_schema(**...)
-        # doesn't fail on the required field.  If no metadata is present,
-        # synthesize a minimal placeholder from the platform credentials.
-        if _dry_run_creds is not None:
-            if input_data.get(field_name) is None:
-                input_data[field_name] = {
-                    "id": _dry_run_creds.id,
-                    "provider": _dry_run_creds.provider,
-                    "type": _dry_run_creds.type,
-                    "title": _dry_run_creds.title,
-                }
-            extra_exec_kwargs[field_name] = _dry_run_creds
-            continue
-
-        field_value = input_data.get(field_name)
-        if not field_value or (
-            isinstance(field_value, dict) and not field_value.get("id")
-        ):
-            # No credentials configured — nullify so JSON schema validation
-            # doesn't choke on the empty default `{}`.
-            input_data[field_name] = None
-            continue  # Block runs without credentials
-
-        credentials_meta = input_type(**field_value)
-        # Write normalized values back so JSON schema validation also passes
-        # (model_validator may have fixed legacy formats like "ProviderName.MCP")
-        input_data[field_name] = credentials_meta.model_dump(mode="json")
-        try:
-            credentials, lock = await creds_manager.acquire(
-                user_id, credentials_meta.id
-            )
-        except ValueError:
-            # Credential was deleted or doesn't exist.
-            # If the field has a default, run without credentials.
-            if input_model.model_fields[field_name].default is not None:
-                log_metadata.warning(
-                    f"Credentials #{credentials_meta.id} not found, "
-                    "running without (field has default)"
-                )
-                input_data[field_name] = None
+    try:
+        # Handle regular credentials fields
+        credential_fields_info = input_model.get_credentials_fields_info()
+        for field_name, input_type in input_model.get_credentials_fields().items():
+            # Dry-run platform credentials bypass the credential store.
+            # Keep the existing credential metadata so _execute's input_schema(**...)
+            # doesn't fail on the required field.  If no metadata is present,
+            # synthesize a minimal placeholder from the platform credentials.
+            if _dry_run_creds is not None:
+                if input_data.get(field_name) is None:
+                    input_data[field_name] = {
+                        "id": _dry_run_creds.id,
+                        "provider": _dry_run_creds.provider,
+                        "type": _dry_run_creds.type,
+                        "title": _dry_run_creds.title,
+                    }
+                extra_exec_kwargs[field_name] = _dry_run_creds
                 continue
-            raise
-        creds_locks.append(lock)
-        extra_exec_kwargs[field_name] = credentials
 
-    # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
-    auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
-        input_model=input_model,
-        input_data=input_data,
-        creds_manager=creds_manager,
-        user_id=user_id,
-    )
-    extra_exec_kwargs.update(auto_extra_kwargs)
-    creds_locks.extend(auto_locks)
+            field_value = input_data.get(field_name)
+            if not field_value or (
+                isinstance(field_value, dict) and not field_value.get("id")
+            ):
+                # No credentials configured — nullify so JSON schema validation
+                # doesn't choke on the empty default `{}`.
+                input_data[field_name] = None
+                continue  # Block runs without credentials
+
+            credentials_meta = input_type(**field_value)
+            # Write normalized values back so JSON schema validation also passes
+            # (model_validator may have fixed legacy formats like "ProviderName.MCP")
+            input_data[field_name] = credentials_meta.model_dump(mode="json")
+            if credential_fields_info[field_name].credential_reference_only:
+                credentials = await creds_manager.get(
+                    user_id,
+                    credentials_meta.id,
+                )
+                if not (
+                    credentials is not None
+                    and provider_matches(
+                        credentials.provider,
+                        credentials_meta.provider,
+                    )
+                    and credentials.type == credentials_meta.type
+                ):
+                    raise ValueError(
+                        f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+                    )
+                if provider_matches(credentials.provider, "codex"):
+                    await enforce_codex_access(user_id)
+                continue
+            try:
+                lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+            except ValueError:
+                # Credential was deleted or doesn't exist.
+                # If the field has a default, run without credentials.
+                if input_model.model_fields[field_name].default is not None:
+                    log_metadata.warning(
+                        f"Credentials #{credentials_meta.id} not found, "
+                        "running without (field has default)"
+                    )
+                    input_data[field_name] = None
+                    continue
+                raise
+            credential_leases[field_name] = lease
+            credentials = lease.credentials
+            if not (
+                provider_matches(
+                    credentials.provider,
+                    credentials_meta.provider,
+                )
+                and credentials.type == credentials_meta.type
+            ):
+                raise ValueError(
+                    f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+                )
+            if provider_matches(credentials.provider, "codex"):
+                await enforce_codex_access(user_id)
+            extra_exec_kwargs[field_name] = lease.credentials
+            if _uses_provider_runtime(lease):
+                runtime_credential_leases[field_name] = lease
+
+        # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
+        auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
+            input_model=input_model,
+            input_data=input_data,
+            creds_manager=creds_manager,
+            user_id=user_id,
+        )
+        extra_exec_kwargs.update(auto_extra_kwargs)
+        creds_locks.extend(auto_locks)
+    except BaseException:
+        await _release_credential_leases(list(credential_leases.values()), log_metadata)
+        raise
+
+    if runtime_credential_leases:
+        extra_exec_kwargs["credential_leases"] = runtime_credential_leases
 
     output_size = 0
 
@@ -364,6 +413,7 @@ async def execute_node(
         raise
     finally:
         # Ensure all credentials are released even if execution fails
+        await _release_credential_leases(list(credential_leases.values()), log_metadata)
         for creds_lock in creds_locks:
             if (
                 creds_lock
@@ -384,6 +434,24 @@ async def execute_node(
         # Restore scope AFTER error has been captured
         scope._user = original_user
         scope._tags = original_tags
+
+
+async def _release_credential_leases(
+    leases: list[CredentialLease], log_metadata: LogMetadata
+) -> None:
+    for lease in leases:
+        try:
+            await lease.release()
+        except Exception as error:
+            log_metadata.error(f"Failed to release credentials lease: {error}")
+
+
+def _uses_provider_runtime(lease: CredentialLease) -> bool:
+    credentials = lease.credentials
+    return (
+        isinstance(credentials, OAuth2Credentials)
+        and credentials.refresh_strategy == "provider_runtime"
+    )
 
 
 async def _enqueue_next_nodes(
@@ -927,6 +995,9 @@ class ExecutionProcessor:
         finally:
             # Communication handling
             billing.handle_agent_run_notif(db_client, graph_exec, exec_stats)
+            expert_posts.handle_expert_run_post(
+                db_client, graph_exec, exec_meta.status, exec_stats
+            )
 
             update_graph_execution_state(
                 db_client=db_client,
@@ -1422,7 +1493,15 @@ class ExecutionManager(AppProcess):
 
         pool_size_gauge.set(self.pool_size)
         self._update_prompt_metrics()
-        start_http_server(settings.config.execution_manager_port)
+        # Deliberate reuse of pyro_host: despite the legacy name it is the
+        # bind address for every service's internal listener (see
+        # backend.util.service). Metrics follow the same interface as the RPC
+        # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
+        # cross-container scraping), loopback in the single-container runtime.
+        start_http_server(
+            settings.config.execution_manager_port,
+            addr=settings.config.pyro_host,
+        )
 
         self.cancel_thread.start()
         self.run_thread.start()

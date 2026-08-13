@@ -12,18 +12,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import {
-  ArrowSquareOutIcon,
-  CircleNotchIcon,
-  DotsThreeIcon,
-  DownloadSimpleIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
+import {
+  createFileDragImage,
+  FILE_DRAG_MIME,
+} from "../../WorkspaceFolders/drag";
 import {
   deriveFileOrigin,
   downloadFileBlob,
@@ -33,6 +31,15 @@ import {
   getFileTypeLabel,
 } from "../helpers";
 import { CardPreview } from "./CardPreview";
+import {
+  Delete02Icon,
+  Download04Icon,
+  Folder01Icon,
+  LinkSquare01Icon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   file: WorkspaceFileItem;
@@ -58,8 +65,34 @@ const REDUCED_CARD_VARIANTS: Variants = {
 export function ArtifactCard({ file, onOpen }: Props) {
   const origin = deriveFileOrigin(file.path);
   const goLabel = origin.kind === "session" ? "Open chat" : "Open in Builder";
-  const TypeIcon = getFileTypeIcon(file.mime_type, file.name);
+  const typeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
+  const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const dragImageRef = useRef<HTMLElement | null>(null);
+
+  // Clean up a leftover drag-image node if the card unmounts mid-drag (before
+  // dragend fires), so the off-screen element isn't leaked into the DOM.
+  useEffect(() => {
+    return () => {
+      dragImageRef.current?.remove();
+      dragImageRef.current = null;
+    };
+  }, []);
+
+  function handleDragStart(e: React.DragEvent<HTMLLIElement>) {
+    dragImageRef.current?.remove();
+    e.dataTransfer.setData(FILE_DRAG_MIME, file.id);
+    e.dataTransfer.effectAllowed = "move";
+    const dragImage = createFileDragImage(file.name);
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 16, 16);
+    dragImageRef.current = dragImage;
+  }
+
+  function handleDragEnd() {
+    dragImageRef.current?.remove();
+    dragImageRef.current = null;
+  }
 
   return (
     <motion.li
@@ -67,6 +100,9 @@ export function ArtifactCard({ file, onOpen }: Props) {
       style={{ willChange: "transform, opacity, filter" }}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
       data-testid="artifacts-list-item"
+      draggable
+      onDragStartCapture={handleDragStart}
+      onDragEndCapture={handleDragEnd}
     >
       {/* Full-card click target: opening the file is the primary action.
           Sits behind the content (z-0); the content is pointer-events-none so
@@ -81,11 +117,7 @@ export function ArtifactCard({ file, onOpen }: Props) {
       <div className="pointer-events-none relative z-10">
         <CardPreview file={file} />
         <div className="flex items-center gap-3 p-3">
-          <TypeIcon
-            size={20}
-            weight="regular"
-            className="shrink-0 text-zinc-500"
-          />
+          <Icon icon={typeIcon} size={20} className="shrink-0 text-zinc-500" />
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
               variant="body-medium"
@@ -101,10 +133,24 @@ export function ArtifactCard({ file, onOpen }: Props) {
             </Text>
           </div>
           <div className="pointer-events-auto">
-            <CardMenu file={file} goLabel={goLabel} goHref={origin.href} />
+            <CardMenu
+              file={file}
+              goLabel={goLabel}
+              goHref={origin.href}
+              onMove={() => setIsMoveOpen(true)}
+            />
           </div>
         </div>
       </div>
+      {isMoveOpen && (
+        <MoveToFolderDialog
+          fileId={file.id}
+          fileName={file.name}
+          currentFolderId={file.folder_id}
+          isOpen={isMoveOpen}
+          setIsOpen={setIsMoveOpen}
+        />
+      )}
     </motion.li>
   );
 }
@@ -113,10 +159,12 @@ function CardMenu({
   file,
   goLabel,
   goHref,
+  onMove,
 }: {
   file: WorkspaceFileItem;
   goLabel: string;
   goHref: string;
+  onMove: () => void;
 }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const { toast } = useToast();
@@ -174,7 +222,7 @@ function CardMenu({
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
           data-testid="artifacts-card-menu"
         >
-          <DotsThreeIcon size={20} weight="bold" />
+          <Icon icon={MoreHorizontalIcon} size={20} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -187,17 +235,31 @@ function CardMenu({
           data-testid="artifacts-download"
         >
           {isDownloading ? (
-            <CircleNotchIcon size={16} className="mr-2 animate-spin" />
+            <Icon
+              icon={Loading03Icon}
+              size={16}
+              className="mr-2 animate-spin"
+            />
           ) : (
-            <DownloadSimpleIcon size={16} className="mr-2" />
+            <Icon icon={Download04Icon} size={16} className="mr-2" />
           )}
           {isDownloading ? "Downloading…" : "Download"}
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href={goHref} data-testid="artifacts-origin-link">
-            <ArrowSquareOutIcon size={16} className="mr-2" />
+            <Icon icon={LinkSquare01Icon} size={16} className="mr-2" />
             {goLabel}
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            onMove();
+          }}
+          data-testid="artifacts-move-to-folder"
+        >
+          <Icon icon={Folder01Icon} size={16} className="mr-2" />
+          Move to folder
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -210,9 +272,13 @@ function CardMenu({
           data-testid="artifacts-delete"
         >
           {isDeleting ? (
-            <CircleNotchIcon size={16} className="mr-2 animate-spin" />
+            <Icon
+              icon={Loading03Icon}
+              size={16}
+              className="mr-2 animate-spin"
+            />
           ) : (
-            <TrashIcon size={16} className="mr-2" />
+            <Icon icon={Delete02Icon} size={16} className="mr-2" />
           )}
           {isDeleting ? "Deleting…" : "Delete"}
         </DropdownMenuItem>

@@ -31,6 +31,20 @@ function discordPlatform(
   };
 }
 
+function slackPlatform(
+  overrides: Partial<BotPlatformInfo> = {},
+): BotPlatformInfo {
+  return {
+    platform: "SLACK",
+    display_name: "Slack",
+    icon: "slack.png",
+    add_bot_url: null, // Slack has no one-click invite for a self-hosted app
+    dm_link: undefined,
+    server_links: [],
+    ...overrides,
+  };
+}
+
 describe("SettingsBotsPage", () => {
   test("renders the header and the Discord card with an Add bot button", async () => {
     server.use(getListBotPlatformsMockHandler([discordPlatform()]));
@@ -46,6 +60,111 @@ describe("SettingsBotsPage", () => {
     expect(
       screen.getByRole("link", { name: /add bot to discord/i }),
     ).toBeDefined();
+  });
+
+  test("renders the Slack card without an Add bot button (no invite URL)", async () => {
+    server.use(getListBotPlatformsMockHandler([slackPlatform()]));
+
+    render(<SettingsBotsPage />);
+
+    expect(
+      await screen.findByRole("heading", { name: /slack/i }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("link", { name: /add bot to slack/i }),
+    ).toBeNull();
+  });
+
+  test("renders an Add to Slack button when an install URL is provided", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({
+          add_bot_url:
+            "https://backend.example/api/copilot-webhooks/slack/install",
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    const button = await screen.findByRole("link", {
+      name: /add bot to slack/i,
+    });
+    expect(button.getAttribute("href")).toBe(
+      "https://backend.example/api/copilot-webhooks/slack/install",
+    );
+  });
+
+  test("takes over the card with a finish-in-Slack prompt while an install is pending", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({
+          add_bot_url:
+            "https://backend.example/api/copilot-webhooks/slack/install",
+          pending_install: {
+            server_name: "Acme",
+            open_bot_url: "https://slack.com/app_redirect?app=A1&team=T1",
+          },
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText(/pending — finish in slack/i)).toBeDefined();
+    const open = screen.getByRole("link", { name: /open autogpt in slack/i });
+    expect(open.getAttribute("href")).toBe(
+      "https://slack.com/app_redirect?app=A1&team=T1",
+    );
+    // Alongside, not instead of: a pending marker lasts up to 7 days and must
+    // not lock someone out of installing to a second workspace.
+    expect(
+      screen.getByRole("link", { name: /add bot to slack/i }),
+    ).toBeDefined();
+  });
+
+  test("refetches when the user comes back to the tab", async () => {
+    let calls = 0;
+    server.use(
+      getListBotPlatformsMockHandler(() => {
+        calls += 1;
+        return [slackPlatform()];
+      }),
+    );
+
+    render(<SettingsBotsPage />);
+    await screen.findByRole("heading", { name: /slack/i });
+    const afterMount = calls;
+
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(calls).toBeGreaterThan(afterMount));
+
+    // Hidden tabs are not a return: the install round-trip ends with the user
+    // looking at this page, not at a background one.
+    const settled = calls;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    fireEvent(document, new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls).toBe(settled);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+  });
+
+  test("names Slack's server type a workspace", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({ server_noun: "workspace" }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText(/linked workspaces/i)).toBeDefined();
   });
 
   test("shows the 'no bots enabled' empty state when no platforms are configured", async () => {
@@ -98,7 +217,7 @@ describe("SettingsBotsPage", () => {
     ).toBeDefined();
   });
 
-  test("shows a 'Bot not in server' indicator when the server name is missing", async () => {
+  test("flags a link whose name we don't have, without claiming the bot is gone", async () => {
     server.use(
       getListBotPlatformsMockHandler([
         discordPlatform({
@@ -119,7 +238,10 @@ describe("SettingsBotsPage", () => {
     render(<SettingsBotsPage />);
 
     expect(await screen.findByText("1126875755960336515")).toBeDefined();
-    expect(screen.getByText(/bot not in server/i)).toBeDefined();
+    // A missing name means exactly that — it is not evidence the bot was
+    // removed, so the row must not say so.
+    expect(screen.getByText(/name unavailable/i)).toBeDefined();
+    expect(screen.queryByText(/not in server/i)).toBeNull();
   });
 
   test("clicking unlink on a linked server fires the API and the row is gone after refetch", async () => {

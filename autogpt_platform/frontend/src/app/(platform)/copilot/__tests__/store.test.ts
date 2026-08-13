@@ -113,6 +113,35 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
+  it("openArtifact/closeArtifactPanel persist the open state by default", () => {
+    window.localStorage.removeItem("copilot-context-panel-open");
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    expect(window.localStorage.getItem("copilot-context-panel-open")).toBe(
+      "true",
+    );
+    useCopilotUIStore.getState().closeArtifactPanel();
+    expect(window.localStorage.getItem("copilot-context-panel-open")).toBe(
+      "false",
+    );
+  });
+
+  it("openArtifact/closeArtifactPanel skip localStorage with persist: false", () => {
+    window.localStorage.removeItem("copilot-context-panel-open");
+    useCopilotUIStore
+      .getState()
+      .openArtifact(makeArtifact("a"), { persist: false });
+    expect(
+      window.localStorage.getItem("copilot-context-panel-open"),
+    ).toBeNull();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+    useCopilotUIStore.getState().closeArtifactPanel({ persist: false });
+    expect(
+      window.localStorage.getItem("copilot-context-panel-open"),
+    ).toBeNull();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
   it("openArtifact does not resurrect a previously closed artifact into history", () => {
     const a = makeArtifact("a");
     const b = makeArtifact("b");
@@ -413,11 +442,42 @@ describe("useCopilotUIStore", () => {
     });
   });
 
+  describe("copilotLlmAuth", () => {
+    it("defaults to the platform route", () => {
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+        authProvider: "platform",
+        credentialId: null,
+      });
+    });
+
+    it("stores a Codex credential without changing the selected mode or model", () => {
+      useCopilotUIStore.getState().setCopilotChatMode("extended_thinking");
+      useCopilotUIStore.getState().setCopilotLlmModel("advanced");
+      useCopilotUIStore.getState().setCopilotLlmAuth({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
+
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
+      expect(useCopilotUIStore.getState().copilotChatMode).toBe(
+        "extended_thinking",
+      );
+      expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced");
+    });
+  });
+
   describe("clearCopilotLocalData", () => {
     it("resets state and clears localStorage keys", () => {
       useCopilotUIStore.getState().setSearchOpen(true);
       useCopilotUIStore.getState().setCopilotChatMode("fast");
       useCopilotUIStore.getState().setCopilotLlmModel("advanced");
+      useCopilotUIStore.getState().setCopilotLlmAuth({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
       useCopilotUIStore.getState().setNotificationsEnabled(true);
       useCopilotUIStore.getState().toggleSound();
       useCopilotUIStore.getState().addCompletedSession("s1");
@@ -428,6 +488,10 @@ describe("useCopilotUIStore", () => {
       expect(state.isSearchOpen).toBe(false);
       expect(state.copilotChatMode).toBe("extended_thinking");
       expect(state.copilotLlmModel).toBe("standard");
+      expect(state.copilotLlmAuth).toEqual({
+        authProvider: "platform",
+        credentialId: null,
+      });
       expect(state.isNotificationsEnabled).toBe(false);
       expect(state.isSoundEnabled).toBe(true);
       expect(state.completedSessionIDs.size).toBe(0);

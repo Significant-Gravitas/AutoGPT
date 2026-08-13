@@ -13,7 +13,6 @@ from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
     NotificationType,
-    OnboardingStep,
     SubscriptionTier,
 )
 from prisma.errors import PrismaError, UniqueViolationError
@@ -52,6 +51,7 @@ from backend.util.settings import Settings
 
 if TYPE_CHECKING:
     from backend.blocks._base import Block, BlockCost
+    from backend.data.onboarding import OnboardingStep
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
@@ -147,7 +147,9 @@ def _datafast_metadata(
 
 class UserCreditBase(ABC):
     @abstractmethod
-    async def get_credits(self, user_id: str) -> int:
+    async def get_credits(
+        self, user_id: str, organization_id: str | None = None
+    ) -> int:
         """
         Get the current credits for the user.
 
@@ -219,7 +221,9 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def top_up_credits(self, user_id: str, amount: int):
+    async def top_up_credits(
+        self, user_id: str, amount: int, organization_id: str | None = None
+    ):
         """
         Top up the credits for the user.
 
@@ -262,7 +266,7 @@ class UserCreditBase(ABC):
 
     @abstractmethod
     async def onboarding_reward(
-        self, user_id: str, credits: int, step: OnboardingStep
+        self, user_id: str, credits: int, step: "OnboardingStep"
     ) -> bool:
         """
         Reward the user with credits for completing an onboarding step.
@@ -271,7 +275,9 @@ class UserCreditBase(ABC):
         Args:
             user_id (str): The user ID.
             credits (int): The amount to reward.
-            step (OnboardingStep): The onboarding step.
+            step (OnboardingStep): The onboarding step identifier. Imported under
+                ``TYPE_CHECKING`` only, to avoid a circular import with
+                ``backend.data.onboarding``.
 
         Returns:
             bool: True if rewarded, False if already rewarded.
@@ -778,6 +784,7 @@ class UserCredit(UserCreditBase):
         self,
         user_id: str,
         amount: int,
+        organization_id: str | None = None,
         top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
     ):
         await self._top_up_credits(
@@ -807,15 +814,17 @@ class UserCredit(UserCreditBase):
             balance, _ = await self._get_credits(user_id)
         return balance
 
-    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+    async def onboarding_reward(
+        self, user_id: str, credits: int, step: "OnboardingStep"
+    ):
         try:
             await self._add_transaction(
                 user_id=user_id,
                 amount=credits,
                 transaction_type=CreditTransactionType.GRANT,
-                transaction_key=f"REWARD-{user_id}-{step.value}",
+                transaction_key=f"REWARD-{user_id}-{step}",
                 metadata=SafeJson(
-                    {"reason": f"Reward for completing {step.value} onboarding step."}
+                    {"reason": f"Reward for completing {step} onboarding step."}
                 ),
             )
             return True
@@ -1258,7 +1267,9 @@ class UserCredit(UserCreditBase):
                     },
                 )
 
-    async def get_credits(self, user_id: str) -> int:
+    async def get_credits(
+        self, user_id: str, organization_id: str | None = None
+    ) -> int:
         balance, _ = await self._get_credits(user_id)
         return balance
 
@@ -1438,6 +1449,32 @@ async def get_user_credit_model(user_id: str) -> UserCreditBase:
     _ = user_id
     if not settings.config.enable_credit:
         return DisabledUserCredit()
+    return UserCredit()
+
+
+async def get_credit_model(
+    user_id: str, organization_id: str | None = None
+) -> UserCreditBase:
+    """Return the appropriate credit model based on context.
+
+    When a non-personal ``organization_id`` is supplied, billing operations
+    are routed to the org-level credit tables via ``OrgCreditModel``.
+    Personal orgs (and no org context) use the standard per-user model.
+    """
+    if not settings.config.enable_credit:
+        return DisabledUserCredit()
+    if organization_id:
+        from backend.data.org_credit import OrgCreditModel, get_personal_org_owner
+
+        # Personal orgs bill the owner's user wallet (single-ledger), so use
+        # the full-featured user model — OrgCreditModel has no Stripe
+        # top-up/refund/checkout, and ctx.org_id falls back to the personal
+        # org for every ordinary request.
+        # TODO(org-billing): route personal orgs through OrgCreditModel once
+        # org-level Stripe (top_up_intent/fulfill_checkout/top_up_refund)
+        # rolls out.
+        if await get_personal_org_owner(organization_id) is None:
+            return OrgCreditModel(organization_id)
     return UserCredit()
 
 
@@ -2557,6 +2594,13 @@ async def create_subscription_checkout(
         automatic_tax={"enabled": True},
         billing_address_collection="auto",
         customer_update={"address": "auto"},
+        # Cards attached by a previous subscription-mode Checkout carry
+        # allow_redisplay=limited; without "limited" in the filters Stripe
+        # hides them and returning subscribers must re-enter card details.
+        saved_payment_method_options={
+            "payment_method_save": "enabled",
+            "allow_redisplay_filters": ["always", "limited"],
+        },
         metadata=datafast,
     )
     if not session.url:

@@ -5,8 +5,12 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from tiktoken import encoding_for_model
+from tiktoken import encoding_for_model, encoding_name_for_model
 
+from backend.data.llm_registry.llm_models import (
+    CLAUDE_5_TOKENIZER_GENERATION_PREFIXES,
+    strip_anthropic_vendor_prefix,
+)
 from backend.util import json
 
 if TYPE_CHECKING:
@@ -216,7 +220,8 @@ def estimate_token_count(
     """
     token_model = _normalize_model_for_tokenizer(model)
     enc = encoding_for_model(token_model)
-    return sum(_msg_tokens(m, enc) for m in messages)
+    raw = sum(_msg_tokens(m, enc) for m in messages)
+    return int(raw * _token_estimate_factor(model))
 
 
 def estimate_token_count_str(
@@ -240,7 +245,7 @@ def estimate_token_count_str(
     token_model = _normalize_model_for_tokenizer(model)
     enc = encoding_for_model(token_model)
     text = json.dumps(text) if not isinstance(text, str) else text
-    return _tok_len(text, enc)
+    return int(_tok_len(text, enc) * _token_estimate_factor(model))
 
 
 # ---------------------------------------------------------------------------#
@@ -259,22 +264,22 @@ _CONTEXT_OVERHEAD_RESERVE = 60_000
 def get_context_window(model: str) -> int | None:
     """Return the context window size for a model, or None if unknown.
 
-    Looks up the model in the :class:`LlmModel` enum (which already
+    Looks up the model in the :class:`LLMModel` enum (which already
     carries ``context_window`` via ``MODEL_METADATA``).  Handles
     provider-prefixed names (``anthropic/claude-opus-4-6``) and
     case-insensitive input automatically.
     """
-    from backend.blocks.llm import LlmModel  # lazy to avoid circular import
+    from backend.blocks.llm import LLMModel  # lazy to avoid circular import
 
     try:
-        llm_model = LlmModel(model)
+        llm_model = LLMModel(model)
         return llm_model.context_window
     except (ValueError, KeyError):
         pass
 
     # Retry with lowercase for case-insensitive lookup
     try:
-        llm_model = LlmModel(model.lower())
+        llm_model = LLMModel(model.lower())
         return llm_model.context_window
     except (ValueError, KeyError):
         return None
@@ -309,6 +314,25 @@ class CompressResult:
     messages_dropped: int = 0
 
 
+# Estimation correction for the Claude 5 family (sonnet-5/fable-5/
+# mythos-5, plus the shared 4.7/4.8 tokenizer generation): Anthropic ships
+# no local tokenizer, so estimates ride tiktoken o200k_base, which already
+# undercounts Claude 4.x by ~15-20%; the Claude 5 tokenizer additionally
+# counts ~30% MORE tokens for the same text (Anthropic migration guide).
+# 1.5 ≈ 1.175 x 1.3 — deliberately on the high side: overestimating
+# shrinks compaction targets and max_tokens headroom (safe), while
+# underestimating overflows the context window (a 400 at serve time).
+CLAUDE_5_TOKEN_FACTOR = 1.5
+
+
+def _token_estimate_factor(model: str) -> float:
+    if strip_anthropic_vendor_prefix(model).startswith(
+        CLAUDE_5_TOKENIZER_GENERATION_PREFIXES
+    ):
+        return CLAUDE_5_TOKEN_FACTOR
+    return 1.0
+
+
 def _normalize_model_for_tokenizer(model: str) -> str:
     """Normalize model name for tiktoken tokenizer selection."""
     if "/" in model:
@@ -316,6 +340,13 @@ def _normalize_model_for_tokenizer(model: str) -> str:
     if "claude" in model.lower() or not any(
         known in model.lower() for known in ["gpt", "o1", "chatgpt", "text-"]
     ):
+        return "gpt-4o"
+    try:
+        encoding_name_for_model(model)
+    except KeyError:
+        # GPT-named model newer than the pinned tiktoken's mapping table
+        # (e.g. gpt-5.6-*) — estimates must degrade to the default
+        # encoding, not crash the LLM call.
         return "gpt-4o"
     return model
 
@@ -765,8 +796,17 @@ async def compress_context(
     enc = encoding_for_model(token_model)
     msgs = deepcopy(messages)
 
+    # Compaction must measure in the same (corrected) space as estimation:
+    # for the Claude-5 tokenizer generation, raw tiktoken sums undercount
+    # by ~30-50%, so an uncorrected total can sit under the nominal target
+    # while exceeding the model's real budget.
+    factor = _token_estimate_factor(model)
+
+    def _scaled_msg_tokens(m: dict) -> int:
+        return int(_msg_tokens(m, enc) * factor)
+
     def total_tokens() -> int:
-        return sum(_msg_tokens(m, enc) for m in msgs)
+        return sum(_scaled_msg_tokens(m) for m in msgs)
 
     original_count = total_tokens()
 
@@ -849,26 +889,41 @@ async def compress_context(
                 content_str = _truncate_middle_tokens(content_str, enc, 20_000)
             m["content"] = content_str
 
+    # Steps 3-5 repeatedly check the total size while mutating or deleting one
+    # message at a time. Re-summing all messages there re-tokenizes the whole
+    # history on each iteration, which is quadratic on long transcripts.
+    counts = [_scaled_msg_tokens(m) for m in msgs]
+    total = sum(counts)
+
+    def _recount(i: int) -> None:
+        nonlocal total
+        new = _scaled_msg_tokens(msgs[i])
+        total += new - counts[i]
+        counts[i] = new
+
     # ---- STEP 3: Token-aware content truncation ---------------------------
     # Progressively halve per-message cap and truncate bloated content.
     # This preserves all messages but shortens their content.
     cap = start_cap
-    while total_tokens() + reserve > target_tokens and cap >= floor_cap:
-        for m in msgs[1:-1]:
+    while total + reserve > target_tokens and cap >= floor_cap:
+        for i in range(1, len(msgs) - 1):
+            m = msgs[i]
             if _is_tool_message(m):
                 _truncate_tool_message_content(m, enc, cap)
+                _recount(i)
                 continue
             if _is_objective_message(m):
                 continue
             content = m.get("content") or ""
             if _tok_len(content, enc) > cap:
                 m["content"] = _truncate_middle_tokens(content, enc, cap)
+                _recount(i)
         cap //= 2
 
     # ---- STEP 4: Middle-out deletion --------------------------------------
     # Delete messages one at a time from the center outward.
     # This is more granular than dropping all old messages at once.
-    while total_tokens() + reserve > target_tokens and len(msgs) > 2:
+    while total + reserve > target_tokens and len(msgs) > 2:
         deletable: list[int] = []
         for i in range(1, len(msgs) - 1):
             msg = msgs[i]
@@ -883,21 +938,24 @@ async def compress_context(
         centre = len(msgs) // 2
         to_delete = min(deletable, key=lambda i: abs(i - centre))
         del msgs[to_delete]
+        total -= counts.pop(to_delete)
         messages_dropped += 1
 
     # ---- STEP 5: Final trim on first/last ---------------------------------
     cap = start_cap
-    while total_tokens() + reserve > target_tokens and cap >= floor_cap:
+    while total + reserve > target_tokens and cap >= floor_cap:
         for idx in (0, -1):
             msg = msgs[idx]
             if msg is None:
                 continue
             if _is_tool_message(msg):
                 _truncate_tool_message_content(msg, enc, cap)
+                _recount(idx)
                 continue
             text = msg.get("content") or ""
             if _tok_len(text, enc) > cap:
                 msg["content"] = _truncate_middle_tokens(text, enc, cap)
+                _recount(idx)
         cap //= 2
 
     # Filter out any None values that may have been introduced
@@ -909,7 +967,7 @@ async def compress_context(
     # to prevent API errors (e.g., Anthropic's "unexpected tool_use_id").
     final_msgs = validate_and_remove_orphan_tool_responses(final_msgs)
 
-    final_count = sum(_msg_tokens(m, enc) for m in final_msgs)
+    final_count = sum(_scaled_msg_tokens(m) for m in final_msgs)
     error = None
     if final_count + reserve > target_tokens:
         error = f"Could not compress below target ({final_count + reserve} > {target_tokens})"

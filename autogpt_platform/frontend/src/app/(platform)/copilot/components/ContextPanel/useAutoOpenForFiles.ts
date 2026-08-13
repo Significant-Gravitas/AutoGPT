@@ -21,7 +21,7 @@ function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
 /**
  * The first time a session is found to have generated files, opens the Artifact
  * panel directly on the most recently generated file (unless the user has
- * explicitly closed the panel). Mirrors useAutoOpenForProgress.
+ * explicitly closed the panel).
  */
 export function useAutoOpenForFiles(sessionId: string | null) {
   const autoOpenArtifact = useCopilotUIStore((s) => s.autoOpenArtifact);

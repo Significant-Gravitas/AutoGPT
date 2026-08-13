@@ -119,6 +119,15 @@ describe("getActionButtonText", () => {
         "Connect another account",
       );
     });
+
+    it("uses ChatGPT sign-in copy for the internal Codex provider", () => {
+      expect(
+        getActionButtonText(true, false, false, false, false, "codex"),
+      ).toBe("Sign in with ChatGPT");
+      expect(
+        getActionButtonText(true, false, false, false, true, "codex"),
+      ).toBe("Reconnect ChatGPT");
+    });
   });
 
   describe("when only API key is supported", () => {

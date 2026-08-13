@@ -20,6 +20,7 @@ from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
 from .edit_agent import EditAgentTool
+from .enter_building_mode import EnterAgentBuildingModeTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -117,6 +118,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
+    "enter_agent_building_mode": EnterAgentBuildingModeTool(),
     "get_agent_building_guide": GetAgentBuildingGuideTool(),
     # Skills (self-distilled procedure registry; see tools/skills.py).
     # Defaults seed the agent-building / MCP guides so the registry is

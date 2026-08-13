@@ -53,7 +53,18 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class DreamLLMError(RuntimeError):
-    """Raised when a dream-pass LLM call cannot be parsed into the target schema."""
+    """Raised when a dream-pass LLM call cannot be parsed into the target schema.
+
+    ``usage`` carries the provider-reported spend when the failure happened
+    *after* a response came back — empty content, unparseable JSON, a schema
+    mismatch. Those tokens were billed, so a caller keeping a cost ledger has
+    to record them. ``None`` means no provider call completed and nothing was
+    charged.
+    """
+
+    def __init__(self, message: str, usage: CompletionUsage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage
 
 
 class CompletionUsage(BaseModel):
@@ -87,12 +98,20 @@ async def structured_completion(
     response_model: type[T],
     temperature: float = 0.2,
     max_output_tokens: int = 4096,
+    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
 ) -> StructuredCompletion[T]:
     """Call the LLM in JSON mode and parse into ``response_model``.
 
     Returns a ``StructuredCompletion`` carrying both the parsed value
     and a ``CompletionUsage`` block so the dream orchestrator can roll
     token counts + cost up into a ``DreamPassUsage``.
+
+    ``timeout_seconds`` is the wall-clock budget for the provider call.
+    The shared 120s default is sized for short chat completions; dream
+    phases with large ``max_output_tokens`` budgets (recombine/sanitize
+    at 16384) must pass their own ceiling — see the per-phase
+    ``*_TIMEOUT_SECONDS`` constants in ``orchestrator.py`` — or real
+    long responses die on TimeoutError before they finish decoding.
 
     Raises ``DreamLLMError`` if the response is empty, unparseable, or
     fails Pydantic validation. Callers should treat that as "this
@@ -112,7 +131,7 @@ async def structured_completion(
             max_tokens=max_output_tokens,
             temperature=temperature,
             force_json_output=True,
-            timeout_seconds=DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            timeout_seconds=timeout_seconds,
             # ``call_provider`` only honors ``ollama_host`` when
             # ``provider="ollama"``; passing it on cloud transports is
             # harmless. ``routing.base_url`` is the ``CHAT_BASE_URL``
@@ -139,18 +158,22 @@ async def structured_completion(
 
     content = (response.content or "").strip()
     if not content:
-        raise DreamLLMError("LLM returned empty content")
+        raise DreamLLMError("LLM returned empty content", usage)
 
-    payload = _parse_json_with_prose_fallback(content)
-
+    # Everything below this point is post-billing: the provider already
+    # charged for the tokens it sent, so every failure carries the usage out.
     try:
+        payload = _parse_json_with_prose_fallback(content)
         return StructuredCompletion(
             value=response_model.model_validate(payload),
             usage=usage,
         )
+    except DreamLLMError as exc:
+        exc.usage = usage
+        raise
     except ValidationError as exc:
         raise DreamLLMError(
-            f"LLM JSON did not match {response_model.__name__}: {exc}"
+            f"LLM JSON did not match {response_model.__name__}: {exc}", usage
         ) from exc
 
 

@@ -5,32 +5,106 @@ import base64
 import os
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
+from .codex_compat_gateway import CodexAnthropicGateway
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
+    _close_codex_gateway_for_finally,
     _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _normalize_model_name,
     _prepare_file_attachments,
+    _raise_deferred_codex_cleanup_error,
+    _redact_cli_stderr,
     _resolve_dynamic_max_budget_usd,
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
     _strip_synthetic_reprompt_from_cli_jsonl,
 )
+
+
+class TestCliStderrRedaction:
+    def test_redacts_capability_even_without_header_label(self):
+        capability = "private-loopback-capability"
+
+        result = _redact_cli_stderr(
+            f"gateway request failed for {capability}", secrets=(capability,)
+        )
+
+        assert capability not in result
+        assert result == "gateway request failed for [REDACTED]"
+
+    def test_redacts_labeled_capability_once(self):
+        capability = "private-loopback-capability"
+
+        result = _redact_cli_stderr(
+            f"Authorization: Bearer {capability}", secrets=(capability,)
+        )
+
+        assert result == "Authorization: [REDACTED]"
+
+    @pytest.mark.parametrize(
+        ("line", "secret"),
+        [
+            ("Authorization: Bearer secret-one", "secret-one"),
+            ('{"Authorization":"Bearer secret-two"}', "secret-two"),
+            ("proxy-authorization=Basic secret-three", "secret-three"),
+            ("ANTHROPIC_AUTH_TOKEN=secret-four", "secret-four"),
+            ("x-api-key: secret-five", "secret-five"),
+        ],
+    )
+    def test_redacts_authorization_shaped_values(self, line, secret):
+        result = _redact_cli_stderr(line)
+
+        assert secret not in result
+        assert "[REDACTED]" in result
+
+    def test_preserves_unrelated_stderr(self):
+        line = "fallback model activated after an overload"
+
+        assert _redact_cli_stderr(line) == line
+
+
+class TestCodexGatewayCleanup:
+    @pytest.mark.asyncio
+    async def test_returns_checkpoint_failure_for_deferred_raise(self):
+        failure = RuntimeError("credential checkpoint failed")
+        gateway = cast(
+            CodexAnthropicGateway,
+            SimpleNamespace(close=AsyncMock(side_effect=failure)),
+        )
+
+        result = await _close_codex_gateway_for_finally(gateway, "[test]")
+
+        assert result is failure
+        gateway.close.assert_awaited_once()
+
+    def test_deferred_failure_propagates_with_turn_error_as_cause(self):
+        turn_error = ValueError("turn failed")
+        cleanup_error = RuntimeError("credential checkpoint failed")
+
+        with pytest.raises(RuntimeError, match="checkpoint failed") as raised:
+            _raise_deferred_codex_cleanup_error(cleanup_error, turn_error)
+
+        assert raised.value is cleanup_error
+        assert raised.value.__cause__ is turn_error
 
 
 @dataclass
@@ -84,8 +158,11 @@ class TestPrepareFileAttachments:
         assert not os.path.exists(os.path.join(tmp_path, "photo.jpg"))
 
     @pytest.mark.asyncio
-    async def test_pdf_saved_to_disk(self, tmp_path):
-        """PDFs should be saved to disk for Read tool access, not embedded."""
+    async def test_pdf_referenced_by_file_id(self, tmp_path):
+        """Non-images are surfaced via read_workspace_file by file_id — the
+        model's file tools run in the E2B sandbox in prod, where a host-side
+        sdk_cwd path doesn't exist. A local copy is still written for non-E2B
+        tooling, but the model must not be pointed at that path."""
         info = _FakeFileInfo("f1", "doc.pdf", "/doc.pdf", "application/pdf", 50)
         mgr = AsyncMock()
         mgr.get_file_info.return_value = info
@@ -98,7 +175,26 @@ class TestPrepareFileAttachments:
         saved = tmp_path / "doc.pdf"
         assert saved.exists()
         assert saved.read_bytes() == b"%PDF-1.4 fake"
-        assert str(saved) in result.hint
+        # The model is given the workspace identity, not the host path.
+        assert "file_id=f1" in result.hint
+        assert str(saved) not in result.hint
+        assert "read_workspace_file" in result.hint
+
+    @pytest.mark.asyncio
+    async def test_hint_file_ids_extractable_for_chat_sharing(self, tmp_path):
+        """Chat-share allowlisting parses ``file_id=<uuid>`` out of message
+        content with extract_workspace_file_ids; the hint must keep that exact
+        shape or shared chats lose access to their attachments."""
+        fid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+        info = _FakeFileInfo(fid, "doc.pdf", "/doc.pdf", "application/pdf", 50)
+        mgr = AsyncMock()
+        mgr.get_file_info.return_value = info
+        mgr.read_file_by_id.return_value = b"%PDF-1.4 fake"
+
+        with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mgr):
+            result = await _prepare_file_attachments([fid], "u", "s", str(tmp_path))
+
+        assert extract_workspace_file_ids(result.hint) == {fid}
 
     @pytest.mark.asyncio
     async def test_mixed_images_and_files(self, tmp_path):
@@ -127,8 +223,12 @@ class TestPrepareFileAttachments:
         # Non-image files should be on disk
         assert (tmp_path / "b.pdf").exists()
         assert (tmp_path / "c.txt").exists()
-        # Read tool hint should appear (has non-image files)
-        assert "Read tool" in result.hint
+        # Workspace-read hint should appear (has non-image files), and the
+        # model must NOT be told to use the (disallowed) built-in Read tool.
+        assert "read_workspace_file" in result.hint
+        assert "Use the Read tool" not in result.hint
+        assert "file_id=id2" in result.hint
+        assert "file_id=id3" in result.hint
 
     @pytest.mark.asyncio
     async def test_singular_noun(self, tmp_path):
@@ -157,7 +257,7 @@ class TestPrepareFileAttachments:
 
     @pytest.mark.asyncio
     async def test_image_only_no_read_hint(self, tmp_path):
-        """When all files are images, no Read tool hint should appear."""
+        """When all files are images, no read-tool hint should appear."""
         info = _FakeFileInfo("i1", "cat.png", "/cat.png", "image/png", 4)
         mgr = AsyncMock()
         mgr.get_file_info.return_value = info
@@ -166,7 +266,7 @@ class TestPrepareFileAttachments:
         with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mgr):
             result = await _prepare_file_attachments(["i1"], "u", "s", str(tmp_path))
 
-        assert "Read tool" not in result.hint
+        assert "read_workspace_file" not in result.hint
         assert len(result.image_blocks) == 1
 
 
@@ -545,15 +645,16 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-abc", user_id="user-1"
             )
 
         # Fallback == tier-specific config default (thinking_standard_model
-        # normalised to hyphen-form for direct-Anthropic mode).
-        assert resolved == "claude-sonnet-4-6"
+        # normalised to hyphen-form for direct-Anthropic mode) — an env
+        # fallback, so the routing source must NOT claim "ld".
+        assert resolved == ("claude-sonnet-4-6", "env")
 
     @pytest.mark.asyncio
     async def test_openrouter_mode_accepts_ld_kimi_value(
@@ -573,12 +674,12 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-abc", user_id="user-1"
             )
-        assert resolved == "moonshotai/kimi-k2.6"
+        assert resolved == ("moonshotai/kimi-k2.6", "ld")
 
     @pytest.mark.asyncio
     async def test_advanced_tier_fallback_uses_advanced_default_not_standard(
@@ -603,14 +704,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv", user_id="user-1"
             )
 
         # Direct-Anthropic normalises anthropic/claude-opus-4.7 → claude-opus-4-7
-        assert resolved == "claude-opus-4-7"
+        assert resolved == ("claude-opus-4-7", "env")
 
     @pytest.mark.asyncio
     async def test_standard_ld_override_wins_over_subscription(
@@ -639,14 +740,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std-sub", user_id="user-1"
             )
         # Kimi can't be served by the subscription CLI; fail-soft to
-        # the tier default normalised for the active transport.
-        assert resolved == "claude-sonnet-4-6"
+        # the tier default normalised for the active transport (env source).
+        assert resolved == ("claude-sonnet-4-6", "env")
 
     @pytest.mark.asyncio
     async def test_standard_subscription_survives_trailing_whitespace_in_env(
@@ -671,12 +772,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-ws", user_id="user-1"
             )
-        assert resolved is None, (
+        assert resolved == (None, "env"), (
             "LD value semantically matches the whitespace-padded config "
             "default — subscription mode must still win and return None"
         )
@@ -703,12 +806,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std-nop", user_id="user-1"
             )
-        assert resolved is None
+        assert resolved == (None, "env")
 
     @pytest.mark.asyncio
     async def test_advanced_tier_consults_ld_under_subscription(
@@ -734,12 +839,14 @@ class TestResolveSdkModelForRequestLdFallback:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-opus-4.7"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv-sub", user_id="user-1"
             )
-        assert resolved == "claude-opus-4-7"
+        assert resolved == ("claude-opus-4-7", "ld")
 
 
 # ---------------------------------------------------------------------------

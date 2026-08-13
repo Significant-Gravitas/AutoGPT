@@ -126,6 +126,10 @@ Key models (defined in `schema.prisma`):
 
 ## Common Development Tasks
 
+### Adding / editing / retiring an LLM model
+
+Model definitions, costs, and AutoPilot routing are catalog-as-code in `backend/data/llm_registry/catalog.py` — edit the file, open a PR (catalog-only diffs may ride `hotfix/*`→`master` for incident-speed changes). The catalog is the single source: metadata and billing dicts are derived from it at import. A block-selectable model additionally needs one `LLMModel` name line in `backend/data/llm_registry/llm_models.py` (an import-time check enforces the pairing); copilot-only models need just the catalog entry. Retire a model with a catalog PR (`is_enabled: False`) plus `python -m backend.data.llm_registry.retire <slug> --replacement <slug> --yes` to migrate existing graph nodes (dry-run by default, revertable). Full reference: [Managing LLM Models](@../../docs/platform/contributing/managing-llm-models.md).
+
 ### Adding a new block
 
 Follow the comprehensive [Block SDK Guide](@../../docs/platform/block-sdk-guide.md) which covers:
