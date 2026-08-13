@@ -2,12 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.data.execution import (
-    VALID_GRAPH_STATUS_TRANSITIONS,
-    VALID_STATUS_TRANSITIONS,
-    ExecutionStatus,
-    GraphExecutionMeta,
-)
+from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.exceptions import ExecutionFailureReason
 
 
@@ -48,19 +43,6 @@ def test_failure_reason_round_trips_through_api_stats():
         ExecutionFailureReason.INSUFFICIENT_BALANCE
     )
     assert persisted.correctness_score == 0.0
-
-
-def test_failed_execution_can_transition_to_running_for_resume():
-    assert (
-        ExecutionStatus.FAILED
-        in VALID_GRAPH_STATUS_TRANSITIONS[ExecutionStatus.RUNNING]
-    )
-
-
-def test_failed_node_cannot_transition_back_to_running():
-    assert (
-        ExecutionStatus.FAILED not in VALID_STATUS_TRANSITIONS[ExecutionStatus.RUNNING]
-    )
 
 
 @pytest.mark.parametrize(

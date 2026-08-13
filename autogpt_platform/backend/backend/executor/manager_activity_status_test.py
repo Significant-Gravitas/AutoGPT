@@ -18,7 +18,7 @@ from backend.util.decorator import TimingInfo
 from backend.util.exceptions import ExecutionFailureReason, InsufficientBalanceError
 
 
-def test_resumed_execution_clears_prior_terminal_analysis():
+def test_continued_execution_clears_prior_terminal_analysis():
     execution = GraphExecutionEntry(
         user_id="user-1",
         graph_exec_id="exec-1",
@@ -26,7 +26,7 @@ def test_resumed_execution_clears_prior_terminal_analysis():
         graph_version=1,
     )
     execution_meta = SimpleNamespace(
-        status=ExecutionStatus.FAILED,
+        status=ExecutionStatus.RUNNING,
         stats=GraphExecutionMeta.Stats(
             error="You have no credits left to run an agent.",
             failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE,

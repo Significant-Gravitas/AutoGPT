@@ -116,3 +116,52 @@ async def test_generate_analytics_only_skips_complete_existing_analysis():
         request,
         db_client,
     )
+
+
+@pytest.mark.asyncio
+async def test_generate_analytics_counts_processed_rows_skipped_without_client():
+    execution = SimpleNamespace(
+        id="exec-no-client",
+        graph_id="graph-1",
+        graph_version=1,
+        user_id="user-1",
+        status=ExecutionStatus.COMPLETED,
+        stats=GraphExecutionMeta.Stats(),
+        started_at=None,
+        ended_at=None,
+    )
+    skipped_result = ExecutionAnalyticsResult(
+        agent_id="graph-1",
+        version_id=1,
+        user_id="user-1",
+        exec_id="exec-no-client",
+        summary_text=None,
+        score=None,
+        status="skipped",
+        error_message="Activity generation returned None",
+    )
+
+    with (
+        patch(
+            "backend.api.features.admin.execution_analytics_routes.get_db_async_client",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.admin.execution_analytics_routes.get_graph_executions",
+            new=AsyncMock(return_value=[execution]),
+        ),
+        patch(
+            "backend.api.features.admin.execution_analytics_routes._process_batch",
+            new=AsyncMock(return_value=[skipped_result]),
+        ),
+    ):
+        response = await generate_execution_analytics(
+            ExecutionAnalyticsRequest(graph_id="graph-1"),
+            admin_user_id="admin-1",
+        )
+
+    assert response.processed_executions == 1
+    assert response.successful_analytics == 0
+    assert response.failed_analytics == 0
+    assert response.skipped_executions == 1
+    assert response.results == [skipped_result]

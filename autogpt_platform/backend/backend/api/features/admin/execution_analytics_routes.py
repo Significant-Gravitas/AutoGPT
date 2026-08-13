@@ -268,6 +268,7 @@ async def generate_execution_analytics(
         results = []
         successful_count = 0
         failed_count = 0
+        skipped_count = 0
 
         # Process executions that need analytics generation
         if executions_to_process:
@@ -291,6 +292,8 @@ async def generate_execution_analytics(
                         successful_count += 1
                     elif result.status == "failed":
                         failed_count += 1
+                    elif result.status == "skipped":
+                        skipped_count += 1
 
                 # Small delay between batches to avoid overwhelming the LLM API
                 if batch_idx < total_batches - 1:  # Don't delay after the last batch
@@ -320,13 +323,14 @@ async def generate_execution_analytics(
                     ended_at=execution.ended_at,
                 )
             )
+            skipped_count += 1
 
         response = ExecutionAnalyticsResponse(
             total_executions=len(executions),
             processed_executions=len(executions_to_process),
             successful_analytics=successful_count,
             failed_analytics=failed_count,
-            skipped_executions=len(executions) - len(executions_to_process),
+            skipped_executions=skipped_count,
             results=results,
         )
 

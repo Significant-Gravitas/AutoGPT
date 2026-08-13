@@ -181,14 +181,6 @@ VALID_STATUS_TRANSITIONS = {
     ],
 }
 
-VALID_GRAPH_STATUS_TRANSITIONS = {
-    **VALID_STATUS_TRANSITIONS,
-    ExecutionStatus.RUNNING: [
-        *VALID_STATUS_TRANSITIONS[ExecutionStatus.RUNNING],
-        ExecutionStatus.FAILED,  # For resuming a disturbed execution
-    ],
-}
-
 
 class GraphExecutionMeta(BaseDbModel):
     id: str  # type: ignore # Override base class to make this required
@@ -1177,7 +1169,7 @@ async def update_graph_execution_stats(
     where_clause: AgentGraphExecutionWhereInput = {"id": graph_exec_id}
 
     if status:
-        if allowed_from := VALID_GRAPH_STATUS_TRANSITIONS.get(status, []):
+        if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
             # Add OR clause to check if current status is one of the allowed source statuses
             where_clause["AND"] = [
                 {"id": graph_exec_id},
