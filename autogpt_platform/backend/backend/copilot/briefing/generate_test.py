@@ -621,6 +621,27 @@ def test_markdown_escapes_untrusted_text_in_link_labels():
     )
 
 
+def test_run_totals_survive_the_run_item_cap():
+    """Home reports "N completed / N failed" off the stored row, so the counts
+    have to describe the whole night rather than the 10 runs that fit."""
+    executions = [
+        make_exec(id=f"run-{i}", status=ExecutionStatus.COMPLETED) for i in range(12)
+    ] + [make_exec(id="broke", status=ExecutionStatus.FAILED)]
+
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=executions,
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+
+    assert content is not None
+    assert len(content.run_items) == 10
+    assert (content.completed_total, content.failed_total) == (12, 1)
+
+
 def test_decision_items_are_capped_and_the_overflow_is_summarized():
     """100 pending reviews must not become a 100-line assistant message —
     that message also rides along in every later LLM turn of the session."""

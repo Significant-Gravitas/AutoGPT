@@ -47,3 +47,9 @@ class BriefingContent(BaseModel):
     # still validate; the renderer treats "<= len(decision_items)" as
     # "nothing was truncated".
     decision_total: int = 0
+    # Same idea for runs: how many terminal runs the briefing covered before
+    # `run_items` was capped, split by outcome because home reports the two
+    # counts separately. Defaults to 0, so a consumer reads them as
+    # "at least this many" against `len(run_items)`.
+    completed_total: int = 0
+    failed_total: int = 0

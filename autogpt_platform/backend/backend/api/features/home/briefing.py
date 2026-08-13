@@ -59,11 +59,19 @@ def compose_briefing(
     # group the briefing's own ordering survives ahead of the newer runs.
     merged = anchored + fresh
     merged.sort(key=lambda outcome: outcome.status == "completed")
+    # `run_items` is capped by the job, so the anchor is a slice of the night
+    # rather than all of it. The stored totals carry the rest; without them a
+    # 12-run night would report the 10 that fit.
+    anchored_completed = sum(outcome.status == "completed" for outcome in anchored)
     return _briefing(
         generated_at=generated_at,
         window_started_at=generated_at - _BRIEFING_WINDOW,
         outcomes=merged,
         source="persisted",
+        omitted_completed=max(0, persisted.completed_total - anchored_completed),
+        omitted_failed=max(
+            0, persisted.failed_total - len(anchored) + anchored_completed
+        ),
     )
 
 
@@ -73,11 +81,22 @@ def without_summaries(content: BriefingContent) -> BriefingContent:
     Summaries are persisted regardless of `AI_ACTIVITY_STATUS`, and the live
     path scrubs them per-execution when the flag is off — so the persisted path
     has to scrub them too, or the card would leak what the gate hides.
+
+    An item without a summary carries no AI text at all: its `title`/`detail`
+    already came from the non-AI fallback, and for a failure that detail is the
+    run's own error — which the live gate keeps (it drops only
+    `activity_status` and `correctness_score`). Clearing those too would
+    downgrade a real error to the generic retry line the moment home switched
+    to the persisted row.
     """
     return content.model_copy(
         update={
             "run_items": [
-                item.model_copy(update={"summary": None, "title": "", "detail": ""})
+                (
+                    item.model_copy(update={"summary": None, "title": "", "detail": ""})
+                    if item.summary
+                    else item
+                )
                 for item in content.run_items
             ]
         }
@@ -90,15 +109,20 @@ def _briefing(
     window_started_at: datetime,
     outcomes: list[HomeBriefingOutcome],
     source: Literal["persisted", "live"],
+    omitted_completed: int = 0,
+    omitted_failed: int = 0,
 ) -> HomeBriefing:
-    completed = sum(outcome.status == "completed" for outcome in outcomes)
+    """`omitted_*` are runs the briefing covered but did not list, so they
+    count toward the totals (and the routine overflow) without a card."""
+    listed_completed = sum(outcome.status == "completed" for outcome in outcomes)
+    completed = listed_completed + omitted_completed
     shown = outcomes[:_MAX_OUTCOMES]
     shown_completed = sum(outcome.status == "completed" for outcome in shown)
     return HomeBriefing(
         generated_at=generated_at,
         window_started_at=window_started_at,
         completed_count=completed,
-        failed_count=len(outcomes) - completed,
+        failed_count=len(outcomes) - listed_completed + omitted_failed,
         routine_count=max(0, completed - shown_completed),
         outcomes=shown,
         source=source,

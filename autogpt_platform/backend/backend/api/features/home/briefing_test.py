@@ -63,7 +63,12 @@ def _expert(expert_id: str = "expert-1") -> Expert:
     )
 
 
-def _stored(*items: BriefingRunItem, generated_at: datetime = NOW) -> BriefingContent:
+def _stored(
+    *items: BriefingRunItem,
+    generated_at: datetime = NOW,
+    completed_total: int = 0,
+    failed_total: int = 0,
+) -> BriefingContent:
     return BriefingContent(
         generated_at=generated_at,
         timezone="UTC",
@@ -71,6 +76,8 @@ def _stored(*items: BriefingRunItem, generated_at: datetime = NOW) -> BriefingCo
         run_items=list(items),
         decision_items=[],
         decision_total=0,
+        completed_total=completed_total,
+        failed_total=failed_total,
     )
 
 
@@ -409,6 +416,86 @@ def test_without_summaries_drops_the_ai_written_text() -> None:
     item = stripped.run_items[0]
     assert (item.summary, item.title, item.detail) == (None, "", "")
     assert item.agent_name == "Inbox triage"
+
+
+def test_without_summaries_keeps_an_error_the_ai_never_wrote() -> None:
+    """The live gate drops only `activity_status`/`correctness_score`, so a
+    failure with no summary keeps showing its real error. The persisted path
+    must not downgrade that same failure to the generic retry line."""
+    failure = _stored_item("broke", status="FAILED").model_copy(
+        update={
+            "summary": None,
+            "title": "Inbox triage needs a retry",
+            "detail": "SMTP connection refused",
+        }
+    )
+
+    item = without_summaries(_stored(failure)).run_items[0]
+
+    assert (item.title, item.detail) == (
+        "Inbox triage needs a retry",
+        "SMTP connection refused",
+    )
+
+
+def test_persisted_briefing_counts_runs_the_job_did_not_list() -> None:
+    """`run_items` is capped at 10 by the job. A 12-completion night must
+    still report 12 completed, with the unlisted ones falling into routine."""
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+        persisted=_stored(
+            *(_stored_item(f"stored-{i}") for i in range(10)),
+            completed_total=12,
+            failed_total=0,
+        ),
+    )
+
+    assert briefing.completed_count == 12
+    assert briefing.failed_count == 0
+    assert len(briefing.outcomes) == 4
+    assert briefing.routine_count == 8
+
+
+def test_persisted_run_totals_absorb_runs_that_finished_later() -> None:
+    briefing = compose_briefing(
+        now=NOW + timedelta(hours=2),
+        executions=[
+            _execution(
+                exec_id="broke-later",
+                status=ExecutionStatus.FAILED,
+                ended_at=NOW + timedelta(hours=1),
+            )
+        ],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+        persisted=_stored(
+            *(_stored_item(f"stored-{i}") for i in range(10)),
+            completed_total=12,
+            failed_total=0,
+        ),
+    )
+
+    assert (briefing.completed_count, briefing.failed_count) == (12, 1)
+
+
+def test_persisted_briefing_falls_back_to_the_listed_runs_without_totals() -> None:
+    """Rows written before the totals existed default them to 0 — the counts
+    then have to come off `run_items` rather than reporting nothing happened."""
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+        persisted=_stored(
+            _stored_item("stored-run"),
+            _stored_item("broke", status="FAILED"),
+        ),
+    )
+
+    assert (briefing.completed_count, briefing.failed_count) == (1, 1)
 
 
 def test_the_job_and_home_describe_the_same_run_identically() -> None:

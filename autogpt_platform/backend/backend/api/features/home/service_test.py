@@ -148,6 +148,38 @@ async def test_briefing_anchors_on_todays_persisted_row(
 
 
 @pytest.mark.asyncio
+async def test_briefing_anchors_on_a_row_the_job_could_not_deliver(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """`delivered_at=None` means the content was stored but the thread post
+    failed. The job redelivers that same stored content, so it is still the
+    canonical story — going live here would drift from the pending message."""
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.briefing_db.get_briefing_for_date",
+        AsyncMock(
+            return_value=MagicMock(
+                id="briefing-1",
+                delivered_at=None,
+                content=_stored_briefing().model_dump(mode="json"),
+            )
+        ),
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert dashboard.briefing.source == "persisted"
+    assert dashboard.briefing.outcomes[0].title == "Filed the report."
+
+
+@pytest.mark.asyncio
 async def test_briefing_falls_back_to_live_when_the_stored_row_is_malformed(
     mocker: MockerFixture, home_dependencies
 ) -> None:

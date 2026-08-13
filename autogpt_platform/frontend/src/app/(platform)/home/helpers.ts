@@ -42,6 +42,22 @@ export function formatHeaderDate(
   };
 }
 
+// The briefing card anchors on the persisted 9am briefing and keeps appending
+// runs that finish through the day, so its span is only "the last 24 hours"
+// first thing in the morning. Name the actual start instead of a fixed window.
+export function formatBriefingWindowStart(
+  value: Date,
+  timeZone: string,
+  locale?: string,
+): string {
+  return new Intl.DateTimeFormat(locale, {
+    timeZone,
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function formatDuration(totalSeconds: number): string {
   const totalMinutes = Math.round(totalSeconds / 60);
   const hours = Math.floor(totalMinutes / 60);

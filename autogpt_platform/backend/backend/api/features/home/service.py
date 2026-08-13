@@ -96,6 +96,14 @@ async def _persisted_briefing(
     signup), a job that failed, and — mirroring `briefings/routes.py` — stored
     content written by a different composer version that no longer validates.
 
+    `delivered_at` is deliberately not part of that test. An unstamped row
+    means the content was stored but the thread post failed, and
+    `generate_and_deliver_briefing` redelivers *that same stored content* on
+    its next run rather than recomposing it. The undelivered row is therefore
+    already the canonical story; skipping it would put home back on a live
+    recompute that drifts from the message the user is about to receive —
+    exactly the divergence this card exists to remove.
+
     The date comes off the request's own `now` rather than a second clock read:
     loading the source data takes long enough to cross local midnight, and the
     card would then look up tomorrow's row for a dashboard composed against

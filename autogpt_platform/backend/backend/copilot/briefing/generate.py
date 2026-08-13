@@ -88,6 +88,9 @@ def compose_briefing(
         _run_item(execution, agent_info_by_graph_id, experts_by_id)
         for execution in terminal[:_MAX_RUN_ITEMS]
     ]
+    # Counted before the cap: home reports "N completed / N failed" off the
+    # stored row, and len(run_items) would under-report a busy night.
+    failed_total = sum(1 for e in terminal if str(e.status) == "FAILED")
 
     expert_id_by_exec = {e.id: e.expert_id for e in executions}
     decision_items = []
@@ -133,6 +136,8 @@ def compose_briefing(
         run_items=run_items,
         decision_items=decision_items,
         decision_total=len(reviews),
+        completed_total=len(terminal) - failed_total,
+        failed_total=failed_total,
     )
 
 
