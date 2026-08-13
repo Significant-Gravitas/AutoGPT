@@ -356,6 +356,45 @@ async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_by_expert_covers_a_roster_larger_than_the_by_agent_cap(
+    server: SpinTestServer,
+):
+    # Callers sum `by_expert` into a headline total, so a top-N cut like the
+    # one `by_agent` carries would under-report it. 51 experts clears the
+    # 50-row cap that used to apply here.
+    roster_size = 51
+    user_id = f"cs-roster-{uuid4()}"
+    graph_id = f"cs-g-r-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    expert_ids = [f"cs-x-r{index}-{uuid4()}" for index in range(roster_size)]
+    try:
+        now = datetime.now(timezone.utc)
+        for index, expert_id in enumerate(expert_ids):
+            await _create_expert(expert_id, user_id)
+            await _create_run(
+                run_id=f"xr{index}-{uuid4()}",
+                user_id=user_id,
+                graph_id=graph_id,
+                status=AgentExecutionStatus.COMPLETED,
+                cost_cents=index + 1,
+                started_at=now - timedelta(minutes=index + 1),
+                expert_id=expert_id,
+            )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=now - timedelta(days=1),
+            until=now + timedelta(minutes=1),
+        )
+
+        assert len(summary.by_expert) == roster_size
+        assert sum(row.cost_cents for row in summary.by_expert) == summary.total_cents
+    finally:
+        await _cleanup(user_id, [graph_id], expert_ids)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_excludes_dry_runs_and_outside_window(server: SpinTestServer):
     user_id = f"cs-filter-{uuid4()}"
     graph_id = f"cs-g-f-{uuid4()}"

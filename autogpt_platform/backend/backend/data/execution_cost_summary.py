@@ -63,7 +63,6 @@ class UserExecutionCostSummary(BaseModel):
 
 
 _MAX_BY_AGENT_ROWS = 50
-_MAX_BY_EXPERT_ROWS = 50
 _MAX_TOP_RUNS = 50
 
 _BASE_WHERE = (
@@ -183,6 +182,14 @@ async def _fetch_by_agent(
 async def _fetch_by_expert(
     params: tuple[str, datetime, datetime],
 ) -> list[UserExpertCostRollup]:
+    """Every expert with spend in the window — deliberately uncapped.
+
+    `by_agent` can afford a top-N cut because it only ever feeds a ranked
+    list, but callers sum this rollup into a headline total. A LIMIT here
+    would silently under-report that total for anyone whose hired roster
+    outgrew the cap. Row count is bounded by the user's own experts, and
+    the rows are already being scanned for the other aggregates.
+    """
     rows = await query_raw_with_schema(
         "SELECT"
         '  "expertId" AS expert_id,'
@@ -192,8 +199,7 @@ async def _fetch_by_expert(
         f" WHERE {_BASE_WHERE}"
         '  AND "expertId" IS NOT NULL'
         '  GROUP BY "expertId"'
-        "  ORDER BY cost_cents DESC"
-        f"  LIMIT {_MAX_BY_EXPERT_ROWS}",
+        "  ORDER BY cost_cents DESC",
         *params,
     )
     return [
