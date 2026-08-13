@@ -69,7 +69,7 @@ class FactRow(BaseModel):
         recall_count: int | None,
         last_recalled_at: str | None,
         prev_recalled_at: str | None,
-    ) -> "FactRow":
+    ) -> FactRow:
         """A row carrying ONLY usage stamps, for the demotion guard.
 
         Identity and content fields are null by construction: the

@@ -163,14 +163,16 @@ def format_usage(fact: FactRow, *, now: datetime | None = None) -> str:
     SECOND-latest stamp — would allow the demotion. So the guard's own
     verdict is rendered explicitly rather than left to be inferred.
     """
+    # Verdict FIRST, before any short-circuit: the guard keys on
+    # ``prev_recalled_at`` alone, so a row carrying stamps with a missing or
+    # zero ``recall_count`` (a partial or pre-hook write) is protected while
+    # a count-first branch would render it "never" — the exact render/guard
+    # mismatch this docstring exists to prevent.
+    protected = bool(protected_fact_uuids([fact], now=now))
     count = fact.recall_count or 0
-    if not count:
+    if not count and not protected:
         return "recalls=0(never)"
-    verdict = (
-        "protected"
-        if protected_fact_uuids([fact], now=now)
-        else "demotable-on-staleness"
-    )
+    verdict = "protected" if protected else "demotable-on-staleness"
     return (
         f"recalls={count} last_recall={fact.last_recalled_at or '?'} "
         f"prior_recall={fact.prev_recalled_at or 'none'} usage={verdict}"

@@ -320,3 +320,24 @@ def test_rendered_verdict_matches_the_guard_decision():
     assert protected_fact_uuids([protected]) == {"hot"}
     assert "usage=demotable-on-staleness" in format_usage(looks_hot_but_isnt)
     assert protected_fact_uuids([looks_hot_but_isnt]) == set()
+
+
+def test_stamped_fact_without_a_count_is_not_rendered_as_never():
+    """The guard keys on ``prev_recalled_at`` alone, so a row carrying
+    stamps but a missing/zero ``recall_count`` — a partial or pre-hook
+    write — is protected. Rendering it "never" would tell the model the
+    fact is free to prune while the code-level guard silently refuses,
+    which is precisely the render/guard divergence the prompt promises
+    cannot happen."""
+    stamped_but_uncounted = _fact(
+        "orphan",
+        recall_count=None,
+        last_recalled_at=_ago(days=1),
+        prev_recalled_at=_ago(days=2),
+    )
+
+    rendered = format_usage(stamped_but_uncounted)
+
+    assert protected_fact_uuids([stamped_but_uncounted]) == {"orphan"}
+    assert "usage=protected" in rendered
+    assert "never" not in rendered
