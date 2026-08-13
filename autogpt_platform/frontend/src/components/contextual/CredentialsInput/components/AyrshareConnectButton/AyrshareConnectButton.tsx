@@ -2,10 +2,11 @@
 
 import { useContext, useState } from "react";
 
-import { Key } from "lucide-react";
+import { Key01Icon } from "@hugeicons/core-free-icons";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 import { cn } from "@/lib/utils";
 
@@ -59,7 +60,7 @@ export function AyrshareConnectButton({ className }: Props) {
       disabled={isLoading}
       className={cn("h-fit w-full py-2", className)}
       loading={isLoading}
-      leftIcon={<Key className="mr-2 h-4 w-4" />}
+      leftIcon={<Icon icon={Key01Icon} size={16} />}
     >
       Connect Social Media Accounts
     </Button>
