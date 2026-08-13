@@ -22,6 +22,9 @@ import SettingsPreferencesPage from "../page";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockUseGetFlag = vi.hoisted(() => vi.fn());
+const mockUseSearchParams = vi.hoisted(() =>
+  vi.fn(() => new URLSearchParams()),
+);
 
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -30,6 +33,14 @@ vi.mock("@/providers/onboarding/onboarding-provider", () => ({
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
+
+vi.mock("next/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/navigation")>();
+  return {
+    ...actual,
+    useSearchParams: mockUseSearchParams,
+  };
+});
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -93,6 +104,7 @@ describe("SettingsPreferencesPage", () => {
     // "on" so the notification cases exercise the card, and flip it off in
     // the case that asserts it stays hidden.
     mockUseGetFlag.mockReturnValue(true);
+    mockUseSearchParams.mockReturnValue(new URLSearchParams());
   });
 
   test("renders Account card with current email and reset password link", async () => {
@@ -194,6 +206,74 @@ describe("SettingsPreferencesPage", () => {
     // Billing and account messages are service mail and aren't represented
     // here at all, so there is nothing to switch off for them.
     expect(submitted!.briefing_frequency).toBe("WEEKLY");
+  });
+
+  test("applies an Alerts-only email footer link and saves it", async () => {
+    let submitted: NotificationPreferenceDTO | undefined;
+    mockUseSearchParams.mockReturnValue(new URLSearchParams({ f: "alerts" }));
+
+    server.use(
+      getGetV1GetNotificationPreferencesMockHandler({
+        ...defaultPreferences,
+        alerts_enabled: false,
+      }),
+      getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
+      getPostV1UpdateUserEmailMockHandler({}),
+      getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
+      getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
+        submitted = (await request.json()) as NotificationPreferenceDTO;
+        return { ...defaultPreferences, ...submitted };
+      }),
+    );
+
+    render(<SettingsPreferencesPage />);
+
+    const alertsSwitch = await screen.findByRole("switch", { name: "Alerts" });
+    const saveButton = screen.getByRole("button", { name: "Save changes" });
+
+    expect(alertsSwitch.getAttribute("aria-checked")).toBe("true");
+    expect((saveButton as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(submitted).toMatchObject({
+        briefing_frequency: "OFF",
+        alerts_enabled: true,
+      });
+    });
+  });
+
+  test("saves briefing frequency and marketplace review changes", async () => {
+    let submitted: NotificationPreferenceDTO | undefined;
+
+    server.use(
+      getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
+      getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
+      getPostV1UpdateUserEmailMockHandler({}),
+      getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
+      getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
+        submitted = (await request.json()) as NotificationPreferenceDTO;
+        return { ...defaultPreferences, ...submitted };
+      }),
+    );
+
+    render(<SettingsPreferencesPage />);
+
+    fireEvent.click(await screen.findByRole("combobox", { name: "Briefing" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Monthly" }));
+    fireEvent.click(
+      screen.getByRole("switch", { name: "Marketplace reviews" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(submitted).toMatchObject({
+        briefing_frequency: "MONTHLY",
+        alerts_enabled: true,
+        store_verdicts_enabled: false,
+      });
+    });
   });
 
   test("Discard reverts an unsaved notification change", async () => {

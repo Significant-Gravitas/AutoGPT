@@ -86,11 +86,22 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage />);
 
+    fireEvent.click(
+      await screen.findByRole("combobox", { name: "Briefing frequency" }),
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "Monthly" }));
     fireEvent.click(await screen.findByRole("switch", { name: "Alerts" }));
+    fireEvent.click(
+      screen.getByRole("switch", { name: "Marketplace reviews" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
 
     await waitFor(() => {
-      expect(submitted?.alerts_enabled).toBe(false);
+      expect(submitted).toMatchObject({
+        briefing_frequency: "MONTHLY",
+        alerts_enabled: false,
+        store_verdicts_enabled: false,
+      });
     });
   });
 });

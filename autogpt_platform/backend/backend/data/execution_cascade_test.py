@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -6,6 +7,14 @@ from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AutoPilotBlock
 from backend.data.execution import ExecutionStatus, update_graph_execution_stats
+
+
+@pytest.fixture(autouse=True)
+def mock_score_completed_run() -> Iterator[AsyncMock]:
+    with patch(
+        "backend.data.execution.score_completed_run", new_callable=AsyncMock
+    ) as mock:
+        yield mock
 
 
 def test_default_block_has_execution_timeout():
