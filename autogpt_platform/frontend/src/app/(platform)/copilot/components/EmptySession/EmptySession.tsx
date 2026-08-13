@@ -22,6 +22,8 @@ import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
+import { GreetingLoader } from "./components/GreetingLoader";
+import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
 
@@ -90,15 +92,7 @@ export function EmptySession({
   }, []);
 
   return (
-    <div
-      className={cn(
-        "relative flex h-full flex-1 justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10",
-        // The whole greeting flow reads top-down like a letter, so it
-        // anchors to the top from its first visible frame; the regular
-        // hero stays vertically centered.
-        intro.anchorTop ? "items-start" : "items-center",
-      )}
-    >
+    <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
       {!isBrainDumpEnabled && (
         <DotDistortionShader
           dotGap={14}
@@ -114,7 +108,16 @@ export function EmptySession({
         onClose={intro.closeWelcome}
       />
       <motion.div
-        className="relative z-10 w-full max-w-[52rem] text-center"
+        className={cn(
+          "relative z-10 w-full max-w-[52rem] text-center",
+          // The whole greeting flow reads top-down like a letter, so it
+          // anchors to the top from its first visible frame; the regular
+          // hero centers itself. `my-auto` rather than the parent's
+          // `items-center`: auto margins collapse to 0 once the content is
+          // taller than the scroller, where centering would push the top of
+          // the page above the scroll origin and make it unreachable.
+          !intro.anchorTop && "my-auto",
+        )}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -129,24 +132,15 @@ export function EmptySession({
               onSelectPrompt={onSend}
               disabled={isComposerDisabled}
             />
+          ) : intro.isAwaitingGreeting ? (
+            // Behind the welcome modal's blur and for as long as the
+            // pipeline is still writing. The orb it renders is the same
+            // element the card above puts in its heading, so the swap
+            // moves it there rather than replacing it.
+            <GreetingLoader />
           ) : (
-            // The regular hero also renders behind the welcome modal's
-            // blur and while the greeting is still generating — it swaps
-            // to the greeting the moment the real one arrives. Through
-            // that whole flow it wears the greeting page's own layout so
-            // the heading never moves when the swap happens.
-            <EmptyHero
-              name={greetingName}
-              isAwaitingGreeting={intro.isAwaitingGreeting}
-              isGreetingFlow={intro.anchorTop}
-            />
+            <EmptyHero name={greetingName} />
           )}
-
-          {isAgentBriefingEnabled &&
-            !intro.isVisible &&
-            !intro.isAwaitingGreeting && (
-              <PulseChips chips={pulseChips} onChipClick={onSend} />
-            )}
 
           {/* Held back while the greeting is on its way — it enters with
               the greeting page instead of sitting under a bare hero. */}
@@ -204,6 +198,27 @@ export function EmptySession({
               </motion.div>
             </div>
           )}
+
+          {/* The recap sits under the composer: the empty state's job is to
+              get a message typed, so the briefing reads as context below it
+              rather than as a wall above it. */}
+          {!intro.isVisible &&
+            !intro.isAwaitingGreeting &&
+            (isExpertsEnabled ? (
+              <div className="mx-auto mb-6 w-full max-w-[42rem]">
+                <CopilotHome
+                  fallback={
+                    isAgentBriefingEnabled ? (
+                      <PulseChips chips={pulseChips} onChipClick={onSend} />
+                    ) : null
+                  }
+                />
+              </div>
+            ) : (
+              isAgentBriefingEnabled && (
+                <PulseChips chips={pulseChips} onChipClick={onSend} />
+              )
+            ))}
         </div>
 
         {/* The greeting page is deliberately quiet: its own prompts are

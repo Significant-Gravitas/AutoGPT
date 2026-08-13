@@ -35,9 +35,10 @@ import {
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
+  Home01Icon,
   NoteEditIcon,
   Store01Icon,
-  UserGroupIcon,
+  UserGroup02Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -53,6 +54,10 @@ const MAIN_LINKS: NavLink[] = [
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
+
+// /home 404s without the experts flag, so the entry only exists for the
+// cohort that has a home to go to.
+const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home01Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
@@ -234,10 +239,13 @@ export function AppSidebar(props: Props) {
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const mainLinks = isHireExpertsEnabled
-    ? MAIN_LINKS.filter((link) => link.href !== "/library")
+    ? [HOME_LINK, ...MAIN_LINKS.filter((link) => link.href !== "/library")]
     : MAIN_LINKS;
   const workspaceLinks = isHireExpertsEnabled
-    ? [{ name: "Team", href: "/team", icon: UserGroupIcon }, ...WORKSPACE_LINKS]
+    ? [
+        { name: "Team", href: "/team", icon: UserGroup02Icon },
+        ...WORKSPACE_LINKS,
+      ]
     : WORKSPACE_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.

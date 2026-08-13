@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearWelcomePending,
   peekCapabilityCardsSeen,
@@ -184,5 +184,27 @@ describe("capability cards seen", () => {
     setCapabilityCardsSeen("user-1");
 
     expect(peekGreetingDone("user-1")).toBe(false);
+  });
+});
+
+describe("unavailable session storage", () => {
+  it("setting a flag never throws, so the action it decorates proceeds", () => {
+    vi.spyOn(window.sessionStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage disabled");
+    });
+
+    expect(() => setMicGlow()).not.toThrow();
+
+    vi.restoreAllMocks();
+  });
+
+  it("taking a flag falls back to false instead of throwing", () => {
+    vi.spyOn(window.sessionStorage, "getItem").mockImplementation(() => {
+      throw new Error("storage disabled");
+    });
+
+    expect(takeMicGlow()).toBe(false);
+
+    vi.restoreAllMocks();
   });
 });

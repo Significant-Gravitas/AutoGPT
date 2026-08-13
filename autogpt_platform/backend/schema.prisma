@@ -136,6 +136,7 @@ model User {
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  UserBriefings        UserBriefing[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
@@ -187,48 +188,19 @@ enum SubscriptionTier {
   ENTERPRISE
 }
 
-enum OnboardingStep {
-  // Introductory onboarding (Library)
-  WELCOME
-  USAGE_REASON
-  INTEGRATIONS
-  AGENT_CHOICE
-  AGENT_NEW_RUN
-  AGENT_INPUT
-  CONGRATS
-  // First Wins
-  VISIT_COPILOT
-  GET_RESULTS
-  MARKETPLACE_VISIT
-  MARKETPLACE_ADD_AGENT
-  MARKETPLACE_RUN_AGENT
-  BUILDER_SAVE_AGENT
-  // Consistency Challenge
-  RE_RUN_AGENT
-  SCHEDULE_AGENT
-  RUN_AGENTS
-  RUN_3_DAYS
-  // The Pro Playground
-  TRIGGER_WEBHOOK
-  RUN_14_DAYS
-  RUN_AGENTS_100
-  // No longer rewarded but exist for analytical purposes
-  BUILDER_OPEN
-  BUILDER_RUN_AGENT
-  // Copilot home first-run: the capability-cards modal was completed or
-  // skipped. Unrewarded; recorded so it shows only once per user.
-  CAPABILITY_CARDS
-}
-
 model UserOnboarding {
   id        String    @id @default(uuid())
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  completedSteps                OnboardingStep[] @default([])
+  // Step names are validated at the API boundary (Pydantic Literal on the
+  // backend, OpenAPI-generated union on the frontend). Storing as String[]
+  // means renames/adds/retires are code-only — legacy values become inert
+  // strings instead of stuck enum members. See SECRT-2355.
+  completedSteps                String[]         @default([])
   walletShown                   Boolean          @default(false)
-  notified                      OnboardingStep[] @default([])
-  rewardedFor                   OnboardingStep[] @default([])
+  notified                      String[]         @default([])
+  rewardedFor                   String[]         @default([])
   usageReason                   String?
   integrations                  String[]         @default([])
   otherIntegrations             String?
@@ -315,6 +287,29 @@ model OnboardingBrainDump {
   recommendedProviders Json?
 
   @@index([userId])
+}
+
+model UserBriefing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Local calendar date the briefing covers, in the user's timezone at generation time.
+  briefingDate DateTime @db.Date
+
+  // Serialized BriefingContent (see backend/copilot/briefing/models.py).
+  content Json
+
+  // Set only after the briefing was posted into the user's copilot thread.
+  // Null means the session post failed (or hasn't happened yet) — the next
+  // generation run for the same date retries delivery instead of skipping.
+  deliveredAt DateTime?
+
+  // Every read is by user + date (latest-first or exact date), so the unique
+  // index above serves them all — no secondary index to pay for on write.
+  @@unique([userId, briefingDate])
 }
 
 ////////////////////////////////////////////////////////////
@@ -877,6 +872,8 @@ model Expert {
   identity  String
   bio       String?
   skills    String[] @default([])
+  voicePreferences String @default("")
+  boundaries       String @default("")
 
   toolProfile Json?
 

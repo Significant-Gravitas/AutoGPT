@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Literal
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.model import get_chat_session
 from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_user_message,
@@ -172,6 +173,10 @@ async def run_copilot_turn_via_queue(
       what happened next"; no separate deferred-state branch needed in
       ``run_sub_session`` / ``AutoPilotBlock``.
     """
+    session = await get_chat_session(session_id, user_id)
+    if session is None:
+        raise RuntimeError("copilot_session_not_found")
+
     if await is_turn_in_flight(session_id):
         logger.info(
             "[queue] session=%s has a turn in flight; queueing message "
@@ -215,6 +220,8 @@ async def run_copilot_turn_via_queue(
             message=message,
             tool_call_id=tool_call_id,
             tool_name=tool_name,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
             permissions=permissions,
         )
     except ConcurrentTurnLimitError:
