@@ -19,6 +19,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from backend.copilot.graphiti.client import derive_memory_scope_key
+
 logger = logging.getLogger(__name__)
 
 # Grace period a tentative edge has to earn a warm-context hit before
@@ -32,7 +34,9 @@ RATIFICATION_GRACE_PERIOD = timedelta(days=30)
 HIT_TRACKER_KEY_PREFIX = "mem:hits"
 
 
-async def record_memory_hit(user_id: str, edge_uuid: str) -> None:
+async def record_memory_hit(
+    user_id: str, edge_uuid: str, expert_id: str | None = None
+) -> None:
     """INCR the Redis hit counter for one tentative edge.
 
     Called from any code path that surfaces a tentative edge to the
@@ -49,7 +53,7 @@ async def record_memory_hit(user_id: str, edge_uuid: str) -> None:
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        key = hit_key(user_id, edge_uuid)
+        key = hit_key(user_id, edge_uuid, expert_id)
         ttl_seconds = int(RATIFICATION_GRACE_PERIOD.total_seconds())
         # SET with NX + EX seeds the key with TTL, then INCR (which
         # never touches TTL), then EXPIRE so every hit refreshes the
@@ -67,13 +71,15 @@ async def record_memory_hit(user_id: str, edge_uuid: str) -> None:
         )
 
 
-async def get_hit_count(user_id: str, edge_uuid: str) -> int:
+async def get_hit_count(
+    user_id: str, edge_uuid: str, expert_id: str | None = None
+) -> int:
     """Read the Redis hit counter for one edge. Missing key → 0."""
     try:
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        raw = await redis.get(hit_key(user_id, edge_uuid))
+        raw = await redis.get(hit_key(user_id, edge_uuid, expert_id))
         if raw is None:
             return 0
         if isinstance(raw, bytes):
@@ -91,8 +97,9 @@ async def get_hit_count(user_id: str, edge_uuid: str) -> int:
         return 0
 
 
-def hit_key(user_id: str, edge_uuid: str) -> str:
-    return f"{HIT_TRACKER_KEY_PREFIX}:{user_id}:{edge_uuid}"
+def hit_key(user_id: str, edge_uuid: str, expert_id: str | None = None) -> str:
+    scope_id = derive_memory_scope_key(user_id, expert_id)
+    return f"{HIT_TRACKER_KEY_PREFIX}:{scope_id}:{edge_uuid}"
 
 
 def parse_created_at(value: Any) -> datetime | None:

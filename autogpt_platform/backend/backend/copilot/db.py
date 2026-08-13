@@ -619,6 +619,7 @@ async def get_user_chat_sessions(
     organization_id: str | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
+    autopilot_only: bool = False,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
@@ -633,7 +634,15 @@ async def get_user_chat_sessions(
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``autopilot_only`` restricts it to sessions whose ``expertId`` is NULL.
+    The explicit flag is necessary because ``expert_id=None`` retains the
+    existing meaning of "all expert scopes" for user-facing session lists.
     """
+    if expert_id == "":
+        raise ValueError("expert_id must be non-empty")
+    if expert_id is not None and autopilot_only:
+        raise ValueError("expert_id and autopilot_only are mutually exclusive")
+
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
     if organization_id is not None:
@@ -644,9 +653,11 @@ async def get_user_chat_sessions(
     if title_contains:
         params.append(f"%{_escape_like(title_contains)}%")
         conditions.append(f'"title" ILIKE ${len(params)}')
-    if expert_id:
+    if expert_id is not None:
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
+    elif autopilot_only:
+        conditions.append('"expertId" IS NULL')
     params.extend((limit, offset))
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
@@ -669,6 +680,9 @@ async def get_user_session_count(
     filter as :func:`get_user_chat_sessions` so pagination totals always
     match the visible list.
     """
+    if expert_id == "":
+        raise ValueError("expert_id must be non-empty")
+
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
     if organization_id is not None:
@@ -676,7 +690,7 @@ async def get_user_session_count(
         conditions.append(
             f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
         )
-    if expert_id:
+    if expert_id is not None:
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
     rows = await db.query_raw_with_schema(

@@ -174,6 +174,29 @@ async def test_empty_input_returns_skipped(mocker):
 
 
 @pytest.mark.asyncio
+async def test_expert_scope_is_threaded_to_lock_and_gather(mocker):
+    lock_calls: list[tuple[tuple, dict]] = []
+
+    @asynccontextmanager
+    async def scoped_lock(*args, **kwargs):
+        lock_calls.append((args, kwargs))
+        yield
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", scoped_lock)
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is True
+    assert lock_calls[0][1]["expert_id"] == "expert-1"
+    gather.assert_awaited_once_with("u", expert_id="expert-1")
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("flag_on", [True, False])
 async def test_batch_path_gated_by_flag_not_key(mocker, flag_on):
     """The Anthropic batch path is gated by DREAM_PASS_BATCH_ENABLED — the

@@ -21,6 +21,8 @@ from backend.copilot.baseline.service import (
     _build_cached_system_message,
     _build_natural_finish_empty_fallback_events,
     _compress_session_messages,
+    _enqueue_graphiti_turn,
+    _fetch_graphiti_context,
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
     _is_anthropic_model,
@@ -29,8 +31,10 @@ from backend.copilot.baseline.service import (
     _natural_finish_empty_notice_text,
     _split_user_message_after_skills_block,
     _supports_prompt_cache_markers,
+    stream_chat_completion_baseline,
 )
-from backend.copilot.model import ChatMessage
+from backend.copilot.expert_context import ExpertSessionUnavailableError
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamReasoningDelta,
     StreamReasoningEnd,
@@ -43,6 +47,89 @@ from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
+
+
+@pytest.mark.asyncio
+async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None:
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    identity_mock = AsyncMock(
+        side_effect=ExpertSessionUnavailableError(
+            "The expert for this session no longer exists or is archived."
+        )
+    )
+
+    with patch(
+        "backend.copilot.baseline.service.build_expert_identity_suffix",
+        new=identity_mock,
+    ):
+        with pytest.raises(ExpertSessionUnavailableError):
+            async for _ in stream_chat_completion_baseline(
+                session_id=session.session_id,
+                message="private prompt",
+                user_id="user-1",
+                session=session,
+            ):
+                pass
+
+    identity_mock.assert_awaited_once_with("user-1", "expert-1")
+    assert session.messages == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_graphiti_context_uses_expert_session_scope() -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        expert_id="expert-1",
+    )
+    fetch_mock = AsyncMock(return_value="expert context")
+
+    with patch(
+        "backend.copilot.graphiti.context.fetch_warm_context",
+        new=fetch_mock,
+    ):
+        context = await _fetch_graphiti_context(
+            "user-1",
+            session,
+            "first prompt",
+        )
+
+    assert context == "expert context"
+    fetch_mock.assert_awaited_once_with(
+        "user-1",
+        "first prompt",
+        expert_id="expert-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_enqueue_graphiti_turn_uses_expert_session_scope() -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        expert_id="expert-1",
+    )
+    enqueue_mock = AsyncMock()
+
+    with patch(
+        "backend.copilot.graphiti.ingest.enqueue_conversation_turn",
+        new=enqueue_mock,
+    ):
+        await _enqueue_graphiti_turn(
+            "user-1",
+            session,
+            "session-1",
+            "private prompt",
+            "private response",
+        )
+
+    enqueue_mock.assert_awaited_once_with(
+        "user-1",
+        "session-1",
+        "private prompt",
+        assistant_msg="private response",
+        expert_id="expert-1",
+    )
 
 
 class TestBaselineStreamState:

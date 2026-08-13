@@ -18,7 +18,7 @@ _USER = "test-user-followup"
 _TOOL_PATH = "backend.copilot.tools.schedule_followup"
 
 
-def _info(*, cron=None, run_at=None) -> CopilotTurnJobInfo:
+def _info(*, cron=None, run_at=None, expert_id=None) -> CopilotTurnJobInfo:
     return CopilotTurnJobInfo(
         schedule_id="cop-1",
         user_id=_USER,
@@ -26,6 +26,7 @@ def _info(*, cron=None, run_at=None) -> CopilotTurnJobInfo:
         message="check CI",
         cron=cron,
         run_at=run_at,
+        expert_id=expert_id,
         id="cop-1",
         name="copilot turn",
         next_run_time="2026-05-22T19:00:00+00:00",
@@ -126,6 +127,7 @@ async def test_one_shot_delay_omitted_session_id_passes_new_chat_sentinel(
     assert call_kwargs["cron"] is None
     assert call_kwargs["run_at"] is not None
     assert call_kwargs["user_timezone"] == "America/New_York"
+    assert call_kwargs["expert_id"] is None
     assert "fresh chat" in result.message  # user-facing copy reflects sentinel
 
 
@@ -155,6 +157,34 @@ async def test_explicit_null_session_id_passes_new_chat_sentinel(tool, session):
 
 
 @pytest.mark.asyncio
+async def test_expert_fresh_followup_inherits_expert_scope(tool, session):
+    session.expert_id = "expert-a"
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(
+        return_value=_info(expert_id="expert-a")
+    )
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="daily brief",
+            delay_seconds=600,
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert call_kwargs["session_id"] is None
+    assert call_kwargs["expert_id"] == "expert-a"
+    assert "fresh chat" in result.message
+
+
+@pytest.mark.asyncio
 async def test_session_id_override_targets_a_different_owned_session(tool, session):
     """Passing session_id targets that session instead of the current one."""
     other_session_id = "session-other-owned-by-same-user"
@@ -162,7 +192,9 @@ async def test_session_id_override_targets_a_different_owned_session(tool, sessi
     mock_user = MagicMock(timezone="UTC")
     mock_user_db().get_user_by_id = AsyncMock(return_value=mock_user)
 
-    mock_get_session = AsyncMock(return_value=MagicMock())  # session exists + owned
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(expert_id=None)
+    )  # session exists + owned
     mock_client = AsyncMock()
     mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
 
@@ -207,6 +239,62 @@ async def test_session_id_override_rejects_session_not_owned(tool, session):
     assert isinstance(result, ErrorResponse)
     assert result.error == "session_not_found"
     mock_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_session_id_override_rejects_different_memory_scope(tool, session):
+    session.expert_id = "expert-a"
+    other_session_id = "session-for-expert-b"
+    other_session = MagicMock(expert_id="expert-b")
+    mock_get_session = AsyncMock(return_value=other_session)
+    mock_client = AsyncMock()
+
+    with (
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(f"{_TOOL_PATH}.get_chat_session", new=mock_get_session),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="x",
+            delay_seconds=600,
+            session_id=other_session_id,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "session_not_found"
+    mock_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_session_id_override_accepts_same_expert_scope(tool, session):
+    session.expert_id = "expert-a"
+    other_session_id = "another-session-for-expert-a"
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-a"))
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(
+        return_value=_info(expert_id="expert-a")
+    )
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(f"{_TOOL_PATH}.get_chat_session", new=mock_get_session),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="x",
+            delay_seconds=600,
+            session_id=other_session_id,
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert call_kwargs["session_id"] == other_session_id
+    assert call_kwargs["expert_id"] == "expert-a"
 
 
 @pytest.mark.asyncio

@@ -240,7 +240,9 @@ async def _best_effort_cleanup(pass_id: str) -> None:
         )
 
 
-async def _release_lock(user_id: str, pass_id: str) -> None:
+async def _release_lock(
+    user_id: str, pass_id: str, expert_id: str | None = None
+) -> None:
     """Release the disowned dream lock with the ownership token persisted
     alongside the input bundle. Must run before ``delete_input_bundle`` —
     the token rides on that key. A missing token (bundle TTL'd out,
@@ -261,7 +263,10 @@ async def _release_lock(user_id: str, pass_id: str) -> None:
                 "leaving the lock to its TTL",
                 pass_id,
             )
-    await release_dream_lock(user_id, token)
+    if expert_id is None:
+        await release_dream_lock(user_id, token)
+    else:
+        await release_dream_lock(user_id, token, expert_id)
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +291,8 @@ async def handle_dream_batch_result(
     """
     payload = entry.payload or {}
     user_id = str(payload.get("user_id") or "")
+    expert_id_raw = payload.get("expert_id")
+    expert_id = str(expert_id_raw) if expert_id_raw is not None else None
     pass_id = str(payload.get("pass_id") or "")
     job_id = str(payload.get("job_id") or "")
     phase_models = _phase_models_from_payload(payload)
@@ -303,19 +310,55 @@ async def handle_dream_batch_result(
             job_id, "batch payload missing user_id/pass_id/phase"
         )
         if user_id:
-            await _release_lock(user_id, pass_id)
+            await _release_lock(user_id, pass_id, expert_id)
         return
 
     if phase not in NEXT_PHASE:
         logger.warning("Dream batch handler unknown phase=%r", phase)
         await _mark_job_errored_best_effort(job_id, f"unknown batch phase {phase!r}")
-        await _release_lock(user_id, pass_id)
+        await _release_lock(user_id, pass_id, expert_id)
         return
 
+    authoritative_user_id = user_id
+    authoritative_expert_id = expert_id
     try:
+        input_bundle = await read_input_bundle(pass_id)
+        if input_bundle is None:
+            logger.error(
+                "Dream batch input missing; refusing payload-only scope for pass=%s",
+                pass_id,
+            )
+            await _fail_pass(
+                user_id=user_id,
+                expert_id=expert_id,
+                pass_id=pass_id,
+                job_id=job_id,
+                phase_models=phase_models,
+                error="batch DreamInput missing; memory scope unavailable",
+            )
+            return
+
+        authoritative_user_id = input_bundle.user_id
+        authoritative_expert_id = input_bundle.expert_id
+        if user_id != authoritative_user_id or expert_id != authoritative_expert_id:
+            logger.error(
+                "Dream batch payload memory scope mismatch for pass=%s",
+                pass_id,
+            )
+            await _fail_pass(
+                user_id=authoritative_user_id,
+                expert_id=authoritative_expert_id,
+                pass_id=pass_id,
+                job_id=job_id,
+                phase_models=phase_models,
+                error="batch payload memory scope mismatch",
+            )
+            return
+
         await _handle_phase_result(
             rows=rows,
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -334,7 +377,8 @@ async def handle_dream_batch_result(
         )
         try:
             await _fail_pass(
-                user_id=user_id,
+                user_id=authoritative_user_id,
+                expert_id=authoritative_expert_id,
                 pass_id=pass_id,
                 job_id=job_id,
                 phase_models=phase_models,
@@ -343,10 +387,15 @@ async def handle_dream_batch_result(
         except Exception:
             logger.exception("Dream batch _fail_pass also failed for pass=%s", pass_id)
             try:
-                await _release_lock(user_id, pass_id)
+                await _release_lock(
+                    authoritative_user_id,
+                    pass_id,
+                    authoritative_expert_id,
+                )
             except Exception:
                 logger.exception(
-                    "Dream batch lock release failed for user=%s", user_id[:12]
+                    "Dream batch lock release failed for user=%s",
+                    authoritative_user_id[:12],
                 )
 
 
@@ -354,6 +403,7 @@ async def _handle_phase_result(
     *,
     rows: list["BatchResultRow"],
     user_id: str,
+    expert_id: str | None = None,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -372,6 +422,7 @@ async def _handle_phase_result(
         logger.warning("Dream batch handler got empty rows for pass=%s", pass_id)
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -387,6 +438,7 @@ async def _handle_phase_result(
         await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -403,6 +455,7 @@ async def _handle_phase_result(
         await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -416,6 +469,7 @@ async def _handle_phase_result(
     if next_phase is not None:
         await _chain_next_phase(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -426,6 +480,7 @@ async def _handle_phase_result(
     # Terminal phase landed — apply + finalize.
     await _finalize_complete(
         user_id=user_id,
+        expert_id=expert_id,
         pass_id=pass_id,
         job_id=job_id,
         phase_models=phase_models,
@@ -440,6 +495,7 @@ async def _handle_phase_result(
 async def _chain_next_phase(
     *,
     user_id: str,
+    expert_id: str | None = None,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -456,6 +512,7 @@ async def _chain_next_phase(
     if input_bundle is None:
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -471,6 +528,7 @@ async def _chain_next_phase(
     if api_key is None:
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -498,6 +556,7 @@ async def _chain_next_phase(
         )
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -580,7 +639,12 @@ async def _claim_apply_gate(pass_id: str) -> Literal["claimed", "duplicate", "er
 
 
 async def _finalize_complete(
-    *, user_id: str, pass_id: str, job_id: str, phase_models: dict[str, str]
+    *,
+    user_id: str,
+    expert_id: str | None = None,
+    pass_id: str,
+    job_id: str,
+    phase_models: dict[str, str],
 ) -> None:
     """Sanitize phase has landed. Run apply + cost log + complete."""
     try:
@@ -594,6 +658,7 @@ async def _finalize_complete(
         logger.exception("Failed to import dream apply for pass=%s", pass_id)
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -606,6 +671,7 @@ async def _finalize_complete(
     if sanitize_row is None or not sanitize_row.get("content"):
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -618,6 +684,7 @@ async def _finalize_complete(
     except (json.JSONDecodeError, ValidationError) as exc:
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -655,6 +722,7 @@ async def _finalize_complete(
     if gate == "error":
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -678,7 +746,7 @@ async def _finalize_complete(
         await _log_all_phase_costs(
             user_id=user_id, pass_id=pass_id, state=state, phase_models=phase_models
         )
-        await _release_lock(user_id, pass_id)
+        await _release_lock(user_id, pass_id, expert_id)
         await _best_effort_cleanup(pass_id)
         return
 
@@ -701,6 +769,7 @@ async def _finalize_complete(
             user_id,
             pass_id,
             ops,
+            expert_id=expert_id,
             known_fact_uuids=(
                 input_bundle.known_fact_uuids if input_bundle is not None else None
             ),
@@ -713,6 +782,7 @@ async def _finalize_complete(
         )
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -784,13 +854,14 @@ async def _finalize_complete(
 
     # The batch path disowned the dream lock to this callback; release it now
     # that the pass has terminated so the next dream for this user can run.
-    await _release_lock(user_id, pass_id)
+    await _release_lock(user_id, pass_id, expert_id)
     await _best_effort_cleanup(pass_id)
 
 
 async def _fail_pass(
     *,
     user_id: str,
+    expert_id: str | None = None,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -823,7 +894,7 @@ async def _fail_pass(
             phase_models=phase_models,
         )
     # Release the dream lock the batch path disowned to this callback.
-    await _release_lock(user_id, pass_id)
+    await _release_lock(user_id, pass_id, expert_id)
     await _best_effort_cleanup(pass_id)
 
 

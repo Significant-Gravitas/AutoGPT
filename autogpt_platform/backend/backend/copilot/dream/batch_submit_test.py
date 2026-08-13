@@ -26,10 +26,14 @@ from backend.copilot.dream.locks import DREAM_LOCK_KEY_PREFIX
 from backend.util.llm.providers import BatchSubmissionRef
 
 
-def _bundle() -> DreamInput:
+def _bundle(expert_id: str | None = None) -> DreamInput:
     now = datetime.now(timezone.utc)
     return DreamInput(
-        user_id="u1", group_id="user_u1", window_start=now, window_end=now
+        user_id="u1",
+        expert_id=expert_id,
+        group_id="user_u1" if expert_id is None else "expert_resolved",
+        window_start=now,
+        window_end=now,
     )
 
 
@@ -122,6 +126,23 @@ async def test_successful_enqueue_does_not_cancel():
     enqueue.assert_awaited_once()
     cancel.assert_not_awaited()
     assert ref.provider_batch_id == "msgbatch_ok"
+    assert enqueue.call_args.args[0].payload["expert_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_round_trips_and_routes_live_lock_lookup(fake_redis):
+    read_live_token = AsyncMock(return_value="tok-expert")
+    with patch(
+        "backend.copilot.dream.batch_submit.read_dream_lock_token",
+        read_live_token,
+    ):
+        await persist_input_bundle("p-expert", _bundle("expert-1"))
+
+    read_live_token.assert_awaited_once_with("u1", "expert-1")
+    bundle = await read_input_bundle("p-expert")
+    assert bundle is not None
+    assert bundle.expert_id == "expert-1"
+    assert bundle.group_id == "expert_resolved"
 
 
 @pytest.mark.asyncio

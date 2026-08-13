@@ -38,6 +38,7 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
+from backend.data.db_accessors import experts_db
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
@@ -247,24 +248,76 @@ def execute_copilot_turn(**kwargs):
     run_async(_execute_copilot_turn(**kwargs))
 
 
+async def _expert_scope_status(
+    user_id: str, expert_id: str
+) -> Literal["active", "missing", "unavailable"]:
+    """Resolve an expert schedule's owner/archive state without guessing.
+
+    ``missing`` covers deleted, archived, and wrong-owner IDs because the
+    experts accessor intentionally exposes all three as not found.
+    ``unavailable`` is kept distinct so a transient DB/RPC failure skips the
+    turn without permanently deleting a valid recurring schedule.
+    """
+    try:
+        expert = await experts_db().get_expert(
+            user_id, expert_id, include_workflows=False
+        )
+    except Exception:
+        logger.warning(
+            "Could not validate expert scope %s for scheduled copilot turn",
+            expert_id[:12],
+            exc_info=True,
+        )
+        return "unavailable"
+    return "active" if expert is not None and not expert.is_archived else "missing"
+
+
 async def _execute_copilot_turn(**kwargs):
+    expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
     try:
         # Resolve the target session.  ``session_id=None`` means "fire into
         # a fresh chat" — create one now so the user has somewhere visible
         # for the scheduled message to land.  For an explicit session_id
-        # we still verify it exists (the user may have deleted the chat
-        # between scheduling and now) and self-clean the dead schedule
-        # otherwise — orphan turns into a missing session would never
-        # surface in any UI.
+        # we still verify it exists and remains in the scope captured when
+        # the schedule was created. The user may have deleted the chat, and
+        # stale or tampered scope data must not route a turn into another
+        # persona's memory. Self-clean either invalid schedule.
         if args.session_id is None:
-            new_session = await create_chat_session(
-                args.user_id,
-                dry_run=False,
-                organization_id=args.organization_id,
-                team_id=args.team_id,
-            )
+            if not expert_scope_was_persisted:
+                logger.info(
+                    "Copilot turn schedule %s predates persisted memory scope; "
+                    "preserving its legacy AutoPilot behavior",
+                    args.schedule_id,
+                )
+            if args.expert_id is not None:
+                expert_status = await _expert_scope_status(args.user_id, args.expert_id)
+                if expert_status != "active":
+                    logger.warning(
+                        "Copilot turn schedule %s skipped — expert scope %s is %s",
+                        args.schedule_id,
+                        args.expert_id[:12],
+                        expert_status,
+                    )
+                    if expert_status == "missing":
+                        await _self_delete_copilot_turn_schedule(args)
+                    return
+            if args.expert_id is None:
+                new_session = await create_chat_session(
+                    args.user_id,
+                    dry_run=False,
+                    organization_id=args.organization_id,
+                    team_id=args.team_id,
+                )
+            else:
+                new_session = await create_chat_session(
+                    args.user_id,
+                    dry_run=False,
+                    organization_id=args.organization_id,
+                    team_id=args.team_id,
+                    expert_id=args.expert_id,
+                )
             target_session_id = new_session.session_id
             target_session = new_session
             logger.info(
@@ -280,9 +333,36 @@ async def _execute_copilot_turn(**kwargs):
                 )
                 await _self_delete_copilot_turn_schedule(args)
                 return
+            if expert_scope_was_persisted and session.expert_id != args.expert_id:
+                logger.warning(
+                    f"Copilot turn schedule {args.schedule_id} skipped — session "
+                    f"{args.session_id[:12]} memory scope no longer matches the "
+                    "persisted schedule scope; removing schedule"
+                )
+                await _self_delete_copilot_turn_schedule(args)
+                return
+            if not expert_scope_was_persisted:
+                # Legacy explicit-session jobs predate the scope field. The
+                # owned target session is the only authoritative provenance
+                # available, so recover from it rather than interpreting the
+                # missing field as AutoPilot.
+                args = args.model_copy(update={"expert_id": session.expert_id})
+            if args.expert_id is not None:
+                expert_status = await _expert_scope_status(args.user_id, args.expert_id)
+                if expert_status != "active":
+                    logger.warning(
+                        "Copilot turn schedule %s skipped — expert scope %s is %s",
+                        args.schedule_id,
+                        args.expert_id[:12],
+                        expert_status,
+                    )
+                    if expert_status == "missing":
+                        await _self_delete_copilot_turn_schedule(args)
+                    return
             target_session_id = args.session_id
             target_session = session
 
+        assert target_session_id is not None
         # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
         # point: it acquires a per-user concurrency slot AND registers the
         # session in the stream registry before queue-publishing, so the
@@ -371,6 +451,7 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             # turn to the user's default org after a cap retry.
             organization_id=args.organization_id,
             team_id=args.team_id,
+            expert_id=args.expert_id,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -425,11 +506,14 @@ async def _best_effort_unschedule(
 
 
 async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None:
-    """Convenience wrapper for copilot-turn schedules whose target session is gone."""
+    """Remove a copilot schedule whose target is unavailable or out of scope."""
     # Copilot-turn schedules aren't graph-bound — no graph target for legacy
     # cleanup, so a schedule_id-less job can only be removed manually.
     await _best_effort_unschedule(
-        args.schedule_id, None, args.user_id, reason="session deleted"
+        args.schedule_id,
+        None,
+        args.user_id,
+        reason="session unavailable or scope mismatch",
     )
 
 
@@ -1236,7 +1320,7 @@ class CopilotTurnJobArgs(BaseModel):
     # ``None`` means "create a fresh chat at fire-time" — the executor calls
     # ``create_chat_session`` and routes the turn into the newly-minted
     # session. A non-null value pins the followup to an existing session
-    # owned by the same user (current chat, sub-session, etc).
+    # owned by the same user and in the persisted persona scope.
     session_id: str | None = None
     message: str
     cron: str | None = None
@@ -1257,6 +1341,9 @@ class CopilotTurnJobArgs(BaseModel):
     # Optional for backward compat with rows persisted before org tagging.
     organization_id: str | None = None
     team_id: str | None = None
+    # Persona memory scope captured from the scheduling session. None keeps
+    # legacy schedules and Autopilot follow-ups in the user's account scope.
+    expert_id: str | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -1802,12 +1889,14 @@ class Scheduler(AppService):
         cap_retry_count: int = 0,
         organization_id: str | None = None,
         team_id: str | None = None,
+        expert_id: str | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
         When *session_id* is ``None`` the executor creates a fresh chat
-        at fire time and routes the turn into it.  Otherwise the turn
-        resumes the named (existing) session with its full history.
+        at fire time in the persisted Autopilot or expert scope and routes
+        the turn into it. Otherwise the turn resumes the named (existing)
+        session with its full history, after re-validating that scope.
 
         *cap_retry_count* is set internally by
         ``_reschedule_one_shot_after_cap`` to bound the retry depth on
@@ -1826,6 +1915,7 @@ class Scheduler(AppService):
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"

@@ -340,6 +340,50 @@ class TestExecuteAsyncAclose:
 
         assert published.aclose_called is True
 
+    @pytest.mark.asyncio
+    async def test_persisted_expert_session_is_passed_to_engine(self) -> None:
+        published = _TrackedStream(events=[])
+        session = ChatSession.new(
+            "user-1",
+            dry_run=False,
+            expert_id="expert-1",
+        )
+        session.session_id = "sess-1"
+        stream_fn = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=MagicMock(test_mode=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                stream_fn,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                return_value=published,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ) as get_session_mock,
+        ):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(),
+                threading.Event(),
+                MagicMock(),
+                _make_log(),
+            )
+
+        get_session_mock.assert_awaited_once_with("sess-1", "user-1")
+        assert stream_fn.call_args.kwargs["session"] is session
+        assert stream_fn.call_args.kwargs["session"].expert_id == "expert-1"
+
 
 def _codex_entry(
     *,

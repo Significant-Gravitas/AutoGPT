@@ -23,7 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.graphiti.client import derive_group_id
+from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.copilot.tools.graphiti_forget import mark_edges_superseded
@@ -69,7 +69,9 @@ class RatificationResult(BaseModel):
     per_edge_errors: list[str] = Field(default_factory=list)
 
 
-async def run_ratification_pass(user_id: str) -> RatificationResult:
+async def run_ratification_pass(
+    user_id: str, expert_id: str | None = None
+) -> RatificationResult:
     """Promote or supersede every ``status='tentative'`` edge for one user.
 
     Defensive in two ways:
@@ -83,7 +85,7 @@ async def run_ratification_pass(user_id: str) -> RatificationResult:
     result = RatificationResult(user_id=user_id, started_at=started_at)
 
     try:
-        group_id = derive_group_id(user_id)
+        group_id = derive_memory_group_id(user_id, expert_id)
     except ValueError as exc:
         result.error = f"invalid_user_id: {exc}"
         result.completed_at = datetime.now(timezone.utc)
@@ -128,6 +130,8 @@ async def run_ratification_pass(user_id: str) -> RatificationResult:
             try:
                 await _process_edge(
                     user_id=user_id,
+                    expert_id=expert_id,
+                    group_id=group_id,
                     driver=driver,
                     edge=edge,
                     now=now,
@@ -168,6 +172,8 @@ async def run_ratification_pass(user_id: str) -> RatificationResult:
 async def _process_edge(
     *,
     user_id: str,
+    expert_id: str | None,
+    group_id: str,
     driver: AutoGPTFalkorDriver,
     edge: dict[str, Any],
     now: datetime,
@@ -185,7 +191,10 @@ async def _process_edge(
         result.per_edge_errors.append("missing_uuid")
         return
 
-    hits = await _get_hit_count(user_id, edge_uuid)
+    if expert_id is None:
+        hits = await _get_hit_count(user_id, edge_uuid)
+    else:
+        hits = await _get_hit_count(user_id, edge_uuid, expert_id)
 
     if hits >= 1:
         promoted = await _promote_edge(driver, edge_uuid)
@@ -209,6 +218,7 @@ async def _process_edge(
         reason="unratified",
         new_status="superseded",
         user_id=user_id,
+        group_id=group_id,
     )
     if succeeded:
         result.superseded_count += 1
@@ -252,7 +262,12 @@ async def _promote_edge(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
     return bool(records)
 
 
-async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
+async def try_ratify_on_hit(
+    user_id: str,
+    edge_uuids: list[str],
+    *,
+    expert_id: str | None = None,
+) -> int:
     """Record warm-context hits and promote any tentative edges inline.
 
     Called from warm-context retrieval (``graphiti/context.py``) once
@@ -286,14 +301,14 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
     # Done before the Cypher promotion so the counter survives even
     # when the promotion path fails.
     for uuid in edge_uuids:
-        await record_memory_hit(user_id, uuid)
+        await record_memory_hit(user_id, uuid, expert_id)
 
     # Step 2: targeted Cypher promotion. We open our own driver here
     # because callers are warm-context retrieval call sites that have
     # a higher-level graphiti client but no raw driver — and we want
     # the brief write-lock semantics to be local to this function.
     try:
-        group_id = derive_group_id(user_id)
+        group_id = derive_memory_group_id(user_id, expert_id)
     except ValueError as exc:
         logger.debug("try_ratify_on_hit: invalid user_id %s: %s", user_id[:12], exc)
         return 0
@@ -357,5 +372,7 @@ async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> 
 
 # Local indirection so tests can mock ``_get_hit_count`` on this module
 # rather than the helper module (matches the poison-pill test pattern).
-async def _get_hit_count(user_id: str, edge_uuid: str) -> int:
-    return await get_hit_count(user_id, edge_uuid)
+async def _get_hit_count(
+    user_id: str, edge_uuid: str, expert_id: str | None = None
+) -> int:
+    return await get_hit_count(user_id, edge_uuid, expert_id)

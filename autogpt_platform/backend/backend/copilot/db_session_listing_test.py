@@ -114,6 +114,31 @@ async def test_title_search_escapes_like_wildcards_and_keeps_dream_filter():
 
 
 @pytest.mark.asyncio
+async def test_autopilot_only_list_query_requires_null_expert_id():
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_user_chat_sessions("u1", autopilot_only=True)
+
+    query = raw.call_args.args[0]
+    assert '"expertId" IS NULL' in query
+    assert raw.call_args.args[1:] == ("u1", 50, 0)
+
+
+@pytest.mark.asyncio
+async def test_autopilot_only_and_expert_filter_are_mutually_exclusive():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        await get_user_chat_sessions("u1", expert_id="expert-1", autopilot_only=True)
+
+
+@pytest.mark.asyncio
+async def test_empty_expert_filter_is_rejected_consistently():
+    with pytest.raises(ValueError, match="non-empty"):
+        await get_user_chat_sessions("u1", expert_id="")
+    with pytest.raises(ValueError, match="non-empty"):
+        await get_user_session_count("u1", expert_id="")
+
+
+@pytest.mark.asyncio
 async def test_count_query_uses_same_dream_exclusion_as_list():
     """Sidebar pagination count must stay consistent with the visible list."""
     raw = AsyncMock(return_value=[{"count": 7}])

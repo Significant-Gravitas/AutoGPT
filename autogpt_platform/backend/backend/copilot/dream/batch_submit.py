@@ -204,6 +204,7 @@ async def submit_phase(
         poll_delay_seconds=INITIAL_POLL_DELAY_SECONDS,
         payload={
             "user_id": user_id,
+            "expert_id": input_bundle.expert_id,
             "pass_id": pass_id,
             "job_id": job_id,
             "phase": phase,
@@ -327,7 +328,12 @@ async def persist_input_bundle(
     redis = await get_redis_async()
     payload = _input_bundle_to_dict(input_bundle)
     if lock_token is None:
-        lock_token = await read_dream_lock_token(input_bundle.user_id)
+        if input_bundle.expert_id is None:
+            lock_token = await read_dream_lock_token(input_bundle.user_id)
+        else:
+            lock_token = await read_dream_lock_token(
+                input_bundle.user_id, input_bundle.expert_id
+            )
     if lock_token is not None:
         payload["lock_token"] = lock_token
     await redis.set(
@@ -387,6 +393,7 @@ async def delete_input_bundle(pass_id: str) -> None:
 def _input_bundle_to_dict(input_bundle: DreamInput) -> dict:
     return {
         "user_id": input_bundle.user_id,
+        "expert_id": input_bundle.expert_id,
         "group_id": input_bundle.group_id,
         "window_start": input_bundle.window_start.isoformat(),
         "window_end": input_bundle.window_end.isoformat(),
@@ -434,6 +441,7 @@ def _dict_to_input_bundle(data: dict) -> DreamInput:
 
     return DreamInput(
         user_id=data["user_id"],
+        expert_id=data.get("expert_id"),
         group_id=data["group_id"],
         window_start=datetime.fromisoformat(data["window_start"]),
         window_end=datetime.fromisoformat(data["window_end"]),

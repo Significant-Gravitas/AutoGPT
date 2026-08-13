@@ -921,6 +921,7 @@ async def _save_session_to_db(
                 organization_id=session.organization_id,
                 team_id=session.team_id,
                 metadata=session.metadata,
+                expert_id=session.expert_id,
             )
             existing_message_count = 0
 

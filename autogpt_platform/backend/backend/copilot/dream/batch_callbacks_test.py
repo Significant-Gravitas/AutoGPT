@@ -79,29 +79,36 @@ def fake_redis():
 
 
 def _entry(
-    *, pass_id: str = "p1", job_id: str = "j1", phase: str = "consolidate"
+    *,
+    pass_id: str = "p1",
+    job_id: str = "j1",
+    phase: str = "consolidate",
+    expert_id: str | None = None,
 ) -> PendingEntry:
     now = datetime.now(timezone.utc)
     custom_id = f"{pass_id}:{phase}"
+    payload = {
+        "user_id": "u1",
+        "pass_id": pass_id,
+        "job_id": job_id,
+        "phase": phase,
+        "phase_models": {
+            "consolidate": "claude-sonnet-4-6",
+            "recombine": "claude-opus-4-7",
+            "sanitize": "claude-sonnet-4-6",
+        },
+        "custom_ids": [custom_id],
+        "phase_for_custom_id": {custom_id: phase},
+    }
+    if expert_id is not None:
+        payload["expert_id"] = expert_id
     return PendingEntry(
         provider="anthropic",
         provider_batch_id=f"msgbatch_{phase}",
         callback_namespace="dream_pass",
         submitted_at=now,
         next_poll_at=now,
-        payload={
-            "user_id": "u1",
-            "pass_id": pass_id,
-            "job_id": job_id,
-            "phase": phase,
-            "phase_models": {
-                "consolidate": "claude-sonnet-4-6",
-                "recombine": "claude-opus-4-7",
-                "sanitize": "claude-sonnet-4-6",
-            },
-            "custom_ids": [custom_id],
-            "phase_for_custom_id": {custom_id: phase},
-        },
+        payload=payload,
     )
 
 
@@ -124,7 +131,168 @@ _SANITIZE_CONTENT = (
 )
 
 
+async def _persist_autopilot_bundle(pass_id: str = "p1") -> None:
+    from backend.copilot.dream.batch_submit import persist_input_bundle
+    from backend.copilot.dream.fetch import DreamInput
+
+    now = datetime.now(timezone.utc)
+    await persist_input_bundle(
+        pass_id,
+        DreamInput(
+            user_id="u1",
+            group_id="user_u1",
+            window_start=now,
+            window_end=now,
+        ),
+    )
+
+
 class TestPhaseChaining:
+    @pytest.mark.asyncio
+    async def test_terminal_result_without_input_bundle_cannot_apply(
+        self, fake_redis
+    ) -> None:
+        apply = AsyncMock()
+        mark_errored = AsyncMock()
+        release_lock = AsyncMock()
+
+        with (
+            patch("backend.copilot.dream.apply.apply_operations", apply),
+            patch(
+                "backend.copilot.dream.job_status.mark_errored",
+                mark_errored,
+            ),
+            patch(
+                "backend.copilot.dream.batch_callbacks.release_dream_lock",
+                release_lock,
+            ),
+        ):
+            await handle_dream_batch_result(
+                _entry(pass_id="p-missing", phase="sanitize"),
+                [
+                    _row(
+                        custom_id="p-missing:sanitize",
+                        content=_SANITIZE_CONTENT,
+                    )
+                ],
+            )
+
+        apply.assert_not_awaited()
+        assert (
+            mark_errored.await_args.kwargs["error"]
+            == "batch DreamInput missing; memory scope unavailable"
+        )
+        release_lock.assert_awaited_once_with("u1", None)
+
+    @pytest.mark.asyncio
+    async def test_autopilot_payload_cannot_apply_expert_dream(
+        self, fake_redis
+    ) -> None:
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput
+
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p-expert",
+            DreamInput(
+                user_id="u1",
+                expert_id="expert-1",
+                group_id="expert_resolved",
+                window_start=now,
+                window_end=now,
+            ),
+            lock_token="tok-expert",
+        )
+        apply = AsyncMock()
+        mark_errored = AsyncMock()
+        release_lock = AsyncMock()
+
+        with (
+            patch("backend.copilot.dream.apply.apply_operations", apply),
+            patch(
+                "backend.copilot.dream.job_status.mark_errored",
+                mark_errored,
+            ),
+            patch(
+                "backend.copilot.dream.batch_callbacks.release_dream_lock",
+                release_lock,
+            ),
+        ):
+            await handle_dream_batch_result(
+                _entry(pass_id="p-expert", phase="sanitize"),
+                [
+                    _row(
+                        custom_id="p-expert:sanitize",
+                        content=_SANITIZE_CONTENT,
+                    )
+                ],
+            )
+
+        apply.assert_not_awaited()
+        assert (
+            mark_errored.await_args.kwargs["error"]
+            == "batch payload memory scope mismatch"
+        )
+        release_lock.assert_awaited_once_with("u1", "tok-expert", "expert-1")
+
+    @pytest.mark.asyncio
+    async def test_cross_expert_payload_cannot_apply_other_expert_dream(
+        self, fake_redis
+    ) -> None:
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput
+
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p-expert",
+            DreamInput(
+                user_id="u1",
+                expert_id="expert-1",
+                group_id="expert_resolved",
+                window_start=now,
+                window_end=now,
+            ),
+            lock_token="tok-expert",
+        )
+        submit_phase = AsyncMock()
+        mark_errored = AsyncMock()
+        release_lock = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.dream.batch_callbacks.submit_phase",
+                submit_phase,
+            ),
+            patch(
+                "backend.copilot.dream.job_status.mark_errored",
+                mark_errored,
+            ),
+            patch(
+                "backend.copilot.dream.batch_callbacks.release_dream_lock",
+                release_lock,
+            ),
+        ):
+            await handle_dream_batch_result(
+                _entry(
+                    pass_id="p-expert",
+                    phase="consolidate",
+                    expert_id="expert-2",
+                ),
+                [
+                    _row(
+                        custom_id="p-expert:consolidate",
+                        content=_CONSOLIDATE_CONTENT,
+                    )
+                ],
+            )
+
+        submit_phase.assert_not_awaited()
+        assert (
+            mark_errored.await_args.kwargs["error"]
+            == "batch payload memory scope mismatch"
+        )
+        release_lock.assert_awaited_once_with("u1", "tok-expert", "expert-1")
+
     @pytest.mark.asyncio
     async def test_consolidate_result_submits_recombine_batch(self, fake_redis):
         """Phase 1 result must trigger phase 2 submission, NOT apply."""
@@ -313,6 +481,64 @@ class TestPhaseChaining:
         assert models_by_phase["sanitize"] == "claude-sonnet-4-6"
 
     @pytest.mark.asyncio
+    async def test_expert_terminal_result_applies_and_releases_in_expert_scope(
+        self, fake_redis
+    ):
+        from backend.copilot.dream.batch_callbacks import _write_phase_to_state
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput
+
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p-expert",
+            DreamInput(
+                user_id="u1",
+                expert_id="expert-1",
+                group_id="expert_resolved",
+                window_start=now,
+                window_end=now,
+            ),
+            lock_token="tok-expert",
+        )
+        await _write_phase_to_state(
+            pass_id="p-expert",
+            phase="consolidate",
+            row=_row(custom_id="p-expert:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        await _write_phase_to_state(
+            pass_id="p-expert",
+            phase="recombine",
+            row=_row(custom_id="p-expert:recombine", content=_RECOMBINE_CONTENT),
+        )
+
+        apply = AsyncMock(
+            return_value={
+                "writes": 0,
+                "ingestion_drain_status": IngestionDrainStatus.skipped,
+            }
+        )
+        release_lock = AsyncMock()
+        with (
+            patch("backend.copilot.dream.apply.apply_operations", apply),
+            patch("backend.copilot.dream.job_status.mark_complete", new=AsyncMock()),
+            patch(
+                "backend.copilot.dream.batch_callbacks.record_phase_cost",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.dream.batch_callbacks.release_dream_lock",
+                release_lock,
+            ),
+        ):
+            await handle_dream_batch_result(
+                _entry(pass_id="p-expert", phase="sanitize", expert_id="expert-1"),
+                [_row(custom_id="p-expert:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        assert apply.call_args.kwargs["expert_id"] == "expert-1"
+        release_lock.assert_awaited_once_with("u1", "tok-expert", "expert-1")
+
+    @pytest.mark.asyncio
     async def test_redispatch_after_charge_does_not_double_bill(self, fake_redis):
         """If the BatchExecutor crashes between charging and
         ``remove_pending``, the next walk re-dispatches the same batch.
@@ -450,6 +676,7 @@ class TestPhaseChaining:
         written, silently dropping the dream."""
         from backend.copilot.dream.batch_callbacks import _write_phase_to_state
 
+        await _persist_autopilot_bundle()
         await _write_phase_to_state(
             pass_id="p1",
             phase="consolidate",
@@ -530,6 +757,7 @@ class TestErrorPaths:
 
     @pytest.mark.asyncio
     async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis):
+        await _persist_autopilot_bundle()
         mark_errored = AsyncMock()
         record_cost = AsyncMock()
         with patch(
@@ -559,6 +787,7 @@ class TestErrorPaths:
         garbage. Pydantic's default ``model_validate`` is permissive
         about unknown fields (extra="ignore"), so the failure mode the
         test pins is invalid-JSON not unknown-field."""
+        await _persist_autopilot_bundle()
         submit_phase = AsyncMock()
         mark_errored = AsyncMock()
         record_cost = AsyncMock()

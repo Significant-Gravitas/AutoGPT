@@ -7,7 +7,13 @@ import pytest
 from backend.copilot.config import ChatConfig
 
 from . import client as client_mod
-from .client import derive_group_id, evict_client, make_flex_graphiti_client
+from .client import (
+    derive_group_id,
+    derive_memory_group_id,
+    derive_memory_scope_key,
+    evict_client,
+    make_flex_graphiti_client,
+)
 
 
 class TestDeriveGroupId:
@@ -35,6 +41,53 @@ class TestDeriveGroupId:
     def test_hyphens_and_underscores_allowed(self) -> None:
         result = derive_group_id("a-b_c")
         assert result == "user_a-b_c"
+
+
+class TestDeriveMemoryGroupId:
+    def test_autopilot_preserves_exact_legacy_namespace(self) -> None:
+        user_id = "883cc9da-fe37-4863-839b-acba022bf3ef"
+
+        assert derive_memory_group_id(user_id) == derive_group_id(user_id)
+        assert derive_memory_group_id(user_id) == f"user_{user_id}"
+
+    def test_experts_get_distinct_private_namespaces(self) -> None:
+        first = derive_memory_group_id("user-1", "expert-1")
+        second = derive_memory_group_id("user-1", "expert-2")
+
+        assert first.startswith("expert_")
+        assert second.startswith("expert_")
+        assert first != second
+        assert len(first) <= 128
+
+    def test_expert_namespace_includes_owner(self) -> None:
+        assert derive_memory_group_id("user-1", "expert-1") != derive_memory_group_id(
+            "user-2", "expert-1"
+        )
+
+    def test_expert_namespace_is_deterministic(self) -> None:
+        assert derive_memory_group_id("user-1", "expert-1") == derive_memory_group_id(
+            "user-1", "expert-1"
+        )
+
+    def test_empty_expert_id_raises(self) -> None:
+        with pytest.raises(ValueError, match="expert_id must be non-empty"):
+            derive_memory_group_id("user-1", "")
+
+    def test_invalid_expert_id_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid characters"):
+            derive_memory_group_id("user-1", "expert.with.dots")
+
+    def test_internal_scope_key_preserves_legacy_autopilot_key(self) -> None:
+        assert derive_memory_scope_key("user-1") == "user-1"
+
+    def test_internal_scope_key_validates_autopilot_user_id(self) -> None:
+        with pytest.raises(ValueError, match="invalid characters"):
+            derive_memory_scope_key("user.with.dots")
+
+    def test_internal_scope_key_uses_expert_namespace_for_experts(self) -> None:
+        assert derive_memory_scope_key("user-1", "expert-1") == derive_memory_group_id(
+            "user-1", "expert-1"
+        )
 
 
 class TestEvictClient:

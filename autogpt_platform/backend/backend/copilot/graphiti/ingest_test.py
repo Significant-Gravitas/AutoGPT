@@ -47,9 +47,9 @@ class TestIngestionWorkerExceptionHandling:
         with (
             patch.object(
                 ingest,
-                "derive_group_id",
-                return_value="user_test",
-            ),
+                "derive_memory_group_id",
+                side_effect=AssertionError("worker must not re-derive memory scope"),
+            ) as derive_mock,
             patch.object(
                 ingest,
                 "get_graphiti_client",
@@ -61,12 +61,13 @@ class TestIngestionWorkerExceptionHandling:
             original_timeout = ingest._WORKER_IDLE_TIMEOUT
             ingest._WORKER_IDLE_TIMEOUT = 0.1
             try:
-                await ingest._ingestion_worker("test-user", queue)
+                await ingest._ingestion_worker("test-user", "user_test", queue)
             finally:
                 ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
         # Worker processed the item (task_done called) and exited.
         assert queue.empty()
+        derive_mock.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_worker_marks_task_done_even_when_ingestion_fails(self) -> None:
@@ -86,7 +87,7 @@ class TestIngestionWorkerExceptionHandling:
         )
 
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_test"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_test"),
             patch.object(
                 ingest,
                 "get_graphiti_client",
@@ -97,7 +98,7 @@ class TestIngestionWorkerExceptionHandling:
             original_timeout = ingest._WORKER_IDLE_TIMEOUT
             ingest._WORKER_IDLE_TIMEOUT = 0.05
             try:
-                await ingest._ingestion_worker("test-user", queue)
+                await ingest._ingestion_worker("test-user", "user_test", queue)
             finally:
                 ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
@@ -110,7 +111,7 @@ class TestIngestionCompletion:
     """``IngestionCompletion`` — the per-pass barrier that lets a caller wait
     on ONLY its own enqueued episodes, decoupled from the shared queue.
 
-    These are pure in-memory and touch no process-global ``user_queues``,
+    These are pure in-memory and touch no process-global ``group_queues``,
     so they leak no shared state across tests."""
 
     @pytest.mark.asyncio
@@ -221,7 +222,7 @@ class TestWaitForIngestion:
         )
 
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_scoped"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_scoped"),
             patch.object(
                 ingest,
                 "get_graphiti_client",
@@ -229,7 +230,9 @@ class TestWaitForIngestion:
                 return_value=mock_client,
             ),
         ):
-            worker = asyncio.create_task(ingest._ingestion_worker(user_id, queue))
+            worker = asyncio.create_task(
+                ingest._ingestion_worker(user_id, "user_scoped", queue)
+            )
             try:
                 result = await ingest.wait_for_ingestion(completion, 5)
                 assert result is True
@@ -260,7 +263,61 @@ class TestEnqueueConversationTurn:
             user_msg="hi",
         )
         # No queue should have been created.
-        assert len(ingest._get_loop_state().user_queues) == 0
+        assert len(ingest._get_loop_state().group_queues) == 0
+
+    @pytest.mark.asyncio
+    async def test_expert_turn_is_enqueued_in_expert_memory_group(self) -> None:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        with (
+            patch.object(
+                ingest,
+                "derive_memory_group_id",
+                return_value="expert_private_group",
+            ) as derive_mock,
+            patch.object(
+                ingest,
+                "_ensure_worker",
+                new_callable=AsyncMock,
+                return_value=queue,
+            ) as worker_mock,
+            patch.object(
+                ingest,
+                "_resolve_user_name",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+        ):
+            await ingest.enqueue_conversation_turn(
+                user_id="user-1",
+                session_id="session-1",
+                user_msg="private fact",
+                expert_id="expert-1",
+            )
+
+        derive_mock.assert_called_once_with("user-1", "expert-1")
+        worker_mock.assert_awaited_once_with("user-1", "expert_private_group")
+        assert queue.get_nowait()["group_id"] == "expert_private_group"
+
+
+class TestMemoryGroupQueueIsolation:
+    @pytest.mark.asyncio
+    async def test_same_user_experts_get_distinct_workers(self) -> None:
+        first_group = "expert_first"
+        second_group = "expert_second"
+
+        first_queue = await ingest._ensure_worker("user-1", first_group)
+        second_queue = await ingest._ensure_worker("user-1", second_group)
+        state = ingest._get_loop_state()
+
+        try:
+            assert first_queue is not second_queue
+            assert set(state.group_queues) == {first_group, second_group}
+            assert set(state.group_workers) == {first_group, second_group}
+        finally:
+            workers = list(state.group_workers.values())
+            for worker in workers:
+                worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
 
 
 class TestQueueFullScenario:
@@ -277,7 +334,7 @@ class TestQueueFullScenario:
         with (
             patch.object(
                 ingest,
-                "derive_group_id",
+                "derive_memory_group_id",
                 return_value="user_abc-valid-id",
             ),
             patch(
@@ -287,11 +344,11 @@ class TestQueueFullScenario:
             ),
         ):
             # Create a tiny queue so it fills instantly.
-            await ingest._ensure_worker(user_id)
+            await ingest._ensure_worker(user_id, "user_abc-valid-id")
             # Replace the queue with one that is already full.
             tiny_q: asyncio.Queue = asyncio.Queue(maxsize=1)
             tiny_q.put_nowait({"dummy": True})
-            ingest._get_loop_state().user_queues[user_id] = tiny_q
+            ingest._get_loop_state().group_queues["user_abc-valid-id"] = tiny_q
 
             # Should not raise even though the queue is full.
             await ingest.enqueue_conversation_turn(
@@ -351,7 +408,7 @@ class TestEnqueueEpisode:
     @pytest.mark.asyncio
     async def test_enqueue_episode_returns_true_on_success(self) -> None:
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 ingest, "_ensure_worker", new_callable=AsyncMock
             ) as mock_worker,
@@ -381,7 +438,9 @@ class TestEnqueueEpisode:
 
     @pytest.mark.asyncio
     async def test_enqueue_episode_returns_false_on_invalid_user(self) -> None:
-        with patch.object(ingest, "derive_group_id", side_effect=ValueError("bad id")):
+        with patch.object(
+            ingest, "derive_memory_group_id", side_effect=ValueError("bad id")
+        ):
             result = await ingest.enqueue_episode(
                 user_id="bad",
                 session_id="sess1",
@@ -398,7 +457,7 @@ class TestEnqueueEpisode:
         worker or queue is touched — degraded dream writes must not reach
         FalkorDB or the extraction LLM."""
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 ingest, "_ensure_worker", new_callable=AsyncMock
             ) as mock_worker,
@@ -420,7 +479,7 @@ class TestEnqueueEpisode:
     @pytest.mark.asyncio
     async def test_enqueue_episode_accepts_body_at_exact_size_cap(self) -> None:
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 ingest, "_ensure_worker", new_callable=AsyncMock
             ) as mock_worker,
@@ -442,7 +501,7 @@ class TestEnqueueEpisode:
         """Multi-byte UTF-8 content is measured in encoded bytes, so a
         char-count under the cap can still be rejected."""
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 ingest, "_ensure_worker", new_callable=AsyncMock
             ) as mock_worker,
@@ -464,7 +523,7 @@ class TestEnqueueEpisode:
     @pytest.mark.asyncio
     async def test_enqueue_episode_json_mode(self) -> None:
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 ingest, "_ensure_worker", new_callable=AsyncMock
             ) as mock_worker,
@@ -494,7 +553,7 @@ class TestDerivedFindingLane:
         long_msg = "The analysis reveals significant growth patterns " + "x" * 200
 
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 ingest, "_ensure_worker", new_callable=AsyncMock
             ) as mock_worker,
@@ -519,7 +578,7 @@ class TestDerivedFindingLane:
     @pytest.mark.asyncio
     async def test_short_assistant_msg_skips_finding(self) -> None:
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 ingest, "_ensure_worker", new_callable=AsyncMock
             ) as mock_worker,
@@ -569,20 +628,21 @@ class TestWorkerIdleTimeout:
 
         # Pre-populate state so cleanup can remove entries.
         state = ingest._get_loop_state()
-        state.user_queues[user_id] = queue
+        group_id = "user_idle-user"
+        state.group_queues[group_id] = queue
         task_sentinel = MagicMock()
-        state.user_workers[user_id] = task_sentinel
+        state.group_workers[group_id] = task_sentinel
 
         original_timeout = ingest._WORKER_IDLE_TIMEOUT
         ingest._WORKER_IDLE_TIMEOUT = 0.05
         try:
-            await ingest._ingestion_worker(user_id, queue)
+            await ingest._ingestion_worker(user_id, group_id, queue)
         finally:
             ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
         # After idle timeout the worker should have cleaned up.
-        assert user_id not in state.user_queues
-        assert user_id not in state.user_workers
+        assert group_id not in state.group_queues
+        assert group_id not in state.group_workers
 
 
 class TestStampEdgeMetadata:
@@ -723,7 +783,7 @@ class TestEnqueueEpisodeEdgeMetadata:
     @pytest.mark.asyncio
     async def test_edge_metadata_rides_payload_sidecar(self) -> None:
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
         ):
             q: asyncio.Queue = asyncio.Queue(maxsize=100)
@@ -745,7 +805,7 @@ class TestEnqueueEpisodeEdgeMetadata:
         """Conversation turns / memory-store calls pass no edge_metadata →
         sidecar is None → worker skips stamping → no behavior change."""
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
         ):
             q: asyncio.Queue = asyncio.Queue(maxsize=100)
@@ -763,7 +823,7 @@ class TestEnqueueEpisodeEdgeMetadata:
         """A scoped-drain caller's completion tracker is threaded onto the
         payload so the worker can signal it after processing."""
         with (
-            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
         ):
             q: asyncio.Queue = asyncio.Queue(maxsize=100)

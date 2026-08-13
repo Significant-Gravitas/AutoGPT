@@ -11,8 +11,10 @@ Two layers with different prompt weights:
   should prefer ``run_agent`` on) or ``<team_context>`` (plain session:
   hired experts the model can suggest, never silently delegate to).
 
-Everything here degrades silently to ``""`` — chat must never hard-fail on
-expert lookup (archived/missing expert, DB error, no hired experts).
+Expert identity lookup fails closed for an expert-scoped session: if its
+persisted expert is missing, archived, or unavailable, the turn raises
+``ExpertSessionUnavailableError`` instead of silently running as AutoPilot.
+Plain-session team context and expert workflow context still degrade to ``""``.
 
 Returned strings carry their own separators so callers can concatenate
 directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
@@ -26,6 +28,10 @@ from backend.data.db_accessors import experts_db
 logger = logging.getLogger(__name__)
 
 
+class ExpertSessionUnavailableError(RuntimeError):
+    """The persisted expert scope cannot safely supply its identity."""
+
+
 def escape_prompt_xml_tags(value: str) -> str:
     return value.replace("<", "&lt;").replace(">", "&gt;")
 
@@ -36,23 +42,32 @@ async def build_expert_identity_suffix(
     """Build the ``<expert_identity>`` system-prompt suffix for an expert
     session.
 
-    Returns ``""`` for plain sessions (keeps the system prompt byte-identical
-    for cross-user caching) and on any lookup failure.
+    Returns ``""`` for plain sessions, keeping the system prompt byte-identical
+    for cross-user caching. Expert-scoped sessions fail closed when their
+    identity cannot be loaded.
 
     Runs on every turn, so it skips the workflow joins — only the expert's
     own name/role/identity columns are read here.
     """
-    if not user_id or not expert_id:
+    if expert_id is None:
         return ""
+    if not user_id:
+        raise ExpertSessionUnavailableError(
+            "Expert session identity is unavailable without an authenticated user."
+        )
     try:
         expert = await experts_db().get_expert(
             user_id, expert_id, include_workflows=False
         )
     except Exception as e:
         logger.warning(f"Failed to build expert identity suffix: {e}")
-        return ""
+        raise ExpertSessionUnavailableError(
+            "The expert for this session is temporarily unavailable."
+        ) from e
     if expert is None or expert.is_archived:
-        return ""
+        raise ExpertSessionUnavailableError(
+            "The expert for this session no longer exists or is archived."
+        )
 
     name = escape_prompt_xml_tags(expert.name)
     identity = escape_prompt_xml_tags(expert.identity)
@@ -66,7 +81,6 @@ async def build_expert_identity_suffix(
         f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
-        f"<what_ive_learned>\n- Nothing recorded yet.\n</what_ive_learned>\n"
         f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
         f"The base instructions above describe AutoPilot, the platform "
         f"engine you run on. All platform capabilities and tools remain "
@@ -95,8 +109,8 @@ async def build_expert_context(user_id: str | None, expert_id: str | None) -> st
 
 async def _expert_session_context(user_id: str, expert_id: str) -> str:
     expert = await experts_db().get_expert(user_id, expert_id)
-    # Archived/missing expert at stream time → omit the block and let the
-    # turn proceed as a plain Autopilot session.
+    # Identity validation already failed closed before this context lookup.
+    # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
         return ""
 

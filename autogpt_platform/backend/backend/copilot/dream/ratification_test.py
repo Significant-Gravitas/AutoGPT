@@ -198,6 +198,29 @@ async def test_tentative_edge_within_grace_without_hits_is_untouched(
     assert promote_calls == []
 
 
+@pytest.mark.asyncio
+async def test_expert_ratification_uses_expert_graph_and_scoped_hit_key(
+    mocker, fake_redis, stub_mark_superseded
+):
+    edge = {
+        "uuid": "edge-expert",
+        "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
+    }
+    driver = _make_driver(records_for_list=[edge])
+    driver_factory = MagicMock(return_value=driver)
+    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", driver_factory)
+
+    result = await run_ratification_pass("user-1", expert_id="expert-1")
+
+    assert result.superseded_count == 1
+    group_id = driver_factory.call_args.kwargs["database"]
+    assert group_id.startswith("expert_")
+    assert stub_mark_superseded.call_args.kwargs["group_id"] == group_id
+    assert hit_key("user-1", "edge-expert", "expert-1") == (
+        f"mem:hits:{group_id}:edge-expert"
+    )
+
+
 def test_grace_period_is_thirty_days_per_spec():
     """Spec §5: tentative edges get 30 days to earn a hit before they
     are superseded. Pin the constant so a shorter window (which would

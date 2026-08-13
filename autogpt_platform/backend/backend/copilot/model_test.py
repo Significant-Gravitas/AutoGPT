@@ -162,6 +162,44 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
             assert len(orig.tool_calls) == len(loaded.tool_calls)
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_session_scope_round_trips_through_cache_and_db(
+    setup_test_user, test_user_id
+):
+    """An expert scope must survive both Redis resume and a DB-only reload."""
+    from prisma.models import Expert
+
+    from backend.data.redis_client import get_redis_async
+
+    expert = await Expert.prisma().create(
+        data={
+            "ownerUserId": test_user_id,
+            "name": "Memory Isolation Expert",
+            "role": "assistant",
+            "identity": "Keep this expert's memory private.",
+        }
+    )
+    session = ChatSession.new(
+        user_id=test_user_id,
+        dry_run=False,
+        expert_id=expert.id,
+    )
+    session.messages = [ChatMessage(role="user", content="Remember this privately")]
+
+    saved = await upsert_chat_session(session)
+
+    cached = await get_chat_session(saved.session_id, test_user_id)
+    assert cached is not None
+    assert cached.expert_id == expert.id
+
+    redis = await get_redis_async()
+    await redis.delete(f"chat:session:{saved.session_id}")
+
+    loaded = await get_chat_session(saved.session_id, test_user_id)
+    assert loaded is not None
+    assert loaded.expert_id == expert.id
+
+
 # --------------------------------------------------------------------------- #
 #  _merge_consecutive_assistant_messages                                       #
 # --------------------------------------------------------------------------- #
@@ -1003,6 +1041,27 @@ async def test_save_session_to_db_persists_new_messages_when_windowed(
     # And the in-memory new message receives its sequence back-fill from the
     # actual start returned by the batch helper.
     assert new_msg.sequence == 1500
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_creates_new_row_with_expert_scope(
+    mocker: MockerFixture,
+) -> None:
+    session = ChatSession.new(
+        user_id="u1",
+        dry_run=False,
+        expert_id="expert-1",
+    )
+    mock_db = mocker.MagicMock()
+    mock_db.get_chat_session_metadata = mocker.AsyncMock(return_value=None)
+    mock_db.create_chat_session = mocker.AsyncMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=0)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(session, existing_message_count=0)
+
+    assert mock_db.create_chat_session.await_args.kwargs["expert_id"] == "expert-1"
 
 
 @pytest.mark.asyncio(loop_scope="session")

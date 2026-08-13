@@ -139,7 +139,7 @@ class GetSubSessionResultTool(BaseTool):
         # shape for "doesn't exist" and "belongs to someone else" avoids
         # leaking session existence.
         sub = await get_chat_session(inner_session_id)
-        if sub is None or sub.user_id != user_id:
+        if sub is None or sub.user_id != user_id or sub.expert_id != session.expert_id:
             return ErrorResponse(
                 message=(
                     f"No sub-session with id {inner_session_id}. It may have "
