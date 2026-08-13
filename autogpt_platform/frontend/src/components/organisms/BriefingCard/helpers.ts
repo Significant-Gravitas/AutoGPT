@@ -14,3 +14,10 @@ export function formatBriefingDate(date: Date | string): string {
 export function isInternalLink(link: string): boolean {
   return link.startsWith("/") && !link.startsWith("//");
 }
+
+// Relative paths only: the backend composes these, but nothing else stops a
+// future regression from delivering an absolute or `javascript:` URL to a
+// Next.js <Link>.
+export function getSafeLink(link: string | null | undefined): string | null {
+  return link && isInternalLink(link) ? link : null;
+}

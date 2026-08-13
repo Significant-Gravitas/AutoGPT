@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
+import userEvent from "@testing-library/user-event";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
@@ -123,15 +124,98 @@ test("renders briefing sections when a briefing is available", async () => {
   );
   render(<EmptySession {...baseProps} />);
 
-  expect(await screen.findByText("What ran")).toBeDefined();
-  expect(screen.getByText("What was found")).toBeDefined();
-  // Findings carry their agent name, matching the thread markdown.
+  expect(await screen.findByText("Recap")).toBeDefined();
+  expect(screen.getByText("Lead Finder")).toBeDefined();
+  expect(screen.getByText("Ticket Triager")).toBeDefined();
+  // A summary carries the expert it came from, matching the thread markdown.
   const finding = screen.getByText(/Found 3 leads/);
-  expect(finding.textContent).toContain("Lead Finder");
+  expect(finding.textContent).toContain("Sales Scout");
 
   // The recap does not repeat the decisions: the needs-you list on /home
   // shows the same pending reviews, and it can act on them.
   expect(screen.queryByText(/Needs your decision/)).toBeNull();
+});
+
+test("shows three runs, then all of them behind the show-all toggle", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200({
+      id: "briefing-1",
+      briefing_date: new Date(),
+      created_at: new Date(),
+      delivered_at: null,
+      content: {
+        generated_at: new Date(),
+        timezone: "UTC",
+        zero_expert_fallback: false,
+        run_items: Array.from({ length: 5 }, (_, i) => ({
+          expert_id: null,
+          expert_name: null,
+          expert_avatar_url: null,
+          agent_name: `Agent ${i}`,
+          graph_id: `graph-${i}`,
+          execution_id: `exec-${i}`,
+          library_agent_id: null,
+          status: "COMPLETED",
+          summary: null,
+          link: null,
+        })),
+        decision_items: [],
+        decision_total: 0,
+      },
+    }),
+  );
+  render(<EmptySession {...baseProps} />);
+
+  // Every row stays mounted so the card can animate its height in both
+  // directions; the collapsed card clips to three rows visually, and only
+  // the expanded one scrolls.
+  expect(await screen.findByText("Agent 4")).toBeDefined();
+  expect(screen.getByRole("list").className).toContain("overflow-hidden");
+
+  await userEvent.click(
+    screen.getByRole("button", { name: /Show all results \(5\)/ }),
+  );
+
+  expect(screen.getByRole("list").className).toContain("overflow-y-auto");
+  expect(screen.getByRole("button", { name: /Show less/ })).toBeDefined();
+});
+
+test("links each row straight at its run", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200({
+      id: "briefing-1",
+      briefing_date: new Date(),
+      created_at: new Date(),
+      delivered_at: null,
+      content: {
+        generated_at: new Date(),
+        timezone: "UTC",
+        zero_expert_fallback: false,
+        run_items: [
+          {
+            expert_id: "expert-1",
+            expert_name: "Sales Scout",
+            expert_avatar_url: null,
+            agent_name: "Lead Finder",
+            graph_id: "graph-1",
+            execution_id: "exec-1",
+            library_agent_id: "lib-1",
+            status: "COMPLETED",
+            summary: "Found 3 leads",
+            link: "/library/agents/lib-1/runs/exec-1",
+          },
+        ],
+        decision_items: [],
+        decision_total: 0,
+      },
+    }),
+  );
+  render(<EmptySession {...baseProps} />);
+
+  const row = await screen.findByRole("link", { name: /Lead Finder/ });
+  expect(row.getAttribute("href")).toBe("/library/agents/lib-1/runs/exec-1");
 });
 
 test("keeps the decisions inbox and team status off the copilot recap", async () => {
@@ -226,8 +310,8 @@ test("renders a run row without a link when the briefing has no deep link", asyn
 });
 
 test("does not render a hollow briefing card when there are no runs", async () => {
-  // A run paused on an approval is not terminal, so it never lands in "What
-  // ran" — leaving a card that would show only a date.
+  // A run paused on an approval is not terminal, so it never lands in the
+  // run list — leaving a card that would show only a date.
   mockPulseStripAgent();
   server.use(
     getGetBriefingsGetLatestBriefingMockHandler200({
@@ -259,5 +343,5 @@ test("does not render a hollow briefing card when there are no runs", async () =
 
   await screen.findByPlaceholderText(/./);
   expect(screen.queryByText("This morning")).toBeNull();
-  expect(screen.queryByText("What ran")).toBeNull();
+  expect(screen.queryByText("Recap")).toBeNull();
 });

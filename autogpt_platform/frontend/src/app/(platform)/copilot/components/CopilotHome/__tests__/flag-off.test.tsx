@@ -102,8 +102,7 @@ test("keeps the pulse strip and mounts no briefing home when experts is off", as
     expect(requestedPaths.some((path) => path.includes("briefing"))).toBe(
       false,
     );
-    expect(screen.queryByText("What ran")).toBeNull();
-    expect(screen.queryByText("What was found")).toBeNull();
+    expect(screen.queryByText("Recap")).toBeNull();
   } finally {
     server.events.removeListener("request:start", record);
   }
