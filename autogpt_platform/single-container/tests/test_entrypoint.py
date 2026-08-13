@@ -123,7 +123,7 @@ class PublicOriginConfigurationTest(unittest.TestCase):
                 "pipefail",
                 "-c",
                 'source "$1"; AUTOGPT_PUBLIC_URL="$2"; '
-                'configure_backend_cors_origin; '
+                "configure_backend_cors_origin; "
                 'printf "%s\\n" "$BACKEND_CORS_ALLOW_ORIGINS"',
                 "bash",
                 str(ENTRYPOINT_PATH),
