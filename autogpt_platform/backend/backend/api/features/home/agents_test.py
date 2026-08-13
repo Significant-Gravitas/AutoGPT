@@ -54,6 +54,7 @@ def test_working_outranks_paused_and_setup() -> None:
         ],
         running_expert_ids={"busy"},
         next_run_by_expert={},
+        spend_by_expert={},
     )
 
     assert [status.status for status in statuses] == ["working", "ready"]
@@ -69,6 +70,7 @@ def test_status_precedence_walks_down_to_failed() -> None:
         ],
         running_expert_ids=set(),
         next_run_by_expert={},
+        spend_by_expert={},
     )
 
     assert [status.status for status in statuses] == [
@@ -89,6 +91,7 @@ def test_team_summary_groups_non_ready_states_as_attention() -> None:
         ],
         running_expert_ids={"working"},
         next_run_by_expert={},
+        spend_by_expert={},
     )
 
     summary = compose_team_summary(statuses)
@@ -99,6 +102,21 @@ def test_team_summary_groups_non_ready_states_as_attention() -> None:
     assert summary.needs_attention == 2
 
 
+def test_spend_lands_on_the_matching_expert_and_totals_on_the_team() -> None:
+    statuses = compose_agent_statuses(
+        experts=[_expert(expert_id="spender"), _expert(expert_id="idle")],
+        running_expert_ids=set(),
+        next_run_by_expert={},
+        # "stranger" models an archived expert's rollup: it must not leak into
+        # the team total, which has to reconcile with the listed rows.
+        spend_by_expert={"spender": 425, "stranger": 999},
+    )
+
+    spend = {status.expert.id: status.spend_cents for status in statuses}
+    assert spend == {"spender": 425, "idle": 0}
+    assert compose_team_summary(statuses).spend_cents == 425
+
+
 def test_next_run_time_comes_from_the_expert_index() -> None:
     earliest = datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc)
 
@@ -106,6 +124,7 @@ def test_next_run_time_comes_from_the_expert_index() -> None:
         experts=[_expert(expert_id="scheduled"), _expert(expert_id="idle")],
         running_expert_ids=set(),
         next_run_by_expert={"scheduled": earliest},
+        spend_by_expert={},
     )
 
     next_runs = {status.expert.id: status.next_run_time for status in statuses}

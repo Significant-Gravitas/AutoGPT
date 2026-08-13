@@ -156,7 +156,12 @@ async def _load_home_source_data(
         review_db.get_pending_reviews_for_user(user_id, page=1, page_size=_REVIEW_LIMIT)
     )
     cost_summary_task = asyncio.create_task(
-        get_user_cost_summary(user_id=user_id, since=week_start, until=now)
+        get_user_cost_summary(
+            user_id=user_id,
+            since=week_start,
+            until=now,
+            include_by_expert=True,
+        )
     )
     schedules_task = asyncio.create_task(_get_schedules(user_id=user_id))
     credits_task = asyncio.create_task(
