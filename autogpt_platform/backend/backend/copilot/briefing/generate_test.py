@@ -1069,6 +1069,10 @@ async def test_ai_summary_flag_off_skips_generation_entirely(
         "--- and then some prose",
         "1. Do this first",
         "| col | col |",
+        # `>` is escaped one layer earlier, by `_md`'s inline metacharacter
+        # pass rather than by the block-prefix pass. Pinned here so dropping it
+        # from `_MARKDOWN_META_RE` can't silently open a blockquote.
+        "> Quoted as if the platform said it",
     ],
 )
 def test_narrative_cannot_forge_briefing_structure(narrative):
