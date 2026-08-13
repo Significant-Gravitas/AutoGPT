@@ -222,7 +222,7 @@ async def _user_for(customer_id: object) -> User | None:
         return None
     user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
     if user is None:
-        logger.warning("No user for Stripe customer %s; skipping email", customer_id)
+        logger.warning(f"No user for Stripe customer {customer_id}; skipping email")
     return user
 
 

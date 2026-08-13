@@ -52,6 +52,8 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data.alerts import raise_condition as raise_alert_condition
+from backend.data.alerts import resolve_condition as resolve_alert_condition
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
     get_marketplace_graphs_for_monitoring,
@@ -68,6 +70,7 @@ from backend.data.briefing import (
     mark_briefing_delivered,
     update_briefing_content,
 )
+from backend.data.briefing_data import count_scheduled_agents
 from backend.data.credit import (
     UsageTransactionMetadata,
     get_user_credit_model,
@@ -95,9 +98,6 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
-from backend.data.alerts import raise_condition as raise_alert_condition
-from backend.data.alerts import resolve_condition as resolve_alert_condition
-from backend.data.briefing_data import count_scheduled_agents
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -143,6 +143,7 @@ from backend.data.user import (
     get_user_email_verification,
     get_user_integrations,
     get_user_notification_preference,
+    get_user_subscription_tier,
     set_user_credentials,
     update_user_integrations,
 )
@@ -311,6 +312,7 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    get_user_subscription_tier = _(get_user_subscription_tier)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
@@ -563,6 +565,11 @@ class DatabaseManagerClient(AppServiceClient):
     # User Emails
     get_user_email_by_id = _(d.get_user_email_by_id)
 
+    # Alerts
+    raise_alert_condition = _(d.raise_alert_condition)
+    resolve_alert_condition = _(d.resolve_alert_condition)
+    count_scheduled_agents = _(d.count_scheduled_agents)
+
     # Library
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
@@ -630,6 +637,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_user_subscription_tier = d.get_user_subscription_tier
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations

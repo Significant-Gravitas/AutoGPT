@@ -35,7 +35,9 @@ class BaseNotificationData(BaseModel):
 
 
 class BriefingPeriod(BaseModel):
-    label: str = Field(description='Range shown in the eyebrow, "Mon 27 Jul – Sun 2 Aug"')
+    label: str = Field(
+        description='Range shown in the eyebrow, "Mon 27 Jul – Sun 2 Aug"'
+    )
     noun: str = Field(description='"this week" / "yesterday" / "in July"')
     adjective: str = Field(description='"week" / "day" / "month"')
     frequency: Literal["daily", "weekly", "monthly"]

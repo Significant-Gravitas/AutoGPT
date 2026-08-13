@@ -8,6 +8,8 @@ import {
   getPostV1UpdateUserEmailMockHandler,
   getPostV1UpdateUserTimezoneMockHandler,
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
+import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
+import type { NotificationPreferenceDTO } from "@/app/api/__generated__/models/notificationPreferenceDTO";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -19,6 +21,7 @@ import {
 import SettingsPreferencesPage from "../page";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
+const mockUseGetFlag = vi.hoisted(() => vi.fn());
 
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -27,6 +30,17 @@ vi.mock("@/providers/onboarding/onboarding-provider", () => ({
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: mockUseGetFlag,
+  };
+});
 
 const testUser = {
   id: "user-1",
@@ -44,7 +58,7 @@ const defaultPreferences = {
   alerts_enabled: true,
   store_verdicts_enabled: true,
   daily_limit: 0,
-};
+} satisfies NotificationPreference;
 
 function setupBaseHandlers(
   options: {
@@ -75,9 +89,14 @@ describe("SettingsPreferencesPage", () => {
       isLoggedIn: true,
       isUserLoading: false,
     });
+    // Notifications are behind settings-notifications; default the suite to
+    // "on" so the notification cases exercise the card, and flip it off in
+    // the case that asserts it stays hidden.
+    mockUseGetFlag.mockReturnValue(true);
   });
 
   test("renders Account card with current email and reset password link", async () => {
+    mockUseGetFlag.mockReturnValue(false);
     setupBaseHandlers();
 
     render(<SettingsPreferencesPage />);
@@ -140,14 +159,7 @@ describe("SettingsPreferencesPage", () => {
   });
 
   test("switching Alerts off enables Save and persists the volume knob", async () => {
-    let submitted:
-      | {
-          email: string;
-          briefing_frequency: string;
-          alerts_enabled: boolean;
-          store_verdicts_enabled: boolean;
-        }
-      | undefined;
+    let submitted: NotificationPreferenceDTO | undefined;
 
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
@@ -155,7 +167,7 @@ describe("SettingsPreferencesPage", () => {
       getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
-        submitted = (await request.json()) as typeof submitted;
+        submitted = (await request.json()) as NotificationPreferenceDTO;
         return { ...defaultPreferences, ...submitted };
       }),
     );
@@ -338,5 +350,15 @@ describe("SettingsPreferencesPage", () => {
     });
 
     vi.unstubAllGlobals();
+  });
+  test("hides the notifications card when settings-notifications is off", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+    setupBaseHandlers();
+
+    render(<SettingsPreferencesPage />);
+
+    expect(await screen.findByText("Time zone")).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "Briefing" })).toBeNull();
+    expect(screen.queryAllByRole("switch")).toHaveLength(0);
   });
 });

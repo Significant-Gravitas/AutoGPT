@@ -98,9 +98,7 @@ OPS = OpsData(
     age_label="6 August at 09:14",
     requested_at_label="6 August at 09:14",
 )
-WELCOME = SubscriptionWelcomeData(
-    user_name="Sam", plan=PLAN, renews_label="8 Sep 2026"
-)
+WELCOME = SubscriptionWelcomeData(user_name="Sam", plan=PLAN, renews_label="8 Sep 2026")
 ENDED = SubscriptionEndedData(
     user_name="Sam", plan=PLAN, ended_label="8 Aug 2026", due_to_payment=True
 )
@@ -124,9 +122,7 @@ def test_every_family_renders_a_complete_document(notification_type, data):
 
 
 @pytest.mark.parametrize("notification_type,data", ALL)
-def test_every_family_has_a_plain_text_part_from_the_same_data(
-    notification_type, data
-):
+def test_every_family_has_a_plain_text_part_from_the_same_data(notification_type, data):
     email = render(notification_type, data, "sam@example.com", URLS)
     assert len(email.text) > 200
     assert "<table" not in email.text
@@ -166,9 +162,7 @@ def test_ops_says_it_is_internal_and_offers_no_unsubscribe():
 
 
 def test_user_supplied_values_are_escaped_not_executed():
-    hostile = VERDICT.model_copy(
-        update={"agent_name": "<script>alert('x')</script>"}
-    )
+    hostile = VERDICT.model_copy(update={"agent_name": "<script>alert('x')</script>"})
     email = render(NotificationType.VERDICT, hostile, "sam@example.com", URLS)
     assert "<script>" not in email.html
     assert "&lt;script&gt;" in email.html

@@ -34,9 +34,18 @@ def _subscription(**over) -> dict:
         "current_period_end": 1789200000,
         "cancel_at_period_end": False,
         "ended_at": 1789200000,
-        "items": {"data": [{"price": {"id": "price_1", "unit_amount": 5000,
-                                      "currency": "usd",
-                                      "recurring": {"interval": "month"}}}]},
+        "items": {
+            "data": [
+                {
+                    "price": {
+                        "id": "price_1",
+                        "unit_amount": 5000,
+                        "currency": "usd",
+                        "recurring": {"interval": "month"},
+                    }
+                }
+            ]
+        },
     }
     sub.update(over)
     return sub
@@ -51,9 +60,18 @@ def _invoice(**over) -> dict:
         "attempt_count": 1,
         "next_payment_attempt": 1789200000,
         "period_end": 1789200000,
-        "lines": {"data": [{"price": {"id": "price_1", "unit_amount": 5000,
-                                      "currency": "usd",
-                                      "recurring": {"interval": "month"}}}]},
+        "lines": {
+            "data": [
+                {
+                    "price": {
+                        "id": "price_1",
+                        "unit_amount": 5000,
+                        "currency": "usd",
+                        "recurring": {"interval": "month"},
+                    }
+                }
+            ]
+        },
     }
     invoice.update(over)
     return invoice
@@ -79,9 +97,7 @@ def _context(user, claim=True):
             "backend.notifications.lifecycle.claim_once",
             AsyncMock(return_value=claim),
         ),
-        patch(
-            "backend.notifications.lifecycle.queue_notification_async", AsyncMock()
-        ),
+        patch("backend.notifications.lifecycle.queue_notification_async", AsyncMock()),
         patch("backend.notifications.lifecycle.queue_audience_change", AsyncMock()),
     ]
 
@@ -105,8 +121,9 @@ async def test_first_subscription_gets_the_welcome_and_the_tour():
         AsyncMock(return_value=True),
     ):
         calls = await _run(
-            lambda: lifecycle.on_checkout_completed({"customer": CUSTOMER},
-                                                    _subscription()),
+            lambda: lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER}, _subscription()
+            ),
             user,
         )
     queued = calls["notify"].await_args.args[0]
@@ -120,8 +137,9 @@ async def test_first_subscription_gets_the_welcome_and_the_tour():
 async def test_a_returning_customer_is_not_greeted_like_a_stranger():
     user = _User(welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
     calls = await _run(
-        lambda: lifecycle.on_checkout_completed({"customer": CUSTOMER},
-                                                _subscription()),
+        lambda: lifecycle.on_checkout_completed(
+            {"customer": CUSTOMER}, _subscription()
+        ),
         user,
     )
     calls["notify"].assert_not_awaited()
@@ -190,7 +208,9 @@ async def test_resuming_closes_the_loop_on_the_cancellation_email():
         ),
         _User(),
     )
-    assert calls["notify"].await_args.args[0].type is NotificationType.SUBSCRIPTION_RESUMED
+    assert (
+        calls["notify"].await_args.args[0].type is NotificationType.SUBSCRIPTION_RESUMED
+    )
 
 
 @pytest.mark.asyncio
@@ -218,6 +238,4 @@ async def test_the_ended_email_branches_on_which_road_they_took():
 
 def test_the_platform_does_not_listen_for_trials():
     assert not hasattr(lifecycle, "on_trial_will_end")
-    assert not any(
-        name.endswith("TRIAL_ENDING") for name in dir(NotificationType)
-    )
+    assert not any(name.endswith("TRIAL_ENDING") for name in dir(NotificationType))

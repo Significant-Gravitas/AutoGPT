@@ -26,6 +26,7 @@ from backend.data.notifications import (
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications import briefing_runner, mailerlite
 from backend.notifications.email import EmailSender
+from backend.notifications.preferences import wants_notification
 from backend.notifications.queue import (
     AUDIENCE_QUEUE,
     OPS_NOTIFICATIONS_QUEUE,
@@ -33,7 +34,6 @@ from backend.notifications.queue import (
     create_notification_config,
     queue_notification_async,
 )
-from backend.notifications.preferences import wants_notification
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import DiscordChannel, discord_send_alert
@@ -146,9 +146,8 @@ class NotificationManager(AppService):
         ).get_user_email_verification(event.user_id)
         if not verified or not wants_notification(preference, event.type):
             logger.debug(
-                "Skipping %s for user %s: not wanted or unverified",
-                event.type,
-                event.user_id,
+                f"Skipping {event.type} for user {event.user_id}: not wanted or "
+                "unverified"
             )
             return True
 

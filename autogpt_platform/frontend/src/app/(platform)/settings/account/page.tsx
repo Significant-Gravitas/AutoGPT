@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { AccountCard } from "./components/AccountCard/AccountCard";
 import { NotificationsCard } from "./components/NotificationsCard/NotificationsCard";
@@ -34,6 +35,8 @@ export default function SettingsPreferencesPage() {
     savePreferences,
   } = usePreferencesPage();
 
+  const showNotifications = useGetFlag(Flag.SETTINGS_NOTIFICATIONS);
+
   if (isError) {
     return (
       <ErrorCard
@@ -64,13 +67,15 @@ export default function SettingsPreferencesPage() {
         index={1}
       />
 
-      <NotificationsCard
-        values={formState.notifications}
-        onBriefingFrequencyChange={setBriefingFrequency}
-        onAlertsChange={setAlertsEnabled}
-        onStoreVerdictsChange={setStoreVerdictsEnabled}
-        index={2}
-      />
+      {showNotifications ? (
+        <NotificationsCard
+          values={formState.notifications}
+          onBriefingFrequencyChange={setBriefingFrequency}
+          onAlertsChange={setAlertsEnabled}
+          onStoreVerdictsChange={setStoreVerdictsEnabled}
+          index={2}
+        />
+      ) : null}
 
       <SaveBar
         visible={dirty}

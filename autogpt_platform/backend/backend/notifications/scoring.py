@@ -63,8 +63,8 @@ async def score_completed_run(graph_exec_id: str) -> float | None:
         )
         score = compute_score(
             status=execution.executionStatus,
-            cost_cents=float(stats.get("cost") or 0),
-            node_error_count=int(stats.get("node_error_count") or 0),
+            cost_cents=_numeric_stat(stats.get("cost")),
+            node_error_count=int(_numeric_stat(stats.get("node_error_count"))),
             has_activity=bool(stats.get("activity_status")),
             first_success=first_success,
             cost_baseline=baseline,
@@ -75,9 +75,22 @@ async def score_completed_run(graph_exec_id: str) -> float | None:
         return score
     except Exception:
         logger.warning(
-            "Could not score run %s for the briefing", graph_exec_id, exc_info=True
+            f"Could not score run {graph_exec_id} for the briefing", exc_info=True
         )
         return None
+
+
+def _numeric_stat(value: object) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
 
 
 def compute_score(

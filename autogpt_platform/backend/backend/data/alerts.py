@@ -97,7 +97,9 @@ async def raise_condition(
             )
             return AlertConditionDTO.from_db(created)
 
-        recently_alerted = existing.sentAt is not None and existing.sentAt > dedupe_since
+        recently_alerted = (
+            existing.sentAt is not None and existing.sentAt > dedupe_since
+        )
         status = (
             AlertConditionStatus.DEFERRED
             if recently_alerted

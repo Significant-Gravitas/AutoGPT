@@ -16,7 +16,9 @@ NY_MORNING = datetime(2026, 8, 3, 11, 30, tzinfo=timezone.utc)  # a Monday
 
 
 def test_due_in_the_users_own_morning_not_ours():
-    assert is_briefing_due(BriefingFrequency.DAILY, "America/New_York", NY_MORNING, None)
+    assert is_briefing_due(
+        BriefingFrequency.DAILY, "America/New_York", NY_MORNING, None
+    )
     # Same instant is mid-afternoon in Berlin, so nothing is due there.
     assert not is_briefing_due(
         BriefingFrequency.DAILY, "Europe/Berlin", NY_MORNING, None
@@ -25,7 +27,9 @@ def test_due_in_the_users_own_morning_not_ours():
 
 def test_weekly_only_fires_on_a_monday():
     tuesday = datetime(2026, 8, 4, 11, 30, tzinfo=timezone.utc)
-    assert is_briefing_due(BriefingFrequency.WEEKLY, "America/New_York", NY_MORNING, None)
+    assert is_briefing_due(
+        BriefingFrequency.WEEKLY, "America/New_York", NY_MORNING, None
+    )
     assert not is_briefing_due(
         BriefingFrequency.WEEKLY, "America/New_York", tuesday, None
     )
@@ -40,7 +44,9 @@ def test_monthly_only_fires_on_the_first():
 
 
 def test_off_is_never_due():
-    assert not is_briefing_due(BriefingFrequency.OFF, "America/New_York", NY_MORNING, None)
+    assert not is_briefing_due(
+        BriefingFrequency.OFF, "America/New_York", NY_MORNING, None
+    )
 
 
 def test_a_period_is_never_briefed_twice():

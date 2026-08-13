@@ -36,26 +36,26 @@ async def flush_matured_alerts() -> None:
     user_ids = await alerts.matured_alert_user_ids()
     if not user_ids:
         return
-    logger.info("Flushing matured alerts for %d users", len(user_ids))
+    logger.info(f"Flushing matured alerts for {len(user_ids)} users")
 
     for user_id in user_ids:
         try:
             await _flush_user_alerts(user_id)
         except Exception:
-            logger.exception("Could not flush alerts for user %s", user_id)
+            logger.exception(f"Could not flush alerts for user {user_id}")
 
 
 async def send_due_briefings() -> None:
     """Assemble briefings for every user whose local briefing hour this is."""
     now = datetime.now(tz=timezone.utc)
     candidates = await _briefing_candidates(now)
-    logger.info("Considering %d users for a briefing", len(candidates))
+    logger.info(f"Considering {len(candidates)} users for a briefing")
 
     for user in candidates:
         try:
             await _send_user_briefing(user, now)
         except Exception:
-            logger.exception("Could not build a briefing for user %s", user.id)
+            logger.exception(f"Could not build a briefing for user {user.id}")
 
 
 async def _flush_user_alerts(user_id: str) -> None:
@@ -79,7 +79,7 @@ async def _send_user_briefing(user: User, now: datetime) -> None:
     built = await briefing.build_briefing(user.id, frequency, user.timezone, now)
     if built is None:
         # Never sent empty: a period with nothing to say produces no email.
-        logger.debug("Nothing to brief for user %s", user.id)
+        logger.debug(f"Nothing to brief for user {user.id}")
         return
 
     result = await queue_notification_async(

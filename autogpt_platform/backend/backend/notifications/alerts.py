@@ -17,10 +17,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from prisma.enums import NotificationType
-
-from backend.data import alerts as alerts_db
 from pydantic import BaseModel
 
+from backend.data import alerts as alerts_db
 from backend.data.notifications import AlertData, AlertPrimary, NotificationEventModel
 from backend.notifications.alert_causes import SEVERITY, BaseCause, parse_cause
 from backend.util.logging import TruncatedLogger
@@ -53,7 +52,7 @@ async def resolve_alert(user_id: str, cause_key: str) -> None:
     outright — the user reconnected Gmail from their phone and never needs to
     hear that it was disconnected."""
     if await alerts_db.resolve_condition(user_id, cause_key):
-        logger.info("Alert condition %s resolved for user %s", cause_key, user_id)
+        logger.info(f"Alert condition {cause_key} resolved for user {user_id}")
 
 
 async def matured_alert_user_ids() -> list[str]:
@@ -91,11 +90,8 @@ async def build_alert_email(user_id: str, alerts_enabled: bool) -> BuiltAlert | 
     sent_today = await alerts_db.count_alerts_sent_since(user_id, _start_of_day())
     if sent_today >= MAX_ALERT_EMAILS_PER_DAY:
         logger.info(
-            "User %s hit the %d-alert daily cap; folding %d conditions into the "
-            "next briefing",
-            user_id,
-            MAX_ALERT_EMAILS_PER_DAY,
-            len(condition_ids),
+            f"User {user_id} hit the {MAX_ALERT_EMAILS_PER_DAY}-alert daily cap; "
+            f"folding {len(condition_ids)} conditions into the next briefing"
         )
         await alerts_db.mark_deferred(condition_ids)
         return None
@@ -147,4 +143,6 @@ def _timestamp_label() -> str:
     """Absolute, never a duration: the email is read hours later, and a stale
     relative time is a wrong time."""
     now = datetime.now(tz=timezone.utc)
-    return f"{now.strftime('%a')} {now.day} {now.strftime('%b')}, {now.strftime('%H:%M')}"
+    return (
+        f"{now.strftime('%a')} {now.day} {now.strftime('%b')}, {now.strftime('%H:%M')}"
+    )

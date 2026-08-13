@@ -57,8 +57,7 @@ async def sync_awaiting_review(user_id: str, graph_id: str) -> None:
         )
     except Exception:
         logger.warning(
-            "Could not sync the awaiting-review alert for user %s agent %s",
-            user_id,
-            graph_id,
+            f"Could not sync the awaiting-review alert for user {user_id} agent "
+            f"{graph_id}",
             exc_info=True,
         )

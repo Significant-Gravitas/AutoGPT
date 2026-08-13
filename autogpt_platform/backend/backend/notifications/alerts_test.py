@@ -65,7 +65,10 @@ LOW = LowBalanceCause(
 
 @pytest.mark.asyncio
 async def test_pending_alerts_coalesce_into_one_email():
-    pending = [_condition(AlertCause.LOW_BALANCE, LOW), _condition(AlertCause.ZERO_BALANCE, ZERO)]
+    pending = [
+        _condition(AlertCause.LOW_BALANCE, LOW),
+        _condition(AlertCause.ZERO_BALANCE, ZERO),
+    ]
     with patch(
         "backend.notifications.alerts.alerts_db.get_pending_conditions",
         AsyncMock(return_value=pending),

@@ -55,7 +55,7 @@ class InternalServiceTopologyTest(unittest.TestCase):
 
 
 class AccountRegistrationTest(unittest.TestCase):
-    def test_defaults_closed_for_all_origins(self) -> None:
+    def test_defaults_open_for_all_origins(self) -> None:
         for public_url in (
             "http://localhost:3000",
             "http://127.0.0.1:3000",
@@ -69,11 +69,10 @@ class AccountRegistrationTest(unittest.TestCase):
                 ):
                     result = self._configure(public_url, allow_new_accounts)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn("account registration is closed", result.stdout)
-                    self.assertIn("autogpt-admin promote", result.stdout)
-                    self.assertTrue(result.stdout.endswith("false\n"))
+                    self.assertIn("open account registration is enabled", result.stdout)
+                    self.assertTrue(result.stdout.endswith("true\n"))
 
-    def test_remote_signup_requires_explicit_opt_in(self) -> None:
+    def test_explicit_true_keeps_signup_open(self) -> None:
         result = self._configure(
             "https://autogpt.example.com", allow_new_accounts="true"
         )
@@ -81,7 +80,7 @@ class AccountRegistrationTest(unittest.TestCase):
         self.assertIn("open account registration is enabled", result.stdout)
         self.assertTrue(result.stdout.endswith("true\n"))
 
-    def test_explicit_false_overrides_loopback_default(self) -> None:
+    def test_explicit_false_closes_signup(self) -> None:
         result = self._configure("http://localhost:3000", allow_new_accounts="false")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("account registration is closed", result.stdout)
@@ -113,6 +112,34 @@ class AccountRegistrationTest(unittest.TestCase):
             encoding="utf-8",
             env=environment,
         )
+
+
+class PublicOriginConfigurationTest(unittest.TestCase):
+    def test_backend_cors_uses_the_validated_public_origin(self) -> None:
+        result = subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; AUTOGPT_PUBLIC_URL="$2"; '
+                'configure_backend_cors_origin; '
+                'printf "%s\\n" "$BACKEND_CORS_ALLOW_ORIGINS"',
+                "bash",
+                str(ENTRYPOINT_PATH),
+                "http://192.168.1.254:3300",
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '["http://192.168.1.254:3300"]\n')
 
 
 class NormalizationTest(unittest.TestCase):
@@ -180,6 +207,38 @@ class ValkeyConfigurationTest(unittest.TestCase):
         self.assertIn("chmod 0400", entrypoint)
         self.assertNotIn("--requirepass", service_runner)
         self.assertNotIn("--masterauth", service_runner)
+
+
+class CodexTemporaryHomeTest(unittest.TestCase):
+    def test_defaults_to_private_memory_backed_storage(self) -> None:
+        entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
+        result = subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; printf "%s\\n" "$CODEX_TEMP_ROOT"',
+                "bash",
+                str(ENTRYPOINT_PATH),
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+                "CODEX_TEMP_ROOT": "/data/not-memory-backed",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "/dev/shm/autogpt-codex\n")
+        self.assertIn(
+            'install -d -m 0700 -o autogpt -g autogpt "${CODEX_TEMP_ROOT}"',
+            entrypoint,
+        )
+        self.assertIn('"${CODEX_TEMP_ROOT}"; do', entrypoint)
 
 
 class ProxyIsolationTest(unittest.TestCase):

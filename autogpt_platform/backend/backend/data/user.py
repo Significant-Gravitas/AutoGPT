@@ -11,7 +11,7 @@ from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
-from prisma.enums import BriefingFrequency
+from prisma.enums import BriefingFrequency, SubscriptionTier
 from prisma.errors import UniqueViolationError
 from prisma.models import AuthUser
 from prisma.models import User as PrismaUser
@@ -207,6 +207,14 @@ async def get_user_by_id(user_id: str) -> User:
     if not user:
         raise ValueError(f"User not found with ID: {user_id}")
     return User.from_db(user)
+
+
+async def get_user_subscription_tier(user_id: str) -> SubscriptionTier:
+    """Read the authoritative tier without using the cached full-user lookup."""
+    user = await prisma.user.find_unique(where={"id": user_id})
+    if not user:
+        raise ValueError(f"User not found with ID: {user_id}")
+    return user.subscriptionTier or SubscriptionTier.NO_TIER
 
 
 async def get_user_email_by_id(user_id: str) -> Optional[str]:

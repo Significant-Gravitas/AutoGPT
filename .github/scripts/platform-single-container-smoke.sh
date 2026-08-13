@@ -6,6 +6,7 @@ set -Eeuo pipefail
 : "${SMOKE_PLATFORM:?SMOKE_PLATFORM is required}"
 
 readonly PUBLIC_URL=http://localhost:3300
+readonly EXPECTED_CODEX_TEMP_ROOT=/dev/shm/autogpt-codex
 readonly TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-2700}"
 readonly SAFE_PLATFORM="${SMOKE_PLATFORM//\//-}"
 readonly RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${SAFE_PLATFORM}-${RANDOM}"
@@ -477,6 +478,110 @@ assert_email_auth_flow() {
       "${email}"
 }
 
+assert_codex_provider_discovery() {
+  curl --fail-with-body --silent --show-error --max-time 30 \
+    --cookie "${AUTH_COOKIE_FILE}" \
+    "${PUBLIC_URL}/api/proxy/api/integrations/providers" |
+    python3 -c '
+import json
+import sys
+
+providers = json.load(sys.stdin)
+codex = [provider for provider in providers if provider.get("name") == "codex"]
+assert len(codex) == 1, codex
+assert "oauth2" in codex[0].get("supported_auth_types", []), codex[0]
+'
+}
+
+assert_codex_runtime_contract() {
+  local filesystem_type
+  local ownership_and_mode
+  local process_name
+  local process_id
+  local process_environment
+
+  filesystem_type="$(
+    docker exec "${CONTAINER_NAME}" \
+      stat -f -c '%T' "${EXPECTED_CODEX_TEMP_ROOT}"
+  )"
+  [[ "${filesystem_type}" == tmpfs ]] || {
+    echo "Codex temporary root is not memory-backed: ${filesystem_type}" >&2
+    return 1
+  }
+
+  ownership_and_mode="$(
+    docker exec "${CONTAINER_NAME}" \
+      stat -c '%u:%g:%a' "${EXPECTED_CODEX_TEMP_ROOT}"
+  )"
+  [[ "${ownership_and_mode}" == 10001:10001:700 ]] || {
+    echo "Codex temporary root is not owned by autogpt with mode 0700" >&2
+    return 1
+  }
+
+  for process_name in rest executor copilot-executor; do
+    process_id="$(
+      docker exec "${CONTAINER_NAME}" \
+        supervisorctl \
+        -c /opt/autogpt/single-container/supervisor/supervisord.conf \
+        pid "${process_name}"
+    )"
+    [[ "${process_id}" =~ ^[0-9]+$ ]]
+    process_environment="$(
+      docker exec --user autogpt "${CONTAINER_NAME}" \
+        /bin/bash -Eeuo pipefail -c 'tr "\0" "\n" <"/proc/${1}/environ"' \
+        bash "${process_id}"
+    )"
+    grep -Fxq \
+      "CODEX_TEMP_ROOT=${EXPECTED_CODEX_TEMP_ROOT}" \
+      <<<"${process_environment}" || {
+      echo "${process_name} did not inherit CODEX_TEMP_ROOT" >&2
+      return 1
+    }
+  done
+
+  docker exec --interactive --user autogpt \
+    --env "CODEX_TEMP_ROOT=${EXPECTED_CODEX_TEMP_ROOT}" \
+    --workdir /app/autogpt_platform/backend \
+    "${CONTAINER_NAME}" \
+    /app/autogpt_platform/backend/.venv/bin/python - <<'PY'
+import os
+import subprocess
+from pathlib import Path
+
+from backend.integrations.codex.runtime import (
+    CODEX_RUNTIME_VERSION,
+    assert_pinned_versions,
+    build_runtime_config,
+)
+from backend.integrations.codex.temporary_home import TemporaryCodexHome
+
+root = Path(os.environ["CODEX_TEMP_ROOT"])
+assert root == Path("/dev/shm/autogpt-codex")
+assert_pinned_versions()
+before = set(root.iterdir())
+with TemporaryCodexHome.create(root) as home:
+    config = build_runtime_config(home)
+    launch_args = config.launch_args_override
+    assert launch_args is not None
+    completed = subprocess.run(
+        [*launch_args[:3], "--version"],
+        env=config.env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == 0, output
+    assert CODEX_RUNTIME_VERSION in output, output
+    home_path = home.path
+
+assert not home_path.exists()
+assert set(root.iterdir()) == before
+print("codex-sdk-runtime-ok")
+PY
+}
+
 assert_request_tokens_absent_from_logs() {
   local sentinel=AUTOGPT_LOG_SENTINEL_6f2b3cb87e9a
   local websocket_key=dGhlIHNhbXBsZSBub25jZQ== # pragma: allowlist secret # gitleaks:allow
@@ -750,6 +855,7 @@ docker run --detach \
   "${SMOKE_IMAGE}" >/dev/null
 discover_data_volume
 wait_for_healthy
+assert_codex_runtime_contract
 assert_prisma_cli_is_prebundled
 assert_falkordb_binary_contract
 assert_memory_contract seed
@@ -781,7 +887,6 @@ docker run --detach \
   --restart unless-stopped \
   --publish 127.0.0.1:3300:3000 \
   --env "AUTOGPT_PUBLIC_URL=${PUBLIC_URL}" \
-  --env AUTH_ALLOW_NEW_ACCOUNTS=true \
   --volume "${DATA_VOLUME}:/data" \
   "${SMOKE_IMAGE}" >/dev/null
 wait_for_healthy
@@ -794,6 +899,7 @@ assert_runtime_config_mode
 assert_frontend_database_isolation
 assert_pinned_topology_environment
 assert_email_auth_flow
+assert_codex_provider_discovery
 assert_falkordb_binary_contract
 assert_memory_contract verify
 curl --fail --silent --show-error "${PUBLIC_URL}/healthz" >/dev/null

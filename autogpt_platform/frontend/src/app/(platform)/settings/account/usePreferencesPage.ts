@@ -180,8 +180,7 @@ export function usePreferencesPage() {
             email: user.email ?? "",
             briefing_frequency: snapshot.notifications.briefingFrequency,
             alerts_enabled: snapshot.notifications.alertsEnabled,
-            store_verdicts_enabled:
-              snapshot.notifications.storeVerdictsEnabled,
+            store_verdicts_enabled: snapshot.notifications.storeVerdictsEnabled,
           },
         });
         await queryClient.invalidateQueries({

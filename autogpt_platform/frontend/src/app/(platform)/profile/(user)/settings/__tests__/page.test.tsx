@@ -11,6 +11,8 @@ import {
   getPostV1UpdateNotificationPreferencesMockHandler,
   getPostV1UpdateUserEmailMockHandler,
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
+import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
+import type { NotificationPreferenceDTO } from "@/app/api/__generated__/models/notificationPreferenceDTO";
 import { server } from "@/mocks/mock-server";
 import SettingsPage from "../page";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -41,7 +43,7 @@ const defaultPreferences = {
   alerts_enabled: true,
   store_verdicts_enabled: true,
   daily_limit: 0,
-};
+} satisfies NotificationPreference;
 
 describe("SettingsPage", () => {
   beforeEach(() => {
@@ -70,21 +72,14 @@ describe("SettingsPage", () => {
   });
 
   test("saves notification preference changes", async () => {
-    let submitted:
-      | {
-          email: string;
-          briefing_frequency: string;
-          alerts_enabled: boolean;
-          store_verdicts_enabled: boolean;
-        }
-      | undefined;
+    let submitted: NotificationPreferenceDTO | undefined;
 
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
-        submitted = (await request.json()) as typeof submitted;
+        submitted = (await request.json()) as NotificationPreferenceDTO;
         return { ...defaultPreferences, ...submitted };
       }),
     );

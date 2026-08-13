@@ -93,7 +93,9 @@ async def _add_to_group(email: str, group_id: str, description: str) -> None:
 
 
 async def _find_subscriber_id(email: str) -> str | None:
-    response = await _client().get(f"{API_BASE}/subscribers/{email}", headers=_headers())
+    response = await _client().get(
+        f"{API_BASE}/subscribers/{email}", headers=_headers()
+    )
     if response.status == 404:
         return None
     if response.status not in _OK_STATUSES:

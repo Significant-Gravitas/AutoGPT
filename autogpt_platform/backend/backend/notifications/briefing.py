@@ -55,7 +55,9 @@ async def build_briefing(
 ) -> BuiltBriefing | None:
     """Assemble one user's briefing, or None when there is nothing to send."""
     window = period_window(frequency, timezone_name, now)
-    agents = await briefing_data.get_agent_period_stats(user_id, window.start, window.end)
+    agents = await briefing_data.get_agent_period_stats(
+        user_id, window.start, window.end
+    )
     if not agents:
         # Never send empty: a zero-run period sends nothing at all.
         return None
@@ -162,8 +164,7 @@ async def _run_outputs(user_id: str, execution_id: str) -> dict[str, list]:
         execution = await get_graph_execution(user_id, execution_id)
     except Exception:
         logger.warning(
-            "Could not load outputs for run %s; falling back to counts",
-            execution_id,
+            f"Could not load outputs for run {execution_id}; falling back to counts",
             exc_info=True,
         )
         return {}
@@ -194,9 +195,7 @@ def _ledger_row(
 
 
 def _is_quiet(totals: BriefingTotals, attention: list[BriefingAttentionItem]) -> bool:
-    return (
-        totals.runs <= QUIET_RUN_THRESHOLD and totals.failed == 0 and not attention
-    )
+    return totals.runs <= QUIET_RUN_THRESHOLD and totals.failed == 0 and not attention
 
 
 def _quiet_summary(totals: BriefingTotals) -> str:

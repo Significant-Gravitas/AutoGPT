@@ -10,7 +10,7 @@ Every sentence is assembled from those slots — there is no hand-written copy
 per condition — and the CTA verb is always the fix, never "View dashboard".
 """
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Generic, Literal, TypeVar, Union
 
 from prisma.enums import AlertCause
 from pydantic import BaseModel, Field
@@ -32,11 +32,13 @@ SEVERITY: dict[AlertCause, int] = {
     AlertCause.LOW_BALANCE: 8,
 }
 
+AlertCauseT = TypeVar("AlertCauseT", bound=AlertCause)
 
-class BaseCause(BaseModel):
+
+class BaseCause(BaseModel, Generic[AlertCauseT]):
     """Slots plus the four renderings every cause owes the email system."""
 
-    cause: AlertCause
+    cause: AlertCauseT
     # Relative path into the platform; the base URL is applied at render time
     # so a stored condition still links correctly after a domain change.
     cta_path: str
@@ -95,7 +97,7 @@ class BaseCause(BaseModel):
         )
 
 
-class AuthExpiredCause(BaseCause):
+class AuthExpiredCause(BaseCause[Literal[AlertCause.AUTH_EXPIRED]]):
     cause: Literal[AlertCause.AUTH_EXPIRED] = AlertCause.AUTH_EXPIRED
     agent: str
     provider: str
@@ -113,7 +115,11 @@ class AuthExpiredCause(BaseCause):
 
     @property
     def body(self) -> str:
-        runs = "1 scheduled run has" if self.runs_skipped == 1 else f"{self.runs_skipped} scheduled runs have"
+        runs = (
+            "1 scheduled run has"
+            if self.runs_skipped == 1
+            else f"{self.runs_skipped} scheduled runs have"
+        )
         return (
             f"{self.provider}’s connection expired at {self.expired_at_label}, so "
             f"{self.agent} can’t run. {runs} been skipped; the next try is at "
@@ -137,7 +143,7 @@ class AuthExpiredCause(BaseCause):
         return "Usually takes under a minute"
 
 
-class PausedFailuresCause(BaseCause):
+class PausedFailuresCause(BaseCause[Literal[AlertCause.PAUSED_FAILURES]]):
     cause: Literal[AlertCause.PAUSED_FAILURES] = AlertCause.PAUSED_FAILURES
     agent: str
     step: str
@@ -167,7 +173,7 @@ class PausedFailuresCause(BaseCause):
         return f"{self.consecutive_failures} fails on one step"
 
 
-class BlockFailedCause(BaseCause):
+class BlockFailedCause(BaseCause[Literal[AlertCause.BLOCK_FAILED]]):
     cause: Literal[AlertCause.BLOCK_FAILED] = AlertCause.BLOCK_FAILED
     agent: str
     step: str
@@ -206,7 +212,7 @@ class BlockFailedCause(BaseCause):
         ]
 
 
-class ContinuousErrorCause(BaseCause):
+class ContinuousErrorCause(BaseCause[Literal[AlertCause.CONTINUOUS_ERROR]]):
     cause: Literal[AlertCause.CONTINUOUS_ERROR] = AlertCause.CONTINUOUS_ERROR
     agent: str
     days: int
@@ -244,7 +250,9 @@ class ContinuousErrorCause(BaseCause):
     def facts(self) -> list[AlertFact]:
         return [
             AlertFact(label="Failing since", value=self.failing_since_label),
-            AlertFact(label="Consecutive failures", value=str(self.consecutive_failures)),
+            AlertFact(
+                label="Consecutive failures", value=str(self.consecutive_failures)
+            ),
             AlertFact(label="Error", value=self.error),
             AlertFact(
                 label="Credits spent retrying", value=f"{self.credits_spent:,.2f}"
@@ -252,7 +260,7 @@ class ContinuousErrorCause(BaseCause):
         ]
 
 
-class AwaitingReviewCause(BaseCause):
+class AwaitingReviewCause(BaseCause[Literal[AlertCause.AWAITING_REVIEW]]):
     cause: Literal[AlertCause.AWAITING_REVIEW] = AlertCause.AWAITING_REVIEW
     agent: str
     count: int
@@ -283,7 +291,7 @@ class AwaitingReviewCause(BaseCause):
         return f"{self.count} waiting"
 
 
-class AwaitingInputCause(BaseCause):
+class AwaitingInputCause(BaseCause[Literal[AlertCause.AWAITING_INPUT]]):
     cause: Literal[AlertCause.AWAITING_INPUT] = AlertCause.AWAITING_INPUT
     agent: str
     field_name: str
@@ -309,7 +317,7 @@ class AwaitingInputCause(BaseCause):
         return "waiting on input"
 
 
-class LowBalanceCause(BaseCause):
+class LowBalanceCause(BaseCause[Literal[AlertCause.LOW_BALANCE]]):
     cause: Literal[AlertCause.LOW_BALANCE] = AlertCause.LOW_BALANCE
     days_left: int
     daily_rate_display: str
@@ -346,7 +354,7 @@ class LowBalanceCause(BaseCause):
         return f"~{self.days_left} days left"
 
 
-class ZeroBalanceCause(BaseCause):
+class ZeroBalanceCause(BaseCause[Literal[AlertCause.ZERO_BALANCE]]):
     cause: Literal[AlertCause.ZERO_BALANCE] = AlertCause.ZERO_BALANCE
     agent: str
     shortfall_display: str
@@ -375,7 +383,7 @@ class ZeroBalanceCause(BaseCause):
         return "out of credits"
 
 
-class GuardrailCause(BaseCause):
+class GuardrailCause(BaseCause[Literal[AlertCause.GUARDRAIL]]):
     cause: Literal[AlertCause.GUARDRAIL] = AlertCause.GUARDRAIL
     agent: str
     limit_display: str

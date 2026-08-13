@@ -67,8 +67,6 @@ class TextFormatter:
             raise ValueError(e) from e
 
 
-
-
 def _safe_range(*args: int) -> range:
     """range() replacement that caps the number of items to prevent DoS."""
     r = range(*args)

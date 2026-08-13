@@ -24,13 +24,17 @@ _DATA_URI = re.compile(r"^data:([\w.+-]+)/")
 _URL = re.compile(r"^https?://")
 
 
-def build_gist(outputs: dict[str, list[Any]], activity_status: str | None) -> str | None:
+def build_gist(
+    outputs: dict[str, list[Any]], activity_status: str | None
+) -> str | None:
     """One sentence describing what a run produced, or None when there is
     nothing honest to say — the caller then falls back to counts and links."""
     if activity_status and activity_status.strip():
         return _one_sentence(activity_status)
 
-    parts = [p for p in (_describe(name, values) for name, values in outputs.items()) if p]
+    parts = [
+        p for p in (_describe(name, values) for name, values in outputs.items()) if p
+    ]
     if not parts:
         return None
     return _truncate(_join(parts))

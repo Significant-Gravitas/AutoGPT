@@ -6,6 +6,7 @@ hourly and this module decides, per user, whether this is their hour.
 """
 
 from datetime import date, datetime, time, timedelta, timezone
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from prisma.enums import BriefingFrequency
@@ -17,7 +18,9 @@ from backend.data.notifications import BriefingPeriod
 BRIEFING_HOUR = 7
 BRIEFING_MINUTE = 30
 
-_FREQUENCY_LABELS: dict[BriefingFrequency, tuple[str, str]] = {
+BriefingFrequencyLabel = Literal["daily", "weekly", "monthly"]
+
+_FREQUENCY_LABELS: dict[BriefingFrequency, tuple[BriefingFrequencyLabel, str]] = {
     BriefingFrequency.DAILY: ("daily", "day"),
     BriefingFrequency.WEEKLY: ("weekly", "week"),
     BriefingFrequency.MONTHLY: ("monthly", "month"),
@@ -92,7 +95,9 @@ def period_window(
         noun = f"in {start_date.strftime('%B')}"
     else:
         start_date, end_date = today - timedelta(days=7), today
-        label = f"{_format_day(start_date)} – {_format_day(end_date - timedelta(days=1))}"
+        label = (
+            f"{_format_day(start_date)} – {_format_day(end_date - timedelta(days=1))}"
+        )
         noun = "this week"
 
     frequency_word, adjective = _FREQUENCY_LABELS[frequency]

@@ -19,9 +19,7 @@ def _score(status, **over):
 
 
 def test_failed_outranks_success():
-    assert _score(AgentExecutionStatus.FAILED) > _score(
-        AgentExecutionStatus.COMPLETED
-    )
+    assert _score(AgentExecutionStatus.FAILED) > _score(AgentExecutionStatus.COMPLETED)
 
 
 def test_first_ever_success_outranks_a_routine_one():
@@ -38,8 +36,9 @@ def test_a_no_op_ranks_below_a_run_that_produced_something():
 
 def test_cost_anomaly_is_measured_against_the_agents_own_baseline():
     baseline = 10.0
-    normal = _score(AgentExecutionStatus.COMPLETED, cost_cents=baseline * 2,
-                    cost_baseline=baseline)
+    normal = _score(
+        AgentExecutionStatus.COMPLETED, cost_cents=baseline * 2, cost_baseline=baseline
+    )
     spike = _score(
         AgentExecutionStatus.COMPLETED,
         cost_cents=baseline * ANOMALY_FACTOR + 1,
@@ -55,7 +54,4 @@ def test_finished_but_not_cleanly_outranks_a_silent_success():
 
 
 def test_score_never_goes_negative():
-    assert (
-        _score(AgentExecutionStatus.COMPLETED, has_activity=False, cost_cents=0)
-        >= 0
-    )
+    assert _score(AgentExecutionStatus.COMPLETED, has_activity=False, cost_cents=0) >= 0

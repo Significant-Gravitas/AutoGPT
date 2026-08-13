@@ -8,6 +8,7 @@ from Stripe rather than from our own copy is what keeps the copy honest.
 
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 
 from backend.data.credit import build_price_to_tier_map
 from backend.data.notifications import CardDetails, SubscriptionPlan
@@ -15,9 +16,24 @@ from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Lifecycle]")
 
-_ZERO_DECIMAL_CURRENCIES = {"bif", "clp", "djf", "gnf", "jpy", "kmf", "krw",
-                            "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf",
-                            "xof", "xpf"}
+_ZERO_DECIMAL_CURRENCIES = {
+    "bif",
+    "clp",
+    "djf",
+    "gnf",
+    "jpy",
+    "kmf",
+    "krw",
+    "mga",
+    "pyg",
+    "rwf",
+    "ugx",
+    "vnd",
+    "vuv",
+    "xaf",
+    "xof",
+    "xpf",
+}
 
 
 async def plan_from_subscription(subscription: dict) -> SubscriptionPlan:
@@ -57,9 +73,7 @@ def card_from_invoice(invoice: dict) -> CardDetails:
     )[0]
     details = ((payment.get("payment_method_details") or {}).get("card")) or {}
     if not details:
-        details = (
-            (invoice.get("default_payment_method") or {}).get("card")
-        ) or {}
+        details = ((invoice.get("default_payment_method") or {}).get("card")) or {}
     return CardDetails(
         brand=str(details.get("brand") or "Card").title(),
         last4=str(details.get("last4") or "••••"),
@@ -90,7 +104,7 @@ def _first_price(subscription: dict) -> dict:
     return (items[0].get("price") or {}) if items else {}
 
 
-def _cycle(price: dict) -> str:
+def _cycle(price: dict) -> Literal["monthly", "yearly"]:
     interval = ((price.get("recurring") or {}).get("interval")) or "month"
     return "yearly" if interval == "year" else "monthly"
 
@@ -101,6 +115,6 @@ async def _tier_name(price_id: str | None) -> str:
     try:
         tier = (await build_price_to_tier_map()).get(price_id)
     except Exception:
-        logger.warning("Could not resolve tier for price %s", price_id, exc_info=True)
+        logger.warning(f"Could not resolve tier for price {price_id}", exc_info=True)
         return "AutoGPT"
     return tier.value.title() if tier else "AutoGPT"

@@ -18,9 +18,7 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
     # Mock dependencies
     with patch(
         "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
+    ) as mock_get_client, patch("backend.executor.billing.settings") as mock_settings:
 
         # Setup mocks
         mock_client = MagicMock()
@@ -73,9 +71,7 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
     # Mock dependencies
     with patch(
         "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
+    ) as mock_get_client, patch("backend.executor.billing.settings") as mock_settings:
 
         # Setup mocks
         mock_client = MagicMock()
@@ -113,9 +109,7 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
     # Mock dependencies
     with patch(
         "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
+    ) as mock_get_client, patch("backend.executor.billing.settings") as mock_settings:
 
         # Setup mocks
         mock_client = MagicMock()
