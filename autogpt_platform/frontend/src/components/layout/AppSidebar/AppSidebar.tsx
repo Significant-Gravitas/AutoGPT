@@ -37,7 +37,7 @@ import {
   GridViewIcon,
   NoteEditIcon,
   Store01Icon,
-  UserGroupIcon,
+  UserGroup02Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -237,7 +237,10 @@ export function AppSidebar(props: Props) {
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
   const workspaceLinks = isHireExpertsEnabled
-    ? [{ name: "Team", href: "/team", icon: UserGroupIcon }, ...WORKSPACE_LINKS]
+    ? [
+        { name: "Team", href: "/team", icon: UserGroup02Icon },
+        ...WORKSPACE_LINKS,
+      ]
     : WORKSPACE_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.

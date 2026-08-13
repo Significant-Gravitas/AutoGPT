@@ -86,7 +86,7 @@ export function MainCreatorPage({ params }: Props) {
                       />
                     )}
                     <AvatarFallback size={96}>
-                      {creator.name.charAt(0)}
+                      {creator.username}
                     </AvatarFallback>
                   </Avatar>
 

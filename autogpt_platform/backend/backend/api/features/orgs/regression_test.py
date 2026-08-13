@@ -91,6 +91,7 @@ def _make_execution_row(
     m.shareToken = None
     m.organizationId = None
     m.teamId = None
+    m.expertId = None
     return m
 
 

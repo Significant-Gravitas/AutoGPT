@@ -18,7 +18,7 @@ import {
 import { useEffect, useState } from "react";
 
 // While the pipeline is still writing the greeting the intro endpoint
-// answers with an empty Path A — poll at this cadence until the real
+// answers `greeting_pending` — poll at this cadence until the real
 // greeting lands (or the pipeline terminally resolves).
 const PENDING_POLL_MS = 1500;
 // A pipeline killed between transcription and completion leaves the dump
@@ -111,8 +111,7 @@ export function useOnboardingIntroCard() {
         const latest = query.state.data;
         if (!latest || latest.status !== 200) return false;
         const body = latest.data;
-        // Empty Path A greeting = pipeline still generating; keep asking.
-        if (!body.greeting_done && body.path === "A" && !body.greeting) {
+        if (!body.greeting_done && body.greeting_pending) {
           return PENDING_POLL_MS;
         }
         return false;
@@ -134,7 +133,7 @@ export function useOnboardingIntroCard() {
     (isFlagReady && !isBrainDumpEnabled) || data !== undefined || isError;
   const serverSaysDone = Boolean(intro?.greeting_done);
   const isPendingPerServer = Boolean(
-    intro && !intro.greeting_done && intro.path === "A" && !intro.greeting,
+    intro && !intro.greeting_done && intro.greeting_pending,
   );
   const isPendingGeneration = isPendingPerServer && !gaveUpWaiting;
 
@@ -160,42 +159,43 @@ export function useOnboardingIntroCard() {
     setIsWelcomeOpen(false);
   }
 
-  // The whole greeting flow reads top-down like a letter, so it anchors
-  // to the top from its first visible frame — flipping the container
-  // from centered to top only when the greeting arrived made the "Hey"
-  // heading visibly jump. `isWelcomeOpen` needs no flag check (only the
-  // gated handoff ever sets it) and is seeded synchronously, so the
-  // fresh-out-of-onboarding user is anchored before LaunchDarkly answers.
-  const isGreetingFlow =
-    isWelcomeOpen ||
-    (Boolean(isBrainDumpEnabled) &&
-      (!hasIntroAnswer || isPendingGeneration || Boolean(intro?.greeting)));
-
   // Holding the composer is only ever right while this flow is in play:
   // the overlay is up (seeded synchronously from the handoff) or the flag
   // already reads on. Holding on "LaunchDarkly has not answered" alone
   // hid the composer on every flag-off /copilot load until it did.
   const isGreetingExpected = isWelcomeOpen || Boolean(isBrainDumpEnabled);
+  // `serverSaysDone` as well as `isDone`: the effect that caches the verdict
+  // runs after render, so a payload that still carries a greeting would
+  // otherwise flash the card for one paint before it takes effect.
+  const isVisible =
+    isMounted &&
+    !isDone &&
+    !serverSaysDone &&
+    !isWelcomeOpen &&
+    hasIntroAnswer &&
+    Boolean(intro?.greeting);
 
   return {
-    // The page renders the regular hero behind the welcome modal and
-    // while the greeting is generating; it swaps to the greeting the
-    // moment the real one arrives.
-    isVisible:
-      isMounted &&
-      !isDone &&
-      !isWelcomeOpen &&
-      hasIntroAnswer &&
-      Boolean(intro?.greeting),
+    isVisible,
     // The greeting is on its way (modal up, no server answer yet, or the
-    // pipeline still writing) — the hero shows the orb and holds the
-    // composer back until the greeting page takes over.
+    // pipeline still writing): the page shows the orb alone, centered, and
+    // holds the composer until the greeting takes over. The orb then
+    // travels into the heading rather than being replaced by it, so this
+    // must go false in the same commit `isVisible` goes true.
+    //
+    // The pre-mount frame counts: the server render cannot know any of
+    // this, and letting the composer through on that one frame flashed it
+    // before the greeting page arrived. The loader fades in on a delay, so
+    // a flag-off user never sees the orb it renders for that frame.
     isAwaitingGreeting:
       !isMounted ||
       (!isDone &&
         isGreetingExpected &&
         (isWelcomeOpen || !hasIntroAnswer || isPendingGeneration)),
-    anchorTop: isMounted && !isDone && isGreetingFlow,
+    // Only the greeting itself reads top-down like a letter. The loader
+    // stays centered — that is the distance the orb travels when the
+    // greeting lands.
+    anchorTop: isVisible,
     isWelcomeOpen: !isDone && isWelcomeOpen,
     closeWelcome,
     greeting: intro?.greeting ?? "",

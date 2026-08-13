@@ -4,9 +4,10 @@ import {
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { useOnboardingWizardStore } from "../../store";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
-import { headline, SILENCE_NUDGE_SECONDS } from "./helpers";
+import { headline, isInsufficientDump, SILENCE_NUDGE_SECONDS } from "./helpers";
 import {
   clearRecording,
   getMetaById,
@@ -21,7 +22,8 @@ export type ScreenState =
   | "processing"
   | "typing"
   | "recovery"
-  | "failed";
+  | "failed"
+  | "insufficient";
 
 export function useBrainDumpStep() {
   const name = useOnboardingWizardStore((s) => s.name);
@@ -30,6 +32,11 @@ export function useBrainDumpStep() {
   const recorder = useBrainDumpRecorder();
 
   const [screen, setScreen] = useState<ScreenState>("rest");
+  // Which submission the quality gate last rejected — the recovery
+  // screen's copy and primary action adapt to how the user got there.
+  const [insufficientMode, setInsufficientMode] = useState<"voice" | "typed">(
+    "voice",
+  );
   const [typedText, setTypedText] = useState("");
   const [reachedTimeLimit, setReachedTimeLimit] = useState(false);
 
@@ -49,6 +56,10 @@ export function useBrainDumpStep() {
   // `completeAndAdvance` to `nextStep()`, or the wizard advances twice and
   // lands past the last step with nothing to render.
   const isSubmittingRef = useRef(false);
+  const activeTakeActionRef = useRef<{
+    action: "submit" | "discard";
+    token: symbol;
+  } | null>(null);
 
   useEffect(() => {
     async function checkForRecovery() {
@@ -108,8 +119,38 @@ export function useBrainDumpStep() {
     // Duration comes back from `stop()` for the same reason the id is
     // passed in below — `recorder.elapsedSeconds` here is this render's
     // value, and it is short by however long stopping took.
-    const durationSecs = await recorder.stop();
-    await submitRecording(recorder.recordingId, durationSecs);
+    try {
+      const durationSecs = await recorder.stop();
+      await submitRecording(recorder.recordingId, durationSecs);
+    } catch (error) {
+      Sentry.captureException(error, {
+        tags: { component: "useBrainDumpStep", action: "send" },
+      });
+      setScreen("failed");
+    }
+  }
+
+  async function handleStop() {
+    const recordingId = recorder.recordingId;
+    const actionToken = recordingId
+      ? claimTakeAction(recordingId, "discard")
+      : null;
+    if (recordingId && !actionToken) return;
+    trackBrainDump("brain_dump_canceled");
+    try {
+      try {
+        await recorder.stop();
+      } catch (error) {
+        Sentry.captureException(error, {
+          tags: { component: "useBrainDumpStep", action: "cancel" },
+        });
+      }
+      recorder.resetQueue();
+      if (recordingId) await discardTake(recordingId);
+    } finally {
+      setScreen("rest");
+      if (actionToken) releaseTakeAction(actionToken);
+    }
   }
 
   // The id is passed in rather than read off the recorder: `adoptRecovered`
@@ -119,11 +160,22 @@ export function useBrainDumpStep() {
     recordingId: string | null,
     durationSecs: number,
   ) {
+    const actionToken = recordingId
+      ? claimTakeAction(recordingId, "submit")
+      : null;
+    if (recordingId && !actionToken) {
+      if (activeTakeActionRef.current?.action === "discard") {
+        setScreen("rest");
+      }
+      return false;
+    }
     isSubmittingRef.current = true;
     try {
       await finalizeRecording(recordingId, durationSecs);
+      return true;
     } finally {
       isSubmittingRef.current = false;
+      if (actionToken) releaseTakeAction(actionToken);
     }
   }
 
@@ -154,13 +206,16 @@ export function useBrainDumpStep() {
         input_mode: "voice",
       });
       if (response.status !== 200 || response.data.status === "failed") {
-        trackBrainDump("transcription_failed", {
-          error_code:
-            response.status === 200
-              ? response.data.error_code
-              : response.status,
-        });
-        setScreen("failed");
+        const errorCode =
+          response.status === 200 ? response.data.error_code : response.status;
+        const rejected = isInsufficientDump(errorCode);
+        trackBrainDump("transcription_failed", { error_code: errorCode });
+        // The recording itself went through — it just didn't carry enough
+        // to personalize from, so the recovery screen offers a fresh take
+        // instead of a retry of this one. Nothing is cleared until the
+        // user picks their next move.
+        if (rejected) setInsufficientMode("voice");
+        setScreen(rejected ? "insufficient" : "failed");
         return;
       }
     } catch {
@@ -179,21 +234,28 @@ export function useBrainDumpStep() {
   // local parts and the server's half-uploaded buffer both — before the
   // orb starts listening again under a new recording id.
   async function handleRestart() {
-    trackBrainDump("brain_dump_restarted");
     const previousId = recorder.recordingId;
-    await recorder.stop();
-    recorder.resetQueue();
-    if (previousId) await clearRecording(previousId).catch(() => undefined);
-    // Say which take: without an id the server drops whatever the row
-    // currently points at, which in a second tab is somebody else's
-    // buffer still being filled.
-    if (previousId) {
-      await discardBrainDump({ recording_id: previousId }).catch(
-        () => undefined,
-      );
+    const actionToken = previousId
+      ? claimTakeAction(previousId, "discard")
+      : null;
+    if (previousId && !actionToken) return;
+    trackBrainDump("brain_dump_restarted");
+    let started = false;
+    try {
+      try {
+        await recorder.stop();
+      } catch (error) {
+        Sentry.captureException(error, {
+          tags: { component: "useBrainDumpStep", action: "restart" },
+        });
+      }
+      recorder.resetQueue();
+      if (previousId) await discardTake(previousId);
+      started = await recorder.start();
+    } finally {
+      setScreen(started ? "recording" : "rest");
+      if (actionToken) releaseTakeAction(actionToken);
     }
-    const started = await recorder.start();
-    if (!started) setScreen("rest");
   }
 
   async function handleRetry() {
@@ -240,7 +302,13 @@ export function useBrainDumpStep() {
       // the voice path — advancing on it would hand the user a copilot
       // home built from nothing.
       if (response.status !== 200 || response.data.status === "failed") {
-        setScreen("failed");
+        const errorCode =
+          response.status === 200 ? response.data.error_code : response.status;
+        const rejected = isInsufficientDump(errorCode);
+        if (rejected) setInsufficientMode("typed");
+        // The typed text stays in the composer, so "Type instead" from
+        // the recovery screen reopens it with nothing lost.
+        setScreen(rejected ? "insufficient" : "failed");
         return;
       }
     } catch {
@@ -323,25 +391,47 @@ export function useBrainDumpStep() {
   }
 
   async function handleDiscardRecovered() {
-    await dropRecoverable();
-    setScreen("rest");
+    if (await dropRecoverable()) setScreen("rest");
   }
 
   async function handleTypeInsteadOfRecovered() {
-    await dropRecoverable();
-    handleShowTyping();
+    if (await dropRecoverable()) handleShowTyping();
   }
 
   // Abandoning a take also releases the server's half-uploaded buffer —
   // otherwise those chunks sit in Redis until their TTL for a recording
   // nobody will ever finalize.
   async function dropRecoverable() {
-    if (!recoverable) return;
-    await clearRecording(recoverable.recordingId).catch(() => undefined);
-    await discardBrainDump({ recording_id: recoverable.recordingId }).catch(
+    if (!recoverable) return false;
+    const actionToken = claimTakeAction(recoverable.recordingId, "discard");
+    if (!actionToken) return false;
+    try {
+      await discardTake(recoverable.recordingId);
+      setRecoverable(null);
+      return true;
+    } finally {
+      releaseTakeAction(actionToken);
+    }
+  }
+
+  async function discardTake(recordingId: string) {
+    await clearRecording(recordingId).catch(() => undefined);
+    await discardBrainDump({ recording_id: recordingId }).catch(
       () => undefined,
     );
-    setRecoverable(null);
+  }
+
+  function claimTakeAction(recordingId: string, action: "submit" | "discard") {
+    if (activeTakeActionRef.current) return null;
+    const token = Symbol(recordingId);
+    activeTakeActionRef.current = { action, token };
+    return token;
+  }
+
+  function releaseTakeAction(token: symbol) {
+    if (activeTakeActionRef.current?.token === token) {
+      activeTakeActionRef.current = null;
+    }
   }
 
   async function handleDownloadRecording() {
@@ -365,6 +455,7 @@ export function useBrainDumpStep() {
   return {
     headline: headline(name),
     screen,
+    insufficientMode,
     typedText,
     setTypedText,
     elapsedSeconds: recorder.elapsedSeconds,
@@ -375,6 +466,7 @@ export function useBrainDumpStep() {
     reachedTimeLimit,
     recoverable,
     handleStart,
+    handleStop,
     handleDone,
     handleRestart,
     handleRetry,

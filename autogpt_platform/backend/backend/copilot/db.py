@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,7 +23,13 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
+from .model import (
+    ChatMessage,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    _get_session_lock,
+    cache_chat_session,
+)
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
@@ -680,6 +687,22 @@ async def get_user_session_count(
     return rows[0]["count"] if rows else 0
 
 
+async def user_has_any_session(user_id: str) -> bool:
+    """Whether the user has at least one visible chat session.
+
+    The presence-only counterpart to :func:`get_user_session_count`, for
+    callers that only compare the total against zero: it stops at the
+    first matching row instead of scanning every session the user owns.
+    """
+    rows = await db.query_raw_with_schema(
+        'SELECT 1 FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
+        + _EXCLUDE_DREAM_SESSIONS_SQL
+        + " LIMIT 1",
+        user_id,
+    )
+    return bool(rows)
+
+
 def _escape_like(value: str) -> str:
     """Escape LIKE wildcards so ``title_contains`` matches literally.
 
@@ -1035,3 +1058,124 @@ async def update_chat_session_status(
         where=where, data={"chatStatus": status}
     )
     return updated > 0
+
+
+async def append_expert_run_message(
+    user_id: str,
+    expert_id: str,
+    content: str,
+    message_id: str,
+) -> str | None:
+    """Post an assistant message into the expert's latest thread, creating a
+    thread when none exists — run results land in her workspace, not a void.
+
+    Deduplicates on *message_id* (deterministic per event at the caller), so
+    executor retries and double-fires never produce duplicate posts.
+    Returns the session id the message landed in, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    session = await PrismaChatSession.prisma().find_first(
+        where={"userId": user_id, "expertId": expert_id},
+        order={"updatedAt": "desc"},
+    )
+    if session is not None:
+        session_id = session.id
+    else:
+        created = await create_chat_session(
+            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+        )
+        session_id = created.session_id
+
+    # Same Redis NX lock as turn_queue.append_and_save_message: the
+    # sequence read + insert must not interleave with a concurrent turn
+    # writer picking the same sequence and PK-colliding on
+    # (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+    return session_id
+
+
+async def append_plain_session_message(
+    user_id: str,
+    content: str,
+    message_id: str,
+    metadata: dict[str, Any] | None = None,
+) -> str | None:
+    """Post an assistant message into the user's latest non-expert (plain
+    Autopilot) session, creating one when none exists — this is the user's
+    "primary thread", e.g. where a morning briefing lands.
+
+    Deduplicates on *message_id* (deterministic per event at the caller), so
+    retries and double-fires never produce duplicate posts.
+    Returns the session id the message landed in, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    # Dream-pass sessions are also ``expertId IS NULL`` but are hidden from
+    # every listing surface (see :data:`_EXCLUDE_DREAM_SESSIONS_SQL`), so
+    # posting into one would drop the message somewhere the user can never
+    # open. Same exclusion as the listing queries.
+    sessions = await db.query_raw_with_schema(
+        'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 '
+        f'AND "expertId" IS NULL AND {_EXCLUDE_DREAM_SESSIONS_SQL} '
+        'ORDER BY "updatedAt" DESC LIMIT 1',
+        user_id,
+        model=PrismaChatSession,
+    )
+    if sessions:
+        session_id = sessions[0].id
+    else:
+        created = await create_chat_session(
+            session_id=str(uuid.uuid4()), user_id=user_id
+        )
+        session_id = created.session_id
+
+    async def write_with_fresh_sequence() -> None:
+        await add_chat_message(
+            session_id=session_id,
+            role="assistant",
+            sequence=await get_next_sequence(session_id),
+            content=content,
+            message_id=message_id,
+            metadata=metadata,
+        )
+
+    # Same Redis NX lock as append_expert_run_message: the sequence read +
+    # insert must not interleave with a concurrent turn writer picking the
+    # same sequence and PK-colliding on (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await write_with_fresh_sequence()
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await write_with_fresh_sequence()
+    return session_id

@@ -1,22 +1,319 @@
-# Registration-only on master; selecting dev loads the publishing workflow from dev.
 name: AutoGPT Platform - Single-container image
 
 on:
+  push:
+    branches: [dev]
+    paths:
+      - ".dockerignore"
+      - ".github/scripts/platform-single-container-publish.sh"
+      - ".github/scripts/platform-single-container-smoke.sh"
+      - ".github/workflows/platform-single-container-docker.yml"
+      - "autogpt_platform/**"
+  pull_request:
+    paths:
+      - ".dockerignore"
+      - ".github/scripts/platform-single-container-publish.sh"
+      - ".github/scripts/platform-single-container-smoke.sh"
+      - ".github/workflows/platform-single-container-docker.yml"
+      - "autogpt_platform/**"
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the current dev commit to Docker Hub (select dev as the ref)
+        description: "Publish the current dev commit to Docker Hub"
         required: true
         type: boolean
         default: false
 
+concurrency:
+  group: ${{ github.workflow }}-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'release') && 'publication' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
+env:
+  DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
+
 jobs:
-  registration-placeholder:
-    # workflow_dispatch always supplies a SHA, so this never allocates a runner.
-    if: ${{ github.sha == '' }}
+  authorize-publication:
+    name: Authorize publication source
     runs-on: ubuntu-24.04
+    outputs:
+      allowed: ${{ steps.policy.outputs.allowed }}
     steps:
-      - run: ":"
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate publication source
+        id: policy
+        shell: bash
+        env:
+          PUBLISH_REQUESTED: ${{ inputs.publish }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: bash .github/scripts/platform-single-container-publish.sh authorize
+
+  build-and-scan:
+    name: Build, smoke, and scan (${{ matrix.platform }})
+    needs: authorize-publication
+    if: ${{ github.event_name != 'release' || needs.authorize-publication.outputs.allowed == 'true' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test appliance runtime helpers
+        shell: bash
+        run: python3 -m unittest discover -s autogpt_platform/single-container/tests -p 'test_*.py' -v
+
+      - name: Test publication helpers
+        shell: bash
+        run: bash .github/scripts/platform-single-container-publish.sh self-test
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.36.0
+          driver-opts: |
+            image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+
+      - name: Build image without publishing
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        with:
+          source: .
+          files: autogpt_platform/single-container/docker-bake.hcl
+          targets: single-container
+          set: |
+            *.platform=${{ matrix.platform }}
+            backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
+            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
+            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
+            single-container.args.VCS_REF=${{ github.sha }}
+            single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
+            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
+            single-container.output=type=docker
+            single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
+
+      - name: Smoke-test the complete image
+        shell: bash
+        env:
+          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          SMOKE_PLATFORM: ${{ matrix.platform }}
+        run: bash .github/scripts/platform-single-container-smoke.sh
+
+      - name: Scan for fixable critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          format: table
+          ignore-unfixed: true
+          severity: CRITICAL
+          exit-code: "1"
+          timeout: 30m
+
+      - name: Scan image filesystem for embedded secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          scanners: secret
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          timeout: 30m
+
+  publish-platform-digests:
+    name: Publish, smoke, and scan (${{ matrix.platform }})
+    if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.build-and-scan.result == 'success' }}
+    needs: [authorize-publication, build-and-scan]
+    environment: ${{ github.event_name == 'release' && 'dockerhub-release' || 'dockerhub-publish' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.36.0
+          driver-opts: |
+            image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push platform digest
+        id: build
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        with:
+          source: .
+          files: autogpt_platform/single-container/docker-bake.hcl
+          targets: single-container
+          set: |
+            *.platform=${{ matrix.platform }}
+            backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
+            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
+            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
+            single-container.args.VCS_REF=${{ github.sha }}
+            single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
+            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
+            single-container.tags=${{ env.DEPLOY_IMAGE }}
+            single-container.attest=type=provenance,mode=max
+            single-container.attest=type=sbom
+            single-container.output=type=image,name=${{ env.DEPLOY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Capture pushed digest
+        id: digest
+        shell: bash
+        env:
+          BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+        run: |
+          set -euo pipefail
+          digest="$(jq -er '."single-container"."containerimage.digest"' <<<"$BUILD_METADATA")"
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "build did not return a valid sha256 digest" >&2
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Pull the exact pushed digest
+        shell: bash
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: docker pull --platform "${{ matrix.platform }}" "${DEPLOY_IMAGE}@${DIGEST}"
+
+      - name: Smoke-test the exact pushed digest
+        shell: bash
+        env:
+          SMOKE_IMAGE: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
+          SMOKE_PLATFORM: ${{ matrix.platform }}
+        run: bash .github/scripts/platform-single-container-smoke.sh
+
+      - name: Scan the exact pushed digest for fixable critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+        with:
+          image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
+          format: table
+          ignore-unfixed: true
+          severity: CRITICAL
+          exit-code: "1"
+          timeout: 30m
+
+      - name: Scan the exact pushed digest for embedded secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+        with:
+          image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
+          scanners: secret
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          timeout: 30m
+
+      - name: Export verified digest
+        shell: bash
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+          DIGEST_DIR: ${{ runner.temp }}/platform-single-container-publish-digests
+          PLATFORM_SUFFIX: ${{ matrix.suffix }}
+        run: |
+          set -euo pipefail
+          digest_hex="${DIGEST#sha256:}"
+          [[ "$digest_hex" =~ ^[0-9a-f]{64}$ ]]
+          mkdir -p "$DIGEST_DIR"
+          # Artifact names carry the platform and verified digest between jobs.
+          touch "${DIGEST_DIR}/${PLATFORM_SUFFIX}-${digest_hex}"
+
+      - name: Upload verified digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-single-container-publish-digest-${{ matrix.suffix }}
+          path: ${{ runner.temp }}/platform-single-container-publish-digests/*
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish-manifest:
+    name: Publish multi-platform manifest
+    if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.publish-platform-digests.result == 'success' }}
+    needs: [authorize-publication, publish-platform-digests]
+    environment: ${{ github.event_name == 'release' && 'dockerhub-release' || 'dockerhub-publish' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download verified digests
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          pattern: platform-single-container-publish-digest-*
+          path: ${{ runner.temp }}/platform-single-container-publish-digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.36.0
+          driver-opts: |
+            image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Publish and verify manifest
+        shell: bash
+        env:
+          DIGEST_DIR: ${{ runner.temp }}/platform-single-container-publish-digests
+          MANIFEST_METADATA: ${{ runner.temp }}/platform-single-container-manifest.json
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: bash .github/scripts/platform-single-container-publish.sh publish
+
+      - name: Update Docker Hub Overview
+        uses: peter-evans/dockerhub-description@e98e4d1628a5f3be2be7c231e50981aee98723ae # v4.0.0
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: significantgravitas/autogpt
+          short-description: Run the AutoGPT Platform, including FalkorDB-backed memory, in one container.
+          readme-filepath: ./autogpt_platform/single-container/README.md

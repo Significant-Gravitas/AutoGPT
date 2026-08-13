@@ -36,6 +36,7 @@ x-backend-env:
   # This cannot be constructed like in .env because we cannot interpolate values set here (DB_HOST)
   DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
   DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+  FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
 
 # Common env_file configuration for backend services
 x-backend-env-files: &backend-env-files
@@ -43,6 +44,9 @@ x-backend-env-files: &backend-env-files
     - backend/.env.default # Base defaults (always exists)
     - path: backend/.env # User overrides (optional)
       required: false
+
+x-codex-tmpfs: &codex-tmpfs
+  - /run/autogpt-codex:rw,nosuid,nodev,noexec,mode=0700,size=128m
 
 # Shared base for the three Redis Cluster shards + one-shot init sidecar.
 # The anchor absorbs image + network so each service body collapses to its
@@ -206,6 +210,8 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
+      CODEX_TEMP_ROOT: /run/autogpt-codex
+    tmpfs: *codex-tmpfs
     ports:
       - "8006:8006"
     volumes:
@@ -243,6 +249,8 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
+      CODEX_TEMP_ROOT: /run/autogpt-codex
+    tmpfs: *codex-tmpfs
     ports:
       - "8002:8002"
     networks:
@@ -278,7 +286,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
+      CODEX_TEMP_ROOT: /run/autogpt-codex
       PYTHONUNBUFFERED: "1"
+    tmpfs: *codex-tmpfs
     ports:
       - "8008:8008"
     volumes:
@@ -460,6 +470,7 @@ services:
       target: prod
       args:
         NEXT_PUBLIC_PW_TEST: ${NEXT_PUBLIC_PW_TEST:-false}
+        NEXT_PUBLIC_FRONTEND_BASE_URL: ${NEXT_PUBLIC_FRONTEND_BASE_URL:-http://localhost:3000}
     depends_on:
       db:
         condition: service_healthy
@@ -484,6 +495,7 @@ services:
       # These override the localhost URLs from env files when running in Docker
       AGPT_SERVER_URL: http://rest_server:8006/api
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
+      NEXT_PUBLIC_FRONTEND_BASE_URL: ${NEXT_PUBLIC_FRONTEND_BASE_URL:-http://localhost:3000}
       # Better Auth (embedded in this Next.js server) — talks to Postgres
       # directly; tables live in the platform schema (Prisma migrations).
       DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres

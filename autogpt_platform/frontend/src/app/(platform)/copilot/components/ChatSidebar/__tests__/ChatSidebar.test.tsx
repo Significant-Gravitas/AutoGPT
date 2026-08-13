@@ -428,5 +428,5 @@ describe("ChatSidebar — pagination", () => {
         screen.queryByRole("button", { name: /load older chats/i }),
       ).toBeNull();
     });
-  });
+  }, 10_000);
 });
