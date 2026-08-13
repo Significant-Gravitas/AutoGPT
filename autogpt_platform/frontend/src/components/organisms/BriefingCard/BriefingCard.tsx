@@ -5,7 +5,7 @@ import {
   ArrowDown01Icon,
   ArrowDown02Icon,
   ArrowUp02Icon,
-  SparklesIcon,
+  News01Icon,
 } from "@hugeicons/core-free-icons";
 import type { BriefingResponse } from "@/app/api/__generated__/models/briefingResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -50,11 +50,14 @@ export function BriefingCard({ briefing, className }: Props) {
   return (
     <section className={cn("text-left", className)}>
       <div className="mb-2 flex items-center gap-2 px-2">
-        <Icon icon={SparklesIcon} size={16} className="text-zinc-400" />
+        <Icon icon={News01Icon} size={16} className="text-zinc-400" />
         <Text variant="body" className="text-zinc-700">
           Recap
         </Text>
-        <Text variant="body" className="text-zinc-400">
+        <Text
+          variant="body"
+          className="bg-gradient-to-r from-purple-500 to-purple-300 bg-clip-text text-transparent"
+        >
           {formatBriefingDate(briefing.briefing_date)}
         </Text>
       </div>
