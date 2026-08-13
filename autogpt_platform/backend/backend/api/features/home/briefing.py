@@ -68,6 +68,7 @@ def compose_briefing(
         window_started_at=generated_at - _BRIEFING_WINDOW,
         outcomes=merged,
         source="persisted",
+        narrative=persisted.narrative,
         omitted_completed=max(0, persisted.completed_total - anchored_completed),
         omitted_failed=max(
             0, persisted.failed_total - len(anchored) + anchored_completed
@@ -91,6 +92,10 @@ def without_summaries(content: BriefingContent) -> BriefingContent:
     """
     return content.model_copy(
         update={
+            # The narrative is written *from* those summaries, so it is the
+            # same AI text one paragraph up — dropping the items but keeping
+            # the lede would leak exactly what the gate hides.
+            "narrative": None,
             "run_items": [
                 (
                     item.model_copy(update={"summary": None, "title": "", "detail": ""})
@@ -98,7 +103,7 @@ def without_summaries(content: BriefingContent) -> BriefingContent:
                     else item
                 )
                 for item in content.run_items
-            ]
+            ],
         }
     )
 
@@ -109,6 +114,7 @@ def _briefing(
     window_started_at: datetime,
     outcomes: list[HomeBriefingOutcome],
     source: Literal["persisted", "live"],
+    narrative: str | None = None,
     omitted_completed: int = 0,
     omitted_failed: int = 0,
 ) -> HomeBriefing:
@@ -125,6 +131,7 @@ def _briefing(
         failed_count=len(outcomes) - listed_completed + omitted_failed,
         routine_count=max(0, completed - shown_completed),
         outcomes=shown,
+        narrative=narrative,
         source=source,
     )
 

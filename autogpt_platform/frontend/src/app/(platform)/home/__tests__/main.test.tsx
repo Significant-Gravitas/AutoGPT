@@ -371,3 +371,34 @@ test("calls notFound when the experts feature is disabled", () => {
   } catch {}
   expect(notFoundMock).toHaveBeenCalled();
 });
+
+test("opens the briefing with the AI-written narrative when there is one", async () => {
+  mockDashboard({
+    ...dashboard,
+    briefing: {
+      ...dashboard.briefing,
+      narrative:
+        "I finished your camera research overnight and one scheduling run needs a retry.",
+    },
+  });
+
+  render(<HomePage />);
+
+  expect(
+    await screen.findByText(
+      "I finished your camera research overnight and one scheduling run needs a retry.",
+    ),
+  ).toBeDefined();
+  expect(screen.getByText("Your camera research is ready")).toBeDefined();
+});
+
+test("renders the briefing unchanged when no narrative was generated", async () => {
+  mockDashboard({ ...dashboard, briefing: { ...dashboard.briefing } });
+
+  render(<HomePage />);
+
+  expect(
+    await screen.findByRole("heading", { name: "Your briefing" }),
+  ).toBeDefined();
+  expect(screen.getByText("Your camera research is ready")).toBeDefined();
+});

@@ -53,3 +53,8 @@ class BriefingContent(BaseModel):
     # Split by outcome because home reports completed and failed separately.
     completed_total: int = Field(default=0, ge=0)
     failed_total: int = Field(default=0, ge=0)
+    # The AI-voice lede (see `narrative.py`), written once by the 9am job.
+    # Optional because it is best-effort: rows stored before the field existed,
+    # and any briefing whose narrative call failed, carry None and render as
+    # template-only.
+    narrative: str | None = None

@@ -14,6 +14,11 @@ _MARKDOWN_META_RE = re.compile(r"([\\`*_\[\]()<>])")
 
 def render_briefing_markdown(content: BriefingContent) -> str:
     lines = ["## ☀️ Your morning briefing", ""]
+    if content.narrative:
+        # Escaped like every other interpolated string: the narrative is model
+        # output derived from agent-supplied text, so it is no more trusted
+        # than the outcome titles it was written from.
+        lines.extend([_md(content.narrative), ""])
     if content.run_items:
         lines.append("**What ran**")
         for item in content.run_items:
