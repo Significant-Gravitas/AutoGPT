@@ -390,9 +390,10 @@ docker inspect --format \
 
 ## Cold backup
 
-Stop the appliance before archiving the coupled service state. The block below
-uses the stopped container's exact local image ID, writes to a unique partial
-file, and promotes it to the final timestamped name only after `tar` succeeds.
+The block below stops the running appliance before archiving its coupled
+service state. It uses the stopped container's exact local image ID, writes to
+a unique partial file, and promotes it to the final timestamped name only after
+`tar` succeeds.
 The appliance remains unavailable for the duration of the archive, which grows
 with `/data`:
 
