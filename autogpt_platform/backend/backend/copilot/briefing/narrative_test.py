@@ -6,6 +6,7 @@ import pytest
 from backend.copilot.briefing import narrative as narrative_module
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.copilot.briefing.narrative import (
+    _MAX_FACT_CHARS,
     _MAX_NARRATIVE_CHARS,
     _MAX_OUTPUT_TOKENS,
     _TIMEOUT_SECONDS,
@@ -205,3 +206,23 @@ async def test_raw_agent_summary_never_reaches_the_prompt():
     facts = mock.await_args.kwargs["messages"][1]["content"]
     assert "SENSITIVE-RAW-ACTIVITY-STATUS" not in facts
     assert "Short headline." in facts
+
+
+@pytest.mark.asyncio
+async def test_capping_never_splits_an_escape_sequence():
+    """Escaping runs after the cap, so `&lt;` can't be clipped to `&l`.
+
+    The leading `a` matters: it pushes the cap off a 4-char entity boundary,
+    which is the only way the old escape-then-cap order left a torn `&lt`.
+    """
+    raw = "a" + "<" * 400
+    content = make_content(run_items=[make_run_item(agent_name=raw, title=raw)])
+    with patch_llm(return_value=completion("Morning.")) as mock:
+        await compose_narrative(content, [make_expert()])
+
+    facts = mock.await_args.kwargs["messages"][1]["content"]
+    body = facts.removeprefix("<briefing_facts>\n").removesuffix("\n</briefing_facts>")
+    # Nothing but whole entities survives: strip them and no stray `&` is left.
+    assert "&" not in body.replace("&lt;", "")
+    # The cap bounds the source text, so every `<` that fit is fully escaped.
+    assert body.count("&lt;") == 2 * (_MAX_FACT_CHARS - 1)

@@ -173,7 +173,17 @@ def _facts_block(content: BriefingContent) -> str:
 
 def _fact_line(item: BriefingRunItem) -> str:
     status = "failed" if item.status == "FAILED" else "completed"
-    agent = escape_prompt_xml_tags(item.agent_name)[:_MAX_FACT_CHARS]
-    title = escape_prompt_xml_tags(" ".join(item.title.split()))[:_MAX_FACT_CHARS]
-    who = f"{escape_prompt_xml_tags(item.expert_name)} / " if item.expert_name else ""
-    return f"- [{status}] {who}{agent}: {title}"
+    who = f"{_clean(item.expert_name)} / " if item.expert_name else ""
+    return f"- [{status}] {who}{_clean(item.agent_name)}: {_clean(item.title)}"
+
+
+def _clean(value: str) -> str:
+    """Collapse whitespace, cap, then escape — in that order.
+
+    Escaping last is deliberate. Capping the escaped form can cut an entity in
+    half (`&lt;` → `&l`), so the cap bounds the *source* text instead. The
+    escaped result is therefore up to 4x `_MAX_FACT_CHARS` — still a hard
+    bound, and it stops a title full of metacharacters from being clipped to a
+    third of its words.
+    """
+    return escape_prompt_xml_tags(" ".join(value.split())[:_MAX_FACT_CHARS])
