@@ -591,6 +591,80 @@ async def test_setup_in_a_team_links_the_team(app_id):
     )
 
 
+@pytest.mark.asyncio
+async def test_setup_asks_the_connector_for_a_missing_team_name():
+    from backend.copilot.bot.command_core import CommandReply
+
+    # Teams stamps the team name onto install activities but not onto the
+    # message carrying /setup, so without the lookup the link is stored
+    # nameless and settings can only show the raw thread id.
+    adapter = MagicMock()
+    adapter.send_message = AsyncMock()
+    adapter.send_link = AsyncMock()
+    adapter.client.get_team_details = AsyncMock(return_value={"name": "Engineering"})
+    activity = _activity(
+        text="/setup",
+        conversation={"id": "19:room@thread.tacv2", "conversationType": "channel"},
+        channelData={"team": {"id": "19:team@thread.tacv2"}},
+    )
+    with patch(
+        "backend.copilot.bot.adapters.teams.commands.setup_reply",
+        AsyncMock(return_value=CommandReply(text="Set up")),
+    ) as setup:
+        await commands.handle(MagicMock(), adapter, activity, "setup")
+
+    adapter.client.get_team_details.assert_awaited_once_with(
+        activity["serviceUrl"], "19:team@thread.tacv2"
+    )
+    assert setup.await_args.kwargs["server_name"] == "Engineering"
+
+
+@pytest.mark.asyncio
+async def test_setup_does_not_call_the_connector_when_the_name_is_present():
+    from backend.copilot.bot.command_core import CommandReply
+
+    adapter = MagicMock()
+    adapter.send_message = AsyncMock()
+    adapter.send_link = AsyncMock()
+    adapter.client.get_team_details = AsyncMock()
+    activity = _activity(
+        text="/setup",
+        conversation={"id": "19:room@thread.tacv2", "conversationType": "channel"},
+        channelData={"team": {"id": "19:team@thread.tacv2", "name": "Eng"}},
+    )
+    with patch(
+        "backend.copilot.bot.adapters.teams.commands.setup_reply",
+        AsyncMock(return_value=CommandReply(text="Set up")),
+    ) as setup:
+        await commands.handle(MagicMock(), adapter, activity, "setup")
+
+    adapter.client.get_team_details.assert_not_awaited()
+    assert setup.await_args.kwargs["server_name"] == "Eng"
+
+
+@pytest.mark.asyncio
+async def test_setup_survives_a_failed_team_lookup():
+    from backend.copilot.bot.command_core import CommandReply
+
+    # A nameless link still works; the settings page falls back to the id.
+    adapter = MagicMock()
+    adapter.send_message = AsyncMock()
+    adapter.send_link = AsyncMock()
+    adapter.client.get_team_details = AsyncMock(side_effect=RuntimeError("connector"))
+    activity = _activity(
+        text="/setup",
+        conversation={"id": "19:room@thread.tacv2", "conversationType": "channel"},
+        channelData={"team": {"id": "19:team@thread.tacv2"}},
+    )
+    with patch(
+        "backend.copilot.bot.adapters.teams.commands.setup_reply",
+        AsyncMock(return_value=CommandReply(text="Set up")),
+    ) as setup:
+        await commands.handle(MagicMock(), adapter, activity, "setup")
+
+    assert setup.await_args.kwargs["server_name"] == ""
+
+
 # ── Factory gating ─────────────────────────────────────────────────
 
 

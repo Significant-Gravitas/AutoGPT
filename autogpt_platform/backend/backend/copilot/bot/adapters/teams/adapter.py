@@ -244,6 +244,11 @@ class TeamsAdapter(WebhookAdapter):
         elif action.startswith("add") or _lists_bot(activity.get("membersAdded"), own):
             self._api.track_guild_joined(self.platform_name, team_id, team.get("name"))
 
+    @property
+    def client(self) -> TeamsClient:
+        """The Connector client, for handlers that need their own reads."""
+        return self._client
+
     def _remember_service_url(self, activity: dict[str, Any]) -> None:
         conversation_id = (activity.get("conversation") or {}).get("id")
         service_url = activity.get("serviceUrl")

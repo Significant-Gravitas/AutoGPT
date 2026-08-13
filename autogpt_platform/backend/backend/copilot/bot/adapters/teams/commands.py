@@ -59,7 +59,7 @@ async def handle(
     elif command == "unlink":
         reply = unlink_reply()
     else:
-        reply = await _setup(api, activity, conversation_id)
+        reply = await _setup(api, adapter, activity, conversation_id)
 
     if reply.button_label and reply.button_url:
         await adapter.send_link(
@@ -70,7 +70,10 @@ async def handle(
 
 
 async def _setup(
-    api: BotBackend, activity: dict[str, Any], conversation_id: str
+    api: BotBackend,
+    adapter: "TeamsAdapter",
+    activity: dict[str, Any],
+    conversation_id: str,
 ) -> CommandReply:
     """Link the team this command came from.
 
@@ -98,6 +101,31 @@ async def _setup(
         platform_server_id=team_id,
         platform_user_id=sender.get("id") or "",
         platform_username=sender.get("name") or "",
-        server_name=team.get("name") or "",
+        server_name=await _team_name(adapter, activity, team),
         channel_id=conversation_id,
     )
+
+
+async def _team_name(
+    adapter: "TeamsAdapter", activity: dict[str, Any], team: dict[str, Any]
+) -> str:
+    """The team's display name, asking the Connector when the activity omits it.
+
+    Teams stamps ``channelData.team.name`` onto install and conversation-update
+    activities but not onto the message that carries /setup, so relying on the
+    activity alone stores an empty name and the settings page can only show the
+    raw thread id.
+    """
+    name = team.get("name") or ""
+    if name:
+        return name
+    service_url = activity.get("serviceUrl") or ""
+    team_id = team.get("id") or ""
+    if not service_url or not team_id:
+        return ""
+    try:
+        details = await adapter.client.get_team_details(service_url, team_id)
+    except Exception:
+        logger.warning("Could not resolve the Teams team name", exc_info=True)
+        return ""
+    return (details or {}).get("name") or ""

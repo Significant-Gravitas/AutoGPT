@@ -4,7 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.api.features.platform_linking.registry import enabled_platforms
+from backend.api.features.platform_linking.registry import (
+    enabled_platforms,
+    server_noun_for,
+)
 
 _REG = "backend.api.features.platform_linking.registry"
 
@@ -207,6 +210,10 @@ def test_teams_appears_without_add_bot_url_when_configured():
     assert teams.display_name == "Microsoft Teams"
     assert teams.icon == "teams.png"
     assert teams.add_bot_url is None
+    # Teams calls a server a team, and the bot's own copy already says so
+    # (adapters/teams/commands.py) — the API surface has to agree.
+    assert teams.server_noun == "team"
+    assert server_noun_for("TEAMS") == "team"
 
 
 def test_teams_hidden_when_not_configured():

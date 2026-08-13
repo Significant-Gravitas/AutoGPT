@@ -75,6 +75,17 @@ class TeamsClient:
         body = await self._request("POST", service_url, "v3/conversations", payload)
         return (body or {}).get("id")
 
+    async def get_team_details(
+        self, service_url: str, team_id: str
+    ) -> dict[str, Any] | None:
+        """The team's name and metadata.
+
+        Teams only stamps ``channelData.team.name`` onto install and
+        conversation-update activities, not onto ordinary messages — so a
+        command handler that needs the name has to ask for it.
+        """
+        return await self._request("GET", service_url, f"v3/teams/{team_id}")
+
     async def _post_activity(
         self, service_url: str, path: str, activity: dict[str, Any]
     ) -> str | None:
@@ -82,7 +93,11 @@ class TeamsClient:
         return (body or {}).get("id")
 
     async def _request(
-        self, method: str, service_url: str, path: str, payload: dict[str, Any]
+        self,
+        method: str,
+        service_url: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         if not auth.is_allowed_service_url(service_url):
             raise TeamsApiError(

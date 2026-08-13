@@ -27,6 +27,7 @@ _SERVER_NOUNS = {
     "DISCORD": "server",
     "SLACK": "workspace",
     "TELEGRAM": "group",
+    "TEAMS": "team",
 }
 _DEFAULT_SERVER_NOUN = "server"
 
@@ -131,6 +132,7 @@ def _teams_meta() -> PlatformMeta:
         platform="TEAMS",
         display_name="Microsoft Teams",
         icon="teams.png",
+        server_noun=_SERVER_NOUNS["TEAMS"],
         enabled=teams_config.is_configured(),
         add_bot_url=None,
     )
