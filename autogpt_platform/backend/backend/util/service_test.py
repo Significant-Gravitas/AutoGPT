@@ -1,23 +1,41 @@
 import asyncio
 import contextlib
 import time
+from datetime import datetime, timezone
 from functools import cached_property
+from typing import Any, Protocol, cast
 from unittest.mock import Mock
 
 import httpx
+import orjson
 import pytest
+from prisma.errors import DataError, UniqueViolationError
+from pydantic import TypeAdapter
 
+from backend.data.model import User
+from backend.util.exceptions import GraphValidationError
 from backend.util.service import (
     AppService,
     AppServiceClient,
     HTTPClientError,
     HTTPServerError,
+    RemoteCallError,
     endpoint_to_async,
     expose,
     get_service_client,
 )
 
 TEST_SERVICE_PORT = 8765
+
+
+class _SupportsGetReturn(Protocol):
+    def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any: ...
+
+
+class _SupportsHandleCallMethodResponse(Protocol):
+    def _handle_call_method_response(
+        self, *, response: Any, method_name: str
+    ) -> Any: ...
 
 
 class ServiceTest(AppService):
@@ -447,6 +465,218 @@ class TestHTTPErrorRetryBehavior:
 
         assert "Invalid parameter value" in str(exc_info.value)
 
+    def test_prisma_data_error_reconstructed_correctly(self):
+        """Test that DataError subclasses (e.g. UniqueViolationError) are
+        reconstructed without crashing.
+
+        Prisma's DataError.__init__ expects a dict `data` arg with
+        a 'user_facing_error' key.  RPC serialization only preserves the
+        string message via exc.args, so the client must wrap it in the
+        expected dict structure.
+        """
+        for exc_type in [DataError, UniqueViolationError]:
+            mock_response = Mock()
+            mock_response.status_code = 400
+            mock_response.json.return_value = {
+                "type": exc_type.__name__,
+                "args": ["Unique constraint failed on the fields: (`path`)"],
+            }
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "400 Bad Request", request=Mock(), response=mock_response
+            )
+
+            client = get_service_client(ServiceTestClient)
+
+            with pytest.raises(exc_type) as exc_info:
+                client._handle_call_method_response(  # type: ignore[attr-defined]
+                    response=mock_response, method_name="test_method"
+                )
+
+            # The exception should have the message preserved
+            assert "Unique constraint" in str(exc_info.value)
+            # And should have the expected data structure (not crash)
+            assert hasattr(exc_info.value, "data")
+            assert isinstance(exc_info.value.data, dict)
+
+    def test_graph_validation_error_preserves_node_errors(self):
+        """GraphValidationError carries a structured ``node_errors`` mapping
+        in addition to its top-level message.  The server-side error handler
+        packs it into ``RemoteCallError.extras`` and the client-side handler
+        rebuilds the exception with ``node_errors`` preserved — without this
+        round-trip the copilot's credential-race fallback can't distinguish
+        credential failures from other validation errors, and users get a
+        generic error instead of the inline credentials setup card.
+        """
+        node_errors = {
+            "some-node-id": {
+                "credentials": "These credentials are required",
+                "api_key": "Invalid credentials: not found",
+            }
+        }
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "type": "GraphValidationError",
+            "args": ["Graph validation failed: 2 issues on 1 nodes"],
+            "extras": {"node_errors": node_errors},
+        }
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=Mock(), response=mock_response
+        )
+
+        client = cast(
+            _SupportsHandleCallMethodResponse,
+            get_service_client(ServiceTestClient),
+        )
+
+        with pytest.raises(GraphValidationError) as exc_info:
+            client._handle_call_method_response(
+                response=mock_response, method_name="test_method"
+            )
+
+        assert "Graph validation failed" in str(exc_info.value)
+        assert exc_info.value.node_errors == node_errors
+
+    def test_graph_validation_error_without_extras_still_deserializes(self):
+        """Backwards-compat: old server responses without ``extras`` should
+        still reconstruct a ``GraphValidationError`` — just with an empty
+        ``node_errors`` mapping (matches current pre-fix behaviour)."""
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "type": "GraphValidationError",
+            "args": ["Graph validation failed: 1 issues on 1 nodes"],
+        }
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=Mock(), response=mock_response
+        )
+
+        client = cast(
+            _SupportsHandleCallMethodResponse,
+            get_service_client(ServiceTestClient),
+        )
+
+        with pytest.raises(GraphValidationError) as exc_info:
+            client._handle_call_method_response(
+                response=mock_response, method_name="test_method"
+            )
+
+        assert "Graph validation failed" in str(exc_info.value)
+        assert exc_info.value.node_errors == {}
+
+    def test_graph_validation_error_with_extras_but_null_node_errors(self):
+        """When ``extras`` is present but ``node_errors`` is explicitly
+        ``None``, the guard ``error_response.extras.node_errors if
+        error_response.extras else None`` must still yield an empty
+        ``node_errors`` mapping on the reconstructed exception."""
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "type": "GraphValidationError",
+            "args": ["Graph validation failed: 1 issues on 1 nodes"],
+            "extras": {"node_errors": None},
+        }
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=Mock(), response=mock_response
+        )
+
+        client = cast(
+            _SupportsHandleCallMethodResponse,
+            get_service_client(ServiceTestClient),
+        )
+
+        with pytest.raises(GraphValidationError) as exc_info:
+            client._handle_call_method_response(
+                response=mock_response, method_name="test_method"
+            )
+
+        assert "Graph validation failed" in str(exc_info.value)
+        # node_errors should default to empty dict when extras.node_errors is None
+        assert exc_info.value.node_errors == {}
+
+    def test_graph_validation_error_server_handler_packs_node_errors(self):
+        """Server-side symmetry: ``_handle_internal_http_error`` must pack
+        ``GraphValidationError.node_errors`` into the ``extras`` field so
+        the client-side round-trip test above has something real to
+        decode. Without this parity test, dropping the
+        ``isinstance(exc, GraphValidationError)`` branch in the server
+        handler would go unnoticed — the client tests mock the wire
+        payload directly and wouldn't catch it.
+        """
+        node_errors = {
+            "node-a": {
+                "credentials": "These credentials are required",
+                "api_key": "Invalid credentials: bad shape",
+            },
+            "node-b": {"token": "Unknown credentials #xyz"},
+        }
+
+        # Build the FastAPI exception handler and invoke it with a
+        # real GraphValidationError.
+        handler = AppService._handle_internal_http_error(status_code=400)
+        exc = GraphValidationError(
+            "Graph validation failed: 3 issues on 2 nodes",
+            node_errors=node_errors,
+        )
+        # The handler signature takes (request, exc); request is unused
+        # by our code path, so a Mock() is fine.
+        json_response = handler(Mock(), exc)
+
+        # The body is bytes-encoded JSON — decode and validate the
+        # shape matches the RemoteCallError model.
+        decoded = orjson.loads(bytes(json_response.body))
+        rebuilt = RemoteCallError.model_validate(decoded)
+
+        assert rebuilt.type == "GraphValidationError"
+        assert rebuilt.args is not None
+        assert "Graph validation failed" in str(rebuilt.args[0])
+        assert rebuilt.extras is not None
+        assert rebuilt.extras.node_errors == node_errors
+
+    def test_graph_validation_error_round_trips_through_handlers(self):
+        """Full round-trip: server handler packs a real
+        ``GraphValidationError`` → client handler decodes and reconstructs
+        the original exception with ``node_errors`` preserved.
+
+        This closes the asymmetry between the server-packs and
+        client-unpacks tests — if either side drifts, this test fails
+        even when both one-sided tests pass.
+        """
+        node_errors = {
+            "node-x": {"credentials": "These credentials are required"},
+        }
+
+        # Server side.
+        handler = AppService._handle_internal_http_error(status_code=400)
+        exc = GraphValidationError(
+            "Graph validation failed: 1 issues on 1 nodes",
+            node_errors=node_errors,
+        )
+        json_response = handler(Mock(), exc)
+        wire_payload = orjson.loads(bytes(json_response.body))
+
+        # Client side — replay the wire payload through the real
+        # ``_handle_call_method_response``.
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = wire_payload
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=Mock(), response=mock_response
+        )
+
+        client = cast(
+            _SupportsHandleCallMethodResponse,
+            get_service_client(ServiceTestClient),
+        )
+
+        with pytest.raises(GraphValidationError) as exc_info:
+            client._handle_call_method_response(
+                response=mock_response, method_name="test_method"
+            )
+
+        assert "Graph validation failed" in str(exc_info.value)
+        assert exc_info.value.node_errors == node_errors
+
     def test_client_error_status_codes_coverage(self):
         """Test that various 4xx status codes are all wrapped as HTTPClientError."""
         client_error_codes = [400, 401, 403, 404, 405, 409, 422, 429]
@@ -654,3 +884,46 @@ async def test_health_check_during_shutdown(test_service):
     except (httpx.ConnectError, httpx.ConnectTimeout):
         # Connection refused/timeout is also acceptable
         pass
+
+
+# ============================================================================
+# Unit tests for DynamicClient._get_return
+# ============================================================================
+
+
+class TestGetReturn:
+    """Direct unit tests for DynamicClient._get_return typed-return contract."""
+
+    def _make_client(self) -> _SupportsGetReturn:
+        return cast(_SupportsGetReturn, get_service_client(ServiceTestClient))
+
+    def test_valid_dict_is_deserialized_to_user_model(self):
+        """TypeAdapter(User) + valid dict → User model returned with .timezone accessible.
+
+        User.model_config uses extra='ignore' so unknown fields (e.g. new columns added
+        in a newer database-manager deploy) are silently dropped instead of raising
+        ValidationError — making the RPC layer forward-compatible during rolling deploys.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        valid_dict = {
+            "id": "user-id",
+            "email": "test@example.com",
+            "created_at": now,
+            "updated_at": now,
+            "unknown_future_field": "some_value",  # simulates a new DB field during deploy
+        }
+        client = self._make_client()
+        adapter = TypeAdapter(User)
+        result = client._get_return(adapter, valid_dict)
+
+        assert isinstance(result, User)
+        assert result.timezone is not None
+
+    def test_invalid_dict_falls_back_to_raw_result(self):
+        """TypeAdapter(User) + invalid dict (missing required fields) → fallback returns raw dict."""
+        invalid_dict = {"id": "user-id"}  # missing email, created_at, updated_at
+        client = self._make_client()
+        adapter = TypeAdapter(User)
+
+        result = client._get_return(adapter, invalid_dict)
+        assert result == invalid_dict

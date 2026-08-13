@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import re
 from abc import ABC
 from email import encoders
 from email.mime.base import MIMEBase
@@ -8,19 +9,20 @@ from email.mime.text import MIMEText
 from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Protocol, runtime_checkable
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel, Field
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 from backend.util.settings import Settings
@@ -41,8 +43,52 @@ NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
-    """Serialize recipients list to comma-separated string."""
-    return ", ".join(recipients)
+    """Serialize recipients list to comma-separated string.
+
+    Strips leading/trailing whitespace from each address to keep MIME
+    headers clean (mirrors the strip done in ``validate_email_recipients``).
+    """
+    return ", ".join(addr.strip() for addr in recipients)
+
+
+# RFC 5322 simplified pattern: local@domain where domain has at least one dot
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def validate_email_recipients(recipients: list[str], field_name: str = "to") -> None:
+    """Validate that all recipients are plausible email addresses.
+
+    Raises ``ValueError`` with a user-friendly message listing every
+    invalid entry so the caller (or LLM) can correct them in one pass.
+    """
+    invalid = [addr for addr in recipients if not _EMAIL_RE.match(addr.strip())]
+    if invalid:
+        formatted = ", ".join(f"'{a}'" for a in invalid)
+        raise ValueError(
+            f"Invalid email address(es) in '{field_name}': {formatted}. "
+            f"Each entry must be a valid email address (e.g. user@example.com)."
+        )
+
+
+@runtime_checkable
+class HasRecipients(Protocol):
+    to: list[str]
+    cc: list[str]
+    bcc: list[str]
+
+
+def validate_all_recipients(input_data: HasRecipients) -> None:
+    """Validate to/cc/bcc recipient fields on an input namespace.
+
+    Calls ``validate_email_recipients`` for ``to`` (required) and
+    ``cc``/``bcc`` (when non-empty), raising ``ValueError`` on the
+    first field that contains an invalid address.
+    """
+    validate_email_recipients(input_data.to, "to")
+    if input_data.cc:
+        validate_email_recipients(input_data.cc, "cc")
+    if input_data.bcc:
+        validate_email_recipients(input_data.bcc, "bcc")
 
 
 def _make_mime_text(
@@ -95,19 +141,20 @@ def _make_mime_text(
 
 async def create_mime_message(
     input_data,
-    graph_exec_id: str,
-    user_id: str,
+    execution_context: ExecutionContext,
 ) -> str:
     """Create a MIME message with attachments and return base64-encoded raw message."""
+
+    validate_all_recipients(input_data)
 
     message = MIMEMultipart()
     message["to"] = serialize_email_recipients(input_data.to)
     message["subject"] = input_data.subject
 
     if input_data.cc:
-        message["cc"] = ", ".join(input_data.cc)
+        message["cc"] = serialize_email_recipients(input_data.cc)
     if input_data.bcc:
-        message["bcc"] = ", ".join(input_data.bcc)
+        message["bcc"] = serialize_email_recipients(input_data.bcc)
 
     # Use the new helper function with content_type if available
     content_type = getattr(input_data, "content_type", None)
@@ -117,12 +164,12 @@ async def create_mime_message(
     if input_data.attachments:
         for attach in input_data.attachments:
             local_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
                 file=attach,
-                return_content=False,
+                execution_context=execution_context,
+                return_format="for_local_processing",
             )
-            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            assert execution_context.graph_exec_id  # Validated by store_media_file
+            abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())
@@ -241,8 +288,8 @@ class GmailBase(Block, ABC):
                     h.ignore_links = False
                     h.ignore_images = True
                     return h.handle(html_content)
-                except ImportError:
-                    # Fallback: return raw HTML if html2text is not available
+                except Exception:
+                    # Keep extraction resilient if html2text is unavailable or fails.
                     return html_content
 
         # Handle content stored as attachment
@@ -582,27 +629,25 @@ class GmailSendBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         result = await self._send_email(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "result", result
 
     async def _send_email(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         if not input_data.to or not input_data.subject or not input_data.body:
             raise ValueError(
                 "At least one recipient, subject, and body are required for sending an email"
             )
-        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
+        raw_message = await create_mime_message(input_data, execution_context)
         sent_message = await asyncio.to_thread(
             lambda: service.users()
             .messages()
@@ -692,30 +737,28 @@ class GmailCreateDraftBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         result = await self._create_draft(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "result", GmailDraftResult(
             id=result["id"], message_id=result["message"]["id"], status="draft_created"
         )
 
     async def _create_draft(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         if not input_data.to or not input_data.subject:
             raise ValueError(
                 "At least one recipient and subject are required for creating a draft"
             )
 
-        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
+        raw_message = await create_mime_message(input_data, execution_context)
         draft = await asyncio.to_thread(
             lambda: service.users()
             .drafts()
@@ -1100,7 +1143,7 @@ class GmailGetThreadBlock(GmailBase):
 
 
 async def _build_reply_message(
-    service, input_data, graph_exec_id: str, user_id: str
+    service, input_data, execution_context: ExecutionContext
 ) -> tuple[str, str]:
     """
     Builds a reply MIME message for Gmail threads.
@@ -1171,13 +1214,15 @@ async def _build_reply_message(
         references.append(headers["message-id"])
 
     # Create MIME message
+    validate_all_recipients(input_data)
+
     msg = MIMEMultipart()
     if input_data.to:
-        msg["To"] = ", ".join(input_data.to)
+        msg["To"] = serialize_email_recipients(input_data.to)
     if input_data.cc:
-        msg["Cc"] = ", ".join(input_data.cc)
+        msg["Cc"] = serialize_email_recipients(input_data.cc)
     if input_data.bcc:
-        msg["Bcc"] = ", ".join(input_data.bcc)
+        msg["Bcc"] = serialize_email_recipients(input_data.bcc)
     msg["Subject"] = subject
     if headers.get("message-id"):
         msg["In-Reply-To"] = headers["message-id"]
@@ -1190,12 +1235,12 @@ async def _build_reply_message(
     # Handle attachments
     for attach in input_data.attachments:
         local_path = await store_media_file(
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
             file=attach,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
-        abs_path = get_exec_file_path(graph_exec_id, local_path)
+        assert execution_context.graph_exec_id  # Validated by store_media_file
+        abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
         part = MIMEBase("application", "octet-stream")
         with open(abs_path, "rb") as f:
             part.set_payload(f.read())
@@ -1311,16 +1356,14 @@ class GmailReplyBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         message = await self._reply(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "messageId", message["id"]
         yield "threadId", message.get("threadId", input_data.threadId)
@@ -1343,11 +1386,11 @@ class GmailReplyBlock(GmailBase):
         yield "email", email
 
     async def _reply(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         # Build the reply message using the shared helper
         raw, thread_id = await _build_reply_message(
-            service, input_data, graph_exec_id, user_id
+            service, input_data, execution_context
         )
 
         # Send the message
@@ -1441,16 +1484,14 @@ class GmailDraftReplyBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         draft = await self._create_draft_reply(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "draftId", draft["id"]
         yield "messageId", draft["message"]["id"]
@@ -1458,11 +1499,11 @@ class GmailDraftReplyBlock(GmailBase):
         yield "status", "draft_created"
 
     async def _create_draft_reply(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         # Build the reply message using the shared helper
         raw, thread_id = await _build_reply_message(
-            service, input_data, graph_exec_id, user_id
+            service, input_data, execution_context
         )
 
         # Create draft with proper thread association
@@ -1629,23 +1670,21 @@ class GmailForwardBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         result = await self._forward_message(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "messageId", result["id"]
         yield "threadId", result.get("threadId", "")
         yield "status", "forwarded"
 
     async def _forward_message(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         if not input_data.to:
             raise ValueError("At least one recipient is required for forwarding")
@@ -1695,13 +1734,16 @@ To: {original_to}
         else:
             body = f"{forward_header}\n\n{original_body}"
 
+        # Validate all recipient lists before building the MIME message
+        validate_all_recipients(input_data)
+
         # Create MIME message
         msg = MIMEMultipart()
-        msg["To"] = ", ".join(input_data.to)
+        msg["To"] = serialize_email_recipients(input_data.to)
         if input_data.cc:
-            msg["Cc"] = ", ".join(input_data.cc)
+            msg["Cc"] = serialize_email_recipients(input_data.cc)
         if input_data.bcc:
-            msg["Bcc"] = ", ".join(input_data.bcc)
+            msg["Bcc"] = serialize_email_recipients(input_data.bcc)
         msg["Subject"] = subject
 
         # Add body with proper content type
@@ -1727,12 +1769,12 @@ To: {original_to}
         # Add any additional attachments
         for attach in input_data.additionalAttachments:
             local_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
                 file=attach,
-                return_content=False,
+                execution_context=execution_context,
+                return_format="for_local_processing",
             )
-            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            assert execution_context.graph_exec_id  # Validated by store_media_file
+            abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())

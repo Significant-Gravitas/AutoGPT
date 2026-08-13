@@ -29,7 +29,9 @@ function getAGPTServerApiUrl() {
     return process.env.AGPT_SERVER_URL;
   }
 
-  return process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+  const url =
+    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+  return resolveBrowserURL(url);
 }
 
 function getAGPTServerBaseUrl() {
@@ -41,19 +43,19 @@ function getAGPTWsServerUrl() {
     return process.env.AGPT_WS_SERVER_URL;
   }
 
-  return process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL || "ws://localhost:8001/ws";
+  const configuredURL =
+    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL || "ws://localhost:8001/ws";
+  if (environment.isServerSide()) return configuredURL;
+
+  const url = new URL(configuredURL, window.location.origin);
+  if (url.protocol === "http:") url.protocol = "ws:";
+  if (url.protocol === "https:") url.protocol = "wss:";
+  return url.toString();
 }
 
-function getSupabaseUrl() {
-  if (environment.isServerSide() && process.env.SUPABASE_URL) {
-    return process.env.SUPABASE_URL;
-  }
-
-  return process.env.NEXT_PUBLIC_SUPABASE_URL || "http://localhost:8000";
-}
-
-function getSupabaseAnonKey() {
-  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+function resolveBrowserURL(url: string) {
+  if (environment.isServerSide()) return url;
+  return new URL(url, window.location.origin).toString();
 }
 
 function getEnvironmentStr() {
@@ -74,6 +76,17 @@ function getPreviewStealingDev() {
   }
 
   return branch;
+}
+
+function getPostHogCredentials() {
+  return {
+    key: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+    host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+  };
+}
+
+function getLaunchDarklyClientId() {
+  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 }
 
 function isProductionBuild() {
@@ -113,7 +126,17 @@ function isVercelPreview() {
 }
 
 function areFeatureFlagsEnabled() {
-  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
+  return (
+    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
+    Boolean(process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID)
+  );
+}
+
+function isPostHogEnabled() {
+  const inCloud = isCloud();
+  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+  return inCloud && key && host;
 }
 
 export const environment = {
@@ -125,9 +148,9 @@ export const environment = {
   getAGPTServerApiUrl,
   getAGPTServerBaseUrl,
   getAGPTWsServerUrl,
-  getSupabaseUrl,
-  getSupabaseAnonKey,
   getPreviewStealingDev,
+  getPostHogCredentials,
+  getLaunchDarklyClientId,
   // Assertions
   isServerSide,
   isClientSide,
@@ -138,5 +161,6 @@ export const environment = {
   isCloud,
   isLocal,
   isVercelPreview,
+  isPostHogEnabled,
   areFeatureFlagsEnabled,
 };

@@ -38,7 +38,9 @@
 
 ## Using AI Services
 
+* [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
+* [AutoPilot on a self-hosted LLM (no API keys)](copilot-local-llm.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
 
@@ -47,15 +49,19 @@
 * [API Introduction](integrating/api-guide.md)
 * [OAuth & SSO](integrating/oauth-guide.md)
 
+## Contributing
+
+* [Managing LLM Models](contributing/managing-llm-models.md)
+
 ## Changelog
 
 * [What's New](changelog/README.md)
   * [Organize files, share your work, connect Discord](changelog/june-18-july-9-2026.md)
   * [Smarter Automation, Fresher Design, Open for Business](changelog/may-7-june-10-2026.md)
   * [Artifacts, Briefings, and Builder Chat](changelog/april-10-may-1-2026.md)
-  * [Smarter starts, faster feedback](changelog/march-23-april-9-2026.md)
+  * [Smarter Starts, Faster Feedback](changelog/march-23-april-9-2026.md)
   * [Import workflows from other platforms and enjoy a polished marketplace](changelog/march-20-march-25-2026.md)
-  * [Refreshed marketplace, usage monitor, and personalized prompts](changelog/march-13-march-20-2026.md)
+  * [Explore a new marketplace, track usage, and give instant feedback](changelog/march-13-march-20-2026.md)
   * [Organize your agents, get notified, and enjoy a cleaner chat](changelog/march-5-march-12-2026.md)
   * [Connect any app, share files, and let AutoPilot browse for you](changelog/february-26-march-4-2026.md)
   * [Telegram bots, agent folders, and a rebuilt builder](changelog/february-11-february-26-2026.md)

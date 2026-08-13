@@ -8,12 +8,18 @@ There are several ways to share agents and their outputs with others on the Auto
 
 ### Share Task Output via URL
 
-Every completed task has a unique URL that can be shared with others. To share a task result:
+A completed task remains private until you explicitly enable sharing:
 
-1. Go to your [Agent Library](agent-library.md) and open the agent
-2. Click on the completed task you want to share
-3. Copy the task URL from your browser's address bar
-4. Send the URL to anyone — they can view the task's inputs and outputs directly
+1. Open the agent and select the completed task.
+2. Click **Share results**.
+3. Review the public-access warning and click **Enable Sharing**.
+4. Copy the generated **Share URL**.
+
+Anyone with that URL can view the run's outputs. Use **Stop Sharing** in the same dialog to revoke the link.
+
+{% hint style="warning" %}
+A share URL is publicly accessible to anyone who has it. It does not publish the task inputs, but outputs may contain sensitive data.
+{% endhint %}
 
 ### Publish to the Marketplace
 
@@ -37,12 +43,11 @@ You can then send this file to anyone via email, messaging, or any other method.
 To import an agent file someone has shared with you:
 
 1. Go to your [Agent Library](agent-library.md)
-2. Click **Upload Agent** at the top
-3. Select the agent file
-4. The agent will be added to your library
+2. Click **Import**
+3. Select the **AutoGPT agent** tab
+4. Upload the exported `.json` file
+5. The agent will be added to your library
 
 ## Teams & Collaboration
 
-{% hint style="info" %}
-Team and organisation features are not yet available on the platform. Currently, the only way to share agents privately between users is through the file export/import process described above.
-{% endhint %}
+Organization and team workspaces are available only when enabled for your account or deployment. Use their built-in access controls where available. Export/import remains the portable way to transfer an agent file between separate accounts or deployments.

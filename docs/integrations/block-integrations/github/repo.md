@@ -3,47 +3,6 @@
 Blocks for managing GitHub repositories, branches, files, and repository metadata.
 <!-- END MANUAL -->
 
-## Github Create File
-
-### What it is
-This block creates a new file in a GitHub repository.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block creates a new file in a GitHub repository using the GitHub Contents API. It commits the file with the specified content to the chosen branch (or the default branch if not specified).
-
-The commit message can be customized, and the block returns the URL of the created file along with the commit SHA for tracking purposes.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| repo_url | URL of the GitHub repository | str | Yes |
-| file_path | Path where the file should be created | str | Yes |
-| content | Content to write to the file | str | Yes |
-| branch | Branch where the file should be created | str | No |
-| commit_message | Message for the commit | str | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the file creation failed | str |
-| url | URL of the created file | str |
-| sha | SHA of the commit | str |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Configuration Deployment**: Automatically add configuration files to repositories during project setup.
-
-**Documentation Generation**: Create markdown files or documentation pages programmatically.
-
-**Template Deployment**: Add boilerplate files like LICENSE, .gitignore, or CI configs to repositories.
-<!-- END MANUAL -->
-
----
-
 ## Github Create Repository
 
 ### What it is
@@ -85,53 +44,55 @@ The block returns both the web URL for viewing the repository and the clone URL 
 
 ---
 
-## Github Delete Branch
+## Github Fork Repository
 
 ### What it is
-This block deletes a specified branch.
+This block forks a GitHub repository to your account or an organization.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block deletes a specified branch from a GitHub repository using the GitHub References API. The branch is permanently removed, so use with caution—this cannot be undone without re-pushing the branch.
+This block forks a GitHub repository by sending a POST request to the GitHub Forks API. You can optionally specify an organization to fork into; if left empty, the fork is created under your personal account.
 
-Protected branches cannot be deleted unless protection rules are first removed.
+The block returns the web URL, clone URL, and full name (owner/repo) of the newly created fork.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| repo_url | URL of the GitHub repository | str | Yes |
-| branch | Name of the branch to delete | str | Yes |
+| repo_url | URL of the GitHub repository to fork | str | Yes |
+| organization | Organization to fork into (leave empty to fork to your account) | str | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the branch deletion failed | str |
-| status | Status of the branch deletion operation | str |
+| error | Error message if the fork failed | str |
+| url | URL of the forked repository | str |
+| clone_url | Git clone URL of the fork | str |
+| full_name | Full name of the fork (owner/repo) | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Post-Merge Cleanup**: Automatically delete feature branches after they've been merged.
+**Open Source Contributions**: Fork repositories to create your own copy before submitting pull requests with changes.
 
-**Stale Branch Management**: Clean up old or abandoned branches to keep the repository tidy.
+**Organization Mirroring**: Automatically fork upstream repositories into your organization for internal development.
 
-**CI/CD Automation**: Delete temporary branches created during build or deployment processes.
+**Project Scaffolding**: Fork template repositories as starting points for new projects.
 <!-- END MANUAL -->
 
 ---
 
-## Github List Branches
+## Github Get Repository Info
 
 ### What it is
-This block lists all branches for a specified GitHub repository.
+This block retrieves metadata about a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves all branches from a GitHub repository. It queries the GitHub API and returns each branch with its name and a URL to browse the files at that branch.
+This block fetches repository metadata from the GitHub API using the provided repository URL. It returns key information including the repository name, description, default branch, visibility, star/fork/issue counts, and URLs.
 
-This provides visibility into all development streams in a repository.
+The block extracts fields like `stargazers_count`, `forks_count`, and `open_issues_count` from the API response and maps them to the output fields.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -144,17 +105,25 @@ This provides visibility into all development streams in a repository.
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the operation failed | str |
-| branch | Branches with their name and file tree browser URL | Branch |
-| branches | List of branches with their name and file tree browser URL | List[BranchItem] |
+| error | Error message if fetching repo info failed | str |
+| name | Repository name | str |
+| full_name | Full repository name (owner/repo) | str |
+| description | Repository description | str |
+| default_branch | Default branch name (e.g. main) | str |
+| private | Whether the repository is private | bool |
+| html_url | Web URL of the repository | str |
+| clone_url | Git clone URL | str |
+| stars | Number of stars | int |
+| forks | Number of forks | int |
+| open_issues | Number of open issues | int |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Branch Inventory**: Create a dashboard showing all active branches across repositories.
+**Repository Health Monitoring**: Check star counts, fork counts, and open issues to track project health over time.
 
-**Naming Convention Validation**: Check branch names against team conventions.
+**Dependency Assessment**: Retrieve metadata about third-party repositories before adding them as dependencies.
 
-**Active Development Tracking**: Monitor which branches exist to track parallel development efforts.
+**Automated Reporting**: Collect repository statistics across multiple projects for team dashboards.
 <!-- END MANUAL -->
 
 ---
@@ -308,160 +277,38 @@ Each tag includes its name and a URL to browse the repository files at that tag.
 
 ---
 
-## Github Make Branch
+## Github Star Repository
 
 ### What it is
-This block creates a new branch from a specified source branch.
+This block stars a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates a new branch in a GitHub repository based on an existing source branch. It uses the GitHub References API to create a new ref pointing to the same commit as the source branch.
+This block stars a GitHub repository by sending a PUT request to the GitHub Starring API (`/user/starred/{owner}/{repo}`). Starring is a way to bookmark repositories and show appreciation for projects.
 
-The new branch immediately contains all the code from the source branch at the time of creation.
+The block returns a success status message upon completion.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| repo_url | URL of the GitHub repository | str | Yes |
-| new_branch | Name of the new branch | str | Yes |
-| source_branch | Name of the source branch | str | Yes |
+| repo_url | URL of the GitHub repository to star | str | Yes |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the branch creation failed | str |
-| status | Status of the branch creation operation | str |
+| error | Error message if starring failed | str |
+| status | Status of the star operation | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Feature Branch Creation**: Automatically create feature branches from main when work begins.
+**Bookmarking Repositories**: Automatically star repositories that match certain criteria for later reference.
 
-**Release Preparation**: Create release branches from development when ready to stabilize.
+**Community Engagement**: Star repositories from contributors as part of an automated thank-you workflow.
 
-**Hotfix Workflows**: Quickly create hotfix branches from production for urgent fixes.
-<!-- END MANUAL -->
-
----
-
-## Github Read File
-
-### What it is
-This block reads the content of a specified file from a GitHub repository.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block reads the contents of a file from a GitHub repository using the Contents API. You can specify which branch to read from, defaulting to the repository's default branch.
-
-The block returns both the decoded text content (for text files) and the raw base64-encoded content, along with the file size.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| repo_url | URL of the GitHub repository | str | Yes |
-| file_path | Path to the file in the repository | str | Yes |
-| branch | Branch to read from | str | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| text_content | Content of the file (decoded as UTF-8 text) | str |
-| raw_content | Raw base64-encoded content of the file | str |
-| size | The size of the file (in bytes) | int |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Configuration Reading**: Fetch configuration files from repositories for processing or validation.
-
-**Code Analysis**: Read source files for automated analysis, linting, or documentation generation.
-
-**Version Comparison**: Compare file contents across different branches or versions.
-<!-- END MANUAL -->
-
----
-
-## Github Read Folder
-
-### What it is
-This block reads the content of a specified folder from a GitHub repository.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block lists the contents of a folder in a GitHub repository. It returns separate outputs for files and directories found in the specified path, allowing you to explore the repository structure.
-
-You can specify which branch to read from; it defaults to master if not specified.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| repo_url | URL of the GitHub repository | str | Yes |
-| folder_path | Path to the folder in the repository | str | Yes |
-| branch | Branch name to read from (defaults to master) | str | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if reading the folder failed | str |
-| file | Files in the folder | FileEntry |
-| dir | Directories in the folder | DirEntry |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Repository Exploration**: Browse repository structure to understand project organization.
-
-**File Discovery**: Find specific file types in directories for batch processing.
-
-**Directory Monitoring**: Check for expected files in specific locations.
-<!-- END MANUAL -->
-
----
-
-## Github Update File
-
-### What it is
-This block updates an existing file in a GitHub repository.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block updates an existing file in a GitHub repository using the Contents API. It creates a new commit with the updated file content. The block automatically handles the required SHA of the existing file.
-
-You can customize the commit message and specify which branch to update.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| repo_url | URL of the GitHub repository | str | Yes |
-| file_path | Path to the file to update | str | Yes |
-| content | New content for the file | str | Yes |
-| branch | Branch containing the file | str | No |
-| commit_message | Message for the commit | str | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| url | URL of the updated file | str |
-| sha | SHA of the commit | str |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Configuration Updates**: Programmatically update configuration files in repositories.
-
-**Version Bumping**: Automatically update version numbers in package files.
-
-**Documentation Sync**: Update documentation files based on code changes.
+**Interest Tracking**: Programmatically star repositories in specific topics to build a curated collection.
 <!-- END MANUAL -->
 
 ---

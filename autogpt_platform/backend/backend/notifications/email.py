@@ -46,7 +46,7 @@ class EmailSender:
 
     MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
 
-    def send_templated(
+    async def send_templated(
         self,
         notification: NotificationType,
         user_email: str,
@@ -71,7 +71,7 @@ class EmailSender:
         template_data = {"notifications": data} if isinstance(data, list) else data
 
         try:
-            subject, full_message = self.formatter.format_email(
+            subject, full_message = await self.formatter.format_email(
                 base_template=template.base_template,
                 subject_template=template.subject_template,
                 content_template=template.body_template,
@@ -133,6 +133,15 @@ class EmailSender:
             body_template=template,
             base_template=base_template,
         )
+
+    def send_email_or_raise(self, user_email: str, subject: str, body: str) -> None:
+        """Send a one-off transactional email (e.g. Better Auth password-reset
+        and verification links) with no notification templating or preference
+        gating. Raises if the Postmark client is not configured so callers can
+        surface the failure instead of silently dropping an auth email."""
+        if not self.postmark:
+            raise RuntimeError("Postmark is not configured; cannot send email")
+        self._send_email(user_email, subject, body)
 
     def _send_email(
         self,

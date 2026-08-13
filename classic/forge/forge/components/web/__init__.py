@@ -1,4 +1,12 @@
+from .playwright_browser import BrowsingError, WebPlaywrightComponent
 from .search import WebSearchComponent
-from .selenium import BrowsingError, WebSeleniumComponent
 
-__all__ = ["WebSearchComponent", "BrowsingError", "WebSeleniumComponent"]
+# WebPlaywrightComponent is the default browser component
+WebBrowserComponent = WebPlaywrightComponent
+
+__all__ = [
+    "WebSearchComponent",
+    "BrowsingError",
+    "WebPlaywrightComponent",
+    "WebBrowserComponent",
+]

@@ -7,7 +7,7 @@ import {
 
 import { Text } from "@/components/atoms/Text/Text";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
-import { isAnyOfSchema } from "../../utils/schema-utils";
+import { isAnyOfSchema, isOneOfSchema } from "../../utils/schema-utils";
 import { cn } from "@/lib/utils";
 import { cleanUpHandleId, isArrayItem } from "../../helpers";
 import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
@@ -18,7 +18,7 @@ export default function TitleField(props: TitleFieldProps) {
   const { nodeId, showHandles } = registry.formContext;
   const uiOptions = getUiOptions(uiSchema);
 
-  const isAnyOf = isAnyOfSchema(schema);
+  const isAnyOf = isAnyOfSchema(schema) || isOneOfSchema(schema);
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
   const description_id = descriptionId(id);
 

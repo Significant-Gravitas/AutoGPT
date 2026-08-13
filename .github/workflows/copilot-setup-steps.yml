@@ -27,7 +27,7 @@ jobs:
     # If you do not check out your code, Copilot will do this for you.
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: true
@@ -39,7 +39,7 @@ jobs:
           python-version: "3.11"  # Use standard version matching CI
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -76,9 +76,9 @@ jobs:
 
       # Frontend Node.js/pnpm setup (mirrors platform-frontend-ci.yml)
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24.18.0"
 
       - name: Enable corepack
         run: corepack enable
@@ -89,7 +89,7 @@ jobs:
           echo "PNPM_HOME=$HOME/.pnpm-store" >> $GITHUB_ENV
 
       - name: Cache frontend dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
           key: ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}
@@ -132,7 +132,7 @@ jobs:
       # Phase 1: Cache and load Docker images for faster setup
       - name: Set up Docker image cache
         id: docker-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/docker-cache
           # Use a versioned key for cache invalidation when image list changes
@@ -152,11 +152,7 @@ jobs:
             "rabbitmq:management"
             "clamav/clamav-debian:latest"
             "busybox:latest"
-            "kong:2.8.1"
-            "supabase/gotrue:v2.170.0"
-            "supabase/postgres:15.8.1.049"
-            "supabase/postgres-meta:v0.86.1"
-            "supabase/studio:20250224-d10db0f"
+            "pgvector/pgvector:pg15"
           )
           
           # Check if any cached tar files exist (more reliable than cache-hit)

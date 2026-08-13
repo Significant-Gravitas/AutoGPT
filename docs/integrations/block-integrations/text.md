@@ -93,9 +93,9 @@ This block triggers after a specified duration.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The Countdown Timer block pauses workflow execution for a specified duration before continuing. You can set the delay using any combination of seconds, minutes, hours, and days. When the timer completes, it outputs your specified message (or "timer finished" by default).
+The Countdown Timer block pauses workflow execution for a specified duration before continuing. You can set the delay using any combination of seconds, minutes, hours, and days. The cumulative duration (per-iteration delay × repeat count) is capped at 7 days. When the timer completes, it outputs your specified message (or "timer finished" by default).
 
-The block supports a repeat parameter, allowing the timer to fire multiple times in sequence—useful for creating periodic triggers within your workflow. The timer uses async sleep, so it doesn't block other concurrent operations in the system.
+The block supports a repeat parameter (1–1000), allowing the timer to fire multiple times in sequence—useful for creating periodic triggers within your workflow. The timer uses async sleep, so it doesn't block other concurrent operations in the system.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -107,7 +107,7 @@ The block supports a repeat parameter, allowing the timer to fire multiple times
 | minutes | Duration in minutes | int \| str | No |
 | hours | Duration in hours | int \| str | No |
 | days | Duration in days | int \| str | No |
-| repeat | Number of times to repeat the timer | int | No |
+| repeat | Number of times to repeat the timer (1–1000) | int | No |
 
 ### Outputs
 
@@ -376,6 +376,42 @@ This is useful when working with data from APIs or files where escape sequences 
 **Log File Processing**: Process log entries where special characters are escaped, converting them to their actual representations for proper parsing or display.
 
 **API Response Handling**: Decode text from APIs that return escaped content, ensuring special characters like tabs and newlines render correctly in your output.
+<!-- END MANUAL -->
+
+---
+
+## Text Encoder
+
+### What it is
+Encodes a string by converting special characters into escape sequences
+
+### How it works
+<!-- MANUAL: how_it_works -->
+The Text Encoder takes the input string and applies Python's `unicode_escape` encoding (equivalent to `codecs.encode(text, "unicode_escape").decode("utf-8")`) to transform special characters like newlines, tabs, and backslashes into their escaped forms.
+
+The block relies on the input schema to ensure the value is a string; non-string inputs are rejected by validation, and any encoding failures surface as block errors. Non-ASCII characters are emitted as `\uXXXX` sequences, which is useful for ASCII-only payloads.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| text | A string containing special characters to be encoded | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if encoding fails | str |
+| encoded_text | The encoded text with special characters converted to escape sequences | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**JSON Payload Preparation**: Encode multiline or quoted text before embedding it in JSON string fields to ensure proper escaping.
+
+**Config/ENV Generation**: Convert template text into escaped strings for `.env` or YAML values that require special character handling.
+
+**Snapshot Fixtures**: Produce stable escaped strings for golden files or API tests where consistent text representation is needed.
 <!-- END MANUAL -->
 
 ---

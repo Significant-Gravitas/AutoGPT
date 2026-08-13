@@ -7,7 +7,7 @@ import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission"
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 
@@ -24,7 +24,7 @@ type EditState = {
   submission:
     | (StoreSubmissionEditRequest & {
         store_listing_version_id: string | undefined;
-        agent_id: string;
+        graph_id: string;
       })
     | null;
 };
@@ -32,7 +32,7 @@ type EditState = {
 export const useMainDashboardPage = () => {
   const queryClient = getQueryClient();
 
-  const { user } = useSupabase();
+  const { user } = useAuth();
 
   const [publishState, setPublishState] = useState<PublishState>({
     isOpen: false,
@@ -79,7 +79,7 @@ export const useMainDashboardPage = () => {
   const onEditSubmission = (
     submission: StoreSubmissionEditRequest & {
       store_listing_version_id: string | undefined;
-      agent_id: string;
+      graph_id: string;
     },
   ) => {
     setEditState({
@@ -90,7 +90,7 @@ export const useMainDashboardPage = () => {
 
   const onEditSuccess = async (submission: StoreSubmission) => {
     try {
-      if (!submission.store_listing_version_id) {
+      if (!submission.listing_version_id) {
         Sentry.captureException(
           new Error("No store listing version ID found for submission"),
         );

@@ -25,6 +25,7 @@ from backend.sdk import (
 
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from .helpers import merge_exa_cost
 
 
 # Mirrored model for stability - don't use SDK types directly in block outputs
@@ -233,7 +234,7 @@ class ExaCreateMonitorBlock(Block):
     def _create_test_mock():
         """Create test mocks for the AsyncExa SDK."""
         from datetime import datetime
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         # Create mock SDK monitor object
         mock_monitor = MagicMock()
@@ -263,7 +264,7 @@ class ExaCreateMonitorBlock(Block):
         return {
             "_get_client": lambda *args, **kwargs: MagicMock(
                 websets=MagicMock(
-                    monitors=MagicMock(create=lambda *args, **kwargs: mock_monitor)
+                    monitors=MagicMock(create=AsyncMock(return_value=mock_monitor))
                 )
             )
         }
@@ -320,7 +321,8 @@ class ExaCreateMonitorBlock(Block):
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        sdk_monitor = aexa.websets.monitors.create(params=payload)
+        sdk_monitor = await aexa.websets.monitors.create(params=payload)
+        merge_exa_cost(self, sdk_monitor)
 
         monitor = MonitorModel.from_sdk(sdk_monitor)
 
@@ -384,7 +386,8 @@ class ExaGetMonitorBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_monitor = aexa.websets.monitors.get(monitor_id=input_data.monitor_id)
+        sdk_monitor = await aexa.websets.monitors.get(monitor_id=input_data.monitor_id)
+        merge_exa_cost(self, sdk_monitor)
 
         monitor = MonitorModel.from_sdk(sdk_monitor)
 
@@ -476,9 +479,10 @@ class ExaUpdateMonitorBlock(Block):
         if input_data.metadata is not None:
             payload["metadata"] = input_data.metadata
 
-        sdk_monitor = aexa.websets.monitors.update(
+        sdk_monitor = await aexa.websets.monitors.update(
             monitor_id=input_data.monitor_id, params=payload
         )
+        merge_exa_cost(self, sdk_monitor)
 
         # Convert to our stable model
         monitor = MonitorModel.from_sdk(sdk_monitor)
@@ -522,7 +526,10 @@ class ExaDeleteMonitorBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_monitor = aexa.websets.monitors.delete(monitor_id=input_data.monitor_id)
+        deleted_monitor = await aexa.websets.monitors.delete(
+            monitor_id=input_data.monitor_id
+        )
+        merge_exa_cost(self, deleted_monitor)
 
         yield "monitor_id", deleted_monitor.id
         yield "success", "true"
@@ -579,11 +586,12 @@ class ExaListMonitorsBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = aexa.websets.monitors.list(
+        response = await aexa.websets.monitors.list(
             cursor=input_data.cursor,
             limit=input_data.limit,
             webset_id=input_data.webset_id,
         )
+        merge_exa_cost(self, response)
 
         # Convert SDK monitors to our stable models
         monitors = [MonitorModel.from_sdk(m) for m in response.data]

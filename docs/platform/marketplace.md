@@ -33,15 +33,15 @@ When you find an agent you want to use:
 1. Click on the agent to open its marketplace page
 2. Click the **Add to Library** button
 
-The agent will immediately appear in your [Agent Library](agent-library.md), where you can run it, schedule it, or edit it.
+The agent appears in your [Agent Library](agent-library.md), where you can run or schedule it. Marketplace agents open read-only; duplicate one before editing.
 
 {% hint style="info" %}
 If you already have the agent in your library, the button changes to **See Runs**, which takes you directly to that agent in your library.
 {% endhint %}
 
-### For Self-Hosted Users
+### Download for Self-Hosting
 
-If you are not logged into the cloud platform and are instead self-hosting, you will see a **Download** button instead of "Add to Library". This downloads the agent as a file which you can import into your local instance. See [Download & Import an Agent](download-agent-from-marketplace-local.md) for details.
+Marketplace detail pages also provide **Download here** under “Want to use this agent locally?” Download the agent JSON and import it into your local instance. See [Download & Import an Agent](download-agent-from-marketplace-local.md) for details.
 
 ## Publishing an Agent
 
@@ -49,10 +49,9 @@ You can publish your own agents to the marketplace for the community to discover
 
 ### How to Publish
 
-1. Click your **profile picture** in the top-right corner of any screen
-2. Select **Publish an Agent**
-3. Choose the agent you want to publish from your list of recent agents
-4. Fill out the publishing form:
+1. Open the agent in the Builder and select **Publish to Marketplace**, or open **Settings → Creator Dashboard** and select **Publish Agent**
+2. Choose the agent and version you want to publish if prompted
+3. Fill out the publishing form:
 
 | Field | Description |
 |-------|-------------|
@@ -61,22 +60,18 @@ You can publish your own agents to the marketplace for the community to discover
 | **Slug** | A URL-friendly identifier (e.g., `resume-rewriter`) |
 | **Thumbnail Images** | Upload images — the first image becomes the marketplace thumbnail |
 | **YouTube Video Link** | Optional — a video demonstrating your agent |
+| **Output demo** | Optional — a URL showing example output the agent produces |
 | **Category** | Select the most relevant category for your agent |
 | **Description** | A detailed explanation of what your agent does |
-| **Agent Output Demo** | Optional — a short video showing the agent's results in action |
 | **Instructions** | Explain to users how to run this agent and what to expect |
 | **Recommended Schedule** | Suggest when users should run this agent for best results |
 
-5. Click **Submit for Review**
+4. Click **Submit for review**
 
 ### Review Process
 
 After submission, a member of the AutoGPT team will review your agent against curation standards. If approved, your agent will be published to the marketplace and visible to all users.
 
-{% hint style="info" %}
-Creator monetisation (earning money from your published agents) is planned but not yet implemented.
-{% endhint %}
-
 ## Editing Marketplace Agents
 
-When you add a marketplace agent to your library, you get your own copy. You are free to edit it in the builder just like any agent you've created yourself. Your changes only affect your copy — the original marketplace listing is not modified.
+An agent added from the marketplace is read-only. Open it in the builder and click **Duplicate** to create an editable fork in your library. Changes to that fork do not modify the original marketplace listing.

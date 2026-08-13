@@ -361,6 +361,19 @@ export function useAgentRunModal(
     toast,
   ]);
 
+  const handleSimulate = useCallback(() => {
+    executeGraphMutation.mutate({
+      graphId: agent.graph_id,
+      graphVersion: agent.graph_version,
+      data: {
+        inputs: inputValues,
+        credentials_inputs: {},
+        source: "library",
+        dry_run: true,
+      },
+    });
+  }, [agent, inputValues, executeGraphMutation]);
+
   const hasInputFields = useMemo(() => {
     return Object.keys(agentInputFields).length > 0;
   }, [agentInputFields]);
@@ -385,5 +398,6 @@ export function useAgentRunModal(
     isExecuting: executeGraphMutation.isPending,
     isSettingUpTrigger: setupTriggerMutation.isPending,
     handleRun,
+    handleSimulate,
   };
 }

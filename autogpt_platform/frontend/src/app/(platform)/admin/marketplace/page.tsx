@@ -1,11 +1,11 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
-import type { SubmissionStatus } from "@/lib/autogpt-server-api/types";
+import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { AdminAgentsDataTable } from "./components/AdminAgentsDataTable";
 
 type MarketplaceAdminPageSearchParams = {
   page?: string;
-  status?: string;
+  status?: SubmissionStatus;
   search?: string;
 };
 
@@ -15,7 +15,7 @@ async function AdminMarketplaceDashboard({
   searchParams: MarketplaceAdminPageSearchParams;
 }) {
   const page = searchParams.page ? Number.parseInt(searchParams.page) : 1;
-  const status = searchParams.status as SubmissionStatus | undefined;
+  const status = searchParams.status;
   const search = searchParams.search;
 
   return (

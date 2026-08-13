@@ -13,7 +13,7 @@ export function LibraryActionSubHeader({ agentCount, setLibrarySort }: Props) {
   return (
     <div className="flex items-baseline justify-between">
       <div className="flex items-baseline gap-4">
-        <Text variant="h4">My agents</Text>
+        <Text variant="h5">My agents</Text>
         <Text
           variant="body"
           data-testid="agents-count"

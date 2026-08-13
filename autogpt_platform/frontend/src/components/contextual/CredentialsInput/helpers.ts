@@ -1,4 +1,3 @@
-import { KeyIcon } from "@phosphor-icons/react";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import {
   FaDiscord,
@@ -8,8 +7,19 @@ import {
   FaMedium,
   FaTwitter,
 } from "react-icons/fa";
+import { CredentialsType } from "@/lib/autogpt-server-api/types";
+import {
+  Globe02Icon,
+  Key01Icon,
+  LockIcon,
+  LockPasswordIcon,
+} from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
-export const fallbackIcon = KeyIcon;
+export const fallbackIcon = createIconComponent(Key01Icon);
+const globeIcon = createIconComponent(Globe02Icon);
+const lockIcon = createIconComponent(LockIcon);
+const lockPasswordIcon = createIconComponent(LockPasswordIcon);
 
 export const providerIcons: Partial<
   Record<string, React.FC<{ className?: string }>>
@@ -17,6 +27,7 @@ export const providerIcons: Partial<
   aiml_api: fallbackIcon,
   anthropic: fallbackIcon,
   apollo: fallbackIcon,
+  database: fallbackIcon,
   e2b: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
@@ -26,6 +37,7 @@ export const providerIcons: Partial<
   nvidia: fallbackIcon,
   discord: FaDiscord,
   d_id: fallbackIcon,
+  elevenlabs: fallbackIcon,
   google_maps: FaGoogle,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
@@ -67,18 +79,90 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
     }
 );
 
+export function countSupportedTypes(
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): number {
+  return [
+    supportsOAuth2,
+    supportsApiKey,
+    supportsUserPassword,
+    supportsHostScoped,
+  ].filter(Boolean).length;
+}
+
+export function getSupportedTypes(
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): CredentialsType[] {
+  const types: CredentialsType[] = [];
+  if (supportsOAuth2) types.push("oauth2");
+  if (supportsApiKey) types.push("api_key");
+  if (supportsUserPassword) types.push("user_password");
+  if (supportsHostScoped) types.push("host_scoped");
+  return types;
+}
+
+const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
+  oauth2: "OAuth",
+  api_key: "API Key",
+  user_password: "Password",
+  host_scoped: "Headers",
+};
+
+export function getCredentialTypeLabel(type: CredentialsType): string {
+  return CREDENTIAL_TYPE_LABELS[type] ?? type;
+}
+
+type CredentialIcon = React.FC<{ className?: string; size?: string | number }>;
+
+export function getCredentialTypeIcon(
+  type: CredentialsType,
+  provider?: string,
+): CredentialIcon {
+  if (type === "oauth2" && provider) {
+    return providerIcons[provider] ?? globeIcon;
+  }
+  if (type === "user_password") return lockPasswordIcon;
+  if (type === "host_scoped") return lockIcon;
+  return fallbackIcon;
+}
+
 export function getActionButtonText(
   supportsOAuth2: boolean,
   supportsApiKey: boolean,
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
   hasExistingCredentials: boolean,
+  provider?: string,
 ): string {
+  const multipleTypes =
+    countSupportedTypes(
+      supportsOAuth2,
+      supportsApiKey,
+      supportsUserPassword,
+      supportsHostScoped,
+    ) > 1;
+
+  if (multipleTypes) {
+    return hasExistingCredentials ? "Add another credential" : "Add credential";
+  }
+
+  if (provider === "codex" && supportsOAuth2) {
+    return hasExistingCredentials
+      ? "Reconnect ChatGPT"
+      : "Sign in with ChatGPT";
+  }
+
   if (hasExistingCredentials) {
     if (supportsOAuth2) return "Connect another account";
     if (supportsApiKey) return "Use a new API key";
     if (supportsUserPassword) return "Add a new username and password";
-    if (supportsHostScoped) return "Add new headers";
+    if (supportsHostScoped) return "Update headers";
     return "Add new credentials";
   } else {
     if (supportsOAuth2) return "Add account";
@@ -116,13 +200,133 @@ export function isSystemCredential(credential: {
 }
 
 export function filterSystemCredentials<
-  T extends { title?: string; is_system?: boolean },
+  T extends { title?: string | null; is_system?: boolean },
 >(credentials: T[]): T[] {
   return credentials.filter((cred) => !isSystemCredential(cred));
 }
 
 export function getSystemCredentials<
-  T extends { title?: string; is_system?: boolean },
+  T extends { title?: string | null; is_system?: boolean },
 >(credentials: T[]): T[] {
   return credentials.filter((cred) => isSystemCredential(cred));
+}
+
+export type DeleteResult =
+  | { deleted: true }
+  | { deleted: false; need_confirmation: true; message: string };
+
+export type DeleteState = {
+  warningMessage: string | null;
+  credentialToDelete: { id: string; title: string } | null;
+  shouldUnselectCurrent: boolean;
+};
+
+export async function processCredentialDeletion(
+  credentialToDelete: { id: string; title: string },
+  selectedCredentialId: string | undefined,
+  deleteCredentials: (id: string, force: boolean) => Promise<DeleteResult>,
+  force: boolean,
+): Promise<DeleteState> {
+  const result = await deleteCredentials(credentialToDelete.id, force);
+
+  if (result.deleted) {
+    return {
+      warningMessage: null,
+      credentialToDelete: null,
+      shouldUnselectCurrent: selectedCredentialId === credentialToDelete.id,
+    };
+  }
+
+  if ("need_confirmation" in result && result.need_confirmation) {
+    return {
+      warningMessage:
+        result.message || "This credential is in use. Force delete?",
+      credentialToDelete,
+      shouldUnselectCurrent: false,
+    };
+  }
+
+  return {
+    warningMessage: null,
+    credentialToDelete,
+    shouldUnselectCurrent: false,
+  };
+}
+
+export function findExistingHostCredentials<
+  T extends { type: string; id: string; host?: string },
+>(credentials: T[], host: string): T[] {
+  return credentials.filter(
+    (c) => c.type === "host_scoped" && "host" in c && c.host === host,
+  );
+}
+
+export function hasExistingHostCredential<
+  T extends { type: string; host?: string },
+>(credentials: T[], host: string): boolean {
+  return credentials.some(
+    (c) => c.type === "host_scoped" && "host" in c && c.host === host,
+  );
+}
+
+export type ActionTarget =
+  | "type_selector"
+  | "oauth"
+  | "api_key"
+  | "user_password"
+  | "host_scoped"
+  | null;
+
+export function resolveActionTarget(
+  hasMultipleCredentialTypes: boolean,
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): ActionTarget {
+  if (hasMultipleCredentialTypes) return "type_selector";
+  if (supportsOAuth2) return "oauth";
+  if (supportsApiKey) return "api_key";
+  if (supportsUserPassword) return "user_password";
+  if (supportsHostScoped) return "host_scoped";
+  return null;
+}
+
+export type HeaderPair = { key: string; value: string };
+
+export function headerPairsToRecord(
+  pairs: HeaderPair[],
+): Record<string, string> {
+  return pairs.reduce(
+    (acc, pair) => {
+      if (pair.key.trim() && pair.value.trim()) {
+        acc[pair.key.trim()] = pair.value.trim();
+      }
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
+}
+
+export function addHeaderPairToList(pairs: HeaderPair[]): HeaderPair[] {
+  return [...pairs, { key: "", value: "" }];
+}
+
+export function removeHeaderPairFromList(
+  pairs: HeaderPair[],
+  index: number,
+): HeaderPair[] {
+  if (pairs.length <= 1) return pairs;
+  return pairs.filter((_, i) => i !== index);
+}
+
+export function updateHeaderPairInList(
+  pairs: HeaderPair[],
+  index: number,
+  field: "key" | "value",
+  value: string,
+): HeaderPair[] {
+  const newPairs = [...pairs];
+  newPairs[index] = { ...newPairs[index], [field]: value };
+  return newPairs;
 }

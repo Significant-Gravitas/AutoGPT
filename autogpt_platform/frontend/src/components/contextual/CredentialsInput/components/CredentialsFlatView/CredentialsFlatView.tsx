@@ -6,6 +6,7 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { AyrshareConnectButton } from "../AyrshareConnectButton/AyrshareConnectButton";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 import { CredentialsSelect } from "../CredentialsSelect/CredentialsSelect";
 
@@ -15,6 +16,7 @@ type Credential = {
   username?: string;
   type: string;
   provider: string;
+  is_managed?: boolean;
 };
 
 type Props = {
@@ -31,6 +33,7 @@ type Props = {
   onSelectCredential: (credentialId: string) => void;
   onClearCredential: () => void;
   onAddCredential: () => void;
+  onDeleteCredential?: (credential: { id: string; title: string }) => void;
 };
 
 export function CredentialsFlatView({
@@ -47,8 +50,16 @@ export function CredentialsFlatView({
   onSelectCredential,
   onClearCredential,
   onAddCredential,
+  onDeleteCredential,
 }: Props) {
   const hasCredentials = credentials.length > 0;
+  // Ayrshare has no user-settable credential — provisioning runs on the
+  // server after the user clicks the Connect Social Media Accounts
+  // button rendered below. Exposing "Add API key" / "Use a new API key"
+  // here just confuses users into entering a random key.
+  const isManagedOnlyProvider = provider === "ayrshare";
+  const showAddAction = !readOnly && !isManagedOnlyProvider;
+  const showAyrshareConnect = isManagedOnlyProvider && !readOnly;
 
   return (
     <>
@@ -99,12 +110,21 @@ export function CredentialsFlatView({
                   provider={provider}
                   displayName={displayName}
                   onSelect={() => onSelectCredential(credential.id)}
+                  onDelete={
+                    onDeleteCredential && !credential.is_managed
+                      ? () =>
+                          onDeleteCredential({
+                            id: credential.id,
+                            title: credential.title || credential.id,
+                          })
+                      : undefined
+                  }
                   readOnly={readOnly}
                 />
               ))}
             </div>
           )}
-          {!readOnly && (
+          {showAddAction && (
             <Button
               variant="secondary"
               size="small"
@@ -115,20 +135,21 @@ export function CredentialsFlatView({
               {actionButtonText}
             </Button>
           )}
+          {showAyrshareConnect && <AyrshareConnectButton className="mt-2" />}
         </>
-      ) : (
-        !readOnly && (
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={onAddCredential}
-            className="w-fit"
-            type="button"
-          >
-            {actionButtonText}
-          </Button>
-        )
-      )}
+      ) : showAddAction ? (
+        <Button
+          variant="primary"
+          size="small"
+          onClick={onAddCredential}
+          className="w-fit"
+          type="button"
+        >
+          {actionButtonText}
+        </Button>
+      ) : showAyrshareConnect ? (
+        <AyrshareConnectButton className="mt-2" />
+      ) : null}
     </>
   );
 }

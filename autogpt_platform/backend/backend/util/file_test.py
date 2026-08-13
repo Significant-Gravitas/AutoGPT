@@ -7,8 +7,25 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.util.file import store_media_file
+from backend.data.execution import ExecutionContext
+from backend.util.file import (
+    is_media_file_ref,
+    parse_data_uri,
+    resolve_media_content,
+    store_media_file,
+)
 from backend.util.type import MediaFileType
+
+
+def make_test_context(
+    graph_exec_id: str = "test-exec-123",
+    user_id: str = "test-user-123",
+) -> ExecutionContext:
+    """Helper to create test ExecutionContext."""
+    return ExecutionContext(
+        user_id=user_id,
+        graph_exec_id=graph_exec_id,
+    )
 
 
 class TestFileCloudIntegration:
@@ -70,10 +87,9 @@ class TestFileCloudIntegration:
             mock_path_class.side_effect = path_constructor
 
             result = await store_media_file(
-                graph_exec_id,
-                MediaFileType(cloud_path),
-                "test-user-123",
-                return_content=False,
+                file=MediaFileType(cloud_path),
+                execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                return_format="for_local_processing",
             )
 
             # Verify cloud storage operations
@@ -144,10 +160,9 @@ class TestFileCloudIntegration:
             mock_path_obj.name = "image.png"
             with patch("backend.util.file.Path", return_value=mock_path_obj):
                 result = await store_media_file(
-                    graph_exec_id,
-                    MediaFileType(cloud_path),
-                    "test-user-123",
-                    return_content=True,
+                    file=MediaFileType(cloud_path),
+                    execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_external_api",
                 )
 
             # Verify result is a data URI
@@ -198,10 +213,9 @@ class TestFileCloudIntegration:
             mock_resolved_path.relative_to.return_value = Path("test-uuid-789.txt")
 
             await store_media_file(
-                graph_exec_id,
-                MediaFileType(data_uri),
-                "test-user-123",
-                return_content=False,
+                file=MediaFileType(data_uri),
+                execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                return_format="for_local_processing",
             )
 
             # Verify cloud handler was checked but not used for retrieval
@@ -234,5 +248,263 @@ class TestFileCloudIntegration:
                 FileNotFoundError, match="File not found in cloud storage"
             ):
                 await store_media_file(
-                    graph_exec_id, MediaFileType(cloud_path), "test-user-123"
+                    file=MediaFileType(cloud_path),
+                    execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_local_processing",
                 )
+
+    @pytest.mark.asyncio
+    async def test_store_media_file_local_path_scanned(self):
+        """Test that local file paths are scanned for viruses."""
+        graph_exec_id = "test-exec-123"
+        local_file = "test_video.mp4"
+        file_content = b"fake video content"
+
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
+            # Mock cloud storage handler - not a cloud path
+            mock_handler = MagicMock()
+            mock_handler.is_cloud_path.return_value = False
+            mock_handler_getter.return_value = mock_handler
+
+            # Mock virus scanner
+            mock_scan.return_value = None
+
+            # Mock file system operations
+            mock_base_path = MagicMock()
+            mock_target_path = MagicMock()
+            mock_resolved_path = MagicMock()
+
+            mock_path_class.return_value = mock_base_path
+            mock_base_path.mkdir = MagicMock()
+            mock_base_path.__truediv__ = MagicMock(return_value=mock_target_path)
+            mock_target_path.resolve.return_value = mock_resolved_path
+            mock_resolved_path.is_relative_to.return_value = True
+            mock_resolved_path.is_file.return_value = True
+            mock_resolved_path.read_bytes.return_value = file_content
+            mock_resolved_path.relative_to.return_value = Path(local_file)
+            mock_resolved_path.name = local_file
+
+            result = await store_media_file(
+                file=MediaFileType(local_file),
+                execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                return_format="for_local_processing",
+            )
+
+            # Verify virus scan was called for local file
+            mock_scan.assert_called_once_with(file_content, filename=local_file)
+
+            # Result should be the relative path
+            assert str(result) == local_file
+
+    @pytest.mark.asyncio
+    async def test_store_media_file_local_path_virus_detected(self):
+        """Test that infected local files raise VirusDetectedError."""
+        from backend.api.features.store.exceptions import VirusDetectedError
+
+        graph_exec_id = "test-exec-123"
+        local_file = "infected.exe"
+        file_content = b"malicious content"
+
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
+            # Mock cloud storage handler - not a cloud path
+            mock_handler = MagicMock()
+            mock_handler.is_cloud_path.return_value = False
+            mock_handler_getter.return_value = mock_handler
+
+            # Mock virus scanner to detect virus
+            mock_scan.side_effect = VirusDetectedError(
+                "EICAR-Test-File", "File rejected due to virus detection"
+            )
+
+            # Mock file system operations
+            mock_base_path = MagicMock()
+            mock_target_path = MagicMock()
+            mock_resolved_path = MagicMock()
+
+            mock_path_class.return_value = mock_base_path
+            mock_base_path.mkdir = MagicMock()
+            mock_base_path.__truediv__ = MagicMock(return_value=mock_target_path)
+            mock_target_path.resolve.return_value = mock_resolved_path
+            mock_resolved_path.is_relative_to.return_value = True
+            mock_resolved_path.is_file.return_value = True
+            mock_resolved_path.read_bytes.return_value = file_content
+
+            with pytest.raises(VirusDetectedError):
+                await store_media_file(
+                    file=MediaFileType(local_file),
+                    execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_local_processing",
+                )
+
+
+# ---------------------------------------------------------------------------
+# is_media_file_ref
+# ---------------------------------------------------------------------------
+
+
+class TestIsMediaFileRef:
+    def test_data_uri(self):
+        assert is_media_file_ref("data:image/png;base64,iVBORw0KGg==") is True
+
+    def test_workspace_uri(self):
+        assert is_media_file_ref("workspace://abc123") is True
+
+    def test_workspace_uri_with_mime(self):
+        assert is_media_file_ref("workspace://abc123#image/png") is True
+
+    def test_http_url(self):
+        assert is_media_file_ref("http://example.com/image.png") is True
+
+    def test_https_url(self):
+        assert is_media_file_ref("https://example.com/image.png") is True
+
+    def test_plain_text(self):
+        assert is_media_file_ref("print('hello')") is False
+
+    def test_local_path(self):
+        assert is_media_file_ref("/tmp/file.txt") is False
+
+    def test_empty_string(self):
+        assert is_media_file_ref("") is False
+
+    def test_filename(self):
+        assert is_media_file_ref("image.png") is False
+
+
+# ---------------------------------------------------------------------------
+# parse_data_uri
+# ---------------------------------------------------------------------------
+
+
+class TestParseDataUri:
+    def test_valid_png(self):
+        result = parse_data_uri("data:image/png;base64,iVBORw0KGg==")
+        assert result is not None
+        mime, payload = result
+        assert mime == "image/png"
+        assert payload == "iVBORw0KGg=="
+
+    def test_valid_text(self):
+        result = parse_data_uri("data:text/plain;base64,SGVsbG8=")
+        assert result is not None
+        assert result[0] == "text/plain"
+        assert result[1] == "SGVsbG8="
+
+    def test_mime_case_normalized(self):
+        result = parse_data_uri("data:IMAGE/PNG;base64,abc")
+        assert result is not None
+        assert result[0] == "image/png"
+
+    def test_not_data_uri(self):
+        assert parse_data_uri("workspace://abc123") is None
+
+    def test_plain_text(self):
+        assert parse_data_uri("hello world") is None
+
+    def test_missing_base64(self):
+        assert parse_data_uri("data:image/png;utf-8,abc") is None
+
+    def test_empty_payload(self):
+        result = parse_data_uri("data:image/png;base64,")
+        assert result is not None
+        assert result[1] == ""
+
+
+# ---------------------------------------------------------------------------
+# resolve_media_content
+# ---------------------------------------------------------------------------
+
+
+class TestResolveMediaContent:
+    @pytest.mark.asyncio
+    async def test_plain_text_passthrough(self):
+        """Plain text content (not a media ref) passes through unchanged."""
+        ctx = make_test_context()
+        result = await resolve_media_content(
+            MediaFileType("print('hello')"),
+            ctx,
+            return_format="for_external_api",
+        )
+        assert result == "print('hello')"
+
+    @pytest.mark.asyncio
+    async def test_empty_string_passthrough(self):
+        """Empty string passes through unchanged."""
+        ctx = make_test_context()
+        result = await resolve_media_content(
+            MediaFileType(""),
+            ctx,
+            return_format="for_external_api",
+        )
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_media_ref_delegates_to_store(self):
+        """Media references are resolved via store_media_file."""
+        ctx = make_test_context()
+        with patch(
+            "backend.util.file.store_media_file",
+            new=AsyncMock(return_value=MediaFileType("data:image/png;base64,abc")),
+        ) as mock_store:
+            result = await resolve_media_content(
+                MediaFileType("workspace://img123"),
+                ctx,
+                return_format="for_external_api",
+            )
+        assert result == "data:image/png;base64,abc"
+        mock_store.assert_called_once_with(
+            MediaFileType("workspace://img123"),
+            ctx,
+            return_format="for_external_api",
+        )
+
+    @pytest.mark.asyncio
+    async def test_data_uri_delegates_to_store(self):
+        """Data URIs are also resolved via store_media_file."""
+        ctx = make_test_context()
+        data_uri = "data:image/png;base64,iVBORw0KGg=="
+        with patch(
+            "backend.util.file.store_media_file",
+            new=AsyncMock(return_value=MediaFileType(data_uri)),
+        ) as mock_store:
+            result = await resolve_media_content(
+                MediaFileType(data_uri),
+                ctx,
+                return_format="for_external_api",
+            )
+        assert result == data_uri
+        mock_store.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_https_url_delegates_to_store(self):
+        """HTTPS URLs are resolved via store_media_file."""
+        ctx = make_test_context()
+        with patch(
+            "backend.util.file.store_media_file",
+            new=AsyncMock(return_value=MediaFileType("data:image/png;base64,abc")),
+        ) as mock_store:
+            result = await resolve_media_content(
+                MediaFileType("https://example.com/image.png"),
+                ctx,
+                return_format="for_local_processing",
+            )
+        assert result == "data:image/png;base64,abc"
+        mock_store.assert_called_once_with(
+            MediaFileType("https://example.com/image.png"),
+            ctx,
+            return_format="for_local_processing",
+        )

@@ -1,11 +1,38 @@
 import scrollbar from "tailwind-scrollbar";
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
 import { colors } from "./src/components/styles/colors";
 
+const SMOOTH_SHADOW_SM =
+  "0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent), 0 7.5px 19px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 4px 10.5px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 2.3px 5.8px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 1.2px 3.1px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 0.5px 1.3px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent)";
+const SMOOTH_RING =
+  "0 0 0 var(--smooth-ring-width, 1px) var(--smooth-ring-color)";
+
+const smoothShadowRing = plugin(function smoothShadowRing({
+  addBase,
+  addUtilities,
+}) {
+  addBase({
+    ":root": {
+      "--smooth-ring-color": "rgba(0, 0, 0, 0.05)",
+      "--smooth-ring-width": "1px",
+    },
+    '.dark, .dark-mode, [data-theme="dark"]': {
+      "--smooth-ring-color": "rgba(255, 255, 255, 0.18)",
+    },
+  });
+  addUtilities({
+    ".smooth-shadow-ring-sm": {
+      "--smooth-shadow-color": "var(--tw-shadow-color, rgb(0 0 0))",
+      boxShadow: `${SMOOTH_SHADOW_SM}, ${SMOOTH_RING}`,
+    },
+  });
+});
+
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
-  content: ["./src/**/*.{ts,tsx}"],
+  content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   prefix: "",
   theme: {
     container: {
@@ -65,6 +92,16 @@ const config = {
           "600": "#282828",
           "700": "#272727",
         },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+        },
       },
       spacing: {
         "0": "0rem",
@@ -106,6 +143,7 @@ const config = {
         "1.5": "0.375rem",
         "2.5": "0.625rem",
         "3.5": "0.875rem",
+        "4.5": "1.125rem",
         "7.5": "1.875rem",
         "8.5": "2.125rem",
       },
@@ -141,6 +179,36 @@ const config = {
             height: "0",
           },
         },
+        // Bridge the height change with an opacity fade so the content
+        // doesn't clip in/out abruptly (Emil Kowalski: fade to soften
+        // state transitions). Opacity resolves over the first/last ~60%
+        // so text is fully legible before the height finishes settling.
+        "collapsible-down": {
+          from: {
+            height: "0",
+            opacity: "0",
+          },
+          "60%": {
+            opacity: "1",
+          },
+          to: {
+            height: "var(--radix-collapsible-content-height)",
+            opacity: "1",
+          },
+        },
+        "collapsible-up": {
+          from: {
+            height: "var(--radix-collapsible-content-height)",
+            opacity: "1",
+          },
+          "40%": {
+            opacity: "0",
+          },
+          to: {
+            height: "0",
+            opacity: "0",
+          },
+        },
         "fade-in": {
           "0%": {
             opacity: "0",
@@ -157,19 +225,62 @@ const config = {
             backgroundPosition: "-200% 0",
           },
         },
+        loader: {
+          "0%": {
+            boxShadow: "0 0 0 0 rgba(0, 0, 0, 0.25)",
+          },
+          "100%": {
+            boxShadow: "0 0 0 30px rgba(0, 0, 0, 0)",
+          },
+        },
+        shake: {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%": { transform: "translateX(-4px)" },
+          "40%": { transform: "translateX(4px)" },
+          "60%": { transform: "translateX(-3px)" },
+          "80%": { transform: "translateX(3px)" },
+        },
+        aurora: {
+          "0%": { backgroundPosition: "50% 50%, 50% 50%" },
+          "100%": { backgroundPosition: "350% 50%, 350% 50%" },
+        },
+        "marquee-x": {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
+        "progress-bar": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(400%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        // easeOutCubic for a smooth, decelerating settle; asymmetric
+        // timing (open a touch slower than close) per Emil Kowalski.
+        // Both stay under the 300ms UI budget.
+        "collapsible-down":
+          "collapsible-down 0.26s cubic-bezier(0.33, 1, 0.68, 1)",
+        "collapsible-up": "collapsible-up 0.2s cubic-bezier(0.33, 1, 0.68, 1)",
         "fade-in": "fade-in 0.2s ease-out",
-        shimmer: "shimmer 2s ease-in-out infinite",
+        shimmer: "shimmer 4s ease-in-out infinite",
+        loader: "loader 1s infinite",
+        shake: "shake 0.5s ease-in-out",
+        aurora: "aurora 60s linear infinite",
+        "marquee-x": "marquee-x 40s linear infinite",
+        "progress-bar":
+          "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
       },
       transitionDuration: {
         "2000": "2000ms",
       },
     },
   },
-  plugins: [tailwindcssAnimate, scrollbar({ nocompatible: true })],
+  plugins: [
+    tailwindcssAnimate,
+    scrollbar({ nocompatible: true }),
+    smoothShadowRing,
+  ],
 } satisfies Config;
 
 export default config;

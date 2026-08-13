@@ -9,10 +9,11 @@ import {
 } from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 import { JSBeads } from "./components/JSBeads";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type CustomEdgeData = {
   isStatic?: boolean;
@@ -63,8 +64,19 @@ const CustomEdge = ({
 
   return (
     <>
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="black"
+        strokeOpacity={0}
+        strokeWidth={20}
+        className="react-flow__edge-interaction cursor-pointer"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      />
       <BaseEdge
         path={edgePath}
+        interactionWidth={0}
         markerEnd={markerEnd}
         className={cn(
           isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
@@ -102,7 +114,7 @@ const CustomEdge = ({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          <XIcon className="h-3 w-3" weight="bold" />
+          <Icon icon={Cancel01Icon} className="h-3 w-3" />
         </Button>
       </EdgeLabelRenderer>
     </>

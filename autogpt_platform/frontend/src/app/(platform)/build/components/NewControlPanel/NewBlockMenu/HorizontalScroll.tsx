@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { ArrowLeft02Icon, ArrowRight02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface HorizontalScrollAreaProps {
   children: React.ReactNode;
@@ -70,10 +71,10 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           {children}
         </div>
         {canScrollLeft && (
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-white via-white/80 to-white/0" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background via-background/80 to-background/0" />
         )}
         {canScrollRight && (
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white via-white/80 to-white/0" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background via-background/80 to-background/0" />
         )}
         {canScrollLeft && (
           <button
@@ -82,10 +83,10 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
             className="pointer-events-none absolute left-2 top-5 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             onClick={() => scrollByDelta(-scrollAmount)}
           >
-            <ArrowLeftIcon
+            <Icon
+              icon={ArrowLeft02Icon}
               size={28}
               className="rounded-full bg-zinc-700 p-1 text-white drop-shadow"
-              weight="light"
             />
           </button>
         )}
@@ -96,10 +97,10 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
             className="pointer-events-none absolute right-2 top-5 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             onClick={() => scrollByDelta(scrollAmount)}
           >
-            <ArrowRightIcon
+            <Icon
+              icon={ArrowRight02Icon}
               size={28}
               className="rounded-full bg-zinc-700 p-1 text-white drop-shadow"
-              weight="light"
             />
           </button>
         )}

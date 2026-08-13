@@ -66,14 +66,10 @@ If a block requires a credential you haven't connected yet, a **credential bar**
 
 To save your agent:
 
-- Press **Ctrl+S**, or
+- Press **Ctrl+S** (or **Cmd+S** on Mac), or
 - Click the **Save button** in the builder
 
-When saving, you can provide a **title** and **description** for the agent. This is a local save to your personal library. For publishing to the public marketplace, see [Publishing to the Marketplace](marketplace.md#publishing-an-agent).
-
-{% hint style="info" %}
-There is currently no draft vs. saved state — saving an agent immediately updates it in your library.
-{% endhint %}
+Saving creates or updates the agent graph version in your library. The builder also keeps a local recovery draft while you edit; a successful save clears that draft. Publishing to the marketplace is a separate action—see [Publishing to the Marketplace](marketplace.md#publishing-an-agent).
 
 ## Navigating Back to Your Library
 

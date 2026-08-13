@@ -2,15 +2,15 @@
 
 *January 29 – February 11, 2026*
 
-***
+**Platform version:** `v0.6.48`
 
 ## Talk to AutoPilot with your voice
 
-A mic button has been added to the chat input. Press it, speak your request, and your voice is transcribed instantly. The text box auto-focuses so you can hit Enter to send or tap the mic again to keep talking. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11871)
+A mic button has been added to the chat input. Press it, speak your request, and your voice is transcribed instantly. The text box auto-focuses so you can hit Enter to send or tap the mic again to keep talking. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11871)
 
 ## Your files stick around
 
-Files generated during conversations — images, documents, anything — are now saved to your personal workspace instead of disappearing when the session ends. You can browse and manage them directly through chat, and images show up inline in the conversation. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11867)
+Files generated during conversations — images, documents, anything — are now saved to your personal workspace instead of disappearing when the session ends. You can browse and manage them directly through chat, and images show up inline in the conversation. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11867)
 
 {% hint style="success" %}
 This also unblocked **20+ blocks** (file storage, email attachments, screenshots, image generation, and more) that weren't working in chat.
@@ -18,7 +18,7 @@ This also unblocked **20+ blocks** (file storage, email attachments, screenshots
 
 ## Upgraded to Claude Opus 4.6
 
-AutoPilot now runs on Anthropic's newest and most capable model, with a larger context window and doubled output capacity. Extended thinking is enabled, so the AI reasons internally before responding — you get cleaner, more focused answers instead of raw chain-of-thought in the chat. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11983)
+AutoPilot now runs on Anthropic's newest and most capable model, with a larger context window and doubled output capacity. Extended thinking is enabled, so the AI reasons internally before responding — you get cleaner, more focused answers instead of raw chain-of-thought in the chat. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11983)
 
 {% hint style="info" %}
 Claude 3.7 Sonnet has been retired. Agents using it were auto-migrated to Claude 4.5 Sonnet.
@@ -26,27 +26,27 @@ Claude 3.7 Sonnet has been retired. Agents using it were auto-migrated to Claude
 
 ## Customize marketplace agents
 
-Ask AutoPilot to modify any marketplace agent before adding it to your library. "Customize that newsletter writer to post to Discord instead." AutoPilot adapts the workflow, asks follow-up questions if needed, and saves the customized version for you. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11943)
+Ask AutoPilot to modify any marketplace agent before adding it to your library. "Customize that newsletter writer to post to Discord instead." AutoPilot adapts the workflow, asks follow-up questions if needed, and saves the customized version for you. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11943)
 
 ## Rebuilt chat streaming
 
-The entire chat system has been rebuilt on the Vercel AI SDK. More reliable message delivery, better markdown formatting, tool outputs shown in clean collapsible panels, and errors surfaced as brief notifications instead of breaking the chat. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11901)
+The entire chat system has been rebuilt on the Vercel AI SDK. More reliable message delivery, better Markdown formatting, tool outputs shown in clean collapsible panels, and errors surfaced as brief notifications instead of breaking the chat. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11901)
 
 ## Stay connected during long tasks
 
-If your connection drops while AutoPilot is working (network hiccup, laptop sleep, switching tabs), it keeps going in the background, saves progress, and replays what you missed when you reconnect. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11877)
+If your connection drops while AutoPilot is working (network hiccup, laptop sleep, switching tabs), it keeps going in the background, saves progress, and replays what you missed when you reconnect. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11877)
 
 ## New agents reuse your existing ones
 
-When building a new agent, AutoPilot searches your library for agents that can be incorporated as building blocks — so you don't rebuild from scratch. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11889)
+When building a new agent, AutoPilot searches your library for agents that can be incorporated as building blocks — so you don't rebuild from scratch. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11889)
 
 ## Better agent creation
 
-Progress bar during generation so you're not staring at a blank screen. A "Your agent is ready!" prompt with buttons to test immediately or provide your own inputs. Cleaner formatting when AutoPilot asks you clarifying questions. And helpful error messages instead of generic failures. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11974)
+Progress bar during generation so you're not staring at a blank screen. A "Your agent is ready!" prompt with buttons to test immediately or provide your own inputs. Cleaner formatting when AutoPilot asks you clarifying questions. And helpful error messages instead of generic failures. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11974)
 
 ## Updated homepage text
 
-The homepage now says "Tell me about your work — I'll find what to automate" instead of assuming you already know what to build. The quick-start buttons have been rewritten too: [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/11956)
+The homepage now says "Tell me about your work — I'll find what to automate" instead of assuming you already know what to build. The quick-start buttons have been rewritten too: [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/11956)
 
 {% tabs %}
 

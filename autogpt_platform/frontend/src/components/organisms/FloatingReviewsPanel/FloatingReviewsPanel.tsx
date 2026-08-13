@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockIcon, XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
@@ -10,6 +9,8 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { okData } from "@/app/api/helpers";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
+import { Cancel01Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
@@ -31,6 +32,29 @@ export function FloatingReviewsPanel({
       query: {
         enabled: !!(graphId && executionId),
         select: okData,
+        // Poll while execution is in progress to detect status changes
+        refetchInterval: (q) => {
+          // Note: refetchInterval callback receives raw data before select transform
+          const rawData = q.state.data as
+            | { status: number; data?: { status?: string } }
+            | undefined;
+          if (rawData?.status !== 200) return false;
+
+          const status = rawData?.data?.status;
+          if (!status) return false;
+
+          // Poll every 2 seconds while running or in review
+          if (
+            status === AgentExecutionStatus.RUNNING ||
+            status === AgentExecutionStatus.QUEUED ||
+            status === AgentExecutionStatus.INCOMPLETE ||
+            status === AgentExecutionStatus.REVIEW
+          ) {
+            return 2000;
+          }
+          return false;
+        },
+        refetchIntervalInBackground: true,
       },
     },
   );
@@ -40,28 +64,47 @@ export function FloatingReviewsPanel({
     useShallow((state) => state.graphExecutionStatus),
   );
 
+  // Determine if we should poll for pending reviews
+  const isInReviewStatus =
+    executionDetails?.status === AgentExecutionStatus.REVIEW ||
+    graphExecutionStatus === AgentExecutionStatus.REVIEW;
+
   const { pendingReviews, isLoading, refetch } = usePendingReviewsForExecution(
     executionId || "",
+    {
+      enabled: !!executionId,
+      // Poll every 2 seconds when in REVIEW status to catch new reviews
+      refetchInterval: isInReviewStatus ? 2000 : false,
+    },
   );
 
+  // Refetch pending reviews when execution status changes
   useEffect(() => {
-    if (executionId) {
+    if (executionId && executionDetails?.status) {
       refetch();
     }
   }, [executionDetails?.status, executionId, refetch]);
 
-  // Refetch when graph execution status changes to REVIEW
-  useEffect(() => {
-    if (graphExecutionStatus === AgentExecutionStatus.REVIEW && executionId) {
-      refetch();
-    }
-  }, [graphExecutionStatus, executionId, refetch]);
+  // Hide panel if:
+  // 1. No execution ID
+  // 2. No pending reviews and not in REVIEW status
+  // 3. Execution is RUNNING or QUEUED (hasn't paused for review yet)
+  if (!executionId) {
+    return null;
+  }
 
   if (
-    !executionId ||
-    (!isLoading &&
-      pendingReviews.length === 0 &&
-      executionDetails?.status !== AgentExecutionStatus.REVIEW)
+    !isLoading &&
+    pendingReviews.length === 0 &&
+    executionDetails?.status !== AgentExecutionStatus.REVIEW
+  ) {
+    return null;
+  }
+
+  // Don't show panel while execution is still running/queued (not paused for review)
+  if (
+    executionDetails?.status === AgentExecutionStatus.RUNNING ||
+    executionDetails?.status === AgentExecutionStatus.QUEUED
   ) {
     return null;
   }
@@ -78,7 +121,7 @@ export function FloatingReviewsPanel({
           onClick={() => setIsOpen(true)}
           size="large"
           variant="primary"
-          leftIcon={<ClockIcon size={20} />}
+          leftIcon={<Icon icon={Clock01Icon} size={20} />}
         >
           {pendingReviews.length} Review
           {pendingReviews.length !== 1 ? "s" : ""} Pending
@@ -93,7 +136,7 @@ export function FloatingReviewsPanel({
             size="icon"
             className="absolute right-4 top-4 z-10"
           >
-            <XIcon size={16} />
+            <Icon icon={Cancel01Icon} size={16} />
           </Button>
 
           <div className="flex-1 overflow-y-auto">

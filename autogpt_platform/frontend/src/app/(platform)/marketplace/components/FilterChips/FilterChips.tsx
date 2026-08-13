@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { cn } from "@/lib/utils";
 import { useFilterChips } from "./useFilterChips";
 
 interface FilterChipsProps {
@@ -9,32 +9,36 @@ interface FilterChipsProps {
   multiSelect?: boolean;
 }
 
-// Some flaws in its logic
-// FRONTEND-TODO : This needs to be fixed
-export const FilterChips = ({
+export function FilterChips({
   badges,
   onFilterChange,
   multiSelect = true,
-}: FilterChipsProps) => {
+}: FilterChipsProps) {
   const { selectedFilters, handleBadgeClick } = useFilterChips({
     multiSelect,
     onFilterChange,
   });
 
   return (
-    <div className="flex h-auto min-h-8 flex-wrap items-center justify-center gap-3 lg:min-h-14 lg:justify-start lg:gap-5">
-      {badges.map((badge) => (
-        <Badge
-          key={badge}
-          variant={selectedFilters.includes(badge) ? "secondary" : "outline"}
-          className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-full border border-black/50 px-3 py-1 dark:border-white/50 lg:mb-3 lg:gap-2.5 lg:px-6 lg:py-2"
-          onClick={() => handleBadgeClick(badge)}
-        >
-          <div className="text-sm font-light tracking-tight text-[#474747] dark:text-[#e0e0e0] lg:text-xl lg:font-medium lg:leading-9">
+    <div className="flex flex-wrap items-center justify-center gap-2.5">
+      {badges.map((badge) => {
+        const isSelected = selectedFilters.includes(badge);
+        return (
+          <button
+            key={badge}
+            type="button"
+            onClick={() => handleBadgeClick(badge)}
+            className={cn(
+              "inline-flex h-9 items-center rounded-full border px-4 text-sm font-medium transition-all duration-200",
+              isSelected
+                ? "border-zinc-900 bg-zinc-900 text-white shadow-[0_1px_2px_rgba(16,24,40,0.1)]"
+                : "border-zinc-200 bg-white text-zinc-600 shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:-translate-y-px hover:border-zinc-300 hover:text-zinc-900",
+            )}
+          >
             {badge}
-          </div>
-        </Badge>
-      ))}
+          </button>
+        );
+      })}
     </div>
   );
-};
+}

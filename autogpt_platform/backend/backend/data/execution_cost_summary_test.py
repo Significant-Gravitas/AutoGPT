@@ -1,0 +1,569 @@
+"""Integration tests for the SQL-aggregated user cost summary."""
+
+import logging
+from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
+
+import pytest
+from prisma.enums import AgentExecutionStatus
+from prisma.errors import UniqueViolationError
+from prisma.models import AgentGraph, AgentGraphExecution, Expert, User
+
+from backend.data.execution_cost_summary import get_user_cost_summary
+from backend.util.json import SafeJson
+from backend.util.test import SpinTestServer
+
+logger = logging.getLogger(__name__)
+
+
+async def _create_user(user_id: str) -> None:
+    try:
+        await User.prisma().create(
+            data={
+                "id": user_id,
+                "email": f"cost-summary-{user_id}@example.com",
+                "name": "Cost Summary Test",
+            }
+        )
+    except UniqueViolationError:
+        pass
+
+
+async def _create_graph(graph_id: str, user_id: str, name: str = "Test") -> None:
+    try:
+        await AgentGraph.prisma().create(
+            data={
+                "id": graph_id,
+                "version": 1,
+                "name": name,
+                "description": "test",
+                "userId": user_id,
+                "isActive": True,
+            }
+        )
+    except UniqueViolationError:
+        pass
+
+
+async def _create_expert(expert_id: str, user_id: str) -> None:
+    try:
+        await Expert.prisma().create(
+            data={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "name": f"Expert {expert_id}",
+                "role": "Assistant",
+                "identity": "test",
+            }
+        )
+    except UniqueViolationError:
+        pass
+
+
+async def _create_run(
+    *,
+    run_id: str,
+    user_id: str,
+    graph_id: str,
+    status: AgentExecutionStatus,
+    cost_cents: int,
+    started_at: datetime,
+    duration: float | None = 1.0,
+    node_error_count: int = 0,
+    is_dry_run: bool = False,
+    created_at: datetime | None = None,
+    expert_id: str | None = None,
+) -> None:
+    # `walltime` is the key the executor actually persists — it comes from
+    # GraphExecutionStats.model_dump() in update_graph_execution_stats().
+    # `duration is None` models an in-flight/never-finalized run whose stats
+    # carry no walltime at all.
+    stats: dict[str, object] = {
+        "cost": cost_cents,
+        "node_error_count": node_error_count,
+    }
+    if duration is not None:
+        stats["walltime"] = duration
+    if is_dry_run:
+        stats["is_dry_run"] = True
+    await AgentGraphExecution.prisma().create(
+        data={
+            "id": run_id,
+            "agentGraphId": graph_id,
+            "agentGraphVersion": 1,
+            "executionStatus": status,
+            "userId": user_id,
+            "createdAt": created_at if created_at is not None else started_at,
+            "startedAt": started_at,
+            "endedAt": started_at + timedelta(seconds=duration or 0),
+            "stats": SafeJson(stats),
+            **({"expertId": expert_id} if expert_id else {}),
+        }
+    )
+
+
+async def _cleanup(
+    user_id: str, graph_ids: list[str], expert_ids: list[str] | None = None
+) -> None:
+    try:
+        await AgentGraphExecution.prisma().delete_many(where={"userId": user_id})
+        for eid in expert_ids or []:
+            await Expert.prisma().delete_many(where={"id": eid})
+        for gid in graph_ids:
+            await AgentGraph.prisma().delete_many(where={"id": gid})
+        await User.prisma().delete_many(where={"id": user_id})
+    except Exception as exc:
+        logger.warning("cleanup for %s failed: %s", user_id, exc)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_empty_window_returns_zeroed_summary(server: SpinTestServer):
+    user_id = f"cs-empty-{uuid4()}"
+    await _create_user(user_id)
+    try:
+        now = datetime.now(timezone.utc)
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=now - timedelta(days=1),
+            until=now,
+            include_by_expert=True,
+        )
+        assert summary.total_cents == 0
+        assert summary.run_count == 0
+        assert summary.billable_run_count == 0
+        assert summary.failed_cost_cents == 0
+        assert summary.success_run_count == 0
+        assert summary.failed_run_count == 0
+        assert summary.review_run_count == 0
+        assert summary.total_duration_seconds == 0
+        assert summary.duration_run_count == 0
+        assert summary.by_agent == []
+        assert summary.by_expert == []
+        assert summary.top_runs == []
+        assert summary.daily == []
+    finally:
+        await _cleanup(user_id, [])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_by_expert_rolls_up_stamped_runs_and_drops_unattributed(
+    server: SpinTestServer,
+):
+    user_id = f"cs-expert-{uuid4()}"
+    graph_id = f"cs-g-e-{uuid4()}"
+    expert_a = f"cs-x-a-{uuid4()}"
+    expert_b = f"cs-x-b-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    await _create_expert(expert_a, user_id)
+    await _create_expert(expert_b, user_id)
+    try:
+        now = datetime.now(timezone.utc)
+
+        await _create_run(
+            run_id=f"xa1-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=120,
+            started_at=now - timedelta(hours=3),
+            expert_id=expert_a,
+        )
+        # Zero-cost run on the same expert: it lifts run_count without spend.
+        await _create_run(
+            run_id=f"xa2-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=0,
+            started_at=now - timedelta(hours=2),
+            expert_id=expert_a,
+        )
+        await _create_run(
+            run_id=f"xb1-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=900,
+            started_at=now - timedelta(hours=1),
+            expert_id=expert_b,
+        )
+        # Unstamped run: spend counts toward the user total but gets no bucket.
+        await _create_run(
+            run_id=f"xnone-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=300,
+            started_at=now - timedelta(minutes=30),
+        )
+        # Dry runs stay excluded here too, not just from the headline totals.
+        await _create_run(
+            run_id=f"xdry-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=700,
+            started_at=now - timedelta(minutes=20),
+            is_dry_run=True,
+            expert_id=expert_a,
+        )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=now - timedelta(days=1),
+            until=now + timedelta(minutes=1),
+            include_by_expert=True,
+        )
+
+        assert summary.total_cents == 1320
+        # Highest spend first, and the null bucket is absent entirely.
+        assert [row.expert_id for row in summary.by_expert] == [expert_b, expert_a]
+        by_expert = {row.expert_id: row for row in summary.by_expert}
+        assert by_expert[expert_a].cost_cents == 120
+        assert by_expert[expert_a].run_count == 2
+        assert by_expert[expert_b].cost_cents == 900
+        assert by_expert[expert_b].run_count == 1
+
+        # The rollup is its own scan, so callers that never render per-expert
+        # spend must not pay for it.
+        without_experts = await get_user_cost_summary(
+            user_id=user_id,
+            since=now - timedelta(days=1),
+            until=now + timedelta(minutes=1),
+        )
+        assert without_experts.by_expert == []
+        assert without_experts.total_cents == 1320
+    finally:
+        await _cleanup(user_id, [graph_id], [expert_a, expert_b])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
+    user_id = f"cs-agg-{uuid4()}"
+    graph_a = f"cs-g-a-{uuid4()}"
+    graph_b = f"cs-g-b-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_a, user_id, "Alpha")
+    await _create_graph(graph_b, user_id, "Beta")
+    try:
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(days=3)
+
+        await _create_run(
+            run_id=f"e1-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_a,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=300,
+            started_at=now - timedelta(hours=2),
+        )
+        await _create_run(
+            run_id=f"e2-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_a,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=200,
+            started_at=now - timedelta(hours=1),
+        )
+        big_run_id = f"e3-{uuid4()}"
+        await _create_run(
+            run_id=big_run_id,
+            user_id=user_id,
+            graph_id=graph_b,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=1000,
+            started_at=now - timedelta(minutes=30),
+        )
+        failed_run_id = f"e4-{uuid4()}"
+        await _create_run(
+            run_id=failed_run_id,
+            user_id=user_id,
+            graph_id=graph_b,
+            status=AgentExecutionStatus.FAILED,
+            cost_cents=50,
+            started_at=now - timedelta(minutes=15),
+            node_error_count=2,
+        )
+        # TERMINATED is also "wasted" cost — locks the `IN ('FAILED', 'TERMINATED')`
+        # branch in the failed_cost_cents aggregator.
+        terminated_run_id = f"e5-{uuid4()}"
+        await _create_run(
+            run_id=terminated_run_id,
+            user_id=user_id,
+            graph_id=graph_b,
+            status=AgentExecutionStatus.TERMINATED,
+            cost_cents=20,
+            started_at=now - timedelta(minutes=10),
+        )
+        # Zero-cost run — included in run_count but excluded from billable_run_count,
+        # so the frontend Avg / run denominator stays honest.
+        await _create_run(
+            run_id=f"e6-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_a,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=0,
+            started_at=now - timedelta(minutes=5),
+        )
+        # A run parked on human review counts toward review_run_count only.
+        await _create_run(
+            run_id=f"e7-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_a,
+            status=AgentExecutionStatus.REVIEW,
+            cost_cents=0,
+            started_at=now - timedelta(minutes=3),
+        )
+        # Still running, so its stats carry no walltime yet: it inflates
+        # run_count but must stay out of the duration denominator.
+        await _create_run(
+            run_id=f"e8-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_a,
+            status=AgentExecutionStatus.RUNNING,
+            cost_cents=0,
+            started_at=now - timedelta(minutes=2),
+            duration=None,
+        )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=since,
+            until=now + timedelta(minutes=1),
+            top_runs_limit=3,
+        )
+
+        assert summary.total_cents == 1570
+        assert summary.run_count == 8
+        assert summary.billable_run_count == 5
+        # 50 FAILED + 20 TERMINATED
+        assert summary.failed_cost_cents == 70
+        # 4 COMPLETED vs 1 FAILED + 1 TERMINATED + 1 REVIEW + 1 RUNNING
+        assert summary.success_run_count == 4
+        assert summary.failed_run_count == 2
+        assert summary.review_run_count == 1
+        # 7 finished runs at the default 1.0s walltime; the RUNNING run has
+        # none, so it is absent from both the sum and the denominator.
+        assert summary.total_duration_seconds == 7.0
+        assert summary.duration_run_count == 7
+
+        by_agent = {row.graph_id: row for row in summary.by_agent}
+        assert by_agent[graph_a].cost_cents == 500
+        # 2 paid + 1 zero-cost + 1 review + 1 running run on graph_a
+        assert by_agent[graph_a].run_count == 5
+        assert by_agent[graph_b].cost_cents == 1070
+        assert by_agent[graph_b].run_count == 3
+        # graph_b leads on total spend so it sorts first
+        assert summary.by_agent[0].graph_id == graph_b
+
+        # Top runs ordered by cost desc; limit honored
+        assert summary.top_runs[0].execution_id == big_run_id
+        assert summary.top_runs[0].cost_cents == 1000
+        # Projected off the persisted `walltime` key, not a synthetic one
+        assert summary.top_runs[0].duration_seconds == 1.0
+        assert len(summary.top_runs) == 3
+    finally:
+        await _cleanup(user_id, [graph_a, graph_b])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_by_expert_covers_a_roster_larger_than_the_by_agent_cap(
+    server: SpinTestServer,
+):
+    # Callers sum `by_expert` into a headline total, so a top-N cut like the
+    # one `by_agent` carries would under-report it. 51 experts clears the
+    # 50-row cap that used to apply here.
+    roster_size = 51
+    user_id = f"cs-roster-{uuid4()}"
+    graph_id = f"cs-g-r-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    expert_ids = [f"cs-x-r{index}-{uuid4()}" for index in range(roster_size)]
+    try:
+        now = datetime.now(timezone.utc)
+        for index, expert_id in enumerate(expert_ids):
+            await _create_expert(expert_id, user_id)
+            await _create_run(
+                run_id=f"xr{index}-{uuid4()}",
+                user_id=user_id,
+                graph_id=graph_id,
+                status=AgentExecutionStatus.COMPLETED,
+                cost_cents=index + 1,
+                started_at=now - timedelta(minutes=index + 1),
+                expert_id=expert_id,
+            )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=now - timedelta(days=1),
+            until=now + timedelta(minutes=1),
+            include_by_expert=True,
+        )
+
+        assert len(summary.by_expert) == roster_size
+        assert sum(row.cost_cents for row in summary.by_expert) == summary.total_cents
+    finally:
+        await _cleanup(user_id, [graph_id], expert_ids)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_excludes_dry_runs_and_outside_window(server: SpinTestServer):
+    user_id = f"cs-filter-{uuid4()}"
+    graph_id = f"cs-g-f-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    try:
+        now = datetime.now(timezone.utc)
+
+        # In window, real run -> counted
+        await _create_run(
+            run_id=f"in-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=400,
+            started_at=now - timedelta(hours=1),
+        )
+        # In window, dry run -> excluded
+        await _create_run(
+            run_id=f"dry-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=900,
+            started_at=now - timedelta(hours=1),
+            is_dry_run=True,
+        )
+        # Outside window -> excluded
+        await _create_run(
+            run_id=f"old-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=700,
+            started_at=now - timedelta(days=10),
+        )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=now - timedelta(days=1),
+            until=now + timedelta(minutes=1),
+        )
+
+        assert summary.total_cents == 400
+        assert summary.run_count == 1
+    finally:
+        await _cleanup(user_id, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_daily_buckets_group_by_utc_date(server: SpinTestServer):
+    user_id = f"cs-daily-{uuid4()}"
+    graph_id = f"cs-g-d-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    try:
+        day1 = datetime(2026, 1, 10, 9, 0, tzinfo=timezone.utc)
+        day2 = datetime(2026, 1, 11, 9, 0, tzinfo=timezone.utc)
+
+        await _create_run(
+            run_id=f"d1a-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=100,
+            started_at=day1,
+        )
+        await _create_run(
+            run_id=f"d1b-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=250,
+            started_at=day1,
+        )
+        await _create_run(
+            run_id=f"d2-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=400,
+            started_at=day2,
+        )
+        await _create_run(
+            run_id=f"d2f-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.FAILED,
+            cost_cents=0,
+            started_at=day2,
+        )
+        await _create_run(
+            run_id=f"d2r-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.REVIEW,
+            cost_cents=0,
+            started_at=day2,
+        )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=day1 - timedelta(hours=1),
+            until=day2 + timedelta(hours=1),
+        )
+
+        assert [d.date for d in summary.daily] == [
+            date(2026, 1, 10),
+            date(2026, 1, 11),
+        ]
+        assert summary.daily[0].cost_cents == 350
+        assert summary.daily[0].run_count == 2
+        assert summary.daily[0].success_count == 2
+        assert summary.daily[0].failed_count == 0
+        assert summary.daily[0].review_count == 0
+        assert summary.daily[1].cost_cents == 400
+        assert summary.daily[1].run_count == 3
+        assert summary.daily[1].success_count == 1
+        assert summary.daily[1].failed_count == 1
+        assert summary.daily[1].review_count == 1
+    finally:
+        await _cleanup(user_id, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_daily_buckets_follow_created_at_not_started_at(
+    server: SpinTestServer,
+):
+    # A queued-then-started run lands in the createdAt bucket, not the
+    # startedAt bucket — locks the index-hit invariant documented in
+    # backend/data/execution_cost_summary.py get_user_cost_summary docstring.
+    user_id = f"cs-created-{uuid4()}"
+    graph_id = f"cs-g-c-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    try:
+        created_day = datetime(2026, 2, 5, 23, 30, tzinfo=timezone.utc)
+        started_day = datetime(2026, 2, 7, 9, 0, tzinfo=timezone.utc)
+
+        await _create_run(
+            run_id=f"q-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=600,
+            started_at=started_day,
+            created_at=created_day,
+        )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=created_day - timedelta(hours=1),
+            until=started_day + timedelta(hours=1),
+        )
+
+        assert [d.date for d in summary.daily] == [date(2026, 2, 5)]
+        assert summary.daily[0].cost_cents == 600
+    finally:
+        await _cleanup(user_id, [graph_id])

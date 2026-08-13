@@ -9,7 +9,8 @@
       "sub_heading": "Creator agent subheading",
       "description": "Creator agent description",
       "runs": 50,
-      "rating": 4.0
+      "rating": 4.0,
+      "agent_graph_id": "test-graph-2"
     }
   ],
   "pagination": {

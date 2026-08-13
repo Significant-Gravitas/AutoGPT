@@ -12,13 +12,9 @@ The Agent Library is your personal collection of agents. From here you can run a
 
 Your library displays all of your agents, including agents you've built yourself and agents you've added from the marketplace. Each agent shows its name and key information at a glance.
 
-### Favouriting Agents
+### Favorites and folders
 
-To keep important agents easy to find, click the **heart icon** on any agent to favourite it. Favourited agents are pinned to the top of your library.
-
-{% hint style="info" %}
-There is currently no folder system for organising agents. Use favourites to pin your most-used agents to the top.
-{% endhint %}
+Click the **heart icon** on an agent to add or remove it from the **Favorites** tab. Use folders to organize agents; create a folder from the library and choose **Move to folder** from an agent's menu.
 
 ## Agent Detail View
 
@@ -26,7 +22,8 @@ Click on any agent to open its detail view. This screen provides:
 
 - **Tasks**: A full history of every time this agent has been executed
 - **Scheduled**: A list of active schedules for this agent
-- **Templates**: Saved input configurations for quick re-runs
+- **Triggers**: Configured webhook triggers for trigger-based agents
+- **Templates**: Saved task inputs and credential references for reuse
 
 These are accessible via tabs on the left-hand side of the agent screen (e.g., `Tasks 286 | Scheduled 1 | Templates 0`).
 
@@ -36,7 +33,7 @@ Click the **three dots** (⋯) on the far right-hand side of the agent screen to
 
 | Action | Description |
 |--------|-------------|
-| **Edit Agent** | Opens the agent in the builder for editing |
+| **Edit Agent** | Opens the agent in the builder; marketplace agents are read-only until duplicated |
 | **Delete Agent** | Permanently removes the agent from your library |
 | **Export Agent to File** | Downloads the agent as a file you can share with others |
 
@@ -45,14 +42,14 @@ Click the **three dots** (⋯) on the far right-hand side of the agent screen to
 To run an agent manually:
 
 1. Open the agent from your library
-2. Click **New Task**
-3. Fill in the required input fields
+2. Click **New agent task**
+3. Fill in the required inputs and credentials
 4. Click **Start Task**
 
 The task will begin executing immediately. You can watch the progress and view the results once it completes.
 
 {% hint style="warning" %}
-If the agent uses **trigger blocks** instead of standard input blocks, the **New Task** button is replaced with **New Trigger**. See [Scheduling & Triggers](scheduling-and-triggers.md) for details.
+For a trigger-based agent, use the same **New agent task** dialog and click **Set up Trigger**. Trigger-based agents cannot be started manually. See [Scheduling & Triggers](scheduling-and-triggers.md) for details.
 {% endhint %}
 
 ## Viewing Task Results
@@ -67,17 +64,18 @@ A task detail view shows:
 
 - **Inputs**: The values that were provided when the task started
 - **Outputs**: The results the agent produced
-- **Cost**: The total credit cost for this task execution, displayed at the top of the task
+- **Cost**: The run's reported cost, displayed at the top of the task detail view
 
-You can also **share a task** by copying its URL, which allows others to view the task output directly.
+To share an output, click **Share results** and explicitly enable sharing; copying the authenticated task URL does not create a public link. See [Sharing & Exporting Agents](sharing-and-exporting.md#share-task-output-via-url) for visibility and revocation details.
 
-## Uploading an Agent
+## Importing an Agent
 
 To import an agent from a file:
 
 1. Go to your Agent Library
-2. Click **Upload Agent** at the top
-3. Select the agent file from your computer
+2. Click **Import**
+3. Keep **AutoGPT agent** selected
+4. Choose the exported JSON file, complete the requested metadata, and click **Upload**
 
 The agent will be added to your library and can be run or edited like any other agent. This is useful for importing agents shared by other users outside of the marketplace.
 

@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 import time
@@ -7,8 +8,10 @@ from typing import Sequence, cast
 from autogpt_libs.auth import get_user_id
 
 from backend.api.rest_api import AgentServer
+from backend.blocks._base import Block, BlockSchema
 from backend.data import db
-from backend.data.block import Block, BlockSchema, initialize_blocks
+from backend.data.block import initialize_blocks
+from backend.data.db_manager import DatabaseManager
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -17,7 +20,7 @@ from backend.data.execution import (
 )
 from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
-from backend.executor import DatabaseManager, ExecutionManager, Scheduler
+from backend.executor import ExecutionManager, Scheduler
 from backend.notifications.notifications import NotificationManager
 
 log = logging.getLogger(__name__)
@@ -57,6 +60,11 @@ class SpinTestServer:
         self.agent_server.__exit__(exc_type, exc_val, exc_tb)
         self.db_api.__exit__(exc_type, exc_val, exc_tb)
         self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
+
+        # Give services time to fully shut down
+        #  This prevents event loop issues where services haven't fully cleaned up
+        # before the next test starts
+        await asyncio.sleep(0.5)
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing
@@ -134,14 +142,29 @@ async def execute_block_test(block: Block):
             setattr(block, mock_name, mock_obj)
 
     # Populate credentials argument(s)
+    # Generate IDs for execution context
+    graph_id = str(uuid.uuid4())
+    node_id = str(uuid.uuid4())
+    graph_exec_id = str(uuid.uuid4())
+    node_exec_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    graph_version = 1  # Default version for tests
+
     extra_exec_kwargs: dict = {
-        "graph_id": str(uuid.uuid4()),
-        "node_id": str(uuid.uuid4()),
-        "graph_exec_id": str(uuid.uuid4()),
-        "node_exec_id": str(uuid.uuid4()),
-        "user_id": str(uuid.uuid4()),
-        "graph_version": 1,  # Default version for tests
-        "execution_context": ExecutionContext(),
+        "graph_id": graph_id,
+        "node_id": node_id,
+        "graph_exec_id": graph_exec_id,
+        "node_exec_id": node_exec_id,
+        "user_id": user_id,
+        "graph_version": graph_version,
+        "execution_context": ExecutionContext(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec_id,
+            graph_version=graph_version,
+            node_id=node_id,
+            node_exec_id=node_exec_id,
+        ),
     }
     input_model = cast(type[BlockSchema], block.input_schema)
 

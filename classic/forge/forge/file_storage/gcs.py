@@ -80,36 +80,30 @@ class GCSFileStorage(FileStorage):
         path: str | Path,
         mode: Literal["r", "w"] = "r",
         binary: Literal[False] = False,
-    ) -> TextIOWrapper:
-        ...
+    ) -> TextIOWrapper: ...
 
     @overload
     def open_file(
         self, path: str | Path, mode: Literal["r"], binary: Literal[True]
-    ) -> BlobReader:
-        ...
+    ) -> BlobReader: ...
 
     @overload
     def open_file(
         self, path: str | Path, mode: Literal["w"], binary: Literal[True]
-    ) -> BlobWriter:
-        ...
+    ) -> BlobWriter: ...
 
     @overload
     def open_file(
         self, path: str | Path, mode: Literal["r", "w"], binary: Literal[True]
-    ) -> BlobWriter | BlobReader:
-        ...
+    ) -> BlobWriter | BlobReader: ...
 
     @overload
-    def open_file(self, path: str | Path, *, binary: Literal[True]) -> BlobReader:
-        ...
+    def open_file(self, path: str | Path, *, binary: Literal[True]) -> BlobReader: ...
 
     @overload
     def open_file(
         self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
-    ) -> BlobReader | BlobWriter | TextIOWrapper:
-        ...
+    ) -> BlobReader | BlobWriter | TextIOWrapper: ...
 
     # https://github.com/microsoft/pyright/issues/8007
     def open_file(  # pyright: ignore[reportIncompatibleMethodOverride]

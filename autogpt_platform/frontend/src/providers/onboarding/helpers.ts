@@ -31,14 +31,48 @@ export function fromBackendUserOnboarding(
   };
 }
 
+// `completedSteps` stays string[] so legacy stored values pass through, but the
+// step we gate the redirect on is checked against the union: a rename that
+// misses this call site must fail the build, not silently route every
+// onboarded user back into the wizard.
+const ONBOARDING_COMPLETE = "ONBOARDING_COMPLETE" satisfies OnboardingStep;
+
 export function shouldRedirectFromOnboarding(
-  completedSteps: OnboardingStep[],
+  completedSteps: string[],
   pathname: string,
 ): boolean {
   return (
-    completedSteps.includes("CONGRATS") &&
+    completedSteps.includes(ONBOARDING_COMPLETE) &&
     !pathname.startsWith("/onboarding/reset")
   );
+}
+
+/**
+ * Decide where to route a logged-in user once we know their onboarding
+ * completion state.
+ *
+ * Returns the destination path, or `null` to leave the user where they are.
+ * `null` covers two distinct cases:
+ *   1. A pending `?next=…` deep link — the auth page will handle it, so we
+ *      must not race it.
+ *   2. The user is already on the right surface (incomplete on /onboarding,
+ *      completed on any non-auth/non-onboarding page).
+ */
+export function decideOnboardingRedirect({
+  isCompleted,
+  isOnOnboardingRoute,
+  isOnAuthRoute,
+  hasPendingAuthDeepLink,
+}: {
+  isCompleted: boolean;
+  isOnOnboardingRoute: boolean;
+  isOnAuthRoute: boolean;
+  hasPendingAuthDeepLink: boolean;
+}): "/onboarding" | "/copilot" | null {
+  if (hasPendingAuthDeepLink) return null;
+  if (!isCompleted && !isOnOnboardingRoute) return "/onboarding";
+  if (isCompleted && (isOnOnboardingRoute || isOnAuthRoute)) return "/copilot";
+  return null;
 }
 
 export function updateOnboardingState(

@@ -3,16 +3,16 @@
 Blocks for uploading videos to YouTube using the Ayrshare social media management API.
 <!-- END MANUAL -->
 
-## Post To You Tube
+## Post To YouTube
 
 ### What it is
 Post to YouTube using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses Ayrshare's API to upload videos to YouTube. It handles video uploads with extensive metadata including titles, descriptions, tags, custom thumbnails, playlist assignment, category selection, and visibility controls (public, private, unlisted).
+This block uses Ayrshare's API to upload videos to YouTube. It handles video uploads with extensive metadata including titles, descriptions, tags, custom thumbnails, playlist assignment, category selection, and visibility controls (public, private, or unlisted).
 
-The block supports YouTube Shorts (up to 3 minutes), geographic targeting to allow or block specific countries, subtitle files (SRT/SBV format), synthetic/AI content disclosure, kids content labeling, and subscriber notification controls. Videos can be scheduled for specific publish times.
+The block supports YouTube Shorts (up to 3 minutes), geographic targeting to allow or block specific countries, subtitle files (SRT/SBV format), synthetic or AI content disclosure, kids-content labeling, and subscriber-notification controls. Videos can be scheduled for specific publish times.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -21,7 +21,7 @@ The block supports YouTube Shorts (up to 3 minutes), geographic targeting to all
 |-------|-------------|------|----------|
 | post | Video description (max 5,000 chars, empty string allowed). Cannot contain < or > characters. | str | Yes |
 | media_urls | Required video URL. YouTube only supports 1 video per post. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video (always True for YouTube) | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

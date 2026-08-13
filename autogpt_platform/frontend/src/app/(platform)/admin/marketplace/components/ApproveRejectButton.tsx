@@ -13,7 +13,7 @@ import {
 } from "@/components/__legacy__/ui/dialog";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
-import type { StoreSubmission } from "@/lib/autogpt-server-api/types";
+import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { useRouter } from "next/navigation";
 import {
   approveAgent,
@@ -23,7 +23,7 @@ import {
 export function ApproveRejectButtons({
   version,
 }: {
-  version: StoreSubmission;
+  version: StoreSubmissionAdminView;
 }) {
   const router = useRouter();
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
@@ -95,7 +95,7 @@ export function ApproveRejectButtons({
             <input
               type="hidden"
               name="id"
-              value={version.store_listing_version_id || ""}
+              value={version.listing_version_id || ""}
             />
 
             <div className="grid gap-4 py-4">
@@ -142,7 +142,7 @@ export function ApproveRejectButtons({
             <input
               type="hidden"
               name="id"
-              value={version.store_listing_version_id || ""}
+              value={version.listing_version_id || ""}
             />
 
             <div className="grid gap-4 py-4">

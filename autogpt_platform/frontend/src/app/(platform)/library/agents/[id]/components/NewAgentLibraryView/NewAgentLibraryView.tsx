@@ -5,7 +5,6 @@ import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/Pub
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { AgentSettingsModal } from "./components/modals/AgentSettingsModal/AgentSettingsModal";
@@ -17,16 +16,21 @@ import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { MarketplaceBanners } from "./components/other/MarketplaceBanners";
 import { SectionWrap } from "./components/other/SectionWrap";
+import { TriggerNotFound } from "./components/other/TriggerNotFound";
 import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
 import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
+import { SelectedTriggerAgentView } from "./components/selected-views/SelectedTriggerAgentView/SelectedTriggerAgentView";
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
+import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NewAgentLibraryView() {
   const {
@@ -37,13 +41,16 @@ export function NewAgentLibraryView() {
     isTemplateLoading,
     error,
     hasAnyItems,
-    activeItem,
+    activeItemId,
+    selectedTriggerKind,
+    retryTriggerLists,
     sidebarLoading,
     activeTab,
     setActiveTab,
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    handleScheduleDeleted,
     onRunInitiated,
     onTriggerSetup,
     onScheduleCreated,
@@ -61,6 +68,7 @@ export function NewAgentLibraryView() {
   } = useMarketplaceUpdate({ agent });
 
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const { isNewLayoutActive } = usePlatformChrome();
 
   useEffect(() => {
     if (agent) {
@@ -116,6 +124,60 @@ export function NewAgentLibraryView() {
     );
   }
 
+  function renderSelectedTrigger(selectedItemId: string) {
+    if (!agent) return null;
+
+    switch (selectedTriggerKind) {
+      case "trigger-agent":
+        return (
+          <SelectedTriggerAgentView
+            agent={agent}
+            triggerAgentId={selectedItemId}
+            onClearSelectedRun={handleClearSelectedRun}
+            banner={renderMarketplaceUpdateBanner()}
+          />
+        );
+      case "webhook-trigger":
+        return (
+          <SelectedTriggerView
+            agent={agent}
+            triggerId={selectedItemId}
+            onClearSelectedRun={handleClearSelectedRun}
+            onSwitchToRunsTab={() => setActiveTab("runs")}
+            banner={renderMarketplaceUpdateBanner()}
+          />
+        );
+      case "loading":
+        return <LoadingSelectedContent agent={agent} />;
+      case "error":
+        return (
+          <SelectedViewLayout
+            agent={agent}
+            banner={renderMarketplaceUpdateBanner()}
+          >
+            <ErrorCard
+              responseError={{
+                message:
+                  "Could not load this agent's triggers. Check your connection and try again.",
+              }}
+              context="triggers"
+              onRetry={retryTriggerLists}
+            />
+          </SelectedViewLayout>
+        );
+      case "not-found":
+        return (
+          <TriggerNotFound
+            agent={agent}
+            banner={renderMarketplaceUpdateBanner()}
+            onClearSelection={handleClearSelectedRun}
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
   if (error) {
     return (
       <ErrorCard
@@ -131,7 +193,9 @@ export function NewAgentLibraryView() {
     return <AgentRunsLoading />;
   }
 
-  if (!sidebarLoading && !hasAnyItems) {
+  // Keep the selected-content layout while an item is selected — even with
+  // zero listable items — so a stale selection can show its not-found state.
+  if (!sidebarLoading && !hasAnyItems && !activeItemId) {
     return (
       <>
         <div className="flex h-full flex-col">
@@ -163,8 +227,24 @@ export function NewAgentLibraryView() {
 
   return (
     <>
-      <div className="mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
-        <SectionWrap className="mb-3 block">
+      <div
+        className={cn(
+          isNewLayoutActive
+            ? // New sidebar layout: detail panel sits next to the app sidebar,
+              // the runs list becomes a fixed column on the right, and both
+              // panels own their scroll on desktop (h-svh + minmax rows)
+              // instead of assuming a top-navbar page. Children's mb-3 (from
+              // the classic layout) would overflow the viewport-sized rows.
+              "grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pb-3 pt-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0"
+            : "mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]",
+        )}
+      >
+        <SectionWrap
+          className={cn(
+            "mb-3 block",
+            isNewLayoutActive && "lg:order-2 lg:flex lg:min-h-0 lg:flex-col",
+          )}
+        >
           <div
             className={cn(
               "border-b border-zinc-100 pb-5",
@@ -174,12 +254,12 @@ export function NewAgentLibraryView() {
             <RunAgentModal
               triggerSlot={
                 <Button
-                  variant="primary"
-                  size="large"
+                  variant="outline"
+                  size="small"
                   className="w-full"
                   disabled={isTemplateLoading && activeTab === "templates"}
                 >
-                  <PlusIcon size={20} /> New task
+                  <Icon icon={PlusSignIcon} size={16} /> New agent task
                 </Button>
               }
               agent={agent}
@@ -191,28 +271,40 @@ export function NewAgentLibraryView() {
             />
           </div>
 
-          <SidebarRunsList
-            agent={agent}
-            selectedRunId={activeItem ?? undefined}
-            onSelectRun={handleSelectRun}
-            onClearSelectedRun={handleClearSelectedRun}
-            onTabChange={setActiveTab}
-            onCountsChange={handleCountsChange}
-          />
+          {/* The tabs panel inside SidebarRunsList is flex-1 with basis 0, so
+              it collapses (clipping the cards) unless its root is stretched to
+              fill the column height. */}
+          <div
+            className={cn(
+              isNewLayoutActive &&
+                "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:[&>div]:min-h-0 lg:[&>div]:flex-1",
+            )}
+          >
+            <SidebarRunsList
+              agent={agent}
+              selectedRunId={activeItemId ?? undefined}
+              onSelectRun={handleSelectRun}
+              onClearSelectedRun={handleClearSelectedRun}
+              onScheduleDeleted={handleScheduleDeleted}
+              onTabChange={setActiveTab}
+              onCountsChange={handleCountsChange}
+            />
+          </div>
         </SectionWrap>
 
-        {activeItem ? (
+        {activeItemId ? (
           activeTab === "scheduled" ? (
             <SelectedScheduleView
               agent={agent}
-              scheduleId={activeItem}
-              onClearSelectedRun={handleClearSelectedRun}
+              scheduleId={activeItemId}
+              onScheduleDeleted={handleScheduleDeleted}
+              onSelectRun={(id) => handleSelectRun(id, "runs")}
               banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "templates" ? (
             <SelectedTemplateView
               agent={agent}
-              templateId={activeItem}
+              templateId={activeItemId}
               onClearSelectedRun={handleClearSelectedRun}
               onRunCreated={(execution) =>
                 handleSelectRun(execution.id, "runs")
@@ -221,17 +313,11 @@ export function NewAgentLibraryView() {
               banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "triggers" ? (
-            <SelectedTriggerView
-              agent={agent}
-              triggerId={activeItem}
-              onClearSelectedRun={handleClearSelectedRun}
-              onSwitchToRunsTab={() => setActiveTab("runs")}
-              banner={renderMarketplaceUpdateBanner()}
-            />
+            renderSelectedTrigger(activeItemId)
           ) : (
             <SelectedRunView
               agent={agent}
-              runId={activeItem}
+              runId={activeItemId}
               onSelectRun={handleSelectRun}
               onClearSelectedRun={handleClearSelectedRun}
               banner={renderMarketplaceUpdateBanner()}

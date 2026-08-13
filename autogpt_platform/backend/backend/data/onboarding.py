@@ -1,22 +1,24 @@
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import prisma
 import pydantic
-from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
 from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
-from backend.data import execution as execution_db
 from backend.data.credit import get_user_credit_model
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
 )
+from backend.data.onboarding_steps import (
+    FrontendOnboardingStep as FrontendOnboardingStep,
+)
+from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.json import SafeJson
@@ -33,21 +35,17 @@ REASON_MAPPING: dict[str, list[str]] = {
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
 MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
-FrontendOnboardingStep = Literal[
-    OnboardingStep.WELCOME,
-    OnboardingStep.USAGE_REASON,
-    OnboardingStep.INTEGRATIONS,
-    OnboardingStep.AGENT_CHOICE,
-    OnboardingStep.AGENT_NEW_RUN,
-    OnboardingStep.AGENT_INPUT,
-    OnboardingStep.CONGRATS,
-    OnboardingStep.MARKETPLACE_VISIT,
-    OnboardingStep.BUILDER_OPEN,
-]
+# OnboardingStep and FrontendOnboardingStep are imported from
+# backend.data.onboarding_steps and remain importable from this module for
+# backwards compatibility (`from backend.data.onboarding import OnboardingStep`).
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
     walletShown: Optional[bool] = None
+    # Typed enum so the PATCH endpoint validates step names at the boundary
+    # (invalid values get a 422 instead of being stored and then 500-ing reads,
+    # which type `notified` as list[OnboardingStep]). The API merges this with
+    # the existing column rather than treating it as authoritative.
     notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
@@ -96,7 +94,12 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
-        update["notified"] = list(set(data.notified + onboarding.notified))
+        # str(step): persist plain str so the merge with the stored str[] column
+        # stays list[str]. str() works whether the value is an OnboardingStep
+        # (StrEnum) or already a plain str, so it can't AttributeError.
+        update["notified"] = list(
+            set(onboarding.notified + [str(step) for step in data.notified])
+        )
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:
@@ -122,33 +125,26 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
     reward = 0
     match step:
-        # Reward user when they clicked New Run during onboarding
-        # This is because they need credits before scheduling a run (next step)
-        # This is seen as a reward for the GET_RESULTS step in the wallet
+        # The wizard fires ONBOARDING_COMPLETE on completion; this is the grant
+        # backing the wallet's "Complete onboarding" task ($3).
+        case OnboardingStep.ONBOARDING_COMPLETE:
+            reward = 300
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
-        case OnboardingStep.MARKETPLACE_VISIT:
-            reward = 100
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 100
-        case OnboardingStep.MARKETPLACE_RUN_AGENT:
-            reward = 100
-        case OnboardingStep.BUILDER_SAVE_AGENT:
-            reward = 100
-        case OnboardingStep.RE_RUN_AGENT:
+        case OnboardingStep.LIBRARY_RUN_AGENT:
             reward = 100
         case OnboardingStep.SCHEDULE_AGENT:
             reward = 100
-        case OnboardingStep.RUN_AGENTS:
-            reward = 300
         case OnboardingStep.RUN_3_DAYS:
             reward = 100
         case OnboardingStep.TRIGGER_WEBHOOK:
             reward = 100
         case OnboardingStep.RUN_14_DAYS:
-            reward = 300
+            reward = 100
         case OnboardingStep.RUN_AGENTS_100:
-            reward = 300
+            reward = 100
 
     if reward == 0:
         return
@@ -162,7 +158,9 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
-            "rewardedFor": list(set(onboarding.rewardedFor + [step])),
+            # str(step): persist a plain str (consistent with
+            # update_user_onboarding); robust whether step is a StrEnum or a str.
+            "rewardedFor": list(set(onboarding.rewardedFor + [str(step)])),
         },
     )
 
@@ -176,7 +174,9 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
         await UserOnboarding.prisma().update(
             where={"userId": user_id},
             data={
-                "completedSteps": list(set(onboarding.completedSteps + [step])),
+                # str(step): persist a plain str (see update_user_onboarding);
+                # robust whether step is a StrEnum or a str.
+                "completedSteps": list(set(onboarding.completedSteps + [str(step)])),
             },
         )
         await _reward_user(user_id, onboarding, step)
@@ -197,23 +197,6 @@ async def _send_onboarding_notification(
     await AsyncRedisNotificationEventBus().publish(
         NotificationEvent(user_id=user_id, payload=payload)
     )
-
-
-async def complete_re_run_agent(user_id: str, graph_id: str) -> None:
-    """
-    Complete RE_RUN_AGENT step when a user runs a graph they've run before.
-    Keeps overhead low by only counting executions if the step is still pending.
-    """
-    onboarding = await get_user_onboarding(user_id)
-    if OnboardingStep.RE_RUN_AGENT in onboarding.completedSteps:
-        return
-
-    # Includes current execution, so count > 1 means there was at least one prior run.
-    previous_exec_count = await execution_db.get_graph_executions_count(
-        user_id=user_id, graph_id=graph_id
-    )
-    if previous_exec_count > 1:
-        await complete_onboarding_step(user_id, OnboardingStep.RE_RUN_AGENT)
 
 
 def _clean_and_split(text: str) -> list[str]:
@@ -240,7 +223,10 @@ def _clean_and_split(text: str) -> list[str]:
 
 
 def _calculate_points(
-    agent, categories: list[str], custom: list[str], integrations: list[str]
+    agent: prisma.models.StoreAgent,
+    categories: list[str],
+    custom: list[str],
+    integrations: list[str],
 ) -> int:
     """
     Calculates the total points for an agent based on the specified criteria.
@@ -318,8 +304,6 @@ def _get_run_milestone_steps(
     new_run_count: int, consecutive_days: int
 ) -> list[OnboardingStep]:
     milestones: list[OnboardingStep] = []
-    if new_run_count >= 10:
-        milestones.append(OnboardingStep.RUN_AGENTS)
     if new_run_count >= 100:
         milestones.append(OnboardingStep.RUN_AGENTS_100)
     if consecutive_days >= 3:
@@ -393,7 +377,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     storeAgents = await prisma.models.StoreAgent.prisma().find_many(
         where={
             "is_available": True,
-            "useForOnboarding": True,
+            "use_for_onboarding": True,
         },
         order=[
             {"featured": "desc"},
@@ -403,7 +387,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         take=100,
     )
 
-    # If not enough agents found, relax the useForOnboarding filter
+    # If not enough agents found, relax the use_for_onboarding filter
     if len(storeAgents) < 2:
         storeAgents = await prisma.models.StoreAgent.prisma().find_many(
             where=prisma.types.StoreAgentWhereInput(**where_clause),
@@ -416,7 +400,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         )
 
     # Calculate points for the first X agents and choose the top 2
-    agent_points = []
+    agent_points: list[tuple[prisma.models.StoreAgent, int]] = []
     for agent in storeAgents[:POINTS_AGENT_COUNT]:
         points = _calculate_points(
             agent, categories, custom, user_onboarding.integrations
@@ -426,28 +410,67 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     agent_points.sort(key=lambda x: x[1], reverse=True)
     recommended_agents = [agent for agent, _ in agent_points[:2]]
 
-    return [
-        StoreAgentDetails(
-            store_listing_version_id=agent.storeListingVersionId,
-            slug=agent.slug,
-            agent_name=agent.agent_name,
-            agent_video=agent.agent_video or "",
-            agent_output_demo=agent.agent_output_demo or "",
-            agent_image=agent.agent_image,
-            creator=agent.creator_username,
-            creator_avatar=agent.creator_avatar,
-            sub_heading=agent.sub_heading,
-            description=agent.description,
-            categories=agent.categories,
-            runs=agent.runs,
-            rating=agent.rating,
-            versions=agent.versions,
-            agentGraphVersions=agent.agentGraphVersions,
-            agentGraphId=agent.agentGraphId,
-            last_updated=agent.updated_at,
-        )
-        for agent in recommended_agents
+    return [StoreAgentDetails.from_db(agent) for agent in recommended_agents]
+
+
+def format_onboarding_for_extraction(
+    user_name: str,
+    user_role: str,
+    pain_points: list[str],
+) -> str:
+    """Format onboarding wizard answers as Q&A text for LLM extraction."""
+
+    def normalize(value: str) -> str:
+        return " ".join(value.strip().split())
+
+    name = normalize(user_name)
+    role = normalize(user_role)
+    points = [normalize(p) for p in pain_points if normalize(p)]
+
+    lines = [
+        f"Q: What is your name?\nA: {name}",
+        f"Q: What best describes your role?\nA: {role}",
+        f"Q: What tasks are eating your time?\nA: {', '.join(points)}",
     ]
+    return "\n\n".join(lines)
+
+
+def format_brain_dump_for_extraction(
+    user_name: str,
+    user_role: str,
+    transcript: str,
+) -> str:
+    """Format a spoken brain dump for the same LLM extraction pass.
+
+    The transcript is unpunctuated, rambling, first-person speech rather
+    than form answers, so it gets its own framing: the extractor is told
+    what it is looking at and which fields the "what would you hand off"
+    part of a dump maps onto, otherwise it tends to file everything under
+    ``additional_notes``.
+
+    The transcript is passed **whole** — extraction runs against the
+    complete text even when a shortened version is what gets injected into
+    the copilot's first prompt.
+    """
+    name = " ".join(user_name.strip().split())
+    role = " ".join(user_role.strip().split())
+
+    return "\n\n".join(
+        [
+            f"Q: What is your name?\nA: {name}",
+            f"Q: What best describes your role?\nA: {role}",
+            (
+                "The following is a transcript of the user speaking freely for a "
+                "few minutes about their work, in answer to: what keeps stealing "
+                "your week? It is unedited speech — expect filler words, "
+                "self-corrections and no punctuation. Extract only what the user "
+                "actually said; never invent details. Work they describe wanting "
+                "to hand off belongs in manual_tasks and automation_goals; tools "
+                "they name belong in current_software.\n\n"
+                f"Transcript:\n{transcript.strip()}"
+            ),
+        ]
+    )
 
 
 @cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes

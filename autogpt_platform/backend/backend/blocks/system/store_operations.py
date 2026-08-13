@@ -1,9 +1,9 @@
 import logging
-from typing import Literal
 
 from pydantic import BaseModel
 
-from backend.data.block import (
+from backend.api.features.store.db import StoreAgentsSortOptions
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -176,8 +176,8 @@ class SearchStoreAgentsBlock(Block):
         category: str | None = SchemaField(
             description="Filter by category", default=None
         )
-        sort_by: Literal["rating", "runs", "name", "updated_at"] = SchemaField(
-            description="How to sort the results", default="rating"
+        sort_by: StoreAgentsSortOptions = SchemaField(
+            description="How to sort the results", default=StoreAgentsSortOptions.RATING
         )
         limit: int = SchemaField(
             description="Maximum number of results to return", default=10, ge=1, le=100
@@ -278,7 +278,7 @@ class SearchStoreAgentsBlock(Block):
         self,
         query: str | None = None,
         category: str | None = None,
-        sort_by: Literal["rating", "runs", "name", "updated_at"] = "rating",
+        sort_by: StoreAgentsSortOptions = StoreAgentsSortOptions.RATING,
         limit: int = 10,
     ) -> SearchAgentsResponse:
         """
