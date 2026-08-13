@@ -982,7 +982,7 @@ class ExecutionProcessor:
             exec_stats = exec_meta.stats.to_db()
             exec_stats.is_dry_run = graph_exec.execution_context.dry_run
 
-        # Clear terminal interpretation from a prior attempt before continuing.
+        # Analysis is terminal-only, so discard prior interpretation before continuing.
         exec_stats.error = None
         exec_stats.failure_reason = None
         exec_stats.activity_status = None
