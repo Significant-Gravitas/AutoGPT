@@ -1,11 +1,20 @@
-import { getGetV1ListCredentialsMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import {
+  getGetV1ListCredentialsMockHandler,
+  getGetV1ListProvidersMockHandler,
+} from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import {
   getGetV1ListExecutionSchedulesForAUserMockHandler,
   getListCopilotFollowupSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import { server } from "@/mocks/mock-server";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@/tests/integrations/test-utils";
+import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotUIStore } from "../../../store";
 import { useCopilotModal } from "../../../useCopilotModal";
@@ -13,14 +22,29 @@ import { CopilotModals } from "../CopilotModals";
 
 function Harness() {
   const { openModal } = useCopilotModal();
+
+  function openSkills() {
+    openModal("skills");
+  }
+
+  function openScheduled() {
+    openModal("scheduled");
+  }
+
+  function openIntegrations() {
+    openModal("integrations");
+  }
+
+  function openConnect() {
+    openModal("connect");
+  }
+
   return (
     <>
-      <button onClick={() => openModal("skills")}>open-skills</button>
-      <button onClick={() => openModal("scheduled")}>open-scheduled</button>
-      <button onClick={() => openModal("integrations")}>
-        open-integrations
-      </button>
-      <button onClick={() => openModal("connect")}>open-connect</button>
+      <button onClick={openSkills}>open-skills</button>
+      <button onClick={openScheduled}>open-scheduled</button>
+      <button onClick={openIntegrations}>open-integrations</button>
+      <button onClick={openConnect}>open-connect</button>
       <CopilotModals />
     </>
   );
@@ -99,10 +123,56 @@ describe("CopilotModals", () => {
   });
 
   test("opens the connect dialog directly, without the credentials list", async () => {
+    server.use(
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "github",
+          description: "Issues and PRs",
+          supported_auth_types: ["oauth2", "api_key"],
+        },
+      ]),
+    );
     render(<Harness />);
     fireEvent.click(screen.getByText("open-connect"));
 
-    expect(await screen.findByText("Connect a service")).toBeDefined();
-    expect(screen.queryByText("Third Party Integrations")).toBeNull();
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("Issues and PRs")).toBeDefined();
+    expect(screen.queryByText("No integration connected")).toBeNull();
+  });
+
+  test("renders the connect dialog from a ?modal=connect deep link", async () => {
+    render(
+      <NuqsTestingAdapter searchParams="?modal=connect">
+        <Harness />
+      </NuqsTestingAdapter>,
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Connect a service")).toBeDefined();
+  });
+
+  test("closing the connect dialog clears the modal query param", async () => {
+    const onUrlUpdate = vi.fn();
+    render(
+      <NuqsTestingAdapter
+        searchParams="?modal=connect"
+        onUrlUpdate={onUrlUpdate}
+      >
+        <Harness />
+      </NuqsTestingAdapter>,
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    await vi.waitFor(() => {
+      expect(
+        onUrlUpdate.mock.calls.at(-1)?.[0].searchParams.get("modal"),
+      ).toBeNull();
+      expect(onUrlUpdate).toHaveBeenCalled();
+    });
   });
 });
