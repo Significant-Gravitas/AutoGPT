@@ -15374,6 +15374,16 @@
             "type": "integer",
             "title": "Decision Total",
             "default": 0
+          },
+          "completed_total": {
+            "type": "integer",
+            "title": "Completed Total",
+            "default": 0
+          },
+          "failed_total": {
+            "type": "integer",
+            "title": "Failed Total",
+            "default": 0
           }
         },
         "type": "object",
