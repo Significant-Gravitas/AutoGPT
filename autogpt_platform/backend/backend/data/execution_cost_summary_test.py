@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from prisma.enums import AgentExecutionStatus
 from prisma.errors import UniqueViolationError
-from prisma.models import AgentGraph, AgentGraphExecution, User
+from prisma.models import AgentGraph, AgentGraphExecution, Expert, User
 
 from backend.data.execution_cost_summary import get_user_cost_summary
 from backend.util.json import SafeJson
@@ -45,6 +45,21 @@ async def _create_graph(graph_id: str, user_id: str, name: str = "Test") -> None
         pass
 
 
+async def _create_expert(expert_id: str, user_id: str) -> None:
+    try:
+        await Expert.prisma().create(
+            data={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "name": f"Expert {expert_id}",
+                "role": "Assistant",
+                "identity": "test",
+            }
+        )
+    except UniqueViolationError:
+        pass
+
+
 async def _create_run(
     *,
     run_id: str,
@@ -57,6 +72,7 @@ async def _create_run(
     node_error_count: int = 0,
     is_dry_run: bool = False,
     created_at: datetime | None = None,
+    expert_id: str | None = None,
 ) -> None:
     # `walltime` is the key the executor actually persists — it comes from
     # GraphExecutionStats.model_dump() in update_graph_execution_stats().
@@ -81,13 +97,18 @@ async def _create_run(
             "startedAt": started_at,
             "endedAt": started_at + timedelta(seconds=duration or 0),
             "stats": SafeJson(stats),
+            **({"expertId": expert_id} if expert_id else {}),
         }
     )
 
 
-async def _cleanup(user_id: str, graph_ids: list[str]) -> None:
+async def _cleanup(
+    user_id: str, graph_ids: list[str], expert_ids: list[str] | None = None
+) -> None:
     try:
         await AgentGraphExecution.prisma().delete_many(where={"userId": user_id})
+        for eid in expert_ids or []:
+            await Expert.prisma().delete_many(where={"id": eid})
         for gid in graph_ids:
             await AgentGraph.prisma().delete_many(where={"id": gid})
         await User.prisma().delete_many(where={"id": user_id})
@@ -116,10 +137,93 @@ async def test_empty_window_returns_zeroed_summary(server: SpinTestServer):
         assert summary.total_duration_seconds == 0
         assert summary.duration_run_count == 0
         assert summary.by_agent == []
+        assert summary.by_expert == []
         assert summary.top_runs == []
         assert summary.daily == []
     finally:
         await _cleanup(user_id, [])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_by_expert_rolls_up_stamped_runs_and_drops_unattributed(
+    server: SpinTestServer,
+):
+    user_id = f"cs-expert-{uuid4()}"
+    graph_id = f"cs-g-e-{uuid4()}"
+    expert_a = f"cs-x-a-{uuid4()}"
+    expert_b = f"cs-x-b-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    await _create_expert(expert_a, user_id)
+    await _create_expert(expert_b, user_id)
+    try:
+        now = datetime.now(timezone.utc)
+
+        await _create_run(
+            run_id=f"xa1-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=120,
+            started_at=now - timedelta(hours=3),
+            expert_id=expert_a,
+        )
+        # Zero-cost run on the same expert: it lifts run_count without spend.
+        await _create_run(
+            run_id=f"xa2-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=0,
+            started_at=now - timedelta(hours=2),
+            expert_id=expert_a,
+        )
+        await _create_run(
+            run_id=f"xb1-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=900,
+            started_at=now - timedelta(hours=1),
+            expert_id=expert_b,
+        )
+        # Unstamped run: spend counts toward the user total but gets no bucket.
+        await _create_run(
+            run_id=f"xnone-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=300,
+            started_at=now - timedelta(minutes=30),
+        )
+        # Dry runs stay excluded here too, not just from the headline totals.
+        await _create_run(
+            run_id=f"xdry-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=700,
+            started_at=now - timedelta(minutes=20),
+            is_dry_run=True,
+            expert_id=expert_a,
+        )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=now - timedelta(days=1),
+            until=now + timedelta(minutes=1),
+        )
+
+        assert summary.total_cents == 1320
+        # Highest spend first, and the null bucket is absent entirely.
+        assert [row.expert_id for row in summary.by_expert] == [expert_b, expert_a]
+        by_expert = {row.expert_id: row for row in summary.by_expert}
+        assert by_expert[expert_a].cost_cents == 120
+        assert by_expert[expert_a].run_count == 2
+        assert by_expert[expert_b].cost_cents == 900
+        assert by_expert[expert_b].run_count == 1
+    finally:
+        await _cleanup(user_id, [graph_id], [expert_a, expert_b])
 
 
 @pytest.mark.asyncio(loop_scope="session")

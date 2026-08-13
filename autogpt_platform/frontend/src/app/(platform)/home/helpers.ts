@@ -67,6 +67,13 @@ export function formatDuration(totalSeconds: number): string {
   return `${hours}h ${minutes}m`;
 }
 
+// Null rather than "$0.00 this week" so a brand-new or idle expert reads as
+// having no spend line at all instead of an explicit zero.
+export function formatWeeklySpend(cents: number | undefined): string | null {
+  if (!cents || cents <= 0) return null;
+  return `${formatCurrency(cents)} this week`;
+}
+
 export function formatCurrency(cents: number): string {
   return new Intl.NumberFormat(undefined, {
     style: "currency",

@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
-from backend.data.execution_cost_summary import UserExecutionCostSummary
+from backend.data.execution_cost_summary import (
+    UserExecutionCostSummary,
+    UserExpertCostRollup,
+)
 
 from .compose import compose_home_dashboard
 
@@ -41,13 +44,16 @@ def _expert(
     )
 
 
-def _cost_summary() -> UserExecutionCostSummary:
+def _cost_summary(
+    by_expert: list[UserExpertCostRollup] | None = None,
+) -> UserExecutionCostSummary:
     return UserExecutionCostSummary(
         total_cents=0,
         run_count=0,
         billable_run_count=0,
         failed_cost_cents=0,
         by_agent=[],
+        by_expert=by_expert or [],
         top_runs=[],
         daily=[],
     )
@@ -73,3 +79,28 @@ def test_templates_and_archived_experts_are_left_off_the_dashboard() -> None:
     assert [agent.expert.id for agent in dashboard.agents] == ["hired"]
     assert dashboard.team.total == 1
     assert [item.id for item in dashboard.attention] == ["setup-hired"]
+
+
+def test_expert_spend_reaches_the_agent_rows_and_the_team_total() -> None:
+    dashboard = compose_home_dashboard(
+        now=NOW,
+        experts=[_expert("hired"), _expert("quiet"), _expert("gone", is_archived=True)],
+        executions=[],
+        reviews=[],
+        schedules=[],
+        library_refs=[],
+        cost_summary=_cost_summary(
+            [
+                UserExpertCostRollup(expert_id="hired", cost_cents=730, run_count=4),
+                # Attributed to an expert the dashboard doesn't list, so it is
+                # dropped rather than silently inflating the team total.
+                UserExpertCostRollup(expert_id="gone", cost_cents=500, run_count=2),
+            ]
+        ),
+        credits_balance=100,
+        timezone_name="UTC",
+    )
+
+    spend = {agent.expert.id: agent.spend_cents for agent in dashboard.agents}
+    assert spend == {"hired": 730, "quiet": 0}
+    assert dashboard.team.spend_cents == 730

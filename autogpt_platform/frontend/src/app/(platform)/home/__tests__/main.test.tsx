@@ -207,6 +207,35 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByText("Spanish practice plan")).toBeDefined();
 });
 
+test("shows weekly spend per agent and on the team line", async () => {
+  mockDashboard({
+    ...dashboard,
+    team: { ...dashboard.team, spend_cents: 1_250 },
+    agents: [
+      { ...dashboard.agents[0], spend_cents: 900 },
+      {
+        expert: { id: "nova", name: "Nova", role: "Ops", avatar_url: null },
+        status: "ready",
+        detail: "Ready for the next task",
+        spend_cents: 0,
+      },
+    ],
+  });
+
+  render(<HomePage />);
+
+  expect(
+    await screen.findByText(
+      "Checking recurring subscriptions · $9.00 this week",
+    ),
+  ).toBeDefined();
+  expect(
+    screen.getByText("1 working now · 7 ready · $12.50 this week"),
+  ).toBeDefined();
+  // An expert with no attributed spend keeps its detail line unadorned.
+  expect(screen.getByText("Ready for the next task")).toBeDefined();
+});
+
 test("falls back to an Unknown badge for an unrecognised agent status", async () => {
   mockDashboard({
     ...dashboard,

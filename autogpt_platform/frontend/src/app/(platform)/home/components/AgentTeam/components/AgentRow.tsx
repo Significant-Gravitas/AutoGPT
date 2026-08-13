@@ -4,6 +4,7 @@ import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentSt
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { formatWeeklySpend } from "../../../helpers";
 import { formatUntil } from "../../NowNext/helpers";
 import { StatusBadge } from "./StatusBadge";
 
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function AgentRow({ agent }: Props) {
+  const spend = formatWeeklySpend(agent.spend_cents);
   return (
     <Link
       href={`/team/${agent.expert.id}`}
@@ -30,6 +32,7 @@ export function AgentRow({ agent }: Props) {
         </div>
         <Text variant="small" className="truncate text-zinc-500">
           {agent.detail}
+          {spend ? ` · ${spend}` : null}
         </Text>
       </div>
       {agent.next_run_time ? (

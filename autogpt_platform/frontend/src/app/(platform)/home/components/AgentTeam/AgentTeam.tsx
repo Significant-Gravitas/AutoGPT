@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { formatWeeklySpend } from "../../helpers";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AgentRow } from "./components/AgentRow";
@@ -19,6 +20,11 @@ interface Props {
 export function AgentTeam({ dashboard, className }: Props) {
   const { team, agents } = dashboard;
   const readyCount = team.ready + team.working;
+  const teamSpend = formatWeeklySpend(team.spend_cents);
+  const statusLine =
+    team.working > 0
+      ? `${team.working} working now · ${team.ready} ready`
+      : `${team.ready} ready for work`;
   return (
     <HomeTile
       className={className}
@@ -47,9 +53,7 @@ export function AgentTeam({ dashboard, className }: Props) {
       }
       header={
         <Text variant="large" className="text-zinc-600">
-          {team.working > 0
-            ? `${team.working} working now · ${team.ready} ready`
-            : `${team.ready} ready for work`}
+          {teamSpend ? `${statusLine} · ${teamSpend}` : statusLine}
         </Text>
       }
     >

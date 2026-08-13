@@ -52,6 +52,9 @@ def compose_home_dashboard(
         experts=hired,
         running_expert_ids=running_expert_ids,
         next_run_by_expert=next_runs_by_expert(graph_schedules, expert_by_schedule),
+        spend_by_expert={
+            rollup.expert_id: rollup.cost_cents for rollup in cost_summary.by_expert
+        },
     )
 
     return HomeDashboardResponse(
