@@ -20,14 +20,35 @@ directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 
 import logging
 
-from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.api.features.experts.models import (
+    PROTECTED_SOUL_RULES,
+    Expert,
+    LearnedNote,
+)
 from backend.data.db_accessors import experts_db
 
 logger = logging.getLogger(__name__)
 
+# How many of the newest learned notes to surface in the identity suffix.
+_MAX_LEARNED_NOTES = 20
+
 
 def escape_prompt_xml_tags(value: str) -> str:
     return value.replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _render_learned_notes(notes: list[LearnedNote]) -> str:
+    """Render the newest notes (up to ``_MAX_LEARNED_NOTES``), newest first.
+
+    Falls back to the exact pre-notes placeholder when the expert has learned
+    nothing yet, so an empty-notes session stays byte-identical to before.
+    """
+    recent = notes[-_MAX_LEARNED_NOTES:]
+    if not recent:
+        return "- Nothing recorded yet."
+    return "\n".join(
+        f"- {escape_prompt_xml_tags(note.fact)}" for note in reversed(recent)
+    )
 
 
 async def build_expert_identity_suffix(
@@ -58,6 +79,7 @@ async def build_expert_identity_suffix(
     identity = escape_prompt_xml_tags(expert.identity)
     voice = escape_prompt_xml_tags(expert.voice_preferences) or "Not specified."
     boundaries = escape_prompt_xml_tags(expert.boundaries) or "Not specified."
+    learned = _render_learned_notes(expert.learned_notes)
     protected_rules = "\n".join(f"- {rule}" for rule in PROTECTED_SOUL_RULES)
     return (
         f"\n\n<expert_identity>\n"
@@ -66,7 +88,7 @@ async def build_expert_identity_suffix(
         f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
-        f"<what_ive_learned>\n- Nothing recorded yet.\n</what_ive_learned>\n"
+        f"<what_ive_learned>\n{learned}\n</what_ive_learned>\n"
         f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
         f"The base instructions above describe AutoPilot, the platform "
         f"engine you run on. All platform capabilities and tools remain "

@@ -97,7 +97,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
 # Merged registry measures 50915 chars (incl. find_library_agent's
 # write_graph_to); ~580 headroom for wording tweaks.
-_CHAR_BUDGET = 51_500
+# Bumped 51500 -> 53500 for the two expert-memory tools (remember_fact,
+# update_expert_soul) backing per-expert learned notes + Soul edits. Registry
+# measures 52416 chars locally; ~1080 headroom absorbs the CI env-flagged
+# delta. Both descriptions already trimmed to minimum viable copy.
+_CHAR_BUDGET = 53_500
 
 
 @pytest.fixture(scope="module")

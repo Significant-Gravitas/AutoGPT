@@ -2,6 +2,7 @@
 
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertSoulUpdate } from "@/app/api/__generated__/models/expertSoulUpdate";
+import { LearnedNote } from "@/app/api/__generated__/models/learnedNote";
 import {
   Avatar,
   AvatarFallback,
@@ -17,8 +18,15 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { LockIcon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  Delete02Icon,
+  LockIcon,
+  PencilEdit02Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import { ReactNode, useState } from "react";
+import { useLearnedNotes } from "./useLearnedNotes";
 import { useSoulDrawer } from "./useSoulDrawer";
 
 interface Props {
@@ -68,7 +76,7 @@ export function SoulDrawer({ expert, onClose }: Props) {
           <div className="flex-1 overflow-y-auto bg-zinc-50 px-4 py-6 sm:px-8">
             <div className="mx-auto max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-8">
               <SoulFields soul={soul} updateField={updateField} />
-              <LearnedNotes />
+              <LearnedNotes expert={expert} />
               <ProtectedRules
                 rules={displayedExpert?.protected_soul_rules ?? []}
               />
@@ -153,14 +161,149 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
   );
 }
 
-function LearnedNotes() {
+function LearnedNotes({ expert }: { expert: Expert | null }) {
+  const {
+    notes,
+    editingId,
+    editText,
+    setEditText,
+    startEdit,
+    cancelEdit,
+    saveEdit,
+    removeNote,
+    isSaving,
+    isDeleting,
+  } = useLearnedNotes(expert);
+
   return (
     <section className="mb-8">
       <SoulSectionTitle>What I&apos;ve learned</SoulSectionTitle>
-      <Text variant="small" className="text-zinc-500">
-        Nothing recorded yet. What this expert learns will appear here.
-      </Text>
+      {notes.length === 0 ? (
+        <Text variant="small" className="text-zinc-500">
+          Nothing recorded yet. What this expert learns will appear here.
+        </Text>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {notes.map((note) =>
+            editingId === note.id ? (
+              <LearnedNoteEditor
+                key={note.id}
+                note={note}
+                editText={editText}
+                setEditText={setEditText}
+                onSave={saveEdit}
+                onCancel={cancelEdit}
+                isSaving={isSaving}
+              />
+            ) : (
+              <LearnedNoteRow
+                key={note.id}
+                note={note}
+                onEdit={() => startEdit(note.id, note.fact)}
+                onRemove={() => removeNote(note.id)}
+                isRemoving={isDeleting}
+              />
+            ),
+          )}
+        </ul>
+      )}
     </section>
+  );
+}
+
+interface LearnedNoteRowProps {
+  note: LearnedNote;
+  onEdit: () => void;
+  onRemove: () => void;
+  isRemoving: boolean;
+}
+
+function LearnedNoteRow({
+  note,
+  onEdit,
+  onRemove,
+  isRemoving,
+}: LearnedNoteRowProps) {
+  return (
+    <li className="flex items-start gap-2 rounded-xl bg-zinc-50 p-3">
+      <span className="flex-1 text-sm leading-5 text-zinc-700">
+        {note.fact}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="small"
+        className="min-w-0 px-2"
+        aria-label={`Edit note: ${note.fact}`}
+        onClick={onEdit}
+      >
+        <Icon icon={PencilEdit02Icon} size={16} />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="small"
+        className="min-w-0 px-2"
+        loading={isRemoving}
+        aria-label={`Remove note: ${note.fact}`}
+        onClick={onRemove}
+      >
+        <Icon icon={Delete02Icon} size={16} />
+      </Button>
+    </li>
+  );
+}
+
+interface LearnedNoteEditorProps {
+  note: LearnedNote;
+  editText: string;
+  setEditText: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  isSaving: boolean;
+}
+
+function LearnedNoteEditor({
+  note,
+  editText,
+  setEditText,
+  onSave,
+  onCancel,
+  isSaving,
+}: LearnedNoteEditorProps) {
+  return (
+    <li className="flex items-center gap-2">
+      <Input
+        id={`note-${note.id}`}
+        label="Edit note"
+        hideLabel
+        value={editText}
+        maxLength={2000}
+        wrapperClassName="flex-1"
+        onChange={(event) => setEditText(event.target.value)}
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="small"
+        className="min-w-0 px-2"
+        loading={isSaving}
+        aria-label="Save note"
+        onClick={onSave}
+      >
+        <Icon icon={Tick02Icon} size={16} />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="small"
+        className="min-w-0 px-2"
+        aria-label="Cancel edit"
+        onClick={onCancel}
+      >
+        <Icon icon={Cancel01Icon} size={16} />
+      </Button>
+    </li>
   );
 }
 

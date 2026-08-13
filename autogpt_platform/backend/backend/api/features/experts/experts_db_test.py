@@ -709,3 +709,185 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
+
+
+def test_to_learned_notes_skips_malformed_entries():
+    notes = experts_db._to_learned_notes(
+        [
+            {
+                "id": "1",
+                "fact": "ok",
+                "createdAt": "2026-08-14T00:00:00+00:00",
+                "source": "user",
+            },
+            "not-a-dict",
+            {"id": "2"},  # missing required fields
+            {
+                "id": "3",
+                "fact": "ok2",
+                "createdAt": "2026-08-14T00:00:00+00:00",
+                "source": "chat",
+            },
+        ]
+    )
+    assert [n.fact for n in notes] == ["ok", "ok2"]
+    assert experts_db._to_learned_notes("not-a-list") == []
+    assert experts_db._to_learned_notes(None) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_learned_note_appends_newest_last(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    after_first = await experts_db.append_learned_note(
+        test_user.id, hired.expert.id, "Prefers weekly reports on Mondays."
+    )
+    after_second = await experts_db.append_learned_note(
+        test_user.id, hired.expert.id, "Hates jargon.", source="chat"
+    )
+
+    facts = [n.fact for n in after_second.learned_notes]
+    assert facts == ["Prefers weekly reports on Mondays.", "Hates jargon."]
+    assert after_first.learned_notes[0].source == "user"
+    assert after_second.learned_notes[-1].source == "chat"
+    ids = {n.id for n in after_second.learned_notes}
+    assert len(ids) == 2
+    assert all(n.created_at is not None for n in after_second.learned_notes)
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert fetched is not None
+    assert [n.fact for n in fetched.learned_notes] == facts
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_learned_note_scopes_by_owner(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.append_learned_note(
+            other_user.id, hired.expert.id, "Injected note."
+        )
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert fetched is not None and fetched.learned_notes == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_learned_note_edits_only_matching(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    seeded = await experts_db.append_learned_note(
+        test_user.id, hired.expert.id, "Original fact."
+    )
+    note_id = seeded.learned_notes[0].id
+
+    updated = await experts_db.update_learned_note(
+        test_user.id, hired.expert.id, note_id, "Corrected fact."
+    )
+    assert updated.learned_notes[0].id == note_id
+    assert updated.learned_notes[0].fact == "Corrected fact."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_learned_note_missing_note_raises(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.LearnedNoteNotFoundError):
+        await experts_db.update_learned_note(
+            test_user.id, hired.expert.id, "does-not-exist", "x"
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_learned_note_removes_only_matching(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.append_learned_note(test_user.id, hired.expert.id, "Keep me.")
+    seeded = await experts_db.append_learned_note(
+        test_user.id, hired.expert.id, "Delete me."
+    )
+    victim = seeded.learned_notes[-1].id
+
+    remaining = await experts_db.delete_learned_note(
+        test_user.id, hired.expert.id, victim
+    )
+    assert [n.fact for n in remaining.learned_notes] == ["Keep me."]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_learned_note_missing_note_raises(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.LearnedNoteNotFoundError):
+        await experts_db.delete_learned_note(test_user.id, hired.expert.id, "nope")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_patches_subset_only(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    updated = await experts_db.update_soul_fields(
+        test_user.id,
+        hired.expert.id,
+        voice_preferences="Warm and concise.",
+    )
+
+    assert updated.voice_preferences == "Warm and concise."
+    # Untouched fields (including the name) are preserved.
+    assert updated.identity == hired.expert.identity
+    assert updated.name == hired.expert.name
+    assert updated.boundaries == hired.expert.boundaries
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_scopes_by_owner(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_soul_fields(
+            other_user.id, hired.expert.id, identity="Hijacked identity."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_remembered_fact_surfaces_in_new_session_context(
+    server: SpinTestServer, test_user
+):
+    """Kill test: a fact saved for an expert appears in a *new* session's
+    identity suffix — the whole learn-then-recall loop, end to end."""
+    from backend.copilot.expert_context import build_expert_identity_suffix
+
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    # The remember_fact tool ultimately calls this db function.
+    await experts_db.append_learned_note(
+        test_user.id, hired.expert.id, "The user ships 6 PRs a day.", source="chat"
+    )
+
+    # A brand-new session rebuilds the identity suffix from scratch.
+    suffix = await build_expert_identity_suffix(test_user.id, hired.expert.id)
+    assert "- The user ships 6 PRs a day." in suffix
+    assert "Nothing recorded yet." not in suffix

@@ -499,6 +499,10 @@ class DatabaseManager(AppService):
     get_expert = _(experts_db.get_expert)
     list_experts = _(experts_db.list_experts)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    append_learned_note = _(experts_db.append_learned_note)
+    update_learned_note = _(experts_db.update_learned_note)
+    delete_learned_note = _(experts_db.delete_learned_note)
+    update_soul_fields = _(experts_db.update_soul_fields)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -819,6 +823,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_expert = d.get_expert
     list_experts = d.list_experts
     enforce_expert_run_budget = d.enforce_expert_run_budget
+    append_learned_note = d.append_learned_note
+    update_learned_note = d.update_learned_note
+    delete_learned_note = d.delete_learned_note
+    update_soul_fields = d.update_soul_fields
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

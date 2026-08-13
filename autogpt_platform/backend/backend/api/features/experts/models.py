@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
@@ -21,6 +22,21 @@ class ExpertWorkflowRef(BaseModel):
     schedule_id: str | None = None
 
 
+class LearnedNote(BaseModel):
+    """A fact an expert has permanently learned.
+
+    Persisted in the ``Expert.learnedNotes`` JSON array with camelCase keys, so
+    ``created_at`` carries the ``createdAt`` (de)serialization alias.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    fact: str
+    created_at: datetime = Field(alias="createdAt")
+    source: Literal["chat", "user"]
+
+
 class Expert(BaseModel):
     id: str
     name: str
@@ -32,6 +48,7 @@ class Expert(BaseModel):
     identity: str
     voice_preferences: str
     boundaries: str
+    learned_notes: list[LearnedNote] = Field(default_factory=list)
     protected_soul_rules: list[str]
     is_template: bool
     source_template_id: str | None

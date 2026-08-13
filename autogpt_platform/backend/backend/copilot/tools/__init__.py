@@ -45,6 +45,7 @@ from .manage_folders import (
 from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
 from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
 from .platform_info import PlatformInfoTool
+from .remember_fact import RememberFactTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -54,6 +55,7 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .todo_write import TodoWriteTool
+from .update_soul import UpdateExpertSoulTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
 from .web_search import WebSearchTool
@@ -151,6 +153,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
+    # Expert memory (learned notes + Soul edits; expert sessions only)
+    "remember_fact": RememberFactTool(),
+    "update_expert_soul": UpdateExpertSoulTool(),
 }
 
 # Export individual tool instances for backwards compatibility
@@ -164,13 +169,17 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti"]
+ToolGroup = Literal["graphiti", "experts"]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
     "memory_search": "graphiti",
     "memory_forget_search": "graphiti",
     "memory_forget_confirm": "graphiti",
+    # Expert-memory tools only make sense in an expert-scoped session; the
+    # engines disable this group when the session has no expert_id.
+    "remember_fact": "experts",
+    "update_expert_soul": "experts",
 }
 
 

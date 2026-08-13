@@ -6,6 +6,7 @@ with AsyncMock at the route module's import site.
 """
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -23,6 +24,7 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    LearnedNote,
 )
 from backend.api.features.experts.routes import router
 
@@ -425,5 +427,143 @@ def test_delete_unknown_expert_returns_404(
     )
 
     response = client.delete("/experts/nope")
+
+    assert response.status_code == 404
+
+
+# ─── Learned notes ─────────────────────────────────────────────────────
+
+
+def _make_note(**overrides) -> LearnedNote:
+    values = {
+        "id": "note-1",
+        "fact": "Prefers weekly reports on Mondays.",
+        "created_at": datetime(2026, 8, 14, tzinfo=timezone.utc),
+        "source": "user",
+    }
+    values.update(overrides)
+    return LearnedNote(**values)
+
+
+def test_append_learned_note_returns_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_append = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.append_learned_note",
+        new_callable=AsyncMock,
+        return_value=_make_expert(learned_notes=[_make_note()]),
+    )
+
+    response = client.post(
+        "/experts/expert-1/notes",
+        json={"fact": "Prefers weekly reports on Mondays."},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    note = body["learned_notes"][0]
+    assert note["fact"] == "Prefers weekly reports on Mondays."
+    assert note["source"] == "user"
+    # Serialized with the camelCase storage alias for the FE.
+    assert "createdAt" in note
+    mock_append.assert_awaited_once_with(
+        test_user_id, "expert-1", "Prefers weekly reports on Mondays."
+    )
+
+
+def test_append_learned_note_not_found_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_append = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.append_learned_note",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("expert-1"),
+    )
+
+    response = client.post("/experts/expert-1/notes", json={"fact": "hello"})
+
+    assert response.status_code == 404
+    mock_append.assert_awaited_once()
+
+
+def test_append_learned_note_rejects_blank_fact(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_append = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.append_learned_note",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+
+    response = client.post("/experts/expert-1/notes", json={"fact": "   "})
+
+    assert response.status_code == 422
+    mock_append.assert_not_awaited()
+
+
+def test_update_learned_note_returns_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_learned_note",
+        new_callable=AsyncMock,
+        return_value=_make_expert(learned_notes=[_make_note(fact="Corrected.")]),
+    )
+
+    response = client.patch(
+        "/experts/expert-1/notes/note-1",
+        json={"fact": "Corrected."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["learned_notes"][0]["fact"] == "Corrected."
+    mock_update.assert_awaited_once_with(
+        test_user_id, "expert-1", "note-1", "Corrected."
+    )
+
+
+def test_update_learned_note_missing_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_learned_note",
+        new_callable=AsyncMock,
+        side_effect=experts_db.LearnedNoteNotFoundError("note-1"),
+    )
+
+    response = client.patch("/experts/expert-1/notes/note-1", json={"fact": "x"})
+
+    assert response.status_code == 404
+
+
+def test_delete_learned_note_returns_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_delete = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.delete_learned_note",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+
+    response = client.delete("/experts/expert-1/notes/note-1")
+
+    assert response.status_code == 200
+    assert response.json()["learned_notes"] == []
+    mock_delete.assert_awaited_once_with(test_user_id, "expert-1", "note-1")
+
+
+def test_delete_learned_note_missing_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.delete_learned_note",
+        new_callable=AsyncMock,
+        side_effect=experts_db.LearnedNoteNotFoundError("note-1"),
+    )
+
+    response = client.delete("/experts/expert-1/notes/note-1")
 
     assert response.status_code == 404
