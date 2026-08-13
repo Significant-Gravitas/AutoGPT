@@ -6,6 +6,7 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { AyrshareConnectButton } from "../AyrshareConnectButton/AyrshareConnectButton";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 import { CredentialsSelect } from "../CredentialsSelect/CredentialsSelect";
 
@@ -53,12 +54,12 @@ export function CredentialsFlatView({
 }: Props) {
   const hasCredentials = credentials.length > 0;
   // Ayrshare has no user-settable credential — provisioning runs on the
-  // server after the user clicks the explicit Connect Social Media
-  // Accounts button rendered alongside the block.  Exposing "Add API
-  // key" / "Use a new API key" here just confuses users into entering a
-  // random key.
+  // server after the user clicks the Connect Social Media Accounts
+  // button rendered below. Exposing "Add API key" / "Use a new API key"
+  // here just confuses users into entering a random key.
   const isManagedOnlyProvider = provider === "ayrshare";
   const showAddAction = !readOnly && !isManagedOnlyProvider;
+  const showAyrshareConnect = isManagedOnlyProvider && !readOnly;
 
   return (
     <>
@@ -134,6 +135,7 @@ export function CredentialsFlatView({
               {actionButtonText}
             </Button>
           )}
+          {showAyrshareConnect && <AyrshareConnectButton />}
         </>
       ) : showAddAction ? (
         <Button
@@ -145,15 +147,9 @@ export function CredentialsFlatView({
         >
           {actionButtonText}
         </Button>
-      ) : (
-        isManagedOnlyProvider &&
-        !readOnly && (
-          <Text variant="body" className="text-zinc-500">
-            Click <strong>Connect Social Media Accounts</strong> above to set up
-            your managed {displayName} profile.
-          </Text>
-        )
-      )}
+      ) : showAyrshareConnect ? (
+        <AyrshareConnectButton />
+      ) : null}
     </>
   );
 }

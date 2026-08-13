@@ -11,7 +11,7 @@ import React from "react";
 import { BlockUIType } from "../../../types";
 import { FormCreator } from "../FormCreator";
 import { OutputHandler } from "../OutputHandler";
-import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
+import { AyrshareConnectButton } from "@/components/contextual/CredentialsInput/components/AyrshareConnectButton/AyrshareConnectButton";
 import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
 import { NodeContainer } from "./components/NodeContainer";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
