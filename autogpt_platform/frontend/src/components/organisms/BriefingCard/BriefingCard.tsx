@@ -12,7 +12,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { RunRow } from "./components/RunRow";
-import { COLLAPSED_ROWS, formatBriefingDate } from "./helpers";
+import { COLLAPSED_ROWS, formatBriefingDate, hasRecapContent } from "./helpers";
 import { useBriefingCard } from "./useBriefingCard";
 
 interface Props {
@@ -37,10 +37,9 @@ export function BriefingCard({ briefing, className }: Props) {
     scrollByStep,
   } = useBriefingCard(run_items.map((item) => item.execution_id).join("|"));
 
-  // A briefing can be all decisions and no terminal runs (a run paused on an
-  // approval never completes), which would render as a card containing just
-  // a date. The needs-attention list carries that case on its own.
-  if (run_items.length === 0) return null;
+  // Callers gate on hasRecapContent so they can show their own fallback;
+  // this keeps the organism safe to mount on its own.
+  if (!hasRecapContent(briefing)) return null;
 
   const hasMore = run_items.length > COLLAPSED_ROWS;
 

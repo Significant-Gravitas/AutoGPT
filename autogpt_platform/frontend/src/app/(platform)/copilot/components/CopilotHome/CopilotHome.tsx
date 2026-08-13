@@ -2,6 +2,7 @@
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { BriefingCard } from "@/components/organisms/BriefingCard/BriefingCard";
+import { hasRecapContent } from "@/components/organisms/BriefingCard/helpers";
 import type { ReactNode } from "react";
 import { useCopilotHome } from "./useCopilotHome";
 
@@ -32,7 +33,10 @@ export function CopilotHome({ fallback }: Props) {
     );
   }
 
-  if (!briefing) return <>{fallback}</>;
+  // Not just "no briefing": a briefing of nothing but pending decisions has
+  // no runs to recap, and the card would render null. The inbox that used to
+  // carry that case lives on /home now, so the fallback has to.
+  if (!hasRecapContent(briefing)) return <>{fallback}</>;
 
   return <BriefingCard briefing={briefing} />;
 }

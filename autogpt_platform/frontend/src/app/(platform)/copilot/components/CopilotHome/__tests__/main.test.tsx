@@ -341,7 +341,11 @@ test("does not render a hollow briefing card when there are no runs", async () =
   );
   render(<EmptySession {...baseProps} />);
 
-  await screen.findByPlaceholderText(/./);
+  // The pulse strip has to take over: the decisions inbox that used to carry
+  // this case is on /home now, so without it the empty state is blank.
+  expect(
+    await screen.findByText("What's happening with your agents"),
+  ).toBeDefined();
   expect(screen.queryByText("This morning")).toBeNull();
   expect(screen.queryByText("Recap")).toBeNull();
 });

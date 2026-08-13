@@ -1,5 +1,16 @@
 import { format, isToday, parseISO } from "date-fns";
+import type { BriefingResponse } from "@/app/api/__generated__/models/briefingResponse";
 import type { BriefingRunItem } from "@/app/api/__generated__/models/briefingRunItem";
+
+// A briefing can be all decisions and no terminal runs — a run paused on an
+// approval never completes — which leaves the card with nothing but a date.
+// Callers check this before mounting the card, so a briefing that renders to
+// nothing shows their own fallback instead of a blank surface.
+export function hasRecapContent(
+  briefing: BriefingResponse | null | undefined,
+): briefing is BriefingResponse {
+  return Boolean(briefing && briefing.content.run_items.length > 0);
+}
 
 export const COLLAPSED_ROWS = 3;
 
