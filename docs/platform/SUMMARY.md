@@ -38,3 +38,4 @@
 ## Contributing
 
 * [Managing LLM Models](contributing/managing-llm-models.md)
+* [Flag-off Smoke Checklist](flag-off-smoke.md)

@@ -190,4 +190,18 @@ describe("ExpertDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Resume schedules" }));
     await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
   });
+
+  test("flag-off: calls notFound() when hire-experts is disabled", () => {
+    setFlagStatusMock.mockReturnValue({ enabled: false, ready: true });
+    notFoundMock.mockClear();
+
+    try {
+      render(<ExpertDetailPage />);
+    } catch {
+      // notFound() throws NEXT_NOT_FOUND to halt the render; the assertion
+      // below is what we actually care about.
+    }
+
+    expect(notFoundMock).toHaveBeenCalled();
+  });
 });

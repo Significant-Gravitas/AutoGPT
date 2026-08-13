@@ -77,3 +77,27 @@ describe("onboarding flag defaults fail closed", () => {
     expect(result.current).toBe(true);
   });
 });
+
+// HIRE_EXPERTS must fail closed: a LaunchDarkly-less environment (local dev,
+// CI, Playwright) has to render the pre-experts UI, not a half-gated experts
+// surface. This is the flag-off root guarantee — /home and /team 404, the
+// sidebar drops the Home + Team entries, marketplace hides ExpertsSection, and
+// the copilot shows its baseline empty state — all keyed off this default.
+describe("hire-experts flag default fails closed (flag-off baseline)", () => {
+  beforeEach(() => {
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
+      .forEach((k) => delete process.env[k]);
+  });
+
+  it("resolves HIRE_EXPERTS to false when LaunchDarkly has not answered, so the experts surface stays hidden", () => {
+    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    expect(result.current).toBe(false);
+  });
+
+  it("still lets local dev force-enable experts via the env override", () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS = "true";
+    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    expect(result.current).toBe(true);
+  });
+});

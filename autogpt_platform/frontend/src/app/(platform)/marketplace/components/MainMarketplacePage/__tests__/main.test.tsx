@@ -12,6 +12,21 @@ vi.mock("../useMainMarketplacePage", () => ({
   useMainMarketplacePage: mockUseMainMarketplacePage,
 }));
 
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    // Force hire-experts OFF for this suite; delegate every other flag.
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.HIRE_EXPERTS
+        ? false
+        : actual.useGetFlag(flag as never),
+  };
+});
+
 describe("MainMarketplacePage", () => {
   beforeEach(() => {
     mockUseMainMarketplacePage.mockReturnValue({
@@ -60,5 +75,14 @@ describe("MainMarketplacePage", () => {
     expect(
       screen.getByRole("button", { name: "Become a Creator" }),
     ).toBeDefined();
+  });
+
+  test("flag-off: hides the Meet the AI Experts section", () => {
+    render(<MainMarkeplacePage />);
+
+    // ExpertsSection is gated on hire-experts; flag-off renders the
+    // pre-experts marketplace (workflows + creators) with no experts surface.
+    expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+    expect(screen.getByText("All AI Workflows")).toBeDefined();
   });
 });

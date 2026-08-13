@@ -67,6 +67,15 @@ describe("AppSidebar", () => {
     expect(screen.queryByText("Home")).toBeNull();
   });
 
+  it("flag-off: omits both the Home entry and the Team row (pre-experts nav)", () => {
+    renderSidebar();
+    // Both /home and /team 404 without hire-experts, so neither may be offered.
+    expect(screen.queryByText("Home")).toBeNull();
+    expect(screen.queryByText("Team")).toBeNull();
+    // The pre-experts workspace root ("Agents") stays in their place.
+    expect(screen.getByText("Agents")).toBeDefined();
+  });
+
   it("shows Team instead of Agents when the hire-experts flag is on", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
