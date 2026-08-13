@@ -11,22 +11,20 @@ export function isUploadedFile(item: WorkspaceFileItem): boolean {
   return item.origin === "uploaded";
 }
 
-// Agent SDK tool results that leak into the workspace. Both shapes come from
-// the backend classifier (`_SDK_TOOL_RESULT_RE` in backend/copilot/context.py),
-// except the name branch drops that regex's `tool-(results|outputs)/` prefix:
-// in the workspace these files land directly under the session root.
-// A bare `tool-outputs/` directory is deliberately not enough on its own — the
-// backend guards against the same false positive on user-authored paths like
-// `my-pipeline/tool-outputs/data.json`.
-const SDK_TOOL_RESULT_NAME = /^(?:toolu|mcp)_[\w-]+\.json$/i;
+// Agent SDK tool results that leak into the workspace. `_persist_and_summarize`
+// (backend/copilot/tools/base.py) parks every oversized tool result at
+// `tool-outputs/<tool_call_id>.json` within the session, so the directory
+// segment and the SDK's id prefix together are the whole shape — the same pair
+// the backend classifier requires (`_SDK_TOOL_RESULT_RE` in
+// backend/copilot/context.py). Demanding both keeps a deliverable merely named
+// `mcp_config.json`, or one written under a user's own `tool-outputs/` folder,
+// eligible for auto-open.
 const SDK_TOOL_RESULT_PATH =
-  /(?:^|\/)\.claude\/projects\/[^/]+\/[^/]+\/tool-(?:results|outputs)\//i;
+  /(?:^|\/)tool-(?:results|outputs)\/(?:toolu|mcp)_[\w-]+\.json$/i;
 
 export function isInternalToolOutput(item: WorkspaceFileItem): boolean {
   if (isUploadedFile(item)) return false;
-  return (
-    SDK_TOOL_RESULT_NAME.test(item.name) || SDK_TOOL_RESULT_PATH.test(item.path)
-  );
+  return SDK_TOOL_RESULT_PATH.test(item.path);
 }
 
 export function fileItemToArtifactRef(item: WorkspaceFileItem): ArtifactRef {

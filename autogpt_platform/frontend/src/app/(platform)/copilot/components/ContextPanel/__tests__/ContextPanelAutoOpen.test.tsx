@@ -44,7 +44,7 @@ function withToolOutputAndRealFile(): ListFilesResponse {
     {
       id: "bbbbbbbb-0000-0000-0000-000000000002",
       name: "toolu_01ABCdef.json",
-      path: "/sessions/session-1/toolu_01ABCdef.json",
+      path: "/sessions/session-1/tool-outputs/toolu_01ABCdef.json",
       mime_type: "application/json",
       size_bytes: 512,
       metadata: {},
@@ -54,7 +54,7 @@ function withToolOutputAndRealFile(): ListFilesResponse {
     {
       id: "cccccccc-0000-0000-0000-000000000003",
       name: "mcp_a1b2-c3d4.json",
-      path: "/sessions/session-1/mcp_a1b2-c3d4.json",
+      path: "/sessions/session-1/tool-outputs/mcp_a1b2-c3d4.json",
       mime_type: "application/json",
       size_bytes: 256,
       metadata: {},
@@ -63,8 +63,8 @@ function withToolOutputAndRealFile(): ListFilesResponse {
     },
     {
       id: "dddddddd-0000-0000-0000-000000000004",
-      name: "summary.json",
-      path: "/root/.claude/projects/-workspace/abc-123/tool-results/summary.json",
+      name: "toolu_02ZYXwvu.json",
+      path: "/sessions/session-1/tool-results/toolu_02ZYXwvu.json",
       mime_type: "application/json",
       size_bytes: 128,
       metadata: {},
@@ -72,6 +72,23 @@ function withToolOutputAndRealFile(): ListFilesResponse {
       created_at: "2026-05-20T14:00:00Z",
     },
   );
+  return response;
+}
+
+// A real deliverable whose name alone looks like an SDK id — the filter must
+// not swallow it, since it never lands in a tool-output directory.
+function withSdkLookalikeDeliverable(): ListFilesResponse {
+  const response = withFiles();
+  response.files.push({
+    id: "eeeeeeee-0000-0000-0000-000000000005",
+    name: "mcp_config.json",
+    path: "/sessions/session-1/mcp_config.json",
+    mime_type: "application/json",
+    size_bytes: 64,
+    metadata: {},
+    origin: "generated",
+    created_at: "2026-05-20T15:00:00Z",
+  });
   return response;
 }
 
@@ -113,6 +130,19 @@ describe("ContextPanelAutoOpen", () => {
       expect(
         useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
       ).toBe("aaaaaaaa-0000-0000-0000-000000000001"),
+    );
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+  });
+
+  test("still opens a deliverable whose name looks like an SDK tool id", async () => {
+    server.use(
+      getListWorkspaceFilesMockHandler200(withSdkLookalikeDeliverable()),
+    );
+    render(<ContextPanelAutoOpen sessionId={SESSION} />);
+    await waitFor(() =>
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe("eeeeeeee-0000-0000-0000-000000000005"),
     );
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });

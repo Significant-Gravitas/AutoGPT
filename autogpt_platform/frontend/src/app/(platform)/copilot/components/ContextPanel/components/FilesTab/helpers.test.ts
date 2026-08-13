@@ -56,26 +56,19 @@ describe("isInternalToolOutput", () => {
     };
   }
 
-  test("matches SDK tool result files by name", () => {
-    expect(isInternalToolOutput(generated("toolu_01ABCdef.json"))).toBe(true);
-    expect(isInternalToolOutput(generated("mcp_a1b2-c3d4.json"))).toBe(true);
-    expect(isInternalToolOutput(generated("TOOLU_01ABC.JSON"))).toBe(true);
-  });
+  function toolOutput(name: string): WorkspaceFileItem {
+    return generated(name, `/sessions/s1/tool-outputs/${name}`);
+  }
 
-  test("matches files living under an SDK tool result directory", () => {
+  test("matches SDK tool results parked in the session tool-output dir", () => {
+    expect(isInternalToolOutput(toolOutput("toolu_01ABCdef.json"))).toBe(true);
+    expect(isInternalToolOutput(toolOutput("mcp_a1b2-c3d4.json"))).toBe(true);
+    expect(isInternalToolOutput(toolOutput("TOOLU_01ABC.JSON"))).toBe(true);
     expect(
       isInternalToolOutput(
         generated(
-          "summary.json",
-          "/root/.claude/projects/-workspace/abc-123/tool-results/summary.json",
-        ),
-      ),
-    ).toBe(true);
-    expect(
-      isInternalToolOutput(
-        generated(
-          "summary.json",
-          ".claude/projects/-workspace/abc-123/tool-outputs/summary.json",
+          "toolu_01ABCdef.json",
+          "/sessions/s1/tool-results/toolu_01ABCdef.json",
         ),
       ),
     ).toBe(true);
@@ -84,9 +77,9 @@ describe("isInternalToolOutput", () => {
   test("leaves user-facing files alone", () => {
     expect(isInternalToolOutput(generated("report.json"))).toBe(false);
     expect(isInternalToolOutput(generated("result.csv"))).toBe(false);
-    expect(isInternalToolOutput(generated("toolu_notes.txt"))).toBe(false);
-    expect(isInternalToolOutput(generated("toolusage.json"))).toBe(false);
-    expect(isInternalToolOutput(generated("mcpserver.json"))).toBe(false);
+    expect(isInternalToolOutput(toolOutput("toolu_notes.txt"))).toBe(false);
+    expect(isInternalToolOutput(toolOutput("toolusage.json"))).toBe(false);
+    expect(isInternalToolOutput(toolOutput("mcpserver.json"))).toBe(false);
     expect(
       isInternalToolOutput(
         generated("notes.json", "/sessions/s1/my-tool-results-archive.json"),
@@ -94,10 +87,12 @@ describe("isInternalToolOutput", () => {
     ).toBe(false);
   });
 
-  // The backend classifier refuses to treat a bare `tool-outputs/` segment as
-  // SDK-internal; a user deliverable that happens to live in such a folder must
-  // still be eligible for auto-open.
-  test("leaves user deliverables under a tool-outputs directory alone", () => {
+  // Both halves of the shape are load-bearing, exactly as in the backend
+  // classifier: an SDK id prefix on its own is a plausible deliverable name,
+  // and a `tool-outputs/` folder on its own may well be the user's.
+  test("needs the tool-output directory and the SDK id prefix together", () => {
+    expect(isInternalToolOutput(generated("mcp_config.json"))).toBe(false);
+    expect(isInternalToolOutput(generated("toolu_01ABCdef.json"))).toBe(false);
     expect(
       isInternalToolOutput(
         generated(
@@ -115,7 +110,11 @@ describe("isInternalToolOutput", () => {
 
   test("never hides files the user uploaded themselves", () => {
     expect(
-      isInternalToolOutput({ ...baseItem, name: "toolu_01ABCdef.json" }),
+      isInternalToolOutput({
+        ...baseItem,
+        name: "toolu_01ABCdef.json",
+        path: "/sessions/s1/tool-outputs/toolu_01ABCdef.json",
+      }),
     ).toBe(false);
   });
 });
