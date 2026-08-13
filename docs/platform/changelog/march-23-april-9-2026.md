@@ -1,6 +1,6 @@
 # Smarter Starts, Faster Feedback
 
-*23 March – 9 April 2026*
+*March 23 – April 9, 2026*
 
 **Platform version:** `v0.6.54`
 

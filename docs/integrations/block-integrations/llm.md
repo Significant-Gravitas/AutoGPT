@@ -714,7 +714,9 @@ Uses AI to intelligently decide what tool to use.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block lets an LLM decide which connected tools to use based on the prompt. In built-in agent mode, it executes tool calls and feeds their results back to the model, creating an autonomous reasoning loop.
+
+Set `agent_mode_max_iterations` to `0` for a single decision whose tool calls are executed through the workflow, `-1` for an unbounded built-in loop, or a positive number to cap the loop. The block outputs tool calls, conversation history, or a finished message. Extended-thinking mode delegates execution to the supported external Agent SDK instead of using the built-in iteration setting.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -746,7 +748,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Autonomous Agents**: Build agents that can independently decide which tools to use for a task.
+
+**Dynamic Workflows**: Create workflows that adapt their execution path based on model decisions.
+
+**Multi-Tool Orchestration**: Let a model coordinate multiple tools to accomplish complex goals.
 <!-- END MANUAL -->
 
 ---
