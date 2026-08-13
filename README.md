@@ -140,7 +140,7 @@ docker run -d \
   significantgravitas/autogpt:latest
 ```
 
-[Follow the single-container guide →](https://docs.agpt.co/platform/single-container)
+[Follow the single-container guide →](https://docs.agpt.co/platform/self-hosting/single-container)
 
 ---
 
