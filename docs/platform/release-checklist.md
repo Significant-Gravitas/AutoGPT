@@ -17,17 +17,16 @@ poetry run pytest backend/copilot/expert_context_test.py \
 cd ../frontend
 pnpm test:unit
 
-# Frontend — E2E smoke (copilot, marketplace, library)
+# Frontend — E2E smoke (copilot, marketplace, library, /team)
 pnpm exec playwright test --grep="flag-off"
 ```
 
-All three suites must pass green on the `main` branch before a release is cut.
+All three suites must pass green on the `master` branch before a release is cut.
 
 ### CI flag-off gate
 
 The `Flag-off regression` workflow (`.github/workflows/flag-off-regression.yml`)
-runs on every push and PR to `main` and initiative branches
-(`**/feature/**`, `**/initiative/**`, `**/epic/**`). Confirm it is green on the
+runs on every push and PR to `dev` and `master`. Confirm it is green on the
 release commit.
 
 ### LaunchDarkly flag audit

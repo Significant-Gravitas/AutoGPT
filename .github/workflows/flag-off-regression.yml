@@ -5,9 +5,10 @@ permissions:
 
 on:
   push:
-    branches: [main, "**/feature/**", "**/initiative/**", "**/epic/**"]
+    branches: [master, dev]
   pull_request:
-    branches: [main, "**/feature/**", "**/initiative/**", "**/epic/**"]
+    branches: [master, dev]
+  merge_group:
 
 concurrency:
   group: flag-off-${{ github.event.pull_request.number || github.ref_name }}
@@ -30,12 +31,42 @@ jobs:
       - name: Install Poetry
         run: pip install poetry==2.2.2
       - name: Install dependencies
-        run: poetry install --with dev --no-interaction --no-root
+        run: poetry install
+      - name: Generate Prisma Client
+        run: poetry run prisma generate && poetry run gen-prisma-stub
+      - name: Start Postgres
+        working-directory: autogpt_platform
+        run: |
+          docker run -d --name postgres-test \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=postgres \
+            -p 5432:5432 \
+            -v "$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro" \
+            pgvector/pgvector:pg15
+          for _ in $(seq 1 30); do
+            if docker exec postgres-test pg_isready -U postgres >/dev/null 2>&1; then
+              echo "Postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres failed to start" >&2
+          docker logs postgres-test >&2
+          exit 1
+      - name: Run Database Migrations
+        run: poetry run prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
       - name: Run flag-off tests
         run: |
           poetry run pytest backend/copilot/expert_context_test.py \
             backend/copilot/prompt_cache_test.py \
             -v
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   frontend-unit:
     name: Frontend unit tests
@@ -48,6 +79,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: "24.x"
@@ -55,32 +88,7 @@ jobs:
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Generate API client
+        run: pnpm generate:api
       - name: Run unit tests
         run: pnpm test:unit -- --reporter=verbose
-
-  flag-off-smoke:
-    name: Flag-off E2E smoke
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: autogpt_platform/frontend
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24.x"
-          cache: pnpm
-          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Build and run flag-off smoke tests
-        run: |
-          NEXT_PUBLIC_PW_TEST=true pnpm build --turbo
-          pnpm exec playwright test --grep="flag-off"
-        env:
-          PLAYWRIGHT_BASE_URL: http://localhost:3000

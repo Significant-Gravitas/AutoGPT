@@ -70,7 +70,8 @@ in. Changes must preserve three invariants:
 2. **`/team` returns 404.** The TeamPage calls `notFound()` when
    `HIRE_EXPERTS` evaluates to `false`. Confirm in E2E tests.
 3. **Session list is flat.** No flag-gated grouping, nesting, or
-   restructuring is applied when flags are off.
+   restructuring is applied when flags are off. Reviewer-enforced — no
+   automated test asserts this invariant.
 
 ### Running flag-off tests locally
 
@@ -81,18 +82,19 @@ poetry run pytest backend/copilot/expert_context_test.py \
   backend/copilot/prompt_cache_test.py -v
 
 # Frontend — flag defaults, /team 404, and unit suite
-cd autogpt_platform/frontend
+cd ../frontend
 pnpm test:unit
 
-# Frontend — E2E smoke (copilot, marketplace, library)
+# Frontend — E2E smoke (copilot, marketplace, library, /team)
 pnpm exec playwright test --grep="flag-off"
 ```
 
 ### CI enforcement
 
 The `Flag-off regression` workflow (`.github/workflows/flag-off-regression.yml`)
-runs the backend hash lock, frontend unit suite, and E2E smoke on every push and
-PR to `main` and initiative branches. It must pass before merge.
+runs the backend hash lock and frontend unit suite on every push and PR to
+`dev` and `master`. Add it to the branch-protection required checks (repo
+settings) to make it block merges.
 
 ### PR callout rule
 
