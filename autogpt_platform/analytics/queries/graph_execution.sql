@@ -61,6 +61,8 @@ SELECT
     ge."agentGraphId"                                              AS agentGraphId,
     ge."agentGraphVersion"                                         AS agentGraphVersion,
     CASE
+        -- Keep these legacy message predicates synchronized with
+        -- backend/backend/util/exceptions.py. New rows use failure_reason.
         WHEN CAST(ge."executionStatus" AS TEXT) = 'FAILED'
          AND (
                 ge."stats"::jsonb->>'failure_reason' = 'insufficient_balance'

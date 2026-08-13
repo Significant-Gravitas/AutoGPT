@@ -153,3 +153,54 @@ def test_graph_start_credit_failure_records_structured_reason():
     assert status == ExecutionStatus.FAILED
     assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
     assert stats.error == "You have no credits left to run an agent."
+
+
+def test_nested_credit_failure_marker_makes_graph_fail_without_raised_graph_error():
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 100
+    db_client.get_node_executions.return_value = []
+    db_client.has_pending_reviews_for_graph_exec.return_value = False
+    processor = ExecutionProcessor()
+    processor._cleanup_graph_execution = MagicMock()
+    processor.node_evaluation_loop = MagicMock()
+    stats = GraphExecutionStats()
+    _propagate_node_failure(
+        stats,
+        InsufficientBalanceError(
+            message="Organization has 0 credits but needs 25",
+            user_id="user-1",
+            balance=0,
+            amount=25,
+        ),
+    )
+    completed_future = MagicMock()
+    completed_future.result.return_value = None
+
+    def complete_coroutine(coroutine, _loop):
+        coroutine.close()
+        return completed_future
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.manager.asyncio.run_coroutine_threadsafe",
+            side_effect=complete_coroutine,
+        ),
+    ):
+        _, status = processor._on_graph_execution(
+            graph_exec=execution,
+            cancel=threading.Event(),
+            log_metadata=MagicMock(),
+            execution_stats=stats,
+            cluster_lock=MagicMock(),
+        )
+
+    assert status == ExecutionStatus.FAILED
+    assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
+    assert stats.error == "Organization has 0 credits but needs 25"

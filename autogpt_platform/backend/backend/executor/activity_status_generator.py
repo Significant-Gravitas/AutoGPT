@@ -215,7 +215,8 @@ def _get_deterministic_failure_response(
         return {
             "activity_status": (
                 "This run couldn't complete because the available credit balance was insufficient. "
-                "Please top up your credits to continue using this agent."
+                "Please add credits to the billed account, or ask its billing owner, "
+                "before trying again."
             ),
             "correctness_score": 0.0,
         }
