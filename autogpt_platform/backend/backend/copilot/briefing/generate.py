@@ -240,8 +240,15 @@ async def _compose_fresh_briefing(
     # Written here, once, rather than at render time: the thread post and the
     # home card must show the same paragraph, and home must not pay for an LLM
     # call on every poll. `None` on failure — the briefing ships either way.
+    #
+    # Gated at the point of generation, not just of display: the narrative is
+    # AI-written text derived from the run summaries `AI_ACTIVITY_STATUS`
+    # governs, so a flag-off user must neither be billed for it nor see it in
+    # the thread — home's `without_summaries` only covers the card.
+    if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+        return content
     return content.model_copy(
-        update={"narrative": await compose_narrative(content, experts)}
+        update={"narrative": await compose_narrative(user_id, content, experts)}
     )
 
 

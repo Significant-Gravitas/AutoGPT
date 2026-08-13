@@ -10,6 +10,12 @@ from .models import BriefingContent
 # the link syntax it is interpolated into and spoofing the label or target
 # rendered in the user's thread.
 _MARKDOWN_META_RE = re.compile(r"([\\`*_\[\]()<>])")
+# Markdown constructs that only carry meaning at the start of a line, so
+# `_MARKDOWN_META_RE` (sized for inline interpolation) leaves them alone. The
+# narrative is the one untrusted string rendered as a line of its own; without
+# this, model output could open with `# Urgent`, `- item`, or `---` and forge
+# the briefing's own structure.
+_MARKDOWN_BLOCK_PREFIX_RE = re.compile(r"^([#+\-|=]|\d+[.)])")
 
 
 def render_briefing_markdown(content: BriefingContent) -> str:
@@ -18,7 +24,7 @@ def render_briefing_markdown(content: BriefingContent) -> str:
         # Escaped like every other interpolated string: the narrative is model
         # output derived from agent-supplied text, so it is no more trusted
         # than the outcome titles it was written from.
-        lines.extend([_md(content.narrative), ""])
+        lines.extend([_md_line(content.narrative), ""])
     if content.run_items:
         lines.append("**What ran**")
         for item in content.run_items:
@@ -50,6 +56,16 @@ def _md(text: str) -> str:
     """Escape untrusted text for inline interpolation into markdown."""
     collapsed = " ".join(text.split())
     return _MARKDOWN_META_RE.sub(r"\\\1", collapsed)
+
+
+def _md_line(text: str) -> str:
+    """Escape untrusted text that occupies a markdown line of its own.
+
+    `_md` collapses the string to one line, so only the leading character can
+    still open a block construct — escape that and the paragraph can no longer
+    render as anything but a paragraph.
+    """
+    return _MARKDOWN_BLOCK_PREFIX_RE.sub(r"\\\1", _md(text))
 
 
 def _md_link(label: str, target: str | None) -> str:

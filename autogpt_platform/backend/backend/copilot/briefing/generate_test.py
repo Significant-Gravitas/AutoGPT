@@ -7,6 +7,7 @@ from backend.copilot.briefing import generate as generate_module
 from backend.copilot.briefing.generate import AgentInfo, compose_briefing
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.util.feature_flag import Flag
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
 
@@ -1024,3 +1025,71 @@ def test_briefing_without_a_narrative_renders_unchanged():
     assert content is not None
     assert content.narrative is None
     assert render_briefing_markdown(content).splitlines()[2] == "**What ran**"
+
+
+@pytest.mark.asyncio
+async def test_ai_summary_flag_off_skips_generation_entirely(
+    monkeypatch, stub_narrative
+):
+    """The gate is on generation, not just on display.
+
+    Home's `without_summaries` hides the lede from the card, but the thread
+    post reads the same stored row — so a flag-off user must never be billed
+    for a narrative, nor have one posted to them.
+    """
+    stub_narrative.return_value = "Should never be written."
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
+    monkeypatch.setattr(
+        generate_module,
+        "is_feature_enabled",
+        AsyncMock(side_effect=lambda flag, *a, **k: flag is Flag.HIRE_EXPERTS),
+    )
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    stub_narrative.assert_not_awaited()
+    assert client.create_briefing.await_args.args[2]["narrative"] is None
+    posted = client.append_plain_session_message.await_args.kwargs["content"]
+    assert "Should never be written." not in posted
+    assert "**What ran**" in posted
+
+
+@pytest.mark.parametrize(
+    "narrative",
+    [
+        "# Urgent — act now",
+        "- Approve the invoice",
+        "--- and then some prose",
+        "1. Do this first",
+        "| col | col |",
+    ],
+)
+def test_narrative_cannot_forge_briefing_structure(narrative):
+    """The lede is a whole line, so leading block syntax has to be escaped.
+
+    `_md` is sized for inline interpolation and leaves `#` / `-` / `|` alone;
+    unescaped, model output could render as a heading, list, or rule and
+    impersonate the briefing's own sections.
+    """
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec()],
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+
+    line = render_briefing_markdown(
+        content.model_copy(update={"narrative": narrative})
+    ).splitlines()[2]
+
+    assert line.startswith("\\")
