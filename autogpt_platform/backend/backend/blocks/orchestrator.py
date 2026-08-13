@@ -439,7 +439,7 @@ class OrchestratorBlock(Block):
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
-        credentials: llm.AICredentials = llm.AICredentialsField()
+        credentials: Optional[llm.AICredentials] = llm.AICredentialsField()
         multiple_tool_calls: bool = SchemaField(
             title="Multiple Tool Calls",
             default=False,
@@ -878,7 +878,7 @@ class OrchestratorBlock(Block):
 
     async def _attempt_llm_call_with_validation(
         self,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         input_data: Input,
         current_prompt: list[dict[str, Any]],
         tool_functions: list[dict[str, Any]],
@@ -1303,7 +1303,7 @@ class OrchestratorBlock(Block):
         messages: list[dict[str, Any]],
         tools: Sequence[Any],
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         input_data: "OrchestratorBlock.Input",
     ) -> LLMLoopResponse:
         """LLM caller callback for agent mode: wraps _attempt_llm_call_with_validation."""
@@ -1443,7 +1443,7 @@ class OrchestratorBlock(Block):
     async def _execute_tools_agent_mode(
         self,
         input_data: "OrchestratorBlock.Input",
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
         graph_exec_id: str,
@@ -1638,7 +1638,7 @@ class OrchestratorBlock(Block):
     async def _execute_tools_sdk_mode(
         self,
         input_data: "OrchestratorBlock.Input",
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
         execution_params: ExecutionParams,
@@ -1981,7 +1981,7 @@ class OrchestratorBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         graph_id: str,
         node_id: str,
         graph_exec_id: str,
