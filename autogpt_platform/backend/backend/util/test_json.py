@@ -1,4 +1,6 @@
 import datetime
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
 
 import jsonschema
@@ -6,6 +8,7 @@ import pytest
 from prisma import Json
 from pydantic import BaseModel
 
+from backend.util import json as json_util
 from backend.util.json import SafeJson, validate_with_jsonschema
 
 
@@ -834,3 +837,48 @@ class TestValidateWithJsonschema:
         assert validate_with_jsonschema(schema, {"f": "text"}) is not None
         schema["properties"]["f"] = {"type": "string"}
         assert validate_with_jsonschema(schema, {"f": "text"}) is None
+
+    def test_concurrent_compilation_publishes_one_validator(self, monkeypatch):
+        """Concurrent misses may compile in parallel but publish one value."""
+        schema = {"type": "object", "properties": {"f": {"type": "integer"}}}
+        json_util._VALIDATOR_CACHE.clear()
+        original_deepcopy = json_util.deepcopy
+        compile_barrier = threading.Barrier(2)
+
+        def synchronized_deepcopy(value):
+            compile_barrier.wait(timeout=5)
+            return original_deepcopy(value)
+
+        monkeypatch.setattr(json_util, "deepcopy", synchronized_deepcopy)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            validators = list(pool.map(json_util._compiled_validator, (schema, schema)))
+
+        assert validators[0] is validators[1]
+
+    def test_concurrent_eviction_is_atomic(self, monkeypatch):
+        """Two full-cache misses cannot evict the same entry concurrently."""
+        eviction_barrier = threading.Barrier(2)
+
+        class CoordinatedCache(dict[bytes, Any]):
+            def __iter__(self):
+                keys = tuple(super().keys())
+                try:
+                    eviction_barrier.wait(timeout=0.1)
+                except threading.BrokenBarrierError:
+                    pass
+                return iter(keys)
+
+        cache = CoordinatedCache({b"old": object()})
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE_MAX_ENTRIES", 1)
+        values = (object(), object())
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = (
+                pool.submit(json_util._remember, b"new-a", values[0]),
+                pool.submit(json_util._remember, b"new-b", values[1]),
+            )
+            published = tuple(future.result() for future in futures)
+
+        assert published == values
+        assert len(cache) == 1

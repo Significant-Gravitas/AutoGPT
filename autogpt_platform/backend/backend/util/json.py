@@ -2,6 +2,7 @@ import itertools
 import logging
 import re
 from copy import deepcopy
+from threading import Lock
 from typing import Any, Type, TypeVar, overload
 
 import jsonschema
@@ -136,6 +137,7 @@ def loads(
 
 _VALIDATOR_CACHE: dict[bytes, Any] = {}
 _VALIDATOR_CACHE_MAX_ENTRIES = 512
+_VALIDATOR_CACHE_LOCK = Lock()
 
 
 def _compiled_validator(schema: dict[str, Any]):
@@ -163,7 +165,8 @@ def _compiled_validator(schema: dict[str, Any]):
         validator_cls.check_schema(schema)
         return validator_cls(schema)
 
-    cached = _VALIDATOR_CACHE.get(key)
+    with _VALIDATOR_CACHE_LOCK:
+        cached = _VALIDATOR_CACHE.get(key)
     if cached is not None:
         if isinstance(cached, jsonschema.SchemaError):
             raise cached
@@ -178,22 +181,33 @@ def _compiled_validator(schema: dict[str, Any]):
     try:
         validator_cls.check_schema(schema_copy)
     except jsonschema.SchemaError as e:
-        _remember(key, e)
-        raise
-    validator = validator_cls(schema_copy)
-    _remember(key, validator)
-    return validator
+        cached = _remember(key, e)
+        if cached is e:
+            raise
+        if isinstance(cached, jsonschema.SchemaError):
+            raise cached
+        return cached
+
+    cached = _remember(key, validator_cls(schema_copy))
+    if isinstance(cached, jsonschema.SchemaError):
+        raise cached
+    return cached
 
 
-def _remember(key: bytes, value: Any) -> None:
-    """Store `value`, evicting the oldest entry when the cache is full.
+def _remember(key: bytes, value: Any) -> Any:
+    """Publish and return one value, evicting an oldest entry if needed.
 
     The keys are caller-supplied schemas, which on this platform come from
     user-authored graphs, so the cache has to be bounded.
     """
-    if len(_VALIDATOR_CACHE) >= _VALIDATOR_CACHE_MAX_ENTRIES:
-        _VALIDATOR_CACHE.pop(next(iter(_VALIDATOR_CACHE)))
-    _VALIDATOR_CACHE[key] = value
+    with _VALIDATOR_CACHE_LOCK:
+        cached = _VALIDATOR_CACHE.get(key)
+        if cached is not None:
+            return cached
+        if len(_VALIDATOR_CACHE) >= _VALIDATOR_CACHE_MAX_ENTRIES:
+            _VALIDATOR_CACHE.pop(next(iter(_VALIDATOR_CACHE)))
+        _VALIDATOR_CACHE[key] = value
+        return value
 
 
 def validate_with_jsonschema(
