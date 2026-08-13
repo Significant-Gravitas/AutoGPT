@@ -226,6 +226,7 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
         dry_run=False,
         organization_id="org-sched",
         team_id="team-sched",
+        expert_id=None,
     )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
     mock_schedule_turn.assert_awaited_once()
@@ -234,6 +235,26 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["message"] == "check CI"
     assert call_kwargs["organization_id"] == "org-sched"
     assert call_kwargs["team_id"] == "team-sched"
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_forwards_expert_id_to_fresh_session():
+    """A follow-up scheduled from an expert chat mints its fresh session scoped
+    to that expert, so runs inside the scheduled turn stay attributed to her."""
+    args = _args(session_id=None, expert_id="expert-1")
+    new_session = MagicMock(session_id="new-session-uuid")
+    mock_create_session = AsyncMock(return_value=new_session)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=AsyncMock()),
+        patch("backend.executor.scheduler.get_chat_session", new=AsyncMock()),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert mock_create_session.call_args.kwargs["expert_id"] == "expert-1"
 
 
 @pytest.mark.asyncio
@@ -515,6 +536,18 @@ async def test_execute_graph_forwards_expert_id():
         await _execute_graph(**args.model_dump(mode="json"))
 
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+
+
+def test_copilot_turn_args_expert_id_defaults_to_none():
+    """Legacy persisted copilot-turn kwargs predate expert attribution; they
+    must deserialize with ``expert_id=None``."""
+    args = CopilotTurnJobArgs(
+        user_id="u",
+        session_id="s",
+        message="m",
+        run_at=datetime.now(tz=timezone.utc),
+    )
+    assert args.expert_id is None
 
 
 def test_copilot_turn_args_cap_retry_count_defaults_to_zero():

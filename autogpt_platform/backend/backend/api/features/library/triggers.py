@@ -36,6 +36,7 @@ async def setup_triggered_preset(
     description: str,
     trigger_config: dict[str, Any],
     agent_credentials: dict[str, CredentialsMetaInput],
+    expert_id: str | None = None,
 ) -> models.LibraryAgentPreset:
     """Create a webhook-triggered ``LibraryAgentPreset`` for the given graph.
 
@@ -95,9 +96,13 @@ async def setup_triggered_preset(
             is_active=True,
         ),
         webhook_id=new_webhook.id,
-        # A trigger on an expert-installed workflow fires as the expert's
-        # work: unique (user, graph) → expert matches keep the attribution.
-        expert_id=await experts_db.resolve_expert_for_graph(user_id, graph.id),
+        # A trigger set up inside an expert chat is that expert's work, so the
+        # session's expert (passed by the copilot tool) wins. Otherwise fall
+        # back to the graph match: a trigger on an expert-installed workflow
+        # fires as the expert's work (unique (user, graph) → expert). Route
+        # callers pass no expert and keep the graph-match behaviour unchanged.
+        expert_id=expert_id
+        or await experts_db.resolve_expert_for_graph(user_id, graph.id),
     )
 
 

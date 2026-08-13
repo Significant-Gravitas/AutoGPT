@@ -27,9 +27,10 @@ def _graph():
     return graph
 
 
-def _patches(*, graph, webhook=..., feedback=None, preset=None):
+def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=None):
     """Patch triggers.py's collaborators. ``webhook=...`` defaults to a stub
-    webhook; pass ``webhook=None`` + ``feedback`` to exercise the rejection."""
+    webhook; pass ``webhook=None`` + ``feedback`` to exercise the rejection.
+    ``graph_expert`` is the expert the graph-match fallback resolves to."""
     new_webhook = MagicMock(id="wh-1") if webhook is ... else webhook
     return (
         patch(f"{_PATH}.get_graph", new=AsyncMock(return_value=graph)),
@@ -41,12 +42,12 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None):
         patch(f"{_PATH}.db.create_preset", new=AsyncMock(return_value=preset)),
         patch(
             f"{_PATH}.experts_db.resolve_expert_for_graph",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=graph_expert),
         ),
     )
 
 
-async def _setup():
+async def _setup(*, expert_id=None):
     return await setup_triggered_preset(
         user_id=_USER,
         graph_id="graph-1",
@@ -55,6 +56,7 @@ async def _setup():
         description="",
         trigger_config={"repo": "owner/repo"},
         agent_credentials={},
+        expert_id=expert_id,
     )
 
 
@@ -68,6 +70,33 @@ async def test_creates_preset_on_success():
         result = await _setup()
     assert result is preset
     create_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_setup_prefers_session_expert_over_graph_match():
+    """A trigger created inside an expert chat is that expert's work: the
+    session's expert wins and the graph match isn't even consulted."""
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset, graph_expert="expert-graph"
+    )
+    with p_graph, p_creds, p_webhook, p_expert as expert_mock, p_create as create_mock:
+        await _setup(expert_id="expert-session")
+    assert create_mock.call_args.kwargs["expert_id"] == "expert-session"
+    expert_mock.assert_not_awaited()  # short-circuited by the session expert
+
+
+@pytest.mark.asyncio
+async def test_setup_falls_back_to_graph_expert_without_session_expert():
+    """A plain chat / route caller passes no expert: attribution falls back to
+    the graph's unique expert match — unchanged behaviour."""
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset, graph_expert="expert-graph"
+    )
+    with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
+        await _setup()
+    assert create_mock.call_args.kwargs["expert_id"] == "expert-graph"
 
 
 @pytest.mark.asyncio

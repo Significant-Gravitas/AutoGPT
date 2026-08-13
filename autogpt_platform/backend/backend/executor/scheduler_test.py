@@ -71,6 +71,45 @@ def _stub_scheduler() -> Scheduler:
     return s
 
 
+class TestAddCopilotTurnScheduleExpertAttribution:
+    """A follow-up scheduled from an expert chat must persist that expert id in
+    the job args, so the fresh session minted at fire time is scoped to her and
+    its runs count as the expert's work. Plain chats persist no expert.
+
+    In-process (no SpinTestServer): the RPC return-value round-trip is unrelated
+    to attribution — what matters is the persisted CopilotTurnJobArgs that fire
+    time reads back, which is exactly what ``_persist_schedule`` receives here.
+    """
+
+    @staticmethod
+    def _fake_job() -> MagicMock:
+        job = MagicMock(id="cop-1", next_run_time=None)
+        job.name = "copilot turn"
+        job.trigger = MagicMock(timezone="UTC")
+        return job
+
+    def _persisted_args(self, *, expert_id=None):
+        s = _stub_scheduler()
+        with patch.object(
+            s, "_persist_schedule", return_value=self._fake_job()
+        ) as persist:
+            s.add_copilot_turn_schedule(
+                user_id="user-1",
+                session_id=None,
+                message="check CI",
+                run_at=datetime(2026, 5, 24, 4, 0, tzinfo=timezone.utc),
+                user_timezone="UTC",
+                expert_id=expert_id,
+            )
+        return persist.call_args.kwargs["job_args"]
+
+    def test_expert_session_persists_expert_id(self) -> None:
+        assert self._persisted_args(expert_id="expert-1").expert_id == "expert-1"
+
+    def test_plain_session_persists_no_expert(self) -> None:
+        assert self._persisted_args().expert_id is None
+
+
 class TestAddCommunityRebuildSchedule:
     def test_registers_with_expected_cron_and_jobstore(self) -> None:
         s = _stub_scheduler()

@@ -130,6 +130,57 @@ async def test_one_shot_delay_omitted_session_id_passes_new_chat_sentinel(
 
 
 @pytest.mark.asyncio
+async def test_expert_session_attributes_followup_to_expert(tool):
+    """A follow-up scheduled from an expert chat carries the expert id so the
+    fresh session minted at fire time (and its runs) stays attributed to her."""
+    session = make_session(_USER, expert_id="expert-1")
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            f"{_TOOL_PATH}.is_followups_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, message="check CI", delay_seconds=1200
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert call_kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_plain_session_does_not_attribute_followup(tool, session):
+    """A plain (non-expert) chat forwards no expert to the scheduler."""
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            f"{_TOOL_PATH}.is_followups_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+    ):
+        await tool._execute(
+            user_id=_USER, session=session, message="check CI", delay_seconds=1200
+        )
+
+    call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert call_kwargs["expert_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_explicit_null_session_id_passes_new_chat_sentinel(tool, session):
     """Explicit ``session_id=None`` is equivalent to omitting it — both are
     the sentinel for "create a fresh chat at fire time"."""

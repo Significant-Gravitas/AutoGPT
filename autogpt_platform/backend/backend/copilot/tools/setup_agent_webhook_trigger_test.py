@@ -174,6 +174,36 @@ async def test_manual_webhook_no_creds_proceeds(tool, session):
 
 
 @pytest.mark.asyncio
+async def test_expert_session_attributes_trigger_to_expert(tool):
+    """A trigger set up inside an expert chat threads that expert's id through
+    to preset creation, so its webhook fires count as the expert's work."""
+    session = make_session(_USER, expert_id="expert-1")
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = _make_preset(provider="generic_webhook", url="https://x/ingress")
+    ctxs, setup_mock = _patches(graph, preset=preset)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+    assert isinstance(result, TriggerSetupResponse)
+    assert setup_mock.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_plain_session_does_not_attribute_trigger(tool, session):
+    """A plain (non-expert) chat forwards no expert; setup_triggered_preset's
+    graph-level fallback still applies but the tool passes None."""
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = _make_preset(provider="generic_webhook", url="https://x/ingress")
+    ctxs, setup_mock = _patches(graph, preset=preset)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+    assert setup_mock.call_args.kwargs["expert_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_manual_webhook_missing_body_cred_returns_card(tool, session):
     """Manual webhook whose body needs a (missing) credential -> connect card."""
     graph = _make_graph(
