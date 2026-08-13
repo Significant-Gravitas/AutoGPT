@@ -14,22 +14,26 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import {
-  CircleNotchIcon,
-  DotsThreeIcon,
-  DownloadSimpleIcon,
-  PencilSimpleIcon,
-  ShareNetworkIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useRef } from "react";
+import {
+  Delete02Icon,
+  Download04Icon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PinIcon,
+  PinOffIcon,
+  Share03Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Session {
   id: string;
   title?: string | null;
   source_platform?: string | null;
   is_processing?: boolean | null;
+  is_pinned?: boolean | null;
   updated_at: string;
 }
 
@@ -44,10 +48,27 @@ interface Props {
   isExporting: boolean;
   isDeleting: boolean;
   chatSharingEnabled: boolean;
+  chatPinningEnabled: boolean;
+  onPin: (id: string, isPinned: boolean) => void;
   onRename: (id: string, title: string | null | undefined) => void;
   onExport: (id: string, title: string | null | undefined) => void;
   onShare: (id: string) => void;
   onDelete: (id: string, title: string | null | undefined) => void;
+}
+
+// Rendered inside the <Link>, so useLinkStatus reports that link's pending
+// navigation — mirrors the loader on the main sidebar nav links.
+function ChatLinkLoader() {
+  const { pending } = useLinkStatus();
+
+  if (!pending) return null;
+
+  return (
+    <LoadingSpinner
+      size="small"
+      className="ml-auto !size-4 shrink-0 text-zinc-500"
+    />
+  );
 }
 
 export function RecentChatItem({
@@ -61,6 +82,8 @@ export function RecentChatItem({
   isExporting,
   isDeleting,
   chatSharingEnabled,
+  chatPinningEnabled,
+  onPin,
   onRename,
   onExport,
   onShare,
@@ -126,6 +149,7 @@ export function RecentChatItem({
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : null}
           <span className="truncate">{title}</span>
+          <ChatLinkLoader />
         </Link>
       </SidebarMenuButton>
 
@@ -136,12 +160,27 @@ export function RecentChatItem({
             aria-label="Chat actions"
             className="border border-zinc-200 bg-white"
           >
-            <DotsThreeIcon weight="bold" />
+            <Icon
+              icon={MoreHorizontalIcon}
+              className="text-sidebar-foreground/90"
+            />
           </SidebarMenuAction>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {chatPinningEnabled && (
+            <DropdownMenuItem
+              onClick={() => onPin(session.id, !!session.is_pinned)}
+            >
+              {session.is_pinned ? (
+                <Icon icon={PinOffIcon} className="mr-2 h-4 w-4" />
+              ) : (
+                <Icon icon={PinIcon} className="mr-2 h-4 w-4" />
+              )}
+              {session.is_pinned ? "Unpin chat" : "Pin chat"}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => onRename(session.id, session.title)}>
-            <PencilSimpleIcon className="mr-2 h-4 w-4" />
+            <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
             Rename
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -152,15 +191,18 @@ export function RecentChatItem({
             disabled={isExporting}
           >
             {isExporting ? (
-              <CircleNotchIcon className="mr-2 h-4 w-4 animate-spin" />
+              <Icon
+                icon={Loading03Icon}
+                className="mr-2 h-4 w-4 animate-spin"
+              />
             ) : (
-              <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+              <Icon icon={Download04Icon} className="mr-2 h-4 w-4" />
             )}
             {isExporting ? "Exporting…" : "Export chat"}
           </DropdownMenuItem>
           {chatSharingEnabled && (
             <DropdownMenuItem onClick={() => onShare(session.id)}>
-              <ShareNetworkIcon className="mr-2 h-4 w-4" />
+              <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
               Share chat
             </DropdownMenuItem>
           )}
@@ -169,7 +211,7 @@ export function RecentChatItem({
             disabled={isDeleting}
             className="text-red-600 focus:bg-red-50 focus:text-red-600"
           >
-            <TrashIcon className="mr-2 h-4 w-4" />
+            <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat
           </DropdownMenuItem>
         </DropdownMenuContent>

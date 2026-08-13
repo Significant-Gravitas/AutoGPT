@@ -19,6 +19,7 @@ from backend.copilot.constants import (
     MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
@@ -30,7 +31,11 @@ from backend.executor.auto_credentials import (
 )
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
+from backend.integrations.codex.access import enforce_codex_access
+from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
@@ -270,20 +275,54 @@ async def execute_block(
 
         # Inject credentials
         creds_manager = IntegrationCredentialsManager()
-        for field_name, cred_meta in matched_credentials.items():
-            if field_name not in input_data:
-                input_data[field_name] = cred_meta.model_dump()
+        credential_leases: dict[str, CredentialLease] = {}
+        credential_field_name = "credentials"
+        try:
+            for field_name, cred_meta in matched_credentials.items():
+                credential_field_name = field_name
+                if field_name not in input_data:
+                    input_data[field_name] = cred_meta.model_dump()
+                if cred_meta.provider == ProviderName.CODEX:
+                    lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
+                    credential_leases[field_name] = lease
+                    credentials = lease.credentials
+                    if not (
+                        provider_matches(credentials.provider, cred_meta.provider)
+                        and credentials.type == cred_meta.type
+                    ):
+                        raise ValueError
+                    await enforce_codex_access(user_id)
+                    exec_kwargs[field_name] = credentials
+                    continue
 
-            actual_credentials = await creds_manager.get(
-                user_id, cred_meta.id, lock=False
-            )
-            if actual_credentials:
-                exec_kwargs[field_name] = actual_credentials
-            else:
-                return ErrorResponse(
-                    message=f"Failed to retrieve credentials for {field_name}",
-                    session_id=session_id,
+                credentials = await creds_manager.get(
+                    user_id,
+                    cred_meta.id,
+                    lock=False,
                 )
+                if not (
+                    credentials is not None
+                    and provider_matches(credentials.provider, cred_meta.provider)
+                    and credentials.type == cred_meta.type
+                ):
+                    await _release_credential_leases(credential_leases)
+                    return ErrorResponse(
+                        message=f"Failed to retrieve credentials for {field_name}",
+                        session_id=session_id,
+                    )
+                exec_kwargs[field_name] = credentials
+        except ValueError:
+            await _release_credential_leases(credential_leases)
+            return ErrorResponse(
+                message=f"Failed to retrieve credentials for {credential_field_name}",
+                session_id=session_id,
+            )
+        except BaseException:
+            await _release_credential_leases(credential_leases)
+            raise
+
+        if credential_leases:
+            exec_kwargs["credential_leases"] = credential_leases
 
         # Auto-credentials (picker-populated fields like GoogleDriveFileField).
         # If the picker hasn't been filled, surface the existing setup-card so
@@ -298,6 +337,7 @@ async def execute_block(
                 user_id=user_id,
             )
         except MissingAutoCredentialsError as e:
+            await _release_credential_leases(credential_leases)
             input_schema = block.input_schema.jsonschema()
             credentials_fields = set(block.input_schema.get_credentials_fields().keys())
             return SetupRequirementsResponse(
@@ -325,7 +365,11 @@ async def execute_block(
                 graph_version=None,
             )
         except ValueError as e:
+            await _release_credential_leases(credential_leases)
             return ErrorResponse(message=str(e), error=str(e), session_id=session_id)
+        except BaseException:
+            await _release_credential_leases(credential_leases)
+            raise
 
         # Everything from here owns the auto-cred locks; wrap so any early
         # return / exception (coerce, credit check, execution, etc.) still
@@ -452,6 +496,7 @@ async def execute_block(
                         )
                     )
         finally:
+            await _release_credential_leases(credential_leases)
             # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
             for lock in auto_locks:
                 try:
@@ -493,6 +538,20 @@ async def _collect_block_outputs(
     """
     async for output_name, output_data in block.execute(input_data, **exec_kwargs):
         outputs[output_name].append(output_data)
+
+
+async def _release_credential_leases(
+    leases: dict[str, CredentialLease],
+) -> None:
+    for field_name, lease in leases.items():
+        try:
+            await lease.release()
+        except Exception as release_exc:
+            logger.warning(
+                "Failed to release credential lease for %s: %s",
+                field_name,
+                release_exc,
+            )
 
 
 async def resolve_block_credentials(
@@ -927,6 +986,36 @@ _AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
 _AGENT_GUIDE_SKILL_NAME = "agent_building_guide"
 
 
+_ENTER_BUILDING_MODE_TOOL_NAME = "enter_agent_building_mode"
+
+
+def session_entered_building_mode(session: ChatSession) -> bool:
+    """True when this session is in agent-building mode.
+
+    Any of these signals counts: an ``enter_agent_building_mode`` call
+    (preferred path), a ``get_agent_building_guide`` call, or a
+    ``read_skill(name="agent_building_guide")`` call. All are durable —
+    derived from message history, no session-metadata write needed. Called
+    at turn start (by the system-prompt builder) this reflects prior turns
+    only; called mid-turn (by the building-mode restart) it also sees the
+    current turn's in-flight calls.
+    """
+    return session.has_tool_been_called(
+        _ENTER_BUILDING_MODE_TOOL_NAME
+    ) or session_read_building_guide(session)
+
+
+def session_read_building_guide(session: ChatSession) -> bool:
+    """True when the agent-building guide was loaded in this session.
+
+    Accepts either the ``get_agent_building_guide`` tool call or a
+    ``read_skill(name="agent_building_guide")`` call.
+    """
+    return session.has_tool_been_called(
+        _AGENT_GUIDE_TOOL_NAME
+    ) or _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME)
+
+
 def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
     """Return True iff the model has called ``read_skill(name=skill_name)``
     in this session (durable history or current-turn in-flight calls).
@@ -999,16 +1088,34 @@ def require_guide_read(session: ChatSession, tool_name: str):
     # requiring one would waste a round-trip every turn.
     if session.metadata.builder_graph_id:
         return None
-    if session.has_tool_been_called(_AGENT_GUIDE_TOOL_NAME):
+    # Building sessions get the guide in the (cached) system prompt — see
+    # ``build_builder_system_prompt_suffix``.
+    if session.guide_in_system_prompt:
         return None
-    if _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME):
+    if session_read_building_guide(session):
         return None
+    if session.has_tool_been_called(_ENTER_BUILDING_MODE_TOOL_NAME):
+        if not chat_config.transport.supports_sdk:
+            # SDK-less deployment: the enter tool served the guide inline.
+            return None
+        return ErrorResponse(
+            message=(
+                "The engine switch is pending — building continues "
+                "automatically on the next turn with the guide loaded. End "
+                f"your turn now with a brief note; do not retry {tool_name} "
+                "in this turn."
+            ),
+            session_id=session.session_id,
+        )
     return ErrorResponse(
         message=(
-            'Call get_agent_building_guide (or read_skill(name="agent_building_guide")) '
-            f"first, then retry {tool_name}. The guide documents required block ids, "
-            "input/output schemas, link semantics, and AgentExecutorBlock / MCPToolBlock "
-            "usage — generating agent JSON without it produces schema mismatches."
+            f"Call enter_agent_building_mode first, then retry {tool_name}. "
+            "It loads the agent-building guide into your system prompt where "
+            "it survives context compaction. (get_agent_building_guide or "
+            'read_skill(name="agent_building_guide") also satisfy this gate.) '
+            "The guide documents required block ids, input/output schemas, "
+            "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
+            "generating agent JSON without it produces schema mismatches."
         ),
         session_id=session.session_id,
     )

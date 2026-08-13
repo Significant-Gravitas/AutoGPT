@@ -9,6 +9,7 @@ because the copilot tool runs without a connected Prisma client.
 import logging
 from typing import Any
 
+from backend.api.features.experts import experts_db
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -94,6 +95,9 @@ async def setup_triggered_preset(
             is_active=True,
         ),
         webhook_id=new_webhook.id,
+        # A trigger on an expert-installed workflow fires as the expert's
+        # work: unique (user, graph) → expert matches keep the attribution.
+        expert_id=await experts_db.resolve_expert_for_graph(user_id, graph.id),
     )
 
 

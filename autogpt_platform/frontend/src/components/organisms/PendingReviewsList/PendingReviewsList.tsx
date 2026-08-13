@@ -5,13 +5,14 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useProcessReviews } from "@/hooks/useProcessReviews";
 import {
-  ClockIcon,
-  WarningIcon,
-  CaretDownIcon,
-  CaretRightIcon,
-} from "@phosphor-icons/react";
-import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
+  Alert01Icon,
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  Clock01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
@@ -66,47 +67,8 @@ export function PendingReviewsList({
     );
   }, [reviews]);
 
-  const reviewActionMutation = usePostV2ProcessReviewAction({
-    mutation: {
-      onSuccess: (res) => {
-        if (res.status !== 200) {
-          toast({
-            title: "Failed to process reviews",
-            description: "Unexpected response from server",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        const result = res.data;
-
-        if (result.failed_count > 0) {
-          toast({
-            title: "Reviews partially processed",
-            description: `${result.approved_count + result.rejected_count} succeeded, ${result.failed_count} failed. ${result.error || "Some reviews could not be processed."}`,
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Reviews processed successfully",
-            description: `${result.approved_count} approved, ${result.rejected_count} rejected`,
-            variant: "default",
-          });
-        }
-
-        setPendingAction(null);
-        onReviewComplete?.();
-      },
-      onError: (error: Error) => {
-        setPendingAction(null);
-        toast({
-          title: "Failed to process reviews",
-          description: error.message || "An error occurred",
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  const { processReviews: submitReviewAction, isProcessing } =
+    useProcessReviews({ onSettled: onReviewComplete });
 
   function handleReviewDataChange(nodeExecId: string, data: string) {
     setReviewDataMap((prev) => ({ ...prev, [nodeExecId]: data }));
@@ -141,7 +103,7 @@ export function PendingReviewsList({
     }));
   }
 
-  function processReviews(approved: boolean) {
+  async function processReviews(approved: boolean) {
     if (reviews.length === 0) {
       toast({
         title: "No reviews to process",
@@ -186,17 +148,56 @@ export function PendingReviewsList({
       });
     }
 
-    reviewActionMutation.mutate({
-      data: {
-        reviews: reviewItems,
-      },
-    });
+    try {
+      const res = await submitReviewAction(
+        reviewItems,
+        reviews.map((review) => review.graph_exec_id),
+      );
+
+      if (res.status !== 200) {
+        toast({
+          title: "Failed to process reviews",
+          description: "Unexpected response from server",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const result = res.data;
+
+      if (result.failed_count > 0) {
+        toast({
+          title: "Reviews partially processed",
+          description: `${result.approved_count + result.rejected_count} succeeded, ${result.failed_count} failed. ${result.error || "Some reviews could not be processed."}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Reviews processed successfully",
+          description: `${result.approved_count} approved, ${result.rejected_count} rejected`,
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Failed to process reviews",
+        description:
+          error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setPendingAction(null);
+    }
   }
 
   if (reviews.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <ClockIcon size={48} className="mb-4 text-muted-foreground" />
+        <Icon
+          icon={Clock01Icon}
+          size={48}
+          className="mb-4 text-muted-foreground"
+        />
         <Text variant="h4" className="text-muted-foreground">
           {emptyMessage}
         </Text>
@@ -212,10 +213,10 @@ export function PendingReviewsList({
     <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
       <div className="space-y-6">
         <div className="flex items-start gap-2">
-          <WarningIcon
+          <Icon
+            icon={Alert01Icon}
             size={28}
             className="fill-yellow-600 text-white"
-            weight="fill"
           />
           <Text
             variant="large-semibold"
@@ -251,9 +252,17 @@ export function PendingReviewsList({
                 className="flex w-full items-center gap-2 text-left"
               >
                 {isCollapsed ? (
-                  <CaretRightIcon size={20} className="text-gray-600" />
+                  <Icon
+                    icon={ArrowRight01Icon}
+                    size={20}
+                    className="text-gray-600"
+                  />
                 ) : (
-                  <CaretDownIcon size={20} className="text-gray-600" />
+                  <Icon
+                    icon={ArrowDown01Icon}
+                    size={20}
+                    className="text-gray-600"
+                  />
                 )}
                 <div className="flex-1">
                   <Text variant="body" className="font-semibold text-gray-900">
@@ -303,23 +312,19 @@ export function PendingReviewsList({
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => processReviews(true)}
-            disabled={reviewActionMutation.isPending || reviews.length === 0}
+            disabled={isProcessing || reviews.length === 0}
             variant="primary"
             className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
-            loading={
-              pendingAction === "approve" && reviewActionMutation.isPending
-            }
+            loading={pendingAction === "approve" && isProcessing}
           >
             Approve
           </Button>
           <Button
             onClick={() => processReviews(false)}
-            disabled={reviewActionMutation.isPending || reviews.length === 0}
+            disabled={isProcessing || reviews.length === 0}
             variant="destructive"
             className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
-            loading={
-              pendingAction === "reject" && reviewActionMutation.isPending
-            }
+            loading={pendingAction === "reject" && isProcessing}
           >
             Reject
           </Button>

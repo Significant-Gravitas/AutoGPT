@@ -76,6 +76,19 @@ class DreamLockHeld(Exception):
         self.user_id = user_id
 
 
+class DreamLockLostError(Exception):
+    """Raised when a held dream lock could not be renewed — the key expired
+    (and may already belong to a newer pass), so continuing to write to the
+    user's graph risks two passes mutating it concurrently."""
+
+    def __init__(self, user_id: str) -> None:
+        super().__init__(
+            f"Dream lock lost before renewal for user {user_id[:12]} — "
+            "aborting before further graph writes"
+        )
+        self.user_id = user_id
+
+
 class DreamLockHandle:
     """Yielded by ``dream_lock``. Lets the async batch path hand lock
     ownership to the callback chain: ``extend`` stretches the TTL to the
@@ -98,7 +111,7 @@ class DreamLockHandle:
     def disown(self) -> None:
         self.release_on_exit = False
 
-    async def extend(self, ttl_seconds: int) -> None:
+    async def extend(self, ttl_seconds: int) -> bool:
         """Stretch the lock TTL only while the key still holds our token.
 
         Single-key Lua compare-and-extend (mirrors ``_UNLOCK_SCRIPT``): a
@@ -106,8 +119,12 @@ class DreamLockHandle:
         lock expired and a newer pass re-acquired the key, it would
         hijack that pass's token and stretch its TTL. The compare also
         refuses to recreate an expired key — an expired lock is never
-        resurrected — and returns 0 so we can log that ownership was
-        lost.
+        resurrected.
+
+        Returns ``True`` when the TTL was extended, ``False`` when
+        ownership was lost (key expired or re-acquired by a newer pass).
+        Callers about to perform writes that assume exclusive graph
+        ownership must abort on ``False`` (see ``DreamLockLostError``).
         """
         # ``cast`` because redis-py's stubs type ``eval`` as a bare
         # ``str`` — same workaround as the release paths below.
@@ -123,6 +140,7 @@ class DreamLockHandle:
                 "not resurrecting it; another pass may already own the key",
                 self.user_id[:12],
             )
+        return bool(extended)
 
 
 @asynccontextmanager

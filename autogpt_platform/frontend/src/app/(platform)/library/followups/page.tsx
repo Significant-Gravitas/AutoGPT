@@ -3,8 +3,9 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { SchedulesPanel } from "@/components/contextual/SchedulesPanel/SchedulesPanel";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function FollowupsPage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function FollowupsPage() {
         className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
         data-testid="followups-back-to-library"
       >
-        <ArrowLeftIcon size={14} weight="bold" />
+        <Icon icon={ArrowLeft02Icon} size={14} />
         Back to Library
       </Link>
       <SchedulesPanel onGuidedPrompt={handleGuidedPrompt} />

@@ -2,9 +2,10 @@
 
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { cn } from "@/lib/utils";
-import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useRef } from "react";
 import { useTextReveal } from "../../useTextReveal";
+import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   prompt: string | null;
@@ -75,7 +76,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
           isDisabled ? "bg-zinc-200" : "bg-zinc-800",
         )}
       >
-        <ArrowUpIcon className="size-4" weight="bold" />
+        <Icon icon={ArrowUp02Icon} className="size-4" />
       </span>
     </div>
   );

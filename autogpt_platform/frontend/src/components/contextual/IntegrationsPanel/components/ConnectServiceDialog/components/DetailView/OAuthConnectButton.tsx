@@ -1,21 +1,22 @@
 "use client";
-
-import { ArrowSquareOutIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
 import { useOAuthConnect } from "./useOAuthConnect";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   provider: string;
   providerName: string;
+  buttonLabel?: string;
   onSuccess: () => void;
 }
 
 export function OAuthConnectButton({
   provider,
   providerName,
+  buttonLabel,
   onSuccess,
 }: Props) {
   const { connect, isPending } = useOAuthConnect({ provider, onSuccess });
@@ -23,8 +24,8 @@ export function OAuthConnectButton({
   return (
     <div className="flex flex-col gap-3">
       <Text variant="body" className="text-[#505057]">
-        We&apos;ll open {providerName} in a popup. After approving, you&apos;ll
-        come right back.
+        We&apos;ll open a {providerName} sign-in window. Approve access there to
+        finish connecting.
       </Text>
       <Button
         type="button"
@@ -32,9 +33,9 @@ export function OAuthConnectButton({
         size="large"
         onClick={connect}
         loading={isPending}
-        rightIcon={<ArrowSquareOutIcon size={18} />}
+        rightIcon={<Icon icon={LinkSquare01Icon} size={18} />}
       >
-        Continue with {providerName}
+        {buttonLabel ?? `Continue with ${providerName}`}
       </Button>
     </div>
   );

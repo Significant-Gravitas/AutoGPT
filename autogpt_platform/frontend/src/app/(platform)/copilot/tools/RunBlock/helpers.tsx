@@ -1,14 +1,17 @@
+import type { getV1ListAvailableBlocksResponse } from "@/app/api/__generated__/endpoints/blocks/blocks";
 import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
-import {
-  PlayCircleIcon,
-  PlayIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
+import { beautifyString } from "@/lib/utils";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import {
+  AlertDiamondIcon,
+  PlayCircleIcon,
+  PlayIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /** Block details returned on first run_block attempt (before input_data provided). */
 export interface BlockDetailsResponse {
@@ -149,18 +152,24 @@ export function getRunBlockToolOutput(
   return parseOutput((part as { output?: unknown }).output);
 }
 
-export function getAnimationText(part: {
-  state: ToolUIPart["state"];
-  input?: unknown;
-  output?: unknown;
-}): string {
+export function getAnimationText(
+  part: {
+    state: ToolUIPart["state"];
+    input?: unknown;
+    output?: unknown;
+  },
+  blockNamesById?: Map<string, string>,
+): string {
   const input = part.input as RunBlockInput | undefined;
   const blockName = input?.block_name?.trim();
   const blockId = input?.block_id?.trim();
   const isDryRun = input?.dry_run === true;
-  // Prefer block_name if available, otherwise fall back to block_id
-  const blockText = blockName
-    ? ` "${blockName}"`
+  // Prefer block_name, then a name looked up from the blocks API,
+  // and only fall back to the raw block_id when neither is known
+  const displayName =
+    blockName || (blockId ? blockNamesById?.get(blockId) : undefined);
+  const blockText = displayName
+    ? ` "${displayName}"`
     : blockId
       ? ` "${blockId}"`
       : "";
@@ -195,6 +204,21 @@ export function getAnimationText(part: {
   }
 }
 
+export function getBlockNamesById(
+  response: getV1ListAvailableBlocksResponse | undefined,
+): Map<string, string> | undefined {
+  if (response?.status !== 200) return undefined;
+  const names = new Map<string, string>();
+  for (const block of response.data) {
+    if (typeof block.id === "string" && typeof block.name === "string") {
+      // Same display treatment as the blocks menu: beautify and
+      // drop the redundant "Block" suffix
+      names.set(block.id, beautifyString(block.name).replace(/ Block$/, ""));
+    }
+  }
+  return names;
+}
+
 export function ToolIcon({
   isStreaming,
   isError,
@@ -203,18 +227,16 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
+  return <Icon icon={PlayIcon} size={14} className="text-neutral-400" />;
 }
 
 export function AccordionIcon() {
-  return <PlayCircleIcon size={32} weight="light" />;
+  return <Icon icon={PlayCircleIcon} size={32} />;
 }
 
 export function formatMaybeJson(value: unknown): string {
@@ -290,9 +312,7 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   }
 
   return {
-    icon: (
-      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
-    ),
+    icon: <Icon icon={AlertDiamondIcon} size={32} className="text-red-500" />,
     title: "Error",
     titleClassName: "text-red-500",
   };

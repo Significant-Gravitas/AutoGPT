@@ -280,6 +280,17 @@ class DiscordAdapter(SocketAdapter):
             return str(channel.guild.id)
         return None
 
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        try:
+            user = self._client.get_user(
+                int(platform_user_id)
+            ) or await self._client.fetch_user(int(platform_user_id))
+            dm = user.dm_channel or await user.create_dm()
+        except (ValueError, discord.NotFound, discord.HTTPException):
+            logger.warning(f"Cannot open DM with user {platform_user_id}")
+            return None
+        return str(dm.id)
+
     async def post_channel_message(
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:

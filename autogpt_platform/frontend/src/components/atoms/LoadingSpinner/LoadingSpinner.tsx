@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 import React from "react";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const sizeClassNameMap = {
   small: "h-4 w-4",
@@ -14,19 +15,19 @@ type LoadingSpinnerProps = {
   size?: SpinnerSize;
   className?: string;
   cover?: boolean;
-} & React.ComponentPropsWithoutRef<typeof CircleNotchIcon>;
+} & Omit<React.ComponentPropsWithoutRef<typeof Icon>, "icon" | "size">;
 
 export function LoadingSpinner(props: LoadingSpinnerProps) {
   const { size = "medium", className, cover = false, ...restProps } = props;
 
   const spinner = (
-    <CircleNotchIcon
+    <Icon
+      icon={Loading03Icon}
       className={cn(
         "animate-spin text-inherit",
         sizeClassNameMap[size],
         className,
       )}
-      weight="bold"
       {...restProps}
     />
   );
