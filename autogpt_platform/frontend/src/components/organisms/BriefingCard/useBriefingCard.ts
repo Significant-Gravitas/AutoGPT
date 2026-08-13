@@ -2,16 +2,7 @@
 
 import { useReducedMotion } from "framer-motion";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-
-export const COLLAPSED_ROWS = 3;
-
-// Roughly six rows: enough that "show all" feels like it opened something,
-// short enough that the card still sits under the composer.
-const MAX_EXPANDED_HEIGHT = 416;
-
-// Sub-pixel scroll offsets are routine (zoom, fractional row heights), so an
-// exact comparison would leave both arrows on forever.
-const EDGE_TOLERANCE = 2;
+import { getScrollEdges, measureListHeight } from "./helpers";
 
 // The card animates its real height rather than a `layout` transform: a
 // transform-based resize scales the rows' text while it runs and leaves the
@@ -45,24 +36,13 @@ export function useBriefingCard(rowsKey: string) {
 
     function update() {
       if (!list) return;
-      const rows = Array.from(list.children) as HTMLElement[];
-      if (rows.length === 0) return;
+      const measured = measureListHeight(list, isShowingAll);
+      if (measured === null) return;
+      setHeight(measured);
 
-      if (isShowingAll) {
-        setHeight(Math.min(list.scrollHeight, MAX_EXPANDED_HEIGHT));
-      } else {
-        const lastVisible = rows[Math.min(COLLAPSED_ROWS, rows.length) - 1];
-        setHeight(
-          lastVisible.offsetTop + lastVisible.offsetHeight - rows[0].offsetTop,
-        );
-      }
-
-      const { scrollTop, scrollHeight, clientHeight } = list;
-      setCanScrollUp(isShowingAll && scrollTop > EDGE_TOLERANCE);
-      setCanScrollDown(
-        isShowingAll &&
-          scrollTop + clientHeight < scrollHeight - EDGE_TOLERANCE,
-      );
+      const edges = getScrollEdges(list);
+      setCanScrollUp(isShowingAll && edges.canScrollUp);
+      setCanScrollDown(isShowingAll && edges.canScrollDown);
     }
 
     update();
@@ -85,7 +65,7 @@ export function useBriefingCard(rowsKey: string) {
     // Two thirds of the window: the reader keeps a landmark on screen.
     list.scrollBy({
       top: direction * list.clientHeight * 0.66,
-      behavior: "smooth",
+      behavior: shouldReduceMotion ? "auto" : "smooth",
     });
   }
 

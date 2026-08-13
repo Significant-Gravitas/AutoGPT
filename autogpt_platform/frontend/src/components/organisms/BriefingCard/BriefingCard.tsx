@@ -12,8 +12,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { RunRow } from "./components/RunRow";
-import { formatBriefingDate } from "./helpers";
-import { COLLAPSED_ROWS, useBriefingCard } from "./useBriefingCard";
+import { COLLAPSED_ROWS, formatBriefingDate } from "./helpers";
+import { useBriefingCard } from "./useBriefingCard";
 
 interface Props {
   briefing: BriefingResponse;
