@@ -9,23 +9,24 @@ import { formatBriefingDate, isInternalLink } from "./helpers";
 
 interface Props {
   briefing: BriefingResponse;
+  className?: string;
 }
 
 // The briefing's decision items are deliberately not rendered here: the same
 // pending reviews already appear — and are actionable — in the
-// needs-attention list directly below this card. They stay in the thread
-// markdown, where there is no such list.
-export function BriefingCard({ briefing }: Props) {
+// needs-attention list on the home page. They stay in the thread markdown,
+// where there is no such list.
+export function BriefingCard({ briefing, className }: Props) {
   const { run_items } = briefing.content;
   const foundItems = run_items.filter((item) => item.summary);
 
   // A briefing can be all decisions and no terminal runs (a run paused on an
   // approval never completes), which would render as a card containing just
-  // a date. The needs-attention list below carries that case on its own.
+  // a date. The needs-attention list carries that case on its own.
   if (run_items.length === 0) return null;
 
   return (
-    <Card className="mb-5 space-y-5 text-left">
+    <Card className={cn("space-y-5 text-left", className)}>
       <Text variant="small" className="text-zinc-500">
         {formatBriefingDate(briefing.briefing_date)}
       </Text>

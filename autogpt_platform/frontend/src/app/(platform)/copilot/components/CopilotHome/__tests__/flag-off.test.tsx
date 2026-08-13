@@ -7,10 +7,9 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetBriefingsGetLatestBriefingMockHandler200 } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
-import { getGetV2GetPendingReviewsMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { EmptySession } from "../../EmptySession/EmptySession";
 
-// The mirror of main.test.tsx: everything the briefing home adds rides the
+// The mirror of main.test.tsx: everything the briefing recap adds rides the
 // experts flag, so with it off the pre-existing pulse strip must be what
 // renders and none of the new surfaces may mount.
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
@@ -47,28 +46,7 @@ function mockHomeData() {
       },
     }),
     getGetV1ListAllExecutionsMockHandler([]),
-    // Both would render something if the briefing home mounted anyway.
-    getGetV2GetPendingReviewsMockHandler200([
-      {
-        node_exec_id: "ne-1",
-        node_id: "n-1",
-        user_id: "u-1",
-        graph_exec_id: "run-1",
-        graph_id: "g-1",
-        graph_version: 1,
-        payload: { to: "x@y.com" },
-        instructions: "Approve outreach email",
-        editable: true,
-        status: "WAITING",
-        expert_id: "exp-1",
-        expert_name: "Ana",
-        expert_avatar_url: null,
-        agent_name: "Lead Finder",
-        library_agent_id: "lib-1",
-        session_id: null,
-        created_at: new Date(),
-      },
-    ]),
+    // Would render something if the briefing recap mounted anyway.
     getGetBriefingsGetLatestBriefingMockHandler200({
       id: "briefing-1",
       briefing_date: new Date(),
@@ -102,9 +80,9 @@ test("keeps the pulse strip and mounts no briefing home when experts is off", as
   mockHomeData();
 
   // Absence of the rendered text alone could pass just because the briefing
-  // hadn't resolved yet. The briefing and pending-review queries only exist
-  // inside CopilotHome, so "never requested" is the durable proof the gate
-  // held — and it fails loudly if the gate is removed.
+  // hadn't resolved yet. The briefing query only exists inside CopilotHome,
+  // so "never requested" is the durable proof the gate held — and it fails
+  // loudly if the gate is removed.
   const requestedPaths: string[] = [];
   function record({ request }: { request: Request }) {
     requestedPaths.push(new URL(request.url).pathname);
@@ -124,10 +102,8 @@ test("keeps the pulse strip and mounts no briefing home when experts is off", as
     expect(requestedPaths.some((path) => path.includes("briefing"))).toBe(
       false,
     );
-    expect(requestedPaths.some((path) => path.includes("review"))).toBe(false);
     expect(screen.queryByText("What ran")).toBeNull();
     expect(screen.queryByText("What was found")).toBeNull();
-    expect(screen.queryByText(/Needs your attention/)).toBeNull();
   } finally {
     server.events.removeListener("request:start", record);
   }
