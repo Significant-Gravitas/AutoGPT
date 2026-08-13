@@ -1,20 +1,25 @@
 "use client";
 
-import React, { useContext, useState } from "react";
+import { useContext, useState } from "react";
 
 import { Key } from "lucide-react";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Button } from "@/components/atoms/Button/Button";
 import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
+import { cn } from "@/lib/utils";
+
+interface Props {
+  className?: string;
+}
 
 // This SSO button is not a part of inputSchema - that's why we are not rendering it using Input renderer
-export const AyrshareConnectButton = () => {
+export function AyrshareConnectButton({ className }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const credentialsActions = useContext(CredentialsActionsContext);
 
-  const handleSSOLogin = async () => {
+  async function handleSSOLogin() {
     setIsLoading(true);
     try {
       const { data, status } = await getV1GetAyrshareSsoUrl();
@@ -44,21 +49,19 @@ export const AyrshareConnectButton = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
+  // TODO :Need better UI to show user which social media accounts are connected
   return (
-    // TODO :Need better UI to show user which social media accounts are connected
-    <div className="mt-4 flex flex-col gap-2 px-4">
-      <Button
-        type="button"
-        onClick={handleSSOLogin}
-        disabled={isLoading}
-        className="h-fit w-full py-2"
-        loading={isLoading}
-        leftIcon={<Key className="mr-2 h-4 w-4" />}
-      >
-        Connect Social Media Accounts
-      </Button>
-    </div>
+    <Button
+      type="button"
+      onClick={handleSSOLogin}
+      disabled={isLoading}
+      className={cn("h-fit w-full py-2", className)}
+      loading={isLoading}
+      leftIcon={<Key className="mr-2 h-4 w-4" />}
+    >
+      Connect Social Media Accounts
+    </Button>
   );
-};
+}

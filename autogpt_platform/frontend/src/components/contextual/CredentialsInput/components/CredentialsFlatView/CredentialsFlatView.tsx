@@ -135,7 +135,7 @@ export function CredentialsFlatView({
               {actionButtonText}
             </Button>
           )}
-          {showAyrshareConnect && <AyrshareConnectButton />}
+          {showAyrshareConnect && <AyrshareConnectButton className="mt-2" />}
         </>
       ) : showAddAction ? (
         <Button
@@ -148,7 +148,7 @@ export function CredentialsFlatView({
           {actionButtonText}
         </Button>
       ) : showAyrshareConnect ? (
-        <AyrshareConnectButton />
+        <AyrshareConnectButton className="mt-2" />
       ) : null}
     </>
   );
