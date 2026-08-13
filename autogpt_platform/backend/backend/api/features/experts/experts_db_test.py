@@ -51,12 +51,16 @@ async def _create_seed_user():
     )
 
 
-async def _seed_store_listing(server: SpinTestServer) -> str:
+async def _seed_store_listing(
+    server: SpinTestServer, *, slug: str | None = None
+) -> str:
     """Create a graph plus an APPROVED store listing on top of it.
 
     Returns the StoreListingVersion ID, ready for
     ``add_store_agent_to_library``. Mirrors the seeding pattern from
-    ``backend/data/graph_test.py::test_access_store_listing_graph``.
+    ``backend/data/graph_test.py::test_access_store_listing_graph``. Pass
+    ``slug`` to publish under a specific listing slug (e.g. a roster preload
+    slug); it defaults to the graph id so ad-hoc callers stay collision-free.
     """
     owner = await _create_seed_user()
     admin = await _create_seed_user()
@@ -82,7 +86,7 @@ async def _seed_store_listing(server: SpinTestServer) -> str:
         store_model.StoreSubmissionRequest(
             graph_id=created_graph.id,
             graph_version=created_graph.version,
-            slug=created_graph.id,
+            slug=slug or created_graph.id,
             name=f"Seed listing {uuid.uuid4().hex[:8]}",
             sub_heading="Seed sub heading",
             video_url=None,
@@ -600,6 +604,60 @@ async def test_seed_roster_round_trip(server: SpinTestServer):
     templates_after = await experts_db.list_templates()
     seeded_after = [t for t in templates_after if t.id in second_ids]
     assert len(seeded_after) == 3
+
+
+def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
+    """Launch invariant, checked without a DB: every persona ships 2-4
+    preloads, and exactly one scheduled cadence exists across the whole
+    roster (Frankie's daily ops digest), so schedule attribution has a
+    single unambiguous real case."""
+    for entry in seed.ROSTER:
+        assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
+
+    scheduled = [
+        (entry["name"], preload["slug"])
+        for entry in seed.ROSTER
+        for preload in entry["preloads"]
+        if preload["cron"] is not None
+    ]
+    assert len(scheduled) == 1
+    assert scheduled[0][0] == "Frankie"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_roster_preloads_resolve_and_hire_installs_cleanly(
+    server: SpinTestServer, test_user
+):
+    """Launch acceptance gate: every ROSTER preload slug resolves to an
+    available store listing, each persona carries >= 2 workflows, and hiring
+    installs all of them with zero failed preloads. A fictional or renamed
+    slug surfaces here instead of silently seeding 0 preloads."""
+    slugs = {preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]}
+    for slug in slugs:
+        await _seed_store_listing(server, slug=slug)
+
+    for slug in slugs:
+        assert await seed._resolve_active_version_id(slug) is not None, slug
+
+    template_ids = await seed.seed_roster()
+    templates = {
+        t.name: t for t in await experts_db.list_templates() if t.id in template_ids
+    }
+
+    for entry in seed.ROSTER:
+        assert len(templates[entry["name"]].workflows) >= 2
+
+    scheduler = AsyncMock()
+    scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-1")
+    )
+    with patch.object(scheduling, "get_scheduler_client", return_value=scheduler):
+        for entry in seed.ROSTER:
+            result = await experts_db.hire_expert(
+                test_user.id, templates[entry["name"]].id, None
+            )
+            assert result.failed_preloads == []
+            assert len(result.expert.workflows) >= 2
 
 
 @pytest.mark.asyncio(loop_scope="session")
