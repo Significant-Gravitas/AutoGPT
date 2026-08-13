@@ -53,7 +53,18 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class DreamLLMError(RuntimeError):
-    """Raised when a dream-pass LLM call cannot be parsed into the target schema."""
+    """Raised when a dream-pass LLM call cannot be parsed into the target schema.
+
+    ``usage`` carries the provider-reported spend when the failure happened
+    *after* a response came back — empty content, unparseable JSON, a schema
+    mismatch. Those tokens were billed, so a caller keeping a cost ledger has
+    to record them. ``None`` means no provider call completed and nothing was
+    charged.
+    """
+
+    def __init__(self, message: str, usage: CompletionUsage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage
 
 
 class CompletionUsage(BaseModel):
@@ -147,18 +158,22 @@ async def structured_completion(
 
     content = (response.content or "").strip()
     if not content:
-        raise DreamLLMError("LLM returned empty content")
+        raise DreamLLMError("LLM returned empty content", usage)
 
-    payload = _parse_json_with_prose_fallback(content)
-
+    # Everything below this point is post-billing: the provider already
+    # charged for the tokens it sent, so every failure carries the usage out.
     try:
+        payload = _parse_json_with_prose_fallback(content)
         return StructuredCompletion(
             value=response_model.model_validate(payload),
             usage=usage,
         )
+    except DreamLLMError as exc:
+        exc.usage = usage
+        raise
     except ValidationError as exc:
         raise DreamLLMError(
-            f"LLM JSON did not match {response_model.__name__}: {exc}"
+            f"LLM JSON did not match {response_model.__name__}: {exc}", usage
         ) from exc
 
 

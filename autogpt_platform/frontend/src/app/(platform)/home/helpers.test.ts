@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import {
+  formatBriefingWindowStart,
   formatCurrency,
   formatDuration,
   formatHeaderDate,
+  formatWeeklySpend,
   getHomeStatusLine,
   getTimeOfDayGreeting,
 } from "./helpers";
@@ -50,9 +52,25 @@ describe("formatters", () => {
     ).toEqual({ weekday: "Monday", calendarDate: "August 10" });
   });
 
+  it("names the start of the briefing window", () => {
+    expect(
+      formatBriefingWindowStart(
+        new Date("2026-08-09T03:30:00Z"),
+        "Asia/Kolkata",
+        "en-US",
+      ),
+    ).toBe("Sunday 9:00 AM");
+  });
+
   it("formats measured runtime and cost", () => {
     expect(formatDuration(18_120)).toBe("5h 2m");
     expect(formatDuration(120)).toBe("2m");
     expect(formatCurrency(367)).toBe("$3.67");
+  });
+
+  it("drops the weekly spend line when nothing was attributed", () => {
+    expect(formatWeeklySpend(1_250)).toBe("$12.50 this week");
+    expect(formatWeeklySpend(0)).toBeNull();
+    expect(formatWeeklySpend(undefined)).toBeNull();
   });
 });
