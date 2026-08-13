@@ -9,12 +9,14 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   provider: string;
   providerName: string;
+  buttonLabel?: string;
   onSuccess: () => void;
 }
 
 export function OAuthConnectButton({
   provider,
   providerName,
+  buttonLabel,
   onSuccess,
 }: Props) {
   const { connect, isPending } = useOAuthConnect({ provider, onSuccess });
@@ -33,7 +35,7 @@ export function OAuthConnectButton({
         loading={isPending}
         rightIcon={<Icon icon={LinkSquare01Icon} size={18} />}
       >
-        Continue with {providerName}
+        {buttonLabel ?? `Continue with ${providerName}`}
       </Button>
     </div>
   );
