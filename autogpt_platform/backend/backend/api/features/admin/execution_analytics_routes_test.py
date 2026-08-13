@@ -119,7 +119,7 @@ async def test_generate_analytics_only_skips_complete_existing_analysis():
 
 
 @pytest.mark.asyncio
-async def test_generate_analytics_counts_processed_rows_skipped_without_client():
+async def test_generate_analytics_counts_processed_rows_skipped():
     execution = SimpleNamespace(
         id="exec-no-client",
         graph_id="graph-1",
