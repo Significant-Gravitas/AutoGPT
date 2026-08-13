@@ -18,6 +18,7 @@ describe("getSkillUploadError", () => {
   });
 
   test("reports the exact length when description is too long", () => {
+    expect(MAX_SKILL_DESCRIPTION_CHARS).toBe(1024);
     const desc = "x".repeat(MAX_SKILL_DESCRIPTION_CHARS + 1);
     const err = getSkillUploadError(md(`name: ok_skill\ndescription: ${desc}`));
     expect(err).toContain(

@@ -1,7 +1,7 @@
 // Mirrors backend limits in backend/copilot/tools/skills.py — kept in sync
 // manually. These bound the per-turn `<available_skills>` index the copilot
 // sees, so the cap is deliberate (see backend MAX_DESCRIPTION_CHARS).
-export const MAX_SKILL_DESCRIPTION_CHARS = 250;
+export const MAX_SKILL_DESCRIPTION_CHARS = 1024;
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---/;
 
