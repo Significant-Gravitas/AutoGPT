@@ -318,8 +318,9 @@ docker exec autogpt \
 The same settings can point at a remote vLLM, LocalAI, LM Studio, LiteLLM, or
 other OpenAI-compatible HTTPS endpoint, provided it serves both the configured
 chat model and `nomic-embed-text`. Do not expose an unauthenticated model server
-to the internet. See the [local LLM guide](copilot-local-llm.md) for model and
-context-window guidance.
+to the internet. See the
+[AutoPilot local-LLM guide](https://github.com/Significant-Gravitas/AutoGPT/blob/master/docs/platform/copilot-local-llm.md)
+for model and context-window guidance.
 
 Additional provider keys consumed by backend blocks may be placed in the same
 environment file. They are passed to backend roles, not indiscriminately to the
