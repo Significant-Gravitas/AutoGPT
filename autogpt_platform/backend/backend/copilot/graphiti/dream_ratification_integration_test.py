@@ -450,6 +450,52 @@ async def test_sweep_supersedes_unhit_edge_past_its_grace_period(dream_graph) ->
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_sweep_never_touches_an_already_active_edge(dream_graph) -> None:
+    """The sweep must be inert on ratified memory, however old it gets.
+
+    Every other sweep test starts from ``tentative``, so nothing pins the
+    status filter in the listing Cypher. Drop it and an ``active`` edge past
+    the grace period is superseded on the next nightly run — silent deletion
+    of a memory the user already confirmed by using it. This ages a promoted
+    edge well past that boundary and asserts the sweep ignores it entirely.
+    """
+    driver, user_id = dream_graph
+    await _ingest_dream_proposal(user_id)
+    edge_uuid = (await _sole_edge(driver))["uuid"]
+
+    # Promote it the production way: a real hit, then the sweep's promote leg.
+    await record_memory_hit(user_id, edge_uuid)
+    assert (await run_ratification_pass(user_id)).ratified_count == 1
+    promoted = await _sole_edge(driver)
+    assert promoted["status"] == "active"
+    ratified_at = promoted["ratified_at"]
+    assert ratified_at is not None
+
+    # Now age it far past the grace period and sweep again.
+    await _backdate_edge(
+        driver, edge_uuid, RATIFICATION_GRACE_PERIOD + timedelta(days=30)
+    )
+    result = await run_ratification_pass(user_id)
+
+    assert result.error is None
+    assert result.examined_count == 0, (
+        "the sweep lists only status='tentative' edges — examining an active "
+        "one means the filter is gone and ratified memory is in scope"
+    )
+    assert result.superseded_count == 0
+    assert result.ratified_count == 0
+
+    edge = await _sole_edge(driver)
+    assert edge["status"] == "active"
+    assert edge["expired_at"] is None
+    assert edge["ratified_at"] == ratified_at, (
+        "a re-run must not re-stamp ratified_at — that timestamp is the "
+        "audit record of when the memory was actually confirmed"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_sweep_leaves_a_fresh_unhit_edge_tentative(dream_graph) -> None:
     """Within the grace period an unhit edge is still earning its keep."""
     driver, user_id = dream_graph
