@@ -714,9 +714,9 @@ Uses AI to intelligently decide what tool to use.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block lets an LLM decide which connected tools to use based on the prompt. In built-in agent mode, it executes tool calls and feeds their results back to the model, creating an autonomous reasoning loop.
+This block enables agentic behavior by letting an LLM decide which tools to use based on the prompt. It can execute connected tools and feed their results back to the model, creating autonomous reasoning loops.
 
-Set `agent_mode_max_iterations` to `0` for a single decision whose tool calls are executed through the workflow, `-1` for an unbounded built-in loop, or a positive number to cap the loop. The block outputs tool calls, conversation history, or a finished message. Extended-thinking mode delegates execution to the supported external Agent SDK instead of using the built-in iteration setting.
+In the default `built_in` execution mode, configure `agent_mode_max_iterations` to control loop behavior: `0` makes one decision and yields tool calls for external execution, `-1` loops until finished, and a positive number caps the iterations. The block outputs tool calls or a finished message. The `extended_thinking` mode manages its own loop and ignores this iteration setting.
 <!-- END MANUAL -->
 
 ### Inputs
