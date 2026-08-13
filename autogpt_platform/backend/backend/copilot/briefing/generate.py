@@ -25,6 +25,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
+from .narrative import compose_narrative
 from .outcome import DEFAULT_AGENT_NAME, compose_run_outcome, run_link
 from .render import render_briefing_markdown
 
@@ -226,13 +227,28 @@ async def _compose_fresh_briefing(
     }
     _merge_agent_info(agent_info, experts)
 
-    return compose_briefing(
+    content = compose_briefing(
         experts=experts,
         executions=executions,
         reviews=reviews,
         agent_info_by_graph_id=agent_info,
         generated_at=now_local,
         tz_name=tz_name,
+    )
+    if content is None:
+        return None
+    # Written here, once, rather than at render time: the thread post and the
+    # home card must show the same paragraph, and home must not pay for an LLM
+    # call on every poll. `None` on failure — the briefing ships either way.
+    #
+    # Gated at the point of generation, not just of display: the narrative is
+    # AI-written text derived from the run summaries `AI_ACTIVITY_STATUS`
+    # governs, so a flag-off user must neither be billed for it nor see it in
+    # the thread — home's `without_summaries` only covers the card.
+    if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+        return content
+    return content.model_copy(
+        update={"narrative": await compose_narrative(user_id, content, experts)}
     )
 
 

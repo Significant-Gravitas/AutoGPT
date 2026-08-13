@@ -15387,6 +15387,10 @@
             "minimum": 0.0,
             "title": "Failed Total",
             "default": 0
+          },
+          "narrative": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Narrative"
           }
         },
         "type": "object",
@@ -19162,6 +19166,10 @@
             "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
             "type": "array",
             "title": "Outcomes"
+          },
+          "narrative": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Narrative"
           },
           "source": {
             "type": "string",

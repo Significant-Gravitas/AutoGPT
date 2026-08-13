@@ -54,6 +54,10 @@ class HomeBriefing(BaseModel):
     failed_count: int
     routine_count: int
     outcomes: list[HomeBriefingOutcome]
+    # The AI-voice opening the copilot thread was posted with, read off the
+    # stored briefing. None on the live path (nothing was generated) and
+    # whenever the AI-summary flag is off.
+    narrative: str | None = None
     # "persisted": anchored on the morning `UserBriefing` the copilot thread was
     # posted from, plus any run that finished after it. "live": no usable row
     # for today, so the rolling 24h window was recomputed instead.

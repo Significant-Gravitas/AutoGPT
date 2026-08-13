@@ -1,12 +1,28 @@
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.briefing import generate as generate_module
 from backend.copilot.briefing.generate import AgentInfo, compose_briefing
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.util.feature_flag import Flag
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def stub_narrative(monkeypatch):
+    """Keep the delivery tests off the network.
+
+    Returns the mock so a test can assert on it or hand it a narrative; the
+    default (`None`) is the production fallback, so every other test here
+    exercises the template-only briefing it already asserted on.
+    """
+    mock = AsyncMock(return_value=None)
+    monkeypatch.setattr(generate_module, "compose_narrative", mock)
+    return mock
 
 
 def make_expert(id="exp-1", name="Ana", avatar="https://a/x.png", workflows=None):
@@ -872,3 +888,212 @@ async def test_generate_bounds_the_execution_query(monkeypatch):
     assert kwargs["limit"] == generate._EXECUTION_FETCH_LIMIT
     # Only the graphs actually referenced are resolved — no whole-library page.
     assert refs_lookup.await_args.args == ("user-1", ["g-1"])
+
+
+def _patch_fresh_compose_env(monkeypatch, generate, client):
+    """Delivery plumbing for a user with one expert, one run and no reviews."""
+    _patch_generate_env(monkeypatch, generate, client)
+    monkeypatch.setattr(
+        generate,
+        "experts_db",
+        lambda: MagicMock(list_experts=AsyncMock(return_value=[make_expert()])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "execution_db",
+        lambda: MagicMock(get_graph_executions=AsyncMock(return_value=[make_exec()])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "review_db",
+        lambda: MagicMock(get_pending_reviews_for_user=AsyncMock(return_value=[])),
+    )
+    monkeypatch.setattr(
+        generate,
+        "library_db",
+        lambda: MagicMock(
+            get_library_agent_refs_by_graph_ids=AsyncMock(return_value=[])
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_narrative_is_persisted_and_posted(monkeypatch, stub_narrative):
+    stub_narrative.return_value = "I checked your leads overnight."
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
+
+    await generate_module.generate_and_deliver_briefing("user-1")
+
+    stored = client.create_briefing.await_args.args[2]
+    assert stored["narrative"] == "I checked your leads overnight."
+    posted = client.append_plain_session_message.await_args.kwargs["content"]
+    assert "I checked your leads overnight." in posted
+
+
+@pytest.mark.asyncio
+async def test_narrative_failure_still_delivers_the_template_briefing(
+    monkeypatch, stub_narrative
+):
+    stub_narrative.return_value = None
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    assert client.create_briefing.await_args.args[2]["narrative"] is None
+    assert (
+        "**What ran**"
+        in client.append_plain_session_message.await_args.kwargs["content"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_narrative_is_not_regenerated_when_redelivering(
+    monkeypatch, stub_narrative
+):
+    """A stored row is reposted verbatim — no second LLM call, same paragraph."""
+    stored = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec()],
+        reviews=[],
+        agent_info_by_graph_id={},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert stored is not None
+    stored = stored.model_copy(update={"narrative": "Yesterday's paragraph."})
+    record = MagicMock(id="briefing-1", delivered_at=None)
+    record.content = stored.model_dump(mode="json")
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=record),
+        create_briefing=AsyncMock(),
+        update_briefing_content=AsyncMock(),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_generate_env(monkeypatch, generate_module, client)
+
+    await generate_module.generate_and_deliver_briefing("user-1")
+
+    stub_narrative.assert_not_awaited()
+    posted = client.append_plain_session_message.await_args.kwargs["content"]
+    assert "Yesterday's paragraph." in posted
+
+
+def test_narrative_renders_above_the_outcomes_and_stays_escaped():
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec()],
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+    content = content.model_copy(
+        update={"narrative": "I found [3 leads](/evil) — see *below*."}
+    )
+
+    markdown = render_briefing_markdown(content)
+
+    lines = markdown.splitlines()
+    assert lines[2] == "I found \\[3 leads\\]\\(/evil\\) — see \\*below\\*."
+    assert lines.index("**What ran**") > 2
+
+
+def test_briefing_without_a_narrative_renders_unchanged():
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec()],
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+    assert content.narrative is None
+    assert render_briefing_markdown(content).splitlines()[2] == "**What ran**"
+
+
+@pytest.mark.asyncio
+async def test_ai_summary_flag_off_skips_generation_entirely(
+    monkeypatch, stub_narrative
+):
+    """The gate is on generation, not just on display.
+
+    Home's `without_summaries` hides the lede from the card, but the thread
+    post reads the same stored row — so a flag-off user must never be billed
+    for a narrative, nor have one posted to them.
+    """
+    stub_narrative.return_value = "Should never be written."
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
+    monkeypatch.setattr(
+        generate_module,
+        "is_feature_enabled",
+        AsyncMock(side_effect=lambda flag, *a, **k: flag is Flag.HIRE_EXPERTS),
+    )
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    stub_narrative.assert_not_awaited()
+    assert client.create_briefing.await_args.args[2]["narrative"] is None
+    posted = client.append_plain_session_message.await_args.kwargs["content"]
+    assert "Should never be written." not in posted
+    assert "**What ran**" in posted
+
+
+@pytest.mark.parametrize(
+    "narrative",
+    [
+        "# Urgent — act now",
+        "- Approve the invoice",
+        "--- and then some prose",
+        "1. Do this first",
+        "| col | col |",
+        # `>` is escaped one layer earlier, by `_md`'s inline metacharacter
+        # pass rather than by the block-prefix pass. Pinned here so dropping it
+        # from `_MARKDOWN_META_RE` can't silently open a blockquote.
+        "> Quoted as if the platform said it",
+    ],
+)
+def test_narrative_cannot_forge_briefing_structure(narrative):
+    """The lede is a whole line, so leading block syntax has to be escaped.
+
+    `_md` is sized for inline interpolation and leaves `#` / `-` / `|` alone;
+    unescaped, model output could render as a heading, list, or rule and
+    impersonate the briefing's own sections.
+    """
+    content = compose_briefing(
+        experts=[make_expert()],
+        executions=[make_exec()],
+        reviews=[],
+        agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
+        generated_at=NOW,
+        tz_name="UTC",
+    )
+    assert content is not None
+
+    line = render_briefing_markdown(
+        content.model_copy(update={"narrative": narrative})
+    ).splitlines()[2]
+
+    assert line.startswith("\\")
