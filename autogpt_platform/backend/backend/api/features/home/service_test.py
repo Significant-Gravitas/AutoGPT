@@ -148,6 +148,26 @@ async def test_briefing_anchors_on_todays_persisted_row(
 
 
 @pytest.mark.asyncio
+async def test_briefing_rejects_a_row_with_negative_totals(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """The counts drive what the card claims happened, and a stored row is
+    otherwise taken as canonical — a negative total is a corrupt row, so it
+    has to fail validation and drop home onto the live path."""
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    corrupt = _stored_briefing().model_dump(mode="json") | {"completed_total": -3}
+    _patch_stored_briefing(mocker, corrupt)
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert dashboard.briefing.source == "live"
+    assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+@pytest.mark.asyncio
 async def test_briefing_anchors_on_a_row_the_job_could_not_deliver(
     mocker: MockerFixture, home_dependencies
 ) -> None:

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class BriefingRunItem(BaseModel):
@@ -42,14 +42,14 @@ class BriefingContent(BaseModel):
     zero_expert_fallback: bool
     run_items: list[BriefingRunItem]
     decision_items: list[BriefingDecisionItem]
-    # How many decisions were pending in total, before the list above was
-    # capped. Defaults to 0 so briefings stored before this field existed
-    # still validate; the renderer treats "<= len(decision_items)" as
-    # "nothing was truncated".
-    decision_total: int = 0
-    # Same idea for runs: how many terminal runs the briefing covered before
-    # `run_items` was capped, split by outcome because home reports the two
-    # counts separately. Defaults to 0, so a consumer reads them as
-    # "at least this many" against `len(run_items)`.
-    completed_total: int = 0
-    failed_total: int = 0
+    # Pre-cap totals. Each list above is truncated for rendering, so these are
+    # what a consumer counts from; they default to 0 both so rows stored before
+    # the field existed still validate and so "<= len(<list>)" reads as
+    # "nothing was truncated". `ge=0` because a stored row is treated as
+    # canonical — a negative count is a corrupt row, and failing validation
+    # sends both readers down their existing recompute path rather than
+    # letting it reach the card.
+    decision_total: int = Field(default=0, ge=0)
+    # Split by outcome because home reports completed and failed separately.
+    completed_total: int = Field(default=0, ge=0)
+    failed_total: int = Field(default=0, ge=0)

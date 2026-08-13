@@ -15372,16 +15372,19 @@
           },
           "decision_total": {
             "type": "integer",
+            "minimum": 0.0,
             "title": "Decision Total",
             "default": 0
           },
           "completed_total": {
             "type": "integer",
+            "minimum": 0.0,
             "title": "Completed Total",
             "default": 0
           },
           "failed_total": {
             "type": "integer",
+            "minimum": 0.0,
             "title": "Failed Total",
             "default": 0
           }
