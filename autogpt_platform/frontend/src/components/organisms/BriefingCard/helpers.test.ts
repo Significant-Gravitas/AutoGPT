@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatBriefingDate, isInternalLink } from "./helpers";
+import type { BriefingRunItem } from "@/app/api/__generated__/models/briefingRunItem";
+import {
+  formatBriefingDate,
+  getSafeLink,
+  getSubtitleParts,
+  isInternalLink,
+} from "./helpers";
 
 describe("formatBriefingDate", () => {
   afterEach(() => {
@@ -42,4 +48,61 @@ describe("isInternalLink", () => {
       expect(isInternalLink(link)).toBe(false);
     },
   );
+});
+
+describe("getSafeLink", () => {
+  it("passes an app-relative path through", () => {
+    expect(getSafeLink("/library/agents/lib-1")).toBe("/library/agents/lib-1");
+  });
+
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+    ["empty", ""],
+    ["absolute", "https://evil.example"],
+    ["protocol-relative", "//evil.example"],
+    ["javascript", "javascript:alert(1)"],
+  ])("returns null for %s", (_label, link) => {
+    expect(getSafeLink(link)).toBeNull();
+  });
+});
+
+describe("getSubtitleParts", () => {
+  function makeItem(overrides: Partial<BriefingRunItem>): BriefingRunItem {
+    return {
+      expert_id: "exp-1",
+      expert_name: "Ana",
+      expert_avatar_url: null,
+      agent_name: "Lead Finder",
+      graph_id: "g-1",
+      execution_id: "run-1",
+      library_agent_id: "lib-1",
+      status: "COMPLETED",
+      summary: null,
+      link: null,
+      ...overrides,
+    };
+  }
+
+  it("attributes a summary to its expert", () => {
+    expect(getSubtitleParts(makeItem({ summary: "Found 3 leads" }))).toEqual({
+      attribution: "Ana",
+      text: "Found 3 leads",
+    });
+  });
+
+  it("uses the expert as the subtitle rather than a prefix to itself", () => {
+    expect(getSubtitleParts(makeItem({ summary: null }))).toEqual({
+      attribution: null,
+      text: "Ana",
+    });
+  });
+
+  it("drops attribution when the run has no expert", () => {
+    expect(
+      getSubtitleParts(
+        makeItem({ summary: "Found 3 leads", expert_name: null }),
+      ),
+    ).toEqual({ attribution: null, text: "Found 3 leads" });
+  });
 });

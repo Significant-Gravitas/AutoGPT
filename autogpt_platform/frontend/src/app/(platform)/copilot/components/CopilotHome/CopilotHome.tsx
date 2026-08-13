@@ -14,13 +14,8 @@ interface Props {
 // state keeps its onboarding surface (welcome dialog, greeting flow,
 // suggestion themes) and the composer's recipient picker.
 export function CopilotHome({ fallback }: Props) {
-  const {
-    briefing,
-    isLoadingBriefing,
-    isBriefingError,
-    refetchBriefing,
-    hasBriefing,
-  } = useCopilotHome();
+  const { briefing, isLoadingBriefing, isBriefingError, refetchBriefing } =
+    useCopilotHome();
 
   // Nothing renders until load settles so the fallback doesn't flash for
   // users who do have a briefing. A failed fetch shows the error card so it
@@ -37,7 +32,7 @@ export function CopilotHome({ fallback }: Props) {
     );
   }
 
-  if (!hasBriefing || !briefing) return <>{fallback}</>;
+  if (!briefing) return <>{fallback}</>;
 
   return <BriefingCard briefing={briefing} />;
 }

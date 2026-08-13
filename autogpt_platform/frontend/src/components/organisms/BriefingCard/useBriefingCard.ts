@@ -1,24 +1,18 @@
 "use client";
 
 import { useReducedMotion } from "framer-motion";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getScrollEdges, measureListHeight } from "./helpers";
+import { useEffect, useRef, useState } from "react";
+import { useCardLayout } from "./useCardLayout";
 
-// The card animates its real height rather than a `layout` transform: a
-// transform-based resize scales the rows' text while it runs and leaves the
-// rest of the page unaware that anything moved. Measuring gives framer a
-// number to tween, so the column below reflows in step.
-// `rowsKey` identifies the rendered rows. The briefing query refetches on
-// focus and reconnect, and a refetch that swaps the run list leaves the
-// observer bound to detached rows — the card would keep the height it
-// measured for the old ones until the reader toggled it.
 export function useBriefingCard(rowsKey: string) {
   const listRef = useRef<HTMLUListElement>(null);
   const [isShowingAll, setIsShowingAll] = useState(false);
-  const [height, setHeight] = useState<number | null>(null);
-  const [canScrollUp, setCanScrollUp] = useState(false);
-  const [canScrollDown, setCanScrollDown] = useState(false);
   const shouldReduceMotion = useReducedMotion();
+  const { height, canScrollUp, canScrollDown } = useCardLayout(
+    listRef,
+    isShowingAll,
+    rowsKey,
+  );
 
   // The first measurement necessarily lands one commit after mount, when the
   // card is still at its natural full height. Tweening that commit would play
@@ -27,37 +21,6 @@ export function useBriefingCard(rowsKey: string) {
   useEffect(() => {
     hasPaintedRef.current = true;
   }, []);
-
-  // Layout effect, not effect: measuring after paint lets the browser show
-  // the card at full height for a frame before it collapses.
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-
-    function update() {
-      if (!list) return;
-      const measured = measureListHeight(list, isShowingAll);
-      if (measured === null) return;
-      setHeight(measured);
-
-      const edges = getScrollEdges(list);
-      setCanScrollUp(isShowingAll && edges.canScrollUp);
-      setCanScrollDown(isShowingAll && edges.canScrollDown);
-    }
-
-    update();
-    list.addEventListener("scroll", update, { passive: true });
-    // Avatars and wrapped summaries settle after the first paint, which
-    // changes the height the card should animate to.
-    const observer = new ResizeObserver(update);
-    observer.observe(list);
-    for (const row of Array.from(list.children)) observer.observe(row);
-
-    return () => {
-      list.removeEventListener("scroll", update);
-      observer.disconnect();
-    };
-  }, [isShowingAll, rowsKey]);
 
   function scrollByStep(direction: 1 | -1) {
     const list = listRef.current;

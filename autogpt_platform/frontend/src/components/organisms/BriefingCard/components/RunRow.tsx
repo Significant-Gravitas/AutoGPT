@@ -5,18 +5,18 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import { getSafeLink } from "../helpers";
+import { getSafeLink, getSubtitleParts } from "../helpers";
 
 interface Props {
   item: BriefingRunItem;
   isHidden?: boolean;
 }
 
-// One row per run: the summary doubles as the row's subtitle, so what ran and
-// what it found read as a single line instead of two mirrored lists.
+// One row per run: the summary doubles as the row's subtitle, so the agent
+// name and its finding read as a single line.
 export function RunRow({ item, isHidden = false }: Props) {
   const isFailed = item.status !== "COMPLETED";
-  const subtitle = item.summary ?? item.expert_name;
+  const { attribution, text } = getSubtitleParts(item);
   const link = getSafeLink(item.link);
 
   const body = (
@@ -43,7 +43,7 @@ export function RunRow({ item, isHidden = false }: Props) {
             </span>
           ) : null}
         </div>
-        {subtitle ? (
+        {text ? (
           <Text
             variant="body"
             unmask={false}
@@ -51,10 +51,10 @@ export function RunRow({ item, isHidden = false }: Props) {
           >
             {/* Attribution matters once more than one agent reports:
                 mirrors the thread markdown's "**{agent}**: {summary}". */}
-            {item.summary && item.expert_name ? (
-              <span className="text-zinc-400">{item.expert_name} · </span>
+            {attribution ? (
+              <span className="text-zinc-400">{attribution} · </span>
             ) : null}
-            {subtitle}
+            {text}
           </Text>
         ) : null}
       </div>

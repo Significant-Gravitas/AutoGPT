@@ -51,9 +51,11 @@ export function BriefingCard({ briefing, className }: Props) {
         <Text variant="body" className="text-zinc-700">
           Recap
         </Text>
+        {/* Both stops stay at or below purple-600 so the lightest painted
+            pixel still clears WCAG AA (4.5:1) against the white card. */}
         <Text
           variant="body"
-          className="bg-gradient-to-r from-purple-500 to-purple-300 bg-clip-text text-transparent"
+          className="bg-gradient-to-r from-purple-800 to-purple-600 bg-clip-text text-transparent"
         >
           {formatBriefingDate(briefing.briefing_date)}
         </Text>

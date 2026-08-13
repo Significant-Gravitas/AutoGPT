@@ -84,6 +84,39 @@ test("masks agent names and run summaries from session replays", () => {
   ).toBe(false);
 });
 
+test("badges a run that did not complete, and only that run", () => {
+  render(
+    <BriefingCard
+      briefing={makeBriefing([
+        makeItem(0),
+        { ...makeItem(1), status: "FAILED" },
+      ])}
+    />,
+  );
+
+  const failedRow = screen.getByText("Agent 1").closest("li");
+  expect(failedRow?.textContent).toContain("Failed");
+  expect(screen.getByText("Agent 0").closest("li")?.textContent).not.toContain(
+    "Failed",
+  );
+});
+
+test("jumps back to the top when the list collapses", async () => {
+  const { container } = render(
+    <BriefingCard briefing={makeBriefing([0, 1, 2, 3].map(makeItem))} />,
+  );
+  const list = container.querySelector("ul") as HTMLUListElement;
+  const scrollTo = vi.fn();
+  list.scrollTo = scrollTo;
+
+  const toggle = screen.getByRole("button", { name: /Show all results/ });
+  await userEvent.click(toggle);
+  expect(scrollTo).not.toHaveBeenCalled();
+
+  await userEvent.click(screen.getByRole("button", { name: /Show less/ }));
+  expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
+});
+
 test("re-observes the rows when the briefing refetches a different run list", () => {
   const { rerender } = render(
     <BriefingCard briefing={makeBriefing([0, 1].map(makeItem))} />,

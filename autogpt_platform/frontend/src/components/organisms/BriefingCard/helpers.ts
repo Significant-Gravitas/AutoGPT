@@ -1,4 +1,5 @@
 import { format, isToday, parseISO } from "date-fns";
+import type { BriefingRunItem } from "@/app/api/__generated__/models/briefingRunItem";
 
 export const COLLAPSED_ROWS = 3;
 
@@ -52,4 +53,12 @@ export function isInternalLink(link: string): boolean {
 // Next.js <Link>.
 export function getSafeLink(link: string | null | undefined): string | null {
   return link && isInternalLink(link) ? link : null;
+}
+
+// Attribution only earns its space when it sits in front of something else:
+// with a summary the row reads "Ana · Found 3 leads", and without one the
+// expert's name is the whole subtitle rather than a prefix to itself.
+export function getSubtitleParts(item: BriefingRunItem) {
+  if (!item.summary) return { attribution: null, text: item.expert_name };
+  return { attribution: item.expert_name, text: item.summary };
 }
