@@ -361,6 +361,46 @@ def test_persisted_briefing_prefers_the_live_expert_record() -> None:
     assert (expert.id, expert.name, expert.role) == ("expert-1", "Ana", "Researcher")
 
 
+def test_persisted_briefing_drops_attribution_without_a_stored_name() -> None:
+    """An id with nothing to render beside it is not an attribution — the card
+    would otherwise show an expert row with a blank name."""
+    nameless = _stored_item("stored-run").model_copy(update={"expert_name": None})
+
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+        persisted=_stored(nameless),
+    )
+
+    assert briefing.outcomes[0].expert is None
+
+
+def test_persisted_failures_keep_their_order_ahead_of_later_ones() -> None:
+    """Both halves are failures, so the status key can't separate them: the
+    stable sort is what keeps the briefing's own story first."""
+    briefing = compose_briefing(
+        now=NOW + timedelta(hours=2),
+        executions=[
+            _execution(
+                exec_id="broke-later",
+                status=ExecutionStatus.FAILED,
+                ended_at=NOW + timedelta(hours=1),
+            )
+        ],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+        persisted=_stored(_stored_item("broke-overnight", status="FAILED")),
+    )
+
+    assert [outcome.id for outcome in briefing.outcomes] == [
+        "broke-overnight",
+        "broke-later",
+    ]
+    assert briefing.failed_count == 2
+
+
 def test_persisted_briefing_keeps_stored_attribution_for_an_unknown_expert() -> None:
     """An expert archived since this morning still owns the run it produced."""
     briefing = compose_briefing(

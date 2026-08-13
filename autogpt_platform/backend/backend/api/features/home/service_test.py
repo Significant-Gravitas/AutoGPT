@@ -216,6 +216,27 @@ async def test_briefing_falls_back_to_live_when_the_stored_row_is_malformed(
 
 
 @pytest.mark.asyncio
+async def test_briefing_falls_back_to_live_when_the_lookup_raises(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """A briefing the page cannot read is not worth a 500 — /home is the
+    landing page, and every other tile on it is still fine."""
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.briefing_db.get_briefing_for_date",
+        AsyncMock(side_effect=Exception("database is down")),
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert dashboard.briefing.source == "live"
+    assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+@pytest.mark.asyncio
 async def test_briefing_is_live_when_no_row_exists_yet(
     mocker: MockerFixture, home_dependencies
 ) -> None:
@@ -282,6 +303,10 @@ async def test_persisted_summaries_are_scrubbed_when_the_activity_flag_is_off(
     assert dashboard.briefing.source == "persisted"
     assert dashboard.briefing.outcomes[0].title == "Inbox triage finished"
     assert dashboard.briefing.outcomes[0].summary == "Completed successfully."
+    # The hybrid response also appends the live run; a one-sided scrub that
+    # covered only the stored half would still leak through that one.
+    assert dashboard.briefing.outcomes[1].title == "Agent task finished"
+    assert dashboard.briefing.outcomes[1].summary == "Completed successfully."
 
 
 @pytest.mark.asyncio

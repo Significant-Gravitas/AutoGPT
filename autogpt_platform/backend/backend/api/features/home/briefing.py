@@ -173,6 +173,10 @@ def _outcome(
     item: BriefingRunItem, expert_by_id: dict[str, Expert]
 ) -> HomeBriefingOutcome:
     failed = item.status == "FAILED"
+    # `error=None` because there is no error left to pass: the shared composer
+    # already resolved it into `item.detail`. These fallbacks only cover an
+    # item whose text fields are empty (a row older than them, or one the
+    # activity gate scrubbed).
     fallback_title, fallback_detail = outcome_fallbacks(
         item.agent_name, failed=failed, error=None
     )

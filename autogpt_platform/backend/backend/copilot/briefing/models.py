@@ -15,9 +15,9 @@ class BriefingRunItem(BaseModel):
     # Raw `stats.activity_status`, kept verbatim for the markdown renderer.
     summary: str | None
     link: str | None
-    # Card fields the home dashboard reads off a stored briefing. All default
-    # so rows written before the composer was unified still validate — the
-    # home mapper falls back to the agent-name headline when `title` is empty.
+    # Card fields the home dashboard reads off a stored briefing. All default,
+    # so a stored row that predates them still validates — the home mapper
+    # falls back to the agent-name headline when `title` is empty.
     expert_role: str | None = None
     title: str = ""
     detail: str = ""

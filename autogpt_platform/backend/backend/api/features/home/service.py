@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 _EXECUTION_LIMIT = 300
 _REVIEW_LIMIT = 100
+# Enough of a user id to correlate log lines for one user without writing the
+# whole identifier into logs that are retained and widely readable.
+_LOG_ID_CHARS = 12
 
 
 class HomeSourceData(BaseModel):
@@ -113,7 +116,9 @@ async def _persisted_briefing(
     try:
         record = await briefing_db.get_briefing_for_date(user_id, briefing_date)
     except Exception:
-        logger.warning("Home could not load the briefing for user %s", user_id[:12])
+        logger.warning(
+            "Home could not load the briefing for user %s", user_id[:_LOG_ID_CHARS]
+        )
         return None
     if record is None:
         return None
@@ -194,7 +199,9 @@ async def _get_schedules(
     try:
         return await get_scheduler_client().get_execution_schedules(user_id=user_id)
     except Exception:
-        logger.warning("Home could not load schedules for user %s", user_id[:12])
+        logger.warning(
+            "Home could not load schedules for user %s", user_id[:_LOG_ID_CHARS]
+        )
         return []
 
 
@@ -203,5 +210,7 @@ async def _get_credits(*, user_id: str, organization_id: str | None) -> int | No
         model = await get_credit_model(user_id, organization_id)
         return await model.get_credits(user_id, organization_id)
     except Exception:
-        logger.warning("Home could not load credits for user %s", user_id[:12])
+        logger.warning(
+            "Home could not load credits for user %s", user_id[:_LOG_ID_CHARS]
+        )
         return None

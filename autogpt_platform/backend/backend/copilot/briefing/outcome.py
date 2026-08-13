@@ -29,7 +29,12 @@ def compose_run_outcome(
     library_agent_id: str | None,
     expert: Expert | None,
 ) -> BriefingRunItem:
-    """Describe one terminal execution as a briefing item."""
+    """Describe one terminal execution as a briefing item.
+
+    `execution` must have reached COMPLETED or FAILED: anything that is not
+    FAILED is described as a success, so a still-running execution would be
+    reported as finished. Both callers filter to terminal statuses first.
+    """
     failed = execution.status == ExecutionStatus.FAILED
     stats = execution.stats
     raw_summary = stats.activity_status if stats else None
