@@ -7,6 +7,7 @@ export interface ExpertIdentity {
   name: string;
   avatarUrl: string | null;
   role: string | null;
+  isArchived: boolean;
 }
 
 export type ExpertIdentityMap = Map<string, ExpertIdentity>;
@@ -37,6 +38,7 @@ export function useExpertMap() {
           name: expert.name,
           avatarUrl: expert.avatar_url ?? null,
           role: expert.role ?? null,
+          isArchived: expert.is_archived,
         },
       ]),
     );

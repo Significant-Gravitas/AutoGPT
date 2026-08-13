@@ -122,4 +122,18 @@ describe("Marketplace ExpertsSection", () => {
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(await screen.findByText("Hired")).toBeDefined();
   });
+
+  test("template becomes hireable again once the expert is fired", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([{ ...hiredMaria, is_archived: true }]),
+    );
+
+    renderMarketplace();
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    await screen.findByText("Maria");
+    expect(screen.getByText("Hire")).toBeDefined();
+    expect(screen.queryByText("Hired")).toBeNull();
+  });
 });

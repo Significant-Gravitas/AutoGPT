@@ -18,6 +18,7 @@ import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/Usag
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
@@ -126,6 +127,9 @@ export const ChatContainer = ({
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
   const isInputDisabled = isSessionUnavailable || isLimitReached;
+  // A fired (archived) expert's threads stay as read-only history — the
+  // composer is replaced by a quiet notice so no new turns can be sent.
+  const isExpertArchived = Boolean(expertIdentity?.isArchived);
   const inputLayoutId = "copilot-2-chat-input";
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
@@ -189,63 +193,69 @@ export const ChatContainer = ({
                 bottomContentPadding={usageCardHeight}
                 expertIdentity={expertIdentity}
               />
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
-                className="relative px-3 pb-6 pt-2"
-              >
-                {isLimitReached && (
-                  <div
-                    ref={usageCardRef}
-                    className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
-                  >
+              {isExpertArchived ? (
+                <ArchivedExpertNotice
+                  expertName={expertIdentity?.name ?? "This expert"}
+                />
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                  className="relative px-3 pb-6 pt-2"
+                >
+                  {isLimitReached && (
                     <div
-                      aria-hidden="true"
-                      data-testid="usage-limit-backdrop"
-                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                      ref={usageCardRef}
+                      className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
                     >
-                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
-                      <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
+                      <div
+                        aria-hidden="true"
+                        data-testid="usage-limit-backdrop"
+                        className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                      >
+                        <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
+                        <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
+                      </div>
+                      <div className="pointer-events-auto relative px-3">
+                        <UsageLimitReachedCard />
+                      </div>
                     </div>
-                    <div className="pointer-events-auto relative px-3">
-                      <UsageLimitReachedCard />
-                    </div>
-                  </div>
-                )}
-                <SharedChatNotice sessionId={sessionId} />
-                {isTaskBarEnabled && (
-                  <div className="relative z-10">
-                    <TaskProgressBar
-                      todos={getLatestTaskList(messages) ?? []}
-                      isStreaming={isStreaming}
-                    />
-                  </div>
-                )}
-                <Tooltip open={isLimitReached ? undefined : false}>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <ChatInput
-                        inputId="chat-input-session"
-                        onSend={onSend}
-                        disabled={isInputDisabled}
+                  )}
+                  <SharedChatNotice sessionId={sessionId} />
+                  {isTaskBarEnabled && (
+                    <div className="relative z-10">
+                      <TaskProgressBar
+                        todos={getLatestTaskList(messages) ?? []}
                         isStreaming={isStreaming}
-                        isUploadingFiles={isUploadingFiles}
-                        onStop={onStop}
-                        onEnqueue={onEnqueue}
-                        placeholder="What else can I help with?"
-                        droppedFiles={droppedFiles}
-                        onDroppedFilesConsumed={onDroppedFilesConsumed}
-                        hasSession={!!sessionId}
                       />
                     </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-sm">
-                    You&apos;ve reached your usage limit. Wait for it to refresh
-                    or upgrade your plan to continue sending messages.
-                  </TooltipContent>
-                </Tooltip>
-              </motion.div>
+                  )}
+                  <Tooltip open={isLimitReached ? undefined : false}>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <ChatInput
+                          inputId="chat-input-session"
+                          onSend={onSend}
+                          disabled={isInputDisabled}
+                          isStreaming={isStreaming}
+                          isUploadingFiles={isUploadingFiles}
+                          onStop={onStop}
+                          onEnqueue={onEnqueue}
+                          placeholder="What else can I help with?"
+                          droppedFiles={droppedFiles}
+                          onDroppedFilesConsumed={onDroppedFilesConsumed}
+                          hasSession={!!sessionId}
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-sm">
+                      You&apos;ve reached your usage limit. Wait for it to
+                      refresh or upgrade your plan to continue sending messages.
+                    </TooltipContent>
+                  </Tooltip>
+                </motion.div>
+              )}
             </div>
           ) : (
             <EmptySession

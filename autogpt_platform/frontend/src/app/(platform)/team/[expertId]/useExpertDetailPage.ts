@@ -33,6 +33,8 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     ? getExpertSchedules(expert, schedulesQuery.data ?? [])
     : [];
 
+  const [isFireOpen, setIsFireOpen] = useState(false);
+
   const { mutate: resumeSchedules, isPending: isResuming } =
     useResumeExpertSchedules({
       mutation: {
@@ -69,5 +71,8 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     closePicker: () => setIsPickerOpen(false),
     resumeSchedules: () => resumeSchedules({ expertId }),
     isResuming,
+    isFireOpen,
+    openFire: () => setIsFireOpen(true),
+    closeFire: () => setIsFireOpen(false),
   };
 }

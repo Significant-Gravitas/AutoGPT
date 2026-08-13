@@ -1,4 +1,6 @@
 import {
+  getArchiveExpertMockHandler,
+  getGetExpertDetachPreviewMockHandler,
   getGetExpertMockHandler,
   getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
@@ -37,10 +39,13 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-const notFoundMock = vi.hoisted(() => vi.fn());
+const { notFoundMock, pushMock } = vi.hoisted(() => ({
+  notFoundMock: vi.fn(),
+  pushMock: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: pushMock,
     replace: vi.fn(),
     prefetch: vi.fn(),
     back: vi.fn(),
@@ -120,6 +125,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+  pushMock.mockReset();
 });
 
 describe("ExpertDetailPage", () => {
@@ -189,5 +195,36 @@ describe("ExpertDetailPage", () => {
     await screen.findByText(/Schedules paused/);
     fireEvent.click(screen.getByRole("button", { name: "Resume schedules" }));
     await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
+  });
+
+  test("fires the expert from the header menu and returns to the team page", async () => {
+    const archiveSpy = vi.fn();
+    server.use(
+      getGetExpertDetachPreviewMockHandler({
+        schedule_names: ["Content Calendar"],
+        trigger_names: [],
+      }),
+      getArchiveExpertMockHandler(archiveSpy),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    fireEvent.pointerDown(screen.getByTestId("expert-detail-actions"), {
+      button: 0,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Fire Maria/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
+    expect(
+      await within(dialog).findByText("1 scheduled run will pause."),
+    ).toBeDefined();
+
+    fireEvent.click(await screen.findByTestId("fire-expert-confirm"));
+
+    await waitFor(() => expect(archiveSpy).toHaveBeenCalled());
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/team"));
   });
 });

@@ -634,6 +634,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     name: "Maria",
     avatarUrl: mariaExpert.avatar_url,
     role: mariaExpert.role,
+    isArchived: false,
   };
 
   it("shows the expert name and avatar in the thread header only", () => {

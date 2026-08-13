@@ -21,6 +21,7 @@ export function useExpertsSection() {
 
   const hiredTemplateIds = new Set(
     (expertsQuery.data ?? [])
+      .filter((expert) => !expert.is_archived)
       .map((expert) => expert.source_template_id)
       .filter((id): id is string => Boolean(id)),
   );
