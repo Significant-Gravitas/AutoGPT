@@ -154,8 +154,6 @@ def _compiled_validator(schema: dict[str, Any]):
     this function returns embed a repr of the failing sub-schema, so reordering
     keys would change them.
 
-    A `SchemaError` outcome is cached too, so a malformed schema keeps raising
-    rather than being silently accepted on the second call.
     """
     try:
         key = orjson.dumps(schema)
@@ -168,8 +166,6 @@ def _compiled_validator(schema: dict[str, Any]):
     with _VALIDATOR_CACHE_LOCK:
         cached = _VALIDATOR_CACHE.get(key)
     if cached is not None:
-        if isinstance(cached, jsonschema.SchemaError):
-            raise cached
         return cached
 
     # Compile against a private copy: a jsonschema validator memoises the
@@ -178,20 +174,8 @@ def _compiled_validator(schema: dict[str, Any]):
     # order, which the error messages depend on.
     schema_copy = deepcopy(schema)
     validator_cls = jsonschema.validators.validator_for(schema_copy)
-    try:
-        validator_cls.check_schema(schema_copy)
-    except jsonschema.SchemaError as e:
-        cached = _remember(key, e)
-        if cached is e:
-            raise
-        if isinstance(cached, jsonschema.SchemaError):
-            raise cached
-        return cached
-
-    cached = _remember(key, validator_cls(schema_copy))
-    if isinstance(cached, jsonschema.SchemaError):
-        raise cached
-    return cached
+    validator_cls.check_schema(schema_copy)
+    return _remember(key, validator_cls(schema_copy))
 
 
 def _remember(key: bytes, value: Any) -> Any:

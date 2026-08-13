@@ -822,9 +822,26 @@ class TestValidateWithJsonschema:
             "properties": {"a": {"type": "string"}},
             "required": ["a", "a"],
         }
+        json_util._VALIDATOR_CACHE.clear()
+        errors: list[jsonschema.SchemaError] = []
         for _ in range(3):
-            with pytest.raises(jsonschema.SchemaError):
+            with pytest.raises(jsonschema.SchemaError) as exc_info:
                 validate_with_jsonschema(malformed, {"a": "x"})
+            errors.append(exc_info.value)
+
+        def traceback_depth(error: BaseException) -> int:
+            depth = 0
+            traceback = error.__traceback__
+            while traceback is not None:
+                depth += 1
+                traceback = traceback.tb_next
+            return depth
+
+        # Re-raising one cached exception grows its retained traceback on every
+        # call. Keep malformed schemas uncached so each failure remains fresh.
+        assert len({id(error) for error in errors}) == len(errors)
+        assert len({traceback_depth(error) for error in errors}) == 1
+        assert not json_util._VALIDATOR_CACHE
 
     def test_schema_mutated_in_place_is_not_stale(self):
         """Mutating a schema between calls must change the verdict."""
