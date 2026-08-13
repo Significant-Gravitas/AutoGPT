@@ -16148,6 +16148,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
