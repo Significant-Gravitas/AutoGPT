@@ -9,11 +9,12 @@ import { getSafeLink } from "../helpers";
 
 interface Props {
   item: BriefingRunItem;
+  isHidden?: boolean;
 }
 
 // One row per run: the summary doubles as the row's subtitle, so what ran and
 // what it found read as a single line instead of two mirrored lists.
-export function RunRow({ item }: Props) {
+export function RunRow({ item, isHidden = false }: Props) {
   const isFailed = item.status !== "COMPLETED";
   const subtitle = item.summary ?? item.expert_name;
   const link = getSafeLink(item.link);
@@ -27,7 +28,13 @@ export function RunRow({ item }: Props) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" className="truncate text-zinc-900">
+          {/* Agent names and run summaries are user data: leave them masked in
+              session replays rather than taking Text's static-copy default. */}
+          <Text
+            variant="body-medium"
+            unmask={false}
+            className="truncate text-zinc-900"
+          >
             {item.agent_name}
           </Text>
           {isFailed ? (
@@ -37,7 +44,11 @@ export function RunRow({ item }: Props) {
           ) : null}
         </div>
         {subtitle ? (
-          <Text variant="body" className="line-clamp-2 text-zinc-500">
+          <Text
+            variant="body"
+            unmask={false}
+            className="line-clamp-2 text-zinc-500"
+          >
             {/* Attribution matters once more than one agent reports:
                 mirrors the thread markdown's "**{agent}**: {summary}". */}
             {item.summary && item.expert_name ? (
@@ -59,11 +70,15 @@ export function RunRow({ item }: Props) {
 
   const rowClassName = "group flex items-start gap-3 px-5 py-4";
 
+  // Collapsed rows stay mounted and are clipped by the list's overflow, so
+  // without this they keep their place in the tab order and focus lands on
+  // rows the reader cannot see.
   return (
-    <li>
+    <li aria-hidden={isHidden || undefined}>
       {link ? (
         <Link
           href={link}
+          tabIndex={isHidden ? -1 : undefined}
           className={cn(rowClassName, "transition-colors hover:bg-zinc-50")}
         >
           {body}

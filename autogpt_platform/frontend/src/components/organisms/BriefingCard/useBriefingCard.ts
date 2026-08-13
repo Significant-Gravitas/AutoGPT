@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export const COLLAPSED_ROWS = 3;
 
@@ -16,14 +17,29 @@ const EDGE_TOLERANCE = 2;
 // transform-based resize scales the rows' text while it runs and leaves the
 // rest of the page unaware that anything moved. Measuring gives framer a
 // number to tween, so the column below reflows in step.
-export function useBriefingCard() {
+// `rowsKey` identifies the rendered rows. The briefing query refetches on
+// focus and reconnect, and a refetch that swaps the run list leaves the
+// observer bound to detached rows — the card would keep the height it
+// measured for the old ones until the reader toggled it.
+export function useBriefingCard(rowsKey: string) {
   const listRef = useRef<HTMLUListElement>(null);
   const [isShowingAll, setIsShowingAll] = useState(false);
   const [height, setHeight] = useState<number | null>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
+  // The first measurement necessarily lands one commit after mount, when the
+  // card is still at its natural full height. Tweening that commit would play
+  // a shrink-to-three-rows animation on every mount, so it snaps instead.
+  const hasPaintedRef = useRef(false);
   useEffect(() => {
+    hasPaintedRef.current = true;
+  }, []);
+
+  // Layout effect, not effect: measuring after paint lets the browser show
+  // the card at full height for a frame before it collapses.
+  useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
 
@@ -61,7 +77,7 @@ export function useBriefingCard() {
       list.removeEventListener("scroll", update);
       observer.disconnect();
     };
-  }, [isShowingAll]);
+  }, [isShowingAll, rowsKey]);
 
   function scrollByStep(direction: 1 | -1) {
     const list = listRef.current;
@@ -82,9 +98,15 @@ export function useBriefingCard() {
     setIsShowingAll(!isShowingAll);
   }
 
+  const heightTransition =
+    shouldReduceMotion || !hasPaintedRef.current
+      ? { duration: 0 }
+      : { duration: 0.32, ease: [0.32, 0.72, 0, 1] as const };
+
   return {
     listRef,
     height,
+    heightTransition,
     isShowingAll,
     toggleShowAll,
     canScrollUp,

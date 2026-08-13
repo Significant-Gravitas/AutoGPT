@@ -25,17 +25,17 @@ interface Props {
 // needs-attention list on the home page. They stay in the thread markdown,
 // where there is no such list.
 export function BriefingCard({ briefing, className }: Props) {
+  const { run_items } = briefing.content;
   const {
     listRef,
     height,
+    heightTransition,
     isShowingAll,
     toggleShowAll,
     canScrollUp,
     canScrollDown,
     scrollByStep,
-  } = useBriefingCard();
-  const shouldReduceMotion = useReducedMotion();
-  const { run_items } = briefing.content;
+  } = useBriefingCard(run_items.map((item) => item.execution_id).join("|"));
 
   // A briefing can be all decisions and no terminal runs (a run paused on an
   // approval never completes), which would render as a card containing just
@@ -43,9 +43,6 @@ export function BriefingCard({ briefing, className }: Props) {
   if (run_items.length === 0) return null;
 
   const hasMore = run_items.length > COLLAPSED_ROWS;
-  const transition = shouldReduceMotion
-    ? { duration: 0 }
-    : { duration: 0.32, ease: [0.32, 0.72, 0, 1] as const };
 
   return (
     <section className={cn("text-left", className)}>
@@ -68,7 +65,7 @@ export function BriefingCard({ briefing, className }: Props) {
           // with the card, and a transform would scale the rows' text.
           initial={false}
           animate={{ height: height ?? "auto" }}
-          transition={transition}
+          transition={heightTransition}
           className="relative"
         >
           <ul
@@ -80,8 +77,12 @@ export function BriefingCard({ briefing, className }: Props) {
                 : "overflow-hidden",
             )}
           >
-            {run_items.map((item) => (
-              <RunRow key={item.execution_id} item={item} />
+            {run_items.map((item, index) => (
+              <RunRow
+                key={item.execution_id}
+                item={item}
+                isHidden={!isShowingAll && index >= COLLAPSED_ROWS}
+              />
             ))}
           </ul>
 
@@ -136,12 +137,13 @@ function ScrollArrow({
   onScroll: () => void;
 }) {
   const isUp = direction === "up";
+  const shouldReduceMotion = useReducedMotion();
 
   return (
     <motion.div
       initial={false}
       animate={{ opacity: isVisible ? 1 : 0 }}
-      transition={{ duration: 0.15 }}
+      transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
       className={cn(
         "pointer-events-none absolute inset-x-0 flex h-12 items-center justify-center",
         isUp
