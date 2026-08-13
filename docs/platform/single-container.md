@@ -15,9 +15,7 @@ installation you intend to keep.
 
 ## Get an image
 
-Stable AutoGPT Platform releases publish `latest` and an immutable `vX.Y.Z`
-single-container image; historical releases are not backfilled. When `latest`
-is available, use the most recent fully verified stable image:
+Use `latest` for the most recent fully verified stable AutoGPT Platform image:
 
 ```bash
 IMAGE=significantgravitas/autogpt:latest
