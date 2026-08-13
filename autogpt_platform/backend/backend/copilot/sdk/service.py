@@ -1070,22 +1070,37 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
     # hex — unchanged by JSON escaping.
     marker = _INJECTED_MEMORY_NONCE.encode()
     out: list[bytes] = []
+    survived = 0
     for line in content.splitlines(keepends=True):
         stripped = line.strip()
         if not stripped or marker not in line:
             out.append(line)
             continue
+        # Past this point the line carries THIS process's nonce, so it is a
+        # block we injected and expected to remove. Both fall-throughs below
+        # keep it — safe (they never eat user text), but they reintroduce the
+        # accumulation this scrub exists to prevent, so the misses are counted
+        # and reported once below rather than passing silently.
         try:
             entry = json.loads(stripped)
         except (json.JSONDecodeError, ValueError):
+            survived += 1
             out.append(line)
             continue
         rewritten = _rewrite_user_entry_memory(entry)
         if rewritten is None:
+            survived += 1
             out.append(line)
             continue
         suffix = b"\n" if line.endswith(b"\n") else b""
         out.append(json.dumps(rewritten, ensure_ascii=False).encode() + suffix)
+    if survived:
+        logger.warning(
+            "%d injected memory block(s) survived the transcript scrub — "
+            "nonce-carrying lines that did not parse as CLI user entries. "
+            "They will replay as stale context on --resume.",
+            survived,
+        )
     return b"".join(out)
 
 
@@ -4231,12 +4246,15 @@ async def _append_follow_up_warm_context(
         user_id, current_message, force=was_compacted
     )
     if refreshed:
-        if block_cache is not None:
-            block_cache[current_message] = _mark_injected_memory_block(refreshed)
         # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
         # can scrub THIS block from the persisted transcript without touching a
-        # ``<temporal_context>`` tag the user may have typed.
-        return f"{query_message}\n\n{_mark_injected_memory_block(refreshed)}"
+        # ``<temporal_context>`` tag the user may have typed. Marked once and
+        # reused: the cached copy and the returned copy MUST be the same string,
+        # or a retry would serve a block the scrub can no longer match.
+        marked = _mark_injected_memory_block(refreshed)
+        if block_cache is not None:
+            block_cache[current_message] = marked
+        return f"{query_message}\n\n{marked}"
     return query_message
 
 

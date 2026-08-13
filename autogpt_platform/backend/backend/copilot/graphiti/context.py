@@ -10,6 +10,7 @@ to call the memory tool.  See SECRT-2378.
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -287,12 +288,18 @@ def _spawn_ratification_hits(user_id: str, edges) -> None:
 # would leave the remainder of the block in the persisted transcript to
 # replay on --resume. Neutralising the sequence at build time fixes every
 # consumer at once rather than each reader separately.
-_CONTEXT_CLOSE_TAG = "</temporal_context>"
+#
+# Matched by pattern, not exact string: an LLM parses XML fuzzily, so
+# ``</temporal_context >``, ``</Temporal_Context>`` and ``</ temporal_context>``
+# all read as a closing tag to the model even though none of them equals the
+# literal. An exact-string replace would neutralise the tidy spelling and let
+# every variant through — which is the only spelling an attacker would use.
 _CONTEXT_CLOSE_TAG_NEUTRALISED = "<!/temporal_context>"
+_CONTEXT_CLOSE_TAG_RE = re.compile(r"<\s*/\s*temporal_context\s*>", re.IGNORECASE)
 
 
 def _neutralise_context_tags(text: str) -> str:
-    return text.replace(_CONTEXT_CLOSE_TAG, _CONTEXT_CLOSE_TAG_NEUTRALISED)
+    return _CONTEXT_CLOSE_TAG_RE.sub(_CONTEXT_CLOSE_TAG_NEUTRALISED, text)
 
 
 def _format_context(edges, episodes) -> str | None:
