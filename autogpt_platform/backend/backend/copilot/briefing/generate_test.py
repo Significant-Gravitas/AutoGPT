@@ -1,12 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from backend.copilot.briefing.generate import (
-    AgentInfo,
-    compose_briefing,
-    render_briefing_markdown,
-)
+from backend.copilot.briefing.generate import AgentInfo, compose_briefing
+from backend.copilot.briefing.render import render_briefing_markdown
+from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
 
@@ -38,16 +36,24 @@ def make_exec(
     id="run-1",
     graph_id="g-1",
     expert_id="exp-1",
-    status="COMPLETED",
+    status=ExecutionStatus.COMPLETED,
     summary="Found 3 leads",
 ):
-    from unittest.mock import MagicMock
-
-    m = MagicMock()
-    m.id, m.graph_id, m.expert_id = id, graph_id, expert_id
-    m.status = status
-    m.stats = {"activity_status": summary} if summary else {}
-    return m
+    return GraphExecutionMeta(
+        id=id,
+        user_id="user-1",
+        graph_id=graph_id,
+        graph_version=1,
+        inputs=None,
+        credential_inputs=None,
+        nodes_input_masks=None,
+        preset_id=None,
+        status=status,
+        started_at=NOW - timedelta(minutes=5),
+        ended_at=NOW,
+        expert_id=expert_id,
+        stats=GraphExecutionMeta.Stats(activity_status=summary),
+    )
 
 
 def make_review(
@@ -181,8 +187,8 @@ def test_failed_runs_sort_before_completed():
     content = compose_briefing(
         experts=[make_expert()],
         executions=[
-            make_exec(id="run-1", status="COMPLETED"),
-            make_exec(id="run-2", status="FAILED"),
+            make_exec(id="run-1", status=ExecutionStatus.COMPLETED),
+            make_exec(id="run-2", status=ExecutionStatus.FAILED),
         ],
         reviews=[],
         agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
@@ -194,7 +200,9 @@ def test_failed_runs_sort_before_completed():
 
 
 def test_run_items_capped_at_ten():
-    executions = [make_exec(id=f"run-{i}", status="COMPLETED") for i in range(12)]
+    executions = [
+        make_exec(id=f"run-{i}", status=ExecutionStatus.COMPLETED) for i in range(12)
+    ]
     content = compose_briefing(
         experts=[make_expert()],
         executions=executions,
@@ -562,14 +570,14 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
     assert run_item["agent_name"] == "Lead Finder Workflow"
 
 
-def test_summary_reads_stats_model_not_just_dict():
-    """Production hands compose_briefing a ``GraphExecutionMeta.Stats`` model,
-    while the other tests stub ``stats`` as a plain dict — pin the model branch
-    so the attribute read can't silently regress to dict-only."""
-    from backend.data.execution import GraphExecutionMeta
-
-    execution = make_exec(summary=None)
-    execution.stats = GraphExecutionMeta.Stats(activity_status="Filed 2 tickets")
+def test_run_items_carry_the_card_fields_home_reads():
+    """The stored row is what /home anchors its card on, so the shared composer
+    has to persist the split headline, timings and cost — not just the raw
+    summary the markdown renderer needs."""
+    execution = make_exec(summary="Filed 2 tickets. All were duplicates.")
+    execution.stats = GraphExecutionMeta.Stats(
+        activity_status="Filed 2 tickets. All were duplicates.", duration=12.5, cost=3
+    )
 
     content = compose_briefing(
         experts=[make_expert()],
@@ -581,7 +589,11 @@ def test_summary_reads_stats_model_not_just_dict():
     )
 
     assert content is not None
-    assert content.run_items[0].summary == "Filed 2 tickets"
+    item = content.run_items[0]
+    assert item.summary == "Filed 2 tickets. All were duplicates."
+    assert (item.title, item.detail) == ("Filed 2 tickets.", "All were duplicates.")
+    assert (item.duration_seconds, item.cost_cents) == (12.5, 3)
+    assert item.expert_role == "Researcher"
 
 
 def test_markdown_escapes_untrusted_text_in_link_labels():
@@ -717,7 +729,7 @@ async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
     client.create_briefing.assert_not_awaited()
     update_call = client.update_briefing_content.await_args
     assert update_call.args[:2] == ("user-1", "briefing-1")
-    assert update_call.args[2]["run_items"][0]["agent_name"] == "Agent"
+    assert update_call.args[2]["run_items"][0]["agent_name"] == "Agent task"
 
 
 @pytest.mark.asyncio
@@ -788,7 +800,6 @@ async def test_generate_bounds_the_execution_query(monkeypatch):
     from unittest.mock import AsyncMock, MagicMock
 
     from backend.copilot.briefing import generate
-    from backend.data.execution import ExecutionStatus
 
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = NOW

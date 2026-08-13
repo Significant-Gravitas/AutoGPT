@@ -54,6 +54,10 @@ class HomeBriefing(BaseModel):
     failed_count: int
     routine_count: int
     outcomes: list[HomeBriefingOutcome]
+    # "persisted": anchored on the morning `UserBriefing` the copilot thread was
+    # posted from, plus any run that finished after it. "live": no usable row
+    # for today, so the rolling 24h window was recomputed instead.
+    source: Literal["persisted", "live"] = "live"
 
 
 class HomeActiveTask(BaseModel):

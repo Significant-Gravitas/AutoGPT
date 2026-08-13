@@ -12,8 +12,18 @@ class BriefingRunItem(BaseModel):
     execution_id: str
     library_agent_id: str | None
     status: str
+    # Raw `stats.activity_status`, kept verbatim for the markdown renderer.
     summary: str | None
     link: str | None
+    # Card fields the home dashboard reads off a stored briefing. All default
+    # so rows written before the composer was unified still validate — the
+    # home mapper falls back to the agent-name headline when `title` is empty.
+    expert_role: str | None = None
+    title: str = ""
+    detail: str = ""
+    occurred_at: datetime | None = None
+    duration_seconds: float = 0
+    cost_cents: int = 0
 
 
 class BriefingDecisionItem(BaseModel):
