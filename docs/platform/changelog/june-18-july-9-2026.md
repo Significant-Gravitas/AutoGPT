@@ -12,7 +12,7 @@ Every file your agents create or use now lives in one place — the Files page. 
 
 ## Share any conversation with a link
 
-Share an AutoPilot conversation with anyone — just enable sharing and send the link. Sharing is live: new messages, agent runs, and files added after you share become visible too. Toggle it off anytime to revoke access instantly.
+Enable sharing and send the generated link to share an AutoPilot conversation. Anyone with the link can view the conversation without signing in. Sharing is live: new messages and files added after you share become visible too, and agent runs become visible when that option is enabled. Turning sharing off invalidates the existing link.
 
 <figure><img src="../.gitbook/assets/share-chat-hero.png" alt="Share this chat modal with enable sharing button"><figcaption><p>Share a live conversation link — revoke it anytime</p></figcaption></figure>
 

@@ -18,7 +18,7 @@ A **live elapsed timer** now appears in the AutoPilot thinking indicator while t
 
 ## Redesigned Onboarding
 
-The onboarding wizard has been **completely redesigned** with an Autopilot-first flow. A polished 4-step experience — Welcome → Role selection → Pain points → Preparing workspace — collects your role and pain points to **personalize Autopilot suggestions** from the start. Pain points are **reordered based on your selected role** (e.g. Sales sees "Finding leads" first), and steps sync with URL params so browser back/forward just works. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12640)
+The onboarding wizard has been **completely redesigned** with an AutoPilot-first flow. A polished 4-step experience — Welcome → Role selection → Pain points → Preparing workspace — collects your role and pain points to **personalize AutoPilot suggestions** from the start. Pain points are **reordered based on your selected role** (e.g. Sales sees "Finding leads" first), and steps sync with URL params so browser back/forward just works. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12640)
 
 <figure><img src="../.gitbook/assets/v0654-onboarding-hero.png" alt="Redesigned onboarding wizard with role selection"><figcaption><p>New 4-step onboarding wizard with role-based personalization</p></figcaption></figure>
 
@@ -36,7 +36,7 @@ You can now **copy your own prompt messages** in AutoPilot with a single click. 
 - **Rate-limit tiering system** — AutoPilot now supports configurable rate-limit tiers so different user plans get different message caps. ([#12581](https://github.com/Significant-Gravitas/AutoGPT/pull/12581))
 - **Extended thinking execution mode** — OrchestratorBlock gains an extended thinking mode for deeper, multi-step reasoning. ([#12512](https://github.com/Significant-Gravitas/AutoGPT/pull/12512))
 - **Automatic AgentMail setup** — AgentMail now works out of the box. Your email address is created automatically the first time you need it — no API keys or manual setup required. ([#12537](https://github.com/Significant-Gravitas/AutoGPT/pull/12537))
-- **Session-level dry-run flag** — Autopilot sessions can now be flagged as dry-run at the session level. ([#12582](https://github.com/Significant-Gravitas/AutoGPT/pull/12582))
+- **Session-level dry-run flag** — AutoPilot sessions can now be flagged as dry-run at the session level. ([#12582](https://github.com/Significant-Gravitas/AutoGPT/pull/12582))
 - **Generic ask_question AutoPilot tool** — A new tool lets AutoPilot ask structured clarifying questions mid-conversation. ([#12647](https://github.com/Significant-Gravitas/AutoGPT/pull/12647))
 - **Git committer identity from GitHub profile** — E2B sandbox commits now use the user's real GitHub name and email. ([#12650](https://github.com/Significant-Gravitas/AutoGPT/pull/12650))
 - **Create → dry-run → fix agent generation loop** — Agent generation now follows an iterative create, dry-run, and fix cycle for better results. ([#12578](https://github.com/Significant-Gravitas/AutoGPT/pull/12578))
