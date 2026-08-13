@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -891,8 +891,6 @@ async def test_generate_bounds_the_execution_query(monkeypatch):
 
 def _patch_fresh_compose_env(monkeypatch, generate, client):
     """Delivery plumbing for a user with one expert, one run and no reviews."""
-    from unittest.mock import AsyncMock, MagicMock
-
     _patch_generate_env(monkeypatch, generate, client)
     monkeypatch.setattr(
         generate,
@@ -920,10 +918,6 @@ def _patch_fresh_compose_env(monkeypatch, generate, client):
 
 @pytest.mark.asyncio
 async def test_narrative_is_persisted_and_posted(monkeypatch, stub_narrative):
-    from unittest.mock import AsyncMock, MagicMock
-
-    from backend.copilot.briefing import generate
-
     stub_narrative.return_value = "I checked your leads overnight."
     client = MagicMock(
         get_briefing_for_date=AsyncMock(return_value=None),
@@ -931,9 +925,9 @@ async def test_narrative_is_persisted_and_posted(monkeypatch, stub_narrative):
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    _patch_fresh_compose_env(monkeypatch, generate, client)
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
 
-    await generate.generate_and_deliver_briefing("user-1")
+    await generate_module.generate_and_deliver_briefing("user-1")
 
     stored = client.create_briefing.await_args.args[2]
     assert stored["narrative"] == "I checked your leads overnight."
@@ -945,10 +939,6 @@ async def test_narrative_is_persisted_and_posted(monkeypatch, stub_narrative):
 async def test_narrative_failure_still_delivers_the_template_briefing(
     monkeypatch, stub_narrative
 ):
-    from unittest.mock import AsyncMock, MagicMock
-
-    from backend.copilot.briefing import generate
-
     stub_narrative.return_value = None
     client = MagicMock(
         get_briefing_for_date=AsyncMock(return_value=None),
@@ -956,9 +946,9 @@ async def test_narrative_failure_still_delivers_the_template_briefing(
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    _patch_fresh_compose_env(monkeypatch, generate, client)
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
 
-    result = await generate.generate_and_deliver_briefing("user-1")
+    result = await generate_module.generate_and_deliver_briefing("user-1")
 
     assert result["status"] == "delivered"
     assert client.create_briefing.await_args.args[2]["narrative"] is None
@@ -973,10 +963,6 @@ async def test_narrative_is_not_regenerated_when_redelivering(
     monkeypatch, stub_narrative
 ):
     """A stored row is reposted verbatim — no second LLM call, same paragraph."""
-    from unittest.mock import AsyncMock, MagicMock
-
-    from backend.copilot.briefing import generate
-
     stored = compose_briefing(
         experts=[make_expert()],
         executions=[make_exec()],
@@ -996,9 +982,9 @@ async def test_narrative_is_not_regenerated_when_redelivering(
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    _patch_generate_env(monkeypatch, generate, client)
+    _patch_generate_env(monkeypatch, generate_module, client)
 
-    await generate.generate_and_deliver_briefing("user-1")
+    await generate_module.generate_and_deliver_briefing("user-1")
 
     stub_narrative.assert_not_awaited()
     posted = client.append_plain_session_message.await_args.kwargs["content"]

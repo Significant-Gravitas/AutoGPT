@@ -20,16 +20,16 @@ NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
 
 
 def make_content(run_items=None, **kwargs) -> BriefingContent:
-    defaults = dict(
-        generated_at=NOW,
-        timezone="UTC",
-        zero_expert_fallback=False,
-        run_items=run_items if run_items is not None else [make_run_item()],
-        decision_items=[],
-        decision_total=2,
-        completed_total=3,
-        failed_total=1,
-    )
+    defaults = {
+        "generated_at": NOW,
+        "timezone": "UTC",
+        "zero_expert_fallback": False,
+        "run_items": run_items if run_items is not None else [make_run_item()],
+        "decision_items": [],
+        "decision_total": 2,
+        "completed_total": 3,
+        "failed_total": 1,
+    }
     return BriefingContent(**{**defaults, **kwargs})
 
 
