@@ -100,7 +100,11 @@ from ..permissions import (
     all_known_tool_names,
     apply_tool_permissions,
 )
-from ..prompting import get_graphiti_supplement, get_sdk_supplement
+from ..prompting import (
+    compose_system_prompt,
+    get_graphiti_supplement,
+    get_sdk_supplement,
+)
 from ..rate_limit import (
     get_global_rate_limits,
     get_remaining_usd_budget,
@@ -1577,12 +1581,12 @@ async def _apply_building_mode_restart(
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id, session.expert_id
     )
-    system_prompt = (
-        base_system_prompt
-        + get_sdk_supplement(use_e2b=use_e2b)
-        + graphiti_supplement
-        + building_suffix
-        + expert_session_suffix
+    system_prompt = compose_system_prompt(
+        base_system_prompt,
+        get_sdk_supplement(use_e2b=use_e2b),
+        graphiti_supplement,
+        building_suffix,
+        expert_session_suffix,
     )
     sdk_options_restart = copy(sdk_options)
     sdk_options_restart.system_prompt = _build_system_prompt_value(
@@ -4294,12 +4298,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         expert_session_suffix = await build_expert_identity_suffix(
             session.user_id, session.expert_id
         )
-        system_prompt = (
-            base_system_prompt
-            + get_sdk_supplement(use_e2b=use_e2b)
-            + graphiti_supplement
-            + builder_session_suffix
-            + expert_session_suffix
+        system_prompt = compose_system_prompt(
+            base_system_prompt,
+            get_sdk_supplement(use_e2b=use_e2b),
+            graphiti_supplement,
+            builder_session_suffix,
+            expert_session_suffix,
         )
 
         transcript_content = _restore.transcript_content

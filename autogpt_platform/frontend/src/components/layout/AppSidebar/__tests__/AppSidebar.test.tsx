@@ -1,5 +1,6 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
+import { Flag } from "@/services/feature-flags/use-get-flag";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { ReactNode } from "react";
@@ -26,7 +27,10 @@ vi.mock("next/link", () => ({
   useLinkStatus: () => ({ pending: false }),
 }));
 
-const useGetFlagMock = vi.hoisted(() => vi.fn(() => false));
+// Flag-keyed map so each test controls HIRE_EXPERTS and ONBOARDING_BRAIN_DUMP
+// independently — an unkeyed boolean would keep these tests green even if the
+// nav were gated on the wrong flag.
+const flagValues = vi.hoisted(() => ({ map: new Map<string, boolean>() }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -35,7 +39,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: () => useGetFlagMock(),
+    useGetFlag: (flag: string) => flagValues.map.get(flag) ?? false,
   };
 });
 
@@ -48,7 +52,7 @@ function renderSidebar() {
 }
 
 beforeEach(() => {
-  useGetFlagMock.mockReturnValue(false);
+  flagValues.map.clear();
   server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
 });
 
@@ -76,16 +80,24 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Agents")).toBeDefined();
   });
 
+  it("flag-off: keeps experts nav hidden when only other flags are on (HIRE_EXPERTS=false, ONBOARDING_BRAIN_DUMP=true)", () => {
+    flagValues.map.set(Flag.ONBOARDING_BRAIN_DUMP, true);
+    renderSidebar();
+    expect(screen.queryByText("Home")).toBeNull();
+    expect(screen.queryByText("Team")).toBeNull();
+    expect(screen.getByText("Agents")).toBeDefined();
+  });
+
   it("shows Team instead of Agents when the hire-experts flag is on", () => {
-    useGetFlagMock.mockReturnValue(true);
+    flagValues.map.set(Flag.HIRE_EXPERTS, true);
     renderSidebar();
     const teamLink = screen.getByRole("link", { name: /team/i });
     expect(teamLink.getAttribute("href")).toBe("/team");
     expect(screen.queryByText("Agents")).toBeNull();
   });
 
-  it("adds a Home link when the hire-experts flag is on", () => {
-    useGetFlagMock.mockReturnValue(true);
+  it("adds a Home link when only the hire-experts flag is on", () => {
+    flagValues.map.set(Flag.HIRE_EXPERTS, true);
     renderSidebar();
     const homeLink = screen.getByRole("link", { name: /home/i });
     expect(homeLink.getAttribute("href")).toBe("/home");

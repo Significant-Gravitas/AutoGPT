@@ -27,11 +27,12 @@ force a value explicitly, set `NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS=false` /
 | Surface | Expected flag-off behavior | Automated guard |
 | --- | --- | --- |
 | **Copilot** empty state | Pre-experts pulse strip renders; no briefing recap; no `/briefing` request | `copilot/components/CopilotHome/__tests__/flag-off.test.tsx` |
-| **Marketplace** | No "Meet the AI Experts" section; pre-experts subtitle copy | `marketplace/components/MainMarketplacePage/__tests__/main.test.tsx` |
-| **Library / sidebar** | Sidebar keeps the **Agents** entry; no **Home** entry and no **Team** row | `components/layout/AppSidebar/__tests__/AppSidebar.test.tsx` |
+| **Marketplace** | `ExpertsSection` not mounted; pre-experts workflows subtitle ("Ready-made automations from the community.") | `marketplace/components/MainMarketplacePage/__tests__/main.test.tsx` |
+| **Marketplace agent page** | No "Install on Expert…" action and no `/api/experts` request, even signed-in with hired experts | `marketplace/components/InstallOnExpertButton/__tests__/main.test.tsx` |
+| **Library / sidebar** | Sidebar keeps the **Agents** entry; no **Home** entry and no **Team** row — including when other flags (e.g. brain dump) are on | `components/layout/AppSidebar/__tests__/AppSidebar.test.tsx` |
 | `/home` | `notFound()` (404) | `app/(platform)/home/__tests__/main.test.tsx` |
-| `/team` and `/team/[expertId]` | `notFound()` (404); no expert queries fire | `app/(platform)/team/__tests__/main.test.tsx`, `app/(platform)/team/[expertId]/__tests__/main.test.tsx` |
-| **Copilot system prompt** (plain session, no expert) | Byte-identical to the pre-experts prompt; pinned SHA-256 | `backend/copilot/flag_off_prompt_test.py`, `backend/copilot/expert_context_test.py` |
+| `/team` and `/team/[expertId]` | `notFound()` (404); no expert or schedule requests fire | `app/(platform)/team/__tests__/main.test.tsx`, `app/(platform)/team/[expertId]/__tests__/main.test.tsx` |
+| **Copilot system prompt** (plain session, no expert) | Byte-identical to the pre-experts prompt for both engines (SDK and baseline) in every deterministic config (`use_e2b` × Graphiti); pinned SHA-256 digests of the shared `compose_system_prompt` output | `backend/copilot/flag_off_prompt_test.py`, `backend/copilot/expert_context_test.py` |
 | Flag default | `HIRE_EXPERTS` resolves to `false` when LaunchDarkly is silent | `services/feature-flags/__tests__/flag-defaults.test.ts` |
 
 ## Smoke steps — `onboarding-brain-dump` OFF
@@ -49,8 +50,17 @@ The backend prompt-hash guard fails with:
 > `flag-off prompt changed; if intentional, update hash + call out in PR description`
 
 If the change to the plain-session system prompt was **intentional**, update the
-pinned SHA-256 in `backend/copilot/flag_off_prompt_test.py` (and the base-constant
-snapshot in `backend/copilot/expert_context_test.py`) and call it out in the PR
-description so reviewers know the cacheable prompt moved. If it was **not**
-intentional, the flag-off path has drifted from production — fix the code, not the
-test.
+pinned SHA-256 digests in `backend/copilot/flag_off_prompt_test.py` (and the
+base-constant snapshot in `backend/copilot/expert_context_test.py`) and call it
+out in the PR description so reviewers know the cacheable prompt moved. If it was
+**not** intentional, the flag-off path has drifted from production — fix the code,
+not the test.
+
+Both engines assemble their system prompt through `compose_system_prompt` in
+`backend/copilot/prompting.py`; add any new prompt component there so the pinned
+digests catch it.
+
+Scope note: production may source the base prompt from Langfuse at runtime. That
+content lives outside the repo, so CI pins the in-repo fallback composition
+(`CACHEABLE_SYSTEM_PROMPT`); flag-off parity of a Langfuse-hosted base must be
+maintained in the Langfuse template itself.

@@ -619,6 +619,33 @@ def get_sdk_supplement(use_e2b: bool) -> str:
     return base + _USER_FOLLOW_UP_NOTE
 
 
+def compose_system_prompt(
+    base: str,
+    engine_supplement: str,
+    graphiti_supplement: str = "",
+    builder_session_suffix: str = "",
+    expert_session_suffix: str = "",
+) -> str:
+    """Single composition point for the copilot system prompt.
+
+    Both engines assemble their system prompt through this function — the SDK
+    engine passes ``get_sdk_supplement(...)`` and the baseline engine passes
+    ``SHARED_TOOL_NOTES`` as *engine_supplement*; the remaining components are
+    ``""`` when absent. Component order is part of the prompt-cache contract
+    (byte-identical prompts across turns/users), and the flag-off regression
+    suite (``flag_off_prompt_test.py``) pins SHA-256 digests of this function's
+    plain-session output, so any reordering or new component must go through
+    here and will surface in that suite.
+    """
+    return (
+        base
+        + engine_supplement
+        + graphiti_supplement
+        + builder_session_suffix
+        + expert_session_suffix
+    )
+
+
 def get_graphiti_supplement() -> str:
     """Get the memory system instructions to append when Graphiti is enabled.
 

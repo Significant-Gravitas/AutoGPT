@@ -191,17 +191,28 @@ describe("ExpertDetailPage", () => {
     await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
   });
 
-  test("flag-off: calls notFound() when hire-experts is disabled", () => {
+  test("flag-off: calls notFound() and fires no expert or schedule requests", async () => {
+    const expertSpy = vi.fn(() => maria);
+    const schedulesSpy = vi.fn(() => [mariaSchedule]);
+    server.use(
+      getGetExpertMockHandler(expertSpy),
+      getGetV1ListExecutionSchedulesForAUserMockHandler(schedulesSpy),
+    );
     setFlagStatusMock.mockReturnValue({ enabled: false, ready: true });
     notFoundMock.mockClear();
 
     try {
       render(<ExpertDetailPage />);
     } catch {
-      // notFound() throws NEXT_NOT_FOUND to halt the render; the assertion
-      // below is what we actually care about.
+      // notFound() throws NEXT_NOT_FOUND to halt the render; the assertions
+      // below are what we actually care about.
     }
 
     expect(notFoundMock).toHaveBeenCalled();
+    // Settle window long enough for a wrongly-started fetch to reach MSW
+    // (a 0ms flush can miss the interceptor's async dispatch chain).
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(expertSpy).not.toHaveBeenCalled();
+    expect(schedulesSpy).not.toHaveBeenCalled();
   });
 });

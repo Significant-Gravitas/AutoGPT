@@ -7,6 +7,7 @@ import { MainMarkeplacePage } from "../MainMarketplacePage";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockUseMainMarketplacePage = vi.hoisted(() => vi.fn());
+const flagState = vi.hoisted(() => ({ hireExperts: false }));
 
 vi.mock("../useMainMarketplacePage", () => ({
   useMainMarketplacePage: mockUseMainMarketplacePage,
@@ -19,16 +20,23 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    // Force hire-experts OFF for this suite; delegate every other flag.
     useGetFlag: (flag: string) =>
       flag === actual.Flag.HIRE_EXPERTS
-        ? false
+        ? flagState.hireExperts
         : actual.useGetFlag(flag as never),
   };
 });
 
+// Sentinel: ExpertsSection renders null for signed-out users, so asserting on
+// its copy would pass even if the page's flag gate were deleted. Mocking it as
+// an always-visible marker makes mounted-vs-not the thing under test.
+vi.mock("../../ExpertsSection/ExpertsSection", () => ({
+  ExpertsSection: () => <div data-testid="experts-section-sentinel" />,
+}));
+
 describe("MainMarketplacePage", () => {
   beforeEach(() => {
+    flagState.hireExperts = false;
     mockUseMainMarketplacePage.mockReturnValue({
       featuredAgents: getGetV2ListStoreAgentsResponseMock({
         agents: [
@@ -77,12 +85,28 @@ describe("MainMarketplacePage", () => {
     ).toBeDefined();
   });
 
-  test("flag-off: hides the Meet the AI Experts section", () => {
+  test("flag-off: does not mount ExpertsSection and keeps the pre-experts subtitle", () => {
     render(<MainMarkeplacePage />);
 
-    // ExpertsSection is gated on hire-experts; flag-off renders the
-    // pre-experts marketplace (workflows + creators) with no experts surface.
-    expect(screen.queryByText("Meet the AI Experts")).toBeNull();
-    expect(screen.getByText("All AI Workflows")).toBeDefined();
+    expect(screen.queryByTestId("experts-section-sentinel")).toBeNull();
+    expect(
+      screen.getByText("Ready-made automations from the community."),
+    ).toBeDefined();
+    expect(
+      screen.queryByText("Install one on an Expert, or run it standalone."),
+    ).toBeNull();
+  });
+
+  test("flag-on: mounts ExpertsSection and swaps the workflows subtitle", () => {
+    flagState.hireExperts = true;
+    render(<MainMarkeplacePage />);
+
+    expect(screen.getByTestId("experts-section-sentinel")).toBeDefined();
+    expect(
+      screen.getByText("Install one on an Expert, or run it standalone."),
+    ).toBeDefined();
+    expect(
+      screen.queryByText("Ready-made automations from the community."),
+    ).toBeNull();
   });
 });

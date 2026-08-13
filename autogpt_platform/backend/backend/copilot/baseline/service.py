@@ -71,7 +71,11 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
+from backend.copilot.prompting import (
+    SHARED_TOOL_NOTES,
+    compose_system_prompt,
+    get_graphiti_supplement,
+)
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -1784,12 +1788,12 @@ async def stream_chat_completion_baseline(
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id, session.expert_id
     )
-    system_prompt = (
-        base_system_prompt
-        + SHARED_TOOL_NOTES
-        + graphiti_supplement
-        + builder_session_suffix
-        + expert_session_suffix
+    system_prompt = compose_system_prompt(
+        base_system_prompt,
+        SHARED_TOOL_NOTES,
+        graphiti_supplement,
+        builder_session_suffix,
+        expert_session_suffix,
     )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
