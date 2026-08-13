@@ -8,7 +8,11 @@ import pytest
 
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
-from backend.api.features.experts.models import ExpertSoulUpdate
+from backend.api.features.experts.models import (
+    ExpertSoulUpdate,
+    VoiceSample,
+    encode_voice_preferences,
+)
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.data.graph import Graph, Node
@@ -303,6 +307,51 @@ async def test_hire_copies_soul_fields_from_template(server: SpinTestServer, tes
     assert hired.expert.identity == "You are Otto, a playful writer."
     assert hired.expert.voice_preferences == "Direct, playful, and concise."
     assert hired.expert.boundaries == "Never publish without approval."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_from_template_with_samples_stores_plain_voice(
+    server: SpinTestServer, test_user
+):
+    """A hire copies the plain description, never the template's sample
+    envelope, so a skipped voice pick can't leave raw JSON in the prompt."""
+    envelope = encode_voice_preferences(
+        "Direct and concise.",
+        [
+            VoiceSample(label="Punchy", text="Ship it."),
+            VoiceSample(label="Warm", text="Let's start with a story."),
+        ],
+    )
+    template = await prisma.models.Expert.prisma().create(
+        data={
+            "name": f"Vox {uuid.uuid4().hex[:8]}",
+            "role": "Writer",
+            "identity": "You are Vox.",
+            "voicePreferences": envelope,
+            "isTemplate": True,
+        }
+    )
+
+    listed = next(t for t in await experts_db.list_templates() if t.id == template.id)
+    assert len(listed.voice_samples) == 2
+    assert listed.voice_preferences == "Direct and concise."
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert hired.expert.voice_samples == []
+    assert hired.expert.voice_preferences == "Direct and concise."
+    assert "{" not in hired.expert.voice_preferences
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_exposes_two_voice_samples_per_template(
+    server: SpinTestServer,
+):
+    ids = await seed.seed_roster()
+    seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
+    for entry in seed.ROSTER:
+        template = seeded[entry["name"]]
+        assert len(template.voice_samples) == 2
+        assert template.voice_preferences == entry["voice_preferences"]
 
 
 @pytest.mark.asyncio(loop_scope="session")

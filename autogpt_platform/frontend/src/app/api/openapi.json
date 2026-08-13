@@ -17685,6 +17685,12 @@
             "type": "string",
             "title": "Voice Preferences"
           },
+          "voice_samples": {
+            "items": { "$ref": "#/components/schemas/VoiceSample" },
+            "type": "array",
+            "title": "Voice Samples",
+            "default": []
+          },
           "boundaries": { "type": "string", "title": "Boundaries" },
           "protected_soul_rules": {
             "items": { "type": "string" },
@@ -27198,6 +27204,16 @@
         "type": "object",
         "required": ["public_key"],
         "title": "VapidPublicKeyResponse"
+      },
+      "VoiceSample": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "text": { "type": "string", "title": "Text" }
+        },
+        "type": "object",
+        "required": ["label", "text"],
+        "title": "VoiceSample",
+        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire flow. The first sample is choice \"a\", the second choice \"b\"."
       },
       "Webhook": {
         "properties": {

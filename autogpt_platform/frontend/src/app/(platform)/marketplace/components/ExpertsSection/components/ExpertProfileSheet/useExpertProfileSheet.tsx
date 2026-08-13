@@ -2,18 +2,27 @@ import {
   getListExpertsQueryKey,
   useHireExpert,
   useListExperts,
+  useUpdateExpertSoul,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { HireResult } from "@/app/api/__generated__/models/hireResult";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import {
+  buildVoicePreferences,
+  type VoicePickResult,
+} from "@/components/organisms/VoicePicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 export function useExpertProfileSheet(
   expert: Expert | null,
   onClose: () => void,
 ) {
   const queryClient = useQueryClient();
+  // Set once a hire succeeds for a persona that ships writing samples: it
+  // swaps the sheet to the voice pick before the hire is celebrated.
+  const [hireResult, setHireResult] = useState<HireResult | null>(null);
 
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[] },
@@ -27,6 +36,39 @@ export function useExpertProfileSheet(
       ));
 
   const { mutateAsync: hireExpert, isPending: isHiring } = useHireExpert();
+  const { mutateAsync: updateSoul, isPending: isSavingVoice } =
+    useUpdateExpertSoul();
+
+  function celebrate(result: HireResult) {
+    toast({
+      title: `${result.expert.name} joined your team`,
+      description: result.failed_preloads.length
+        ? `Couldn't attach: ${result.failed_preloads.join(", ")}`
+        : undefined,
+      variant: "success",
+      action: (
+        <div className="flex gap-2">
+          <Button
+            as="NextLink"
+            href={`/copilot?expertId=${result.expert.id}`}
+            variant="secondary"
+            size="small"
+            unmask={false}
+          >
+            {`Chat with ${result.expert.name}`}
+          </Button>
+          <Button as="NextLink" href="/team" variant="ghost" size="small">
+            View team
+          </Button>
+        </div>
+      ),
+    });
+  }
+
+  function handleClose() {
+    setHireResult(null);
+    onClose();
+  }
 
   async function hire() {
     if (!expert || !expert.is_template) return;
@@ -36,30 +78,14 @@ export function useExpertProfileSheet(
       await queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
       });
-      toast({
-        title: `${result.expert.name} joined your team`,
-        description: result.failed_preloads.length
-          ? `Couldn't attach: ${result.failed_preloads.join(", ")}`
-          : undefined,
-        variant: "success",
-        action: (
-          <div className="flex gap-2">
-            <Button
-              as="NextLink"
-              href={`/copilot?expertId=${result.expert.id}`}
-              variant="secondary"
-              size="small"
-              unmask={false}
-            >
-              {`Chat with ${result.expert.name}`}
-            </Button>
-            <Button as="NextLink" href="/team" variant="ghost" size="small">
-              View team
-            </Button>
-          </div>
-        ),
-      });
-      onClose();
+      // Offer the voice pick when the persona ships writing samples; otherwise
+      // finish with the classic celebration toast.
+      if ((expert.voice_samples ?? []).length > 0) {
+        setHireResult(result);
+        return;
+      }
+      celebrate(result);
+      handleClose();
     } catch {
       toast({
         title: `Couldn't hire ${expert.name}`,
@@ -69,5 +95,49 @@ export function useExpertProfileSheet(
     }
   }
 
-  return { isHired, isHiring, hire };
+  async function pickVoice(result: VoicePickResult) {
+    if (!hireResult || !expert) return;
+    const hired = hireResult.expert;
+    try {
+      await updateSoul({
+        expertId: hired.id,
+        data: {
+          name: hired.name,
+          identity: hired.identity,
+          voice_preferences: buildVoicePreferences(
+            result,
+            expert.voice_samples ?? [],
+          ),
+          boundaries: hired.boundaries,
+        },
+      });
+    } catch {
+      // The hire itself succeeded; keep the picker open so the choice can be
+      // retried, and point at the Soul editor as the fallback.
+      toast({
+        title: "Couldn't save the voice",
+        description: "You can set it later in the Soul editor.",
+        variant: "destructive",
+      });
+      return;
+    }
+    celebrate(hireResult);
+    handleClose();
+  }
+
+  function skipVoice() {
+    if (hireResult) celebrate(hireResult);
+    handleClose();
+  }
+
+  return {
+    isHired,
+    isHiring,
+    hire,
+    hireResult,
+    pickVoice,
+    skipVoice,
+    isSavingVoice,
+    handleClose,
+  };
 }

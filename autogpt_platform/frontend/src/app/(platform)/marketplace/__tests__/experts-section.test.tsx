@@ -2,6 +2,8 @@ import {
   getHireExpertMockHandler,
   getListExpertsMockHandler,
   getListExpertTemplatesMockHandler,
+  getUpdateExpertSoulMockHandler,
+  getUpdateExpertSoulMockHandler422,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
@@ -57,6 +59,17 @@ const hiredMaria: Expert = {
   source_template_id: "template-maria",
 };
 
+const mariaWithSamples: Expert = {
+  ...mariaTemplate,
+  voice_samples: [
+    { label: "Punchy and bold", text: "Stop guessing what your buyers want." },
+    {
+      label: "Warm and story-led",
+      text: "Every campaign starts with a person, not a product.",
+    },
+  ],
+};
+
 function renderMarketplace() {
   return render(
     <>
@@ -109,6 +122,96 @@ describe("Marketplace ExpertsSection", () => {
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
     expect(screen.queryByText("Meet the AI Experts")).toBeNull();
     expect(templatesRequested).toBe(false);
+  });
+
+  test("captures a voice pick as a plain-text soul PATCH after hire", async () => {
+    let savedVoice = "";
+    server.use(
+      getListExpertTemplatesMockHandler([mariaWithSamples]),
+      getListExpertsMockHandler([]),
+      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getUpdateExpertSoulMockHandler(async (info) => {
+        const body = (await info.request.json()) as {
+          voice_preferences: string;
+        };
+        savedVoice = body.voice_preferences;
+        return { ...hiredMaria, voice_preferences: body.voice_preferences };
+      }),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire Maria" }),
+    );
+
+    // The voice pick replaces the profile before the join is celebrated.
+    expect(await screen.findByText("How should Maria write?")).toBeDefined();
+    await userEvent.click(await screen.findByText("Punchy and bold"));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use this voice" }),
+    );
+
+    expect(await screen.findByText("Maria joined your team")).toBeDefined();
+    expect(savedVoice).toContain("Preferred writing style: Punchy and bold.");
+    expect(savedVoice).toContain("Stop guessing what your buyers want.");
+    expect(savedVoice.startsWith("{")).toBe(false);
+  });
+
+  test("skips the voice pick without patching the soul", async () => {
+    let soulPatched = false;
+    server.use(
+      getListExpertTemplatesMockHandler([mariaWithSamples]),
+      getListExpertsMockHandler([]),
+      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getUpdateExpertSoulMockHandler(() => {
+        soulPatched = true;
+        return hiredMaria;
+      }),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire Maria" }),
+    );
+    // Wait for the picker to mount (hire awaits a list refetch first) before
+    // reaching for its skip control.
+    expect(await screen.findByText("How should Maria write?")).toBeDefined();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Skip for now" }),
+    );
+
+    expect(await screen.findByText("Maria joined your team")).toBeDefined();
+    expect(soulPatched).toBe(false);
+  });
+
+  test("keeps the voice pick open when the soul PATCH fails", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaWithSamples]),
+      getListExpertsMockHandler([]),
+      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getUpdateExpertSoulMockHandler422(),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire Maria" }),
+    );
+    expect(await screen.findByText("How should Maria write?")).toBeDefined();
+    await userEvent.click(await screen.findByText("Punchy and bold"));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use this voice" }),
+    );
+
+    // The hire already succeeded, so the picker stays open to retry rather
+    // than losing the choice.
+    expect(await screen.findByText("Couldn't save the voice")).toBeDefined();
+    expect(screen.getByText("How should Maria write?")).toBeDefined();
   });
 
   test("hired template shows hired state", async () => {
