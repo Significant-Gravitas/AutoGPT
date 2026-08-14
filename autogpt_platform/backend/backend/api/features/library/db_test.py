@@ -497,7 +497,11 @@ async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker
         "description": "Marketplace description",
         "imageUrl": "https://example.com/agent.png",
     }
-    from_db.assert_called_once_with(restored, schedule_info={})
+    from_db.assert_called_once_with(
+        restored,
+        schedule_info={},
+        store_listing_version_id="version123",
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
