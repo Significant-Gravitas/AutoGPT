@@ -4,13 +4,13 @@ import { cn } from "@/lib/utils";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { selectableCardClassName } from "../styles";
 
-interface Props {
+type Props = {
   sample: VoiceSample;
   choice: "a" | "b";
   choiceGroupName: string;
   isSelected: boolean;
   onSelect: () => void;
-}
+};
 
 export function SampleCard({
   sample,
