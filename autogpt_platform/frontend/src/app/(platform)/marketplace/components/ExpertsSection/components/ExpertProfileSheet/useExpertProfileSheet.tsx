@@ -14,7 +14,33 @@ import {
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
+
+function celebrate(result: HireResult) {
+  toast({
+    title: `${result.expert.name} joined your team`,
+    description: result.failed_preloads.length
+      ? `Couldn't attach: ${result.failed_preloads.join(", ")}`
+      : undefined,
+    variant: "success",
+    action: (
+      <div className="flex gap-2">
+        <Button
+          as="NextLink"
+          href={`/copilot?expertId=${result.expert.id}`}
+          variant="secondary"
+          size="small"
+          unmask={false}
+        >
+          {`Chat with ${result.expert.name}`}
+        </Button>
+        <Button as="NextLink" href="/team" variant="ghost" size="small">
+          View team
+        </Button>
+      </div>
+    ),
+  });
+}
 
 export function useExpertProfileSheet(
   expert: Expert | null,
@@ -24,6 +50,7 @@ export function useExpertProfileSheet(
   // Set once a hire succeeds for a persona that ships writing samples: it
   // swaps the sheet to the voice pick before the hire is celebrated.
   const [hireResult, setHireResult] = useState<HireResult | null>(null);
+  const pendingCelebrationRef = useRef<HireResult | null>(null);
 
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[] },
@@ -40,34 +67,11 @@ export function useExpertProfileSheet(
   const { mutateAsync: updateSoul, isPending: isSavingVoice } =
     useUpdateExpertSoul();
 
-  function celebrate(result: HireResult) {
-    toast({
-      title: `${result.expert.name} joined your team`,
-      description: result.failed_preloads.length
-        ? `Couldn't attach: ${result.failed_preloads.join(", ")}`
-        : undefined,
-      variant: "success",
-      action: (
-        <div className="flex gap-2">
-          <Button
-            as="NextLink"
-            href={`/copilot?expertId=${result.expert.id}`}
-            variant="secondary"
-            size="small"
-            unmask={false}
-          >
-            {`Chat with ${result.expert.name}`}
-          </Button>
-          <Button as="NextLink" href="/team" variant="ghost" size="small">
-            View team
-          </Button>
-        </div>
-      ),
-    });
-  }
-
   function handleClose() {
+    const completedHire = pendingCelebrationRef.current;
+    pendingCelebrationRef.current = null;
     setHireResult(null);
+    if (completedHire) celebrate(completedHire);
     onClose();
   }
 
@@ -82,6 +86,7 @@ export function useExpertProfileSheet(
       // Offer the voice pick when the persona ships writing samples; otherwise
       // finish with the classic celebration toast.
       if ((expert.voice_samples ?? []).length > 0) {
+        pendingCelebrationRef.current = result;
         setHireResult(result);
         return;
       }
@@ -138,12 +143,10 @@ export function useExpertProfileSheet(
       });
       return;
     }
-    celebrate(hireResult);
     handleClose();
   }
 
   function skipVoice() {
-    if (hireResult) celebrate(hireResult);
     handleClose();
   }
 

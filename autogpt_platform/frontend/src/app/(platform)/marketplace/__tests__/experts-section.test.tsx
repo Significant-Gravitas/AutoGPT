@@ -3,13 +3,13 @@ import {
   getListExpertsMockHandler,
   getListExpertTemplatesMockHandler,
   getUpdateExpertSoulMockHandler,
-  getUpdateExpertSoulMockHandler422,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
@@ -227,12 +227,18 @@ describe("Marketplace ExpertsSection", () => {
     expect(voicePatched).toBe(true);
   });
 
-  test("keeps the voice pick open when the soul PATCH fails", async () => {
+  test("retries a failed voice PATCH, then celebrates and closes", async () => {
+    let patchAttempts = 0;
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
       getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
-      getUpdateExpertSoulMockHandler422(),
+      http.patch("/api/proxy/api/experts/:expertId/soul", () => {
+        patchAttempts += 1;
+        return patchAttempts === 1
+          ? HttpResponse.json({ detail: [] }, { status: 422 })
+          : HttpResponse.json(hiredMaria);
+      }),
     );
 
     renderMarketplace();
@@ -251,6 +257,40 @@ describe("Marketplace ExpertsSection", () => {
     // than losing the choice.
     expect(await screen.findByText("Couldn't save the voice")).toBeDefined();
     expect(screen.getByText("How should Maria write?")).toBeDefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use this voice" }),
+    );
+
+    expect(await screen.findByText("Maria joined your team")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByText("How should Maria write?")).toBeNull(),
+    );
+    expect(patchAttempts).toBe(2);
+  });
+
+  test("celebrates exactly once when the completed hire is dismissed", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaWithSamples]),
+      getListExpertsMockHandler([]),
+      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire Maria" }),
+    );
+    expect(await screen.findByText("How should Maria write?")).toBeDefined();
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(await screen.findByText("Maria joined your team")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByText("How should Maria write?")).toBeNull(),
+    );
+    expect(screen.getAllByText("Maria joined your team")).toHaveLength(1);
   });
 
   test("hired template shows hired state", async () => {
