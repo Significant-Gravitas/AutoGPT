@@ -11,7 +11,7 @@ function dismissalKey(userId: string) {
 export function peekNamingMomentDismissed(userId: string | null | undefined) {
   if (!userId || typeof window === "undefined") return false;
   if (window.localStorage.getItem(dismissalKey(userId)) === "true") return true;
-  // An earlier revision stored the last dismisser's id in one shared slot;
+  // A legacy build stored the last dismisser's id under the shared key;
   // honor it so those users don't see the card again.
   return window.localStorage.getItem(NAMING_MOMENT_DISMISSED_PREFIX) === userId;
 }

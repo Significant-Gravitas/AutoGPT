@@ -80,14 +80,15 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("shows for an existing user with sessions and no experts", async () => {
-  useHandlers({ experts: [], total: 3 });
+test("shows accurate copy for an existing user with one session and no experts", async () => {
+  useHandlers({ experts: [], total: 1 });
 
   render(<NamingMomentCard />);
 
   expect(
     await screen.findByRole("button", { name: "Give me a name" }),
   ).toBeTruthy();
+  expect(screen.getByText(/We've worked together before/)).toBeTruthy();
 });
 
 test("does not show when the user already has an expert", async () => {
@@ -133,15 +134,17 @@ test("'Give me a name' routes to the naming raise flow", async () => {
   expect(pushMock).toHaveBeenCalledWith("/raise?from=naming");
 });
 
-test("'Not now' dismisses the card and persists the dismissal", async () => {
+test("'No thanks' dismisses the card and persists the dismissal", async () => {
   useHandlers({ experts: [], total: 3 });
 
   const { unmount } = render(<NamingMomentCard />);
 
-  await userEvent.click(await screen.findByRole("button", { name: "Not now" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "No thanks" }),
+  );
 
   await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "Not now" })).toBeNull(),
+    expect(screen.queryByRole("button", { name: "No thanks" })).toBeNull(),
   );
 
   unmount();

@@ -20,22 +20,22 @@ export function NamingMomentCard({ className }: Props) {
     <section
       aria-label="Name your AI"
       className={cn(
-        "mx-auto w-full max-w-[42rem] rounded-3xl bg-white p-5 text-left shadow-zinc-950 smooth-shadow-ring-sm",
+        "mx-auto w-full max-w-[42rem] rounded-3xl border border-border bg-background p-5 text-left shadow-sm",
         className,
       )}
     >
       <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple-50 text-purple-600">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
           <Icon icon={SparklesIcon} size={18} />
         </span>
-        <Text variant="body-medium" className="text-zinc-800">
-          I&apos;ve been working with you for a while. I think it&apos;s time I
-          had a name.
+        <Text variant="body-medium" className="text-foreground">
+          We&apos;ve worked together before. I think it&apos;s time I had a
+          name.
         </Text>
       </div>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
         <Button variant="ghost" size="small" onClick={dismiss}>
-          Not now
+          No thanks
         </Button>
         <Button variant="primary" size="small" onClick={startNaming}>
           Give me a name

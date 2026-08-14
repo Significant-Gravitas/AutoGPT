@@ -33,6 +33,7 @@ export function useNamingMomentCard() {
   const expertsQuery = useListExperts({
     query: {
       enabled: queriesEnabled,
+      refetchOnWindowFocus: false,
       select: (response) =>
         response.status === 200 ? response.data : undefined,
     },
