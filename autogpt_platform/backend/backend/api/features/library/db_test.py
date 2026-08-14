@@ -248,7 +248,13 @@ async def test_list_library_agents_exposes_matching_store_version_id(mocker):
     assert where["isDeleted"] is False
     assert where["isAvailable"] is True
     assert where["StoreListing"] == {"is": {"isDeleted": False}}
+    assert mock_slv_find_many.call_args.kwargs["distinct"] == [
+        "agentGraphId",
+        "agentGraphVersion",
+    ]
     assert mock_slv_find_many.call_args.kwargs["order"] == [
+        {"agentGraphId": "asc"},
+        {"agentGraphVersion": "asc"},
         {"createdAt": "desc"},
         {"id": "desc"},
     ]
@@ -369,7 +375,7 @@ async def test_add_agent_to_library(mocker):
     mock_store_listing_version = mocker.patch(
         "prisma.models.StoreListingVersion.prisma"
     )
-    mock_store_listing_version.return_value.find_unique = mocker.AsyncMock(
+    mock_store_listing_version.return_value.find_first = mocker.AsyncMock(
         return_value=mock_store_listing_data
     )
 
@@ -401,9 +407,15 @@ async def test_add_agent_to_library(mocker):
     await db.add_store_agent_to_library("version123", "test-user")
 
     # Verify mocks called correctly
-    mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"AgentGraph": True}
-    )
+    resolve_call = mock_store_listing_version.return_value.find_first.call_args
+    assert resolve_call.kwargs["where"] == {
+        "id": "version123",
+        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        "isDeleted": False,
+        "isAvailable": True,
+        "StoreListing": {"is": {"isDeleted": False}},
+    }
+    assert resolve_call.kwargs["include"] == {"AgentGraph": True}
     # Check that create was called with the expected data including settings
     create_call_args = mock_library_agent.return_value.create.call_args
     assert create_call_args is not None
@@ -440,7 +452,7 @@ async def test_add_agent_to_library_not_found(mocker):
     mock_store_listing_version = mocker.patch(
         "prisma.models.StoreListingVersion.prisma"
     )
-    mock_store_listing_version.return_value.find_unique = mocker.AsyncMock(
+    mock_store_listing_version.return_value.find_first = mocker.AsyncMock(
         return_value=None
     )
 
@@ -449,9 +461,7 @@ async def test_add_agent_to_library_not_found(mocker):
         await db.add_store_agent_to_library("version123", "test-user")
 
     # Verify mock called correctly
-    mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"AgentGraph": True}
-    )
+    mock_store_listing_version.return_value.find_first.assert_awaited_once()
 
 
 @pytest.mark.asyncio

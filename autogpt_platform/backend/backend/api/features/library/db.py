@@ -18,6 +18,9 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.features.store.store_listing_versions import (
+    installable_store_version_where,
+)
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
 from backend.data.graph import GraphSettings
@@ -111,12 +114,15 @@ async def _fetch_matching_store_version_ids(
         versions = await prisma.models.StoreListingVersion.prisma().find_many(
             where={
                 "agentGraphId": {"in": graph_ids},
-                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                "isDeleted": False,
-                "isAvailable": True,
-                "StoreListing": {"is": {"isDeleted": False}},
+                **installable_store_version_where(),
             },
-            order=[{"createdAt": "desc"}, {"id": "desc"}],
+            distinct=["agentGraphId", "agentGraphVersion"],
+            order=[
+                {"agentGraphId": "asc"},
+                {"agentGraphVersion": "asc"},
+                {"createdAt": "desc"},
+                {"id": "desc"},
+            ],
         )
     except Exception:
         logger.warning(

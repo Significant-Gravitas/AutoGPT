@@ -8,9 +8,11 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
+  getAdoptTargetKey,
   getAdoptTargetVersionId,
   getUnadoptedAgents,
   getVisibleGroups,
@@ -31,7 +33,7 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   const [pendingLibraryAgentIds, setPendingLibraryAgentIds] = useState<
     Set<string>
   >(new Set());
-  const [adoptedGraphIds, setAdoptedGraphIds] = useState<Set<string>>(
+  const [adoptedTargetKeys, setAdoptedTargetKeys] = useState<Set<string>>(
     new Set(),
   );
 
@@ -45,31 +47,15 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     },
   );
 
-  useEffect(() => {
-    if (
-      !enabled ||
-      !agentsQuery.hasNextPage ||
-      agentsQuery.isFetchingNextPage ||
-      agentsQuery.isError
-    ) {
-      return;
-    }
-    void agentsQuery.fetchNextPage();
-  }, [
-    agentsQuery.fetchNextPage,
-    agentsQuery.hasNextPage,
-    agentsQuery.isError,
-    agentsQuery.isFetchingNextPage,
-    enabled,
-  ]);
-
   const { mutateAsync: installWorkflow } = useInstallExpertWorkflow();
 
   const libraryAgents = agentsQuery.data
     ? unpaginate(agentsQuery.data, "agents")
     : [];
-  const unadoptedAgents = getUnadoptedAgents(libraryAgents, experts).filter(
-    (agent) => !adoptedGraphIds.has(agent.graph_id),
+  const unadoptedAgents = getUnadoptedAgents(
+    libraryAgents,
+    experts,
+    adoptedTargetKeys,
   );
   const groups = getVisibleGroups(experts, schedules, filter);
   const showAgents = filter === "all" || filter === "agents";
@@ -83,7 +69,9 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
         expertId: expert.id,
         data: { store_listing_version_id: versionId },
       });
-      setAdoptedGraphIds((current) => new Set(current).add(agent.graph_id));
+      setAdoptedTargetKeys((current) =>
+        new Set(current).add(getAdoptTargetKey(agent, expert)),
+      );
       await queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
       });
@@ -91,10 +79,14 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
         title: `Added to ${expert.name}'s workflows`,
         variant: "success",
       });
-    } catch {
+    } catch (error) {
+      const versionUnavailable =
+        error instanceof ApiError && error.status === 404;
       toast({
         title: `Couldn't adopt ${agent.name}`,
-        description: "Something went wrong. Please try again.",
+        description: versionUnavailable
+          ? "This Marketplace version is no longer available."
+          : "Something went wrong. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -113,15 +105,15 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     showAgents,
     unadoptedAgents,
     libraryAgentCount: libraryAgents.length,
-    isLoadingAgents:
-      enabled &&
-      !agentsQuery.isError &&
-      (agentsQuery.isLoading ||
-        agentsQuery.isFetchingNextPage ||
-        agentsQuery.hasNextPage === true),
-    isErrorAgents: agentsQuery.isError,
-    retryAgents: () => agentsQuery.refetch(),
+    isLoadingAgents: enabled && agentsQuery.isLoading,
+    isErrorAgents: agentsQuery.isError && !agentsQuery.data,
+    hasMoreAgents: agentsQuery.hasNextPage === true,
+    isLoadingMoreAgents: agentsQuery.isFetchingNextPage,
+    isErrorLoadingMoreAgents: agentsQuery.isFetchNextPageError,
+    retryAgents: () => void agentsQuery.refetch(),
+    loadMoreAgents: () => void agentsQuery.fetchNextPage(),
     adopt,
     pendingLibraryAgentIds,
+    adoptedTargetKeys,
   };
 }

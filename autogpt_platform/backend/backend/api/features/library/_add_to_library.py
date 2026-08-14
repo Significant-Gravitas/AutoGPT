@@ -14,6 +14,9 @@ import backend.api.features.library.model as library_model
 import backend.data.graph as graph_db
 from backend.api.features.library.db import _fetch_schedule_info
 from backend.api.features.orgs.db import resolve_default_tenancy
+from backend.api.features.store.store_listing_versions import (
+    installable_store_version_where,
+)
 from backend.data.graph import GraphModel, GraphSettings
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
@@ -36,9 +39,18 @@ async def resolve_graph_for_library(
     Returns the resolved graph together with the StoreListingVersion, so callers
     can snapshot marketplace metadata without re-querying it.
     """
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}, include={"AgentGraph": True}
-    )
+    if admin:
+        slv = await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id}, include={"AgentGraph": True}
+        )
+    else:
+        slv = await prisma.models.StoreListingVersion.prisma().find_first(
+            where={
+                "id": store_listing_version_id,
+                **installable_store_version_where(),
+            },
+            include={"AgentGraph": True},
+        )
     if not slv or not slv.AgentGraph:
         raise NotFoundError(
             f"Store listing version {store_listing_version_id} not found or invalid"

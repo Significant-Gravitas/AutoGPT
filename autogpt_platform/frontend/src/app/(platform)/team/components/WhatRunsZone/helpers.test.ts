@@ -5,6 +5,8 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { describe, expect, it } from "vitest";
 import { getWorkflowSchedules, workflowNeedsSetup } from "../../helpers";
 import {
+  getAdoptableExperts,
+  getAdoptTargetKey,
   getAdoptTargetVersionId,
   getFilterView,
   getUnadoptedAgents,
@@ -198,19 +200,70 @@ describe("getVisibleGroups", () => {
 });
 
 describe("getUnadoptedAgents", () => {
-  it("excludes agents already installed on any expert by graph id", () => {
+  it("excludes an exact version when every expert already has it", () => {
     const experts = [
       makeExpert({
         id: "a",
-        workflows: [makeWorkflow({ graph_id: "graph-installed" })],
+        workflows: [
+          makeWorkflow({
+            graph_id: "graph-installed",
+            store_listing_version_id: "slv-installed",
+          }),
+        ],
       }),
     ];
     const agents = [
-      makeAgent({ id: "installed", graph_id: "graph-installed" }),
-      makeAgent({ id: "free", graph_id: "graph-free" }),
+      makeAgent({
+        id: "installed",
+        graph_id: "graph-installed",
+        store_listing_version_id: "slv-installed",
+      }),
+      makeAgent({
+        id: "free",
+        graph_id: "graph-free",
+        store_listing_version_id: "slv-free",
+      }),
     ];
     const result = getUnadoptedAgents(agents, experts);
     expect(result.map((a) => a.id)).toEqual(["free"]);
+  });
+
+  it("keeps a newer snapshot of an installed graph adoptable", () => {
+    const expert = makeExpert({
+      workflows: [
+        makeWorkflow({
+          graph_id: "shared-graph",
+          store_listing_version_id: "slv-v1",
+        }),
+      ],
+    });
+    const newer = makeAgent({
+      graph_id: "shared-graph",
+      store_listing_version_id: "slv-v2",
+    });
+
+    expect(getUnadoptedAgents([newer], [expert])).toEqual([newer]);
+  });
+
+  it("keeps an agent visible while another expert can adopt it", () => {
+    const installed = makeExpert({
+      id: "installed",
+      workflows: [makeWorkflow({ store_listing_version_id: "slv-shared" })],
+    });
+    const available = makeExpert({ id: "available", workflows: [] });
+    const agent = makeAgent({ store_listing_version_id: "slv-shared" });
+
+    expect(getUnadoptedAgents([agent], [installed, available])).toEqual([
+      agent,
+    ]);
+    expect(getAdoptableExperts(agent, [installed, available])).toEqual([
+      available,
+    ]);
+
+    const optimistic = new Set([getAdoptTargetKey(agent, available)]);
+    expect(
+      getUnadoptedAgents([agent], [installed, available], optimistic),
+    ).toEqual([]);
   });
 });
 

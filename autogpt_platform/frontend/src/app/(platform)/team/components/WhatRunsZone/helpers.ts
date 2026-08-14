@@ -103,20 +103,38 @@ export function getVisibleGroups(
   return groups;
 }
 
-/** Library agents the user owns that are not yet installed on any expert,
- *  matched on the shared graph id that the install flow copies onto the
- *  expert workflow ref. */
+/** Keep agents that still have at least one eligible expert target. Matching
+ *  the immutable listing-version id lets a newer snapshot remain adoptable
+ *  and lets one agent be installed on more than one expert. */
 export function getUnadoptedAgents(
   agents: LibraryAgent[],
   experts: Expert[],
+  adoptedTargetKeys?: ReadonlySet<string>,
 ): LibraryAgent[] {
-  const installedGraphIds = new Set<string>();
-  for (const expert of experts) {
-    for (const workflow of expert.workflows) {
-      if (workflow.graph_id) installedGraphIds.add(workflow.graph_id);
-    }
-  }
-  return agents.filter((agent) => !installedGraphIds.has(agent.graph_id));
+  return agents.filter(
+    (agent) =>
+      !getAdoptTargetVersionId(agent) ||
+      getAdoptableExperts(agent, experts, adoptedTargetKeys).length > 0,
+  );
+}
+
+export function getAdoptableExperts(
+  agent: LibraryAgent,
+  experts: Expert[],
+  adoptedTargetKeys?: ReadonlySet<string>,
+): Expert[] {
+  const versionId = getAdoptTargetVersionId(agent);
+  if (!versionId) return experts;
+  return experts.filter(
+    (expert) =>
+      !expert.workflows.some(
+        (workflow) => workflow.store_listing_version_id === versionId,
+      ) && !adoptedTargetKeys?.has(getAdoptTargetKey(agent, expert)),
+  );
+}
+
+export function getAdoptTargetKey(agent: LibraryAgent, expert: Expert) {
+  return `${agent.id}:${expert.id}`;
 }
 
 /** The immutable marketplace version matching this agent's exact graph

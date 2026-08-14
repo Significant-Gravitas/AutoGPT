@@ -15,7 +15,6 @@ from backend.api.features.experts.models import (
 from backend.api.features.library import db as library_db
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
-from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -332,19 +331,14 @@ async def install_workflow(
     if existing is not None:
         return _to_workflow_ref(existing)
 
-    store_version = await prisma.models.StoreListingVersion.prisma().find_first(
-        where={
-            "id": store_listing_version_id,
-            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-            "isDeleted": False,
-            "isAvailable": True,
-            "StoreListing": {"is": {"isDeleted": False}},
-        }
+    from backend.api.features.library._add_to_library import (
+        add_graph_to_library,
+        resolve_graph_for_library,
     )
-    if store_version is None:
-        raise NotFoundError(
-            f"Store listing version {store_listing_version_id} not found or unavailable"
-        )
+
+    graph_model, store_version = await resolve_graph_for_library(
+        store_listing_version_id, user_id, admin=False
+    )
 
     library_agent = await prisma.models.LibraryAgent.prisma().find_first(
         where={
@@ -357,9 +351,7 @@ async def install_workflow(
     )
     library_agent_id = library_agent.id if library_agent else None
     if library_agent_id is None:
-        added_agent = await library_db.add_store_agent_to_library(
-            store_listing_version_id, user_id
-        )
+        added_agent = await add_graph_to_library(graph_model, user_id, store_version)
         library_agent_id = added_agent.id
     try:
         row = await prisma.models.ExpertWorkflow.prisma().create(

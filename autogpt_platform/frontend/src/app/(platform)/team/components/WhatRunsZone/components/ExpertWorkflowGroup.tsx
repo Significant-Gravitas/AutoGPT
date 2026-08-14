@@ -6,6 +6,7 @@ import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { FlashIcon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { getLastRunLabel, workflowNeedsSetup } from "../../../helpers";
+import { STATUS_BADGE_CLASS } from "../constants";
 import { ExpertWorkflowGroupData } from "../helpers";
 
 interface Props {
@@ -43,16 +44,13 @@ export function ExpertWorkflowGroup({ group }: Props) {
         {lastRun ? (
           <Badge
             variant={lastRunVariant}
-            className="shrink-0 normal-case tracking-normal"
+            className={`shrink-0 ${STATUS_BADGE_CLASS}`}
           >
             {lastRun}
           </Badge>
         ) : null}
         {isPaused ? (
-          <Badge
-            variant="info"
-            className="shrink-0 normal-case tracking-normal"
-          >
+          <Badge variant="info" className={`shrink-0 ${STATUS_BADGE_CLASS}`}>
             Paused
           </Badge>
         ) : null}
@@ -94,10 +92,7 @@ export function ExpertWorkflowGroup({ group }: Props) {
                 <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                   {needsSetup ? (
                     <>
-                      <Badge
-                        variant="info"
-                        className="normal-case tracking-normal"
-                      >
+                      <Badge variant="info" className={STATUS_BADGE_CLASS}>
                         Needs setup
                       </Badge>
                       <Link
@@ -108,24 +103,17 @@ export function ExpertWorkflowGroup({ group }: Props) {
                       </Link>
                     </>
                   ) : null}
-                  {isPaused && schedules.length > 0 ? (
-                    <Badge
-                      variant="info"
-                      className="normal-case tracking-normal"
-                    >
-                      Paused
-                    </Badge>
-                  ) : (
-                    schedules.map((schedule) => (
-                      <Badge
-                        key={schedule.id}
-                        variant="info"
-                        className="normal-case tracking-normal"
-                      >
-                        {safeHumanizeCronExpression(schedule.cron)}
-                      </Badge>
-                    ))
-                  )}
+                  {!isPaused
+                    ? schedules.map((schedule) => (
+                        <Badge
+                          key={schedule.id}
+                          variant="info"
+                          className={STATUS_BADGE_CLASS}
+                        >
+                          {safeHumanizeCronExpression(schedule.cron)}
+                        </Badge>
+                      ))
+                    : null}
                 </div>
               </div>
             );

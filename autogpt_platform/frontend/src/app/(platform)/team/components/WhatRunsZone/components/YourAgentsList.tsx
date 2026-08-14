@@ -1,6 +1,7 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
@@ -8,7 +9,8 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { getAdoptTargetVersionId } from "../helpers";
+import { STATUS_BADGE_CLASS } from "../constants";
+import { getAdoptableExperts, getAdoptTargetVersionId } from "../helpers";
 import { AdoptAgentButton } from "./AdoptAgentButton";
 
 interface Props {
@@ -16,6 +18,11 @@ interface Props {
   experts: Expert[];
   libraryAgentCount: number;
   pendingLibraryAgentIds: Set<string>;
+  adoptedTargetKeys: Set<string>;
+  hasMoreAgents: boolean;
+  isLoadingMoreAgents: boolean;
+  isErrorLoadingMoreAgents: boolean;
+  onLoadMore: () => void;
   onAdopt: (agent: LibraryAgent, expert: Expert) => void;
 }
 
@@ -24,6 +31,11 @@ export function YourAgentsList({
   experts,
   libraryAgentCount,
   pendingLibraryAgentIds,
+  adoptedTargetKeys,
+  hasMoreAgents,
+  isLoadingMoreAgents,
+  isErrorLoadingMoreAgents,
+  onLoadMore,
   onAdopt,
 }: Props) {
   return (
@@ -41,6 +53,11 @@ export function YourAgentsList({
         <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white">
           {agents.map((agent) => {
             const canAdopt = Boolean(getAdoptTargetVersionId(agent));
+            const adoptableExperts = getAdoptableExperts(
+              agent,
+              experts,
+              adoptedTargetKeys,
+            );
             return (
               <div
                 key={agent.id}
@@ -63,7 +80,7 @@ export function YourAgentsList({
                 {canAdopt ? (
                   <AdoptAgentButton
                     agent={agent}
-                    experts={experts}
+                    experts={adoptableExperts}
                     isPending={pendingLibraryAgentIds.has(agent.id)}
                     onAdopt={onAdopt}
                   />
@@ -76,7 +93,7 @@ export function YourAgentsList({
                       >
                         <Badge
                           variant="info"
-                          className="normal-case tracking-normal text-zinc-500"
+                          className={`${STATUS_BADGE_CLASS} text-zinc-500`}
                         >
                           Local only
                         </Badge>
@@ -92,6 +109,26 @@ export function YourAgentsList({
           })}
         </div>
       )}
+      {isErrorLoadingMoreAgents ? (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3 py-2">
+          <Text variant="small" className="text-zinc-500">
+            We could not load more agents.
+          </Text>
+          <Button variant="secondary" size="small" onClick={onLoadMore}>
+            Retry loading more
+          </Button>
+        </div>
+      ) : hasMoreAgents ? (
+        <Button
+          variant="secondary"
+          size="small"
+          loading={isLoadingMoreAgents}
+          onClick={onLoadMore}
+          className="self-start"
+        >
+          Load more agents
+        </Button>
+      ) : null}
     </section>
   );
 }

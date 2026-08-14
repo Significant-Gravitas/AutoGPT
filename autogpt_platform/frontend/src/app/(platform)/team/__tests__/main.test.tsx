@@ -1,5 +1,6 @@
 import {
   getInstallExpertWorkflowMockHandler,
+  getInstallExpertWorkflowMockHandler404,
   getInstallExpertWorkflowMockHandler422,
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
@@ -25,6 +26,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
@@ -707,6 +709,56 @@ describe("TeamPage", () => {
     await waitFor(() => expect(installExpertId).toBe("expert-john"));
   });
 
+  test("offers an exact version only to experts that have not adopted it", async () => {
+    const user = userEvent.setup();
+    const mariaWithAgent: Expert = {
+      ...hiredMaria,
+      workflows: [
+        ...hiredMaria.workflows,
+        {
+          id: "wf-adopted",
+          store_listing_version_id: "slv-adopt",
+          library_agent_id: "lib-research",
+          graph_id: "graph-research",
+          name: "Research Assistant",
+          description: null,
+        },
+      ],
+    };
+    const john: Expert = {
+      ...hiredMaria,
+      id: "expert-john",
+      name: "John",
+      workflows: [],
+    };
+    let installExpertId: string | undefined;
+    server.use(
+      getListExpertsMockHandler([mariaWithAgent, john]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([adoptableAgent]),
+      ),
+      getInstallExpertWorkflowMockHandler((info) => {
+        installExpertId = info.params.expertId as string;
+        return {
+          id: "wf-john",
+          store_listing_version_id: "slv-adopt",
+          library_agent_id: "lib-research",
+          graph_id: "graph-research",
+          name: "Research Assistant",
+          description: null,
+        };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+
+    await waitFor(() => expect(installExpertId).toBe("expert-john"));
+    expect(screen.queryByText("Choose an expert")).toBeNull();
+  });
+
   test("filter chips switch between members and agents in the zone", async () => {
     const user = userEvent.setup();
     server.use(
@@ -800,7 +852,8 @@ describe("TeamPage", () => {
 
     const group = await screen.findByRole("region", { name: "Maria runs" });
     const workflow = within(group).getAllByTestId("what-runs-workflow-row")[0];
-    expect(within(workflow).getByText("Paused")).toBeDefined();
+    expect(within(group).getAllByText("Paused")).toHaveLength(1);
+    expect(within(workflow).queryByText("Paused")).toBeNull();
     expect(within(workflow).queryByText("Every day at 07:40")).toBeNull();
   });
 
@@ -851,6 +904,30 @@ describe("TeamPage", () => {
     );
     const adoptButton = within(agents).getByRole("button", { name: "Adopt" });
     expect(adoptButton.hasAttribute("disabled")).toBe(false);
+  });
+
+  test("explains when an adopt version is no longer available", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([adoptableAgent]),
+      ),
+      getInstallExpertWorkflowMockHandler404(),
+    );
+
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "This Marketplace version is no longer available.",
+        }),
+      ),
+    );
   });
 
   test("tracks pending adoption by library agent id", async () => {
@@ -950,12 +1027,13 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
-  test("loads every non-hidden library page before showing agents", async () => {
-    const installedAgent = makeLibraryAgent({
-      id: "lib-installed",
-      graph_id: "graph-1",
-      name: "Content Calendar",
-      store_listing_version_id: "slv-1",
+  test("loads additional non-hidden library pages on demand", async () => {
+    const user = userEvent.setup();
+    const secondAgent = makeLibraryAgent({
+      id: "lib-second",
+      graph_id: "graph-second",
+      name: "Second-page Agent",
+      store_listing_version_id: "slv-second",
     });
     const requestedPages: string[] = [];
     const hiddenFilters: string[] = [];
@@ -967,8 +1045,8 @@ describe("TeamPage", () => {
         requestedPages.push(page);
         hiddenFilters.push(params.get("is_hidden") ?? "missing");
         return page === "2"
-          ? libraryResponse([adoptableAgent], 101, 2)
-          : libraryResponse([installedAgent], 101, 1);
+          ? libraryResponse([secondAgent], 101, 2)
+          : libraryResponse([adoptableAgent], 101, 1);
       }),
     );
 
@@ -976,9 +1054,61 @@ describe("TeamPage", () => {
 
     const agents = await screen.findByRole("region", { name: "Your agents" });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
+    expect(within(agents).queryByText("Second-page Agent")).toBeNull();
+    expect(requestedPages).toEqual(["1"]);
+
+    await user.click(
+      within(agents).getByRole("button", { name: "Load more agents" }),
+    );
+
+    expect(await within(agents).findByText("Second-page Agent")).toBeDefined();
     expect(requestedPages).toEqual(["1", "2"]);
     expect(hiddenFilters).toEqual(["false", "false"]);
-    expect(within(agents).queryByText(/aren't shown/)).toBeNull();
+  });
+
+  test("keeps page one visible and retries when loading page two fails", async () => {
+    const user = userEvent.setup();
+    let pageTwoFails = true;
+    const secondAgent = makeLibraryAgent({
+      id: "lib-second",
+      graph_id: "graph-second",
+      name: "Recovered Agent",
+      store_listing_version_id: "slv-second",
+    });
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.get("/api/proxy/api/library/agents", ({ request }) => {
+        const page = new URL(request.url).searchParams.get("page") ?? "1";
+        if (page === "2" && pageTwoFails) {
+          return HttpResponse.json({ detail: "expired" }, { status: 401 });
+        }
+        return HttpResponse.json(
+          page === "2"
+            ? libraryResponse([secondAgent], 101, 2)
+            : libraryResponse([adoptableAgent], 101, 1),
+        );
+      }),
+    );
+
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    expect(within(agents).getByText("Research Assistant")).toBeDefined();
+    await user.click(
+      within(agents).getByRole("button", { name: "Load more agents" }),
+    );
+
+    expect(
+      await within(agents).findByText("We could not load more agents."),
+    ).toBeDefined();
+    expect(within(agents).getByText("Research Assistant")).toBeDefined();
+
+    pageTwoFails = false;
+    await user.click(
+      within(agents).getByRole("button", { name: "Retry loading more" }),
+    );
+
+    expect(await within(agents).findByText("Recovered Agent")).toBeDefined();
   });
 
   test("shows last-run status as a chip beside the workflow count", async () => {

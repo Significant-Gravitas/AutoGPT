@@ -24,6 +24,7 @@ export function getWorkflowSchedules(
   schedules: GraphExecutionJobInfo[],
   peerWorkflows: ExpertWorkflowRef[],
 ) {
+  // Only use the legacy graph-id fallback when one snapshot can own the job.
   const sameGraphWorkflowCount = peerWorkflows.filter(
     (peer) => peer.graph_id === workflow.graph_id,
   ).length;
