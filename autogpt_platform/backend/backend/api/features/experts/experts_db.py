@@ -413,8 +413,8 @@ async def _install_first_job(
         if expert is None:
             raise ExpertNotFoundError(expert_id)
 
-        library_agent = await library_db.add_store_agent_to_library(
-            store_listing_version_id, user_id, tx=tx
+        library_agent = await library_db.add_store_agent_to_library_in_transaction(
+            store_listing_version_id, user_id, tx
         )
         await tx.expertworkflow.create(
             data={

@@ -374,7 +374,7 @@ async def test_raise_expert_reports_failed_first_job(server: SpinTestServer):
     slv_id = await _seed_store_listing(server)
     with patch.object(
         experts_db.library_db,
-        "add_store_agent_to_library",
+        "add_store_agent_to_library_in_transaction",
         new_callable=AsyncMock,
         side_effect=RuntimeError("install exploded"),
     ):
