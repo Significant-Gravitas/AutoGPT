@@ -16,6 +16,11 @@ from typing import TYPE_CHECKING, Callable, cast
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig, CopilotMode
+from backend.copilot.expert_context import (
+    EXPERT_SESSION_MISSING_MESSAGE,
+    EXPERT_SESSION_TEMPORARY_MESSAGE,
+    ExpertSessionUnavailableError,
+)
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
@@ -23,6 +28,10 @@ from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.util.decorator import error_logged
+from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
@@ -222,9 +231,14 @@ async def _normalize_private_expert_session_tenancy(
     from backend.copilot.model import upsert_chat_session
     from backend.data.db_accessors import experts_db
 
-    organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
-        session.user_id, session.expert_id
-    )
+    try:
+        organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
+            session.user_id, session.expert_id
+        )
+    except ExpertNotFoundError as e:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
+    except ExpertPrivateTenancyNotFoundError as e:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
     if (session.organization_id, session.team_id) == (organization_id, team_id):
         return session
 

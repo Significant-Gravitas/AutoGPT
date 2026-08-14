@@ -32,6 +32,7 @@ from backend.copilot.executor.processor import (
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
+    EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
 from backend.copilot.model import ChatSession
@@ -40,7 +41,11 @@ from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
 )
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import (
+    DatabaseError,
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
+)
 
 
 class TestResolveUseSdkForMode:
@@ -714,55 +719,77 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
         "sess-1", error_message="expert is not owned by user"
     )
 
-    @pytest.mark.asyncio
-    async def test_missing_expert_publishes_actionable_stream_error(self) -> None:
-        async def failing_expert_stream():
-            raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE)
-            yield MagicMock()
 
-        stream = failing_expert_stream()
-        mark_completed = AsyncMock()
-        session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
-        session.session_id = "sess-1"
+@pytest.mark.parametrize(
+    ("domain_error", "expected_message"),
+    [
+        (ExpertNotFoundError("expert-1"), EXPERT_SESSION_MISSING_MESSAGE),
+        (
+            ExpertPrivateTenancyNotFoundError("expert-1"),
+            EXPERT_SESSION_TEMPORARY_MESSAGE,
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_expert_tenancy_errors_publish_actionable_copy(
+    domain_error: Exception,
+    expected_message: str,
+) -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        organization_id="personal-org",
+        team_id="personal-team",
+        expert_id="expert-1",
+    )
+    session.session_id = "sess-1"
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(side_effect=domain_error)
+    dummy_engine = MagicMock()
+    baseline_engine = MagicMock()
+    sdk_engine = MagicMock()
+    mark_completed = AsyncMock()
 
-        with (
-            patch(
-                "backend.copilot.executor.processor.ChatConfig",
-                return_value=MagicMock(test_mode=True),
-            ),
-            patch(
-                "backend.copilot.executor.processor.stream_chat_completion_dummy",
-                return_value=stream,
-            ),
-            patch(
-                "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
-                return_value=stream,
-            ),
-            patch(
-                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
-                return_value=stream,
-            ),
-            patch(
-                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-                new=mark_completed,
-            ),
-            patch(
-                "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=session),
-            ),
-            pytest.raises(ExpertSessionUnavailableError),
-        ):
-            await CoPilotProcessor()._execute_async(
-                _make_entry(),
-                threading.Event(),
-                MagicMock(),
-                _make_log(),
-            )
-
-        mark_completed.assert_awaited_once_with(
-            "sess-1",
-            error_message=EXPERT_SESSION_MISSING_MESSAGE,
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.data.db_accessors.experts_db",
+            return_value=expert_store,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_dummy",
+            dummy_engine,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_baseline",
+            baseline_engine,
+        ),
+        patch(
+            "backend.copilot.sdk.service.stream_chat_completion_sdk",
+            sdk_engine,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mark_completed,
+        ),
+        pytest.raises(ExpertSessionUnavailableError) as exc_info,
+    ):
+        await CoPilotProcessor()._execute_async(
+            _make_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
         )
+
+    assert str(exc_info.value) == expected_message
+    assert exc_info.value.__cause__ is domain_error
+    dummy_engine.assert_not_called()
+    baseline_engine.assert_not_called()
+    sdk_engine.assert_not_called()
+    mark_completed.assert_awaited_once_with("sess-1", error_message=expected_message)
 
 
 def _codex_entry(
