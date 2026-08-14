@@ -719,6 +719,70 @@ class TestWorkerIdleTimeout:
                 active_worker.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
 
+    @pytest.mark.asyncio
+    async def test_enqueue_during_cancellation_starts_replacement_worker(self) -> None:
+        """A payload queued before a cancelled worker cleans up must be handed
+        to a replacement worker instead of being orphaned."""
+        user_id = "cancel-race-user"
+        group_id = "user_cancel-race-user"
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        state = ingest._get_loop_state()
+        client = MagicMock()
+        processed = asyncio.Event()
+
+        async def add_episode(**_kwargs):
+            processed.set()
+            return MagicMock()
+
+        client.add_episode = AsyncMock(side_effect=add_episode)
+        await state.workers_lock.acquire()
+        worker = asyncio.create_task(ingest._ingestion_worker(user_id, group_id, queue))
+        state.group_queues[group_id] = queue
+        state.group_workers[group_id] = worker
+        enqueue_task: asyncio.Task[bool] | None = None
+        try:
+            await asyncio.sleep(0)
+            enqueue_task = asyncio.create_task(
+                ingest._enqueue_payload(
+                    user_id,
+                    group_id,
+                    {
+                        "name": "cancellation-race-episode",
+                        "episode_body": "hello",
+                        "source": EpisodeType.text,
+                        "source_description": "cancellation race regression",
+                        "reference_time": datetime.now(timezone.utc),
+                        "group_id": group_id,
+                        "custom_extraction_instructions": "",
+                    },
+                )
+            )
+            await asyncio.sleep(0)
+            worker.cancel()
+            await asyncio.sleep(0)
+
+            with patch.object(
+                ingest,
+                "get_graphiti_client",
+                new=AsyncMock(return_value=client),
+            ):
+                state.workers_lock.release()
+                assert await enqueue_task is True
+                await asyncio.wait_for(processed.wait(), timeout=1)
+
+            replacement = state.group_workers[group_id]
+            assert replacement is not worker
+            client.add_episode.assert_awaited_once()
+        finally:
+            if state.workers_lock.locked():
+                state.workers_lock.release()
+            if enqueue_task is not None and not enqueue_task.done():
+                enqueue_task.cancel()
+            workers = {worker, *state.group_workers.values()}
+            for active_worker in workers:
+                active_worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+
 
 class TestStampEdgeMetadata:
     """#13389: dream-envelope metadata is stamped onto the edges a dream
