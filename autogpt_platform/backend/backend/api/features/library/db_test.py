@@ -12,7 +12,7 @@ import pytest
 from backend.api.features.experts import experts_db
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import MissingConfigError, NotFoundError
 
 from . import db
 from . import model as library_model
@@ -1416,6 +1416,35 @@ async def test_update_expert_preset_propagates_transient_tenancy_failure(mocker)
     )
 
     with pytest.raises(RuntimeError, match="database unavailable"):
+        await db.update_preset(
+            user_id="owner",
+            preset_id="preset-1",
+            is_active=True,
+        )
+
+    mock_preset_client.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_expert_preset_maps_missing_workspace_before_mutation(mocker):
+    mocker.patch.object(
+        db,
+        "get_preset",
+        new=AsyncMock(return_value=MagicMock(name="Preset", expert_id="expert-1")),
+    )
+    mocker.patch.object(
+        experts_db,
+        "resolve_private_expert_tenancy",
+        new=AsyncMock(
+            side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
+        ),
+    )
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(MissingConfigError, match="still being set up"):
         await db.update_preset(
             user_id="owner",
             preset_id="preset-1",

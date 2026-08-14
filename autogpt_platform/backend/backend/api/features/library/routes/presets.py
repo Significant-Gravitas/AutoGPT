@@ -11,6 +11,7 @@ from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution
 from backend.util.exceptions import (
     ExpertRunPausedError,
+    MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
 )
@@ -148,6 +149,10 @@ async def create_preset(
             return await db.create_preset_from_graph_execution(user_id, preset)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except MissingConfigError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        )
     except Exception as e:
         logger.exception("Preset creation failed for user %s: %s", user_id, e)
         raise HTTPException(

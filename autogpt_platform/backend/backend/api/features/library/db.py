@@ -32,7 +32,7 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
@@ -1989,6 +1989,10 @@ async def _resolve_private_expert_tenancy_or_not_found(
         return await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
     except experts_db.ExpertNotFoundError as e:
         raise NotFoundError(not_found_message) from e
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise MissingConfigError(
+            "Your expert workspace is still being set up. Try again shortly."
+        ) from e
 
 
 async def create_preset(
