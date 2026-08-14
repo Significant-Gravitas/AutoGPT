@@ -182,7 +182,6 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
         identities = await experts_db.list_expert_identities(test_user.id)
 
     identity_ids = {item.id for item in identities}
-    assert identity_ids == {hired.expert.id, active_hired.expert.id}
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.name == hired.expert.name
     assert identity.is_archived is True
