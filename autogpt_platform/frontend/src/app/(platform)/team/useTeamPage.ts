@@ -116,6 +116,14 @@ export function useTeamPage({ enabled }: Args) {
     assignPodMutate({ expertId, data: { pod_id: podId } });
   }
 
+  function openNewPod() {
+    setIsNewPodOpen(true);
+  }
+
+  function closeNewPod() {
+    setIsNewPodOpen(false);
+  }
+
   return {
     hiredExperts,
     pods,
@@ -139,8 +147,8 @@ export function useTeamPage({ enabled }: Args) {
     openSoul,
     closeSoul,
     isNewPodOpen,
-    openNewPod: () => setIsNewPodOpen(true),
-    closeNewPod: () => setIsNewPodOpen(false),
+    openNewPod,
+    closeNewPod,
     createPod,
     isCreatingPod,
     assignPod,
