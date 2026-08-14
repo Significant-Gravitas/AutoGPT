@@ -17820,8 +17820,24 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id"
           },
-          "status": { "type": "string", "title": "Status" },
-          "output_type": { "type": "string", "title": "Output Type" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "incomplete",
+              "queued",
+              "running",
+              "completed",
+              "terminated",
+              "failed",
+              "review"
+            ],
+            "title": "Status"
+          },
+          "output_type": {
+            "type": "string",
+            "enum": ["table", "doc", "image", "unknown"],
+            "title": "Output Type"
+          },
           "output_key": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Output Key"

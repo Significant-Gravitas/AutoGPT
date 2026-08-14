@@ -4,6 +4,7 @@ import {
   buildRunLink,
   cellText,
   isOutputType,
+  isSafeImageUrl,
   pickOutputForType,
   tableColumns,
   toCsv,
@@ -17,6 +18,18 @@ describe("WorkOutputSheet helpers", () => {
     expect(isOutputType("unknown")).toBe(true);
     expect(isOutputType("chart")).toBe(false);
     expect(isOutputType(null)).toBe(false);
+  });
+
+  it("accepts only credential-free HTTPS image URLs with known extensions", () => {
+    expect(isSafeImageUrl("https://cdn.example.com/chart.png?token=1")).toBe(
+      true,
+    );
+    expect(isSafeImageUrl("http://cdn.example.com/chart.png")).toBe(false);
+    expect(isSafeImageUrl("https://user:pass@example.com/chart.png")).toBe(
+      false,
+    );
+    expect(isSafeImageUrl("data:image/png;base64,abc")).toBe(false);
+    expect(isSafeImageUrl("https://cdn.example.com/download?id=1")).toBe(false);
   });
 
   it("asTableRows accepts a non-empty list of records only", () => {

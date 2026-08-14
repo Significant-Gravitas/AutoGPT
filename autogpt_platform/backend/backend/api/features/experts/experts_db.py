@@ -1,16 +1,17 @@
 import logging
 from collections import defaultdict
+from typing import cast
 
 import prisma.enums
 import prisma.errors
 import prisma.models
 from pydantic import JsonValue
-
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertRun,
+    ExpertRunStatus,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -18,9 +19,14 @@ from backend.api.features.experts.models import (
 from backend.api.features.library import db as library_db
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
+from backend.data.expert_run_output import (
+    OutputType,
+    RunOutputEntry,
+    classify_run_output,
+    reconstruct_run_outputs,
+)
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
-from backend.executor.expert_posts import classify_run_output
 from backend.util import type as type_utils
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -213,7 +219,7 @@ async def list_expert_runs(
 
 async def _classify_run_outputs(
     execution_ids: list[str],
-) -> dict[str, tuple[str, str | None]]:
+) -> dict[str, tuple[OutputType, str | None]]:
     """Batch-classify run outputs: one bounded query for the OUTPUT-block
     node executions (plus their small name/value input rows) of all listed
     executions, instead of a full ``get_graph_execution`` per run.
@@ -235,7 +241,7 @@ async def _classify_run_outputs(
     for node_exec in node_execs:
         by_execution[node_exec.agentGraphExecutionId].append(node_exec)
 
-    classified: dict[str, tuple[str, str | None]] = {}
+    classified: dict[str, tuple[OutputType, str | None]] = {}
     for execution_id in execution_ids:
         try:
             classified[execution_id] = classify_run_output(
@@ -253,31 +259,26 @@ async def _classify_run_outputs(
 def _outputs_from_node_execs(
     node_execs: list[prisma.models.AgentNodeExecution],
 ) -> dict[str, list[JsonValue]]:
-    """Rebuild the run's ``outputs`` map from its OUTPUT-block node
-    executions, mirroring ``GraphExecution.from_db``: ordered by queue/add
-    time, keyed by the block's ``name`` input, valued by its ``value``."""
-    ordered = sorted(
-        node_execs,
-        key=lambda ne: (ne.queuedTime is None, ne.queuedTime or ne.addedTime),
-    )
-    outputs: dict[str, list[JsonValue]] = defaultdict(list)
-    for node_exec in ordered:
+    entries: list[RunOutputEntry] = []
+    for node_exec in node_execs:
         if node_exec.executionData is not None:
-            input_data = type_utils.convert(node_exec.executionData, dict)
+            input_data = cast(
+                dict[str, JsonValue],
+                type_utils.convert(node_exec.executionData, dict),
+            )
         else:
             input_data = {
                 row.name: type_utils.convert(row.data, JsonValue)
                 for row in node_exec.Input or []
             }
-        if "name" in input_data:
-            outputs[input_data["name"]].append(input_data.get("value"))
-    return outputs
+        entries.append((node_exec.queuedTime, node_exec.addedTime, input_data))
+    return reconstruct_run_outputs(entries)
 
 
 def _to_expert_run(
     execution: prisma.models.AgentGraphExecution,
     workflow: prisma.models.ExpertWorkflow | None,
-    output_type: str,
+    output_type: OutputType,
     output_key: str | None,
     *,
     needs_review: bool,
@@ -289,7 +290,7 @@ def _to_expert_run(
         graph_id=execution.agentGraphId,
         agent_name=listing.name if listing else DEFAULT_AGENT_NAME,
         library_agent_id=library_agent_id,
-        status=str(execution.executionStatus),
+        status=cast(ExpertRunStatus, str(execution.executionStatus).lower()),
         output_type=output_type,
         output_key=output_key,
         needs_review=needs_review,

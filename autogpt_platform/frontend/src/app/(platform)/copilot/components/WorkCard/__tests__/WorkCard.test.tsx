@@ -29,6 +29,14 @@ describe("WorkCard", () => {
     expect(screen.getByText("Failed")).toBeDefined();
   });
 
+  it("does not label a non-terminal status as completed", () => {
+    render(
+      <WorkCard metadata={{ ...baseMeta, status: "running" }} preview="" />,
+    );
+    expect(screen.getByText("Running")).toBeDefined();
+    expect(screen.queryByText("Completed")).toBeNull();
+  });
+
   it("opens the output sheet when Open is clicked", () => {
     render(<WorkCard metadata={baseMeta} preview="Sent the weekly report." />);
 

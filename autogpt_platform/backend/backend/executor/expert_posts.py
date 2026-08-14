@@ -9,12 +9,17 @@ thread (the activity strip is the overflow surface).
 
 import logging
 import uuid
-from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, cast
-from urllib.parse import urlsplit
+from typing import TYPE_CHECKING, cast
 
+from backend.blocks import get_output_block_ids
+from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME
 from backend.data.execution import ExecutionStatus, GraphExecutionEntry
+from backend.data.expert_run_output import (
+    OutputType,
+    classify_run_output,
+    reconstruct_run_outputs,
+)
 from backend.data.model import GraphExecutionStats
 from backend.data.redis_client import get_redis
 
@@ -31,10 +36,6 @@ _MAX_ERROR_LENGTH = 500
 # Discriminator the frontend keys on to render a WorkCard instead of a raw
 # markdown wall. Rides in the message's per-row JSONB metadata bag.
 RUN_METADATA_KIND = "expert_run"
-_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp")
-# A string must clear this length to read as a "doc" rather than an incidental
-# label; below it stays "unknown" and falls back to the run-details link.
-_DOC_MIN_LENGTH = 200
 
 
 def handle_expert_run_post(
@@ -88,7 +89,7 @@ def _post_run_result(
         metadata = db_client.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
         )
-        agent_name = metadata.name if metadata else "your workflow"
+        agent_name = metadata.name if metadata else DEFAULT_AGENT_NAME
         succeeded = status == ExecutionStatus.COMPLETED
         library_agent_id = db_client.get_library_agent_id_by_graph_id(
             graph_exec.user_id, graph_exec.graph_id
@@ -100,7 +101,12 @@ def _post_run_result(
             error=str(exec_stats.error) if exec_stats.error else None,
             library_agent_id=library_agent_id,
         )
-        output_type, output_key = _resolve_run_output(db_client, graph_exec)
+        output_type: OutputType
+        output_key: str | None
+        if succeeded:
+            output_type, output_key = _resolve_run_output(db_client, graph_exec)
+        else:
+            output_type, output_key = "unknown", None
         posted_session = db_client.append_expert_run_message(
             user_id=graph_exec.user_id,
             expert_id=expert_id,
@@ -164,74 +170,23 @@ def build_expert_run_message(
     )
 
 
-def classify_output_type(value: object) -> str:
-    """Classify a single run-output value for the typed work viewer.
-
-    Deliberately conservative — only shapes the viewer can actually render
-    earn a specific type. Everything else stays ``"unknown"`` and falls back
-    to the run-details link.
-    """
-    if isinstance(value, dict):
-        return "table"
-    if isinstance(value, list) and value:
-        if all(isinstance(row, dict) for row in value):
-            return "table"
-        if all(isinstance(item, str) for item in value):
-            strings = [item.strip() for item in value if item.strip()]
-            if strings and all(_is_image_url(item) for item in strings):
-                return "image"
-            if len("\n\n".join(strings)) >= _DOC_MIN_LENGTH:
-                return "doc"
-    if isinstance(value, str):
-        stripped = value.strip()
-        if _is_image_url(stripped):
-            return "image"
-        if len(stripped) >= _DOC_MIN_LENGTH:
-            return "doc"
-    return "unknown"
-
-
-def classify_run_output(outputs: Mapping[str, list[Any]]) -> tuple[str, str | None]:
-    """Classify a completed run's first *renderable* output pin.
-
-    Scans pins in order and returns ``(output_type, pin_key)`` for the first
-    pin the typed viewer can actually render — a short status string on the
-    first pin must not mask a table on the second. Falls back to
-    ``("unknown", None)`` when nothing renders. A pin that emitted a single
-    list-of-dicts value and one that emitted several dict rows both read as
-    a ``"table"``. A single dict row is also a one-row table. Multiple text
-    values are classified as one document,
-    while multiple image URLs select the image viewer.
-    """
-    for key, values in outputs.items():
-        if not values:
-            continue
-        output_type = classify_output_type(values[0] if len(values) == 1 else values)
-        if output_type != "unknown":
-            return output_type, key
-    return "unknown", None
-
-
-def _is_image_url(value: str) -> bool:
-    if not value.lower().startswith(("http://", "https://")):
-        return False
-    return urlsplit(value).path.lower().endswith(_IMAGE_EXTENSIONS)
-
-
 def _resolve_run_output(
     db_client: "DatabaseManagerClient", graph_exec: GraphExecutionEntry
-) -> tuple[str, str | None]:
+) -> tuple[OutputType, str | None]:
     """Best-effort output classification; any retrieval failure degrades to
     ``("unknown", None)`` so a thread post never hinges on fetching run
     outputs."""
     try:
-        execution = db_client.get_graph_execution(
-            user_id=graph_exec.user_id,
-            execution_id=graph_exec.graph_exec_id,
+        node_execs = db_client.get_node_executions(
+            graph_exec_id=graph_exec.graph_exec_id,
+            block_ids=list(get_output_block_ids()),
         )
-        if execution is None:
-            return "unknown", None
-        return classify_run_output(execution.outputs)
+        outputs = reconstruct_run_outputs(
+            (node.queue_time, node.add_time, node.input_data)
+            for node in node_execs
+            if node.status != ExecutionStatus.INCOMPLETE
+        )
+        return classify_run_output(outputs)
     except Exception as e:
         logger.warning(
             f"Failed to classify output for run #{graph_exec.graph_exec_id}: "

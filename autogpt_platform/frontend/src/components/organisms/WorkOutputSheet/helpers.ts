@@ -2,6 +2,15 @@ export type OutputType = "table" | "doc" | "image" | "unknown";
 
 export const MAX_PREVIEW_ROWS = 100;
 export const MAX_PREVIEW_COLUMNS = 20;
+const IMAGE_EXTENSIONS = [
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".bmp",
+];
 
 export function isOutputType(value: unknown): value is OutputType {
   return (
@@ -10,6 +19,23 @@ export function isOutputType(value: unknown): value is OutputType {
     value === "image" ||
     value === "unknown"
   );
+}
+
+export function isSafeImageUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      IMAGE_EXTENSIONS.some((extension) =>
+        url.pathname.toLowerCase().endsWith(extension),
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

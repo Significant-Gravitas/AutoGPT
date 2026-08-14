@@ -1,5 +1,6 @@
 """Unit tests for expert run-result thread posts — no DB required."""
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -8,12 +9,11 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionEntry,
 )
+from backend.data.expert_run_output import classify_output_type, classify_run_output
 from backend.data.model import GraphExecutionStats
 from backend.executor.expert_posts import (
     RUN_METADATA_KIND,
     build_expert_run_message,
-    classify_output_type,
-    classify_run_output,
     handle_expert_run_post,
 )
 
@@ -42,6 +42,15 @@ def _redis_allowing_posts() -> MagicMock:
     redis = MagicMock()
     redis.incr.return_value = 1
     return redis
+
+
+def _output_node(name: str, value: object) -> SimpleNamespace:
+    return SimpleNamespace(
+        queue_time=None,
+        add_time=datetime(2026, 8, 14, tzinfo=timezone.utc),
+        input_data={"name": name, "value": value},
+        status=ExecutionStatus.COMPLETED,
+    )
 
 
 def test_build_message_success_prefers_activity_summary():
@@ -189,6 +198,7 @@ def test_classify_output_type_table_from_single_dict():
 def test_classify_output_type_image_from_url_with_extension():
     assert classify_output_type("https://cdn.example.com/report.PNG") == "image"
     assert classify_output_type("https://cdn.example.com/chart.svg?v=2") == "image"
+    assert classify_output_type("http://cdn.example.com/chart.png") == "unknown"
 
 
 def test_classify_output_type_doc_from_long_text():
@@ -237,9 +247,9 @@ def test_post_attaches_run_metadata_with_output_type():
     db_client = MagicMock()
     db_client.get_graph_metadata.return_value = SimpleNamespace(name="Weekly Report")
     db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
-    db_client.get_graph_execution.return_value = SimpleNamespace(
-        outputs={"result": [[{"metric": "signups", "value": 12}]]}
-    )
+    db_client.get_node_executions.return_value = [
+        _output_node("result", [{"metric": "signups", "value": 12}])
+    ]
     with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
         handle_expert_run_post(
             db_client,
@@ -256,13 +266,15 @@ def test_post_attaches_run_metadata_with_output_type():
     assert metadata["status"] == "completed"
     assert metadata["output_type"] == "table"
     assert metadata["output_key"] == "result"
+    output_query = db_client.get_node_executions.call_args.kwargs
+    assert output_query["graph_exec_id"] == "exec-1"
+    assert output_query["block_ids"]
 
 
-def test_post_metadata_output_type_degrades_to_unknown_on_fetch_failure():
+def test_failed_post_skips_output_fetch():
     db_client = MagicMock()
     db_client.get_graph_metadata.return_value = SimpleNamespace(name="Weekly Report")
     db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
-    db_client.get_graph_execution.side_effect = RuntimeError("rpc down")
     with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
         handle_expert_run_post(
             db_client,
@@ -272,6 +284,25 @@ def test_post_metadata_output_type_degrades_to_unknown_on_fetch_failure():
         )
     metadata = db_client.append_expert_run_message.call_args.kwargs["metadata"]
     assert metadata["status"] == "failed"
+    assert metadata["output_type"] == "unknown"
+    assert metadata["output_key"] is None
+    db_client.get_node_executions.assert_not_called()
+
+
+def test_completed_post_output_type_degrades_to_unknown_on_fetch_failure():
+    db_client = MagicMock()
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Weekly Report")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    db_client.get_node_executions.side_effect = RuntimeError("rpc down")
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(),
+        )
+    metadata = db_client.append_expert_run_message.call_args.kwargs["metadata"]
+    assert metadata["status"] == "completed"
     assert metadata["output_type"] == "unknown"
     assert metadata["output_key"] is None
 

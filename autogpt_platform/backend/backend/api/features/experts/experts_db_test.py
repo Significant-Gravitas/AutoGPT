@@ -825,3 +825,119 @@ def test_outputs_from_node_execs_skips_rows_without_name():
         [_output_node_exec("", None, execution_data={"other": "x"})]
     )
     assert outputs == {}
+
+
+@pytest.mark.asyncio
+async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
+    expert_client = SimpleNamespace(
+        find_first=AsyncMock(return_value=SimpleNamespace(Workflows=[]))
+    )
+    execution_client = SimpleNamespace(
+        find_many=AsyncMock(
+            return_value=[
+                _run_execution(id="exec-1"),
+                _run_execution(id="exec-2", executionStatus="REVIEW"),
+            ]
+        )
+    )
+    review_client = SimpleNamespace(
+        find_many=AsyncMock(return_value=[SimpleNamespace(graphExecId="exec-2")])
+    )
+
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
+        patch.object(
+            prisma.models.AgentGraphExecution,
+            "prisma",
+            return_value=execution_client,
+        ),
+        patch.object(
+            prisma.models.PendingHumanReview,
+            "prisma",
+            return_value=review_client,
+        ),
+        patch.object(
+            experts_db,
+            "_classify_run_outputs",
+            new=AsyncMock(
+                return_value={
+                    "exec-1": ("table", "rows"),
+                    "exec-2": ("unknown", None),
+                }
+            ),
+        ),
+    ):
+        runs = await experts_db.list_expert_runs("owner-1", "expert-1")
+
+    expert_where = expert_client.find_first.await_args.kwargs["where"]
+    assert expert_where == {
+        "id": "expert-1",
+        "ownerUserId": "owner-1",
+        "isTemplate": False,
+        "isArchived": False,
+    }
+    execution_where = execution_client.find_many.await_args.kwargs["where"]
+    assert execution_where == {
+        "userId": "owner-1",
+        "expertId": "expert-1",
+        "isDeleted": False,
+    }
+    review_where = review_client.find_many.await_args.kwargs["where"]
+    assert review_where["userId"] == "owner-1"
+    assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
+    assert [run.status for run in runs] == ["completed", "review"]
+    assert [run.needs_review for run in runs] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_list_expert_runs_rejects_missing_or_foreign_expert():
+    expert_client = SimpleNamespace(find_first=AsyncMock(return_value=None))
+
+    with patch.object(
+        prisma.models.Expert,
+        "prisma",
+        return_value=expert_client,
+    ):
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.list_expert_runs("owner-1", "foreign-expert")
+
+    assert expert_client.find_first.await_args.kwargs["where"]["ownerUserId"] == (
+        "owner-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_classify_run_outputs_degrades_only_corrupt_execution():
+    node_client = SimpleNamespace(
+        find_many=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    agentGraphExecutionId="exec-bad",
+                    **vars(_output_node_exec("broken", {"bad": True})),
+                ),
+                SimpleNamespace(
+                    agentGraphExecutionId="exec-good",
+                    **vars(_output_node_exec("report", "word " * 100)),
+                ),
+            ]
+        )
+    )
+
+    with (
+        patch.object(
+            prisma.models.AgentNodeExecution,
+            "prisma",
+            return_value=node_client,
+        ),
+        patch.object(
+            experts_db,
+            "classify_run_output",
+            side_effect=[ValueError("corrupt output"), ("doc", "report")],
+        ),
+    ):
+        classified = await experts_db._classify_run_outputs(["exec-bad", "exec-good"])
+
+    assert classified == {
+        "exec-bad": ("unknown", None),
+        "exec-good": ("doc", "report"),
+    }

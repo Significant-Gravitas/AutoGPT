@@ -10,7 +10,7 @@
     "output_key": "result",
     "output_type": "table",
     "started_at": null,
-    "status": "COMPLETED"
+    "status": "completed"
   },
   {
     "agent_name": "SEO Blog Writer",
@@ -23,6 +23,6 @@
     "output_key": "result",
     "output_type": "doc",
     "started_at": null,
-    "status": "COMPLETED"
+    "status": "completed"
   }
 ]

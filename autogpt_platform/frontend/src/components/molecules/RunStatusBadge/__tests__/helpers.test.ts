@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getRunStatusInfo } from "../helpers";
+import { getRunStatusInfo } from "../RunStatusBadge";
 
 describe("getRunStatusInfo", () => {
   it.each([

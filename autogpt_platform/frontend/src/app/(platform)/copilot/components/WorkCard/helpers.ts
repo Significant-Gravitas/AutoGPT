@@ -1,4 +1,7 @@
-import { isOutputType, type OutputType } from "../WorkOutputSheet/helpers";
+import {
+  isOutputType,
+  type OutputType,
+} from "@/components/organisms/WorkOutputSheet/helpers";
 
 export interface WorkRunMetadata {
   executionId: string;
@@ -8,10 +11,6 @@ export interface WorkRunMetadata {
   status: string;
   outputType: OutputType;
   outputKey: string | null;
-}
-
-export function isFailedRunStatus(status: string): boolean {
-  return status.toUpperCase().includes("FAILED");
 }
 
 const RUN_METADATA_KIND = "expert_run";
@@ -42,7 +41,7 @@ export function getWorkRunMetadata(value: unknown): WorkRunMetadata | null {
     executionId,
     graphId,
     libraryAgentId: asString(meta.library_agent_id),
-    graphName: asString(meta.graph_name) ?? "Workflow run",
+    graphName: asString(meta.graph_name) ?? "Agent task",
     status: asString(meta.status) ?? "completed",
     outputType,
     outputKey: asString(meta.output_key),

@@ -1,4 +1,4 @@
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkOutputSheet } from "../WorkOutputSheet";
 
@@ -86,6 +86,45 @@ describe("WorkOutputSheet", () => {
 
     const image = screen.getByAltText("Weekly Report") as HTMLImageElement;
     expect(image.src).toBe("https://cdn.example.com/chart.png");
+    expect(image.referrerPolicy).toBe("no-referrer");
+  });
+
+  it("rejects untrusted image URLs", () => {
+    setOutputs({ result: ["data:image/svg+xml,<svg></svg>"] });
+    render(<WorkOutputSheet {...baseProps} outputType="image" />);
+
+    expect(screen.queryByAltText("Weekly Report")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open run details" }),
+    ).toBeDefined();
+  });
+
+  it("falls back to the run link when an image fails to load", () => {
+    setOutputs({ result: ["https://cdn.example.com/expired.png"] });
+    render(<WorkOutputSheet {...baseProps} outputType="image" />);
+
+    fireEvent.error(screen.getByAltText("Weekly Report"));
+
+    expect(screen.queryByAltText("Weekly Report")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open run details" }),
+    ).toBeDefined();
+  });
+
+  it("renders a loading skeleton while output details load", () => {
+    detailsResult.current = { data: null, isLoading: true, isError: false };
+    render(<WorkOutputSheet {...baseProps} outputType="table" />);
+
+    expect(screen.getByTestId("work-output-loading")).toBeDefined();
+  });
+
+  it("falls back to the run link when output details fail", () => {
+    detailsResult.current = { data: null, isLoading: false, isError: true };
+    render(<WorkOutputSheet {...baseProps} outputType="table" />);
+
+    expect(
+      screen.getByRole("link", { name: "Open run details" }),
+    ).toBeDefined();
   });
 
   it("falls back to the run link for unknown output", () => {

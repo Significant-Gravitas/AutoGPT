@@ -1,3 +1,5 @@
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import {
   getGetExpertMockHandler,
   getListExpertRunsMockHandler,
@@ -119,7 +121,7 @@ const mariaRuns: ExpertRun[] = [
     graph_id: "graph-1",
     agent_name: "Weekly Report",
     library_agent_id: "lib-1",
-    status: "COMPLETED",
+    status: "completed",
     output_type: "table",
     output_key: "result",
     needs_review: false,
@@ -132,7 +134,7 @@ const mariaRuns: ExpertRun[] = [
     graph_id: "graph-2",
     agent_name: "SEO Audit",
     library_agent_id: "lib-2",
-    status: "REVIEW",
+    status: "review",
     output_type: "doc",
     output_key: "report",
     needs_review: true,
@@ -241,6 +243,29 @@ describe("ExpertDetailPage", () => {
 
     await screen.findByRole("heading", { name: "Maria" });
     expect(await screen.findByText(/No completed work yet/)).toBeDefined();
+  });
+
+  test("shows a retryable error when recent work fails to load", async () => {
+    let attempts = 0;
+    server.use(
+      http.get("/api/proxy/api/experts/:expertId/runs", () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+          : HttpResponse.json(mariaRuns);
+      }),
+    );
+    const user = userEvent.setup();
+
+    render(<ExpertDetailPage />);
+
+    expect(
+      await screen.findByText("We could not load this expert's recent work."),
+    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(await screen.findByText("Weekly Report")).toBeDefined();
+    expect(attempts).toBe(2);
   });
 
   test("paused expert offers one-click resume", async () => {

@@ -13,12 +13,14 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import Link from "next/link";
+import { useState } from "react";
 import {
   asTableRows,
   cellText,
   downloadCsv,
   MAX_PREVIEW_COLUMNS,
   MAX_PREVIEW_ROWS,
+  isSafeImageUrl,
   pickOutputForType,
   tableColumns,
   toCsv,
@@ -125,16 +127,8 @@ function WorkOutputBody({
     return <OutputTable title={title} rows={rows} runLink={runLink} />;
   }
 
-  if (outputType === "image" && typeof primary === "string") {
-    return (
-      // Run outputs are arbitrary external URLs — next/image can't optimize them.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={primary}
-        alt={title}
-        className="max-h-[70vh] w-full rounded-xl object-contain"
-      />
-    );
+  if (outputType === "image") {
+    return <OutputImage source={primary} title={title} runLink={runLink} />;
   }
 
   if (outputType === "doc" && typeof primary === "string") {
@@ -148,6 +142,32 @@ function WorkOutputBody({
   return <RunLinkFallback runLink={runLink} />;
 }
 
+function OutputImage({
+  source,
+  title,
+  runLink,
+}: {
+  source: unknown;
+  title: string;
+  runLink?: string | null;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!isSafeImageUrl(source) || failed) {
+    return <RunLinkFallback runLink={runLink} />;
+  }
+  return (
+    // Run outputs are arbitrary external URLs — next/image can't optimize them.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={source}
+      alt={title}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="max-h-[70vh] w-full rounded-xl object-contain"
+    />
+  );
+}
+
 function OutputTable({
   title,
   rows,
@@ -158,7 +178,7 @@ function OutputTable({
   runLink?: string | null;
 }) {
   const visibleRows = rows.slice(0, MAX_PREVIEW_ROWS);
-  const allColumns = tableColumns(rows);
+  const allColumns = tableColumns(visibleRows);
   const columns = allColumns.slice(0, MAX_PREVIEW_COLUMNS);
   const truncated =
     rows.length > visibleRows.length || allColumns.length > columns.length;

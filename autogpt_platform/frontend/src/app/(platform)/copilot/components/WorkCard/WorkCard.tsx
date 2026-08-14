@@ -1,11 +1,11 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { cn } from "@/lib/utils";
+import { RunStatusBadge } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
+import { buildRunLink } from "@/components/organisms/WorkOutputSheet/helpers";
+import { WorkOutputSheet } from "@/components/organisms/WorkOutputSheet/WorkOutputSheet";
 import { useState } from "react";
-import { buildRunLink } from "../WorkOutputSheet/helpers";
-import { WorkOutputSheet } from "../WorkOutputSheet/WorkOutputSheet";
-import { isFailedRunStatus, type WorkRunMetadata } from "./helpers";
+import { type WorkRunMetadata } from "./helpers";
 
 interface Props {
   metadata: WorkRunMetadata;
@@ -14,7 +14,6 @@ interface Props {
 
 export function WorkCard({ metadata, preview }: Props) {
   const [isOpen, setIsOpen] = useState(false);
-  const failed = isFailedRunStatus(metadata.status);
   const runLink = buildRunLink(metadata.libraryAgentId, metadata.executionId);
 
   return (
@@ -27,16 +26,9 @@ export function WorkCard({ metadata, preview }: Props) {
           <p className="truncate text-sm font-medium text-zinc-900">
             {metadata.graphName}
           </p>
-          <span
-            className={cn(
-              "mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-              failed
-                ? "bg-red-50 text-red-600"
-                : "bg-emerald-50 text-emerald-600",
-            )}
-          >
-            {failed ? "Failed" : "Completed"}
-          </span>
+          <div className="mt-1">
+            <RunStatusBadge status={metadata.status} />
+          </div>
         </div>
         <Button
           variant="secondary"

@@ -1,6 +1,19 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+from backend.data.expert_run_output import OutputType
+
+ExpertRunStatus = Literal[
+    "incomplete",
+    "queued",
+    "running",
+    "completed",
+    "terminated",
+    "failed",
+    "review",
+]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
@@ -55,9 +68,8 @@ class ExpertRun(BaseModel):
     graph_id: str
     agent_name: str
     library_agent_id: str | None
-    status: str
-    # "table" | "doc" | "image" | "unknown" — drives the typed viewer.
-    output_type: str
+    status: ExpertRunStatus
+    output_type: OutputType
     # Which output pin was classified, so the viewer opens exactly that value.
     output_key: str | None
     needs_review: bool

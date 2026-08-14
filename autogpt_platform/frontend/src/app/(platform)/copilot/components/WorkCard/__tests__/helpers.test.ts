@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getWorkRunMetadata, isFailedRunStatus, toPreview } from "../helpers";
+import { getWorkRunMetadata, toPreview } from "../helpers";
 
 describe("WorkCard helpers", () => {
   it("parses a valid run metadata payload", () => {
@@ -24,13 +24,6 @@ describe("WorkCard helpers", () => {
     });
   });
 
-  it("isFailedRunStatus matches any casing", () => {
-    expect(isFailedRunStatus("failed")).toBe(true);
-    expect(isFailedRunStatus("FAILED")).toBe(true);
-    expect(isFailedRunStatus("completed")).toBe(false);
-    expect(isFailedRunStatus("COMPLETED")).toBe(false);
-  });
-
   it("returns null for legacy messages without run metadata", () => {
     expect(getWorkRunMetadata(undefined)).toBeNull();
     expect(getWorkRunMetadata({})).toBeNull();
@@ -51,7 +44,7 @@ describe("WorkCard helpers", () => {
       output_type: "weird",
     });
     expect(meta?.outputType).toBe("unknown");
-    expect(meta?.graphName).toBe("Workflow run");
+    expect(meta?.graphName).toBe("Agent task");
   });
 
   it("toPreview strips markdown links, quotes and bold", () => {
