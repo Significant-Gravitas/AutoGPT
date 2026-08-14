@@ -132,7 +132,9 @@ class TestBuildExpertIdentitySuffix:
                 match="authenticated user",
             ),
         ):
-            await build_expert_identity_suffix("", "exp-1")
+            await build_expert_identity_suffix(
+                "", "exp-1", organization_id=None, team_id=None
+            )
 
         db_factory.assert_not_called()
 

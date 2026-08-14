@@ -172,7 +172,9 @@ class TestApplyBuildingModeRestart:
                 log_prefix="[test]",
             )
 
-        identity.assert_awaited_once_with("user-1", "expert-1")
+        identity.assert_awaited_once_with(
+            "user-1", "expert-1", organization_id=None, team_id=None
+        )
         assert not _graphiti_ingest_allowed(
             expert_identity_validated=False,
             graphiti_enabled=True,
