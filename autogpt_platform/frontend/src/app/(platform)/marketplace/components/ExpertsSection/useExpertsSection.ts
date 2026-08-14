@@ -30,7 +30,7 @@ export function useExpertsSection() {
     hiredTemplateIds,
     // While the experts query is unresolved the hired state is unknown, not
     // "not hired" — cards show a placeholder badge instead of a false state.
-    isHiredLookupPending: isLoggedIn && expertsQuery.isPending,
+    isHiredLookupUnresolved: isLoggedIn && !expertsQuery.isSuccess,
     isLoading: isLoggedIn && templatesQuery.isLoading,
     isError: templatesQuery.isError,
     selectedTemplateId,

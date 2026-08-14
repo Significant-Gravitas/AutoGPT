@@ -11,7 +11,7 @@ export function ExpertsSection() {
   const {
     templates,
     hiredTemplateIds,
-    isHiredLookupPending,
+    isHiredLookupUnresolved,
     isLoading,
     isError,
     selectedTemplateId,
@@ -44,7 +44,7 @@ export function ExpertsSection() {
               key={template.id}
               expert={template}
               hiredState={
-                isHiredLookupPending
+                isHiredLookupUnresolved
                   ? "unknown"
                   : hiredTemplateIds.has(template.id)
                     ? "hired"

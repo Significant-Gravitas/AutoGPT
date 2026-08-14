@@ -106,13 +106,15 @@ export function ExpertTeamCard({
         ) : schedulesStatus === "error" ? (
           <>
             Schedules unavailable{" "}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="small"
               onClick={handleRetrySchedulesClick}
-              className="underline underline-offset-2 hover:text-zinc-700"
+              className="h-auto min-w-0 border-0 px-1 py-0 text-xs underline underline-offset-2 hover:bg-transparent hover:text-zinc-700"
             >
               Retry
-            </button>
+            </Button>
           </>
         ) : (
           (scheduleLabel ?? "No schedules yet")

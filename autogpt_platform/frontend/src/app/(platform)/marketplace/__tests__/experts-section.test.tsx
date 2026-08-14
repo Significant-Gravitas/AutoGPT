@@ -286,6 +286,10 @@ describe("Marketplace ExpertsSection", () => {
 
     renderMarketplace();
 
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    expect(screen.queryByText("Hire")).toBeNull();
+    expect(screen.queryByText("On your team")).toBeNull();
+
     await userEvent.click(await screen.findByText("Maria"));
 
     expect(
