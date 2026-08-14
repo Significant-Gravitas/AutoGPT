@@ -294,7 +294,11 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
-    if before is not None and before.voicePreferences != soul.voice_preferences:
+    if (
+        before is not None
+        and not (before.voicePreferences or "").strip()
+        and bool(soul.voice_preferences.strip())
+    ):
         await emit_funnel_event(
             user_id, "writing_style_added", {"expert_id": expert_id}
         )

@@ -866,7 +866,7 @@ async def test_install_workflow_emits_workflow_installed(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_update_soul_emits_writing_style_when_voice_changes(
+async def test_update_soul_emits_writing_style_when_voice_is_first_added(
     server: SpinTestServer, test_user
 ):
     template = await _seed_template(name="Maria", preload_listings=[])
@@ -885,6 +885,43 @@ async def test_update_soul_emits_writing_style_when_voice_changes(
     emit.assert_awaited_once_with(
         test_user.id, "writing_style_added", {"expert_id": hired.expert.id}
     )
+
+
+@pytest.mark.parametrize(
+    "next_voice",
+    ["", "Deliberate, detailed, and formal."],
+    ids=["removed", "replaced"],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_skips_writing_style_when_existing_voice_changes(
+    server: SpinTestServer, test_user, next_voice: str
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.update_soul(
+        test_user.id,
+        hired.expert.id,
+        ExpertSoulUpdate(
+            name="Mara",
+            identity="You are Mara, a thoughtful strategist.",
+            voice_preferences="Warm, concise, and direct.",
+            boundaries="Never invent customer evidence.",
+        ),
+    )
+
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.update_soul(
+            test_user.id,
+            hired.expert.id,
+            ExpertSoulUpdate(
+                name="Mara",
+                identity="You are Mara, a thoughtful strategist.",
+                voice_preferences=next_voice,
+                boundaries="Never invent customer evidence.",
+            ),
+        )
+
+    emit.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
