@@ -34,14 +34,14 @@ import {
 } from "../../helpers";
 import { useExpertTeamCard } from "./useExpertTeamCard";
 
-interface Props {
+type Props = {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
   pods: ExpertPod[];
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
   onAssignPod: (expertId: string, podId: string | null) => void;
-}
+};
 
 export function ExpertTeamCard({
   expert,

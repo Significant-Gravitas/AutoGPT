@@ -5,12 +5,12 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { FormEvent, useEffect, useState } from "react";
 
-interface Props {
+type Props = {
   open: boolean;
   onClose: () => void;
   onCreate: (name: string) => void;
   isCreating: boolean;
-}
+};
 
 export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
   const [name, setName] = useState("");
