@@ -65,7 +65,7 @@ export function FireExpertDialog({
           <ul className="flex flex-col gap-2.5">
             <FireLine>Installed workflows stay in your library.</FireLine>
             <FireLine>{getAutomationLineText()}</FireLine>
-            <FireLine>Chat threads become read-only history.</FireLine>
+            <FireLine>Any chat history stays available but read-only.</FireLine>
             <FireLine>Their work stays yours.</FireLine>
           </ul>
           {isPreviewError ? (

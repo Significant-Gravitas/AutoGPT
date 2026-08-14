@@ -60,7 +60,7 @@ export function ExpertTeamCard({
           expertName={expert.name}
           onFire={openFire}
           testId="expert-card-actions"
-          triggerClassName="text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+          triggerClassName="text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
         />
       </div>
       <Link

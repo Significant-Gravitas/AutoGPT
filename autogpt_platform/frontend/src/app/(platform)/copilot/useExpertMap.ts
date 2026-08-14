@@ -33,7 +33,7 @@ export function resolveExpertIdentity(
   activeExpertId: string | null,
   expertsById: ExpertIdentityMap,
   hasExpertsSettled: boolean,
-  hasExpertsErrored = false,
+  hasExpertsErrored: boolean,
 ): ExpertIdentity | null {
   if (!activeExpertId) return null;
   const found = expertsById.get(activeExpertId);

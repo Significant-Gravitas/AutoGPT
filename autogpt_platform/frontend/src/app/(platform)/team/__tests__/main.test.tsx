@@ -448,7 +448,9 @@ describe("TeamPage", () => {
       await within(dialog).findByText("2 automations will pause."),
     ).toBeDefined();
     expect(
-      within(dialog).getByText("Chat threads become read-only history."),
+      within(dialog).getByText(
+        "Any chat history stays available but read-only.",
+      ),
     ).toBeDefined();
     expect(within(dialog).getByText("Their work stays yours.")).toBeDefined();
     expect(within(dialog).getByText("Content Calendar")).toBeDefined();
