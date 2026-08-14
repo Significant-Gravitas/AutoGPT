@@ -419,11 +419,21 @@ test("back returns to the previous step and the draft survives", async () => {
 
   await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
   expect(await screen.findByText("How should Otto write?")).toBeDefined();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole("region", { name: "Voice step" }),
+    ),
+  );
 
   await userEvent.click(screen.getByRole("button", { name: "Back" }));
 
   expect(await screen.findByPlaceholderText("Type a name…")).toBeDefined();
   expect(screen.getByText("Otto's Soul")).toBeDefined();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole("region", { name: "Name step" }),
+    ),
+  );
 });
 
 test("a refresh resumes the draft from session storage", async () => {

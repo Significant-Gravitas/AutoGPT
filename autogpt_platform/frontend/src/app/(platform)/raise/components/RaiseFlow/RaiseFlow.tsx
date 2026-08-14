@@ -4,6 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { useEffect, useRef } from "react";
 import { VOICE_SAMPLES } from "../../helpers";
 import { useRaisePage } from "../../useRaisePage";
 import { AssistantBubble } from "../AssistantBubble/AssistantBubble";
@@ -27,6 +28,19 @@ export function RaiseFlow() {
     goBack,
     finish,
   } = useRaisePage();
+  const stepPanelRef = useRef<HTMLDivElement>(null);
+  const previousStepRef = useRef(step);
+  const stepLabel =
+    step === "firstJob"
+      ? "First job"
+      : `${step[0].toUpperCase()}${step.slice(1)}`;
+
+  useEffect(() => {
+    if (previousStepRef.current !== step) {
+      stepPanelRef.current?.focus();
+      previousStepRef.current = step;
+    }
+  }, [step]);
 
   return (
     <main className="min-h-screen bg-muted/30 px-4 pb-16 pt-6 sm:px-6 lg:px-8">
@@ -53,7 +67,13 @@ export function RaiseFlow() {
             )}
           </div>
 
-          <div className="mt-2">
+          <div
+            ref={stepPanelRef}
+            role="region"
+            aria-label={`${stepLabel} step`}
+            tabIndex={-1}
+            className="mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {step !== "name" ? (
               <button
                 type="button"
