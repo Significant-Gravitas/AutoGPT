@@ -6,8 +6,8 @@ Upserts the three roster templates (Maria, Max, Frankie) by template name,
 so repeated runs keep the same template ids. Preload workflows are resolved
 from official store listing slugs; all listings are validated before any
 template is mutated. Each upsert also refreshes the presentation fields
-(avatar, bio, skills) on experts already hired from that template, so roster
-changes reach existing users and not just new hires.
+(avatar, tagline, bio, skills) on experts already hired from that template,
+so roster changes reach existing users and not just new hires.
 """
 
 import asyncio
