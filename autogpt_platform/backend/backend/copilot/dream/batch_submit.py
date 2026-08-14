@@ -328,12 +328,9 @@ async def persist_input_bundle(
     redis = await get_redis_async()
     payload = _input_bundle_to_dict(input_bundle)
     if lock_token is None:
-        if input_bundle.expert_id is None:
-            lock_token = await read_dream_lock_token(input_bundle.user_id)
-        else:
-            lock_token = await read_dream_lock_token(
-                input_bundle.user_id, input_bundle.expert_id
-            )
+        lock_token = await read_dream_lock_token(
+            input_bundle.user_id, input_bundle.expert_id
+        )
     if lock_token is not None:
         payload["lock_token"] = lock_token
     await redis.set(

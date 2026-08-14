@@ -5512,12 +5512,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             task.add_done_callback(_background_tasks.discard)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if (
-            expert_identity_validated
-            and graphiti_enabled
-            and user_id
-            and message
-            and is_user_message
+        if _graphiti_ingest_allowed(
+            expert_identity_validated=expert_identity_validated,
+            graphiti_enabled=graphiti_enabled,
+            user_id=user_id,
+            message=message,
+            is_user_message=is_user_message,
         ):
             # Extract last assistant message from THIS TURN only (not all
             # session history) to avoid distilling stale content from prior
@@ -5765,6 +5765,23 @@ async def _fetch_graphiti_context(
         or ""
     )
     return True, ctx
+
+
+def _graphiti_ingest_allowed(
+    *,
+    expert_identity_validated: bool,
+    graphiti_enabled: bool,
+    user_id: str | None,
+    message: str | None,
+    is_user_message: bool,
+) -> bool:
+    return bool(
+        expert_identity_validated
+        and graphiti_enabled
+        and user_id
+        and message
+        and is_user_message
+    )
 
 
 async def _enqueue_graphiti_turn(

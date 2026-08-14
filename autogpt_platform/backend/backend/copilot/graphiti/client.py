@@ -115,6 +115,7 @@ def derive_memory_scope_key(user_id: str, expert_id: str | None = None) -> str:
     it. Expert scopes use the same opaque ID as their Graphiti namespace.
     """
     if expert_id is None:
+        # Validate the opaque user ID while preserving the legacy raw Redis key.
         derive_group_id(user_id)
         return user_id
     return derive_memory_group_id(user_id, expert_id)

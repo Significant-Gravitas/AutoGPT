@@ -191,10 +191,7 @@ async def _process_edge(
         result.per_edge_errors.append("missing_uuid")
         return
 
-    if expert_id is None:
-        hits = await _get_hit_count(user_id, edge_uuid)
-    else:
-        hits = await _get_hit_count(user_id, edge_uuid, expert_id)
+    hits = await _get_hit_count(user_id, edge_uuid, expert_id)
 
     if hits >= 1:
         promoted = await _promote_edge(driver, edge_uuid)
