@@ -62,25 +62,12 @@ async def setup_triggered_preset(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
 
-    # Attribution. A supplied (session) expert wins, but only while ACTIVE and
-    # owned: an archived expert's historical chat stays loadable and keeps its
-    # stored expert id, and a trigger attributed to her would look active while
-    # every delivery is skipped by the archived-expert run-budget gate. A
-    # supplied-but-invalid expert makes the trigger UNATTRIBUTED — deliberately
-    # no graph-match re-attribution, which could land Expert A's chat trigger
-    # on Expert B's budget/thread. Without a supplied expert (the /presets
-    # route, plain chats), the pre-existing graph-match behaviour is unchanged:
-    # a trigger on an expert-installed workflow fires as that expert's work
-    # (unique (user, graph) → expert).
-    if expert_id:
-        validated = await experts_db.resolve_attributable_expert(user_id, expert_id)
-        if validated is None:
-            logger.warning(
-                f"Ignoring inactive/unowned expert {expert_id} for trigger on "
-                f"graph #{graph_id} — creating the trigger unattributed"
-            )
-        expert_id = validated
-    else:
+    # A supplied session expert wins and deliberately suppresses graph-match
+    # re-attribution. create_preset validates it under the same transaction as
+    # the durable write, falling back to an unattributed preset if archival
+    # wins the race. With no supplied expert, preserve the existing unique
+    # graph-match behaviour; create_preset atomically re-validates that result.
+    if expert_id is None:
         expert_id = await experts_db.resolve_expert_for_graph(user_id, graph.id)
 
     trigger_config_with_credentials = {

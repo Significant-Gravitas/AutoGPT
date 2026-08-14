@@ -9,8 +9,11 @@ import pytest
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.features.experts.models import ExpertSoulUpdate
+from backend.api.features.library import db as library_db
+from backend.api.features.library import model as library_model
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
+from backend.copilot.model import create_chat_session
 from backend.data.graph import Graph, Node
 from backend.data.user import get_or_create_user
 from backend.usecases.sample import create_test_user
@@ -405,6 +408,57 @@ async def test_hire_schedule_failure_marks_needs_setup(
     assert wf.schedule_cron == "40 7 * * *"
     assert wf.schedule_id is None
     assert result.failed_preloads == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_attributed_writes_fall_back_when_archived_after_validation(
+    server: SpinTestServer,
+):
+    """An archive between an earlier lookup and either durable write wins.
+
+    ChatSession and AgentPreset must both persist without the stale expert id;
+    otherwise their work would be permanently rejected by the archived-expert
+    run-budget gate.
+    """
+    slv_id = await _seed_store_listing(server)
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    hired = await experts_db.hire_expert(owner.id, template.id, None)
+    expert_id = hired.expert.id
+    workflow = hired.expert.workflows[0]
+    assert workflow.library_agent_id is not None
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": workflow.library_agent_id}
+    )
+    assert library_agent is not None
+
+    assert (
+        await experts_db.resolve_attributable_expert(owner.id, expert_id) == expert_id
+    )
+    await prisma.models.Expert.prisma().update(
+        where={"id": expert_id}, data={"isArchived": True}
+    )
+
+    session = await create_chat_session(
+        owner.id,
+        dry_run=False,
+        expert_id=expert_id,
+    )
+    assert session.expert_id is None
+
+    preset = await library_db.create_preset(
+        owner.id,
+        library_model.LibraryAgentPresetCreatable(
+            graph_id=library_agent.agentGraphId,
+            graph_version=library_agent.agentGraphVersion,
+            inputs={},
+            credentials={},
+            name="Atomic attribution fallback",
+            description="",
+        ),
+        expert_id=expert_id,
+    )
+    assert preset.expert_id is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

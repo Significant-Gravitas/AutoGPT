@@ -241,14 +241,10 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
 async def test_execute_copilot_turn_forwards_expert_id_to_fresh_session():
     """A follow-up scheduled from an expert chat mints its fresh session scoped
     to that expert, so runs inside the scheduled turn stay attributed to her.
-    The expert must be re-validated (active + owned) at fire time."""
+    Session persistence performs the active-owner check atomically."""
     args = _args(session_id=None, expert_id="expert-1")
-    new_session = MagicMock(session_id="new-session-uuid")
+    new_session = MagicMock(session_id="new-session-uuid", expert_id="expert-1")
     mock_create_session = AsyncMock(return_value=new_session)
-    mock_experts = MagicMock()
-    mock_experts.resolve_attributable_expert = AsyncMock(
-        return_value="expert-1"  # still active + owned
-    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=AsyncMock()),
@@ -256,30 +252,21 @@ async def test_execute_copilot_turn_forwards_expert_id_to_fresh_session():
         patch(
             "backend.executor.scheduler.create_chat_session", new=mock_create_session
         ),
-        patch("backend.executor.scheduler.experts_db", return_value=mock_experts),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
-    mock_experts.resolve_attributable_expert.assert_awaited_once_with(
-        "user-1", "expert-1"
-    )
     assert mock_create_session.call_args.kwargs["expert_id"] == "expert-1"
 
 
 @pytest.mark.asyncio
 async def test_execute_copilot_turn_degrades_to_plain_session_when_expert_archived():
     """If the expert was archived (or un-owned) between scheduling and fire
-    time, the fresh session must be created WITHOUT the stale expertId —
-    otherwise schedules/triggers created inside it inherit an id that the
-    archived-expert budget gate blocks forever."""
+    time, the atomic session write returns a plain session and the scheduled
+    turn still dispatches there."""
     args = _args(session_id=None, expert_id="expert-1")
-    new_session = MagicMock(session_id="new-session-uuid")
+    new_session = MagicMock(session_id="new-session-uuid", expert_id=None)
     mock_create_session = AsyncMock(return_value=new_session)
     mock_schedule_turn = AsyncMock()
-    mock_experts = MagicMock()
-    mock_experts.resolve_attributable_expert = AsyncMock(
-        return_value=None  # archived / not owned
-    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -287,11 +274,10 @@ async def test_execute_copilot_turn_degrades_to_plain_session_when_expert_archiv
         patch(
             "backend.executor.scheduler.create_chat_session", new=mock_create_session
         ),
-        patch("backend.executor.scheduler.experts_db", return_value=mock_experts),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
-    assert mock_create_session.call_args.kwargs["expert_id"] is None
+    assert mock_create_session.call_args.kwargs["expert_id"] == "expert-1"
     mock_schedule_turn.assert_awaited_once()  # turn still fires, just plain
 
 
@@ -301,8 +287,7 @@ async def test_execute_copilot_turn_existing_session_skips_expert_revalidation()
     expert re-validation happens — the session keeps whatever expert scope it
     already has, and the fire path must not add a per-fire expert lookup."""
     args = _args(expert_id="expert-1")  # session_id="session-1" from _args base
-    mock_experts = MagicMock()
-    mock_experts.resolve_attributable_expert = AsyncMock()
+    mock_create_session = AsyncMock()
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=AsyncMock()),
@@ -310,12 +295,14 @@ async def test_execute_copilot_turn_existing_session_skips_expert_revalidation()
             "backend.executor.scheduler.get_chat_session",
             new=AsyncMock(return_value=MagicMock()),
         ),
-        patch("backend.executor.scheduler.create_chat_session", new=AsyncMock()),
-        patch("backend.executor.scheduler.experts_db", return_value=mock_experts),
+        patch(
+            "backend.executor.scheduler.create_chat_session",
+            new=mock_create_session,
+        ),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
-    mock_experts.resolve_attributable_expert.assert_not_awaited()
+    mock_create_session.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,10 @@ from backend.api.features.experts.models import (
     HireResult,
 )
 from backend.api.features.library import db as library_db
+from backend.data.db import prisma as db_client
+from backend.data.expert_attribution import (
+    resolve_attributable_expert as resolve_attributable_expert_row,
+)
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -392,25 +396,16 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
 async def resolve_attributable_expert(
     user_id: str, expert_id: str | None
 ) -> str | None:
-    """The attribution guard: return *expert_id* only if it names an ACTIVE
-    hired expert owned by *user_id*; otherwise ``None``.
+    """Read-only expert-attribution lookup.
 
-    Every path that stamps a session-captured expert onto a durable resource
-    (fresh follow-up sessions at fire time, webhook-triggered presets at setup
-    time) must pass through this check — an archived or unowned id would
-    create work that the archived-expert run-budget gate blocks forever.
+    Durable writes use the same shared guard with a row lock inside their own
+    transaction; this lookup is for discovery and compatibility only.
     """
-    if not expert_id:
-        return None
-    row = await prisma.models.Expert.prisma().find_first(
-        where={
-            "id": expert_id,
-            "ownerUserId": user_id,
-            "isTemplate": False,
-            "isArchived": False,
-        }
+    return await resolve_attributable_expert_row(
+        db_client,
+        user_id,
+        expert_id,
     )
-    return row.id if row else None
 
 
 async def archive_expert(user_id: str, expert_id: str) -> None:
