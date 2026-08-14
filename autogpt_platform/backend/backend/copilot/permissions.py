@@ -114,7 +114,6 @@ ToolName = Literal[
     "post_to_chat_platform",
     "read_skill",
     "read_workspace_file",
-    "remember_fact",
     "run_agent",
     "run_block",
     "run_mcp_tool",

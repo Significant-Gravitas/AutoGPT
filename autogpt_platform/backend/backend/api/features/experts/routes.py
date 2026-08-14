@@ -1,7 +1,7 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Security
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
@@ -26,18 +26,6 @@ class HireRequest(BaseModel):
 
 class InstallWorkflowRequest(BaseModel):
     store_listing_version_id: str
-
-
-class LearnedNoteRequest(BaseModel):
-    fact: str = Field(min_length=1, max_length=2_000)
-
-    @field_validator("fact")
-    @classmethod
-    def strip_fact(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("Fact must not be blank")
-        return stripped
 
 
 @router.get("/templates", operation_id="list_expert_templates")
@@ -95,63 +83,6 @@ async def update_expert_soul(
     try:
         return await experts_db.update_soul(user_id, expert_id, request)
     except experts_db.ExpertNotFoundError as e:
-        raise fastapi.HTTPException(status_code=404, detail=str(e))
-
-
-@router.post(
-    "/{expert_id}/notes",
-    operation_id="append_expert_learned_note",
-    responses={404: {"description": "Expert not found"}},
-)
-async def append_expert_learned_note(
-    expert_id: str,
-    request: LearnedNoteRequest,
-    user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> Expert:
-    try:
-        return await experts_db.append_learned_note(user_id, expert_id, request.fact)
-    except experts_db.ExpertNotFoundError as e:
-        raise fastapi.HTTPException(status_code=404, detail=str(e))
-
-
-@router.patch(
-    "/{expert_id}/notes/{note_id}",
-    operation_id="update_expert_learned_note",
-    responses={404: {"description": "Expert or note not found"}},
-)
-async def update_expert_learned_note(
-    expert_id: str,
-    note_id: str,
-    request: LearnedNoteRequest,
-    user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> Expert:
-    try:
-        return await experts_db.update_learned_note(
-            user_id, expert_id, note_id, request.fact
-        )
-    except (
-        experts_db.ExpertNotFoundError,
-        experts_db.LearnedNoteNotFoundError,
-    ) as e:
-        raise fastapi.HTTPException(status_code=404, detail=str(e))
-
-
-@router.delete(
-    "/{expert_id}/notes/{note_id}",
-    operation_id="delete_expert_learned_note",
-    responses={404: {"description": "Expert or note not found"}},
-)
-async def delete_expert_learned_note(
-    expert_id: str,
-    note_id: str,
-    user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> Expert:
-    try:
-        return await experts_db.delete_learned_note(user_id, expert_id, note_id)
-    except (
-        experts_db.ExpertNotFoundError,
-        experts_db.LearnedNoteNotFoundError,
-    ) as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 

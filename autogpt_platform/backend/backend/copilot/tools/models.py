@@ -123,8 +123,7 @@ class ResponseType(str, Enum):
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
 
-    # Experts (learned notes, soul edits)
-    FACT_REMEMBERED = "fact_remembered"
+    # Experts (soul edits)
     EXPERT_SOUL_UPDATED = "expert_soul_updated"
 
 
@@ -488,15 +487,6 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
     updated_fields: list[str] = Field(default_factory=list)
     current_understanding: dict[str, Any] = Field(default_factory=dict)
-
-
-class FactRememberedResponse(ToolResponseBase):
-    """Response for the remember_fact tool."""
-
-    type: ResponseType = ResponseType.FACT_REMEMBERED
-    note_id: str
-    fact: str
-    total_notes: int
 
 
 class SoulFieldChange(BaseModel):

@@ -1,11 +1,7 @@
 import logging
-import uuid
-from datetime import datetime, timezone
-from typing import Any, Literal
 
 import prisma.errors
 import prisma.models
-from pydantic import ValidationError
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
@@ -14,12 +10,10 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
-    LearnedNote,
 )
 from backend.api.features.library import db as library_db
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
-from backend.util.json import SafeJson
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -38,31 +32,6 @@ class ExpertNotFoundError(Exception):
     def __init__(self, expert_id: str):
         super().__init__(f"Expert {expert_id} not found")
         self.expert_id = expert_id
-
-
-class LearnedNoteNotFoundError(Exception):
-    def __init__(self, note_id: str):
-        super().__init__(f"Learned note {note_id} not found")
-        self.note_id = note_id
-
-
-def _to_learned_notes(raw: Any) -> list[LearnedNote]:
-    """Parse the ``learnedNotes`` JSON column into typed notes.
-
-    Malformed entries are dropped rather than failing the whole expert load —
-    a corrupt note must never break identity injection or the /team UI.
-    """
-    if not isinstance(raw, list):
-        return []
-    notes: list[LearnedNote] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        try:
-            notes.append(LearnedNote.model_validate(item))
-        except ValidationError:
-            continue
-    return notes
 
 
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
@@ -96,7 +65,6 @@ def _to_model(
         identity=row.identity,
         voice_preferences=row.voicePreferences,
         boundaries=row.boundaries,
-        learned_notes=_to_learned_notes(row.learnedNotes),
         protected_soul_rules=list(PROTECTED_SOUL_RULES),
         is_template=row.isTemplate,
         source_template_id=row.sourceTemplateId,
@@ -281,90 +249,6 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     if expert is None:
         raise ExpertNotFoundError(expert_id)
     return expert
-
-
-def _owned_expert_where(user_id: str, expert_id: str) -> dict[str, Any]:
-    """Scope reads/writes to a hired (non-template, active) copy the user owns —
-    the guard every learned-note mutation shares."""
-    return {
-        "id": expert_id,
-        "ownerUserId": user_id,
-        "isTemplate": False,
-        "isArchived": False,
-    }
-
-
-async def _owned_expert_row(user_id: str, expert_id: str) -> prisma.models.Expert:
-    row = await prisma.models.Expert.prisma().find_first(
-        where=_owned_expert_where(user_id, expert_id)
-    )
-    if row is None:
-        raise ExpertNotFoundError(expert_id)
-    return row
-
-
-def _raw_notes(raw: Any) -> list[dict[str, Any]]:
-    return [n for n in raw if isinstance(n, dict)] if isinstance(raw, list) else []
-
-
-async def _write_learned_notes(
-    user_id: str, expert_id: str, notes: list[dict[str, Any]]
-) -> Expert:
-    updated = await prisma.models.Expert.prisma().update_many(
-        where=_owned_expert_where(user_id, expert_id),
-        data={"learnedNotes": SafeJson(notes)},
-    )
-    if updated == 0:
-        raise ExpertNotFoundError(expert_id)
-    expert = await get_expert(user_id, expert_id)
-    if expert is None:
-        raise ExpertNotFoundError(expert_id)
-    return expert
-
-
-async def append_learned_note(
-    user_id: str,
-    expert_id: str,
-    fact: str,
-    source: Literal["chat", "user"] = "user",
-) -> Expert:
-    """Append a fact to an expert's learned notes, newest-last (user-scoped)."""
-    row = await _owned_expert_row(user_id, expert_id)
-    notes = _raw_notes(row.learnedNotes)
-    notes.append(
-        {
-            "id": str(uuid.uuid4()),
-            "fact": fact,
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-            "source": source,
-        }
-    )
-    return await _write_learned_notes(user_id, expert_id, notes)
-
-
-async def update_learned_note(
-    user_id: str, expert_id: str, note_id: str, fact: str
-) -> Expert:
-    """Rewrite the fact of one learned note (user-scoped)."""
-    row = await _owned_expert_row(user_id, expert_id)
-    notes = _raw_notes(row.learnedNotes)
-    for note in notes:
-        if note.get("id") == note_id:
-            note["fact"] = fact
-            break
-    else:
-        raise LearnedNoteNotFoundError(note_id)
-    return await _write_learned_notes(user_id, expert_id, notes)
-
-
-async def delete_learned_note(user_id: str, expert_id: str, note_id: str) -> Expert:
-    """Remove one learned note by id (user-scoped)."""
-    row = await _owned_expert_row(user_id, expert_id)
-    notes = _raw_notes(row.learnedNotes)
-    remaining = [n for n in notes if n.get("id") != note_id]
-    if len(remaining) == len(notes):
-        raise LearnedNoteNotFoundError(note_id)
-    return await _write_learned_notes(user_id, expert_id, remaining)
 
 
 async def update_soul_fields(

@@ -1,2 +1,0 @@
-ALTER TABLE "Expert"
-ADD COLUMN "learnedNotes" JSONB NOT NULL DEFAULT '[]';

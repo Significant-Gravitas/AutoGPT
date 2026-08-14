@@ -5644,146 +5644,6 @@
         }
       }
     },
-    "/api/experts/{expert_id}/notes": {
-      "post": {
-        "tags": ["v2", "experts", "experts", "private"],
-        "summary": "Append Expert Learned Note",
-        "operationId": "append_expert_learned_note",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "expert_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Expert Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LearnedNoteRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Expert" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "404": { "description": "Expert not found" },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/experts/{expert_id}/notes/{note_id}": {
-      "delete": {
-        "tags": ["v2", "experts", "experts", "private"],
-        "summary": "Delete Expert Learned Note",
-        "operationId": "delete_expert_learned_note",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "expert_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Expert Id" }
-          },
-          {
-            "name": "note_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Note Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Expert" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "404": { "description": "Expert or note not found" },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": ["v2", "experts", "experts", "private"],
-        "summary": "Update Expert Learned Note",
-        "operationId": "update_expert_learned_note",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "expert_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Expert Id" }
-          },
-          {
-            "name": "note_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Note Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LearnedNoteRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Expert" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "404": { "description": "Expert or note not found" },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/experts/{expert_id}/schedules/resume": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -17826,11 +17686,6 @@
             "title": "Voice Preferences"
           },
           "boundaries": { "type": "string", "title": "Boundaries" },
-          "learned_notes": {
-            "items": { "$ref": "#/components/schemas/LearnedNote" },
-            "type": "array",
-            "title": "Learned Notes"
-          },
           "protected_soul_rules": {
             "items": { "type": "string" },
             "type": "array",
@@ -19812,39 +19667,6 @@
         "required": ["job_id", "user_id", "kind", "state", "started_at"],
         "title": "JobTriggerResponse",
         "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
-      },
-      "LearnedNote": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "fact": { "type": "string", "title": "Fact" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "source": {
-            "type": "string",
-            "enum": ["chat", "user"],
-            "title": "Source"
-          }
-        },
-        "type": "object",
-        "required": ["id", "fact", "createdAt", "source"],
-        "title": "LearnedNote",
-        "description": "A fact an expert has permanently learned.\n\nPersisted in the ``Expert.learnedNotes`` JSON array with camelCase keys, so\n``created_at`` carries the ``createdAt`` (de)serialization alias."
-      },
-      "LearnedNoteRequest": {
-        "properties": {
-          "fact": {
-            "type": "string",
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Fact"
-          }
-        },
-        "type": "object",
-        "required": ["fact"],
-        "title": "LearnedNoteRequest"
       },
       "LibraryAgent": {
         "properties": {
@@ -23026,7 +22848,6 @@
           "skill_loaded",
           "skill_deleted",
           "skill_list",
-          "fact_remembered",
           "expert_soul_updated"
         ],
         "title": "ResponseType",

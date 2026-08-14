@@ -45,7 +45,6 @@ from .manage_folders import (
 from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
 from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
 from .platform_info import PlatformInfoTool
-from .remember_fact import RememberFactTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -153,8 +152,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
-    # Expert memory (learned notes + Soul edits; expert sessions only)
-    "remember_fact": RememberFactTool(),
+    # Expert Soul edits from chat (expert sessions only)
     "update_expert_soul": UpdateExpertSoulTool(),
 }
 
@@ -176,9 +174,8 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_search": "graphiti",
     "memory_forget_search": "graphiti",
     "memory_forget_confirm": "graphiti",
-    # Expert-memory tools only make sense in an expert-scoped session; the
-    # engines disable this group when the session has no expert_id.
-    "remember_fact": "experts",
+    # Soul edits only make sense in an expert-scoped session; the engines
+    # disable this group when the session has no expert_id.
     "update_expert_soul": "experts",
 }
 

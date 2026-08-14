@@ -1,16 +1,12 @@
 import {
-  getDeleteExpertLearnedNoteMockHandler,
-  getDeleteExpertLearnedNoteMockHandler404,
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
-  getUpdateExpertLearnedNoteMockHandler,
   getUpdateExpertSoulMockHandler,
   getUpdateExpertSoulMockHandler422,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { LearnedNoteSource } from "@/app/api/__generated__/models/learnedNoteSource";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
 import {
@@ -418,142 +414,6 @@ describe("TeamPage", () => {
       "Calm and conversational.",
     );
     expect(screen.getByRole("dialog", { name: "Maria's Soul" })).toBeDefined();
-  });
-
-  const learnedNoteFixture = {
-    id: "note-1",
-    fact: "Ships 6 PRs a day.",
-    createdAt: new Date("2026-08-14T00:00:00Z"),
-    source: LearnedNoteSource.user,
-  };
-  const hiredMariaWithNotes: Expert = {
-    ...hiredMaria,
-    learned_notes: [learnedNoteFixture],
-  };
-
-  test("lists the expert's learned notes in the Soul drawer", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([hiredMariaWithNotes]));
-
-    render(<TeamPage />);
-
-    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
-
-    expect(screen.getByText("Ships 6 PRs a day.")).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Edit note: Ships 6 PRs a day." }),
-    ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Remove note: Ships 6 PRs a day." }),
-    ).toBeDefined();
-  });
-
-  test("edits a learned note inline and refreshes", async () => {
-    const user = userEvent.setup();
-    let requestBody: unknown;
-    server.use(
-      getListExpertsMockHandler([hiredMariaWithNotes]),
-      getUpdateExpertLearnedNoteMockHandler(async ({ request }) => {
-        requestBody = await request.json();
-        return {
-          ...hiredMariaWithNotes,
-          learned_notes: [
-            { ...learnedNoteFixture, fact: "Ships 8 PRs a day." },
-          ],
-        };
-      }),
-    );
-
-    render(<TeamPage />);
-
-    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
-    await user.click(
-      screen.getByRole("button", { name: "Edit note: Ships 6 PRs a day." }),
-    );
-    const editInput = screen.getByRole("textbox", { name: "Edit note" });
-    await user.clear(editInput);
-    await user.type(editInput, "Ships 8 PRs a day.");
-    await user.click(screen.getByRole("button", { name: "Save note" }));
-
-    await waitFor(() =>
-      expect(requestBody).toEqual({ fact: "Ships 8 PRs a day." }),
-    );
-    expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Note updated", variant: "success" }),
-    );
-  });
-
-  test("removes a learned note", async () => {
-    const user = userEvent.setup();
-    let deletedNotePath = "";
-    server.use(
-      getListExpertsMockHandler([hiredMariaWithNotes]),
-      getDeleteExpertLearnedNoteMockHandler(({ request }) => {
-        deletedNotePath = new URL(request.url).pathname;
-        return { ...hiredMariaWithNotes, learned_notes: [] };
-      }),
-    );
-
-    render(<TeamPage />);
-
-    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
-    await user.click(
-      screen.getByRole("button", { name: "Remove note: Ships 6 PRs a day." }),
-    );
-
-    await waitFor(() =>
-      expect(deletedNotePath).toContain("/experts/expert-maria/notes/note-1"),
-    );
-    expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Note removed", variant: "success" }),
-    );
-  });
-
-  test("cancels an inline note edit without saving", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([hiredMariaWithNotes]));
-
-    render(<TeamPage />);
-
-    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
-    await user.click(
-      screen.getByRole("button", { name: "Edit note: Ships 6 PRs a day." }),
-    );
-    await user.type(
-      screen.getByRole("textbox", { name: "Edit note" }),
-      " (draft)",
-    );
-    await user.click(screen.getByRole("button", { name: "Cancel edit" }));
-
-    expect(screen.queryByRole("textbox", { name: "Edit note" })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Edit note: Ships 6 PRs a day." }),
-    ).toBeDefined();
-  });
-
-  test("keeps the note and warns when removing fails", async () => {
-    const user = userEvent.setup();
-    server.use(
-      getListExpertsMockHandler([hiredMariaWithNotes]),
-      getDeleteExpertLearnedNoteMockHandler404(),
-    );
-
-    render(<TeamPage />);
-
-    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
-    await user.click(
-      screen.getByRole("button", { name: "Remove note: Ships 6 PRs a day." }),
-    );
-
-    await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Couldn't remove note",
-          variant: "destructive",
-        }),
-      ),
-    );
-    expect(screen.getByText("Ships 6 PRs a day.")).toBeDefined();
   });
 
   test("shows empty state linking to the marketplace when no experts are hired", async () => {

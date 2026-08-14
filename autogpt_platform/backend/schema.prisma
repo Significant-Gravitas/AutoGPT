@@ -875,11 +875,6 @@ model Expert {
   voicePreferences String @default("")
   boundaries       String @default("")
 
-  // Facts the expert has permanently learned, as an array of
-  // {id, fact, createdAt (ISO), source: "chat" | "user"}. Rendered into the
-  // <what_ive_learned> identity block and editable from the Soul UI.
-  learnedNotes Json @default("[]")
-
   toolProfile Json?
 
   isTemplate       Boolean  @default(false)
