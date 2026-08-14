@@ -50,6 +50,7 @@ def _build_catalog() -> CatalogPayload:
         generated_at=datetime(2026, 7, 18, tzinfo=timezone.utc),
         providers=[
             CatalogProvider(name="aiml_api", display_name="AI/ML API"),
+            CatalogProvider(name="a3m", display_name="A3M Router"),
             CatalogProvider(name="anthropic", display_name="Anthropic"),
             CatalogProvider(name="groq", display_name="Groq"),
             CatalogProvider(name="llama_api", display_name="Llama API"),
@@ -60,6 +61,7 @@ def _build_catalog() -> CatalogPayload:
         ],
         creators=[
             CatalogCreator(name="amazon", display_name="Amazon"),
+            CatalogCreator(name="a3m", display_name="A3M Router"),
             CatalogCreator(name="anthropic", display_name="Anthropic"),
             CatalogCreator(name="cohere", display_name="Cohere"),
             CatalogCreator(name="deepseek", display_name="DeepSeek"),
@@ -85,6 +87,52 @@ def _build_catalog() -> CatalogPayload:
                 provider="aiml_api",
                 creator="meta",
                 context_window=128000,
+                price_tier=1,
+                cost=CatalogModelCost(run_credits=1),
+            ),
+            # ----- A3M Router -----
+            # A3M routes to 80+ providers; these are representative models it handles
+            CatalogModel(
+                slug="gpt-4o",
+                display_name="GPT-4o (via A3M)",
+                provider="a3m",
+                creator="openai",
+                context_window=128000,
+                price_tier=3,
+                cost=CatalogModelCost(
+                    run_credits=3,
+                    input_credits_per_1m=2500.0,
+                    output_credits_per_1m=10000.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-4o-mini",
+                display_name="GPT-4o Mini (via A3M)",
+                provider="a3m",
+                creator="openai",
+                context_window=128000,
+                price_tier=1,
+                cost=CatalogModelCost(run_credits=1),
+            ),
+            CatalogModel(
+                slug="claude-3-5-sonnet-latest",
+                display_name="Claude 3.5 Sonnet (via A3M)",
+                provider="a3m",
+                creator="anthropic",
+                context_window=200000,
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gemini-1.5-pro",
+                display_name="Gemini 1.5 Pro (via A3M)",
+                provider="a3m",
+                creator="google",
+                context_window=2000000,
                 price_tier=1,
                 cost=CatalogModelCost(run_credits=1),
             ),

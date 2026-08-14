@@ -11,6 +11,7 @@ class ProviderName(str, Enum):
     backward compatibility with existing provider constants.
     """
 
+    A3M = "a3m"
     AIML_API = "aiml_api"
     ANTHROPIC = "anthropic"
     APOLLO = "apollo"
