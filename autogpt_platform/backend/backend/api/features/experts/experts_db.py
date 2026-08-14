@@ -6,6 +6,7 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 from pydantic import JsonValue
+
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
