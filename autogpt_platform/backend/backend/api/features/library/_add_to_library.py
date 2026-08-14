@@ -104,14 +104,35 @@ async def add_graph_to_library(
         user_id, include_nodes=False, include_executions=False
     )
     marketplace = _marketplace_metadata(store_listing_version)
+    create_data, update_data = await _library_agent_payloads(
+        graph_model, user_id, settings_json, marketplace
+    )
 
-    # A library entry is the adding user's bookmark, so tag it with their
-    # default org/team at creation (mirrors create_library_agent).
-    # resolve_default_tenancy is best-effort — an unresolvable org or a raised
-    # lookup yields (None, None) and the row is left untagged; never block a
-    # library add on tenancy resolution.
+    if tx is not None:
+        added_agent = await _upsert_library_agent(
+            tx, graph_model, user_id, create_data, update_data, _include
+        )
+    else:
+        added_agent = await _create_or_restore_library_agent(
+            graph_model, user_id, create_data, update_data, _include
+        )
+
+    logger.debug(
+        f"Added graph #{graph_model.id} v{graph_model.version} "
+        f"for store listing version #{store_listing_version.id} "
+        f"to library for user #{user_id}"
+    )
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=graph_model.id)
+    return library_model.LibraryAgent.from_db(added_agent, schedule_info=schedule_info)
+
+
+async def _library_agent_payloads(
+    graph_model: GraphModel,
+    user_id: str,
+    settings_json: SafeJson,
+    marketplace: dict[str, str | None],
+) -> tuple[dict, dict]:
     organization_id, team_id = await resolve_default_tenancy(user_id)
-
     create_data = {
         "User": {"connect": {"id": user_id}},
         "AgentGraph": {
@@ -132,8 +153,6 @@ async def add_graph_to_library(
         **({"Team": {"connect": {"id": team_id}}} if team_id else {}),
     }
     update_data = {
-        # Preserve existing tenancy when restoring a bookmark. Re-tagging here
-        # could disconnect its team if no default team can be resolved.
         "isDeleted": False,
         "isArchived": False,
         "settings": settings_json,
@@ -141,49 +160,55 @@ async def add_graph_to_library(
         "description": marketplace["description"],
         "imageUrl": marketplace["imageUrl"],
     }
+    return create_data, update_data
 
-    if tx is not None:
-        added_agent = await prisma.models.LibraryAgent.prisma(tx).upsert(
-            where={
-                "userId_agentGraphId_agentGraphVersion": {
-                    "userId": user_id,
-                    "agentGraphId": graph_model.id,
-                    "agentGraphVersion": graph_model.version,
-                }
-            },
-            data={"create": create_data, "update": update_data},
-            include=_include,
-        )
-    else:
-        try:
-            added_agent = await prisma.models.LibraryAgent.prisma().create(
-                data=create_data,
-                include=_include,
-            )
-        except prisma.errors.UniqueViolationError:
-            # Already exists — update to restore if previously soft-deleted/archived
-            # and refresh the marketplace snapshot in case the listing changed.
-            added_agent = await prisma.models.LibraryAgent.prisma().update(
-                where={
-                    "userId_agentGraphId_agentGraphVersion": {
-                        "userId": user_id,
-                        "agentGraphId": graph_model.id,
-                        "agentGraphVersion": graph_model.version,
-                    }
-                },
-                data=update_data,
-                include=_include,
-            )
-            if added_agent is None:
-                raise NotFoundError(
-                    f"LibraryAgent for graph #{graph_model.id} "
-                    f"v{graph_model.version} not found after UniqueViolationError"
-                )
 
-    logger.debug(
-        f"Added graph #{graph_model.id} v{graph_model.version} "
-        f"for store listing version #{store_listing_version.id} "
-        f"to library for user #{user_id}"
+def _library_agent_where(graph_model: GraphModel, user_id: str) -> dict:
+    return {
+        "userId_agentGraphId_agentGraphVersion": {
+            "userId": user_id,
+            "agentGraphId": graph_model.id,
+            "agentGraphVersion": graph_model.version,
+        }
+    }
+
+
+async def _upsert_library_agent(
+    tx: prisma.Prisma,
+    graph_model: GraphModel,
+    user_id: str,
+    create_data: dict,
+    update_data: dict,
+    include: dict,
+) -> prisma.models.LibraryAgent:
+    return await prisma.models.LibraryAgent.prisma(tx).upsert(
+        where=_library_agent_where(graph_model, user_id),
+        data={"create": create_data, "update": update_data},
+        include=include,
     )
-    schedule_info = await _fetch_schedule_info(user_id, graph_id=graph_model.id)
-    return library_model.LibraryAgent.from_db(added_agent, schedule_info=schedule_info)
+
+
+async def _create_or_restore_library_agent(
+    graph_model: GraphModel,
+    user_id: str,
+    create_data: dict,
+    update_data: dict,
+    include: dict,
+) -> prisma.models.LibraryAgent:
+    try:
+        return await prisma.models.LibraryAgent.prisma().create(
+            data=create_data,
+            include=include,
+        )
+    except prisma.errors.UniqueViolationError:
+        added_agent = await prisma.models.LibraryAgent.prisma().update(
+            where=_library_agent_where(graph_model, user_id),
+            data=update_data,
+            include=include,
+        )
+        if added_agent is None:
+            raise NotFoundError(
+                f"LibraryAgent for graph #{graph_model.id} "
+                f"v{graph_model.version} not found after UniqueViolationError"
+            )
+        return added_agent
