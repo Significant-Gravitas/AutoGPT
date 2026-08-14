@@ -663,6 +663,7 @@ describe("TeamPage", () => {
 
     await waitFor(() => expect(installExpertId).toBe("expert-maria"));
     expect(installBody).toEqual({ store_listing_version_id: "slv-adopt" });
+    expect(within(agents).queryByText("Research Assistant")).toBeNull();
   });
 
   test("asks which expert to adopt into when more than one is hired", async () => {

@@ -31,6 +31,9 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   const [pendingLibraryAgentIds, setPendingLibraryAgentIds] = useState<
     Set<string>
   >(new Set());
+  const [adoptedGraphIds, setAdoptedGraphIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const agentsQuery = useGetV2ListLibraryAgentsInfinite(
     { page: 1, page_size: AGENTS_PAGE_SIZE, is_hidden: false },
@@ -65,7 +68,9 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   const libraryAgents = agentsQuery.data
     ? unpaginate(agentsQuery.data, "agents")
     : [];
-  const unadoptedAgents = getUnadoptedAgents(libraryAgents, experts);
+  const unadoptedAgents = getUnadoptedAgents(libraryAgents, experts).filter(
+    (agent) => !adoptedGraphIds.has(agent.graph_id),
+  );
   const groups = getVisibleGroups(experts, schedules, filter);
   const showAgents = filter === "all" || filter === "agents";
 
@@ -78,6 +83,7 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
         expertId: expert.id,
         data: { store_listing_version_id: versionId },
       });
+      setAdoptedGraphIds((current) => new Set(current).add(agent.graph_id));
       await queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
       });
