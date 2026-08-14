@@ -19,6 +19,23 @@ from backend.usecases.sample import create_test_user
 from backend.util.exceptions import ExpertRunPausedError
 from backend.util.test import SpinTestServer
 
+EXPECTED_ROSTER_PRELOAD_SLUGS = {
+    "ai-webpage-copy-improver",
+    "automated-blog-writer",
+    "automated-support-ai",
+    "business-ownerceo-finder",
+    "email-address-finder",
+    "lead-finder-local-businesses",
+    "linkedin-post-generator",
+    "personalized-morning-coffee-newsletter",
+    "smart-meeting-brief",
+}
+EXPECTED_ROSTER_SCHEDULE = (
+    "Frankie",
+    "personalized-morning-coffee-newsletter",
+    "40 7 * * *",
+)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def mock_embedding_functions():
@@ -122,22 +139,20 @@ async def _load_roster_store_assets() -> dict[str, str]:
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
     expected: dict[str, str] = {}
-    for entry in seed.ROSTER:
-        for preload in entry["preloads"]:
-            slug = preload["slug"]
-            assert slug in by_slug, f"ROSTER slug '{slug}' has no store asset"
-            meta = by_slug[slug]
-            version_id = meta["store_listing_version_id"]
-            agent_json = await store_assets.load_agent_json(
-                store_assets.AGENTS_DIR / f"agent_{version_id}.json"
-            )
-            graph_id, graph_version = await store_assets.create_agent_graph(
-                db_client, agent_json, set()
-            )
-            await store_assets.create_store_listing(
-                db_client, graph_id, graph_version, meta
-            )
-            expected[slug] = version_id
+    for slug in EXPECTED_ROSTER_PRELOAD_SLUGS:
+        assert slug in by_slug, f"Expected roster slug '{slug}' has no store asset"
+        meta = by_slug[slug]
+        version_id = meta["store_listing_version_id"]
+        agent_json = await store_assets.load_agent_json(
+            store_assets.AGENTS_DIR / f"agent_{version_id}.json"
+        )
+        graph_id, graph_version = await store_assets.create_agent_graph(
+            db_client, agent_json, set()
+        )
+        await store_assets.create_store_listing(
+            db_client, graph_id, graph_version, meta
+        )
+        expected[slug] = version_id
     return expected
 
 
@@ -659,14 +674,16 @@ def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
     for entry in seed.ROSTER:
         assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
 
+    assert {
+        preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
+    } == EXPECTED_ROSTER_PRELOAD_SLUGS
     scheduled = [
-        (entry["name"], preload["slug"])
+        (entry["name"], preload["slug"], preload["cron"])
         for entry in seed.ROSTER
         for preload in entry["preloads"]
         if preload["cron"] is not None
     ]
-    assert len(scheduled) == 1
-    assert scheduled[0][0] == "Frankie"
+    assert scheduled == [EXPECTED_ROSTER_SCHEDULE]
 
 
 @pytest.mark.asyncio(loop_scope="session")
