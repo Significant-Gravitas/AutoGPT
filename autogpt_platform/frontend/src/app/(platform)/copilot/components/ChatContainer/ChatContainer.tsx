@@ -165,9 +165,7 @@ export const ChatContainer = ({
   }, [isLimitReached]);
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
-  // Archived threads are read-only history — retry must never resurrect a send.
   const handleRetry = useCallback(() => {
-    if (isExpertArchived || isResolvingExpertIdentity) return;
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
     const lastText = lastUserMsg?.parts
       .filter(
@@ -176,9 +174,9 @@ export const ChatContainer = ({
       .map((p) => p.text)
       .join("");
     if (lastText) {
-      onSend(lastText);
+      guardedOnSend(lastText);
     }
-  }, [isExpertArchived, isResolvingExpertIdentity, messages, onSend]);
+  }, [guardedOnSend, messages]);
 
   return (
     <CopilotChatActionsProvider onSend={guardedOnSend}>

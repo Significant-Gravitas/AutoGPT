@@ -165,6 +165,15 @@ async def _validate_expert_session_is_writable(
         raise HTTPException(status_code=404, detail="Expert not found")
 
 
+async def _validate_and_get_writable_session(
+    session_id: str,
+    user_id: str,
+) -> ChatSessionInfo:
+    session = await _validate_and_get_session(session_id, user_id)
+    await _validate_expert_session_is_writable(session, user_id)
+    return session
+
+
 # Minimum age before the orphan-reset paths (``get_session`` and
 # ``cancel_session_task``) will touch a ``chatStatus='running'`` session
 # that has no live Redis stream.  Lower bound has to clear the
@@ -1379,8 +1388,7 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    session = await _validate_and_get_session(session_id, user_id)
-    await _validate_expert_session_is_writable(session, user_id)
+    session = await _validate_and_get_writable_session(session_id, user_id)
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
@@ -1729,8 +1737,7 @@ async def queue_pending_message(
     user_id: str = Security(auth.get_user_id),
 ):
     """Queue a follow-up message while the session has an active turn."""
-    session = await _validate_and_get_session(session_id, user_id)
-    await _validate_expert_session_is_writable(session, user_id)
+    session = await _validate_and_get_writable_session(session_id, user_id)
     if session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
     try:

@@ -263,10 +263,24 @@ async def test_is_expert_active_scopes_owner_and_archive_state(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
     assert await experts_db.is_expert_active(test_user.id, hired.expert.id)
+    assert not await experts_db.is_expert_active(test_user.id, template.id)
     assert not await experts_db.is_expert_active(other_user.id, hired.expert.id)
 
     await experts_db.archive_expert(test_user.id, hired.expert.id)
     assert not await experts_db.is_expert_active(test_user.id, hired.expert.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_archive_expert_rejects_cross_user(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.archive_expert(other_user.id, hired.expert.id)
+
+    assert await experts_db.is_expert_active(test_user.id, hired.expert.id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
