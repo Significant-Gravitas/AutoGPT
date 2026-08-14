@@ -1867,7 +1867,7 @@ class Scheduler(AppService):
     ) -> GraphExecutionJobInfo:
         if expert_id is not None:
             organization_id, team_id = run_async(
-                experts_db().resolve_expert_personal_tenancy(user_id, expert_id)
+                experts_db().resolve_private_expert_tenancy(user_id, expert_id)
             )
 
         # Validate the graph before scheduling to prevent runtime failures

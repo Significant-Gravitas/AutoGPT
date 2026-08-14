@@ -79,7 +79,7 @@ async def setup_triggered_preset(
         )
     if effective_expert_id:
         try:
-            organization_id, team_id = await experts_db.resolve_expert_personal_tenancy(
+            organization_id, team_id = await experts_db.resolve_private_expert_tenancy(
                 user_id, effective_expert_id
             )
         except Exception as e:
@@ -152,7 +152,7 @@ async def update_triggered_preset(
             if current.expert_id:
                 try:
                     organization_id, team_id = (
-                        await experts_db.resolve_expert_personal_tenancy(
+                        await experts_db.resolve_private_expert_tenancy(
                             user_id, current.expert_id
                         )
                     )

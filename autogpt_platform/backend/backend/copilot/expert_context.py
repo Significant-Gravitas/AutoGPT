@@ -75,7 +75,7 @@ async def build_expert_identity_suffix(
 
     db = experts_db()
     try:
-        personal_org_id, personal_team_id = await db.resolve_expert_personal_tenancy(
+        personal_org_id, personal_team_id = await db.resolve_private_expert_tenancy(
             user_id, expert_id
         )
     except Exception as e:
@@ -85,7 +85,7 @@ async def build_expert_identity_suffix(
         ) from e
     if (organization_id, team_id) != (personal_org_id, personal_team_id):
         raise ExpertSessionUnavailableError(
-            "This expert session must be reopened in its personal workspace."
+            "This private expert session must be reopened in its personal workspace."
         )
 
     name = escape_prompt_xml_tags(expert.name)

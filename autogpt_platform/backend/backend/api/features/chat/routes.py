@@ -719,7 +719,7 @@ async def create_session(
             )
         except experts_db.ExpertNotFoundError as e:
             raise HTTPException(status_code=404, detail="Expert not found") from e
-        except experts_db.ExpertPersonalTenancyNotFoundError as e:
+        except experts_db.ExpertPrivateTenancyNotFoundError as e:
             raise HTTPException(
                 status_code=503,
                 detail="Expert personal organization is unavailable",

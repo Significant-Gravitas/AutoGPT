@@ -1209,7 +1209,7 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
-        expert_id: Hired expert this session is scoped to. Expert sessions are
+        expert_id: Private expert this session is scoped to. Expert sessions are
             validated here and pinned to the owner's personal organization.
 
     Raises:
@@ -1218,7 +1218,7 @@ async def create_chat_session(
             in cache (which would be lost when the cache expires).
     """
     if expert_id is not None:
-        organization_id, team_id = await experts_db().resolve_expert_personal_tenancy(
+        organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
             user_id, expert_id
         )
 

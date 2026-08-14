@@ -612,7 +612,7 @@ async def test_expert_preset_trigger_uses_matching_personal_tenancy(mocker):
     from backend.api.features.integrations import router as ingress_router
 
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("personal-org", "personal-team")
     )
     mocker.patch.object(ingress_router, "experts_db", return_value=expert_store)
@@ -636,7 +636,7 @@ async def test_expert_preset_trigger_uses_matching_personal_tenancy(mocker):
         preset, webhook, WEBHOOK_ID, "pull_request", {"safe": True}
     )
 
-    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
         USER_ID, "expert-1"
     )
     add_exec.assert_awaited_once()
@@ -662,7 +662,7 @@ async def test_expert_preset_trigger_uses_current_tenancy_after_conversion(
     from backend.api.features.integrations import router as ingress_router
 
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("personal-org", "personal-team")
     )
     mocker.patch.object(ingress_router, "experts_db", return_value=expert_store)
@@ -699,7 +699,7 @@ async def test_expert_preset_trigger_fails_closed_when_tenancy_lookup_fails(mock
     from backend.api.features.integrations import router as ingress_router
 
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         side_effect=RuntimeError("private lookup detail")
     )
     mocker.patch.object(ingress_router, "experts_db", return_value=expert_store)

@@ -2,6 +2,7 @@ import logging
 
 import prisma.errors
 import prisma.models
+from prisma.enums import ResourceVisibility
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
@@ -35,9 +36,9 @@ class ExpertNotFoundError(Exception):
         self.expert_id = expert_id
 
 
-class ExpertPersonalTenancyNotFoundError(Exception):
+class ExpertPrivateTenancyNotFoundError(Exception):
     def __init__(self, expert_id: str):
-        super().__init__(f"Personal tenancy for expert {expert_id} not found")
+        super().__init__(f"Private tenancy for expert {expert_id} not found")
         self.expert_id = expert_id
 
 
@@ -113,6 +114,7 @@ async def list_experts(user_id: str) -> list[Expert]:
             "ownerUserId": user_id,
             "isTemplate": False,
             "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
         },
         include=_WORKFLOW_INCLUDE,
     )
@@ -139,6 +141,7 @@ async def get_expert(
             "ownerUserId": user_id,
             "isTemplate": False,
             "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
         },
         include=_WORKFLOW_INCLUDE if include_workflows else None,
     )
@@ -148,16 +151,23 @@ async def get_expert(
     return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
 
 
-async def resolve_expert_personal_tenancy(
+async def resolve_private_expert_tenancy(
     user_id: str, expert_id: str
 ) -> tuple[str, str | None]:
-    """Return the personal org and default team for an active owned expert."""
+    """Return the owner scope for an active, owner-only PRIVATE expert.
+
+    TEAM and ORG experts are deliberately unsupported for now. Checking the
+    visibility here before resolving or rewriting any child resource keeps
+    those future scopes fail-closed instead of silently moving them into the
+    owner's personal organization.
+    """
     expert = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
             "ownerUserId": user_id,
             "isTemplate": False,
             "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
         }
     )
     if expert is None:
@@ -165,7 +175,7 @@ async def resolve_expert_personal_tenancy(
 
     organization_id, team_id = await get_user_default_team(user_id)
     if organization_id is None:
-        raise ExpertPersonalTenancyNotFoundError(expert_id)
+        raise ExpertPrivateTenancyNotFoundError(expert_id)
     return organization_id, team_id
 
 
@@ -182,6 +192,8 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         include=_WORKFLOW_INCLUDE,
     )
     if existing is not None:
+        if existing.visibility != ResourceVisibility.PRIVATE:
+            raise ExpertNotFoundError(existing.id)
         return await _existing_hire_result(existing)
 
     create_data: dict = {
@@ -196,6 +208,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "voicePreferences": template.voicePreferences,
         "boundaries": template.boundaries,
         "sourceTemplateId": template.id,
+        "visibility": ResourceVisibility.PRIVATE,
     }
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
@@ -207,7 +220,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
             where={"ownerUserId": user_id, "sourceTemplateId": template_id},
             include=_WORKFLOW_INCLUDE,
         )
-        if raced is None:
+        if raced is None or raced.visibility != ResourceVisibility.PRIVATE:
             raise
         return await _existing_hire_result(raced)
 
@@ -229,6 +242,8 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
     created, and returning the archived row as-is would hand back a
     "successful" hire that stays invisible to list_experts/get_expert.
     """
+    if row.visibility != ResourceVisibility.PRIVATE:
+        raise ExpertNotFoundError(row.id)
     if row.isArchived:
         revived = await prisma.models.Expert.prisma().update(
             where={"id": row.id},
@@ -262,6 +277,7 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
             "ownerUserId": user_id,
             "isTemplate": False,
             "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
         },
         data={
             "name": soul.name,
@@ -343,6 +359,7 @@ async def install_workflow(
             "ownerUserId": user_id,
             "isTemplate": False,
             "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
         }
     )
     if expert is None:
@@ -400,6 +417,7 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
                     "ownerUserId": user_id,
                     "isTemplate": False,
                     "isArchived": False,
+                    "visibility": ResourceVisibility.PRIVATE,
                 }
             },
             "LibraryAgent": {
@@ -419,7 +437,12 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
 
 async def archive_expert(user_id: str, expert_id: str) -> None:
     updated = await prisma.models.Expert.prisma().update_many(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
         data={"isArchived": True},
     )
     if updated == 0:

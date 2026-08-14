@@ -1188,7 +1188,7 @@ async def _enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
 async def _resolve_expert_execution_tenancy(
     user_id: str, expert_id: str
 ) -> tuple[str, str | None]:
-    return await get_experts_db().resolve_expert_personal_tenancy(user_id, expert_id)
+    return await get_experts_db().resolve_private_expert_tenancy(user_id, expert_id)
 
 
 async def add_graph_execution(
@@ -1226,8 +1226,8 @@ async def add_graph_execution(
         nodes_input_masks: Node inputs to use in the execution.
         expert_id: Expert attribution — set when the run was started by/for a
             hired expert (schedule or trigger). Expert-attributed executions
-            are validated here and always run in that expert owner's personal
-            organization and default team.
+            are validated here. Only owner-only PRIVATE experts are supported;
+            they run in the owner's personal organization and default team.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
         bypass_paywall: Skip the per-user paywall check. Set ONLY for admin

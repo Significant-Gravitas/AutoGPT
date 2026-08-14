@@ -1,14 +1,17 @@
 from unittest.mock import AsyncMock
 
+import prisma.models
 import pytest
+from prisma.enums import ResourceVisibility
 
 from backend.api.features.experts import scheduling
+from backend.util.exceptions import ExpertRunPausedError
 
 
 @pytest.mark.asyncio
 async def test_reattach_rehomes_presets_to_current_personal_tenancy(mocker) -> None:
     resolve_tenancy = mocker.patch(
-        "backend.api.features.experts.experts_db.resolve_expert_personal_tenancy",
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
         new=AsyncMock(return_value=("current-personal-org", "current-personal-team")),
     )
     preset_client = mocker.MagicMock()
@@ -50,7 +53,7 @@ async def test_reattach_fails_before_preset_update_when_expert_is_unavailable(
     mocker,
 ) -> None:
     resolve_tenancy = mocker.patch(
-        "backend.api.features.experts.experts_db.resolve_expert_personal_tenancy",
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
         new=AsyncMock(side_effect=ValueError("expert unavailable")),
     )
     preset_client = mocker.MagicMock()
@@ -66,3 +69,55 @@ async def test_reattach_fails_before_preset_update_when_expert_is_unavailable(
 
     resolve_tenancy.assert_awaited_once_with("attacker", "victim-expert")
     preset_client.update_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pause_only_mutates_private_expert(mocker) -> None:
+    expert_client = mocker.MagicMock()
+    expert_client.update_many = AsyncMock(return_value=0)
+    pause_event_client = mocker.MagicMock()
+    pause_event_client.create = AsyncMock()
+    mocker.patch.object(prisma.models.Expert, "prisma", return_value=expert_client)
+    mocker.patch.object(
+        prisma.models.ExpertPauseEvent,
+        "prisma",
+        return_value=pause_event_client,
+    )
+
+    assert not await scheduling.pause_expert_schedules("owner", "shared-expert", "test")
+
+    where = expert_client.update_many.call_args.kwargs["where"]
+    assert where["ownerUserId"] == "owner"
+    assert where["visibility"] == ResourceVisibility.PRIVATE
+    pause_event_client.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resume_only_mutates_private_expert(mocker) -> None:
+    expert_client = mocker.MagicMock()
+    expert_client.update_many = AsyncMock(return_value=0)
+    reset_spend = mocker.patch.object(scheduling, "reset_weekly_spend", new=AsyncMock())
+    mocker.patch.object(prisma.models.Expert, "prisma", return_value=expert_client)
+
+    assert not await scheduling.resume_expert_schedules("owner", "shared-expert")
+
+    where = expert_client.update_many.call_args.kwargs["where"]
+    assert where["ownerUserId"] == "owner"
+    assert where["visibility"] == ResourceVisibility.PRIVATE
+    reset_spend.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_budget_gate_fails_closed_for_non_private_expert(mocker) -> None:
+    expert_client = mocker.MagicMock()
+    expert_client.find_first = AsyncMock(return_value=None)
+    spend = mocker.patch.object(scheduling, "get_weekly_spend", new=AsyncMock())
+    mocker.patch.object(prisma.models.Expert, "prisma", return_value=expert_client)
+
+    with pytest.raises(ExpertRunPausedError, match="unavailable"):
+        await scheduling.enforce_expert_run_budget("owner", "shared-expert")
+
+    where = expert_client.find_first.call_args.kwargs["where"]
+    assert where["ownerUserId"] == "owner"
+    assert where["visibility"] == ResourceVisibility.PRIVATE
+    spend.assert_not_awaited()

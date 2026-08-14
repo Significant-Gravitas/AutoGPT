@@ -2030,11 +2030,11 @@ async def create_preset(
         # Local import avoids the experts_db -> library_db import cycle. Expert
         # presets are personal resources even when their graph is shared.
         from backend.api.features.experts.experts_db import (
-            resolve_expert_personal_tenancy,
+            resolve_private_expert_tenancy,
         )
 
         try:
-            organization_id, team_id = await resolve_expert_personal_tenancy(
+            organization_id, team_id = await resolve_private_expert_tenancy(
                 user_id, expert_id
             )
         except Exception as e:
@@ -2178,11 +2178,11 @@ async def update_preset(
     expert_tenancy: tuple[str, str | None] | None = None
     if current.expert_id:
         from backend.api.features.experts.experts_db import (
-            resolve_expert_personal_tenancy,
+            resolve_private_expert_tenancy,
         )
 
         try:
-            expert_tenancy = await resolve_expert_personal_tenancy(
+            expert_tenancy = await resolve_private_expert_tenancy(
                 user_id, current.expert_id
             )
         except Exception as e:
@@ -2256,11 +2256,11 @@ async def set_preset_webhook(
             raise NotFoundError(f"Webhook #{webhook_id} not found")
         if current.expertId:
             from backend.api.features.experts.experts_db import (
-                resolve_expert_personal_tenancy,
+                resolve_private_expert_tenancy,
             )
 
             try:
-                organization_id, team_id = await resolve_expert_personal_tenancy(
+                organization_id, team_id = await resolve_private_expert_tenancy(
                     user_id, current.expertId
                 )
             except Exception as e:

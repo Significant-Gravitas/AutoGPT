@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 
 import prisma.models
+from prisma.enums import ResourceVisibility
 
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
@@ -196,10 +197,10 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     turned off themselves) and recreate schedules from the stored cadence."""
     # Local import avoids the experts_db -> scheduling module cycle. Re-hire
     # may happen after a personal-org conversion, so restoring a trigger also
-    # moves its preset to the active owner's current personal tenancy.
-    from backend.api.features.experts.experts_db import resolve_expert_personal_tenancy
+    # moves its preset to the active owner's current private tenancy.
+    from backend.api.features.experts.experts_db import resolve_private_expert_tenancy
 
-    organization_id, team_id = await resolve_expert_personal_tenancy(user_id, expert_id)
+    organization_id, team_id = await resolve_private_expert_tenancy(user_id, expert_id)
     await prisma.models.AgentPreset.prisma().update_many(
         where={
             "expertId": expert_id,
@@ -251,6 +252,7 @@ async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> b
             "id": expert_id,
             "ownerUserId": user_id,
             "isTemplate": False,
+            "visibility": ResourceVisibility.PRIVATE,
             "schedulesPausedAt": None,
         },
         data={"schedulesPausedAt": datetime.now(timezone.utc)},
@@ -273,7 +275,12 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     the durable billing ledger is untouched, only the guardrail's counter
     restarts."""
     updated = await prisma.models.Expert.prisma().update_many(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
         data={"schedulesPausedAt": None},
     )
     if updated == 0:
@@ -302,10 +309,15 @@ async def enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
     the billing ledger, so the simpler check is the deliberate trade-off.
     """
     expert = await prisma.models.Expert.prisma().find_first(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        }
     )
     if expert is None:
-        return
+        raise ExpertRunPausedError("Expert is unavailable.", expert_id)
     if expert.isArchived:
         raise ExpertRunPausedError(
             f"{expert.name} is archived; her schedules do not run.", expert_id

@@ -1447,7 +1447,7 @@ def test_create_session_maps_missing_personal_org_to_503(
     from backend.api.features.experts import experts_db
 
     mock_create = _mock_create_chat_session(mocker)
-    mock_create.side_effect = experts_db.ExpertPersonalTenancyNotFoundError("expert-1")
+    mock_create.side_effect = experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
     _mock_get_expert(mocker, _make_expert("expert-1"))
 
     response = client.post("/sessions", json={"expert_id": "expert-1"})

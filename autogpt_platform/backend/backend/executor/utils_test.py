@@ -2071,7 +2071,7 @@ def _mock_expert_personal_tenancy(
     error: Exception | None = None,
 ):
     expert_store = mocker.MagicMock()
-    expert_store.resolve_expert_personal_tenancy = mocker.AsyncMock(
+    expert_store.resolve_private_expert_tenancy = mocker.AsyncMock(
         return_value=(organization_id, team_id), side_effect=error
     )
     get_experts_db = mocker.patch(
@@ -2161,7 +2161,7 @@ async def test_expert_execution_uses_authoritative_personal_tenancy(
         team_id="shared-team",
     )
 
-    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
         "expert-owner", "expert-1"
     )
     enforce_budget.assert_awaited_once_with("expert-owner", "expert-1")
@@ -2231,7 +2231,7 @@ async def test_nested_expert_execution_inherits_expert_and_personal_tenancy(
         team_id="shared-team",
     )
 
-    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
         "expert-owner", "expert-1"
     )
     enforce_budget.assert_awaited_once_with("expert-owner", "expert-1")
@@ -2298,15 +2298,15 @@ async def test_expert_execution_rejects_missing_personal_tenancy(
     mocker: MockerFixture,
 ):
     from backend.api.features.experts.experts_db import (
-        ExpertPersonalTenancyNotFoundError,
+        ExpertPrivateTenancyNotFoundError,
     )
 
     mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
     _mock_expert_personal_tenancy(
-        mocker, error=ExpertPersonalTenancyNotFoundError("expert-1")
+        mocker, error=ExpertPrivateTenancyNotFoundError("expert-1")
     )
 
-    with pytest.raises(ExpertPersonalTenancyNotFoundError):
+    with pytest.raises(ExpertPrivateTenancyNotFoundError):
         await add_graph_execution(graph_id="g", user_id="owner", expert_id="expert-1")
 
     mock_edb.create_graph_execution.assert_not_called()
@@ -2341,7 +2341,7 @@ async def test_expert_requeue_keeps_persisted_expert_and_personal_tenancy(
         execution_context=caller_context,
     )
 
-    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
         "owner", "expert-1"
     )
     enforce_budget.assert_awaited_once_with("owner", "expert-1")
@@ -2379,7 +2379,7 @@ async def test_expert_requeue_admin_bypass_still_validates_personal_tenancy(
         execution_context=caller_context,
     )
 
-    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
         "owner", "expert-1"
     )
     enforce_budget.assert_not_called()
@@ -2411,7 +2411,7 @@ async def test_expert_requeue_uses_current_tenancy_after_conversion(
         graph_exec_id="existing-execution",
     )
 
-    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
         "owner", "expert-1"
     )
     enforce_budget.assert_awaited_once_with("owner", "expert-1")

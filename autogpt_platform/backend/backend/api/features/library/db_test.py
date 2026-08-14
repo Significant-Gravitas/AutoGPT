@@ -1166,7 +1166,7 @@ async def test_create_expert_preset_forces_personal_tenancy(mocker):
         ),
     )
     tenancy = mocker.patch(
-        "backend.api.features.experts.experts_db.resolve_expert_personal_tenancy",
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
         new=AsyncMock(return_value=("personal-org", "personal-team")),
     )
     mock_preset_client = AsyncMock()
@@ -1217,7 +1217,7 @@ async def test_create_expert_preset_rejects_shared_webhook(mocker):
         ),
     )
     mocker.patch(
-        "backend.api.features.experts.experts_db.resolve_expert_personal_tenancy",
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
         new=AsyncMock(return_value=("personal-org", "personal-team")),
     )
     mock_preset_client = AsyncMock()
@@ -1259,7 +1259,7 @@ async def test_update_expert_preset_rehomes_on_metadata_only_update(mocker):
         new=AsyncMock(return_value=current),
     )
     tenancy = mocker.patch(
-        "backend.api.features.experts.experts_db.resolve_expert_personal_tenancy",
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
         new=AsyncMock(return_value=("current-personal-org", "current-personal-team")),
     )
 
@@ -1308,7 +1308,7 @@ async def test_update_expert_preset_fails_before_mutation_when_expert_is_unavail
         ),
     )
     mocker.patch(
-        "backend.api.features.experts.experts_db.resolve_expert_personal_tenancy",
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
         new=AsyncMock(side_effect=ValueError("expert unavailable")),
     )
     mock_preset_client = AsyncMock()
@@ -1425,7 +1425,7 @@ async def test_set_expert_preset_webhook_rehomes_legacy_preset(mocker):
         ),
     )
     mocker.patch(
-        "backend.api.features.experts.experts_db.resolve_expert_personal_tenancy",
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
         new=AsyncMock(return_value=("personal-org", "personal-team")),
     )
 
@@ -1474,7 +1474,7 @@ async def test_set_expert_preset_webhook_rejects_stale_webhook_without_rehome(mo
         ),
     )
     mocker.patch(
-        "backend.api.features.experts.experts_db.resolve_expert_personal_tenancy",
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
         new=AsyncMock(return_value=("current-personal-org", "current-personal-team")),
     )
 

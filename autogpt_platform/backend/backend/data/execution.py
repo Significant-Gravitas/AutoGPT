@@ -18,7 +18,7 @@ from typing import (
 )
 
 from prisma import Json
-from prisma.enums import AgentExecutionStatus, SharedVia
+from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
@@ -713,7 +713,11 @@ def _execution_visibility_filters(
     organization_id: str,
     team_ids: list[str],
 ) -> list[AgentGraphExecutionWhereInput]:
-    """Keep expert runs owner-only while sharing non-expert org/team runs."""
+    """Keep current PRIVATE expert runs owner-only.
+
+    Non-expert runs retain existing org/team visibility. Future shared expert
+    visibility must add an explicit access policy here before it is exposed.
+    """
     shared_visibility = cast(
         AgentGraphExecutionWhereInput,
         visibility_filter(user_id, organization_id, team_ids),
@@ -901,10 +905,16 @@ async def create_graph_execution(
     # expert-attributed path.
     if expert_id:
         expert = await Expert.prisma().find_first(
-            where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+                "visibility": ResourceVisibility.PRIVATE,
+            }
         )
         if expert is None:
-            raise ValueError(f"Expert #{expert_id} does not belong to user #{user_id}")
+            raise ValueError(f"Expert #{expert_id} is unavailable")
 
     result = await AgentGraphExecution.prisma().create(
         data={

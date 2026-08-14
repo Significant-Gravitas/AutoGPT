@@ -1103,7 +1103,7 @@ async def test_create_expert_session_forces_personal_tenancy(
     mocker: MockerFixture,
 ) -> None:
     mock_experts_db = mocker.MagicMock()
-    mock_experts_db.resolve_expert_personal_tenancy = mocker.AsyncMock(
+    mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock(
         return_value=("personal-org", "personal-team")
     )
     mock_chat_db = mocker.MagicMock()
@@ -1122,7 +1122,7 @@ async def test_create_expert_session_forces_personal_tenancy(
         expert_id="expert-1",
     )
 
-    mock_experts_db.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    mock_experts_db.resolve_private_expert_tenancy.assert_awaited_once_with(
         "owner-1", "expert-1"
     )
     assert session.organization_id == "personal-org"
@@ -1140,7 +1140,7 @@ async def test_create_expert_session_fails_before_write_when_scope_is_invalid(
     mocker: MockerFixture,
 ) -> None:
     mock_experts_db = mocker.MagicMock()
-    mock_experts_db.resolve_expert_personal_tenancy = mocker.AsyncMock(
+    mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock(
         side_effect=ValueError("expert scope unavailable")
     )
     mock_chat_db = mocker.MagicMock()
@@ -1169,7 +1169,7 @@ async def test_create_autopilot_session_keeps_caller_tenancy(
     mocker: MockerFixture,
 ) -> None:
     mock_experts_db = mocker.MagicMock()
-    mock_experts_db.resolve_expert_personal_tenancy = mocker.AsyncMock()
+    mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock()
     mock_chat_db = mocker.MagicMock()
     mock_chat_db.create_chat_session = mocker.AsyncMock()
     mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
@@ -1185,7 +1185,7 @@ async def test_create_autopilot_session_keeps_caller_tenancy(
         team_id="caller-team",
     )
 
-    mock_experts_db.resolve_expert_personal_tenancy.assert_not_awaited()
+    mock_experts_db.resolve_private_expert_tenancy.assert_not_awaited()
     assert session.organization_id == "caller-org"
     assert session.team_id == "caller-team"
     assert mock_chat_db.create_chat_session.await_args.kwargs["organization_id"] == (

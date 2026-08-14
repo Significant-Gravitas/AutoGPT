@@ -24,7 +24,7 @@ from backend.copilot.config import CopilotMode
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
-    _normalize_expert_session_tenancy,
+    _normalize_private_expert_session_tenancy,
     resolve_effective_mode,
     resolve_use_sdk_for_mode,
     sync_fail_close_session,
@@ -368,7 +368,7 @@ class TestExecuteAsyncAclose:
         stream_fn = MagicMock(side_effect=stream)
 
         expert_store = MagicMock()
-        expert_store.resolve_expert_personal_tenancy = AsyncMock(
+        expert_store.resolve_private_expert_tenancy = AsyncMock(
             return_value=("current-personal-org", "current-personal-team")
         )
 
@@ -420,7 +420,7 @@ class TestExecuteAsyncAclose:
             )
 
         get_session_mock.assert_awaited_once_with("sess-1", "user-1")
-        expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
             "user-1", "expert-1"
         )
         upsert.assert_awaited_once_with(session, persist_tenancy=True)
@@ -490,7 +490,7 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
 
     stream_fn = MagicMock(side_effect=stream)
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("current-personal-org", "current-personal-team")
     )
     session_db = MagicMock()
@@ -564,7 +564,7 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
     )
     session.credentials = {"github": {"id": "current-credential"}}
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("personal-org", "personal-team")
     )
     upsert = AsyncMock()
@@ -576,11 +576,11 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
         ),
         patch("backend.copilot.model.upsert_chat_session", new=upsert),
     ):
-        result = await _normalize_expert_session_tenancy(session)
+        result = await _normalize_private_expert_session_tenancy(session)
 
     assert result is session
     assert session.credentials == {"github": {"id": "current-credential"}}
-    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
         "user-1", "expert-1"
     )
     upsert.assert_not_awaited()
@@ -598,7 +598,7 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
     session.session_id = "sess-1"
     session.credentials = {"github": {"id": "autopilot-credential"}}
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock()
     upsert = AsyncMock()
     stream_fn = MagicMock(return_value=MagicMock())
     entry = _make_entry().model_copy(
@@ -644,7 +644,7 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
         "session-team",
     )
     assert session.credentials == {"github": {"id": "autopilot-credential"}}
-    expert_store.resolve_expert_personal_tenancy.assert_not_awaited()
+    expert_store.resolve_private_expert_tenancy.assert_not_awaited()
     upsert.assert_not_awaited()
     assert stream_fn.call_args.kwargs["session"] is session
     assert stream_fn.call_args.kwargs["organization_id"] == "entry-org"
@@ -662,7 +662,7 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
     )
     session.session_id = "sess-1"
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         side_effect=PermissionError("expert is not owned by user")
     )
     dummy_engine = MagicMock()

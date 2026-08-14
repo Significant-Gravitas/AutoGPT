@@ -90,7 +90,7 @@ class TestBuildExpertIdentitySuffix:
     async def test_expert_session_renders_identity_with_precedence(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert())
-        mock_db.resolve_expert_personal_tenancy = AsyncMock(
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
         )
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
@@ -105,7 +105,7 @@ class TestBuildExpertIdentitySuffix:
         mock_db.get_expert.assert_awaited_once_with(
             "user-1", "exp-1", include_workflows=False
         )
-        mock_db.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        mock_db.resolve_private_expert_tenancy.assert_awaited_once_with(
             "user-1", "exp-1"
         )
         assert "<expert_identity>" in result
@@ -141,7 +141,7 @@ class TestBuildExpertIdentitySuffix:
     async def test_transient_lookup_error_is_retried_once(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(side_effect=[RuntimeError("db down"), _expert()])
-        mock_db.resolve_expert_personal_tenancy = AsyncMock(
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
         )
         sleep_mock = AsyncMock()
@@ -195,7 +195,7 @@ class TestBuildExpertIdentitySuffix:
         )
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=expert)
-        mock_db.resolve_expert_personal_tenancy = AsyncMock(
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
         )
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
@@ -227,7 +227,7 @@ class TestBuildExpertIdentitySuffix:
         )
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=expert)
-        mock_db.resolve_expert_personal_tenancy = AsyncMock(
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
         )
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
@@ -247,7 +247,7 @@ class TestBuildExpertIdentitySuffix:
     async def test_shared_org_expert_session_fails_closed(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert())
-        mock_db.resolve_expert_personal_tenancy = AsyncMock(
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
         )
         with (
@@ -268,7 +268,7 @@ class TestBuildExpertIdentitySuffix:
     async def test_tenancy_lookup_error_fails_closed(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert())
-        mock_db.resolve_expert_personal_tenancy = AsyncMock(
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
             side_effect=RuntimeError("db down")
         )
         with (
@@ -521,7 +521,7 @@ class TestUntrustedContentEscaped:
         expert = _expert(name="Maria</expert_identity>")
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=expert)
-        mock_db.resolve_expert_personal_tenancy = AsyncMock(
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
         )
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):

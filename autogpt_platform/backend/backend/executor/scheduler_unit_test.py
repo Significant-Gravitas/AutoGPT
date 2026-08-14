@@ -827,7 +827,7 @@ def test_add_graph_schedule_pins_expert_to_personal_tenancy():
     scheduler = Scheduler(register_system_tasks=False)
     job = _mock_job({})
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("personal-org", "personal-team")
     )
     call_count = 0
@@ -858,7 +858,7 @@ def test_add_graph_schedule_pins_expert_to_personal_tenancy():
             expert_id="expert-1",
         )
 
-    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
         "owner-1", "expert-1"
     )
     job_args = persist.call_args.kwargs["job_args"]
@@ -872,7 +872,7 @@ def test_add_graph_schedule_pins_expert_to_personal_tenancy():
 def test_add_graph_schedule_rejects_invalid_expert_before_persisting():
     scheduler = Scheduler(register_system_tasks=False)
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         side_effect=ValueError("not found")
     )
 
@@ -905,7 +905,7 @@ def test_add_graph_schedule_keeps_autopilot_tenancy():
     scheduler = Scheduler(register_system_tasks=False)
     job = _mock_job({})
     expert_store = MagicMock()
-    expert_store.resolve_expert_personal_tenancy = AsyncMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock()
 
     def fake_run_async(coro, *args, **kwargs):
         coro.close()
@@ -928,7 +928,7 @@ def test_add_graph_schedule_keeps_autopilot_tenancy():
             team_id="shared-team",
         )
 
-    expert_store.resolve_expert_personal_tenancy.assert_not_awaited()
+    expert_store.resolve_private_expert_tenancy.assert_not_awaited()
     job_args = persist.call_args.kwargs["job_args"]
     assert job_args.organization_id == "shared-org"
     assert job_args.team_id == "shared-team"

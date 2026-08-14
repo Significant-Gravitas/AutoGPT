@@ -86,7 +86,7 @@ async def test_expert_trigger_is_created_in_personal_scope():
         p_create as create_mock,
         p_webhook as webhook_mock,
         patch(
-            f"{_PATH}.experts_db.resolve_expert_personal_tenancy",
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
             new=AsyncMock(return_value=("personal-org", "personal-team")),
         ),
     ):
@@ -214,7 +214,7 @@ async def test_update_expert_trigger_keeps_personal_scope():
     with (
         _update_patches(current=current) as m,
         patch(
-            f"{_PATH}.experts_db.resolve_expert_personal_tenancy",
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
             new=AsyncMock(return_value=("personal-org", "personal-team")),
         ),
     ):
@@ -235,7 +235,7 @@ async def test_update_legacy_expert_trigger_rehomes_through_new_webhook():
     with (
         _update_patches(current=current) as m,
         patch(
-            f"{_PATH}.experts_db.resolve_expert_personal_tenancy",
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
             new=AsyncMock(return_value=("personal-org", "personal-team")),
         ),
     ):

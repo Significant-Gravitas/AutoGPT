@@ -213,14 +213,16 @@ async def _building_mode_forces_sdk(session_id: str) -> bool:
     return session is not None and session_entered_building_mode(session)
 
 
-async def _normalize_expert_session_tenancy(session: "ChatSession") -> "ChatSession":
+async def _normalize_private_expert_session_tenancy(
+    session: "ChatSession",
+) -> "ChatSession":
     if session.expert_id is None:
         return session
 
     from backend.copilot.model import upsert_chat_session
     from backend.data.db_accessors import experts_db
 
-    organization_id, team_id = await experts_db().resolve_expert_personal_tenancy(
+    organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
         session.user_id, session.expert_id
     )
     if (session.organization_id, session.team_id) == (organization_id, team_id):
@@ -556,7 +558,7 @@ class CoPilotProcessor:
             ):
                 raise RuntimeError("codex_session_route_mismatch")
 
-            session = await _normalize_expert_session_tenancy(session)
+            session = await _normalize_private_expert_session_tenancy(session)
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access

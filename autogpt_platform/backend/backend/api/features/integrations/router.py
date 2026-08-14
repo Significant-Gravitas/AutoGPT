@@ -880,12 +880,12 @@ async def _execute_webhook_preset_trigger(
     expert_tenancy: tuple[str, str | None] | None = None
     if preset.expert_id is not None:
         try:
-            expert_tenancy = await experts_db().resolve_expert_personal_tenancy(
+            expert_tenancy = await experts_db().resolve_private_expert_tenancy(
                 webhook.user_id, preset.expert_id
             )
         except Exception:
             logger.warning(
-                "Refusing expert webhook preset because its personal tenancy "
+                "Refusing private expert webhook preset because its tenancy "
                 "could not be validated"
             )
             return
@@ -918,7 +918,7 @@ async def _execute_webhook_preset_trigger(
     try:
         # Expert resources survive personal-org conversion: active ownership
         # above is authoritative and the run follows the owner's current
-        # personal tenancy even when legacy preset/webhook tags are stale.
+        # private owner scope even when legacy preset/webhook tags are stale.
         # Non-expert resources continue to follow their stored parent scope.
         if expert_tenancy is not None:
             org_id, ws_id = expert_tenancy
