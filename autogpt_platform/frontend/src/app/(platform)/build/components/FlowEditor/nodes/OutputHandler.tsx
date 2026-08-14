@@ -1,7 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { RJSFSchema } from "@rjsf/utils";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { OutputNodeHandle } from "../handlers/NodeHandle";
 import {
@@ -22,6 +22,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
+const RESERVED_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
 export const OutputHandler = ({
   outputSchema,
   nodeId,
@@ -31,8 +33,50 @@ export const OutputHandler = ({
   nodeId: string;
   uiType: BlockUIType;
 }) => {
-  const { isOutputConnected } = useEdgeStore();
-  const properties = outputSchema?.properties || {};
+  const { isOutputConnected, edges } = useEdgeStore();
+
+  const properties = useMemo(() => {
+    const props = JSON.parse(JSON.stringify(outputSchema?.properties || {}));
+
+    const phantomHandles = edges
+      .filter(
+        (edge) =>
+          edge.source === nodeId &&
+          edge.sourceHandle?.includes("_#_") === true,
+      )
+      .map((edge) => edge.sourceHandle!);
+
+    phantomHandles.forEach((handle) => {
+      const parts = handle.split("_#_");
+      if (parts.some((part) => RESERVED_PATH_SEGMENTS.has(part))) return;
+
+      let current = props;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+
+        if (!Object.prototype.hasOwnProperty.call(current, part)) {
+          current[part] = {
+            title: part,
+            type: i === parts.length - 1 ? "string" : "object",
+            description: "AutoPilot-injected sub-property",
+          };
+        }
+
+        if (i < parts.length - 1) {
+          if (
+            !Object.prototype.hasOwnProperty.call(current[part], "properties") ||
+            !current[part].properties
+          ) {
+            current[part].properties = {};
+          }
+          current = current[part].properties;
+        }
+      }
+    });
+
+    return props;
+  }, [outputSchema?.properties, edges, nodeId]);
+
   const [isOutputVisible, setIsOutputVisible] = useState(true);
   const brokenOutputs = useBrokenOutputs(nodeId);
   const [expandedObjects, setExpandedObjects] = useState<
