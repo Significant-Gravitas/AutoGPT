@@ -11,6 +11,7 @@ import { AutopilotCard } from "./components/AutopilotCard";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
+import { WhatRunsZone } from "./components/WhatRunsZone/WhatRunsZone";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
@@ -77,6 +78,9 @@ export default function TeamPage() {
               />
             ))}
       </div>
+      {!isLoading && !isError && hiredExperts.length > 0 ? (
+        <WhatRunsZone experts={hiredExperts} />
+      ) : null}
       {isError ? (
         <ErrorCard
           context="your team"
