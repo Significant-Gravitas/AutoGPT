@@ -1,5 +1,6 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
+import type { AsyncStatus } from "@/types/async-status";
 import {
   Briefcase01Icon,
   ChartIncreaseIcon,
@@ -110,6 +111,18 @@ export function getHiredExpertsLookup<
         ? ("error" as const)
         : ("loading" as const);
   return { byTemplateId, state };
+}
+
+export function getExpertCardHiredState(
+  templateId: string,
+  hiredTemplateIds: Set<string>,
+  lookupState: AsyncStatus,
+) {
+  if (lookupState === "loading") return "unknown" as const;
+  if (lookupState === "error") return "error" as const;
+  return hiredTemplateIds.has(templateId)
+    ? ("hired" as const)
+    : ("available" as const);
 }
 
 export function getExpertFirstName(name: string): string {

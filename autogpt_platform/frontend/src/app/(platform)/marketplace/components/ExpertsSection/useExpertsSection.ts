@@ -25,8 +25,7 @@ export function useExpertsSection() {
   return {
     templates: templatesQuery.data ?? [],
     hiredTemplateIds: new Set(hiredLookup.byTemplateId.keys()),
-    isHiredLookupUnresolved: isLoggedIn && hiredLookup.state === "loading",
-    isHiredLookupError: isLoggedIn && hiredLookup.state === "error",
+    hiredLookupState: hiredLookup.state,
     isLoading: isLoggedIn && templatesQuery.isLoading,
     isError: templatesQuery.isError,
     selectedTemplateId,

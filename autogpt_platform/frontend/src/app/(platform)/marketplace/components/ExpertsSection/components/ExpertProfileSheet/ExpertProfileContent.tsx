@@ -9,6 +9,7 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
+import type { AsyncStatus } from "@/types/async-status";
 import { ReactNode, useState } from "react";
 import {
   ExpertAccent,
@@ -31,7 +32,7 @@ interface Props {
   isHiring: boolean;
   onHire: () => void;
   hiredExpertId: string | null;
-  hiredLookup: "loading" | "error" | "loaded";
+  hiredLookup: AsyncStatus;
   onRetryHiredLookup: () => void;
 }
 

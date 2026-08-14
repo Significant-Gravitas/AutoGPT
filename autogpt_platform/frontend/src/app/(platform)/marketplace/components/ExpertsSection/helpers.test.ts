@@ -2,6 +2,7 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { describe, expect, test } from "vitest";
 import {
   getDayOneWorkflow,
+  getExpertCardHiredState,
   getExpertAccent,
   getExpertAvatarUrl,
   getExpertFirstName,
@@ -89,6 +90,25 @@ describe("getHiredExpertsLookup", () => {
         isFetching: false,
       }).state,
     ).toBe("error");
+  });
+});
+
+describe("getExpertCardHiredState", () => {
+  const hiredTemplateIds = new Set(["template-1"]);
+
+  test("maps lookup state and membership to a card state", () => {
+    expect(
+      getExpertCardHiredState("template-1", hiredTemplateIds, "loading"),
+    ).toBe("unknown");
+    expect(
+      getExpertCardHiredState("template-1", hiredTemplateIds, "error"),
+    ).toBe("error");
+    expect(
+      getExpertCardHiredState("template-1", hiredTemplateIds, "loaded"),
+    ).toBe("hired");
+    expect(
+      getExpertCardHiredState("template-2", hiredTemplateIds, "loaded"),
+    ).toBe("available");
   });
 });
 

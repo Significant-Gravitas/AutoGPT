@@ -5,14 +5,14 @@ import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
+import { getExpertCardHiredState } from "./helpers";
 import { useExpertsSection } from "./useExpertsSection";
 
 export function ExpertsSection() {
   const {
     templates,
     hiredTemplateIds,
-    isHiredLookupUnresolved,
-    isHiredLookupError,
+    hiredLookupState,
     isLoading,
     isError,
     selectedTemplateId,
@@ -44,15 +44,11 @@ export function ExpertsSection() {
             <ExpertCard
               key={template.id}
               expert={template}
-              hiredState={
-                isHiredLookupUnresolved
-                  ? "unknown"
-                  : isHiredLookupError
-                    ? "error"
-                    : hiredTemplateIds.has(template.id)
-                      ? "hired"
-                      : "available"
-              }
+              hiredState={getExpertCardHiredState(
+                template.id,
+                hiredTemplateIds,
+                hiredLookupState,
+              )}
               onClick={() => openTemplate(template.id)}
             />
           ))}
