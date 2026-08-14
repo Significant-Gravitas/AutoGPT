@@ -29,7 +29,7 @@ export default function RaisePage() {
 function RaiseSkeleton() {
   return (
     <main
-      className="min-h-screen bg-zinc-50 px-4 pb-16 pt-6 sm:px-6 lg:px-8"
+      className="min-h-screen bg-muted/30 px-4 pb-16 pt-6 sm:px-6 lg:px-8"
       aria-label="Loading…"
     >
       <div className="mx-auto grid w-full max-w-[1000px] gap-6 lg:grid-cols-[1fr_minmax(300px,360px)]">

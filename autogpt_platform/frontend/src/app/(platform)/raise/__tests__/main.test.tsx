@@ -204,12 +204,47 @@ test("walks name → voice → first job, posts the payload, and kicks off", asy
   expect(
     (captured as { voice_preferences: string }).voice_preferences,
   ).toContain("Concise and direct");
+  expect(captured as Record<string, unknown>).not.toHaveProperty("role");
 
   await waitFor(() =>
     expect(pushMock).toHaveBeenCalledWith(
       "/copilot?expertId=raised-1&kickoff=1",
     ),
   );
+});
+
+test("posts a custom writing sample as voice preferences", async () => {
+  let captured: unknown = null;
+  useStoreHandlers();
+  server.use(
+    getCreateRaisedExpertMockHandler(async (info) => {
+      captured = await info.request.json();
+      return {
+        expert: raisedExpert,
+        first_job_installed: false,
+        first_job_failure_reason: null,
+      } as RaiseResult;
+    }),
+  );
+
+  renderRaise();
+  await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
+  await userEvent.type(
+    await screen.findByRole("textbox", { name: "Custom voice sample" }),
+    "Keep every answer short, practical, and warm.",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Use this voice" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /life/ }));
+
+  await waitFor(() => expect(captured).not.toBeNull());
+  const payload = captured as Record<string, unknown>;
+  expect(payload.voice_preferences).toContain(
+    "Keep every answer short, practical, and warm.",
+  );
+  expect(payload).not.toHaveProperty("role");
 });
 
 test("skips voice and first job, posts a minimal payload without kickoff", async () => {
@@ -536,6 +571,7 @@ test("surfaces a selected job detail failure", async () => {
   await userEvent.click(await screen.findByText("SEO Blog Writer"));
 
   expect(await screen.findByText("Something went wrong")).toBeDefined();
+  expect(screen.getByText("SEO Blog Writer")).toBeDefined();
   const confirm = screen.getByRole("button", { name: "Give me this job" });
   expect((confirm as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();

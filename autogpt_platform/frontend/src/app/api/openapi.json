@@ -16491,7 +16491,10 @@
             "title": "Voice Preferences"
           },
           "first_job_store_listing_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "First Job Store Listing Version Id"
           }
         },

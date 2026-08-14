@@ -449,6 +449,22 @@ async def test_raise_expert_rejects_unapproved_first_job(server: SpinTestServer)
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_rejects_withdrawn_first_job(server: SpinTestServer):
+    owner = await _create_seed_user()
+    withdrawn_slv_id = await _seed_store_listing(server)
+    await prisma.models.StoreListingVersion.prisma().update(
+        where={"id": withdrawn_slv_id}, data={"isAvailable": False}
+    )
+
+    with pytest.raises(experts_db.FirstJobUnavailableError):
+        await experts_db.create_raised_expert(
+            owner.id, "Otto", None, None, withdrawn_slv_id
+        )
+
+    assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_rejects_pending_version_of_approved_graph(
     server: SpinTestServer,
 ):
@@ -556,6 +572,41 @@ async def test_raise_expert_serializes_concurrent_cap_checks(server: SpinTestSer
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_locks_are_independent_per_owner(server: SpinTestServer):
+    first_owner = await _create_seed_user()
+    second_owner = await _create_seed_user()
+    first_lock_acquired = asyncio.Event()
+    second_lock_acquired = asyncio.Event()
+    release_first = asyncio.Event()
+    lock_creation = experts_db._lock_expert_creation
+
+    async def lock_and_hold_first(tx: prisma.Prisma, user_id: str) -> None:
+        await lock_creation(tx, user_id)
+        if user_id == first_owner.id:
+            first_lock_acquired.set()
+            await release_first.wait()
+        elif user_id == second_owner.id:
+            second_lock_acquired.set()
+
+    with patch.object(experts_db, "_lock_expert_creation", new=lock_and_hold_first):
+        first = asyncio.create_task(
+            experts_db.create_raised_expert(first_owner.id, "Alpha", None, None, None)
+        )
+        await asyncio.wait_for(first_lock_acquired.wait(), timeout=5)
+        second = asyncio.create_task(
+            experts_db.create_raised_expert(second_owner.id, "Beta", None, None, None)
+        )
+        try:
+            await asyncio.wait_for(second_lock_acquired.wait(), timeout=5)
+        finally:
+            release_first.set()
+        first_result, second_result = await asyncio.gather(first, second)
+
+    assert first_result.expert.name == "Alpha"
+    assert second_result.expert.name == "Beta"
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_enforces_lifetime_cap(server: SpinTestServer):
     owner = await _create_seed_user()
     await prisma.models.Expert.prisma().create_many(
@@ -575,6 +626,22 @@ async def test_raise_expert_enforces_lifetime_cap(server: SpinTestServer):
         await experts_db.create_raised_expert(
             owner.id, "One Too Many", None, None, None
         )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hired_experts_do_not_consume_raised_lifetime_cap(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    await experts_db.hire_expert(owner.id, template.id, None)
+
+    with patch.object(experts_db, "LIFETIME_RAISED_EXPERT_LIMIT", 1):
+        raised = await experts_db.create_raised_expert(
+            owner.id, "Nova", None, None, None
+        )
+
+    assert raised.expert.source_template_id is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
