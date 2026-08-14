@@ -165,9 +165,8 @@ the container bound to loopback:
 AUTOGPT_PUBLIC_URL=https://agents.example.com
 ```
 
-Forward the entire site to `127.0.0.1:3000` and ensure the proxy supports
-WebSockets and long-lived streaming responses. Do not publish PostgreSQL,
-Valkey, RabbitMQ, FalkorDB, or backend service ports.
+Configure the reverse proxy to forward the HTTPS origin to
+`http://127.0.0.1:3000` with WebSocket and streaming support.
 
 For LAN access, bind the TLS reverse proxy to the LAN interface and keep the
 container published only on `127.0.0.1:3000`. Set `AUTOGPT_PUBLIC_URL` to the
