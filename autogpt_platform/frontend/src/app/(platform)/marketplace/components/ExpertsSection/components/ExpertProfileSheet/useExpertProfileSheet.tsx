@@ -99,16 +99,23 @@ export function useExpertProfileSheet(
   async function pickVoice(result: VoicePickResult) {
     if (!hireResult || !expert) return;
     const hired = hireResult.expert;
+    const voicePreferences = buildVoicePreferences(
+      result,
+      expert.voice_samples ?? [],
+    );
+    // Nothing storable (missing sample, blank custom text): keep the hired
+    // expert's existing voice instead of blanking it with an empty PATCH.
+    if (voicePreferences === null) {
+      skipVoice();
+      return;
+    }
     try {
       await updateSoul({
         expertId: hired.id,
         data: {
           name: hired.name,
           identity: hired.identity,
-          voice_preferences: buildVoicePreferences(
-            result,
-            expert.voice_samples ?? [],
-          ),
+          voice_preferences: voicePreferences,
           boundaries: hired.boundaries,
         },
       });

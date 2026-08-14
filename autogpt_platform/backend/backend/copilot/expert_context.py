@@ -30,14 +30,16 @@ def escape_prompt_xml_tags(value: str) -> str:
     return value.replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _fence_voice_preferences(voice: str) -> str:
+def fence_voice_preferences(voice: str) -> str:
     """Render voice as untrusted quoted style data, never as instructions.
 
     The hire flow's paste-your-own path puts arbitrary user (or externally
-    sourced) text into voice_preferences, and this suffix runs at system
-    priority — tag-escaping alone still lets "ignore the rules above" ride in
-    as a command. Mirrors expert_posts.py: blockquote the text with explicit
-    provenance so it reads as a sample to imitate, not instructions to follow.
+    sourced) text into voice_preferences, and its prompt sinks (this suffix
+    and the briefing narrative persona) run at system priority — tag-escaping
+    alone still lets "ignore the rules above" ride in as a command. Mirrors
+    expert_posts.py: blockquote the text with explicit provenance so it reads
+    as a sample to imitate, not instructions to follow. Callers pass
+    already-escaped text; empty stays the plain "Not specified." fallback.
     """
     if not voice:
         return "Not specified."
@@ -77,7 +79,7 @@ async def build_expert_identity_suffix(
 
     name = escape_prompt_xml_tags(expert.name)
     identity = escape_prompt_xml_tags(expert.identity)
-    voice = _fence_voice_preferences(escape_prompt_xml_tags(expert.voice_preferences))
+    voice = fence_voice_preferences(escape_prompt_xml_tags(expert.voice_preferences))
     boundaries = escape_prompt_xml_tags(expert.boundaries) or "Not specified."
     protected_rules = "\n".join(f"- {rule}" for rule in PROTECTED_SOUL_RULES)
     return (
