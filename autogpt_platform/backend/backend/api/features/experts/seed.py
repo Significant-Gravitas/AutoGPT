@@ -62,8 +62,8 @@ ROSTER: list[RosterEntry] = [
         "skills": [
             "Content strategy",
             "Social copy",
-            "Email campaigns",
             "SEO writing",
+            "Web copy",
             "Positioning",
         ],
         "identity": """You are Maria, a senior marketing strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in terms of positioning first: before any tactic, you want to know who the customer is, what keeps them up at night, and why they would choose this product over doing nothing. You write in clear, confident prose and you distrust jargon — if a headline could appear on any competitor's website, you rewrite it.
@@ -88,7 +88,7 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
         "skills": [
             "Prospecting",
             "Lead qualification",
-            "Cold outreach",
+            "Contact research",
             "ICP targeting",
             "Account research",
         ],
@@ -110,7 +110,7 @@ You are rigorous about data quality. You flag when contact information looks sta
         "role": "Ops",
         "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
         "avatar_url": "/experts/frankie.svg",
-        "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings, draft replies to the support email flooding your inbox, and land a personalized morning digest on your desk at 7:40 every day. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
+        "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
         "skills": [
             "Meeting prep",
             "Follow-ups",
@@ -224,14 +224,15 @@ async def _delete_live_schedule(
     failure so the caller keeps the row for a later retry.
     """
     try:
+        scheduler = get_scheduler_client()
         if owner_id not in live_by_owner:
-            schedules = await get_scheduler_client().get_execution_schedules(
+            schedules = await scheduler.get_execution_schedules(
                 user_id=owner_id, kind="graph"
             )
             live_by_owner[owner_id] = {s.id for s in schedules}
         if schedule_id not in live_by_owner[owner_id]:
             return True
-        await get_scheduler_client().delete_schedule(schedule_id, user_id=owner_id)
+        await scheduler.delete_schedule(schedule_id, user_id=owner_id)
         live_by_owner[owner_id].discard(schedule_id)
         return True
     except Exception as e:

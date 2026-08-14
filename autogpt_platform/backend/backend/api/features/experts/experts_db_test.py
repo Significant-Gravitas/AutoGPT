@@ -757,6 +757,27 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_roster_slug_resolution_rejects_impostor_creator(
+    server: SpinTestServer,
+):
+    expected = await _load_roster_store_assets()
+    slug = "automated-blog-writer"
+    impostor_version_id = await _seed_store_listing(server)
+    impostor_listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": impostor_version_id}
+    )
+    assert impostor_listing is not None
+    await prisma.models.StoreListing.prisma().update(
+        where={"id": impostor_listing.id}, data={"slug": slug}
+    )
+
+    resolved = await seed._resolve_active_version_id(slug)
+
+    assert resolved == expected[slug]
+    assert resolved != impostor_version_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_seed_clears_removed_cadences_on_hired_copies(server: SpinTestServer):
     """Hires made before the single-cadence decision still carry the removed
     template cadences with live scheduler jobs; the seed's migration must
@@ -809,6 +830,54 @@ async def test_seed_clears_removed_cadences_on_hired_copies(server: SpinTestServ
     assert custom_after is not None
     assert custom_after.scheduleId == "sched-custom"
     assert custom_after.scheduleCron == "0 12 * * 1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_clears_removed_cadences_without_live_jobs(server: SpinTestServer):
+    expected = await _load_roster_store_assets()
+    removed_slug, removed_cron = seed.REMOVED_TEMPLATE_CADENCES[0]
+    template = await _seed_template(name="Maria", preload_listings=[])
+    owner_without_id = await _create_seed_user()
+    owner_with_missing_job = await _create_seed_user()
+    hired_without_id = await experts_db.hire_expert(
+        owner_without_id.id, template.id, None
+    )
+    hired_with_missing_job = await experts_db.hire_expert(
+        owner_with_missing_job.id, template.id, None
+    )
+    without_id = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired_without_id.expert.id,
+            "storeListingVersionId": expected[removed_slug],
+            "scheduleCron": removed_cron,
+        }
+    )
+    with_missing_job = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired_with_missing_job.expert.id,
+            "storeListingVersionId": expected[removed_slug],
+            "scheduleCron": removed_cron,
+            "scheduleId": "already-gone",
+        }
+    )
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+    scheduler.delete_schedule = AsyncMock()
+
+    with patch.object(seed, "get_scheduler_client", return_value=scheduler):
+        assert await seed._clear_removed_cadences() >= 2
+
+    scheduler.get_execution_schedules.assert_awaited_once_with(
+        user_id=owner_with_missing_job.id, kind="graph"
+    )
+    scheduler.delete_schedule.assert_not_awaited()
+    for workflow_id in (without_id.id, with_missing_job.id):
+        row = await prisma.models.ExpertWorkflow.prisma().find_unique(
+            where={"id": workflow_id}
+        )
+        assert row is not None
+        assert row.scheduleId is None
+        assert row.scheduleCron is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
