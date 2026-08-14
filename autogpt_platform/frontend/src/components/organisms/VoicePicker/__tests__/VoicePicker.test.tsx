@@ -1,4 +1,4 @@
-import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
+import type { VoiceSample } from "@/components/organisms/VoicePicker/helpers";
 import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";

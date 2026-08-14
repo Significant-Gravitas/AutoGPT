@@ -1,6 +1,5 @@
-import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { describe, expect, test } from "vitest";
-import { buildVoicePreferences } from "./helpers";
+import { buildVoicePreferences, type VoiceSample } from "./helpers";
 
 const samples: VoiceSample[] = [
   { label: "Punchy and bold", text: "Stop guessing what your buyers want." },

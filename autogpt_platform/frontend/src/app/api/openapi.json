@@ -16463,6 +16463,37 @@
         "required": ["name", "slug"],
         "title": "CreateOrgRequest"
       },
+      "CreateRaisedExpertRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "role": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Role"
+          },
+          "voice_preferences": {
+            "anyOf": [
+              { "type": "string", "maxLength": 4000 },
+              { "type": "null" }
+            ],
+            "title": "Voice Preferences"
+          },
+          "first_job_store_listing_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "First Job Store Listing Version Id"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "CreateRaisedExpertRequest"
+      },
       "CreateSessionRequest": {
         "properties": {
           "dry_run": {
@@ -16550,37 +16581,6 @@
         "type": "object",
         "required": ["name"],
         "title": "CreateTeamRequest"
-      },
-      "CreateRaisedExpertRequest": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Name"
-          },
-          "role": {
-            "anyOf": [
-              { "type": "string", "maxLength": 100 },
-              { "type": "null" }
-            ],
-            "title": "Role"
-          },
-          "voice_preferences": {
-            "anyOf": [
-              { "type": "string", "maxLength": 4000 },
-              { "type": "null" }
-            ],
-            "title": "Voice Preferences"
-          },
-          "first_job_store_listing_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "First Job Store Listing Version Id"
-          }
-        },
-        "type": "object",
-        "required": ["name"],
-        "title": "CreateRaisedExpertRequest"
       },
       "CreateTransferRequest": {
         "properties": {
@@ -27268,16 +27268,6 @@
         "type": "object",
         "required": ["public_key"],
         "title": "VapidPublicKeyResponse"
-      },
-      "VoiceSample": {
-        "properties": {
-          "label": { "type": "string", "title": "Label" },
-          "text": { "type": "string", "title": "Text" }
-        },
-        "type": "object",
-        "required": ["label", "text"],
-        "title": "VoiceSample",
-        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire flow. The first sample is choice \"a\", the second choice \"b\"."
       },
       "Webhook": {
         "properties": {

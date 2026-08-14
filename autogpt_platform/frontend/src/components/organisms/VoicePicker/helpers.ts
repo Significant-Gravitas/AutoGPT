@@ -1,4 +1,9 @@
-import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
+// Mirrors the VoiceSample schema arriving with the writing-test branch's
+// backend; becomes the generated model import once that PR lands.
+export interface VoiceSample {
+  label: string;
+  text: string;
+}
 
 export type VoicePickChoice = "a" | "b" | "custom";
 

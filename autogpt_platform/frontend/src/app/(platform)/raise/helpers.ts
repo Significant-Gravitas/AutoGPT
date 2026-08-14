@@ -1,7 +1,7 @@
-import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import {
   buildVoicePreferences,
   type VoicePickResult,
+  type VoiceSample,
 } from "@/components/organisms/VoicePicker/helpers";
 
 export type RaiseStep = "name" | "voice" | "firstJob" | "review";

@@ -1,11 +1,10 @@
 "use client";
 
-import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import type { VoicePickResult } from "./helpers";
+import type { VoicePickResult, VoiceSample } from "./helpers";
 import { useVoicePicker } from "./useVoicePicker";
 
 interface Props {
