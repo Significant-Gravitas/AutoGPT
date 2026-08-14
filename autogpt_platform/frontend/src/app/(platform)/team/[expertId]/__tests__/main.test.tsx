@@ -219,10 +219,12 @@ describe("ExpertDetailPage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
     expect(
-      await within(dialog).findByText("1 scheduled run will pause."),
+      await within(dialog).findByText("1 automation will pause."),
     ).toBeDefined();
 
-    fireEvent.click(await screen.findByTestId("fire-expert-confirm"));
+    const confirm = await screen.findByTestId("fire-expert-confirm");
+    await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(confirm);
 
     await waitFor(() => expect(archiveSpy).toHaveBeenCalled());
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/team"));

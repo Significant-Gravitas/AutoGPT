@@ -5456,7 +5456,9 @@
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Experts",
+        "description": "List the user's hired experts.\n\n``include_archived`` returns fired experts too, so chat threads can keep\nresolving their (now read-only) identity after the expert leaves the\nactive roster.",
         "operationId": "list_experts",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "include_archived",
@@ -5475,8 +5477,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/Expert" },
                   "type": "array",
+                  "items": { "$ref": "#/components/schemas/Expert" },
                   "title": "Response List Experts"
                 }
               }
@@ -5484,21 +5486,29 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       },
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Hire Expert",
         "operationId": "hire_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/HireRequest" }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -5521,8 +5531,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/experts/templates": {
