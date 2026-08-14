@@ -178,12 +178,27 @@ def _build_llm_config():
     )
 
 
-def _build_graphiti(group_id: str, llm_client):
+def _build_graphiti(
+    group_id: str,
+    llm_client,
+    *,
+    embedder=None,
+    cross_encoder=None,
+    graph_driver=None,
+):
     """Construct a ``Graphiti`` instance bound to a per-group FalkorDB.
 
     Pure factory: no caching. Callers decide whether to memoize.
     ``llm_client`` lets the caller pick the LLM-tier behavior (sync vs
     flex) without disturbing the embedder + cross-encoder defaults.
+
+    The keyword overrides exist so integration tests can substitute
+    individual boundaries (a stub embedder / cross-encoder, a driver bound
+    to a scratch database) while still building the client through THIS
+    function. One construction site means a kwarg added here reaches the
+    tests too, instead of silently drifting from a hand-mirrored copy.
+    Production passes none of them; each defaults to the real component.
+    ``group_id`` is only consulted when ``graph_driver`` is not supplied.
     """
     from graphiti_core import Graphiti
     from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
@@ -192,12 +207,13 @@ def _build_graphiti(group_id: str, llm_client):
     from .falkordb_driver import AutoGPTFalkorDriver
     from .reranker import CompatOpenAIRerankerClient
 
-    embedder_config = OpenAIEmbedderConfig(
-        api_key=graphiti_config.resolve_embedder_api_key(),
-        embedding_model=graphiti_config.embedder_model,
-        base_url=graphiti_config.resolve_embedder_base_url(),
-    )
-    embedder = OpenAIEmbedder(config=embedder_config)
+    if embedder is None:
+        embedder_config = OpenAIEmbedderConfig(
+            api_key=graphiti_config.resolve_embedder_api_key(),
+            embedding_model=graphiti_config.embedder_model,
+            base_url=graphiti_config.resolve_embedder_base_url(),
+        )
+        embedder = OpenAIEmbedder(config=embedder_config)
 
     # P-1.4: cross-encoder reranker for warm-context retrieval.
     # Runs concurrent boolean-classifier prompts (one per candidate
@@ -206,19 +222,21 @@ def _build_graphiti(group_id: str, llm_client):
     # of small calls per session-start search. The Compat subclass
     # fixes the stock client's max_tokens=1, which OpenAI-compatible
     # upstreams now reject with a 400 (minimum is 16).
-    reranker_config = LLMConfig(
-        api_key=graphiti_config.resolve_llm_api_key(),
-        model=graphiti_config.reranker_model,
-        base_url=graphiti_config.resolve_llm_base_url(),
-    )
-    cross_encoder = CompatOpenAIRerankerClient(config=reranker_config)
+    if cross_encoder is None:
+        reranker_config = LLMConfig(
+            api_key=graphiti_config.resolve_llm_api_key(),
+            model=graphiti_config.reranker_model,
+            base_url=graphiti_config.resolve_llm_base_url(),
+        )
+        cross_encoder = CompatOpenAIRerankerClient(config=reranker_config)
 
-    graph_driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-    )
+    if graph_driver is None:
+        graph_driver = AutoGPTFalkorDriver(
+            host=graphiti_config.falkordb_host,
+            port=graphiti_config.falkordb_port,
+            password=graphiti_config.falkordb_password or None,
+            database=group_id,
+        )
     return Graphiti(
         llm_client=llm_client,
         embedder=embedder,

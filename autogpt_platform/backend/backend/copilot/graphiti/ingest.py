@@ -327,8 +327,14 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                 state.group_queues.get(group_id) is queue
                 and state.group_workers.get(group_id) is asyncio.current_task()
             ):
-                state.group_queues.pop(group_id, None)
-                state.group_workers.pop(group_id, None)
+                if queue.empty():
+                    state.group_queues.pop(group_id, None)
+                    state.group_workers.pop(group_id, None)
+                else:
+                    state.group_workers[group_id] = asyncio.create_task(
+                        _ingestion_worker(user_id, group_id, queue),
+                        name=f"graphiti-ingest-{group_id[:12]}",
+                    )
 
 
 async def enqueue_conversation_turn(
