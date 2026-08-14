@@ -208,6 +208,47 @@ async def test_raise_expert_installs_first_job(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_first_job_install_rolls_back_library_agent_on_link_failure(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    slv_id = await _seed_store_listing(server)
+    expert = await prisma.models.Expert.prisma().create(
+        data={
+            "ownerUserId": owner.id,
+            "name": "Nova",
+            "role": "",
+            "identity": experts_db._raised_identity("Nova"),
+        }
+    )
+    await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": expert.id,
+            "storeListingVersionId": slv_id,
+        }
+    )
+
+    with pytest.raises(prisma.errors.UniqueViolationError):
+        await experts_db._install_first_job(owner.id, expert.id, slv_id)
+
+    listing = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": slv_id}, include={"AgentGraph": True}
+    )
+    assert listing is not None
+    assert listing.AgentGraph is not None
+    assert (
+        await prisma.models.LibraryAgent.prisma().count(
+            where={
+                "userId": owner.id,
+                "agentGraphId": listing.AgentGraph.id,
+                "agentGraphVersion": listing.AgentGraph.version,
+            }
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_reports_failed_first_job(server: SpinTestServer):
     owner = await _create_seed_user()
     slv_id = await _seed_store_listing(server)

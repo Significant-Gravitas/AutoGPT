@@ -403,7 +403,7 @@ async def _install_first_job(
             raise ExpertNotFoundError(expert_id)
 
         library_agent = await library_db.add_store_agent_to_library(
-            store_listing_version_id, user_id
+            store_listing_version_id, user_id, tx=tx
         )
         await tx.expertworkflow.create(
             data={

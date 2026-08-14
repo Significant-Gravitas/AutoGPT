@@ -77,6 +77,27 @@ def _make_workflow_ref(**overrides) -> ExpertWorkflowRef:
     return ExpertWorkflowRef(**values)
 
 
+def _make_raised_expert(
+    *,
+    name: str,
+    role: str = "",
+    voice_preferences: str = "",
+    workflows: list[ExpertWorkflowRef] | None = None,
+    **overrides,
+) -> Expert:
+    return _make_expert(
+        name=name,
+        role=role,
+        tagline=None,
+        identity=experts_db._raised_identity(name),
+        voice_preferences=voice_preferences,
+        boundaries="",
+        source_template_id=None,
+        workflows=workflows or [],
+        **overrides,
+    )
+
+
 # ─── List templates ────────────────────────────────────────────────────
 
 
@@ -175,7 +196,7 @@ def test_create_raised_expert_returns_expert(
     test_user_id: str,
     configured_snapshot: Snapshot,
 ) -> None:
-    raised = _make_expert(id="raised-1", name="Otto", source_template_id=None)
+    raised = _make_raised_expert(id="raised-1", name="Otto")
     mock_create = mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
         new_callable=AsyncMock,
@@ -209,7 +230,13 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
         new_callable=AsyncMock,
         return_value=RaiseResult(
-            expert=_make_expert(id="raised-2", source_template_id=None),
+            expert=_make_raised_expert(
+                id="raised-2",
+                name="Nova",
+                role="Research Assistant",
+                voice_preferences="Warm and detailed.",
+                workflows=[_make_workflow_ref()],
+            ),
             first_job_installed=True,
             first_job_failure_reason=None,
         ),

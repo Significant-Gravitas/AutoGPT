@@ -27,6 +27,7 @@ async def resolve_graph_for_library(
     user_id: str,
     *,
     admin: bool,
+    tx: prisma.Prisma | None = None,
 ) -> tuple[GraphModel, prisma.models.StoreListingVersion]:
     """Look up a StoreListingVersion and resolve its graph.
 
@@ -36,7 +37,12 @@ async def resolve_graph_for_library(
     Returns the resolved graph together with the StoreListingVersion, so callers
     can snapshot marketplace metadata without re-querying it.
     """
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
+    delegate = (
+        prisma.models.StoreListingVersion.prisma(tx)
+        if tx is not None
+        else prisma.models.StoreListingVersion.prisma()
+    )
+    slv = await delegate.find_unique(
         where={"id": store_listing_version_id}, include={"AgentGraph": True}
     )
     if not slv or not slv.AgentGraph:
@@ -83,13 +89,15 @@ async def add_graph_to_library(
     graph_model: GraphModel,
     user_id: str,
     store_listing_version: prisma.models.StoreListingVersion,
+    *,
+    tx: prisma.Prisma | None = None,
 ) -> library_model.LibraryAgent:
     """Check existing / restore soft-deleted / create new LibraryAgent.
 
-    Uses a create-then-catch-UniqueViolationError-then-update pattern on
-    the (userId, agentGraphId, agentGraphVersion) composite unique constraint.
-    This is more robust than ``upsert`` because Prisma's upsert atomicity
-    guarantees are not well-documented for all versions.
+    The standalone path preserves the established create-then-update behavior.
+    When a transaction client is supplied, an upsert keeps the library write
+    atomic with the caller's other writes; catching a uniqueness error inside
+    PostgreSQL's transaction would leave that transaction aborted.
     """
     settings_json = SafeJson(GraphSettings.from_graph(graph_model).model_dump())
     _include = library_agent_include(
@@ -104,33 +112,38 @@ async def add_graph_to_library(
     # library add on tenancy resolution.
     organization_id, team_id = await resolve_default_tenancy(user_id)
 
-    try:
-        added_agent = await prisma.models.LibraryAgent.prisma().create(
-            data={
-                "User": {"connect": {"id": user_id}},
-                "AgentGraph": {
-                    "connect": {
-                        "graphVersionId": {
-                            "id": graph_model.id,
-                            "version": graph_model.version,
-                        }
-                    }
-                },
-                "isCreatedByUser": False,
-                "useGraphIsActiveVersion": False,
-                "settings": settings_json,
-                "name": marketplace["name"],
-                "description": marketplace["description"],
-                "imageUrl": marketplace["imageUrl"],
-                **({"organizationId": organization_id} if organization_id else {}),
-                **({"Team": {"connect": {"id": team_id}}} if team_id else {}),
-            },
-            include=_include,
-        )
-    except prisma.errors.UniqueViolationError:
-        # Already exists — update to restore if previously soft-deleted/archived
-        # and refresh the marketplace snapshot in case the listing changed.
-        added_agent = await prisma.models.LibraryAgent.prisma().update(
+    create_data = {
+        "User": {"connect": {"id": user_id}},
+        "AgentGraph": {
+            "connect": {
+                "graphVersionId": {
+                    "id": graph_model.id,
+                    "version": graph_model.version,
+                }
+            }
+        },
+        "isCreatedByUser": False,
+        "useGraphIsActiveVersion": False,
+        "settings": settings_json,
+        "name": marketplace["name"],
+        "description": marketplace["description"],
+        "imageUrl": marketplace["imageUrl"],
+        **({"organizationId": organization_id} if organization_id else {}),
+        **({"Team": {"connect": {"id": team_id}}} if team_id else {}),
+    }
+    update_data = {
+        # Preserve existing tenancy when restoring a bookmark. Re-tagging here
+        # could disconnect its team if no default team can be resolved.
+        "isDeleted": False,
+        "isArchived": False,
+        "settings": settings_json,
+        "name": marketplace["name"],
+        "description": marketplace["description"],
+        "imageUrl": marketplace["imageUrl"],
+    }
+
+    if tx is not None:
+        added_agent = await prisma.models.LibraryAgent.prisma(tx).upsert(
             where={
                 "userId_agentGraphId_agentGraphVersion": {
                     "userId": user_id,
@@ -138,25 +151,34 @@ async def add_graph_to_library(
                     "agentGraphVersion": graph_model.version,
                 }
             },
-            data={
-                "isDeleted": False,
-                "isArchived": False,
-                "settings": settings_json,
-                "name": marketplace["name"],
-                "description": marketplace["description"],
-                "imageUrl": marketplace["imageUrl"],
-                # Deliberately leave organizationId/Team untouched on re-add:
-                # an existing bookmark already carries its tenancy. Only the
-                # create branch tenants; re-tagging here risked disconnecting
-                # an existing team when a default team couldn't be resolved.
-            },
+            data={"create": create_data, "update": update_data},
             include=_include,
         )
-        if added_agent is None:
-            raise NotFoundError(
-                f"LibraryAgent for graph #{graph_model.id} "
-                f"v{graph_model.version} not found after UniqueViolationError"
+    else:
+        try:
+            added_agent = await prisma.models.LibraryAgent.prisma().create(
+                data=create_data,
+                include=_include,
             )
+        except prisma.errors.UniqueViolationError:
+            # Already exists — update to restore if previously soft-deleted/archived
+            # and refresh the marketplace snapshot in case the listing changed.
+            added_agent = await prisma.models.LibraryAgent.prisma().update(
+                where={
+                    "userId_agentGraphId_agentGraphVersion": {
+                        "userId": user_id,
+                        "agentGraphId": graph_model.id,
+                        "agentGraphVersion": graph_model.version,
+                    }
+                },
+                data=update_data,
+                include=_include,
+            )
+            if added_agent is None:
+                raise NotFoundError(
+                    f"LibraryAgent for graph #{graph_model.id} "
+                    f"v{graph_model.version} not found after UniqueViolationError"
+                )
 
     logger.debug(
         f"Added graph #{graph_model.id} v{graph_model.version} "
