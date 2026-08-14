@@ -150,6 +150,9 @@ async def restore_existing_library_agent(
             user_id, include_nodes=False, include_executions=False
         ),
     )
+    if restored is None:
+        return None
+
     schedule_info = await _fetch_schedule_info(user_id, graph_id=ag.id)
     return library_model.LibraryAgent.from_db(
         restored,

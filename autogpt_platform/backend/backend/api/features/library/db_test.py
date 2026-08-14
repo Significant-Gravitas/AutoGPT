@@ -504,6 +504,32 @@ async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker
     )
 
 
+@pytest.mark.asyncio
+async def test_restore_existing_library_agent_handles_deleted_update(mocker):
+    from backend.api.features.library._add_to_library import (
+        restore_existing_library_agent,
+    )
+
+    agent_graph = MagicMock(id="agent1", version=1)
+    store_version = MagicMock(id="version123", AgentGraph=agent_graph)
+    library_client = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library_client.return_value.find_unique = mocker.AsyncMock(
+        return_value=MagicMock(id="library-agent")
+    )
+    library_client.return_value.update = mocker.AsyncMock(return_value=None)
+    fetch_schedule_info = mocker.patch(
+        "backend.api.features.library._add_to_library._fetch_schedule_info",
+        new=mocker.AsyncMock(),
+    )
+    from_db = mocker.patch("backend.api.features.library.model.LibraryAgent.from_db")
+
+    result = await restore_existing_library_agent(store_version, "test-user")
+
+    assert result is None
+    fetch_schedule_info.assert_not_awaited()
+    from_db.assert_not_called()
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library_not_found(mocker):
     mocker.patch(
