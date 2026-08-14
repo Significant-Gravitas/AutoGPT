@@ -54,7 +54,7 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .todo_write import TodoWriteTool
-from .update_soul import UpdateExpertSoulTool
+from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
 from .web_search import WebSearchTool
@@ -152,8 +152,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
-    # Expert Soul edits from chat (expert sessions only)
+    # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
+    "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
 }
 
 # Export individual tool instances for backwards compatibility
@@ -177,6 +178,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # Soul edits only make sense in an expert-scoped session; the engines
     # disable this group when the session has no expert_id.
     "update_expert_soul": "experts",
+    "confirm_expert_soul_update": "experts",
 }
 
 

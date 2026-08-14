@@ -2,11 +2,13 @@ import logging
 
 import prisma.errors
 import prisma.models
+import prisma.types
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -259,30 +261,45 @@ async def update_soul_fields(
     voice_preferences: str | None = None,
     boundaries: str | None = None,
 ) -> Expert:
-    """Patch a subset of Soul fields, leaving the name and unspecified fields
-    unchanged.
+    """Patch only the supplied Soul fields in one scoped write.
 
-    Backs the copilot ``update_expert_soul`` tool, which edits identity / voice /
-    boundaries but never renames the expert. Reuses the validated ``update_soul``
-    path so the same length and blank-field rules apply.
+    Backs the copilot Soul-edit tools, which edit identity / voice /
+    boundaries but never rename the expert. A single ``update_many`` writes
+    only the supplied columns, so concurrent edits to disjoint fields cannot
+    clobber each other; per-field validation mirrors ``update_soul`` via
+    ``ExpertSoulFieldsPatch``.
     """
-    current = await get_expert(user_id, expert_id, include_workflows=False)
-    if current is None:
-        raise ExpertNotFoundError(expert_id)
-    return await update_soul(
-        user_id,
-        expert_id,
-        ExpertSoulUpdate(
-            name=current.name,
-            identity=current.identity if identity is None else identity,
-            voice_preferences=(
-                current.voice_preferences
-                if voice_preferences is None
-                else voice_preferences
-            ),
-            boundaries=current.boundaries if boundaries is None else boundaries,
-        ),
+    patch = ExpertSoulFieldsPatch(
+        identity=identity,
+        voice_preferences=voice_preferences,
+        boundaries=boundaries,
     )
+    data: prisma.types.ExpertUpdateManyMutationInput = {}
+    if patch.identity is not None:
+        data["identity"] = patch.identity
+    if patch.voice_preferences is not None:
+        data["voicePreferences"] = patch.voice_preferences
+    if patch.boundaries is not None:
+        data["boundaries"] = patch.boundaries
+    if not data:
+        raise ValueError("At least one Soul field must be provided")
+
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        data=data,
+    )
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
 
 
 async def _install_preloads(

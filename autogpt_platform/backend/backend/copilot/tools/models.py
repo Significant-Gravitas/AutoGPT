@@ -498,16 +498,18 @@ class SoulFieldChange(BaseModel):
 
 
 class ExpertSoulUpdatedResponse(ToolResponseBase):
-    """Response for the update_expert_soul tool.
+    """Response for the two-step Soul edit tools.
 
     Carries the diff so the model must surface exactly what changed. ``applied``
-    is False for the confirm-first preview (nothing written yet) and True once
-    the edit is saved.
+    is False for the update_expert_soul preview (nothing written yet; the
+    one-time ``confirmation_id`` references the stored proposal) and True once
+    confirm_expert_soul_update saves the edit.
     """
 
     type: ResponseType = ResponseType.EXPERT_SOUL_UPDATED
     applied: bool = False
     changes: list[SoulFieldChange] = Field(default_factory=list)
+    confirmation_id: str | None = None
 
 
 # Agent generation models

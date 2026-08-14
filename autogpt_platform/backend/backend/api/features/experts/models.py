@@ -80,3 +80,31 @@ class ExpertSoulUpdate(BaseModel):
         # Whitespace-only input must collapse to "" so prompt rendering falls
         # back to "Not specified." instead of emitting a blank section.
         return value.strip()
+
+
+class ExpertSoulFieldsPatch(BaseModel):
+    """Partial Soul edit: only supplied fields are validated and written.
+
+    Mirrors ``ExpertSoulUpdate``'s per-field rules (lengths, blank handling)
+    but leaves ``None`` fields untouched so disjoint concurrent edits cannot
+    clobber each other.
+    """
+
+    identity: str | None = Field(default=None, min_length=1, max_length=10_000)
+    voice_preferences: str | None = Field(default=None, max_length=4_000)
+    boundaries: str | None = Field(default=None, max_length=4_000)
+
+    @field_validator("identity")
+    @classmethod
+    def strip_required_fields(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Field must not be blank")
+        return stripped
+
+    @field_validator("voice_preferences", "boundaries")
+    @classmethod
+    def strip_optional_fields(cls, value: str | None) -> str | None:
+        return None if value is None else value.strip()

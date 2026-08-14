@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -742,3 +743,26 @@ async def test_update_soul_fields_scopes_by_owner(
         await experts_db.update_soul_fields(
             other_user.id, hired.expert.id, identity="Hijacked identity."
         )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_concurrent_disjoint_edits_both_persist(
+    server: SpinTestServer, test_user
+):
+    """Each call writes only its own column, so neither edit is clobbered."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    await asyncio.gather(
+        experts_db.update_soul_fields(
+            test_user.id, hired.expert.id, voice_preferences="Warm and concise."
+        ),
+        experts_db.update_soul_fields(
+            test_user.id, hired.expert.id, boundaries="Never email externally."
+        ),
+    )
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert fetched is not None
+    assert fetched.voice_preferences == "Warm and concise."
+    assert fetched.boundaries == "Never email externally."
