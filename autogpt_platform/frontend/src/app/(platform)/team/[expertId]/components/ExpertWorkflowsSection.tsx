@@ -2,7 +2,7 @@
 
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { FlashIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { workflowNeedsSetup } from "../../helpers";
@@ -66,7 +66,7 @@ export function ExpertWorkflowsSection({
                 </span>
               ) : workflow.schedule_cron ? (
                 <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600">
-                  {humanizeCronExpression(workflow.schedule_cron)}
+                  {safeHumanizeCronExpression(workflow.schedule_cron)}
                 </span>
               ) : null}
             </div>

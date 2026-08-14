@@ -2,13 +2,14 @@ import {
   getListExpertsQueryKey,
   useInstallExpertWorkflow,
 } from "@/app/api/__generated__/endpoints/experts/experts";
-import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
+import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { okData } from "@/app/api/helpers";
+import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   getAdoptTargetVersionId,
   getUnadoptedAgents,
@@ -20,34 +21,58 @@ const AGENTS_PAGE_SIZE = 100;
 
 interface Args {
   experts: Expert[];
+  schedules: GraphExecutionJobInfo[];
   enabled: boolean;
 }
 
-export function useWhatRunsZone({ experts, enabled }: Args) {
+export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<WhatRunsFilter>("all");
-  const [pendingAgentIds, setPendingAgentIds] = useState<Set<string>>(
-    new Set(),
+  const [pendingLibraryAgentIds, setPendingLibraryAgentIds] = useState<
+    Set<string>
+  >(new Set());
+
+  const agentsQuery = useGetV2ListLibraryAgentsInfinite(
+    { page: 1, page_size: AGENTS_PAGE_SIZE, is_hidden: false },
+    {
+      query: {
+        enabled,
+        getNextPageParam: getPaginationNextPageNumber,
+      },
+    },
   );
 
-  const agentsQuery = useGetV2ListLibraryAgents(
-    { page: 1, page_size: AGENTS_PAGE_SIZE },
-    { query: { select: okData, enabled } },
-  );
+  useEffect(() => {
+    if (
+      !enabled ||
+      !agentsQuery.hasNextPage ||
+      agentsQuery.isFetchingNextPage ||
+      agentsQuery.isError
+    ) {
+      return;
+    }
+    void agentsQuery.fetchNextPage();
+  }, [
+    agentsQuery.fetchNextPage,
+    agentsQuery.hasNextPage,
+    agentsQuery.isError,
+    agentsQuery.isFetchingNextPage,
+    enabled,
+  ]);
 
   const { mutateAsync: installWorkflow } = useInstallExpertWorkflow();
 
-  const libraryAgents = agentsQuery.data?.agents ?? [];
-  const totalAgents =
-    agentsQuery.data?.pagination.total_items ?? libraryAgents.length;
+  const libraryAgents = agentsQuery.data
+    ? unpaginate(agentsQuery.data, "agents")
+    : [];
   const unadoptedAgents = getUnadoptedAgents(libraryAgents, experts);
-  const groups = getVisibleGroups(experts, filter);
+  const groups = getVisibleGroups(experts, schedules, filter);
   const showAgents = filter === "all" || filter === "agents";
 
   async function adopt(agent: LibraryAgent, expert: Expert) {
     const versionId = getAdoptTargetVersionId(agent);
-    if (!versionId || pendingAgentIds.has(agent.graph_id)) return;
-    setPendingAgentIds((current) => new Set(current).add(agent.graph_id));
+    if (!versionId || pendingLibraryAgentIds.has(agent.id)) return;
+    setPendingLibraryAgentIds((current) => new Set(current).add(agent.id));
     try {
       await installWorkflow({
         expertId: expert.id,
@@ -57,7 +82,7 @@ export function useWhatRunsZone({ experts, enabled }: Args) {
         queryKey: getListExpertsQueryKey(),
       });
       toast({
-        title: `Adopted into ${expert.name}'s thread`,
+        title: `Added to ${expert.name}'s workflows`,
         variant: "success",
       });
     } catch {
@@ -67,9 +92,9 @@ export function useWhatRunsZone({ experts, enabled }: Args) {
         variant: "destructive",
       });
     } finally {
-      setPendingAgentIds((current) => {
+      setPendingLibraryAgentIds((current) => {
         const next = new Set(current);
-        next.delete(agent.graph_id);
+        next.delete(agent.id);
         return next;
       });
     }
@@ -81,12 +106,16 @@ export function useWhatRunsZone({ experts, enabled }: Args) {
     groups,
     showAgents,
     unadoptedAgents,
-    totalAgents,
-    hiddenAgentCount: Math.max(0, totalAgents - libraryAgents.length),
-    isLoadingAgents: enabled && agentsQuery.isLoading,
+    libraryAgentCount: libraryAgents.length,
+    isLoadingAgents:
+      enabled &&
+      !agentsQuery.isError &&
+      (agentsQuery.isLoading ||
+        agentsQuery.isFetchingNextPage ||
+        agentsQuery.hasNextPage === true),
     isErrorAgents: agentsQuery.isError,
     retryAgents: () => agentsQuery.refetch(),
     adopt,
-    pendingAgentIds,
+    pendingLibraryAgentIds,
   };
 }

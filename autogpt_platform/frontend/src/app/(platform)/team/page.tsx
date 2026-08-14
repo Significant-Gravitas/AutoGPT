@@ -22,6 +22,7 @@ export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     hiredExperts,
+    schedules,
     schedulesForExpert,
     isLoading,
     isError,
@@ -55,7 +56,7 @@ export default function TeamPage() {
     <main className={MAIN_CLASS}>
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2.5">
-          <AITeamIcon size={36} className="shrink-0 text-black" />
+          <AITeamIcon size={36} className="shrink-0 text-zinc-950" />
           <Text variant="h3">Your Team</Text>
         </div>
         <Text variant="body" className="max-w-prose text-zinc-600">
@@ -79,7 +80,7 @@ export default function TeamPage() {
             ))}
       </div>
       {!isLoading && !isError && hiredExperts.length > 0 ? (
-        <WhatRunsZone experts={hiredExperts} />
+        <WhatRunsZone experts={hiredExperts} schedules={schedules} />
       ) : null}
       {isError ? (
         <ErrorCard

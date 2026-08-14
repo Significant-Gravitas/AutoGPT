@@ -1,6 +1,12 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { getAdoptTargetVersionId } from "../helpers";
 import { AdoptAgentButton } from "./AdoptAgentButton";
@@ -8,18 +14,16 @@ import { AdoptAgentButton } from "./AdoptAgentButton";
 interface Props {
   agents: LibraryAgent[];
   experts: Expert[];
-  totalAgents: number;
-  hiddenAgentCount: number;
-  pendingAgentIds: Set<string>;
+  libraryAgentCount: number;
+  pendingLibraryAgentIds: Set<string>;
   onAdopt: (agent: LibraryAgent, expert: Expert) => void;
 }
 
 export function YourAgentsList({
   agents,
   experts,
-  totalAgents,
-  hiddenAgentCount,
-  pendingAgentIds,
+  libraryAgentCount,
+  pendingLibraryAgentIds,
   onAdopt,
 }: Props) {
   return (
@@ -29,16 +33,14 @@ export function YourAgentsList({
       </Text>
       {agents.length === 0 ? (
         <Text variant="small" className="text-zinc-500">
-          {totalAgents === 0
+          {libraryAgentCount === 0
             ? "No agents in your library yet."
-            : hiddenAgentCount > 0
-              ? "All loaded agents are already on your team."
-              : "Every agent is already on your team."}
+            : "Every agent is already on your team."}
         </Text>
       ) : (
         <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white">
           {agents.map((agent) => {
-            const canAdopt = getAdoptTargetVersionId(agent) !== null;
+            const canAdopt = Boolean(getAdoptTargetVersionId(agent));
             return (
               <div
                 key={agent.id}
@@ -62,26 +64,34 @@ export function YourAgentsList({
                   <AdoptAgentButton
                     agent={agent}
                     experts={experts}
-                    isPending={pendingAgentIds.has(agent.graph_id)}
+                    isPending={pendingLibraryAgentIds.has(agent.id)}
                     onAdopt={onAdopt}
                   />
                 ) : (
-                  <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-500">
-                    Local only
-                  </span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        tabIndex={0}
+                        className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900"
+                      >
+                        <Badge
+                          variant="info"
+                          className="normal-case tracking-normal text-zinc-500"
+                        >
+                          Local only
+                        </Badge>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Publish this agent to the Marketplace before adopting it.
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             );
           })}
         </div>
       )}
-      {hiddenAgentCount > 0 ? (
-        <Text variant="small" className="text-zinc-400">
-          {hiddenAgentCount} more {hiddenAgentCount === 1 ? "agent" : "agents"}{" "}
-          in your library {hiddenAgentCount === 1 ? "isn't" : "aren't"} shown
-          here.
-        </Text>
-      ) : null}
     </section>
   );
 }

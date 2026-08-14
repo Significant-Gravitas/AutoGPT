@@ -18,7 +18,7 @@ export function WhatRunsFilters({ value, onChange }: Props) {
             aria-pressed={isActive}
             onClick={() => onChange(chip.id)}
             className={cn(
-              "rounded-full px-3 py-1.5 text-sm transition-colors",
+              "rounded-full px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900",
               isActive
                 ? "bg-zinc-800 text-white"
                 : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200",

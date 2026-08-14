@@ -1,36 +1,42 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertWorkflowGroup } from "./components/ExpertWorkflowGroup";
 import { WhatRunsFilters } from "./components/WhatRunsFilters";
 import { YourAgentsList } from "./components/YourAgentsList";
+import { WhatRunsFilter } from "./helpers";
 import { useWhatRunsZone } from "./useWhatRunsZone";
 
 interface Props {
   experts: Expert[];
+  schedules: GraphExecutionJobInfo[];
 }
 
-const GROUP_EMPTY_MESSAGES: Partial<Record<string, string>> = {
+const GROUP_EMPTY_MESSAGES: Partial<Record<WhatRunsFilter, string>> = {
   workflows: "No workflows installed yet.",
   scheduled: "No scheduled workflows yet.",
 };
 
-export function WhatRunsZone({ experts }: Props) {
+export function WhatRunsZone({ experts, schedules }: Props) {
   const {
     filter,
     setFilter,
     groups,
     showAgents,
     unadoptedAgents,
-    totalAgents,
-    hiddenAgentCount,
+    libraryAgentCount,
     isLoadingAgents,
     isErrorAgents,
     retryAgents,
     adopt,
-    pendingAgentIds,
-  } = useWhatRunsZone({ experts, enabled: experts.length > 0 });
+    pendingLibraryAgentIds,
+  } = useWhatRunsZone({
+    experts,
+    schedules,
+    enabled: experts.length > 0,
+  });
 
   if (experts.length === 0) return null;
 
@@ -75,9 +81,8 @@ export function WhatRunsZone({ experts }: Props) {
           <YourAgentsList
             agents={unadoptedAgents}
             experts={experts}
-            totalAgents={totalAgents}
-            hiddenAgentCount={hiddenAgentCount}
-            pendingAgentIds={pendingAgentIds}
+            libraryAgentCount={libraryAgentCount}
+            pendingLibraryAgentIds={pendingLibraryAgentIds}
             onAdopt={adopt}
           />
         )

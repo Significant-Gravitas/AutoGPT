@@ -33,17 +33,21 @@ const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
 }));
 
-function libraryResponse(agents: LibraryAgent[], totalItems?: number) {
+function libraryResponse(
+  agents: LibraryAgent[],
+  totalItems = agents.length,
+  currentPage = 1,
+) {
   const base = getGetV2ListLibraryAgentsResponseMock200();
   return {
     ...base,
     agents,
     pagination: {
       ...base.pagination,
-      total_items: totalItems ?? agents.length,
-      current_page: 1,
+      total_items: totalItems,
+      current_page: currentPage,
       page_size: 100,
-      total_pages: 1,
+      total_pages: Math.ceil(totalItems / 100),
     },
   };
 }
@@ -90,6 +94,23 @@ const localOnlyAgent = makeLibraryAgent({
   name: "My Private Agent",
   store_listing_version_id: null,
 });
+
+function makeSchedule(
+  over: Partial<GraphExecutionJobInfo> = {},
+): GraphExecutionJobInfo {
+  return {
+    id: "sched-1",
+    name: "Content Calendar",
+    user_id: "user-1",
+    graph_id: "graph-1",
+    graph_version: 1,
+    cron: "40 7 * * *",
+    input_data: {},
+    next_run_time: "2026-08-15T07:40:00Z",
+    expert_id: "expert-maria",
+    ...over,
+  };
+}
 
 beforeEach(() => {
   server.use(
@@ -253,17 +274,9 @@ describe("TeamPage", () => {
 
   test("shows a schedule count with the next run on the expert card", async () => {
     const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
-    const mariaSchedule: GraphExecutionJobInfo = {
-      id: "sched-1",
-      name: "Content Calendar",
-      user_id: "user-1",
-      graph_id: "graph-1",
-      graph_version: 1,
-      cron: "40 7 * * *",
-      input_data: {},
+    const mariaSchedule = makeSchedule({
       next_run_time: inTwoDays.toISOString(),
-      expert_id: "expert-maria",
-    };
+    });
     server.use(
       getListExpertsMockHandler([scheduledMaria]),
       getGetV1ListExecutionSchedulesForAUserMockHandler([mariaSchedule]),
@@ -574,6 +587,7 @@ describe("TeamPage", () => {
   });
 
   test("lists adoptable and local-only agents under Your agents", async () => {
+    const user = userEvent.setup();
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getGetV2ListLibraryAgentsMockHandler200(
@@ -587,7 +601,12 @@ describe("TeamPage", () => {
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).getByText("My Private Agent")).toBeDefined();
     expect(within(agents).getByRole("button", { name: "Adopt" })).toBeDefined();
-    expect(within(agents).getByText("Local only")).toBeDefined();
+    const localOnly = within(agents).getByText("Local only");
+    expect(localOnly).toBeDefined();
+    await user.hover(localOnly);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Publish this agent to the Marketplace before adopting it.",
+    );
   });
 
   test("hides already-installed agents from Your agents", async () => {
@@ -642,14 +661,49 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", { name: "Your agents" });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: /Runs will show up in Maria's thread/i,
+    await waitFor(() => expect(installExpertId).toBe("expert-maria"));
+    expect(installBody).toEqual({ store_listing_version_id: "slv-adopt" });
+  });
+
+  test("asks which expert to adopt into when more than one is hired", async () => {
+    const user = userEvent.setup();
+    const john: Expert = {
+      ...hiredMaria,
+      id: "expert-john",
+      name: "John",
+      workflows: [],
+    };
+    let installExpertId: string | undefined;
+    server.use(
+      getListExpertsMockHandler([hiredMaria, john]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([adoptableAgent]),
+      ),
+      getInstallExpertWorkflowMockHandler((info) => {
+        installExpertId = info.params.expertId as string;
+        return {
+          id: "wf-adopted",
+          store_listing_version_id: "slv-adopt",
+          library_agent_id: "lib-research",
+          graph_id: "graph-research",
+          name: "Research Assistant",
+          description: null,
+        };
       }),
     );
 
-    await waitFor(() => expect(installExpertId).toBe("expert-maria"));
-    expect(installBody).toEqual({ store_listing_version_id: "slv-adopt" });
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    expect(screen.queryByText(/undo anytime/i)).toBeNull();
+    await user.click(
+      await screen.findByRole("button", {
+        name: /Adds this agent to John's workflows/i,
+      }),
+    );
+
+    await waitFor(() => expect(installExpertId).toBe("expert-john"));
   });
 
   test("filter chips switch between members and agents in the zone", async () => {
@@ -675,9 +729,19 @@ describe("TeamPage", () => {
     expect(screen.queryByRole("region", { name: "Your agents" })).toBeNull();
   });
 
-  test("keeps only scheduled workflows when the Scheduled chip is active", async () => {
+  test("keeps only workflows with actual jobs when Scheduled is active", async () => {
     const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([scheduledMaria]));
+    const manuallyScheduledMaria: Expert = {
+      ...hiredMaria,
+      workflows: [
+        { ...hiredMaria.workflows[0], schedule_id: null, schedule_cron: null },
+        hiredMaria.workflows[1],
+      ],
+    };
+    server.use(
+      getListExpertsMockHandler([manuallyScheduledMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([makeSchedule()]),
+    );
 
     render(<TeamPage />);
 
@@ -690,6 +754,75 @@ describe("TeamPage", () => {
     const scheduledGroup = screen.getByRole("region", { name: "Maria runs" });
     expect(within(scheduledGroup).getByText("Content Calendar")).toBeDefined();
     expect(within(scheduledGroup).queryByText("SEO Audit")).toBeNull();
+  });
+
+  test("does not treat a deleted scheduler job as scheduled", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([scheduledMaria]));
+
+    render(<TeamPage />);
+
+    await screen.findByRole("region", { name: "Maria runs" });
+    await user.click(screen.getByRole("button", { name: "Scheduled" }));
+
+    expect(screen.queryByRole("region", { name: "Maria runs" })).toBeNull();
+    expect(screen.getByText("No scheduled workflows yet.")).toBeDefined();
+  });
+
+  test("shows every actual schedule attached to a workflow", async () => {
+    server.use(
+      getListExpertsMockHandler([scheduledMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeSchedule(),
+        makeSchedule({ id: "sched-2", cron: "0 9 * * 1" }),
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const group = await screen.findByRole("region", { name: "Maria runs" });
+    expect(within(group).getByText("Every day at 07:40")).toBeDefined();
+    expect(within(group).getByText("Every Monday at 09:00")).toBeDefined();
+  });
+
+  test("shows paused instead of recurrence for a paused workflow", async () => {
+    const pausedMaria: Expert = {
+      ...scheduledMaria,
+      schedules_paused_at: new Date("2026-08-14T12:00:00Z"),
+    };
+    server.use(
+      getListExpertsMockHandler([pausedMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([makeSchedule()]),
+    );
+
+    render(<TeamPage />);
+
+    const group = await screen.findByRole("region", { name: "Maria runs" });
+    const workflow = within(group).getAllByTestId("what-runs-workflow-row")[0];
+    expect(within(workflow).getByText("Paused")).toBeDefined();
+    expect(within(workflow).queryByText("Every day at 07:40")).toBeNull();
+  });
+
+  test("links a workflow with a missing job to its setup page", async () => {
+    const staleMaria: Expert = {
+      ...hiredMaria,
+      workflows: [
+        {
+          ...hiredMaria.workflows[0],
+          schedule_cron: "40 7 * * *",
+          schedule_id: "deleted-schedule",
+        },
+      ],
+    };
+    server.use(getListExpertsMockHandler([staleMaria]));
+
+    render(<TeamPage />);
+
+    const group = await screen.findByRole("region", { name: "Maria runs" });
+    expect(within(group).getByText("Needs setup")).toBeDefined();
+    expect(
+      within(group).getByRole("link", { name: "Set up" }).getAttribute("href"),
+    ).toBe("/library/agents/lib-1");
   });
 
   test("shows feedback and re-enables Adopt when adoption fails", async () => {
@@ -706,11 +839,6 @@ describe("TeamPage", () => {
 
     const agents = await screen.findByRole("region", { name: "Your agents" });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
-    await user.click(
-      await screen.findByRole("button", {
-        name: /Runs will show up in Maria's thread/i,
-      }),
-    );
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
@@ -724,13 +852,18 @@ describe("TeamPage", () => {
     expect(adoptButton.hasAttribute("disabled")).toBe(false);
   });
 
-  test("ignores repeat Adopt clicks while an adoption is in flight", async () => {
+  test("tracks pending adoption by library agent id", async () => {
     const user = userEvent.setup();
     let installCalls = 0;
+    const sameGraphAgent = makeLibraryAgent({
+      ...adoptableAgent,
+      id: "lib-research-v2",
+      name: "Research Assistant v2",
+    });
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent]),
+        libraryResponse([adoptableAgent, sameGraphAgent]),
       ),
       getInstallExpertWorkflowMockHandler(async () => {
         installCalls += 1;
@@ -749,19 +882,13 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     const agents = await screen.findByRole("region", { name: "Your agents" });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
-    await user.click(
-      await screen.findByRole("button", {
-        name: /Runs will show up in Maria's thread/i,
-      }),
-    );
-
-    const adoptButton = within(agents).getByRole("button", { name: "Adopt" });
-    await user.click(adoptButton);
-    const repeatOption = screen.queryByRole("button", {
-      name: /Runs will show up in Maria's thread/i,
-    });
-    if (repeatOption) await user.click(repeatOption);
+    const rows = within(agents).getAllByTestId("what-runs-agent-row");
+    const firstAdopt = within(rows[0]).getByRole("button", { name: "Adopt" });
+    const secondAdopt = within(rows[1]).getByRole("button", { name: "Adopt" });
+    await user.click(firstAdopt);
+    await waitFor(() => expect(firstAdopt.hasAttribute("disabled")).toBe(true));
+    expect(secondAdopt.hasAttribute("disabled")).toBe(false);
+    await user.click(firstAdopt);
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
@@ -822,31 +949,35 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
-  test("keeps the truncation note when every loaded agent is installed", async () => {
+  test("loads every non-hidden library page before showing agents", async () => {
     const installedAgent = makeLibraryAgent({
       id: "lib-installed",
       graph_id: "graph-1",
       name: "Content Calendar",
       store_listing_version_id: "slv-1",
     });
+    const requestedPages: string[] = [];
+    const hiddenFilters: string[] = [];
     server.use(
       getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([installedAgent], 150),
-      ),
+      getGetV2ListLibraryAgentsMockHandler200(({ request }) => {
+        const params = new URL(request.url).searchParams;
+        const page = params.get("page") ?? "1";
+        requestedPages.push(page);
+        hiddenFilters.push(params.get("is_hidden") ?? "missing");
+        return page === "2"
+          ? libraryResponse([adoptableAgent], 101, 2)
+          : libraryResponse([installedAgent], 101, 1);
+      }),
     );
 
     render(<TeamPage />);
 
     const agents = await screen.findByRole("region", { name: "Your agents" });
-    expect(
-      await within(agents).findByText(
-        "All loaded agents are already on your team.",
-      ),
-    ).toBeDefined();
-    expect(
-      within(agents).getByText(/149 more agents in your library aren't shown/),
-    ).toBeDefined();
+    expect(within(agents).getByText("Research Assistant")).toBeDefined();
+    expect(requestedPages).toEqual(["1", "2"]);
+    expect(hiddenFilters).toEqual(["false", "false"]);
+    expect(within(agents).queryByText(/aren't shown/)).toBeNull();
   });
 
   test("shows last-run status as a chip beside the workflow count", async () => {

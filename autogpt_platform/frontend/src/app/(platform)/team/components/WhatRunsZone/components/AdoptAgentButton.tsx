@@ -30,6 +30,24 @@ export function AdoptAgentButton({
     onAdopt(agent, expert);
   }
 
+  function handleSingleExpert() {
+    const expert = experts[0];
+    if (expert) onAdopt(agent, expert);
+  }
+
+  if (experts.length === 1) {
+    return (
+      <Button
+        variant="secondary"
+        size="small"
+        loading={isPending}
+        onClick={handleSingleExpert}
+      >
+        Adopt
+      </Button>
+    );
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -39,7 +57,7 @@ export function AdoptAgentButton({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-2">
         <Text variant="small-medium" className="px-2 pb-1 pt-1 text-zinc-500">
-          Adopt into a thread
+          Choose an expert
         </Text>
         <div className="flex flex-col">
           {experts.map((expert) => (
@@ -47,7 +65,7 @@ export function AdoptAgentButton({
               key={expert.id}
               type="button"
               onClick={() => handleSelect(expert)}
-              className="flex items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-zinc-50"
+              className="flex items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900"
             >
               <ExpertAvatar
                 name={expert.name}
@@ -59,8 +77,7 @@ export function AdoptAgentButton({
                   {expert.name}
                 </Text>
                 <Text variant="small" className="text-zinc-500">
-                  Runs will show up in {expert.name}&apos;s thread. You can undo
-                  anytime.
+                  Adds this agent to {expert.name}&apos;s workflows.
                 </Text>
               </div>
             </button>

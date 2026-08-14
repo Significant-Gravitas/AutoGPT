@@ -1,7 +1,8 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { getExpertSchedules, getWorkflowSchedules } from "../../helpers";
 
 export type WhatRunsFilter =
   | "all"
@@ -68,36 +69,38 @@ export function getFilterView(filter: WhatRunsFilter): FilterView {
 
 export interface ExpertWorkflowGroupData {
   expert: Expert;
-  workflows: ExpertWorkflowRef[];
-}
-
-export function isWorkflowScheduled(workflow: ExpertWorkflowRef) {
-  return Boolean(workflow.schedule_id);
-}
-
-export function workflowNeedsSetup(workflow: ExpertWorkflowRef) {
-  return Boolean(workflow.schedule_cron) && !workflow.schedule_id;
-}
-
-export function getWorkflowScheduleLabel(workflow: ExpertWorkflowRef) {
-  if (!workflow.schedule_cron) return null;
-  return safeHumanizeCron(workflow.schedule_cron);
+  workflows: {
+    workflow: ExpertWorkflowRef;
+    schedules: GraphExecutionJobInfo[];
+  }[];
 }
 
 export function getVisibleGroups(
   experts: Expert[],
+  schedules: GraphExecutionJobInfo[],
   filter: WhatRunsFilter,
 ): ExpertWorkflowGroupData[] {
   const view = getFilterView(filter);
   if (!view.showGroups) return [];
-  return experts
-    .map((expert) => ({
-      expert,
-      workflows: view.scheduledOnly
-        ? expert.workflows.filter(isWorkflowScheduled)
-        : expert.workflows,
-    }))
-    .filter((group) => view.includeEmptyGroups || group.workflows.length > 0);
+  const groups: ExpertWorkflowGroupData[] = [];
+  for (const expert of experts) {
+    const expertSchedules = getExpertSchedules(expert, schedules);
+    const workflows = expert.workflows.map((workflow) => ({
+      workflow,
+      schedules: getWorkflowSchedules(
+        workflow,
+        expertSchedules,
+        expert.workflows,
+      ),
+    }));
+    const visibleWorkflows = view.scheduledOnly
+      ? workflows.filter((item) => item.schedules.length > 0)
+      : workflows;
+    if (view.includeEmptyGroups || visibleWorkflows.length > 0) {
+      groups.push({ expert, workflows: visibleWorkflows });
+    }
+  }
+  return groups;
 }
 
 /** Library agents the user owns that are not yet installed on any expert,
@@ -107,13 +110,12 @@ export function getUnadoptedAgents(
   agents: LibraryAgent[],
   experts: Expert[],
 ): LibraryAgent[] {
-  const installedGraphIds = new Set(
-    experts
-      .flatMap((expert) =>
-        expert.workflows.map((workflow) => workflow.graph_id),
-      )
-      .filter((graphId): graphId is string => Boolean(graphId)),
-  );
+  const installedGraphIds = new Set<string>();
+  for (const expert of experts) {
+    for (const workflow of expert.workflows) {
+      if (workflow.graph_id) installedGraphIds.add(workflow.graph_id);
+    }
+  }
   return agents.filter((agent) => !installedGraphIds.has(agent.graph_id));
 }
 
@@ -121,14 +123,6 @@ export function getUnadoptedAgents(
  *  snapshot, resolved server-side. Pure-local agents have none, so Adopt is
  *  hidden for them — the install endpoint only accepts a
  *  store_listing_version_id. */
-export function getAdoptTargetVersionId(agent: LibraryAgent): string | null {
-  return agent.store_listing_version_id ?? null;
-}
-
-export function safeHumanizeCron(cron: string): string {
-  try {
-    return humanizeCronExpression(cron);
-  } catch {
-    return cron;
-  }
+export function getAdoptTargetVersionId(agent: LibraryAgent) {
+  return agent.store_listing_version_id;
 }
