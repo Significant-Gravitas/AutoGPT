@@ -3,21 +3,18 @@
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { Button } from "@/components/atoms/Button/Button";
 import { useId } from "react";
+import { CustomVoiceOption } from "./components/CustomVoiceOption";
 import { SampleCard } from "./components/SampleCard";
 import type { VoicePickResult } from "./helpers";
-import { selectableCardClassName } from "./styles";
 import { useVoicePicker } from "./useVoicePicker";
 
-const MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS = 2_000;
-const CUSTOM_VOICE_TEXTAREA_ROWS = 3;
-
-interface Props {
+type Props = {
   name?: string;
   samples: VoiceSample[];
   onPick: (result: VoicePickResult) => void;
   onSkip: () => void;
   isSubmitting?: boolean;
-}
+};
 
 export function VoicePicker({
   name,
@@ -28,7 +25,6 @@ export function VoicePicker({
 }: Props) {
   const choiceGroupName = useId();
   const customTextareaId = useId();
-  const customCharacterCountId = `${customTextareaId}-character-count`;
   const {
     selected,
     customText,
@@ -67,41 +63,14 @@ export function VoicePicker({
           );
         })}
 
-        <div className={selectableCardClassName(selected === "custom")}>
-          <label
-            htmlFor={`${customTextareaId}-choice`}
-            className="mb-2 block cursor-pointer text-xs font-medium uppercase tracking-[0.12em] text-accent"
-          >
-            <input
-              id={`${customTextareaId}-choice`}
-              type="radio"
-              name={choiceGroupName}
-              value="custom"
-              checked={selected === "custom"}
-              onChange={focusCustom}
-              className="sr-only"
-            />
-            Paste your own
-          </label>
-          <textarea
-            id={customTextareaId}
-            value={customText}
-            onFocus={focusCustom}
-            onChange={(event) => changeCustom(event.target.value)}
-            rows={CUSTOM_VOICE_TEXTAREA_ROWS}
-            maxLength={MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS}
-            aria-describedby={customCharacterCountId}
-            placeholder="Paste a few sentences written the way you'd like this expert to sound."
-            className="w-full resize-none rounded-xl border border-input bg-background px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <p
-            id={customCharacterCountId}
-            className="mt-1.5 text-right text-xs text-muted-foreground"
-          >
-            {customText.length.toLocaleString()} /{" "}
-            {MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS.toLocaleString()} characters
-          </p>
-        </div>
+        <CustomVoiceOption
+          choiceGroupName={choiceGroupName}
+          textareaId={customTextareaId}
+          customText={customText}
+          isSelected={selected === "custom"}
+          onFocus={focusCustom}
+          onChange={changeCustom}
+        />
       </fieldset>
 
       <footer className="flex items-center justify-between gap-3">

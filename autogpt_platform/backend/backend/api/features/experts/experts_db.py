@@ -355,7 +355,8 @@ async def _create_raised_expert_row(
                 "role": role or "",
                 "identity": _raised_identity(name),
                 "voicePreferences": voice_preferences or "",
-            }
+            },
+            include=_WORKFLOW_INCLUDE,
         )
 
 
