@@ -1,4 +1,5 @@
 import {
+  getListExpertIdentitiesQueryKey,
   getListExpertsQueryKey,
   useHireExpert,
   useListExperts,
@@ -33,9 +34,12 @@ export function useExpertProfileSheet(
     try {
       const response = await hireExpert({ data: { template_id: expert.id } });
       const result = response.data as HireResult;
-      await queryClient.invalidateQueries({
-        queryKey: getListExpertsQueryKey(),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() }),
+        queryClient.invalidateQueries({
+          queryKey: getListExpertIdentitiesQueryKey(),
+        }),
+      ]);
       toast({
         title: `${result.expert.name} joined your team`,
         description: result.failed_preloads.length

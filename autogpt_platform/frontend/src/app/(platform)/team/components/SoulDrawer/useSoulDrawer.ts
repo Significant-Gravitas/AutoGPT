@@ -1,5 +1,6 @@
 import {
   getGetExpertQueryKey,
+  getListExpertIdentitiesQueryKey,
   getListExpertsQueryKey,
   useUpdateExpertSoul,
 } from "@/app/api/__generated__/endpoints/experts/experts";
@@ -40,6 +41,9 @@ export function useSoulDrawer({ expert, onClose }: Args) {
       await updateSoul({ expertId: expert.id, data: soul });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() }),
+        queryClient.invalidateQueries({
+          queryKey: getListExpertIdentitiesQueryKey(),
+        }),
         queryClient.invalidateQueries({
           queryKey: getGetExpertQueryKey(expert.id),
         }),
