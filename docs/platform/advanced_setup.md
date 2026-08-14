@@ -69,13 +69,13 @@ prisma migrate dev --schema postgres/schema.prisma
 
 Alongside PostgreSQL and RabbitMQ, the platform depends on a Redis-compatible engine for caching, distributed locking, rate limiting, spend and usage counters, session metadata, pending-message buffers, and the server-sent-event streams that carry agent output to the browser.
 
-Redis is the default. **Valkey is a tested alternative:** it is the engine inside the single-container image, and the Compose stack can be pointed at it with a single variable. Valkey forked from Redis 7.2 and speaks the same protocol — nothing the backend does distinguishes the two.
+Redis is the default. **Valkey is a tested alternative:** it is the engine inside the single-container image, which CI builds and smoke-tests on every change to the platform. Valkey forked from Redis 7.2 and speaks the same protocol — nothing the backend does distinguishes the two.
 
 | | Redis | Valkey |
 |---|---|---|
-| Docker Compose stack | Default (`redis:7`) | Opt-in, via `REDIS_IMAGE` |
+| Docker Compose stack | Default (`redis:7`) | Opt-in, via a Compose override |
 | Single-container image | Not used | The engine it ships |
-| Backend CI | Every test leg | One additional, advisory leg |
+| CI coverage | Every backend test leg | The single-container image build and smoke test |
 | Connection settings | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Identical — nothing to change |
 
 There is no functional reason to prefer one over the other for this workload: both clear the [version floor](#engine-version-floor) below, and the platform uses no Redis modules. Choose on operational grounds — which engine your managed provider offers, and which licence terms you want. The two projects' licences differ and the Redis side has changed more than once, so check the licence of the specific tag you pin.
@@ -88,7 +88,7 @@ The self-hosting distributions each bring up a three-shard, no-replica cluster o
 
 | Distribution | Engine | How the cluster is formed |
 |---|---|---|
-| Docker Compose stack (`autogpt_platform/docker-compose.platform.yml`) | `redis:7`, or whatever `REDIS_IMAGE` names | Three `redis-server` containers plus a one-shot `redis-init` sidecar that runs `redis-cli --cluster create`. Each shard announces its own Compose hostname. |
+| Docker Compose stack (`autogpt_platform/docker-compose.platform.yml`) | `redis:7` by default | Three `redis-server` containers plus a one-shot `redis-init` sidecar that runs `redis-cli --cluster create`. Each shard announces its own Compose hostname. |
 | Single-container image (`autogpt_platform/single-container`) | Valkey | Three supervised `valkey-server` processes inside the container, formed by `valkey-cli --cluster create`. Each shard announces `127.0.0.1`. |
 
 {% hint style="info" %}
@@ -99,24 +99,38 @@ FalkorDB is a separate service that also speaks the Redis protocol, but it is th
 
 ### Switching the Compose stack to Valkey
 
-`REDIS_IMAGE` sets the image for all three shards and the init sidecar:
+The shard image is set in `docker-compose.platform.yml`, which is a tracked file. To run the cluster on Valkey without editing it, override the image for all three shards and the init sidecar in `autogpt_platform/docker-compose.override.yml`:
+
+```yaml
+services:
+  redis-0:
+    image: valkey/valkey:8.1
+    user: "999:999"
+  redis-1:
+    image: valkey/valkey:8.1
+    user: "999:999"
+  redis-2:
+    image: valkey/valkey:8.1
+    user: "999:999"
+  redis-init:
+    image: valkey/valkey:8.1
+    user: "999:999"
+```
+
+Then bring the dependencies up as usual:
 
 ```bash
 cd autogpt_platform/
-REDIS_IMAGE=valkey/valkey:8.1 docker compose up -d deps
+docker compose up -d deps
 ```
 
-To make it permanent, set it in `autogpt_platform/.env` — the file `make init-env` creates from `.env.default`, where `REDIS_IMAGE` is listed commented out. Note that this is the file Compose interpolates from; `backend/.env` is passed *into* the containers and cannot reach it.
+{% hint style="warning" %}
+`user: "999:999"` is not optional, and omitting it fails quietly. Valkey's entrypoint only drops privileges when it is invoked as `valkey-server`, and the Compose command lines call the `redis-server` symlink — so an override that sets `image:` alone runs the shards as **root**. Stock `redis:7` drops to uid 999 on its own, so this is a difference you only hit after switching engines.
+
+The one numeric value is correct for either engine: uid 999 is `redis` in `redis:7` and `valkey` in `valkey/valkey:8.1`, and it owns the `/data` workdir where `nodes.conf` is written.
+{% endhint %}
 
 Nothing else changes. Connection settings are engine-neutral — `REDIS_HOST`, `REDIS_PORT` and `REDIS_PASSWORD` mean the same thing to both engines. (`REDIS_CLUSTER_HOST` and `REDIS_CLUSTER_PORT` take precedence over the first two when they are set.) The service names stay `redis-0`/`redis-1`/`redis-2` with the `redis-init` sidecar, and the Valkey image ships `redis-server` and `redis-cli` as symlinks, so the cluster command lines and health checks in the Compose file work unaltered.
-
-{% hint style="info" %}
-The shards run as uid 999 under either engine, pinned in the Compose file. This matters if you write your own override: Valkey's entrypoint only drops privileges when it is invoked as `valkey-server`, and the Compose command lines call the `redis-server` symlink — so an override that sets `image:` without also setting `user: "999:999"` runs the shards as root.
-{% endhint %}
-
-{% hint style="warning" %}
-`REDIS_IMAGE` arrived with this page. On an earlier checkout the same substitution needs a `docker-compose.override.yml` setting `image:` and `user: "999:999"` on `redis-0`, `redis-1`, `redis-2` and `redis-init`.
-{% endhint %}
 
 ### Using a managed or external deployment
 
