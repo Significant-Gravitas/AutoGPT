@@ -37,7 +37,7 @@ export function MemoryScopeSelector({
           onValueChange={onValueChange}
           options={options}
           size="small"
-          disabled={loading || !!error}
+          disabled={loading}
         />
       </div>
       {value !== AUTOPILOT_MEMORY_SCOPE ? (
