@@ -8,12 +8,14 @@ import { HireResult } from "@/app/api/__generated__/models/hireResult";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 
 export function useExpertProfileSheet(
   expert: Expert | null,
   onClose: () => void,
 ) {
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[] },
@@ -46,7 +48,7 @@ export function useExpertProfileSheet(
           <div className="flex gap-2">
             <Button
               as="NextLink"
-              href={`/copilot?expertId=${result.expert.id}`}
+              href={`/copilot?expertId=${result.expert.id}&kickoff=1`}
               variant="secondary"
               size="small"
               unmask={false}
@@ -59,6 +61,9 @@ export function useExpertProfileSheet(
           </div>
         ),
       });
+      // Hiring isn't installing: hand the user straight to the expert's thread
+      // with kickoff=1 so it introduces itself and starts its day-one job.
+      router.push(`/copilot?expertId=${result.expert.id}&kickoff=1`);
       onClose();
     } catch {
       toast({

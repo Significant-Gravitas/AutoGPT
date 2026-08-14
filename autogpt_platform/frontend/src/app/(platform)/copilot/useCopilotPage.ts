@@ -13,6 +13,8 @@ import { useCopilotStreamStore } from "./copilotStreamStore";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import { buildKickoffMessage, stripKickoffMessages } from "./expertKickoff";
+import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
 import { useExpertMap } from "./useExpertMap";
@@ -51,6 +53,7 @@ export function useCopilotPage() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const [kickoffParam] = useQueryState("kickoff", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;
   const { expertsById } = useExpertMap();
 
@@ -269,11 +272,26 @@ export function useCopilotPage() {
 
   useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
 
+  useExpertKickoff({
+    expertId,
+    kickoff: isExpertsEnabled && kickoffParam === "1",
+    sessionId,
+    onKickoff: () => void onSend(buildKickoffMessage()),
+  });
+
+  // The kickoff prompt is sent only to provoke the expert's introduction, so
+  // it must never appear as a user bubble — filter it from what the thread
+  // renders while leaving it in the stream/queue bookkeeping above.
+  const visibleMessages = useMemo(
+    () => stripKickoffMessages(displayMessages),
+    [displayMessages],
+  );
+
   useSessionTitlePoll({ sessionId, status, isReconnecting });
 
   return {
     sessionId,
-    messages: displayMessages,
+    messages: visibleMessages,
     status,
     error,
     stop,
