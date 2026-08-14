@@ -64,9 +64,10 @@ export function useFireExpertDialog({
   });
 
   function handleFire() {
-    // The confirm button is disabled until the preview succeeds, but guard the
-    // handler too so a stale click can never fire without a settled preview.
-    if (!previewQuery.isSuccess) return;
+    // Only an unsettled preview blocks firing — the preview is informational,
+    // so a failed request must not hard-block the destructive action. The
+    // button is disabled while loading; this guards stale clicks too.
+    if (previewQuery.isPending) return;
     mutate({ expertId });
   }
 

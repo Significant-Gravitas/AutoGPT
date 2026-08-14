@@ -556,19 +556,52 @@ describe("TeamPage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
     expect(
-      await within(dialog).findByText("Couldn't load what will pause."),
+      await within(dialog).findByText(
+        "We couldn't preview what pauses, but you can still let them go.",
+      ),
     ).toBeDefined();
     expect(
       screen.getByTestId("fire-expert-confirm").hasAttribute("disabled"),
-    ).toBe(true);
+    ).toBe(false);
 
     fireEvent.click(screen.getByTestId("fire-preview-retry"));
 
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("fire-expert-confirm").hasAttribute("disabled"),
-      ).toBe(false),
+    expect(
+      await within(dialog).findByText("No automations will pause."),
+    ).toBeDefined();
+    expect(screen.queryByTestId("fire-preview-retry")).toBeNull();
+  });
+
+  test("fires the expert even when the detach preview fails", async () => {
+    const archiveSpy = vi.fn();
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.get(
+        "*/api/experts/expert-maria/detach-preview",
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+      getArchiveExpertMockHandler(archiveSpy),
     );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+      button: 0,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Fire Maria/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
+    await within(dialog).findByText(
+      "We couldn't preview what pauses, but you can still let them go.",
+    );
+    const confirm = screen.getByTestId("fire-expert-confirm");
+    expect(confirm.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(archiveSpy).toHaveBeenCalled());
   });
 
   test("keeps the expert and warns when firing fails", async () => {

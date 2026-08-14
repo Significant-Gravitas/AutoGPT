@@ -179,6 +179,30 @@ async def test_list_experts_include_archived_returns_fired_experts(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_list_experts_reads_weekly_spend_per_expert(
+    server: SpinTestServer, test_user
+):
+    hired = [
+        await experts_db.hire_expert(
+            test_user.id,
+            (await _seed_template(name=f"Expert{i}", preload_listings=[])).id,
+            None,
+        )
+        for i in range(3)
+    ]
+    spends = {h.expert.id: (i + 1) * 100 for i, h in enumerate(hired)}
+
+    with patch.object(
+        experts_db,
+        "get_weekly_spend",
+        new=AsyncMock(side_effect=lambda expert_id: spends.get(expert_id, 0)),
+    ):
+        experts = await experts_db.list_experts(test_user.id)
+
+    assert {e.id: e.weekly_spend for e in experts if e.id in spends} == spends
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_install_workflow_on_archived_expert_raises(
     server: SpinTestServer, test_user
 ):

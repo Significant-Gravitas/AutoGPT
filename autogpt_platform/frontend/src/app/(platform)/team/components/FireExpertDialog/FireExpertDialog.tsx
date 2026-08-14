@@ -41,7 +41,8 @@ export function FireExpertDialog({
 
   function getAutomationLineText() {
     if (isPreviewLoading) return "Checking what will pause…";
-    if (isPreviewError) return "We couldn't check what will pause.";
+    if (isPreviewError)
+      return "We couldn't preview what pauses, but you can still let them go.";
     return summary.automationLine;
   }
 
@@ -68,17 +69,14 @@ export function FireExpertDialog({
             <FireLine>Their work stays yours.</FireLine>
           </ul>
           {isPreviewError ? (
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-red-50 px-3.5 py-3 ring-1 ring-inset ring-red-200/80">
-              <Text variant="small" className="text-red-700">
-                Couldn&apos;t load what will pause.
-              </Text>
+            <div className="flex justify-end">
               <Button
                 variant="secondary"
                 size="small"
                 onClick={() => retryPreview()}
                 data-testid="fire-preview-retry"
               >
-                Retry
+                Retry preview
               </Button>
             </div>
           ) : null}
@@ -103,7 +101,7 @@ export function FireExpertDialog({
             <Button
               variant="destructive"
               loading={isFiring}
-              disabled={!isPreviewReady}
+              disabled={isPreviewLoading}
               onClick={handleFire}
               data-testid="fire-expert-confirm"
             >

@@ -16,18 +16,25 @@ const EMPTY_MAP: ExpertIdentityMap = new Map();
 
 const FALLBACK_ARCHIVED_NAME = "This expert";
 
+/**
+ * Resolve the identity a chat session should render for `activeExpertId`.
+ *
+ * Fail closed: once the roster query has SETTLED (success or error), a
+ * session pointing at an expert we can't resolve is treated as archived
+ * (read-only history, generic name) — never a writable plain Autopilot
+ * thread. Passing the settled flag rather than the success flag is
+ * load-bearing: a failed roster fetch must not fail open into a writable
+ * composer.
+ */
 export function resolveExpertIdentity(
   activeExpertId: string | null,
   expertsById: ExpertIdentityMap,
-  hasLoadedExperts: boolean,
+  hasExpertsSettled: boolean,
 ): ExpertIdentity | null {
   if (!activeExpertId) return null;
   const found = expertsById.get(activeExpertId);
   if (found) return found;
-  // Fail closed: once the roster has loaded, a session pointing at an expert
-  // we can't resolve is treated as archived (read-only history) — never a
-  // writable plain Autopilot thread.
-  if (!hasLoadedExperts) return null;
+  if (!hasExpertsSettled) return null;
   return {
     id: activeExpertId,
     name: FALLBACK_ARCHIVED_NAME,
@@ -37,11 +44,29 @@ export function resolveExpertIdentity(
   };
 }
 
+/**
+ * Active-roster projection of the identity map. `expertsById` includes
+ * ARCHIVED experts by contract (see useExpertMap) — any consumer that lets
+ * the user address or pick an expert must go through this filter instead of
+ * iterating the raw map.
+ */
+export function getActiveExperts(
+  expertsById: ExpertIdentityMap,
+): ExpertIdentity[] {
+  return [...expertsById.values()].filter((expert) => !expert.isArchived);
+}
+
+/**
+ * Identity map for expert-scoped chat sessions.
+ *
+ * CONTRACT: `expertsById` deliberately includes ARCHIVED experts — it is the
+ * identity source for read-only fired-expert threads, so it must keep
+ * resolving names after an expert leaves the active roster. Consumers that
+ * present experts as addressable (pickers, rosters, mention lists) must use
+ * `getActiveExperts` instead of iterating the map directly.
+ */
 export function useExpertMap() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  // Include archived experts so a fired expert's chat threads keep resolving
-  // their identity as read-only history — the active roster/marketplace/sidebar
-  // use the paramless query and never see archived rows.
   const expertsQuery = useListExperts(
     { include_archived: true },
     {
@@ -75,9 +100,13 @@ export function useExpertMap() {
 
   return {
     expertsById: isExpertsEnabled ? expertsById : EMPTY_MAP,
-    // A disabled query reports `isPending` forever, so both flags stay gated
+    // A disabled query reports `isPending` forever, so all flags stay gated
     // on the feature flag to remain honest when experts are off.
     isLoadingExperts: isExpertsEnabled && expertsQuery.isPending,
     hasLoadedExperts: isExpertsEnabled && expertsQuery.isSuccess,
+    // Settled = success OR error. resolveExpertIdentity keys off this so an
+    // errored roster fetch fails closed (read-only) instead of open.
+    hasExpertsSettled:
+      isExpertsEnabled && (expertsQuery.isSuccess || expertsQuery.isError),
   };
 }

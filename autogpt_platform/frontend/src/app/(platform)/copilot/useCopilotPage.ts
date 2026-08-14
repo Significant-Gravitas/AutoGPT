@@ -52,7 +52,7 @@ export function useCopilotPage() {
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;
-  const { expertsById, hasLoadedExperts } = useExpertMap();
+  const { expertsById, hasExpertsSettled } = useExpertMap();
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
@@ -82,8 +82,8 @@ export function useCopilotPage() {
   // from global search, a bookmark or a shared link.
   const activeExpertId = sessionId ? sessionExpertId : expertId;
   const expertIdentity = useMemo(
-    () => resolveExpertIdentity(activeExpertId, expertsById, hasLoadedExperts),
-    [activeExpertId, expertsById, hasLoadedExperts],
+    () => resolveExpertIdentity(activeExpertId, expertsById, hasExpertsSettled),
+    [activeExpertId, expertsById, hasExpertsSettled],
   );
 
   const {

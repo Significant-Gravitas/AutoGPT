@@ -2,6 +2,7 @@ import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/exp
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { resolveExpertIdentity, useExpertMap } from "../../../useExpertMap";
 import { ChatContainer } from "../ChatContainer";
@@ -77,24 +78,47 @@ const maria: Expert = {
 // endpoint→map→resolve chain production uses, so a fail-open regression here
 // would surface as a writable thread rather than being masked by a hand-set prop.
 function ExpertThreadHarness({ activeExpertId }: { activeExpertId: string }) {
-  const { expertsById, hasLoadedExperts } = useExpertMap();
+  const { expertsById, hasExpertsSettled } = useExpertMap();
   const expertIdentity = resolveExpertIdentity(
     activeExpertId,
     expertsById,
-    hasLoadedExperts,
+    hasExpertsSettled,
   );
   return <ChatContainer {...baseProps} expertIdentity={expertIdentity} />;
 }
 
 describe("Copilot expert thread — fail-closed identity", () => {
   it("keeps a fired expert's thread read-only with their real name", async () => {
-    server.use(getListExpertsMockHandler([{ ...maria, is_archived: true }]));
+    let requestedUrl: string | null = null;
+    server.use(
+      http.get("*/api/experts", ({ request }) => {
+        requestedUrl = request.url;
+        return HttpResponse.json([{ ...maria, is_archived: true }]);
+      }),
+    );
 
     render(<ExpertThreadHarness activeExpertId="expert-maria" />);
 
     const notice = await screen.findByTestId("archived-expert-notice");
     expect(notice.textContent).toContain(
       "Maria was let go — this thread is read-only",
+    );
+    expect(screen.queryByTestId("composer")).toBeNull();
+    expect(requestedUrl).toContain("include_archived=true");
+  });
+
+  it("fails closed to read-only when the roster fetch errors", async () => {
+    server.use(
+      http.get("*/api/experts", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+
+    render(<ExpertThreadHarness activeExpertId="expert-maria" />);
+
+    const notice = await screen.findByTestId("archived-expert-notice");
+    expect(notice.textContent).toContain(
+      "was let go — this thread is read-only",
     );
     expect(screen.queryByTestId("composer")).toBeNull();
   });

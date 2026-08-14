@@ -1,6 +1,6 @@
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect } from "react";
-import { useExpertMap } from "../../useExpertMap";
+import { getActiveExperts, useExpertMap } from "../../useExpertMap";
 import type { RecipientOption } from "../ChatInput/components/RecipientChip";
 
 const AUTOPILOT_RECIPIENT: RecipientOption = {
@@ -23,16 +23,19 @@ export function useRecipientPicker() {
   useEffect(
     function clearUnknownExpertParam() {
       if (!hasLoadedExperts || !expertIdParam) return;
-      if (expertsById.has(expertIdParam)) return;
+      const expert = expertsById.get(expertIdParam);
+      if (expert && !expert.isArchived) return;
       void setExpertIdParam(null);
     },
     [hasLoadedExperts, expertIdParam, expertsById, setExpertIdParam],
   );
 
+  // The identity map includes archived experts (useExpertMap contract); only
+  // the active roster is addressable from the picker.
   const options: RecipientOption[] = [
     AUTOPILOT_RECIPIENT,
-    ...[...expertsById.entries()].map(([id, expert]) => ({
-      id,
+    ...getActiveExperts(expertsById).map((expert) => ({
+      id: expert.id,
       name: expert.name,
       avatarUrl: expert.avatarUrl,
     })),
