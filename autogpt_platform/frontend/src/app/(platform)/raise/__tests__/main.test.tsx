@@ -298,6 +298,33 @@ test("a rapid double-click on finish sends a single POST", async () => {
   expect(postCount).toBe(1);
 });
 
+test("keeps navigation locked after success until the route unmounts", async () => {
+  useStoreHandlers();
+  server.use(
+    getCreateRaisedExpertMockHandler({
+      expert: raisedExpert,
+      first_job_installed: false,
+      first_job_failure_reason: null,
+    } as RaiseResult),
+  );
+
+  renderRaise();
+  await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /life/ }));
+
+  await waitFor(() => expect(pushMock).toHaveBeenCalled());
+  expect(
+    (screen.getByRole("button", { name: "Back" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+});
+
 test("shows a friendly limit message on 409", async () => {
   useStoreHandlers();
   server.use(

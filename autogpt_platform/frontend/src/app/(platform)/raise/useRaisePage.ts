@@ -23,6 +23,7 @@ export function useRaisePage() {
   const { mutateAsync: createRaisedExpert, isPending } =
     useCreateRaisedExpert();
   const [draft, setDraft] = useState<RaiseDraft>(loadDraft);
+  const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
   // Synchronous latch: isPending only flips after a rerender, so a rapid
   // double-click could dispatch two POSTs without it. Stays latched after
   // success (we are navigating away); resets only on error so the user
@@ -77,6 +78,7 @@ export function useRaisePage() {
   async function finish() {
     if (submitLatch.current) return;
     submitLatch.current = true;
+    setIsSubmissionLocked(true);
     try {
       const response = await createRaisedExpert({
         data: {
@@ -106,6 +108,7 @@ export function useRaisePage() {
       router.push(`/copilot?expertId=${result.expert.id}${kickoff}`);
     } catch (error) {
       submitLatch.current = false;
+      setIsSubmissionLocked(false);
       if (error instanceof ApiError && error.status === 409) {
         if (
           getExpertLimitCode(error.response) === "raised_expert_lifetime_limit"
@@ -140,7 +143,7 @@ export function useRaisePage() {
     name: draft.name,
     voiceLabel: draft.voiceLabel,
     firstJob: draft.firstJob,
-    isSubmitting: isPending,
+    isSubmitting: isPending || isSubmissionLocked,
     submitName,
     pickVoice,
     skipVoice,
