@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildKickoffMessage,
   clearKickoffPending,
+  getKickoffAttemptTokenFromMetadata,
   getKickoffExpertId,
   getKickoffExpertIdFromMetadata,
   getKickoffStatus,
@@ -48,12 +49,16 @@ function assistantMessage(
 
 describe("buildKickoffMessage", () => {
   it("keeps routing data in metadata and sends a clean day-one prompt", () => {
-    const message = buildKickoffMessage(EXPERT_ID);
+    const message = buildKickoffMessage(EXPERT_ID, "attempt-1");
 
     expect(message.metadata).toEqual({
       kind: "expert_kickoff",
       expertId: EXPERT_ID,
+      attemptToken: "attempt-1",
     });
+    expect(getKickoffAttemptTokenFromMetadata(message.metadata)).toBe(
+      "attempt-1",
+    );
     expect(message.text).toContain("You were just hired.");
     expect(message.text).toContain("Introduce yourself in 2-3 sentences");
     expect(message.text).toContain("run_agent");
@@ -152,30 +157,49 @@ describe("kickoff status state machine", () => {
     const otherUser = "user-2";
 
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
-    markKickoffPending(USER_ID, EXPERT_ID);
+    const attemptToken = markKickoffPending(USER_ID, EXPERT_ID);
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
-    markKickoffDone(USER_ID, EXPERT_ID);
+    markKickoffDone(USER_ID, EXPERT_ID, attemptToken);
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done");
     expect(getKickoffStatus(USER_ID, otherExpert)).toBe("idle");
     expect(getKickoffStatus(otherUser, EXPERT_ID)).toBe("idle");
   });
 
   it("clearKickoffPending releases pending but never done", () => {
-    markKickoffPending(USER_ID, EXPERT_ID);
-    clearKickoffPending(USER_ID, EXPERT_ID);
+    const abandonedAttempt = markKickoffPending(USER_ID, EXPERT_ID);
+    clearKickoffPending(USER_ID, EXPERT_ID, abandonedAttempt);
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
 
-    markKickoffDone(USER_ID, EXPERT_ID);
-    clearKickoffPending(USER_ID, EXPERT_ID);
+    const completedAttempt = markKickoffPending(USER_ID, EXPERT_ID);
+    markKickoffDone(USER_ID, EXPERT_ID, completedAttempt);
+    clearKickoffPending(USER_ID, EXPERT_ID, completedAttempt);
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done");
   });
 
   it("expires stale pending state so a crashed tab cannot consume kickoff", () => {
     window.localStorage.setItem(
       kickoffStorageKey(USER_ID, EXPERT_ID),
-      `pending:${Date.now() - 10 * 60 * 1000}`,
+      `pending:${Date.now() - 10 * 60 * 1000}:expired-attempt`,
     );
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
+  });
+
+  it("does not let an expired attempt overwrite or clear its retry", () => {
+    const now = Date.now();
+    const dateNow = vi.spyOn(Date, "now");
+    dateNow.mockReturnValue(now - 10 * 60 * 1000);
+    const expiredAttempt = markKickoffPending(USER_ID, EXPERT_ID);
+
+    dateNow.mockReturnValue(now);
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
+    const retryAttempt = markKickoffPending(USER_ID, EXPERT_ID);
+
+    expect(markKickoffDone(USER_ID, EXPERT_ID, expiredAttempt)).toBe(false);
+    clearKickoffPending(USER_ID, EXPERT_ID, expiredAttempt);
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
+
+    expect(markKickoffDone(USER_ID, EXPERT_ID, retryAttempt)).toBe(true);
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done");
   });
 
   it("ignores unscoped legacy state so it cannot leak between accounts", () => {

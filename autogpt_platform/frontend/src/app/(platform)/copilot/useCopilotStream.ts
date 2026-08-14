@@ -18,8 +18,10 @@ import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   clearKickoffPending,
+  getKickoffAttemptTokenFromMetadata,
   getKickoffExpertId,
   getKickoffExpertIdFromMetadata,
+  withKickoffLock,
 } from "./expertKickoff";
 import {
   deduplicateMessages,
@@ -199,9 +201,15 @@ export function useCopilotStream({
 
     function handleError(error: Error) {
       if (!sessionId) return;
-      const kickoffExpertId = useCopilotStreamStore
-        .getState()
-        .getCoord(sessionId).lastSubmittedKickoffExpertId;
+      const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+      const kickoffExpertId = coord.lastSubmittedKickoffExpertId;
+      const kickoffAttemptToken = coord.lastSubmittedKickoffAttemptToken;
+      function releaseKickoffPending() {
+        if (!userId || !kickoffExpertId || !kickoffAttemptToken) return;
+        void withKickoffLock(userId, kickoffExpertId, async () => {
+          clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
+        }).catch(() => undefined);
+      }
       handleStreamError({
         error,
         onRateLimit: (message) => {
@@ -217,10 +225,10 @@ export function useCopilotStream({
             // it. Its bubble below is dropped too; the once-per-expert
             // pending latch expires so a later visit can retry the kickoff.
             if (kickoffExpertId) {
-              if (userId) clearKickoffPending(userId, kickoffExpertId);
               useCopilotStreamStore.getState().updateCoord(sessionId, {
                 lastSubmittedMessageText: null,
                 lastSubmittedKickoffExpertId: null,
+                lastSubmittedKickoffAttemptToken: null,
               });
             } else {
               // The 429 callback fires async — by the time it lands, the user
@@ -237,6 +245,7 @@ export function useCopilotStream({
                 useCopilotStreamStore.getState().updateCoord(sessionId, {
                   lastSubmittedMessageText: null,
                   lastSubmittedKickoffExpertId: null,
+                  lastSubmittedKickoffAttemptToken: null,
                 });
               }
             }
@@ -255,10 +264,11 @@ export function useCopilotStream({
         isUserStoppingRef,
       });
       if (kickoffExpertId) {
-        if (userId) clearKickoffPending(userId, kickoffExpertId);
+        releaseKickoffPending();
         useCopilotStreamStore.getState().updateCoord(sessionId, {
           lastSubmittedMessageText: null,
           lastSubmittedKickoffExpertId: null,
+          lastSubmittedKickoffAttemptToken: null,
         });
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -387,6 +397,7 @@ export function useCopilotStream({
         ? args[0].metadata
         : undefined;
     const kickoffExpertId = getKickoffExpertIdFromMetadata(metadata);
+    const kickoffAttemptToken = getKickoffAttemptTokenFromMetadata(metadata);
     const sid = sessionId;
     const coord = sid ? useCopilotStreamStore.getState().getCoord(sid) : null;
 
@@ -415,6 +426,7 @@ export function useCopilotStream({
       useCopilotStreamStore.getState().updateCoord(sid, {
         lastSubmittedMessageText: text,
         lastSubmittedKickoffExpertId: kickoffExpertId,
+        lastSubmittedKickoffAttemptToken: kickoffAttemptToken,
       });
     }
     hasSentThisMountRef.current = true;
@@ -451,6 +463,7 @@ export function useCopilotStream({
     useCopilotStreamStore.getState().updateCoord(sessionId, {
       lastSubmittedMessageText: null,
       lastSubmittedKickoffExpertId: null,
+      lastSubmittedKickoffAttemptToken: null,
     });
   }, [hydratedMessages, sessionId]);
 

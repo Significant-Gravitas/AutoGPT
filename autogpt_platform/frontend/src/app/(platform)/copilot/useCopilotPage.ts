@@ -16,6 +16,8 @@ import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import {
   buildKickoffMessage,
+  getKickoffAttemptToken,
+  isKickoffMessage,
   type ExpertKickoffMetadata,
 } from "./expertKickoff";
 import { useExpertKickoff } from "./useExpertKickoff";
@@ -49,6 +51,14 @@ function hasAssistantTail(messages: UIMessage[]) {
     (message) => message.role === "user",
   );
   return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
+}
+
+function getLatestKickoffAttemptToken(messages: UIMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const attemptToken = getKickoffAttemptToken(messages[index]);
+    if (attemptToken) return attemptToken;
+  }
+  return null;
 }
 
 export function useCopilotPage() {
@@ -149,6 +159,7 @@ export function useCopilotPage() {
     copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
     copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
+  const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
   const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
@@ -318,14 +329,15 @@ export function useCopilotPage() {
     kickoff: isExpertsEnabled && kickoffParam === "1",
     sessionId,
     sessionExpertId,
-    hasPersistedMessages:
+    hasPersistedExpertHistory:
       sessionId && hydratedMessages !== undefined
-        ? hydratedMessages.length > 0
+        ? hydratedMessages.some((message) => !isKickoffMessage(message))
         : null,
-    isClientThreadEmpty: messages.length === 0,
+    kickoffAttemptToken,
+    isClientThreadEmpty: messages.every(isKickoffMessage),
     onAdoptSession: setSessionId,
-    async onKickoff(id) {
-      const kickoffMessage = buildKickoffMessage(id);
+    async onKickoff(id, attemptToken) {
+      const kickoffMessage = buildKickoffMessage(id, attemptToken);
       await sendNewMessage(
         kickoffMessage.text,
         undefined,

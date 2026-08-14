@@ -63,6 +63,7 @@ describe("copilotStreamStore pending first send persistence", () => {
     const metadata = {
       kind: "expert_kickoff" as const,
       expertId: "3f8b0f7e-9f30-4a3b-a6a1-000000000001",
+      attemptToken: "attempt-1",
     };
     const firstStore = firstModule.useCopilotStreamStore.getState();
     firstStore.setPendingFirstSend({

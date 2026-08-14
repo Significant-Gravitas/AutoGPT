@@ -18,6 +18,7 @@ const KICKOFF_PROMPT =
 export interface ExpertKickoffMetadata {
   kind: typeof EXPERT_KICKOFF_KIND;
   expertId: string;
+  attemptToken?: KickoffAttemptToken;
 }
 
 export interface ExpertKickoffSend {
@@ -26,11 +27,19 @@ export interface ExpertKickoffSend {
 }
 
 export type KickoffStatus = "idle" | "pending" | "done";
+export type KickoffAttemptToken = string;
 
-export function buildKickoffMessage(expertId: string): ExpertKickoffSend {
+export function buildKickoffMessage(
+  expertId: string,
+  attemptToken?: KickoffAttemptToken,
+): ExpertKickoffSend {
   return {
     text: KICKOFF_PROMPT,
-    metadata: { kind: EXPERT_KICKOFF_KIND, expertId },
+    metadata: {
+      kind: EXPERT_KICKOFF_KIND,
+      expertId,
+      ...(attemptToken ? { attemptToken } : {}),
+    },
   };
 }
 
@@ -43,6 +52,20 @@ export function getKickoffExpertIdFromMetadata(
   const expertId = value.expertId ?? value.expert_id;
   return typeof expertId === "string" && isValidUUID(expertId)
     ? expertId
+    : null;
+}
+
+export function getKickoffAttemptTokenFromMetadata(
+  metadata: unknown,
+): KickoffAttemptToken | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const value = metadata as Record<string, unknown>;
+  if (value.kind !== EXPERT_KICKOFF_KIND) return null;
+  const attemptToken = value.attemptToken;
+  return typeof attemptToken === "string" &&
+    attemptToken.length > 0 &&
+    attemptToken.length <= 128
+    ? attemptToken
     : null;
 }
 
@@ -75,6 +98,13 @@ export function getKickoffExpertId(message: UIMessage): string | null {
   return text ? parseLegacyKickoffExpertId(text) : null;
 }
 
+export function getKickoffAttemptToken(
+  message: UIMessage,
+): KickoffAttemptToken | null {
+  if (message.role !== "user") return null;
+  return getKickoffAttemptTokenFromMetadata(message.metadata);
+}
+
 export function isKickoffMessage(message: UIMessage): boolean {
   return getKickoffExpertId(message) !== null;
 }
@@ -99,9 +129,11 @@ export function getKickoffStatus(
   try {
     const value = readKickoffStorage(userId, expertId);
     if (value === null) return "idle";
-    if (value === "done" || value === "1") return "done";
+    if (value === "done" || value === "1" || value.startsWith("done:")) {
+      return "done";
+    }
     if (!value.startsWith("pending:")) return "idle";
-    const startedAt = Number(value.slice("pending:".length));
+    const startedAt = Number(value.split(":", 2)[1]);
     return Number.isFinite(startedAt) && Date.now() - startedAt < PENDING_TTL_MS
       ? "pending"
       : "idle";
@@ -110,32 +142,50 @@ export function getKickoffStatus(
   }
 }
 
-export function markKickoffPending(userId: string, expertId: string): void {
-  if (typeof window === "undefined") return;
+export function markKickoffPending(
+  userId: string,
+  expertId: string,
+): KickoffAttemptToken {
+  const attemptToken = `${Date.now()}:${crypto.randomUUID()}`;
+  if (typeof window === "undefined") return attemptToken;
   try {
     window.localStorage.setItem(
       kickoffStorageKey(userId, expertId),
-      `pending:${Date.now()}`,
+      `pending:${attemptToken}`,
     );
   } catch {
-    return;
+    return attemptToken;
   }
+  return attemptToken;
 }
 
-export function markKickoffDone(userId: string, expertId: string): void {
-  if (typeof window === "undefined") return;
+export function markKickoffDone(
+  userId: string,
+  expertId: string,
+  attemptToken: KickoffAttemptToken,
+): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    window.localStorage.setItem(kickoffStorageKey(userId, expertId), "done");
+    const current = readKickoffStorage(userId, expertId);
+    const completed = `done:${attemptToken}`;
+    if (current === completed) return true;
+    if (current !== `pending:${attemptToken}`) return false;
+    window.localStorage.setItem(kickoffStorageKey(userId, expertId), completed);
+    return true;
   } catch {
-    return;
+    return false;
   }
 }
 
-export function clearKickoffPending(userId: string, expertId: string): void {
+export function clearKickoffPending(
+  userId: string,
+  expertId: string,
+  attemptToken: KickoffAttemptToken,
+): void {
   if (typeof window === "undefined") return;
   try {
     const value = readKickoffStorage(userId, expertId);
-    if (value?.startsWith("pending:")) {
+    if (value === `pending:${attemptToken}`) {
       window.localStorage.removeItem(kickoffStorageKey(userId, expertId));
     }
   } catch {

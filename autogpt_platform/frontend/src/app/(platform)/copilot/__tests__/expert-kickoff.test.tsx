@@ -15,7 +15,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import {
   buildKickoffMessage,
+  getKickoffAttemptToken,
   getKickoffStatus,
+  isKickoffMessage,
   kickoffStorageKey,
   markKickoffDone,
   markKickoffPending,
@@ -47,6 +49,14 @@ const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const KICKOFF_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const EXISTING_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000002";
 const ORPHAN_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000003";
+
+function latestKickoffAttemptToken(messages: UIMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const attemptToken = getKickoffAttemptToken(messages[index]);
+    if (attemptToken) return attemptToken;
+  }
+  return null;
+}
 
 afterEach(() => {
   server.resetHandlers();
@@ -101,14 +111,15 @@ function KickoffHarness() {
     kickoff: kickoff === "1",
     sessionId,
     sessionExpertId,
-    hasPersistedMessages:
+    hasPersistedExpertHistory:
       sessionId && hydratedMessages !== undefined
-        ? hydratedMessages.length > 0
+        ? hydratedMessages.some((message) => !isKickoffMessage(message))
         : null,
-    isClientThreadEmpty: clientMessages.length === 0,
+    kickoffAttemptToken: latestKickoffAttemptToken(clientMessages),
+    isClientThreadEmpty: clientMessages.every(isKickoffMessage),
     onAdoptSession: setSessionId,
-    async onKickoff(id) {
-      const message = buildKickoffMessage(id);
+    async onKickoff(id, attemptToken) {
+      const message = buildKickoffMessage(id, attemptToken);
       await onSend(message.text, undefined, undefined, message.metadata);
     },
     onSettled() {
@@ -183,6 +194,15 @@ function persistedKickoffMessage() {
   };
 }
 
+function persistedAssistantMessage() {
+  return {
+    id: "5f8b0f7e-9f30-4a3b-a6a1-000000000002",
+    role: "assistant",
+    content: "I am ready to help.",
+    created_at: "2026-01-01T00:00:01Z",
+  };
+}
+
 describe("useExpertKickoff", () => {
   it("creates atomically and waits for server persistence before consuming kickoff", async () => {
     let createBody: unknown = null;
@@ -220,18 +240,24 @@ describe("useExpertKickoff", () => {
     });
 
     await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
-    const kickoff = buildKickoffMessage(EXPERT_ID);
     expect(sendSpy).toHaveBeenCalledWith({
-      text: kickoff.text,
+      text: buildKickoffMessage(EXPERT_ID).text,
       files: undefined,
-      metadata: kickoff.metadata,
+      metadata: {
+        kind: "expert_kickoff",
+        expertId: EXPERT_ID,
+        attemptToken: expect.any(String),
+      },
     });
     expect(screen.getByTestId("client-message-count").textContent).toBe("1");
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
     expect(screen.getByTestId("kickoff-param").textContent).toBe("1");
     expect(screen.getByTestId("kickoff-starting").textContent).toBe("true");
 
-    persistedMessages = [persistedKickoffMessage()];
+    persistedMessages = [
+      persistedKickoffMessage(),
+      persistedAssistantMessage(),
+    ];
     fireEvent.click(screen.getByRole("button", { name: "Refresh session" }));
 
     await waitFor(() =>
@@ -246,7 +272,8 @@ describe("useExpertKickoff", () => {
   });
 
   it("does nothing on a second visit after persisted completion", async () => {
-    markKickoffDone(USER_ID, EXPERT_ID);
+    const attemptToken = markKickoffPending(USER_ID, EXPERT_ID);
+    markKickoffDone(USER_ID, EXPERT_ID, attemptToken);
     let listCount = 0;
     let createCount = 0;
     server.use(
@@ -402,7 +429,9 @@ describe("useExpertKickoff", () => {
         }),
       ),
       http.get(`*/api/chat/sessions/${ORPHAN_SESSION_ID}`, () =>
-        HttpResponse.json(makeSessionPayload(ORPHAN_SESSION_ID)),
+        HttpResponse.json(
+          makeSessionPayload(ORPHAN_SESSION_ID, [persistedKickoffMessage()]),
+        ),
       ),
       http.post("*/api/chat/sessions", () => {
         createCount += 1;
@@ -418,11 +447,14 @@ describe("useExpertKickoff", () => {
       ),
     );
     await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
-    const kickoff = buildKickoffMessage(EXPERT_ID);
     expect(sendSpy).toHaveBeenCalledWith({
-      text: kickoff.text,
+      text: buildKickoffMessage(EXPERT_ID).text,
       files: undefined,
-      metadata: kickoff.metadata,
+      metadata: {
+        kind: "expert_kickoff",
+        expertId: EXPERT_ID,
+        attemptToken: expect.any(String),
+      },
     });
     expect(createCount).toBe(0);
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");

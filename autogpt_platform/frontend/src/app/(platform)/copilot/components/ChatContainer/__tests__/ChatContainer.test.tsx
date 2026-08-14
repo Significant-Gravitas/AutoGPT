@@ -252,6 +252,7 @@ describe("ChatContainer", () => {
   it("preserves expert kickoff metadata when retrying its hidden prompt", () => {
     const onSend = vi.fn();
     const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+    const attemptToken = "attempt-1";
     render(
       <ChatContainer
         {...baseProps}
@@ -261,7 +262,7 @@ describe("ChatContainer", () => {
             id: "kickoff",
             role: "user",
             parts: [{ type: "text", text: "private kickoff prompt" }],
-            metadata: { kind: "expert_kickoff", expertId },
+            metadata: { kind: "expert_kickoff", expertId, attemptToken },
           },
         ]}
       />,
@@ -273,7 +274,7 @@ describe("ChatContainer", () => {
       "private kickoff prompt",
       undefined,
       undefined,
-      { kind: "expert_kickoff", expertId },
+      { kind: "expert_kickoff", expertId, attemptToken },
     );
   });
 

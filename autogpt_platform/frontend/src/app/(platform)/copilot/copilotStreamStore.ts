@@ -26,11 +26,13 @@ import type { ExpertKickoffMetadata } from "./expertKickoff";
 export interface SessionCoord {
   lastSubmittedMessageText: string | null;
   lastSubmittedKickoffExpertId: string | null;
+  lastSubmittedKickoffAttemptToken: string | null;
 }
 
 const defaultCoord: SessionCoord = {
   lastSubmittedMessageText: null,
   lastSubmittedKickoffExpertId: null,
+  lastSubmittedKickoffAttemptToken: null,
 };
 
 /**

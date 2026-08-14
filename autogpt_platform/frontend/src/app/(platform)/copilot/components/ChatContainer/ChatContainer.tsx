@@ -22,6 +22,7 @@ import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
 import {
+  getKickoffAttemptToken,
   getKickoffExpertId,
   stripLegacyKickoffMarker,
   type ExpertKickoffMetadata,
@@ -173,12 +174,21 @@ export const ChatContainer = ({
       const kickoffExpertId = lastUserMsg
         ? getKickoffExpertId(lastUserMsg)
         : null;
+      const kickoffAttemptToken = lastUserMsg
+        ? getKickoffAttemptToken(lastUserMsg)
+        : null;
       onSend(
         kickoffExpertId ? stripLegacyKickoffMarker(lastText) : lastText,
         undefined,
         undefined,
         kickoffExpertId
-          ? { kind: "expert_kickoff", expertId: kickoffExpertId }
+          ? {
+              kind: "expert_kickoff",
+              expertId: kickoffExpertId,
+              ...(kickoffAttemptToken
+                ? { attemptToken: kickoffAttemptToken }
+                : {}),
+            }
           : undefined,
       );
     }

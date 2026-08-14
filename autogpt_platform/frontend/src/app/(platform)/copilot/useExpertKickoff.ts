@@ -9,6 +9,7 @@ import {
   getKickoffStatus,
   markKickoffDone,
   markKickoffPending,
+  type KickoffAttemptToken,
   withKickoffLock,
 } from "./expertKickoff";
 import { latestExpertSessionParams } from "./expertSessionQuery";
@@ -19,10 +20,14 @@ interface Args {
   kickoff: boolean;
   sessionId: string | null;
   sessionExpertId: string | null;
-  hasPersistedMessages: boolean | null;
+  hasPersistedExpertHistory: boolean | null;
+  kickoffAttemptToken: KickoffAttemptToken | null;
   isClientThreadEmpty: boolean;
   onAdoptSession: (sessionId: string) => void;
-  onKickoff: (expertId: string) => Promise<void>;
+  onKickoff: (
+    expertId: string,
+    attemptToken: KickoffAttemptToken,
+  ) => Promise<void>;
   onSettled: () => void;
 }
 
@@ -32,7 +37,8 @@ export function useExpertKickoff({
   kickoff,
   sessionId,
   sessionExpertId,
-  hasPersistedMessages,
+  hasPersistedExpertHistory,
+  kickoffAttemptToken,
   isClientThreadEmpty,
   onAdoptSession,
   onKickoff,
@@ -41,6 +47,7 @@ export function useExpertKickoff({
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const firedRef = useRef(false);
   const settledRef = useRef(false);
+  const attemptTokenRef = useRef<KickoffAttemptToken | null>(null);
   const [failedKickoff, setFailedKickoff] = useState<{
     userId: string;
     expertId: string;
@@ -86,7 +93,12 @@ export function useExpertKickoff({
   useEffect(() => {
     firedRef.current = false;
     settledRef.current = false;
+    attemptTokenRef.current = null;
   }, [expertId, userId]);
+
+  useEffect(() => {
+    if (kickoffAttemptToken) attemptTokenRef.current = kickoffAttemptToken;
+  }, [kickoffAttemptToken]);
 
   const settleKickoff = useRef(() => {
     if (settledRef.current) return;
@@ -94,16 +106,18 @@ export function useExpertKickoff({
     onSettledRef.current();
   }).current;
 
-  const fireKickoff = useRef(async (ownerId: string, id: string) => {
-    try {
-      await onKickoffRef.current(id);
-    } catch {
-      clearKickoffPending(ownerId, id);
-      firedRef.current = false;
-      setFailedKickoff({ userId: ownerId, expertId: id });
-      settleKickoff();
-    }
-  }).current;
+  const fireKickoff = useRef(
+    async (ownerId: string, id: string, attemptToken: KickoffAttemptToken) => {
+      try {
+        await onKickoffRef.current(id, attemptToken);
+      } catch {
+        clearKickoffPending(ownerId, id, attemptToken);
+        firedRef.current = false;
+        setFailedKickoff({ userId: ownerId, expertId: id });
+        settleKickoff();
+      }
+    },
+  ).current;
 
   const beginKickoff = useRef((ownerId: string, id: string) => {
     if (firedRef.current) return;
@@ -113,8 +127,13 @@ export function useExpertKickoff({
         firedRef.current = false;
         return;
       }
-      markKickoffPending(ownerId, id);
-      await fireKickoff(ownerId, id);
+      const attemptToken = markKickoffPending(ownerId, id);
+      attemptTokenRef.current = attemptToken;
+      await fireKickoff(ownerId, id, attemptToken);
+    }).catch(() => {
+      firedRef.current = false;
+      setFailedKickoff({ userId: ownerId, expertId: id });
+      settleKickoff();
     });
   }).current;
 
@@ -151,10 +170,22 @@ export function useExpertKickoff({
 
   useEffect(() => {
     if (!isArmed || !userId || !expertId || !sessionId) return;
-    if (sessionExpertId !== expertId || hasPersistedMessages === null) return;
+    if (sessionExpertId !== expertId || hasPersistedExpertHistory === null)
+      return;
 
-    if (hasPersistedMessages) {
-      markKickoffDone(userId, expertId);
+    if (hasPersistedExpertHistory) {
+      const attemptToken = attemptTokenRef.current;
+      if (attemptToken) {
+        void withKickoffLock(userId, expertId, async () => {
+          markKickoffDone(userId, expertId, attemptToken);
+        }).catch(() => undefined);
+      } else {
+        void withKickoffLock(userId, expertId, async () => {
+          if (getKickoffStatus(userId, expertId) !== "idle") return;
+          const historyAttempt = markKickoffPending(userId, expertId);
+          markKickoffDone(userId, expertId, historyAttempt);
+        }).catch(() => undefined);
+      }
       settleKickoff();
       return;
     }
@@ -165,7 +196,7 @@ export function useExpertKickoff({
   }, [
     beginKickoff,
     expertId,
-    hasPersistedMessages,
+    hasPersistedExpertHistory,
     isArmed,
     isClientThreadEmpty,
     sessionExpertId,

@@ -162,6 +162,7 @@ describe("AutoPilot streaming — error paths", () => {
     expect(useCopilotStreamStore.getState().getCoord(TEST_SESSION_ID)).toEqual({
       lastSubmittedMessageText: null,
       lastSubmittedKickoffExpertId: null,
+      lastSubmittedKickoffAttemptToken: null,
     });
     expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
     expect(
