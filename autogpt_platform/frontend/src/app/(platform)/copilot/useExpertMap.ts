@@ -96,14 +96,18 @@ export function useExpertMap() {
   }, [expertsQuery.data]);
 
   return {
-    expertsById: isExpertsEnabled ? expertsById : EMPTY_MAP,
+    expertsById:
+      isExpertsEnabled && !expertsQuery.isError ? expertsById : EMPTY_MAP,
     // A disabled query reports `isPending` forever, so all flags stay gated
     // on the feature flag to remain honest when experts are off.
-    isLoadingExperts: isExpertsEnabled && expertsQuery.isPending,
-    hasLoadedExperts: isExpertsEnabled && expertsQuery.isSuccess,
+    isLoadingExperts: isExpertsEnabled && expertsQuery.isFetching,
+    hasLoadedExperts:
+      isExpertsEnabled && expertsQuery.isSuccess && !expertsQuery.isFetching,
     // Settled = success OR error. resolveExpertIdentity keys off this so an
     // errored roster fetch fails closed (read-only) instead of open.
     hasExpertsSettled:
-      isExpertsEnabled && (expertsQuery.isSuccess || expertsQuery.isError),
+      isExpertsEnabled &&
+      !expertsQuery.isFetching &&
+      (expertsQuery.isSuccess || expertsQuery.isError),
   };
 }
