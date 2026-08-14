@@ -20,10 +20,17 @@ import { useSidebarTeamMembers } from "./useSidebarTeamMembers";
 
 const HIRE_HREF = "/marketplace#experts";
 
+// Caps the nested list so the sidebar's overflow-hidden container can never
+// clip the trailing "Hire" action; the full roster lives on /team.
+export const SIDEBAR_TEAM_PREVIEW_COUNT = 5;
+
 export function SidebarTeamMembers() {
   const { isEnabled, members } = useSidebarTeamMembers();
 
-  if (!isEnabled || members.length === 0) return null;
+  if (!isEnabled) return null;
+
+  const visibleMembers = members.slice(0, SIDEBAR_TEAM_PREVIEW_COUNT);
+  const hasHiddenMembers = members.length > visibleMembers.length;
 
   return (
     <SidebarMenuSub>
@@ -36,9 +43,19 @@ export function SidebarTeamMembers() {
         </SidebarMenuSubButton>
       </SidebarMenuSubItem>
 
-      {members.map((member) => (
+      {visibleMembers.map((member) => (
         <TeamMemberRow key={member.expert.id} member={member} />
       ))}
+
+      {hasHiddenMembers && (
+        <SidebarMenuSubItem>
+          <SidebarMenuSubButton asChild className="text-zinc-500">
+            <Link href="/team">
+              <span className="truncate">View all ({members.length})</span>
+            </Link>
+          </SidebarMenuSubButton>
+        </SidebarMenuSubItem>
+      )}
 
       <SidebarMenuSubItem>
         <SidebarMenuSubButton asChild className="text-zinc-500">

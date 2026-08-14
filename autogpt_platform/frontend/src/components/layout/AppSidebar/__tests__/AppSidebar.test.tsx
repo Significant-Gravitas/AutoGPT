@@ -1,6 +1,7 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import {
   getGetHomeDashboardMockHandler200,
+  getGetHomeDashboardMockHandler401,
   getGetHomeDashboardResponseMock200,
 } from "@/app/api/__generated__/endpoints/home/home.msw";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
@@ -183,6 +184,53 @@ describe("AppSidebar", () => {
     expect(
       screen.getByRole("img", { name: "Needs attention" }).className,
     ).toContain("bg-emerald-500");
+  });
+
+  it("keeps Your AI and Hire visible when the user has no hired experts", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    renderSidebar();
+
+    const yourAi = await screen.findByRole("link", { name: /your ai/i });
+    expect(yourAi.getAttribute("href")).toBe("/copilot");
+    expect(
+      screen.getByRole("link", { name: /^hire$/i }).getAttribute("href"),
+    ).toBe("/marketplace#experts");
+  });
+
+  it("keeps Your AI and Hire visible when the dashboard request fails", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(getGetHomeDashboardMockHandler401());
+    renderSidebar();
+
+    const yourAi = await screen.findByRole("link", { name: /your ai/i });
+    expect(yourAi.getAttribute("href")).toBe("/copilot");
+    expect(
+      screen.getByRole("link", { name: /^hire$/i }).getAttribute("href"),
+    ).toBe("/marketplace#experts");
+  });
+
+  it("caps the member list and keeps Hire reachable via View all", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(
+      getGetHomeDashboardMockHandler200(
+        dashboardWith(
+          Array.from({ length: 8 }, (_, i) =>
+            makeAgent(`expert-${i}`, `Expert ${i}`, "ready"),
+          ),
+        ),
+      ),
+    );
+    renderSidebar();
+
+    expect(await screen.findByRole("link", { name: /Expert 4/ })).toBeDefined();
+    expect(screen.queryByRole("link", { name: /Expert 5/ })).toBeNull();
+
+    const viewAll = screen.getByRole("link", { name: /view all \(8\)/i });
+    expect(viewAll.getAttribute("href")).toBe("/team");
+
+    expect(
+      screen.getByRole("link", { name: /^hire$/i }).getAttribute("href"),
+    ).toBe("/marketplace#experts");
   });
 
   it("omits the nested team members when the hire-experts flag is off", () => {
