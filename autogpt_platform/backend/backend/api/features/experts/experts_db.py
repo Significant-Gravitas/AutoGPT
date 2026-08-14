@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import prisma.errors
@@ -7,19 +8,29 @@ from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertRun,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
 )
 from backend.api.features.library import db as library_db
+from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
+from backend.data.execution import get_graph_execution
 from backend.data.expert_spend import get_weekly_spend
+from backend.data.human_review import get_pending_reviews_for_user
 from backend.data.user import get_user_by_id
+from backend.executor.expert_posts import classify_run_output
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
+_MAX_EXPERT_RUNS = 20
+# One page of the user's pending reviews is enough to flag "needs review" on a
+# recent-runs list; a user with more than this awaiting review has bigger
+# problems than an under-flagged Work card.
+_REVIEW_PAGE_SIZE = 100
 
 
 class ExpertTemplateNotFoundError(Exception):
@@ -139,6 +150,89 @@ async def get_expert(
         return None
     latest_runs = await _latest_runs([row.id])
     return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+
+
+async def list_expert_runs(
+    user_id: str, expert_id: str, limit: int = _MAX_EXPERT_RUNS
+) -> list[ExpertRun]:
+    """Recent expert-attributed executions with a classified output type.
+
+    Owner-scoped: the execution, review and workflow lookups all filter by
+    *user_id*, so one user's Work surface can never surface another's runs.
+    Raises :class:`ExpertNotFoundError` when the expert isn't a live hire of
+    this user.
+    """
+    expert = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        include=_WORKFLOW_INCLUDE,
+    )
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+
+    workflow_by_graph = {
+        w.LibraryAgent.agentGraphId: w
+        for w in expert.Workflows or []
+        if w.LibraryAgent is not None
+    }
+
+    executions = await prisma.models.AgentGraphExecution.prisma().find_many(
+        where={"userId": user_id, "expertId": expert_id, "isDeleted": False},
+        order={"createdAt": "desc"},
+        take=limit,
+    )
+    if not executions:
+        return []
+
+    reviews = await get_pending_reviews_for_user(
+        user_id, page=1, page_size=_REVIEW_PAGE_SIZE
+    )
+    reviewing = {review.graph_exec_id for review in reviews}
+    output_types = await asyncio.gather(
+        *(_run_output_type(user_id, execution.id) for execution in executions)
+    )
+
+    return [
+        _to_expert_run(
+            execution,
+            workflow_by_graph.get(execution.agentGraphId),
+            output_type,
+            needs_review=execution.id in reviewing,
+        )
+        for execution, output_type in zip(executions, output_types)
+    ]
+
+
+def _to_expert_run(
+    execution: prisma.models.AgentGraphExecution,
+    workflow: prisma.models.ExpertWorkflow | None,
+    output_type: str,
+    *,
+    needs_review: bool,
+) -> ExpertRun:
+    listing = workflow.StoreListingVersion if workflow else None
+    library_agent_id = workflow.libraryAgentId if workflow else None
+    return ExpertRun(
+        execution_id=execution.id,
+        graph_id=execution.agentGraphId,
+        agent_name=listing.name if listing else DEFAULT_AGENT_NAME,
+        library_agent_id=library_agent_id,
+        status=str(execution.executionStatus),
+        output_type=output_type,
+        needs_review=needs_review,
+        started_at=execution.startedAt,
+        ended_at=execution.endedAt,
+        link=run_link(library_agent_id, execution.id),
+    )
+
+
+async def _run_output_type(user_id: str, execution_id: str) -> str:
+    execution = await get_graph_execution(user_id=user_id, execution_id=execution_id)
+    return classify_run_output(execution.outputs) if execution else "unknown"
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:

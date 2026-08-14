@@ -8,6 +8,42 @@ import {
 const SESSION_ID = "sess-test";
 
 describe("convertChatSessionMessagesToUiMessages", () => {
+  it("keeps a run-post as its own bubble carrying run metadata", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "assistant", content: "Earlier turn.", sequence: 0 },
+        {
+          role: "assistant",
+          content: "I just finished a run.",
+          sequence: 1,
+          metadata: {
+            kind: "expert_run",
+            execution_id: "exec-1",
+            graph_id: "graph-1",
+            output_type: "table",
+          },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    // The run-post is not folded into the preceding assistant bubble.
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does not attach metadata to legacy assistant messages", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "assistant", content: "Plain reply.", sequence: 0 }],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].metadata).toBeUndefined();
+  });
+
   it("does not drop user messages with null content", () => {
     const result = convertChatSessionMessagesToUiMessages(
       SESSION_ID,

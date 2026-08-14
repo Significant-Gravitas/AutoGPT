@@ -1065,12 +1065,15 @@ async def append_expert_run_message(
     expert_id: str,
     content: str,
     message_id: str,
+    metadata: dict[str, Any] | None = None,
 ) -> str | None:
     """Post an assistant message into the expert's latest thread, creating a
     thread when none exists — run results land in her workspace, not a void.
 
     Deduplicates on *message_id* (deterministic per event at the caller), so
     executor retries and double-fires never produce duplicate posts.
+    ``metadata`` rides on the row's JSONB bag so the thread can render a
+    structured work card; ``None`` keeps legacy posts rendering as plain text.
     Returns the session id the message landed in, or None when deduped.
     """
     existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
@@ -1101,6 +1104,7 @@ async def append_expert_run_message(
                 sequence=await get_next_sequence(session_id),
                 content=content,
                 message_id=message_id,
+                metadata=metadata,
             )
         except UniqueViolationError as e:
             if is_duplicate_chat_message_id_error(e):
@@ -1114,6 +1118,7 @@ async def append_expert_run_message(
                 sequence=await get_next_sequence(session_id),
                 content=content,
                 message_id=message_id,
+                metadata=metadata,
             )
     return session_id
 

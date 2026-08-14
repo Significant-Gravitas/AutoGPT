@@ -48,6 +48,22 @@ class Expert(BaseModel):
     schedules_paused_at: datetime | None = None
 
 
+class ExpertRun(BaseModel):
+    """One expert-attributed execution, for the /team Work surface."""
+
+    execution_id: str
+    graph_id: str
+    agent_name: str
+    library_agent_id: str | None
+    status: str
+    # "table" | "doc" | "image" | "unknown" — drives the typed viewer.
+    output_type: str
+    needs_review: bool
+    started_at: datetime | None
+    ended_at: datetime | None
+    link: str | None
+
+
 class ExpertDetachPreview(BaseModel):
     """What archiving the expert would pause — drives the confirm dialog."""
 

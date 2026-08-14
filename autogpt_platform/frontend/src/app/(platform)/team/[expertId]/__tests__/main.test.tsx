@@ -1,7 +1,9 @@
 import {
   getGetExpertMockHandler,
+  getListExpertRunsMockHandler,
   getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { ExpertRun } from "@/app/api/__generated__/models/expertRun";
 import {
   getDeleteV1DeleteExecutionScheduleMockHandler,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
@@ -111,10 +113,38 @@ const mariaSchedule: GraphExecutionJobInfo = {
   expert_id: "expert-maria",
 };
 
+const mariaRuns: ExpertRun[] = [
+  {
+    execution_id: "run-1",
+    graph_id: "graph-1",
+    agent_name: "Weekly Report",
+    library_agent_id: "lib-1",
+    status: "COMPLETED",
+    output_type: "table",
+    needs_review: false,
+    started_at: null,
+    ended_at: null,
+    link: "/library/agents/lib-1?activeTab=runs&activeItem=run-1",
+  },
+  {
+    execution_id: "run-2",
+    graph_id: "graph-2",
+    agent_name: "SEO Audit",
+    library_agent_id: "lib-2",
+    status: "COMPLETED",
+    output_type: "doc",
+    needs_review: true,
+    started_at: null,
+    ended_at: null,
+    link: "/library/agents/lib-2?activeTab=runs&activeItem=run-2",
+  },
+];
+
 beforeEach(() => {
   server.use(
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([mariaSchedule]),
+    getListExpertRunsMockHandler([]),
   );
 });
 
@@ -172,6 +202,39 @@ describe("ExpertDetailPage", () => {
 
     await screen.findByRole("heading", { name: "Maria" });
     expect(screen.getByText(/No schedules yet/)).toBeDefined();
+  });
+
+  test("shows the expert's recent work with a review badge", async () => {
+    server.use(getListExpertRunsMockHandler(mariaRuns));
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    const workList = await screen.findByRole("list", { name: "Expert work" });
+    expect(within(workList).getByText("Weekly Report")).toBeDefined();
+    expect(within(workList).getByText("Needs review")).toBeDefined();
+  });
+
+  test("filters work to runs that need review", async () => {
+    server.use(getListExpertRunsMockHandler(mariaRuns));
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    await screen.findByRole("list", { name: "Expert work" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Needs review \(1\)/ }));
+
+    const workList = screen.getByRole("list", { name: "Expert work" });
+    expect(within(workList).queryByText("Weekly Report")).toBeNull();
+    expect(within(workList).getByText("SEO Audit")).toBeDefined();
+  });
+
+  test("shows an empty work message when there is no completed work", async () => {
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    expect(await screen.findByText(/No completed work yet/)).toBeDefined();
   });
 
   test("paused expert offers one-click resume", async () => {

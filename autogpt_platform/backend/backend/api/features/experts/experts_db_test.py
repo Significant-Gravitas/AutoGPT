@@ -709,3 +709,47 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
+
+
+# ─── Work surface: run composition (pure, no DB) ────────────────────────
+
+
+def _run_execution(**overrides) -> SimpleNamespace:
+    values = {
+        "id": "exec-1",
+        "agentGraphId": "graph-1",
+        "executionStatus": "COMPLETED",
+        "startedAt": None,
+        "endedAt": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _run_workflow(name: str = "SEO Blog Writer") -> SimpleNamespace:
+    return SimpleNamespace(
+        libraryAgentId="library-agent-1",
+        StoreListingVersion=SimpleNamespace(name=name),
+    )
+
+
+def test_to_expert_run_uses_workflow_name_and_deep_link():
+    run = experts_db._to_expert_run(
+        _run_execution(), _run_workflow(), "table", needs_review=True
+    )
+    assert run.execution_id == "exec-1"
+    assert run.agent_name == "SEO Blog Writer"
+    assert run.output_type == "table"
+    assert run.needs_review is True
+    assert run.link == (
+        "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1"
+    )
+
+
+def test_to_expert_run_falls_back_when_workflow_unresolved():
+    run = experts_db._to_expert_run(
+        _run_execution(), None, "unknown", needs_review=False
+    )
+    assert run.agent_name == "Agent task"
+    assert run.library_agent_id is None
+    assert run.link is None

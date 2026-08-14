@@ -31,6 +31,8 @@ import {
 } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
+import { WorkCard } from "../WorkCard/WorkCard";
+import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
@@ -552,6 +554,34 @@ export function ChatMessagesContainer({
           </div>
         )}
         {messages.map((message, messageIndex) => {
+          // A run-post rides structured metadata — render a compact WorkCard
+          // instead of the raw markdown wall (legacy posts have no metadata
+          // and fall through to normal rendering).
+          const runMetadata = getWorkRunMetadata(message.metadata);
+          if (runMetadata) {
+            const preview = toPreview(
+              message.parts
+                .filter(
+                  (p): p is Extract<typeof p, { type: "text" }> =>
+                    p.type === "text",
+                )
+                .map((p) => p.text)
+                .join(" "),
+            );
+            return (
+              <Message
+                from={message.role}
+                key={message.id}
+                data-message-id={message.id}
+                className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+              >
+                <MessageContent className="group-[.is-assistant]:bg-transparent">
+                  <WorkCard metadata={runMetadata} preview={preview} />
+                </MessageContent>
+              </Message>
+            );
+          }
+
           const isLastAssistant =
             messageIndex === messages.length - 1 &&
             message.role === "assistant";

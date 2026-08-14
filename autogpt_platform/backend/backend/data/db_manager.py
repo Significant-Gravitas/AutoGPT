@@ -552,6 +552,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Executions
     get_graph_executions = _(d.get_graph_executions)
+    get_graph_execution = _(d.get_graph_execution)
     get_graph_executions_count = _(d.get_graph_executions_count)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
     get_node_executions = _(d.get_node_executions)

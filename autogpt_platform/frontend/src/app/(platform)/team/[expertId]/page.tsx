@@ -20,6 +20,7 @@ import { notFound, useParams } from "next/navigation";
 import { getLastRunLabel } from "../helpers";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
+import { ExpertWorkSection } from "./components/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
@@ -170,6 +171,11 @@ export default function ExpertDetailPage() {
           </div>
         </section>
       ) : null}
+
+      <ExpertWorkSection
+        expertId={expert.id}
+        enabled={Boolean(enabled) && ready}
+      />
 
       <ExpertSchedulesSection
         expertName={expert.name}
