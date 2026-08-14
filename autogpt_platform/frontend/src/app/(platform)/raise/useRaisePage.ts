@@ -93,7 +93,7 @@ export function useRaisePage() {
       if (draft.firstJob && !result.first_job_installed) {
         toast({
           title: `Couldn't set up ${result.expert.name}'s first job`,
-          description: `You can install "${draft.firstJob.name}" from her page anytime.`,
+          description: `You can install "${draft.firstJob.name}" from ${result.expert.name}'s page anytime.`,
           variant: "default",
         });
       }

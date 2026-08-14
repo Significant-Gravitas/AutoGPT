@@ -255,6 +255,7 @@ test("surfaces a failed first-job install and skips kickoff", async () => {
   expect(
     await screen.findByText("Couldn't set up Otto's first job"),
   ).toBeDefined();
+  expect(screen.getByText(/from Otto's page anytime/)).toBeDefined();
   await waitFor(() =>
     expect(pushMock).toHaveBeenCalledWith("/copilot?expertId=raised-1"),
   );

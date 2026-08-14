@@ -21,7 +21,12 @@ from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
 
-_RAISED_IDENTITY = "I'm {name}, raised by you. I learn how you work and grow with you."
+
+def _raised_identity(name: str) -> str:
+    # f-string, not str.format on a template: user names may contain { or },
+    # which str.format would choke on.
+    return f"I'm {name}, raised by you. I learn how you work and grow with you."
+
 
 # Cap on active (non-archived) experts per user: raising is unbounded by
 # any unique index, and each expert amplifies list_experts with workflow
@@ -291,7 +296,7 @@ async def create_raised_expert(
                 "ownerUserId": user_id,
                 "name": name,
                 "role": role or "",
-                "identity": _RAISED_IDENTITY.format(name=name),
+                "identity": _raised_identity(name),
                 "voicePreferences": voice_preferences or "",
             }
         )
@@ -299,6 +304,11 @@ async def create_raised_expert(
     first_job_installed = False
     if first_job_store_listing_version_id is not None:
         try:
+            # Re-validate right before installing: the pre-create check
+            # happened outside any lock, and the shared install path
+            # authorizes by graph — a listing withdrawn in between must
+            # degrade to first_job_installed=False, not slip through.
+            await _validate_first_job_listing(first_job_store_listing_version_id)
             await install_workflow(
                 user_id, expert.id, first_job_store_listing_version_id
             )

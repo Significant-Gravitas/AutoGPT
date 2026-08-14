@@ -223,6 +223,35 @@ async def test_raise_expert_reports_failed_first_job(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_handles_braces_in_name(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(owner.id, "a{b", None, None, None)
+    assert raised.expert.name == "a{b"
+    assert "a{b" in raised.expert.identity
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_degrades_when_first_job_vanishes_mid_flight(
+    server: SpinTestServer,
+):
+    """Pre-create validation passes, but the listing is withdrawn before the
+    install — the raise must degrade honestly, not link the stale row."""
+    owner = await _create_seed_user()
+    slv_id = await _seed_store_listing(server)
+    with patch.object(
+        experts_db,
+        "_validate_first_job_listing",
+        new_callable=AsyncMock,
+        side_effect=[None, experts_db.FirstJobUnavailableError(slv_id)],
+    ):
+        raised = await experts_db.create_raised_expert(
+            owner.id, "Otto", None, None, slv_id
+        )
+    assert raised.expert.workflows == []
+    assert raised.first_job_installed is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_rejects_unapproved_first_job(server: SpinTestServer):
     owner = await _create_seed_user()
     pending_slv_id = await _seed_store_listing(server, approved=False)

@@ -6,7 +6,7 @@ import {
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
@@ -108,7 +108,24 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
     expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+    expect(screen.queryByText(/raise your own expert/)).toBeNull();
     expect(templatesRequested).toBe(false);
+  });
+
+  test("keeps the raise-your-own door open when no templates exist", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/raise your own expert from scratch/),
+      ).toBeDefined();
+      expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+    });
   });
 
   test("hired template shows hired state", async () => {

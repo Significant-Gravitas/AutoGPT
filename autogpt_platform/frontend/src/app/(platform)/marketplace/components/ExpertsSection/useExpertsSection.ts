@@ -26,6 +26,7 @@ export function useExpertsSection() {
   );
 
   return {
+    isLoggedIn,
     templates: templatesQuery.data ?? [],
     hiredTemplateIds,
     isLoading: isLoggedIn && templatesQuery.isLoading,
