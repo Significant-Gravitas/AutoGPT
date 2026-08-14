@@ -1199,7 +1199,7 @@ class AIConversationBlock(AIBlockBase):
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="The prompt to send to the language model.",
-            placeholder="Enter your prompt here...",
+            placeholder="Enter the prompt here...",
             default="",
             advanced=False,
         )
@@ -1384,19 +1384,6 @@ class AIListGeneratorBlock(AIBlockBase):
                 "max_retries": 3,
                 "force_json_output": False,
             },
-            test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                (
-                    "generated_list",
-                    ["Zylora Prime", "Kharon-9", "Vortexia", "Oceara", "Draknos"],
-                ),
-                ("prompt", list),
-                ("list_item", "Zylora Prime"),
-                ("list_item", "Kharon-9"),
-                ("list_item", "Vortexia"),
-                ("list_item", "Oceara"),
-                ("list_item", "Draknos"),
-            ],
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
