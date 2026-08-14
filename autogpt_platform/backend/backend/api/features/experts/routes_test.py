@@ -21,8 +21,6 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertPod,
-    ExpertPodMember,
-    ExpertPodWithMembers,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -445,18 +443,6 @@ def _make_pod(**overrides) -> ExpertPod:
     return ExpertPod(**values)
 
 
-def _make_pod_member(**overrides) -> ExpertPodMember:
-    values = {
-        "id": "expert-1",
-        "name": "Maria",
-        "avatar_url": None,
-        "role": "Marketing Specialist",
-        "is_archived": False,
-    }
-    values.update(overrides)
-    return ExpertPodMember(**values)
-
-
 def test_create_pod_returns_pod(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -531,21 +517,15 @@ def test_create_pod_duplicate_name_returns_409(
     assert response.status_code == 409
 
 
-def test_list_pods_returns_pods_with_members(
+def test_list_pods_returns_user_pods(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
     configured_snapshot: Snapshot,
 ) -> None:
-    pod = ExpertPodWithMembers(
-        id="pod-1",
-        name="Growth",
-        created_at="2026-08-14T00:00:00Z",
-        members=[_make_pod_member()],
-    )
     mock_list = mocker.patch(
         "backend.api.features.experts.routes.experts_db.list_pods",
         new_callable=AsyncMock,
-        return_value=[pod],
+        return_value=[_make_pod()],
     )
 
     response = client.get("/experts/pods")
@@ -553,11 +533,9 @@ def test_list_pods_returns_pods_with_members(
     assert response.status_code == 200
     data = response.json()
     assert data[0]["id"] == "pod-1"
-    assert data[0]["members"][0]["id"] == "expert-1"
-    # The member payload is the display summary only — it must not claim
-    # runtime fields (last run, weekly spend) that the listing never loads.
-    assert "weekly_spend" not in data[0]["members"][0]
-    assert "last_run_at" not in data[0]["members"][0]
+    # Membership is not embedded — clients group from Expert.pod_id, so the
+    # listing must not carry a members payload at all.
+    assert "members" not in data[0]
     mock_list.assert_awaited_once_with(test_user_id)
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_pods_list"

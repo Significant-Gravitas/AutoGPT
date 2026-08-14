@@ -8,7 +8,6 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertDetachPreview,
     ExpertPod,
-    ExpertPodWithMembers,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -96,7 +95,7 @@ async def create_expert_pod(
 @router.get("/pods", operation_id="list_expert_pods")
 async def list_expert_pods(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> list[ExpertPodWithMembers]:
+) -> list[ExpertPod]:
     return await experts_db.list_pods(user_id)
 
 

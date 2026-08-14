@@ -8,8 +8,6 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertPod,
-    ExpertPodMember,
-    ExpertPodWithMembers,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -433,16 +431,6 @@ def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
     return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)
 
 
-def _to_pod_member(row: prisma.models.Expert) -> ExpertPodMember:
-    return ExpertPodMember(
-        id=row.id,
-        name=row.name,
-        avatar_url=row.avatarUrl,
-        role=row.role,
-        is_archived=row.isArchived,
-    )
-
-
 async def create_pod(user_id: str, name: str) -> ExpertPod:
     try:
         row = await prisma.models.ExpertPod.prisma().create(
@@ -453,21 +441,12 @@ async def create_pod(user_id: str, name: str) -> ExpertPod:
     return _to_pod(row)
 
 
-async def list_pods(user_id: str) -> list[ExpertPodWithMembers]:
+async def list_pods(user_id: str) -> list[ExpertPod]:
     rows = await prisma.models.ExpertPod.prisma().find_many(
         where={"userId": user_id},
-        include={"Experts": {"where": {"isTemplate": False, "isArchived": False}}},
         order={"createdAt": "asc"},
     )
-    return [
-        ExpertPodWithMembers(
-            id=row.id,
-            name=row.name,
-            created_at=row.createdAt,
-            members=[_to_pod_member(member) for member in row.Experts or []],
-        )
-        for row in rows
-    ]
+    return [_to_pod(row) for row in rows]
 
 
 async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert:

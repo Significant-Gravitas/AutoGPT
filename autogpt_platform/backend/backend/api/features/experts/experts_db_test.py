@@ -721,7 +721,7 @@ def _pod_name(prefix: str = "Pod") -> str:
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_create_and_list_pod_with_members(server: SpinTestServer, test_user):
+async def test_create_pod_and_assign_membership(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
@@ -734,11 +734,9 @@ async def test_create_and_list_pod_with_members(server: SpinTestServer, test_use
     matching = [p for p in pods if p.id == pod.id]
     assert len(matching) == 1
     assert matching[0].name == name
-    assert {m.id for m in matching[0].members} == {hired.expert.id}
-    member = next(m for m in matching[0].members if m.id == hired.expert.id)
-    assert member.name == hired.expert.name
-    assert member.role == hired.expert.role
-    assert member.is_archived is False
+    # Membership is read off the expert list, not the pod payload.
+    experts = await experts_db.list_experts(test_user.id)
+    assert {e.id for e in experts if e.pod_id == pod.id} == {hired.expert.id}
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -779,6 +777,42 @@ async def test_assign_pod_rejects_other_users_pod(
 
     with pytest.raises(experts_db.ExpertPodNotFoundError):
         await experts_db.assign_pod(test_user.id, hired.expert.id, foreign_pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_rejects_other_users_expert(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    their_hire = await experts_db.hire_expert(other_user.id, template.id, None)
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.assign_pod(test_user.id, their_hire.expert.id, pod.id)
+
+    theirs = await experts_db.get_expert(other_user.id, their_hire.expert.id)
+    assert theirs is not None
+    assert theirs.pod_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_rejects_template_expert(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.assign_pod(test_user.id, template.id, pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_rejects_archived_expert(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
 
 
 @pytest.mark.asyncio(loop_scope="session")

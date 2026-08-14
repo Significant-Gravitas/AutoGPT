@@ -11,9 +11,10 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { ExpertPodWithMembers } from "@/app/api/__generated__/models/expertPodWithMembers";
+import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import {
   fireEvent,
   render,
@@ -445,11 +446,10 @@ describe("TeamPage", () => {
   });
 
   test("groups experts under their pod with ungrouped members below", async () => {
-    const growthPod: ExpertPodWithMembers = {
+    const growthPod: ExpertPod = {
       id: "pod-growth",
       name: "Growth",
       created_at: new Date("2026-08-14T00:00:00Z"),
-      members: [],
     };
     const poddedMaria: Expert = { ...hiredMaria, pod_id: "pod-growth" };
     const lee: Expert = {
@@ -458,8 +458,15 @@ describe("TeamPage", () => {
       name: "Lee",
       pod_id: null,
     };
+    const archivedPoddedSam: Expert = {
+      ...hiredMaria,
+      id: "expert-sam",
+      name: "Sam",
+      pod_id: "pod-growth",
+      is_archived: true,
+    };
     server.use(
-      getListExpertsMockHandler([poddedMaria, lee]),
+      getListExpertsMockHandler([poddedMaria, lee, archivedPoddedSam]),
       getListExpertPodsMockHandler([growthPod]),
     );
 
@@ -468,14 +475,22 @@ describe("TeamPage", () => {
     const podHeader = await screen.findByRole("heading", { name: "Growth" });
     const maria = await screen.findByText("Maria");
     const leeNode = await screen.findByText("Lee");
-    // Maria sits under the pod header; Lee is ungrouped further down.
+    // Maria sits under the pod header; Lee is ungrouped under "No pod".
+    const noPodHeader = screen.getByRole("heading", { name: "No pod" });
     expect(
       podHeader.compareDocumentPosition(maria) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      maria.compareDocumentPosition(leeNode) & Node.DOCUMENT_POSITION_FOLLOWING,
+      maria.compareDocumentPosition(noPodHeader) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    expect(
+      noPodHeader.compareDocumentPosition(leeNode) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Archived experts never render, even with a pod_id.
+    expect(screen.queryByText("Sam")).toBeNull();
   });
 
   test("creates a pod from the New pod dialog", async () => {
@@ -504,13 +519,45 @@ describe("TeamPage", () => {
     await waitFor(() => expect(createdName).toBe("Growth"));
   });
 
+  test("keeps the New pod dialog open and shows the reason when creation fails", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.post("/api/proxy/api/experts/pods", () =>
+        HttpResponse.json(
+          { detail: "A pod named 'Growth' already exists" },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "New pod" }));
+    const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
+    await user.type(nameInput, "Growth");
+    await user.click(screen.getByRole("button", { name: "Create pod" }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Could not create pod",
+          description: "A pod named 'Growth' already exists",
+          variant: "destructive",
+        }),
+      ),
+    );
+    // The dialog must survive the failure with the typed name intact.
+    expect(screen.getByRole("dialog", { name: "New pod" })).toBeDefined();
+    expect((nameInput as HTMLInputElement).value).toBe("Growth");
+  });
+
   test("moves an expert into a pod from the card menu", async () => {
     const user = userEvent.setup();
-    const growthPod: ExpertPodWithMembers = {
+    const growthPod: ExpertPod = {
       id: "pod-growth",
       name: "Growth",
       created_at: new Date("2026-08-14T00:00:00Z"),
-      members: [],
     };
     let assignedPodId: string | null | undefined;
     server.use(

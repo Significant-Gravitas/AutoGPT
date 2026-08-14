@@ -9,7 +9,7 @@ CREATE TABLE "ExpertPod" (
 );
 
 -- CreateIndex
-CREATE INDEX "ExpertPod_userId_idx" ON "ExpertPod"("userId");
+CREATE UNIQUE INDEX "ExpertPod_userId_name_key" ON "ExpertPod"("userId", "name");
 
 -- AlterTable
 ALTER TABLE "Expert" ADD COLUMN "podId" TEXT;

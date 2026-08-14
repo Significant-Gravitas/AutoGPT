@@ -8,9 +8,9 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { ExpertPodWithMembers } from "@/app/api/__generated__/models/expertPodWithMembers";
+import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { okData } from "@/app/api/helpers";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { getExpertSchedules, groupExpertsByPods } from "./helpers";
@@ -21,7 +21,6 @@ interface Args {
 
 export function useTeamPage({ enabled }: Args) {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const [pickerExpertId, setPickerExpertId] = useState<string | null>(null);
   const [soulExpertId, setSoulExpertId] = useState<string | null>(null);
   const [soulDrawerKey, setSoulDrawerKey] = useState(0);
@@ -32,7 +31,7 @@ export function useTeamPage({ enabled }: Args) {
   });
   const podsQuery = useListExpertPods({
     query: {
-      select: (res) => (okData(res) ?? []) as ExpertPodWithMembers[],
+      select: (res) => (okData(res) ?? []) as ExpertPod[],
       enabled,
     },
   });
@@ -52,8 +51,15 @@ export function useTeamPage({ enabled }: Args) {
           invalidateExperts();
           setIsNewPodOpen(false);
         },
-        onError: () => {
-          toast({ title: "Could not create pod", variant: "destructive" });
+        onError: (error) => {
+          // The dialog stays open (it only closes on success) so the typed
+          // name survives; surface the server's reason, e.g. the 409's
+          // "already exists" detail.
+          toast({
+            title: "Could not create pod",
+            description: error instanceof Error ? error.message : undefined,
+            variant: "destructive",
+          });
         },
       },
     });

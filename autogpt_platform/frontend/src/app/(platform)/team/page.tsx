@@ -137,7 +137,18 @@ export default function TeamPage() {
             </section>
           ))}
           {ungroupedExperts.length > 0 ? (
-            <div className={GRID_CLASS}>{ungroupedExperts.map(renderCard)}</div>
+            <section className="space-y-3">
+              <div className="flex items-baseline gap-2">
+                <Text variant="h4">No pod</Text>
+                <Text variant="small" className="text-zinc-500">
+                  {ungroupedExperts.length}{" "}
+                  {ungroupedExperts.length === 1 ? "expert" : "experts"}
+                </Text>
+              </div>
+              <div className={GRID_CLASS}>
+                {ungroupedExperts.map(renderCard)}
+              </div>
+            </section>
           ) : null}
         </div>
       )}
