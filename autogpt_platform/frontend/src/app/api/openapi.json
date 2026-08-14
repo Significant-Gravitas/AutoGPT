@@ -5644,45 +5644,6 @@
         }
       }
     },
-    "/api/experts/{expert_id}/schedules/resume": {
-      "post": {
-        "tags": ["v2", "experts", "experts", "private"],
-        "summary": "Resume Expert Schedules",
-        "description": "One-click reversal of a budget/archive pause.",
-        "operationId": "resume_expert_schedules",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "expert_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Expert Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Expert" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "404": { "description": "Expert not found" },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/experts/{expert_id}/runs": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -5708,6 +5669,45 @@
                   "items": { "$ref": "#/components/schemas/ExpertRun" },
                   "title": "Response List Expert Runs"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/schedules/resume": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Resume Expert Schedules",
+        "description": "One-click reversal of a budget/archive pause.",
+        "operationId": "resume_expert_schedules",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
               }
             }
           },
@@ -17793,6 +17793,24 @@
         ],
         "title": "Expert"
       },
+      "ExpertDetachPreview": {
+        "properties": {
+          "schedule_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Schedule Names"
+          },
+          "trigger_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Trigger Names"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_names", "trigger_names"],
+        "title": "ExpertDetachPreview",
+        "description": "What archiving the expert would pause — drives the confirm dialog."
+      },
       "ExpertRun": {
         "properties": {
           "execution_id": { "type": "string", "title": "Execution Id" },
@@ -17839,24 +17857,6 @@
         ],
         "title": "ExpertRun",
         "description": "One expert-attributed execution, for the /team Work surface."
-      },
-      "ExpertDetachPreview": {
-        "properties": {
-          "schedule_names": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Schedule Names"
-          },
-          "trigger_names": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Trigger Names"
-          }
-        },
-        "type": "object",
-        "required": ["schedule_names", "trigger_names"],
-        "title": "ExpertDetachPreview",
-        "description": "What archiving the expert would pause — drives the confirm dialog."
       },
       "ExpertSoulUpdate": {
         "properties": {
