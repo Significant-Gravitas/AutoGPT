@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -763,13 +764,16 @@ def _output_node_exec(
     *,
     execution_data: dict | None = None,
     added_minutes: int = 0,
+    queued_minutes: int | None = None,
 ) -> SimpleNamespace:
-    from datetime import datetime, timedelta, timezone
-
     base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
     return SimpleNamespace(
         executionData=execution_data,
-        queuedTime=None,
+        queuedTime=(
+            base + timedelta(minutes=queued_minutes)
+            if queued_minutes is not None
+            else None
+        ),
         addedTime=base + timedelta(minutes=added_minutes),
         Input=(
             [
@@ -801,6 +805,16 @@ def test_outputs_from_node_execs_prefers_execution_data_and_orders_by_time():
             _output_node_exec(
                 "", None, execution_data={"name": "rows", "value": 1}, added_minutes=1
             ),
+        ]
+    )
+    assert outputs == {"rows": [1, 2]}
+
+
+def test_outputs_from_node_execs_orders_mixed_timestamps_chronologically():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec("rows", 2, added_minutes=0, queued_minutes=5),
+            _output_node_exec("rows", 1, added_minutes=1),
         ]
     )
     assert outputs == {"rows": [1, 2]}

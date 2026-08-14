@@ -218,9 +218,14 @@ def _make_run(**overrides) -> ExpertRun:
         "needs_review": False,
         "started_at": None,
         "ended_at": None,
-        "link": "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1",
     }
     values.update(overrides)
+    values["link"] = overrides.get(
+        "link",
+        "/library/agents/"
+        f"{values['library_agent_id']}?activeTab=runs&activeItem="
+        f"{values['execution_id']}",
+    )
     return ExpertRun(**values)
 
 

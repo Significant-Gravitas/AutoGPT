@@ -75,10 +75,16 @@ export function cellText(value: unknown): string {
   return String(value);
 }
 
-// Leading whitespace/control characters followed by a formula trigger —
-// Excel and LibreOffice both strip the leading junk before evaluating.
-// eslint-disable-next-line no-control-regex
-const FORMULA_PREFIX_RE = /^[\s\u0000-\u001f\u007f]*[=+\-@]/;
+const FORMULA_TRIGGER_CHARS = new Set(["=", "+", "-", "@"]);
+
+function hasFormulaPrefix(text: string): boolean {
+  for (const char of text) {
+    if (FORMULA_TRIGGER_CHARS.has(char)) return true;
+    const code = char.charCodeAt(0);
+    if (char.trim() !== "" && code > 0x1f && code !== 0x7f) return false;
+  }
+  return false;
+}
 
 /**
  * Neutralize spreadsheet-formula injection: any untrusted *string* cell (or
@@ -88,7 +94,7 @@ const FORMULA_PREFIX_RE = /^[\s\u0000-\u001f\u007f]*[=+\-@]/;
  */
 function neutralizeFormula(value: unknown, text: string): string {
   if (typeof value === "number" || typeof value === "boolean") return text;
-  return FORMULA_PREFIX_RE.test(text) ? `'${text}` : text;
+  return hasFormulaPrefix(text) ? `'${text}` : text;
 }
 
 export function toCsv(
@@ -97,7 +103,7 @@ export function toCsv(
 ): string {
   const escape = (value: unknown) => {
     const text = neutralizeFormula(value, cellText(value));
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
   const header = columns.map(escape).join(",");
   const body = rows

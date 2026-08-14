@@ -12,6 +12,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import Link from "next/link";
 import {
   asTableRows,
   cellText,
@@ -209,9 +210,9 @@ function OutputTable({
           {runLink ? (
             <>
               {" — "}
-              <a href={runLink} className="underline">
+              <Link href={runLink} className="underline">
                 open the full run
-              </a>{" "}
+              </Link>{" "}
               for everything
             </>
           ) : null}
