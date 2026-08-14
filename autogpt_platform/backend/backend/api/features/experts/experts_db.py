@@ -125,9 +125,8 @@ async def list_experts(user_id: str, include_archived: bool = False) -> list[Exp
         include=_WORKFLOW_INCLUDE,
     )
     latest_runs = await _latest_runs([row.id for row in rows])
-    # Concurrent Redis reads: this list runs on every copilot mount (with
-    # include_archived spanning the lifetime roster), so serial per-expert
-    # round-trips would scale chat load linearly with fire count.
+    # Keep team and marketplace roster loads from serializing one Redis
+    # round-trip per active expert.
     weekly_spends = await asyncio.gather(*(get_weekly_spend(row.id) for row in rows))
     return [
         _to_model(row, latest_runs.get(row.id), spend)

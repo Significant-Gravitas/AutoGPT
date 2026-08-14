@@ -86,7 +86,7 @@ export function useCopilotPage() {
     [activeExpertId, expertsById, hasExpertsSettled],
   );
   const isResolvingExpertIdentity = Boolean(
-    activeExpertId && !hasExpertsSettled,
+    isExpertsEnabled && activeExpertId && !hasExpertsSettled,
   );
 
   const {

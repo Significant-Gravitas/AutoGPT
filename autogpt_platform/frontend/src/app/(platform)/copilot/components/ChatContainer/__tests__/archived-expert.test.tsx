@@ -38,6 +38,28 @@ vi.mock(
 );
 
 vi.mock(
+  "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider",
+  () => ({
+    CopilotChatActionsProvider: ({
+      onSend,
+      children,
+    }: {
+      onSend: (message: string) => void;
+      children: React.ReactNode;
+    }) => (
+      <>
+        <button
+          type="button"
+          data-testid="provider-send"
+          onClick={() => onSend("Send from a historical tool card")}
+        />
+        {children}
+      </>
+    ),
+  }),
+);
+
+vi.mock(
   "@/app/(platform)/copilot/components/UsageLimits/useIsUsageLimitReached",
   () => ({
     useIsUsageLimitReached: () => false,
@@ -113,6 +135,36 @@ describe("ChatContainer — archived expert", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("blocks send actions from historical tool cards on an archived thread", () => {
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        expertIdentity={{ ...mariaIdentity, isArchived: true }}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("provider-send"));
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("blocks historical tool-card sends while expert identity is unresolved", () => {
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        isResolvingExpertIdentity
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("provider-send"));
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("retries the last user message on an active thread", () => {
     const onSend = vi.fn();
     render(
@@ -126,5 +178,20 @@ describe("ChatContainer — archived expert", () => {
     fireEvent.click(screen.getByTestId("error-retry"));
 
     expect(onSend).toHaveBeenCalledWith("Plan my week");
+  });
+
+  it("keeps historical tool-card sends available on an active thread", () => {
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        expertIdentity={mariaIdentity}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("provider-send"));
+
+    expect(onSend).toHaveBeenCalledWith("Send from a historical tool card");
   });
 });

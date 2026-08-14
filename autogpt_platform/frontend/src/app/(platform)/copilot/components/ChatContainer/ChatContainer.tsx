@@ -135,6 +135,8 @@ export const ChatContainer = ({
   // A fired (archived) expert's threads stay as read-only history — the
   // composer is replaced by a quiet notice so no new turns can be sent.
   const isExpertArchived = Boolean(expertIdentity?.isArchived);
+  const isSendLocked = isExpertArchived || !!isResolvingExpertIdentity;
+  const guardedOnSend = isSendLocked ? () => undefined : onSend;
   const inputLayoutId = "copilot-2-chat-input";
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
@@ -176,7 +178,7 @@ export const ChatContainer = ({
   }, [isExpertArchived, isResolvingExpertIdentity, messages, onSend]);
 
   return (
-    <CopilotChatActionsProvider onSend={onSend}>
+    <CopilotChatActionsProvider onSend={guardedOnSend}>
       <LayoutGroup id="copilot-2-chat-layout">
         <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
           {sessionId ? (
@@ -243,7 +245,7 @@ export const ChatContainer = ({
                       <div>
                         <ChatInput
                           inputId="chat-input-session"
-                          onSend={onSend}
+                          onSend={guardedOnSend}
                           disabled={isInputDisabled}
                           isStreaming={isStreaming}
                           isUploadingFiles={isUploadingFiles}
@@ -269,10 +271,11 @@ export const ChatContainer = ({
               inputLayoutId={inputLayoutId}
               isCreatingSession={isCreatingSession}
               onCreateSession={onCreateSession}
-              onSend={onSend}
+              onSend={guardedOnSend}
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
+              isResolvingExpertIdentity={isResolvingExpertIdentity}
               isAdoptingExpertSession={isAdoptingExpertSession}
             />
           )}
