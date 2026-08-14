@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getWorkRunMetadata, toPreview } from "../helpers";
+import { getWorkRunMetadata, isFailedRunStatus, toPreview } from "../helpers";
 
 describe("WorkCard helpers", () => {
   it("parses a valid run metadata payload", () => {
@@ -11,6 +11,7 @@ describe("WorkCard helpers", () => {
       graph_name: "Weekly Report",
       status: "completed",
       output_type: "table",
+      output_key: "result",
     });
     expect(meta).toEqual({
       executionId: "exec-1",
@@ -19,7 +20,15 @@ describe("WorkCard helpers", () => {
       graphName: "Weekly Report",
       status: "completed",
       outputType: "table",
+      outputKey: "result",
     });
+  });
+
+  it("isFailedRunStatus matches any casing", () => {
+    expect(isFailedRunStatus("failed")).toBe(true);
+    expect(isFailedRunStatus("FAILED")).toBe(true);
+    expect(isFailedRunStatus("completed")).toBe(false);
+    expect(isFailedRunStatus("COMPLETED")).toBe(false);
   });
 
   it("returns null for legacy messages without run metadata", () => {

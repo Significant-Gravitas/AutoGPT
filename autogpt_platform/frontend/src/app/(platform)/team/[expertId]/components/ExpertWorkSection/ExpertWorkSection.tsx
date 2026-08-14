@@ -5,10 +5,12 @@ import { type ExpertRun } from "@/app/api/__generated__/models/expertRun";
 import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { WorkOutputSheet } from "@/app/(platform)/copilot/components/WorkOutputSheet/WorkOutputSheet";
 import { isOutputType } from "@/app/(platform)/copilot/components/WorkOutputSheet/helpers";
+import { getRunStatusInfo } from "./helpers";
 
 interface Props {
   expertId: string;
@@ -20,7 +22,7 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
   const [activeRun, setActiveRun] = useState<ExpertRun | null>(null);
 
   const runsQuery = useListExpertRuns(expertId, {
-    query: { select: (res) => okData(res) ?? [], enabled },
+    query: { select: (res) => okData(res) ?? null, enabled },
   });
   const runs = runsQuery.data ?? [];
   const reviewCount = runs.filter((run) => run.needs_review).length;
@@ -56,6 +58,12 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
           <Skeleton className="h-16 w-full rounded-xl" />
           <Skeleton className="h-16 w-full rounded-xl" />
         </div>
+      ) : runsQuery.isError && runsQuery.data == null ? (
+        <ErrorCard
+          context="this expert's work"
+          hint="We could not load this expert's recent work."
+          onRetry={() => runsQuery.refetch()}
+        />
       ) : visibleRuns.length === 0 ? (
         <p className="text-sm text-zinc-500">
           {needsReviewOnly
@@ -84,6 +92,7 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
               ? activeRun.output_type
               : "unknown"
           }
+          outputKey={activeRun.output_key}
           graphId={activeRun.graph_id}
           executionId={activeRun.execution_id}
           runLink={activeRun.link}
@@ -94,7 +103,7 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
 }
 
 function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
-  const failed = run.status.toUpperCase().includes("FAILED");
+  const status = getRunStatusInfo(run.status);
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 ring-1 ring-inset ring-zinc-200">
       <div className="min-w-0">
@@ -105,14 +114,12 @@ function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
           <span
             className={cn(
               "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-              failed
-                ? "bg-red-50 text-red-600"
-                : "bg-emerald-50 text-emerald-600",
+              status.className,
             )}
           >
-            {failed ? "Failed" : "Completed"}
+            {status.label}
           </span>
-          {run.needs_review ? (
+          {run.needs_review && run.status.toUpperCase() !== "REVIEW" ? (
             <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
               Needs review
             </span>

@@ -222,7 +222,15 @@ export function concatWithAssistantMerge(
   if (b.length === 0) return a;
   const last = a[a.length - 1];
   const first = b[0];
-  if (last.role !== "assistant" || first.role !== "assistant") {
+  // Metadata-carrying bubbles (expert run posts → WorkCard) must keep their
+  // identity across page boundaries too: merging one into a plain assistant
+  // reply either drops the card or absorbs the reply into it.
+  if (
+    last.role !== "assistant" ||
+    first.role !== "assistant" ||
+    last.metadata ||
+    first.metadata
+  ) {
     return [...a, ...b];
   }
   // Both sides assistant — only merge when the underlying DB sequences are

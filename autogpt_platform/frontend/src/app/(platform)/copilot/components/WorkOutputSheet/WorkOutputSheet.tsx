@@ -16,7 +16,9 @@ import {
   asTableRows,
   cellText,
   downloadCsv,
-  pickPrimaryOutput,
+  MAX_PREVIEW_COLUMNS,
+  MAX_PREVIEW_ROWS,
+  pickOutputForType,
   tableColumns,
   toCsv,
   type OutputType,
@@ -27,6 +29,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   title: string;
   outputType: OutputType;
+  outputKey?: string | null;
   graphId: string;
   executionId: string;
   runLink?: string | null;
@@ -37,6 +40,7 @@ export function WorkOutputSheet({
   onOpenChange,
   title,
   outputType,
+  outputKey,
   graphId,
   executionId,
   runLink,
@@ -51,7 +55,11 @@ export function WorkOutputSheet({
 
   const outputs = detailsQuery.data?.outputs ?? null;
   const primary = outputs
-    ? pickPrimaryOutput(outputs as Record<string, unknown[]>)
+    ? pickOutputForType(
+        outputs as Record<string, unknown[]>,
+        outputType,
+        outputKey,
+      )
     : null;
 
   return (
@@ -113,7 +121,7 @@ function WorkOutputBody({
   if (outputType === "table") {
     const rows = asTableRows(primary);
     if (!rows) return <RunLinkFallback runLink={runLink} />;
-    return <OutputTable title={title} rows={rows} />;
+    return <OutputTable title={title} rows={rows} runLink={runLink} />;
   }
 
   if (outputType === "image" && typeof primary === "string") {
@@ -142,18 +150,26 @@ function WorkOutputBody({
 function OutputTable({
   title,
   rows,
+  runLink,
 }: {
   title: string;
   rows: Record<string, unknown>[];
+  runLink?: string | null;
 }) {
-  const columns = tableColumns(rows);
+  const visibleRows = rows.slice(0, MAX_PREVIEW_ROWS);
+  const allColumns = tableColumns(rows);
+  const columns = allColumns.slice(0, MAX_PREVIEW_COLUMNS);
+  const truncated =
+    rows.length > visibleRows.length || allColumns.length > columns.length;
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
         <Button
           variant="secondary"
           size="small"
-          onClick={() => downloadCsv(`${title || "run"}.csv`, toCsv(rows))}
+          onClick={() =>
+            downloadCsv(`${title || "run"}.csv`, toCsv(visibleRows, columns))
+          }
         >
           Export CSV
         </Button>
@@ -173,7 +189,7 @@ function OutputTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
+            {visibleRows.map((row, index) => (
               <tr key={index} className="border-t border-zinc-100">
                 {columns.map((column) => (
                   <td key={column} className="px-3 py-2 text-zinc-700">
@@ -185,6 +201,23 @@ function OutputTable({
           </tbody>
         </table>
       </div>
+      {truncated ? (
+        <Text variant="small" className="text-zinc-500">
+          Showing the first {visibleRows.length} of {rows.length} rows and{" "}
+          {columns.length} of {allColumns.length} columns. The CSV export
+          matches this preview
+          {runLink ? (
+            <>
+              {" — "}
+              <a href={runLink} className="underline">
+                open the full run
+              </a>{" "}
+              for everything
+            </>
+          ) : null}
+          .
+        </Text>
+      ) : null}
     </div>
   );
 }

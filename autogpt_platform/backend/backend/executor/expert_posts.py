@@ -100,6 +100,7 @@ def _post_run_result(
             error=str(exec_stats.error) if exec_stats.error else None,
             library_agent_id=library_agent_id,
         )
+        output_type, output_key = _resolve_run_output(db_client, graph_exec)
         posted_session = db_client.append_expert_run_message(
             user_id=graph_exec.user_id,
             expert_id=expert_id,
@@ -114,7 +115,8 @@ def _post_run_result(
                 "library_agent_id": library_agent_id,
                 "graph_name": agent_name,
                 "status": "completed" if succeeded else "failed",
-                "output_type": _resolve_output_type(db_client, graph_exec),
+                "output_type": output_type,
+                "output_key": output_key,
             },
         )
     except Exception:
@@ -184,17 +186,23 @@ def classify_output_type(value: object) -> str:
     return "unknown"
 
 
-def classify_run_output(outputs: Mapping[str, list[Any]]) -> str:
-    """Classify a completed run's primary (first non-empty) output pin.
+def classify_run_output(outputs: Mapping[str, list[Any]]) -> tuple[str, str | None]:
+    """Classify a completed run's first *renderable* output pin.
 
-    A pin that emitted a single list-of-dicts value and one that emitted
-    several dict rows both read as a ``"table"``.
+    Scans pins in order and returns ``(output_type, pin_key)`` for the first
+    pin the typed viewer can actually render — a short status string on the
+    first pin must not mask a table on the second. Falls back to
+    ``("unknown", None)`` when nothing renders. A pin that emitted a single
+    list-of-dicts value and one that emitted several dict rows both read as
+    a ``"table"``.
     """
-    for values in outputs.values():
+    for key, values in outputs.items():
         if not values:
             continue
-        return classify_output_type(values[0] if len(values) == 1 else values)
-    return "unknown"
+        output_type = classify_output_type(values[0] if len(values) == 1 else values)
+        if output_type != "unknown":
+            return output_type, key
+    return "unknown", None
 
 
 def _is_image_url(value: str) -> bool:
@@ -203,23 +211,26 @@ def _is_image_url(value: str) -> bool:
     return urlsplit(value).path.lower().endswith(_IMAGE_EXTENSIONS)
 
 
-def _resolve_output_type(
+def _resolve_run_output(
     db_client: "DatabaseManagerClient", graph_exec: GraphExecutionEntry
-) -> str:
+) -> tuple[str, str | None]:
     """Best-effort output classification; any retrieval failure degrades to
-    ``"unknown"`` so a thread post never hinges on fetching run outputs."""
+    ``("unknown", None)`` so a thread post never hinges on fetching run
+    outputs."""
     try:
         execution = db_client.get_graph_execution(
             user_id=graph_exec.user_id,
             execution_id=graph_exec.graph_exec_id,
         )
-        return classify_run_output(execution.outputs) if execution else "unknown"
+        if execution is None:
+            return "unknown", None
+        return classify_run_output(execution.outputs)
     except Exception as e:
         logger.warning(
             f"Failed to classify output for run #{graph_exec.graph_exec_id}: "
             f"{type(e).__name__}: {e}"
         )
-        return "unknown"
+        return "unknown", None
 
 
 def _quote(text: str) -> str:

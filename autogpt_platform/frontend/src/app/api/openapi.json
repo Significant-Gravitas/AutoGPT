@@ -17822,6 +17822,10 @@
           },
           "status": { "type": "string", "title": "Status" },
           "output_type": { "type": "string", "title": "Output Type" },
+          "output_key": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Output Key"
+          },
           "needs_review": { "type": "boolean", "title": "Needs Review" },
           "started_at": {
             "anyOf": [
@@ -17850,6 +17854,7 @@
           "library_agent_id",
           "status",
           "output_type",
+          "output_key",
           "needs_review",
           "started_at",
           "ended_at",

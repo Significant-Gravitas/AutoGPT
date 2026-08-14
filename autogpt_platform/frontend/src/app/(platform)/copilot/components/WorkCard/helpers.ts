@@ -7,6 +7,11 @@ export interface WorkRunMetadata {
   graphName: string;
   status: string;
   outputType: OutputType;
+  outputKey: string | null;
+}
+
+export function isFailedRunStatus(status: string): boolean {
+  return status.toUpperCase().includes("FAILED");
 }
 
 const RUN_METADATA_KIND = "expert_run";
@@ -40,6 +45,7 @@ export function getWorkRunMetadata(value: unknown): WorkRunMetadata | null {
     graphName: asString(meta.graph_name) ?? "Workflow run",
     status: asString(meta.status) ?? "completed",
     outputType,
+    outputKey: asString(meta.output_key),
   };
 }
 

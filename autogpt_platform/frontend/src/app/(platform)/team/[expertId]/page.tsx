@@ -20,7 +20,7 @@ import { notFound, useParams } from "next/navigation";
 import { getLastRunLabel } from "../helpers";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
-import { ExpertWorkSection } from "./components/ExpertWorkSection";
+import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 

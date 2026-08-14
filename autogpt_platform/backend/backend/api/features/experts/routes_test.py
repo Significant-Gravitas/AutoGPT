@@ -214,6 +214,7 @@ def _make_run(**overrides) -> ExpertRun:
         "library_agent_id": "library-agent-1",
         "status": "COMPLETED",
         "output_type": "table",
+        "output_key": "result",
         "needs_review": False,
         "started_at": None,
         "ended_at": None,
@@ -226,6 +227,7 @@ def _make_run(**overrides) -> ExpertRun:
 def test_list_expert_runs_returns_runs_scoped_to_user(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    configured_snapshot: Snapshot,
 ) -> None:
     runs = [_make_run(), _make_run(execution_id="exec-2", output_type="doc")]
     mock_list = mocker.patch(
@@ -241,6 +243,10 @@ def test_list_expert_runs_returns_runs_scoped_to_user(
     assert [r["execution_id"] for r in data] == ["exec-1", "exec-2"]
     assert data[0]["output_type"] == "table"
     mock_list.assert_awaited_once_with(test_user_id, "expert-1")
+
+    configured_snapshot.assert_match(
+        json.dumps(data, indent=2, sort_keys=True), "expert_runs_list"
+    )
 
 
 def test_list_expert_runs_unknown_expert_returns_404(

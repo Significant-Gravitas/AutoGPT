@@ -376,6 +376,29 @@ describe("concatWithAssistantMerge", () => {
     expect(result[1].id).toBe(`${SESSION_ID}-seq-6`);
   });
 
+  it("does NOT absorb a run-post WorkCard into the preceding assistant bubble", () => {
+    const a = [uiAssistant(SESSION_ID, 2, "plain reply")];
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 3, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const result = concatWithAssistantMerge(a, [runPost]);
+    expect(result).toHaveLength(2);
+    expect(result[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does NOT let a run-post WorkCard absorb the following assistant bubble", () => {
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 2, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const b = [uiAssistant(SESSION_ID, 3, "plain reply")];
+    const result = concatWithAssistantMerge([runPost], b);
+    expect(result).toHaveLength(2);
+    expect(result[0].metadata).toMatchObject({ kind: "expert_run" });
+    expect(result[1].metadata).toBeUndefined();
+  });
+
   it("does NOT merge when last-of-a is user and first-of-b is assistant", () => {
     const a = [uiUser(SESSION_ID, 4, "follow up")];
     const b = [uiAssistant(SESSION_ID, 5, "got it")];

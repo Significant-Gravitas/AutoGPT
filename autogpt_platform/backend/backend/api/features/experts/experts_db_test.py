@@ -735,11 +735,12 @@ def _run_workflow(name: str = "SEO Blog Writer") -> SimpleNamespace:
 
 def test_to_expert_run_uses_workflow_name_and_deep_link():
     run = experts_db._to_expert_run(
-        _run_execution(), _run_workflow(), "table", needs_review=True
+        _run_execution(), _run_workflow(), "table", "result", needs_review=True
     )
     assert run.execution_id == "exec-1"
     assert run.agent_name == "SEO Blog Writer"
     assert run.output_type == "table"
+    assert run.output_key == "result"
     assert run.needs_review is True
     assert run.link == (
         "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1"
@@ -748,8 +749,65 @@ def test_to_expert_run_uses_workflow_name_and_deep_link():
 
 def test_to_expert_run_falls_back_when_workflow_unresolved():
     run = experts_db._to_expert_run(
-        _run_execution(), None, "unknown", needs_review=False
+        _run_execution(), None, "unknown", None, needs_review=False
     )
     assert run.agent_name == "Agent task"
     assert run.library_agent_id is None
+    assert run.output_key is None
     assert run.link is None
+
+
+def _output_node_exec(
+    name: str,
+    value,
+    *,
+    execution_data: dict | None = None,
+    added_minutes: int = 0,
+) -> SimpleNamespace:
+    from datetime import datetime, timedelta, timezone
+
+    base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
+    return SimpleNamespace(
+        executionData=execution_data,
+        queuedTime=None,
+        addedTime=base + timedelta(minutes=added_minutes),
+        Input=(
+            [
+                SimpleNamespace(name="name", data=name),
+                SimpleNamespace(name="value", data=value),
+            ]
+            if execution_data is None
+            else []
+        ),
+    )
+
+
+def test_outputs_from_node_execs_builds_pin_map_from_input_rows():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec("status", "ok", added_minutes=0),
+            _output_node_exec("results", [{"metric": "signups"}], added_minutes=1),
+        ]
+    )
+    assert outputs == {"status": ["ok"], "results": [[{"metric": "signups"}]]}
+
+
+def test_outputs_from_node_execs_prefers_execution_data_and_orders_by_time():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "", None, execution_data={"name": "rows", "value": 2}, added_minutes=5
+            ),
+            _output_node_exec(
+                "", None, execution_data={"name": "rows", "value": 1}, added_minutes=1
+            ),
+        ]
+    )
+    assert outputs == {"rows": [1, 2]}
+
+
+def test_outputs_from_node_execs_skips_rows_without_name():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("", None, execution_data={"other": "x"})]
+    )
+    assert outputs == {}

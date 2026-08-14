@@ -121,6 +121,7 @@ const mariaRuns: ExpertRun[] = [
     library_agent_id: "lib-1",
     status: "COMPLETED",
     output_type: "table",
+    output_key: "result",
     needs_review: false,
     started_at: null,
     ended_at: null,
@@ -131,8 +132,9 @@ const mariaRuns: ExpertRun[] = [
     graph_id: "graph-2",
     agent_name: "SEO Audit",
     library_agent_id: "lib-2",
-    status: "COMPLETED",
+    status: "REVIEW",
     output_type: "doc",
+    output_key: "report",
     needs_review: true,
     started_at: null,
     ended_at: null,
@@ -204,7 +206,7 @@ describe("ExpertDetailPage", () => {
     expect(screen.getByText(/No schedules yet/)).toBeDefined();
   });
 
-  test("shows the expert's recent work with a review badge", async () => {
+  test("shows the expert's recent work with honest status chips", async () => {
     server.use(getListExpertRunsMockHandler(mariaRuns));
 
     render(<ExpertDetailPage />);
@@ -212,7 +214,11 @@ describe("ExpertDetailPage", () => {
     await screen.findByRole("heading", { name: "Maria" });
     const workList = await screen.findByRole("list", { name: "Expert work" });
     expect(within(workList).getByText("Weekly Report")).toBeDefined();
-    expect(within(workList).getByText("Needs review")).toBeDefined();
+    expect(within(workList).getByText("Completed")).toBeDefined();
+    // A run paused for review reads "Waiting for review" — never "Completed"
+    // with a contradictory badge next to it.
+    expect(within(workList).getByText("Waiting for review")).toBeDefined();
+    expect(within(workList).queryByText("Needs review")).toBeNull();
   });
 
   test("filters work to runs that need review", async () => {

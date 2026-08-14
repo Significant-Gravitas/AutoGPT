@@ -58,6 +58,8 @@ class ExpertRun(BaseModel):
     status: str
     # "table" | "doc" | "image" | "unknown" — drives the typed viewer.
     output_type: str
+    # Which output pin was classified, so the viewer opens exactly that value.
+    output_key: str | None
     needs_review: bool
     started_at: datetime | None
     ended_at: datetime | None

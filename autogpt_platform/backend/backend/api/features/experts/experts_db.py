@@ -1,8 +1,10 @@
-import asyncio
 import logging
+from collections import defaultdict
 
+import prisma.enums
 import prisma.errors
 import prisma.models
+from pydantic import JsonValue
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
@@ -14,12 +16,12 @@ from backend.api.features.experts.models import (
     HireResult,
 )
 from backend.api.features.library import db as library_db
+from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
-from backend.data.execution import get_graph_execution
 from backend.data.expert_spend import get_weekly_spend
-from backend.data.human_review import get_pending_reviews_for_user
 from backend.data.user import get_user_by_id
 from backend.executor.expert_posts import classify_run_output
+from backend.util import type as type_utils
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -27,10 +29,6 @@ logger = logging.getLogger(__name__)
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
 _MAX_EXPERT_RUNS = 20
-# One page of the user's pending reviews is enough to flag "needs review" on a
-# recent-runs list; a user with more than this awaiting review has bigger
-# problems than an under-flagged Work card.
-_REVIEW_PAGE_SIZE = 100
 
 
 class ExpertTemplateNotFoundError(Exception):
@@ -187,30 +185,100 @@ async def list_expert_runs(
     )
     if not executions:
         return []
+    execution_ids = [execution.id for execution in executions]
 
-    reviews = await get_pending_reviews_for_user(
-        user_id, page=1, page_size=_REVIEW_PAGE_SIZE
+    # Exact per-execution review state (WAITING reviews for exactly these
+    # ids) — a page of the user's newest reviews could miss an older run
+    # that is still genuinely blocked.
+    waiting_reviews = await prisma.models.PendingHumanReview.prisma().find_many(
+        where={
+            "userId": user_id,
+            "status": prisma.enums.ReviewStatus.WAITING,
+            "graphExecId": {"in": execution_ids},
+        }
     )
-    reviewing = {review.graph_exec_id for review in reviews}
-    output_types = await asyncio.gather(
-        *(_run_output_type(user_id, execution.id) for execution in executions)
-    )
+    reviewing = {review.graphExecId for review in waiting_reviews}
+    classified = await _classify_run_outputs(execution_ids)
 
     return [
         _to_expert_run(
             execution,
             workflow_by_graph.get(execution.agentGraphId),
-            output_type,
+            *classified.get(execution.id, ("unknown", None)),
             needs_review=execution.id in reviewing,
         )
-        for execution, output_type in zip(executions, output_types)
+        for execution in executions
     ]
+
+
+async def _classify_run_outputs(
+    execution_ids: list[str],
+) -> dict[str, tuple[str, str | None]]:
+    """Batch-classify run outputs: one bounded query for the OUTPUT-block
+    node executions (plus their small name/value input rows) of all listed
+    executions, instead of a full ``get_graph_execution`` per run.
+
+    ``execution_ids`` must already be user-scoped by the caller (they come
+    from the owner-filtered executions query). Any per-execution parse
+    failure degrades that run to ``("unknown", None)`` — one corrupt run
+    must never 500 the whole Work tab.
+    """
+    node_execs = await prisma.models.AgentNodeExecution.prisma().find_many(
+        where={
+            "agentGraphExecutionId": {"in": execution_ids},
+            "Node": {"is": {"agentBlockId": {"in": list(get_output_block_ids())}}},
+            "executionStatus": {"not": prisma.enums.AgentExecutionStatus.INCOMPLETE},
+        },
+        include={"Input": True},
+    )
+    by_execution: dict[str, list[prisma.models.AgentNodeExecution]] = defaultdict(list)
+    for node_exec in node_execs:
+        by_execution[node_exec.agentGraphExecutionId].append(node_exec)
+
+    classified: dict[str, tuple[str, str | None]] = {}
+    for execution_id in execution_ids:
+        try:
+            classified[execution_id] = classify_run_output(
+                _outputs_from_node_execs(by_execution.get(execution_id, []))
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to classify outputs for run #{execution_id}: "
+                f"{type(e).__name__}: {e}"
+            )
+            classified[execution_id] = ("unknown", None)
+    return classified
+
+
+def _outputs_from_node_execs(
+    node_execs: list[prisma.models.AgentNodeExecution],
+) -> dict[str, list[JsonValue]]:
+    """Rebuild the run's ``outputs`` map from its OUTPUT-block node
+    executions, mirroring ``GraphExecution.from_db``: ordered by queue/add
+    time, keyed by the block's ``name`` input, valued by its ``value``."""
+    ordered = sorted(
+        node_execs,
+        key=lambda ne: (ne.queuedTime is None, ne.queuedTime or ne.addedTime),
+    )
+    outputs: dict[str, list[JsonValue]] = defaultdict(list)
+    for node_exec in ordered:
+        if node_exec.executionData is not None:
+            input_data = type_utils.convert(node_exec.executionData, dict)
+        else:
+            input_data = {
+                row.name: type_utils.convert(row.data, JsonValue)
+                for row in node_exec.Input or []
+            }
+        if "name" in input_data:
+            outputs[input_data["name"]].append(input_data.get("value"))
+    return outputs
 
 
 def _to_expert_run(
     execution: prisma.models.AgentGraphExecution,
     workflow: prisma.models.ExpertWorkflow | None,
     output_type: str,
+    output_key: str | None,
     *,
     needs_review: bool,
 ) -> ExpertRun:
@@ -223,16 +291,12 @@ def _to_expert_run(
         library_agent_id=library_agent_id,
         status=str(execution.executionStatus),
         output_type=output_type,
+        output_key=output_key,
         needs_review=needs_review,
         started_at=execution.startedAt,
         ended_at=execution.endedAt,
         link=run_link(library_agent_id, execution.id),
     )
-
-
-async def _run_output_type(user_id: str, execution_id: str) -> str:
-    execution = await get_graph_execution(user_id=user_id, execution_id=execution_id)
-    return classify_run_output(execution.outputs) if execution else "unknown"
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:

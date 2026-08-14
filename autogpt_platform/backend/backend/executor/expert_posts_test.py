@@ -198,14 +198,22 @@ def test_classify_output_type_unknown_for_short_text_and_scalars():
     assert classify_output_type([]) == "unknown"
 
 
-def test_classify_run_output_picks_first_non_empty_pin():
+def test_classify_run_output_picks_first_renderable_pin_with_key():
     outputs = {"skipped": [], "result": [[{"row": 1}]]}
-    assert classify_run_output(outputs) == "table"
+    assert classify_run_output(outputs) == ("table", "result")
+
+
+def test_classify_run_output_skips_unrenderable_pin_for_later_table():
+    """A short status string on the first pin must not mask a table on the
+    second — the first *renderable* pin wins, not the first non-empty one."""
+    outputs = {"status": ["ok"], "results": [[{"metric": "signups"}]]}
+    assert classify_run_output(outputs) == ("table", "results")
 
 
 def test_classify_run_output_empty_is_unknown():
-    assert classify_run_output({}) == "unknown"
-    assert classify_run_output({"result": []}) == "unknown"
+    assert classify_run_output({}) == ("unknown", None)
+    assert classify_run_output({"result": []}) == ("unknown", None)
+    assert classify_run_output({"status": ["ok"]}) == ("unknown", None)
 
 
 def test_post_attaches_run_metadata_with_output_type():
@@ -230,6 +238,7 @@ def test_post_attaches_run_metadata_with_output_type():
     assert metadata["graph_name"] == "Weekly Report"
     assert metadata["status"] == "completed"
     assert metadata["output_type"] == "table"
+    assert metadata["output_key"] == "result"
 
 
 def test_post_metadata_output_type_degrades_to_unknown_on_fetch_failure():
@@ -247,6 +256,7 @@ def test_post_metadata_output_type_degrades_to_unknown_on_fetch_failure():
     metadata = db_client.append_expert_run_message.call_args.kwargs["metadata"]
     assert metadata["status"] == "failed"
     assert metadata["output_type"] == "unknown"
+    assert metadata["output_key"] is None
 
 
 def test_release_uses_admission_key_across_midnight():

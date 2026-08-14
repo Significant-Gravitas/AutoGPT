@@ -47,6 +47,32 @@ describe("WorkOutputSheet", () => {
     expect(screen.getByText("signups")).toBeDefined();
   });
 
+  it("opens the classified pin even when an unrenderable pin comes first", () => {
+    setOutputs({
+      status: ["ok"],
+      results: [[{ metric: "signups", value: 12 }]],
+    });
+    render(
+      <WorkOutputSheet {...baseProps} outputType="table" outputKey="results" />,
+    );
+
+    expect(screen.getByText("metric")).toBeDefined();
+    expect(screen.getByText("signups")).toBeDefined();
+  });
+
+  it("caps large tables and shows a truncation notice", () => {
+    const rows = Array.from({ length: 150 }, (_, i) => ({ index: i }));
+    setOutputs({ result: [rows] });
+    render(<WorkOutputSheet {...baseProps} outputType="table" />);
+
+    expect(screen.getByText("99")).toBeDefined();
+    expect(screen.queryByText("120")).toBeNull();
+    expect(screen.getByText(/Showing the first 100 of 150 rows/)).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "open the full run" }),
+    ).toBeDefined();
+  });
+
   it("renders markdown for doc output", () => {
     setOutputs({ result: ["# Heading text"] });
     render(<WorkOutputSheet {...baseProps} outputType="doc" />);

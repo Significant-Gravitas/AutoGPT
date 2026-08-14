@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { buildRunLink } from "../WorkOutputSheet/helpers";
 import { WorkOutputSheet } from "../WorkOutputSheet/WorkOutputSheet";
-import { type WorkRunMetadata } from "./helpers";
+import { isFailedRunStatus, type WorkRunMetadata } from "./helpers";
 
 interface Props {
   metadata: WorkRunMetadata;
@@ -14,7 +14,7 @@ interface Props {
 
 export function WorkCard({ metadata, preview }: Props) {
   const [isOpen, setIsOpen] = useState(false);
-  const failed = metadata.status === "failed";
+  const failed = isFailedRunStatus(metadata.status);
   const runLink = buildRunLink(metadata.libraryAgentId, metadata.executionId);
 
   return (
@@ -55,6 +55,7 @@ export function WorkCard({ metadata, preview }: Props) {
         onOpenChange={setIsOpen}
         title={metadata.graphName}
         outputType={metadata.outputType}
+        outputKey={metadata.outputKey}
         graphId={metadata.graphId}
         executionId={metadata.executionId}
         runLink={runLink}

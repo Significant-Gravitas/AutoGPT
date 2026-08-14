@@ -10,6 +10,7 @@ const baseMeta: WorkRunMetadata = {
   graphName: "Weekly Report",
   status: "completed",
   outputType: "unknown",
+  outputKey: null,
 };
 
 describe("WorkCard", () => {
