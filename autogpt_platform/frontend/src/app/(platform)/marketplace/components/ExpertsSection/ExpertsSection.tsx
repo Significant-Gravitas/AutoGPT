@@ -75,7 +75,7 @@ function RaiseLink() {
   return (
     <Link
       href="/raise"
-      className="text-sm font-medium text-purple-600 transition-colors hover:text-purple-700"
+      className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
     >
       …or raise your own expert from scratch
     </Link>

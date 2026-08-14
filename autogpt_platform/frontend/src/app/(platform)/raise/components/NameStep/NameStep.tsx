@@ -2,21 +2,17 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
-import { useState } from "react";
 import { NAME_CHIPS } from "../../helpers";
+import { useNameStep } from "./useNameStep";
 
 interface Props {
   onSubmit: (name: string) => void;
 }
 
 export function NameStep({ onSubmit }: Props) {
-  const [custom, setCustom] = useState("");
-  const trimmed = custom.trim();
-
-  function submitCustom(event: React.FormEvent) {
-    event.preventDefault();
-    if (trimmed) onSubmit(trimmed);
-  }
+  const { custom, setCustom, trimmed, submitCustom } = useNameStep({
+    onSubmit,
+  });
 
   return (
     <div className="flex flex-col gap-4">

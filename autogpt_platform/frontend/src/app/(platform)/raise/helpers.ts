@@ -36,9 +36,7 @@ export interface RaiseDraft {
   name: string;
   voicePreferences: string;
   voiceLabel: string | null;
-  voiceSkipped: boolean;
   firstJob: { id: string; name: string } | null;
-  firstJobSkipped: boolean;
 }
 
 export const EMPTY_DRAFT: RaiseDraft = {
@@ -46,9 +44,7 @@ export const EMPTY_DRAFT: RaiseDraft = {
   name: "",
   voicePreferences: "",
   voiceLabel: null,
-  voiceSkipped: false,
   firstJob: null,
-  firstJobSkipped: false,
 };
 
 const DRAFT_STORAGE_KEY = "raise-expert-draft";
@@ -150,6 +146,23 @@ export function voiceSummaryLabel(
 
 export function resolveVoicePreferences(
   result: VoicePickResult,
+  samples: VoiceSample[],
 ): string | null {
-  return buildVoicePreferences(result, VOICE_SAMPLES);
+  return buildVoicePreferences(result, samples);
+}
+
+export function raisedIdentity(name: string): string {
+  // Keep this preview copy aligned with backend experts_db._raised_identity.
+  return `I'm ${name}, raised by you. I learn how you work and grow with you.`;
+}
+
+export function getExpertLimitCode(response: unknown): string | null {
+  if (!response || typeof response !== "object" || !("detail" in response)) {
+    return null;
+  }
+  const detail = response.detail;
+  if (!detail || typeof detail !== "object" || !("code" in detail)) {
+    return null;
+  }
+  return typeof detail.code === "string" ? detail.code : null;
 }

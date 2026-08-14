@@ -1,6 +1,8 @@
 "use client";
 
 import { Avatar, AvatarFallback } from "@/components/atoms/Avatar/Avatar";
+import { raisedIdentity } from "../../helpers";
+import { expertInitials } from "./helpers";
 
 interface Props {
   name: string;
@@ -13,7 +15,7 @@ export function SoulPreviewPanel({ name, voiceLabel, firstJobName }: Props) {
     <aside className="flex flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
       <div className="flex items-center gap-3 border-b border-zinc-200 px-6 py-5">
         <Avatar className="h-11 w-11">
-          <AvatarFallback>{name || "?"}</AvatarFallback>
+          <AvatarFallback>{expertInitials(name)}</AvatarFallback>
         </Avatar>
         <div>
           <h2 className="text-lg font-semibold tracking-[-0.01em] text-zinc-900">
@@ -31,7 +33,7 @@ export function SoulPreviewPanel({ name, voiceLabel, firstJobName }: Props) {
         />
         <SoulLine
           label="Identity"
-          value={name ? `I'm ${name}, raised by you.` : null}
+          value={name ? raisedIdentity(name) : null}
           placeholder="Takes shape once you name me."
         />
         <SoulLine

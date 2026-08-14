@@ -46,13 +46,23 @@ export function useFirstJobStep({ onPick }: Args) {
     }
   }
 
+  function retry() {
+    if (detailQuery.isError) {
+      void detailQuery.refetch();
+      return;
+    }
+    void agentsQuery.refetch();
+  }
+
   return {
-    suggestions: (agentsQuery.data?.agents ?? []).slice(0, 3),
+    suggestions: agentsQuery.data?.agents ?? [],
     isLoading: isLoggedIn && agentsQuery.isLoading,
+    hasError: agentsQuery.isError || detailQuery.isError,
     selected,
     select: setSelected,
     isResolving: Boolean(selected) && detailQuery.isFetching,
     canConfirm: Boolean(selected) && Boolean(versionId),
     confirm,
+    retry,
   };
 }
