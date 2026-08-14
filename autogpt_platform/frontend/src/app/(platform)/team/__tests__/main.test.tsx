@@ -1,5 +1,6 @@
 import {
   getInstallExpertWorkflowMockHandler,
+  getInstallExpertWorkflowMockHandler422,
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
@@ -8,6 +9,7 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetV2ListLibraryAgentsMockHandler200,
+  getGetV2ListLibraryAgentsMockHandler401,
   getGetV2ListLibraryAgentsResponseMock200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
@@ -695,5 +697,116 @@ describe("TeamPage", () => {
     const scheduledGroup = screen.getByRole("region", { name: "Maria runs" });
     expect(within(scheduledGroup).getByText("Content Calendar")).toBeDefined();
     expect(within(scheduledGroup).queryByText("SEO Audit")).toBeNull();
+  });
+
+  test("shows feedback and re-enables Adopt when adoption fails", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([adoptableAgent]),
+      ),
+      getGetV2GetSpecificAgentMockHandler200({
+        ...getGetV2GetSpecificAgentResponseMock200(),
+        store_listing_version_id: "slv-adopt",
+      }),
+      getInstallExpertWorkflowMockHandler422(),
+    );
+
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: /Runs will show up in Maria's thread/i,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't adopt Research Assistant",
+          variant: "destructive",
+        }),
+      ),
+    );
+    const adoptButton = within(agents).getByRole("button", { name: "Adopt" });
+    expect(adoptButton.hasAttribute("disabled")).toBe(false);
+  });
+
+  test("ignores repeat Adopt clicks while an adoption is in flight", async () => {
+    const user = userEvent.setup();
+    let installCalls = 0;
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([adoptableAgent]),
+      ),
+      getGetV2GetSpecificAgentMockHandler200({
+        ...getGetV2GetSpecificAgentResponseMock200(),
+        store_listing_version_id: "slv-adopt",
+      }),
+      getInstallExpertWorkflowMockHandler(async () => {
+        installCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        return {
+          id: "wf-adopted",
+          store_listing_version_id: "slv-adopt",
+          library_agent_id: "lib-research",
+          graph_id: "graph-research",
+          name: "Research Assistant",
+          description: null,
+        };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: /Runs will show up in Maria's thread/i,
+      }),
+    );
+
+    const adoptButton = within(agents).getByRole("button", { name: "Adopt" });
+    await user.click(adoptButton);
+    const repeatOption = screen.queryByRole("button", {
+      name: /Runs will show up in Maria's thread/i,
+    });
+    if (repeatOption) await user.click(repeatOption);
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "success" }),
+      ),
+    );
+    expect(installCalls).toBe(1);
+  });
+
+  test("shows a retry state when loading your agents fails", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV2ListLibraryAgentsMockHandler401(),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText(/could not load your agents/i),
+    ).toBeDefined();
+
+    server.use(
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([adoptableAgent]),
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    expect(within(agents).getByText("Research Assistant")).toBeDefined();
   });
 });

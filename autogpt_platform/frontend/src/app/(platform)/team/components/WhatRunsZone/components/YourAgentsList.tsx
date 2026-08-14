@@ -8,14 +8,16 @@ import { AdoptAgentButton } from "./AdoptAgentButton";
 interface Props {
   agents: LibraryAgent[];
   experts: Expert[];
-  pendingAgentId: string | null;
+  hiddenAgentCount: number;
+  pendingAgentIds: Set<string>;
   onAdopt: (agent: LibraryAgent, expert: Expert) => void;
 }
 
 export function YourAgentsList({
   agents,
   experts,
-  pendingAgentId,
+  hiddenAgentCount,
+  pendingAgentIds,
   onAdopt,
 }: Props) {
   return (
@@ -54,7 +56,7 @@ export function YourAgentsList({
                   <AdoptAgentButton
                     agent={agent}
                     experts={experts}
-                    isPending={pendingAgentId === agent.graph_id}
+                    isPending={pendingAgentIds.has(agent.graph_id)}
                     onAdopt={onAdopt}
                   />
                 ) : (
@@ -67,6 +69,13 @@ export function YourAgentsList({
           })}
         </div>
       )}
+      {hiddenAgentCount > 0 ? (
+        <Text variant="small" className="text-zinc-400">
+          {hiddenAgentCount} more {hiddenAgentCount === 1 ? "agent" : "agents"}{" "}
+          in your library {hiddenAgentCount === 1 ? "isn't" : "aren't"} shown
+          here.
+        </Text>
+      ) : null}
     </section>
   );
 }

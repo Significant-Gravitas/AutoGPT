@@ -20,7 +20,7 @@ export function ExpertWorkflowGroup({ group }: Props) {
   const lastRun = getLastRunLabel(expert);
   const meta =
     lastRun ??
-    `${expert.workflows.length} ${expert.workflows.length === 1 ? "workflow" : "workflows"}`;
+    `${workflows.length} ${workflows.length === 1 ? "workflow" : "workflows"}`;
   const isPaused = Boolean(expert.schedules_paused_at);
 
   return (

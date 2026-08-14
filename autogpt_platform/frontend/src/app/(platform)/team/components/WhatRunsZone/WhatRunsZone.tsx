@@ -1,4 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertWorkflowGroup } from "./components/ExpertWorkflowGroup";
@@ -17,9 +18,12 @@ export function WhatRunsZone({ experts }: Props) {
     groups,
     showAgents,
     unadoptedAgents,
+    hiddenAgentCount,
     isLoadingAgents,
+    isErrorAgents,
+    retryAgents,
     adopt,
-    pendingAgentId,
+    pendingAgentIds,
   } = useWhatRunsZone({ experts, enabled: experts.length > 0 });
 
   if (experts.length === 0) return null;
@@ -46,11 +50,21 @@ export function WhatRunsZone({ experts }: Props) {
       {showAgents ? (
         isLoadingAgents ? (
           <Skeleton className="h-24 w-full rounded-2xl" />
+        ) : isErrorAgents ? (
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+            <Text variant="small" className="text-zinc-500">
+              We could not load your agents.
+            </Text>
+            <Button variant="secondary" size="small" onClick={retryAgents}>
+              Retry
+            </Button>
+          </div>
         ) : (
           <YourAgentsList
             agents={unadoptedAgents}
             experts={experts}
-            pendingAgentId={pendingAgentId}
+            hiddenAgentCount={hiddenAgentCount}
+            pendingAgentIds={pendingAgentIds}
             onAdopt={adopt}
           />
         )

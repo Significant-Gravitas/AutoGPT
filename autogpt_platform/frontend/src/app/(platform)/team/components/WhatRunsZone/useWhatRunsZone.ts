@@ -17,6 +17,8 @@ import {
   WhatRunsFilter,
 } from "./helpers";
 
+const AGENTS_PAGE_SIZE = 100;
+
 interface Args {
   experts: Expert[];
   enabled: boolean;
@@ -25,30 +27,37 @@ interface Args {
 export function useWhatRunsZone({ experts, enabled }: Args) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<WhatRunsFilter>("all");
-  const [pendingAgentId, setPendingAgentId] = useState<string | null>(null);
+  const [pendingAgentIds, setPendingAgentIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const agentsQuery = useGetV2ListLibraryAgents(
-    { page: 1, page_size: 100 },
+    { page: 1, page_size: AGENTS_PAGE_SIZE },
     { query: { select: okData, enabled } },
   );
 
   const { mutateAsync: installWorkflow } = useInstallExpertWorkflow();
 
   const libraryAgents = agentsQuery.data?.agents ?? [];
+  const totalAgents =
+    agentsQuery.data?.pagination.total_items ?? libraryAgents.length;
   const unadoptedAgents = getUnadoptedAgents(libraryAgents, experts);
   const groups = getVisibleGroups(experts, filter);
   const showAgents =
-    filter === "agents" || (filter === "all" && unadoptedAgents.length > 0);
+    filter === "agents" ||
+    (filter === "all" && (unadoptedAgents.length > 0 || agentsQuery.isError));
 
   async function adopt(agent: LibraryAgent, expert: Expert) {
     const listing = getAdoptableListing(agent);
-    if (!listing) return;
-    setPendingAgentId(agent.graph_id);
+    if (!listing || pendingAgentIds.has(agent.graph_id)) return;
+    setPendingAgentIds((current) => new Set(current).add(agent.graph_id));
     try {
       const details = await getV2GetSpecificAgent(
         listing.creator.slug,
         listing.slug,
       );
+      // customMutator throws on non-2xx; this check only narrows the
+      // response union to the success payload.
       if (details.status !== 200) {
         throw new Error("Failed to resolve agent listing");
       }
@@ -72,7 +81,11 @@ export function useWhatRunsZone({ experts, enabled }: Args) {
         variant: "destructive",
       });
     } finally {
-      setPendingAgentId(null);
+      setPendingAgentIds((current) => {
+        const next = new Set(current);
+        next.delete(agent.graph_id);
+        return next;
+      });
     }
   }
 
@@ -82,8 +95,11 @@ export function useWhatRunsZone({ experts, enabled }: Args) {
     groups,
     showAgents,
     unadoptedAgents,
+    hiddenAgentCount: Math.max(0, totalAgents - libraryAgents.length),
     isLoadingAgents: enabled && agentsQuery.isLoading,
+    isErrorAgents: agentsQuery.isError,
+    retryAgents: () => agentsQuery.refetch(),
     adopt,
-    pendingAgentId,
+    pendingAgentIds,
   };
 }
