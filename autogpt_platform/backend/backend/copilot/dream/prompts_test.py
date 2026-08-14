@@ -229,6 +229,25 @@ def test_fact_listing_surfaces_per_fact_recall_usage():
     assert "recalls=0(never)" in user_body
 
 
+def test_usage_renders_in_all_three_phases():
+    """All three phases share ``_format_facts``, so the usage signal is
+    claimed to reach every prompt — but only the sanitize phase was
+    asserted. Consolidate and recombine also weigh which facts matter, so
+    a divergence here would silently strip the signal from two of three."""
+    bundle = _build_bundle()
+    bundle.facts[0].recall_count = 6
+    bundle.facts[0].last_recalled_at = "2026-08-01T00:00:00+00:00"
+
+    consolidate = build_consolidate_prompt(bundle)[1]["content"]
+    recombine = build_recombine_prompt(bundle, "{}")[1]["content"]
+
+    assert "recalls=6" in consolidate
+    assert "recalls=6" in recombine
+    # The never-recalled fact stays an explicit zero on every phase.
+    assert "recalls=0(never)" in consolidate
+    assert "recalls=0(never)" in recombine
+
+
 def test_fact_text_newlines_are_collapsed_in_the_listing():
     """Stored memory is tool/web/user-authored: an embedded newline in a
     fact could otherwise forge a `- uuid=… recalls=…` listing line for

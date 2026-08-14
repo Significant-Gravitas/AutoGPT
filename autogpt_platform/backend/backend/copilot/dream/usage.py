@@ -65,6 +65,21 @@ RECALL_DEDUPE_INTERVAL = timedelta(hours=24)
 # correcting. Anything else (``stale_fact``, ``entity_invalidated:*``,
 # free-text reasons the model invents) stays blocked for protected
 # facts: fail conservative in the destructive direction.
+#
+# These two are deliberately trusted UNVERIFIED, unlike the citation-checked
+# ``contradicted_by:`` below, because neither carries a claim this pass can
+# check against anything it holds:
+#
+# * ``user_signal`` relays an explicit human retraction. The graph has no
+#   record to verify it against, and refusing it would let usage protection
+#   override the user — the opposite of the intent.
+# * ``web_contradicted:{url}`` cites an external page. There is no evidence
+#   set to check the url against today because the dream web-checker has no
+#   real ``SearchBackend`` (SECRT-2485), so nothing legitimate emits this
+#   reason yet. When that lands it should carry a checkable evidence artifact
+#   and be verified like ``contradicted_by:``.
+#
+# Both remain bounded by ``known_fact_uuids`` and the per-pass demotion cap.
 OVERRIDE_REASONS = frozenset({"user_signal"})
 OVERRIDE_REASON_PREFIXES = ("web_contradicted:",)
 

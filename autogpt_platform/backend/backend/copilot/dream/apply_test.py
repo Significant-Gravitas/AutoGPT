@@ -464,6 +464,48 @@ async def test_refresh_skips_uuids_the_snapshot_already_protects(mocker):
     )
 
     apply_mod.fetch_usage_rows.assert_awaited_once_with("u-scope", ["cold"])
+    # …and the scoping must not cost the snapshot's own protection: 'hot'
+    # is excluded from the re-read precisely BECAUSE it stays protected, so
+    # only 'cold' may reach Cypher. Asserting the call args alone would pass
+    # even if the re-combine dropped that protection.
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["cold"]
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_falls_back_to_snapshot_protection(mocker):
+    """``fetch_usage_rows`` returns None on failure — a documented path
+    (bad group id, driver error). The guard must then fall back to the
+    bundle snapshot, NOT treat "no fresh data" as "never recalled".
+
+    Every other refresh test patches it to a list, so a refactor to
+    ``combined = fresh`` would silently demote every protected fact on any
+    failed batch refresh with the whole suite green.
+    """
+    mocker.patch.object(apply_mod, "fetch_usage_rows", AsyncMock(return_value=None))
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hot", reason="stale_fact"),
+            DreamDemotion(edge_uuid="cold", reason="stale_fact"),
+        ],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-refresh-fail",
+        pass_id="p-refresh-fail",
+        ops=ops,
+        known_fact_uuids={"hot", "cold"},
+        facts=[_used_fact("hot"), _unused_fact("cold")],
+        refresh_usage=True,
+    )
+
+    # The unprotected target IS re-read (that's the whole point of the
+    # refresh) and the lookup fails.
+    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-refresh-fail", ["cold"])
+    # 'hot' must still be protected by the snapshot. A refactor to
+    # `combined = fresh` would pass None into the guard, which fails open
+    # and demotes BOTH — losing a fact the user demonstrably still uses.
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["cold"]
 
 
 @pytest.mark.asyncio

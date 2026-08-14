@@ -52,11 +52,12 @@ class FactRow(BaseModel):
     status: str | None
     created_at: str | None
     # Usage signal stamped on the edge by the warm-context hit hook
-    # (``ratification.try_ratify_on_hit``). Absent props read as None,
-    # which is exactly "never recalled" — edges written before the hook
-    # shipped need no backfill. ``prev_recalled_at`` is the second-latest
-    # deduped stamp; the protection predicate reads it to require two
-    # recalls WITHIN the window (see ``usage.protected_fact_uuids``).
+    # (``ratification.try_ratify_on_hit``). Standing contract: an absent
+    # prop reads as None, which IS "never recalled" — the correct default
+    # for any unstamped edge, so no edge ever requires a backfill.
+    # ``prev_recalled_at`` is the second-latest deduped stamp; the
+    # protection predicate reads it to require two recalls WITHIN the
+    # window (see ``usage.protected_fact_uuids``).
     recall_count: int | None = None
     last_recalled_at: str | None = None  # ISO timestamp
     prev_recalled_at: str | None = None  # ISO timestamp
@@ -318,6 +319,12 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
     rows for edges never stamped carry ``None`` props, which the guard
     already reads as "never recalled".
     """
+    # Tri-state return, deliberately: ``[]`` means "nothing to fetch, not
+    # an error" and leaves the snapshot as the only usage source; ``None``
+    # means "lookup FAILED" and is what makes the guard fall back to the
+    # snapshot rather than treat an empty result as "never recalled".
+    # Collapsing the two would turn a failed refresh into a licence to
+    # demote.
     if not edge_uuids:
         return []
     try:
@@ -355,14 +362,24 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
     finally:
         await driver.close()
     rows = result[0] if result else []
+    # A row without a uuid can never match a demotion target, so emitting
+    # one as an empty-uuid FactRow would silently pad the guard's input
+    # instead of surfacing the anomaly. Drop and count it.
+    usable = [r for r in rows if r.get("uuid")]
+    if len(usable) != len(rows):
+        logger.warning(
+            "Dropped %d usage row(s) with no uuid for user %s",
+            len(rows) - len(usable),
+            user_id[:12],
+        )
     return [
         FactRow.usage_only(
-            uuid=str(r.get("uuid", "")),
+            uuid=str(r["uuid"]),
             recall_count=r.get("recall_count"),
             last_recalled_at=r.get("last_recalled_at"),
             prev_recalled_at=r.get("prev_recalled_at"),
         )
-        for r in rows
+        for r in usable
     ]
 
 

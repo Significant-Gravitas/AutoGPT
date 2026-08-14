@@ -17,6 +17,7 @@ both OpenAI and OpenRouter without provider-specific shenanigans.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 from .fetch import DreamInput
 from .staleness import identify_stale_candidates
@@ -55,12 +56,19 @@ def _inline(value: str | None) -> str:
 def _format_facts(input_bundle: DreamInput) -> str:
     if not input_bundle.facts:
         return "(no active facts)"
+    # One reference time for the whole listing: otherwise each fact is
+    # judged against its own datetime.now(), so two facts sitting on the
+    # window boundary can render inconsistent verdicts within a single
+    # prompt — and a ~500-fact bundle pays the syscall once per fact per
+    # phase.
+    now = datetime.now(timezone.utc)
     by_scope: dict[str, list[str]] = {}
     for f in input_bundle.facts:
         scope = f.scope or "real:global"
         bucket = by_scope.setdefault(scope, [])
         bucket.append(
-            f"  - uuid={f.uuid} confidence={f.confidence} {format_usage(f)} "
+            f"  - uuid={_inline(f.uuid)} confidence={f.confidence} "
+            f"{format_usage(f, now=now)} "
             f"{_inline(f.source)} —[{_inline(f.name)}]→ {_inline(f.target)}: "
             f"{_inline(f.fact)}"
         )

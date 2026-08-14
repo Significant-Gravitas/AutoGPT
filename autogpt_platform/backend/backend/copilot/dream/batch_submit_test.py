@@ -199,6 +199,7 @@ async def test_input_bundle_round_trips_recall_stamps(fake_redis):
             created_at="2026-05-10T00:00:00+00:00",
             recall_count=7,
             last_recalled_at="2026-08-01T00:00:00+00:00",
+            prev_recalled_at="2026-07-30T00:00:00+00:00",
         )
     ]
 
@@ -208,6 +209,10 @@ async def test_input_bundle_round_trips_recall_stamps(fake_redis):
     assert restored is not None
     assert restored.facts[0].recall_count == 7
     assert restored.facts[0].last_recalled_at == "2026-08-01T00:00:00+00:00"
+    # prev_recalled_at is the field protected_fact_uuids actually keys on —
+    # a serialization change that dropped it would disable batch-path
+    # protection entirely while the two assertions above stayed green.
+    assert restored.facts[0].prev_recalled_at == "2026-07-30T00:00:00+00:00"
 
 
 @pytest.mark.asyncio

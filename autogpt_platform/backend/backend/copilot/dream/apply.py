@@ -230,6 +230,7 @@ async def _filter_demotions(
     pass_id: str,
     demotions: list[DreamDemotion],
     known_fact_uuids: set[str] | None,
+    *,
     facts: list[FactRow] | None,
     refresh_usage: bool,
 ) -> list[DreamDemotion]:
@@ -792,7 +793,12 @@ async def apply_operations(
     )
 
     demotions = await _filter_demotions(
-        user_id, pass_id, ops.demotions, known_fact_uuids, facts, refresh_usage
+        user_id,
+        pass_id,
+        ops.demotions,
+        known_fact_uuids,
+        facts=facts,
+        refresh_usage=refresh_usage,
     )
     demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
         user_id, group_id, demotions
