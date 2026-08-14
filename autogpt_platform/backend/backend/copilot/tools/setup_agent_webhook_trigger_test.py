@@ -171,6 +171,25 @@ async def test_manual_webhook_no_creds_proceeds(tool, session):
     # NOT be duplicated inline in the user-facing message.
     assert result.webhook_url not in result.message
     setup_mock.assert_awaited_once()
+    assert setup_mock.await_args.kwargs["expert_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_expert_session_passes_expert_scope_to_trigger_setup(tool, session):
+    session.expert_id = "expert-1"
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = _make_preset(
+        provider="generic_webhook",
+        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
+    )
+    ctxs, setup_mock = _patches(graph, preset=preset)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+
+    assert isinstance(result, TriggerSetupResponse)
+    assert setup_mock.await_args.kwargs["expert_id"] == "expert-1"
 
 
 @pytest.mark.asyncio

@@ -2043,6 +2043,9 @@ def _mock_add_graph_execution_create_path(
     mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
     mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
 
+    mock_odb = mocker.patch("backend.executor.utils.onboarding_db")
+    mock_odb.increment_onboarding_runs = mocker.AsyncMock()
+
     mocker.patch("backend.executor.utils.get_async_execution_queue").return_value = (
         mocker.AsyncMock()
     )
@@ -2058,6 +2061,376 @@ def _mock_add_graph_execution_create_path(
         new=mocker.AsyncMock(return_value=(org_id, team_id)),
     )
     return mock_edb, mock_get_default_team
+
+
+def _mock_expert_personal_tenancy(
+    mocker: MockerFixture,
+    *,
+    organization_id: str = "personal-org",
+    team_id: str = "personal-team",
+    error: Exception | None = None,
+):
+    expert_store = mocker.MagicMock()
+    expert_store.resolve_expert_personal_tenancy = mocker.AsyncMock(
+        return_value=(organization_id, team_id), side_effect=error
+    )
+    get_experts_db = mocker.patch(
+        "backend.executor.utils.get_experts_db", return_value=expert_store
+    )
+    enforce_budget = mocker.patch(
+        "backend.executor.utils._enforce_expert_run_budget",
+        new=mocker.AsyncMock(),
+    )
+    return get_experts_db, expert_store, enforce_budget
+
+
+def _mock_add_graph_execution_requeue_path(
+    mocker: MockerFixture,
+    *,
+    expert_id: str | None,
+    organization_id: str | None,
+    team_id: str | None,
+):
+    from backend.data.execution import GraphExecutionWithNodes
+
+    graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    graph_exec.id = "existing-execution"
+    graph_exec.node_executions = []
+    graph_exec.status = ExecutionStatus.QUEUED
+    graph_exec.graph_version = 1
+    graph_exec.nodes_input_masks = {}
+    graph_exec.expert_id = expert_id
+    graph_exec.organization_id = organization_id
+    graph_exec.team_id = team_id
+
+    captured: dict = {}
+
+    def capture_to_entry(**kwargs):
+        captured.update(kwargs)
+        return mocker.MagicMock()
+
+    graph_exec.to_graph_execution_entry.side_effect = capture_to_entry
+
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    execution_store = mocker.patch("backend.executor.utils.execution_db")
+    execution_store.get_graph_execution = mocker.AsyncMock(return_value=graph_exec)
+    execution_store.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=graph_exec
+    )
+    execution_store.update_node_execution_status_batch = mocker.AsyncMock()
+    mocker.patch("backend.executor.utils.onboarding_db").increment_onboarding_runs = (
+        mocker.AsyncMock()
+    )
+    queue = mocker.AsyncMock()
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+    event_bus = mocker.MagicMock(publish=mocker.AsyncMock())
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=event_bus,
+    )
+    return graph_exec, execution_store, queue, captured
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_uses_authoritative_personal_tenancy(
+    mocker: MockerFixture,
+):
+    mock_edb, default_tenancy = _mock_add_graph_execution_create_path(mocker)
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="expert-owner",
+        expert_id="expert-1",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        "expert-owner", "expert-1"
+    )
+    enforce_budget.assert_awaited_once_with("expert-owner", "expert-1")
+    default_tenancy.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "personal-org"
+    assert create_kwargs["team_id"] == "personal-team"
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_nested_expert_execution_inherits_expert_and_personal_tenancy(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, default_tenancy = _mock_add_graph_execution_create_path(mocker)
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(mocker)
+    parent_context = ExecutionContext(
+        user_id="expert-owner",
+        parent_execution_id="parent-execution",
+        organization_id="shared-org",
+        team_id="shared-team",
+        expert_id="expert-1",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="expert-owner",
+        execution_context=parent_context,
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        "expert-owner", "expert-1"
+    )
+    enforce_budget.assert_awaited_once_with("expert-owner", "expert-1")
+    default_tenancy.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["expert_id"] == "expert-1"
+    assert create_kwargs["organization_id"] == "personal-org"
+    assert create_kwargs["team_id"] == "personal-team"
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_autopilot_execution_keeps_explicit_tenancy(mocker: MockerFixture):
+    mock_edb, default_tenancy = _mock_add_graph_execution_create_path(mocker)
+    get_experts_db, _, enforce_budget = _mock_expert_personal_tenancy(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="autopilot-user",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    get_experts_db.assert_not_called()
+    enforce_budget.assert_not_called()
+    default_tenancy.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["expert_id"] is None
+    assert create_kwargs["organization_id"] == "shared-org"
+    assert create_kwargs["team_id"] == "shared-team"
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_rejects_unavailable_expert_before_create(
+    mocker: MockerFixture,
+):
+    from backend.api.features.experts.experts_db import ExpertNotFoundError
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _, _, enforce_budget = _mock_expert_personal_tenancy(
+        mocker, error=ExpertNotFoundError("guessed-expert")
+    )
+
+    with pytest.raises(ExpertNotFoundError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="attacker",
+            expert_id="guessed-expert",
+            organization_id="victim-org",
+            team_id="victim-team",
+        )
+
+    enforce_budget.assert_not_called()
+    mock_edb.create_graph_execution.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_rejects_missing_personal_tenancy(
+    mocker: MockerFixture,
+):
+    from backend.api.features.experts.experts_db import (
+        ExpertPersonalTenancyNotFoundError,
+    )
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(
+        mocker, error=ExpertPersonalTenancyNotFoundError("expert-1")
+    )
+
+    with pytest.raises(ExpertPersonalTenancyNotFoundError):
+        await add_graph_execution(graph_id="g", user_id="owner", expert_id="expert-1")
+
+    mock_edb.create_graph_execution.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_keeps_persisted_expert_and_personal_tenancy(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(mocker)
+    caller_context = ExecutionContext(
+        user_id="owner",
+        organization_id="shared-org",
+        team_id="shared-team",
+        expert_id="expert-1",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        organization_id="shared-org",
+        team_id="shared-team",
+        execution_context=caller_context,
+    )
+
+    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        "owner", "expert-1"
+    )
+    enforce_budget.assert_awaited_once_with("owner", "expert-1")
+    context = captured["execution_context"]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_admin_bypass_still_validates_personal_tenancy(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(mocker)
+    caller_context = ExecutionContext(
+        user_id="owner",
+        organization_id="personal-org",
+        team_id="personal-team",
+        expert_id="expert-1",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+        execution_context=caller_context,
+    )
+
+    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        "owner", "expert-1"
+    )
+    enforce_budget.assert_not_called()
+    context = captured["execution_context"]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_uses_current_tenancy_after_conversion(
+    mocker: MockerFixture,
+):
+    _, execution_store, queue, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="old-personal-org",
+        team_id="old-personal-team",
+    )
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(
+        mocker,
+        organization_id="current-personal-org",
+        team_id="current-personal-team",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+    )
+
+    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        "owner", "expert-1"
+    )
+    enforce_budget.assert_awaited_once_with("owner", "expert-1")
+    context = captured["execution_context"]
+    assert context.organization_id == "current-personal-org"
+    assert context.team_id == "current-personal-team"
+    assert context.expert_id == "expert-1"
+    execution_store.update_graph_execution_stats.assert_awaited_once()
+    queue.publish_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_rejects_caller_supplied_expert_swap(
+    mocker: MockerFixture,
+):
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    get_experts_db, _, enforce_budget = _mock_expert_personal_tenancy(mocker)
+
+    with pytest.raises(ValueError, match="does not match"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+            expert_id="expert-2",
+        )
+
+    get_experts_db.assert_not_called()
+    enforce_budget.assert_not_called()
+    execution_store.update_graph_execution_stats.assert_not_called()
+    queue.publish_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_rejects_context_expert_swap(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    get_experts_db, _, enforce_budget = _mock_expert_personal_tenancy(mocker)
+    forged_context = ExecutionContext(user_id="owner", expert_id="expert-2")
+
+    with pytest.raises(ValueError, match="does not match"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+            execution_context=forged_context,
+        )
+
+    get_experts_db.assert_not_called()
+    enforce_budget.assert_not_called()
+    execution_store.update_graph_execution_stats.assert_not_called()
+    queue.publish_message.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,12 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 logger = logging.getLogger(__name__)
 
 
+def _is_in_session_scope(
+    job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
+) -> bool:
+    return job.expert_id == session.expert_id
+
+
 class ScheduleSummary(BaseModel):
     """Summary of a single schedule (either a graph run or copilot turn)."""
 
@@ -156,7 +162,9 @@ class ListSchedulesTool(BaseTool):
             user_id=user_id,
         )
 
-        schedules = [_to_summary(job) for job in jobs]
+        schedules = [
+            _to_summary(job) for job in jobs if _is_in_session_scope(job, session)
+        ]
 
         message = (
             f"Found {len(schedules)} schedule(s)."
@@ -227,8 +235,25 @@ class DeleteScheduleTool(BaseTool):
                 session_id=session_id,
             )
 
+        scheduler = get_scheduler_client()
+        jobs = await scheduler.get_execution_schedules(user_id=user_id)
+        current = next(
+            (
+                job
+                for job in jobs
+                if job.id == schedule_id and _is_in_session_scope(job, session)
+            ),
+            None,
+        )
+        if current is None:
+            return ErrorResponse(
+                message=f"Schedule '{schedule_id}' not found.",
+                error="schedule_not_found",
+                session_id=session_id,
+            )
+
         try:
-            await get_scheduler_client().delete_schedule(
+            await scheduler.delete_schedule(
                 schedule_id=schedule_id,
                 user_id=user_id,
             )

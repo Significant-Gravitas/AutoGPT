@@ -416,6 +416,7 @@ class RunAgentTool(BaseTool):
                     graph=graph,
                     graph_credentials=graph_credentials,
                     params=params,
+                    expert_id=session.expert_id,
                 )
                 if saved_preset_id:
                     result.saved_preset_id = saved_preset_id
@@ -733,6 +734,12 @@ class RunAgentTool(BaseTool):
                 error="preset_not_found",
                 session_id=session_id,
             )
+        if preset.expert_id is not None and preset.expert_id != session.expert_id:
+            return ErrorResponse(
+                message=f"Preset '{params.preset_id}' not found.",
+                error="preset_not_found",
+                session_id=session_id,
+            )
         graph = await graph_db().get_graph(
             preset.graph_id, preset.graph_version, user_id=user_id
         )
@@ -793,6 +800,7 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         graph_credentials: dict[str, CredentialsMetaInput],
         params: RunAgentInput,
+        expert_id: str | None,
     ) -> str | None:
         """Persist the validated run config as a reusable preset when requested.
 
@@ -811,6 +819,7 @@ class RunAgentTool(BaseTool):
                 credentials=graph_credentials,
                 is_active=True,
             ),
+            expert_id=expert_id,
         )
         return created.id
 
@@ -868,6 +877,7 @@ class RunAgentTool(BaseTool):
                 organization_id=org_id,
                 team_id=team_id,
                 preset_id=preset_id,
+                expert_id=session.expert_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(

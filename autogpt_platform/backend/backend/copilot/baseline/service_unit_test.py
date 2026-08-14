@@ -73,7 +73,9 @@ async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None
         ):
             pass
 
-    identity_mock.assert_awaited_once_with("user-1", "expert-1")
+    identity_mock.assert_awaited_once_with(
+        "user-1", "expert-1", organization_id=None, team_id=None
+    )
     assert session.messages == []
 
 

@@ -21,7 +21,8 @@ VISIBILITY_AND = [
             {"organizationId": "org-1", "teamId": None},
             {"organizationId": "org-1", "teamId": {"in": ["team-a"]}},
         ]
-    }
+    },
+    {"OR": [{"expertId": None}, {"userId": "u-1"}]},
 ]
 
 
@@ -87,3 +88,33 @@ async def test_executions_paginated_org_visibility_coexists_with_status_or(
     assert where["AND"] == VISIBILITY_AND
     assert where["OR"] == [{"executionStatus": ExecutionStatus.RUNNING}]
     assert "userId" not in where
+
+
+@pytest.mark.asyncio
+async def test_paginated_list_excludes_legacy_shared_expert_runs(mock_exec_client):
+    await get_graph_executions_paginated(
+        user_id="u-1",
+        organization_id="org-1",
+    )
+
+    count_where = mock_exec_client.count.call_args.kwargs["where"]
+    list_where = mock_exec_client.find_many.call_args.kwargs["where"]
+    expected_owner_guard = {"OR": [{"expertId": None}, {"userId": "u-1"}]}
+    assert expected_owner_guard in count_where["AND"]
+    assert expected_owner_guard in list_where["AND"]
+
+
+@pytest.mark.asyncio
+async def test_meta_excludes_legacy_shared_expert_runs(mock_exec_client):
+    await get_graph_execution_meta("u-1", "exec-1", organization_id="org-1")
+
+    where = mock_exec_client.find_first.call_args.kwargs["where"]
+    assert {"OR": [{"expertId": None}, {"userId": "u-1"}]} in where["AND"]
+
+
+@pytest.mark.asyncio
+async def test_detail_excludes_legacy_shared_expert_runs(mock_exec_client):
+    await get_graph_execution("u-1", "exec-1", organization_id="org-1")
+
+    where = mock_exec_client.find_first.call_args.kwargs["where"]
+    assert {"OR": [{"expertId": None}, {"userId": "u-1"}]} in where["AND"]

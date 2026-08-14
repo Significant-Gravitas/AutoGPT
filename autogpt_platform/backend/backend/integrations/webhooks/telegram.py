@@ -4,16 +4,19 @@ Telegram Bot API Webhooks Manager.
 Handles webhook registration and validation for Telegram bots.
 """
 
+import asyncio
 import hmac
 import logging
 
+from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from fastapi import HTTPException, Request
 from strenum import StrEnum
 
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
+from backend.data.redis_client import get_redis_async
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import MissingConfigError
+from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
 from backend.util.request import Requests
 from backend.util.settings import Config
 
@@ -21,6 +24,8 @@ from ._base import BaseWebhooksManager
 from .utils import webhook_ingress_url
 
 logger = logging.getLogger(__name__)
+
+_SETUP_LOCK_ACQUIRE_TIMEOUT_SECONDS = 10
 
 
 class TelegramWebhookType(StrEnum):
@@ -62,23 +67,92 @@ class TelegramWebhooksManager(BaseWebhooksManager):
                 "PLATFORM_BASE_URL must be set to use Webhook functionality"
             )
 
+        lock_key = (
+            "webhook-setup",
+            self.PROVIDER_NAME.value,
+            user_id,
+            credentials.id,
+            resource,
+        )
+        try:
+            mutex = AsyncRedisKeyedMutex(await get_redis_async())
+            await asyncio.wait_for(
+                mutex.acquire(lock_key),
+                timeout=_SETUP_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            raise WebhookRegistrationError(
+                "Could not safely lock Telegram webhook setup"
+            ) from exc
+
+        try:
+            return await self._get_suitable_auto_webhook_locked(
+                user_id=user_id,
+                credentials=credentials,
+                webhook_type=webhook_type,
+                resource=resource,
+                events=events,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
+        finally:
+            try:
+                await mutex.release(lock_key)
+            except Exception:
+                logger.exception(
+                    "Failed to release Telegram webhook setup lock; "
+                    "the lock will expire automatically"
+                )
+
+    async def _get_suitable_auto_webhook_locked(
+        self,
+        user_id: str,
+        credentials: Credentials,
+        webhook_type: TelegramWebhookType,
+        resource: str,
+        events: list[str],
+        organization_id: str | None,
+        team_id: str | None,
+    ) -> integrations.Webhook:
         # Exact match — no re-registration needed
         if webhook := await integrations.find_webhook_by_credentials_and_props(
             user_id=user_id,
             credentials_id=credentials.id,
             webhook_type=webhook_type,
             resource=resource,
+            organization_id=organization_id,
+            team_id=team_id,
             events=events,
         ):
+            if not self._matches_tenancy(webhook, organization_id, team_id):
+                raise WebhookRegistrationError(
+                    "This Telegram bot already has a webhook in another tenancy"
+                )
             return webhook
 
-        # Find any existing webhook for the same bot, regardless of events
-        if existing := await integrations.find_webhook_by_credentials_and_props(
+        existing = await integrations.find_webhook_by_credentials_and_props(
             user_id=user_id,
             credentials_id=credentials.id,
             webhook_type=webhook_type,
             resource=resource,
-        ):
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+        if existing is None:
+            existing = (
+                await integrations.find_webhook_by_credentials_and_props_any_tenant(
+                    user_id=user_id,
+                    credentials_id=credentials.id,
+                    webhook_type=webhook_type,
+                    resource=resource,
+                )
+            )
+
+        if existing:
+            if not self._matches_tenancy(existing, organization_id, team_id):
+                raise WebhookRegistrationError(
+                    "This Telegram bot already has a webhook in another tenancy"
+                )
             # Re-register with Telegram using the same URL but new allowed_updates
             ingress_url = webhook_ingress_url(self.PROVIDER_NAME, existing.id)
             _, config = await self._register_webhook(

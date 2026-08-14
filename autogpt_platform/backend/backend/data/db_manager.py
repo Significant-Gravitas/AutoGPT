@@ -498,6 +498,7 @@ class DatabaseManager(AppService):
     # identity/team context via db_accessors.experts_db().
     get_expert = _(experts_db.get_expert)
     list_experts = _(experts_db.list_experts)
+    resolve_expert_personal_tenancy = _(experts_db.resolve_expert_personal_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
 
     # ============ CoPilot Chat Sessions ============ #
@@ -818,6 +819,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Experts ============ #
     get_expert = d.get_expert
     list_experts = d.list_experts
+    resolve_expert_personal_tenancy = d.resolve_expert_personal_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
 
     # ============ CoPilot Chat Sessions ============ #

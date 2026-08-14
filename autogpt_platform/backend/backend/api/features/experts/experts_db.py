@@ -12,6 +12,7 @@ from backend.api.features.experts.models import (
     HireResult,
 )
 from backend.api.features.library import db as library_db
+from backend.api.features.orgs.db import get_user_default_team
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -31,6 +32,12 @@ class ExpertTemplateNotFoundError(Exception):
 class ExpertNotFoundError(Exception):
     def __init__(self, expert_id: str):
         super().__init__(f"Expert {expert_id} not found")
+        self.expert_id = expert_id
+
+
+class ExpertPersonalTenancyNotFoundError(Exception):
+    def __init__(self, expert_id: str):
+        super().__init__(f"Personal tenancy for expert {expert_id} not found")
         self.expert_id = expert_id
 
 
@@ -139,6 +146,27 @@ async def get_expert(
         return None
     latest_runs = await _latest_runs([row.id])
     return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+
+
+async def resolve_expert_personal_tenancy(
+    user_id: str, expert_id: str
+) -> tuple[str, str | None]:
+    """Return the personal org and default team for an active owned expert."""
+    expert = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+
+    organization_id, team_id = await get_user_default_team(user_id)
+    if organization_id is None:
+        raise ExpertPersonalTenancyNotFoundError(expert_id)
+    return organization_id, team_id
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:

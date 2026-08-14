@@ -229,7 +229,11 @@ async def upload_workspace_file(
 
 
 async def _resolve_or_create_session(
-    owner_user_id: str, session_id: str | None, source_platform: str
+    owner_user_id: str,
+    session_id: str | None,
+    source_platform: str,
+    *,
+    allow_expert_session: bool = True,
 ) -> ChatSession:
     """Reuse the bot's cached session, or start a fresh one.
 
@@ -240,6 +244,12 @@ async def _resolve_or_create_session(
     session = None
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
+        if (
+            session is not None
+            and not allow_expert_session
+            and session.expert_id is not None
+        ):
+            session = None
     if session is None:
         org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
         session = await create_chat_session(
@@ -282,7 +292,10 @@ async def ensure_chat_session(
         )
         return EnsureSessionResult(denial=denial)
     session = await _resolve_or_create_session(
-        owner_user_id, session_id, platform.value.lower()
+        owner_user_id,
+        session_id,
+        platform.value.lower(),
+        allow_expert_session=platform_server_id is None,
     )
     return EnsureSessionResult(session_id=session.session_id)
 
@@ -315,9 +328,14 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session = await get_chat_session(request.session_id, owner_user_id)
         if session is None:
             raise NotFoundError("The session for the uploaded files no longer exists.")
+        if request.platform_server_id is not None and session.expert_id is not None:
+            raise NotFoundError("The session for the uploaded files no longer exists.")
     else:
         session = await _resolve_or_create_session(
-            owner_user_id, request.session_id, request.platform.value.lower()
+            owner_user_id,
+            request.session_id,
+            request.platform.value.lower(),
+            allow_expert_session=request.platform_server_id is None,
         )
     session_id = session.session_id
 

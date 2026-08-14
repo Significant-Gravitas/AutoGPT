@@ -24,7 +24,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
 
-from backend.data.db_accessors import chat_db, library_db
+from backend.data.db_accessors import chat_db, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
@@ -54,6 +54,7 @@ RoutingSource = Literal[
 
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
+_TENANCY_FAILURE_CACHE_EVICTION_TIMEOUT_SECONDS = 1.0
 
 
 def _get_session_cache_key(session_id: str) -> str:
@@ -826,6 +827,8 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
 
 async def upsert_chat_session(
     session: ChatSession,
+    *,
+    persist_tenancy: bool = False,
 ) -> ChatSession:
     """Update a chat session in both cache and database.
 
@@ -834,9 +837,9 @@ async def upsert_chat_session(
     attempt to upsert the same session simultaneously.
 
     Raises:
-        DatabaseError: If the database write fails. The cache is still updated
-            as a best-effort optimization, but the error is propagated to ensure
-            callers are aware of the persistence failure.
+        DatabaseError: If the database write fails. Ordinary upserts still update
+            the cache as a best-effort optimization. Tenancy-changing upserts
+            evict instead, so an uncommitted scope cannot become authoritative.
         RedisError: If the cache write fails (after successful DB write).
     """
     async with _get_session_lock(session.session_id) as _:
@@ -851,6 +854,7 @@ async def upsert_chat_session(
                 session,
                 existing_message_count,
                 skip_existence_check=existing_message_count > 0,
+                persist_tenancy=persist_tenancy,
             )
         except Exception as e:
             logger.error(
@@ -858,7 +862,23 @@ async def upsert_chat_session(
             )
             db_error = e
 
-        # Save to cache (best-effort, even if DB failed).
+        if db_error is not None and persist_tenancy:
+            try:
+                await asyncio.wait_for(
+                    invalidate_session_cache(session.session_id),
+                    timeout=_TENANCY_FAILURE_CACHE_EVICTION_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Timed out evicting cache after failed tenancy update for %s",
+                    session.session_id,
+                )
+            raise DatabaseError(
+                f"Failed to persist chat session {session.session_id} to database"
+            ) from db_error
+
+        # Ordinary upserts retain the existing best-effort cache-on-DB-error
+        # behavior. Tenancy changes return above after eviction instead.
         # Title (update_session_title) and pin state (update_session_pinned)
         # are mutated *outside* this lock — they only touch their single field,
         # not messages — so a concurrent rename, auto-title, or pin/unpin may
@@ -898,6 +918,7 @@ async def _save_session_to_db(
     existing_message_count: int,
     *,
     skip_existence_check: bool = False,
+    persist_tenancy: bool = False,
 ) -> None:
     """Save or update a chat session in the database.
 
@@ -929,15 +950,21 @@ async def _save_session_to_db(
     total_prompt = sum(u.prompt_tokens for u in session.usage)
     total_completion = sum(u.completion_tokens for u in session.usage)
 
-    # Update session metadata
-    await db.update_chat_session(
-        session_id=session.session_id,
-        credentials=session.credentials,
-        successful_agent_runs=session.successful_agent_runs,
-        successful_agent_schedules=session.successful_agent_schedules,
-        total_prompt_tokens=total_prompt,
-        total_completion_tokens=total_completion,
-    )
+    update_kwargs: dict[str, Any] = {
+        "session_id": session.session_id,
+        "credentials": session.credentials,
+        "successful_agent_runs": session.successful_agent_runs,
+        "successful_agent_schedules": session.successful_agent_schedules,
+        "total_prompt_tokens": total_prompt,
+        "total_completion_tokens": total_completion,
+    }
+    if persist_tenancy:
+        update_kwargs.update(
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            update_tenancy=True,
+        )
+    await db.update_chat_session(**update_kwargs)
 
     # Identify unsaved messages.  Two cases:
     #
@@ -1182,14 +1209,19 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
-        expert_id: Hired expert this session is scoped to. Ownership and
-            archived state must be validated by the caller.
+        expert_id: Hired expert this session is scoped to. Expert sessions are
+            validated here and pinned to the owner's personal organization.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
+    if expert_id is not None:
+        organization_id, team_id = await experts_db().resolve_expert_personal_tenancy(
+            user_id, expert_id
+        )
+
     session = ChatSession.new(
         user_id,
         dry_run=dry_run,

@@ -219,6 +219,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 description=(kwargs.get("description") or "").strip(),
                 trigger_config=kwargs.get("trigger_config") or {},
                 agent_credentials=agent_credentials,
+                expert_id=session.expert_id,
             )
         except (
             InvalidInputError,

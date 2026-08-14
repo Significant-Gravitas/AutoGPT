@@ -707,15 +707,23 @@ async def create_session(
             team_id=ctx.team_id,
         )
     else:
-        session = await create_chat_session(
-            user_id,
-            dry_run=dry_run,
-            organization_id=ctx.org_id,
-            team_id=ctx.team_id,
-            llm_auth_provider=llm_auth_provider,
-            llm_credential_id=llm_credential_id,
-            expert_id=expert_id,
-        )
+        try:
+            session = await create_chat_session(
+                user_id,
+                dry_run=dry_run,
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                expert_id=expert_id,
+            )
+        except experts_db.ExpertNotFoundError as e:
+            raise HTTPException(status_code=404, detail="Expert not found") from e
+        except experts_db.ExpertPersonalTenancyNotFoundError as e:
+            raise HTTPException(
+                status_code=503,
+                detail="Expert personal organization is unavailable",
+            ) from e
 
     return CreateSessionResponse(
         id=session.session_id,

@@ -37,7 +37,11 @@ def escape_prompt_xml_tags(value: str) -> str:
 
 
 async def build_expert_identity_suffix(
-    user_id: str | None, expert_id: str | None
+    user_id: str | None,
+    expert_id: str | None,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
 ) -> str:
     """Build the ``<expert_identity>`` system-prompt suffix for an expert
     session.
@@ -55,10 +59,9 @@ async def build_expert_identity_suffix(
         raise ExpertSessionUnavailableError(
             "Expert session identity is unavailable without an authenticated user."
         )
+    db = experts_db()
     try:
-        expert = await experts_db().get_expert(
-            user_id, expert_id, include_workflows=False
-        )
+        expert = await db.get_expert(user_id, expert_id, include_workflows=False)
     except Exception as e:
         logger.warning(f"Failed to build expert identity suffix: {e}")
         raise ExpertSessionUnavailableError(
@@ -67,6 +70,20 @@ async def build_expert_identity_suffix(
     if expert is None or expert.is_archived:
         raise ExpertSessionUnavailableError(
             "The expert for this session no longer exists or is archived."
+        )
+
+    try:
+        personal_org_id, personal_team_id = await db.resolve_expert_personal_tenancy(
+            user_id, expert_id
+        )
+    except Exception as e:
+        logger.warning(f"Failed to validate expert session tenancy: {e}")
+        raise ExpertSessionUnavailableError(
+            "The expert for this session is temporarily unavailable."
+        ) from e
+    if (organization_id, team_id) != (personal_org_id, personal_team_id):
+        raise ExpertSessionUnavailableError(
+            "This expert session must be reopened in its personal workspace."
         )
 
     name = escape_prompt_xml_tags(expert.name)

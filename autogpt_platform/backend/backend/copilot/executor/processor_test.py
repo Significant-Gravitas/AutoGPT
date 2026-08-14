@@ -14,6 +14,7 @@ import asyncio
 import concurrent.futures
 import logging
 import threading
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,6 +24,7 @@ from backend.copilot.config import CopilotMode
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
+    _normalize_expert_session_tenancy,
     resolve_effective_mode,
     resolve_use_sdk_for_mode,
     sync_fail_close_session,
@@ -34,6 +36,7 @@ from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
 )
+from backend.util.exceptions import DatabaseError
 
 
 class TestResolveUseSdkForMode:
@@ -346,10 +349,37 @@ class TestExecuteAsyncAclose:
         session = ChatSession.new(
             "user-1",
             dry_run=False,
+            organization_id="old-personal-org",
+            team_id="old-personal-team",
             expert_id="expert-1",
         )
         session.session_id = "sess-1"
-        stream_fn = MagicMock(return_value=MagicMock())
+        session.credentials = {"github": {"id": "old-scope-credential"}}
+        lifecycle: list[str] = []
+
+        def stream(**_kwargs):
+            lifecycle.append("stream")
+            return MagicMock()
+
+        stream_fn = MagicMock(side_effect=stream)
+
+        expert_store = MagicMock()
+        expert_store.resolve_expert_personal_tenancy = AsyncMock(
+            return_value=("current-personal-org", "current-personal-team")
+        )
+
+        async def persist(value, *, persist_tenancy: bool = False):
+            assert persist_tenancy is True
+            lifecycle.append("persist")
+            return value
+
+        upsert = AsyncMock(side_effect=persist)
+        entry = _make_entry().model_copy(
+            update={
+                "organization_id": "forged-org",
+                "team_id": "forged-team",
+            }
+        )
 
         with (
             patch(
@@ -372,17 +402,313 @@ class TestExecuteAsyncAclose:
                 "backend.copilot.model.get_chat_session",
                 new=AsyncMock(return_value=session),
             ) as get_session_mock,
+            patch(
+                "backend.data.db_accessors.experts_db",
+                return_value=expert_store,
+            ),
+            patch("backend.copilot.model.upsert_chat_session", new=upsert),
         ):
             await CoPilotProcessor()._execute_async(
-                _make_entry(),
+                entry,
                 threading.Event(),
                 MagicMock(),
                 _make_log(),
             )
 
         get_session_mock.assert_awaited_once_with("sess-1", "user-1")
+        expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+            "user-1", "expert-1"
+        )
+        upsert.assert_awaited_once_with(session, persist_tenancy=True)
+        assert lifecycle == ["persist", "stream"]
         assert stream_fn.call_args.kwargs["session"] is session
         assert stream_fn.call_args.kwargs["session"].expert_id == "expert-1"
+        assert session.organization_id == "current-personal-org"
+        assert session.team_id == "current-personal-team"
+        assert session.credentials == {}
+        assert stream_fn.call_args.kwargs["organization_id"] == "current-personal-org"
+        assert stream_fn.call_args.kwargs["team_id"] == "current-personal-team"
+
+
+@pytest.mark.asyncio
+async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
+    stale = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        organization_id="old-personal-org",
+        team_id="old-personal-team",
+        expert_id="expert-1",
+    )
+    stale.session_id = "sess-1"
+    stale.credentials = {"github": {"id": "old-scope-credential"}}
+    state: dict[str, ChatSession | None] = {
+        "db": stale.model_copy(deep=True),
+        "cache": stale.model_copy(deep=True),
+    }
+    reads: list[str] = []
+    lifecycle: list[str] = []
+    save_attempts = 0
+
+    async def get_session(_session_id: str, _user_id: str | None = None):
+        source = "cache" if state["cache"] is not None else "db"
+        reads.append(source)
+        loaded = state[source]
+        assert loaded is not None
+        return loaded.model_copy(deep=True)
+
+    async def save_to_db(session: ChatSession, *_args, **_kwargs) -> None:
+        nonlocal save_attempts
+        save_attempts += 1
+        if save_attempts == 1:
+            raise RuntimeError("db unavailable")
+        state["db"] = session.model_copy(deep=True)
+        lifecycle.append("db")
+
+    async def get_cached(_session_id: str):
+        cached = state["cache"]
+        return cached.model_copy(deep=True) if cached is not None else None
+
+    async def cache_session(session: ChatSession) -> None:
+        state["cache"] = session.model_copy(deep=True)
+        lifecycle.append("cache")
+
+    async def invalidate_cache(_session_id: str) -> None:
+        state["cache"] = None
+        lifecycle.append("evict")
+
+    @asynccontextmanager
+    async def session_lock(_session_id: str):
+        yield True
+
+    def stream(**_kwargs):
+        lifecycle.append("stream")
+        return MagicMock()
+
+    stream_fn = MagicMock(side_effect=stream)
+    expert_store = MagicMock()
+    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+        return_value=("current-personal-org", "current-personal-team")
+    )
+    session_db = MagicMock()
+    session_db.get_next_sequence = AsyncMock(return_value=1)
+    published = _TrackedStream(events=[])
+
+    with (
+        patch(
+            "backend.copilot.executor.processor.ChatConfig",
+            return_value=MagicMock(test_mode=True),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_dummy",
+            stream_fn,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=published,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=AsyncMock(),
+        ),
+        patch("backend.copilot.model.get_chat_session", new=get_session),
+        patch(
+            "backend.data.db_accessors.experts_db",
+            return_value=expert_store,
+        ),
+        patch("backend.copilot.model.chat_db", return_value=session_db),
+        patch("backend.copilot.model._save_session_to_db", new=save_to_db),
+        patch("backend.copilot.model._get_session_lock", new=session_lock),
+        patch("backend.copilot.model._get_session_from_cache", new=get_cached),
+        patch("backend.copilot.model.cache_chat_session", new=cache_session),
+        patch(
+            "backend.copilot.model.invalidate_session_cache",
+            new=invalidate_cache,
+        ),
+    ):
+        with pytest.raises(DatabaseError, match="Failed to persist chat session"):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+
+        stream_fn.assert_not_called()
+        assert reads == ["cache"]
+        assert lifecycle == ["evict"]
+
+        await CoPilotProcessor()._execute_async(
+            _make_entry(), threading.Event(), MagicMock(), _make_log()
+        )
+
+    assert reads == ["cache", "db"]
+    assert save_attempts == 2
+    assert lifecycle == ["evict", "db", "cache", "stream"]
+    assert stream_fn.call_count == 1
+    persisted = state["db"]
+    assert persisted is not None
+    assert persisted.organization_id == "current-personal-org"
+    assert persisted.team_id == "current-personal-team"
+    assert persisted.credentials == {}
+
+
+@pytest.mark.asyncio
+async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        organization_id="personal-org",
+        team_id="personal-team",
+        expert_id="expert-1",
+    )
+    session.credentials = {"github": {"id": "current-credential"}}
+    expert_store = MagicMock()
+    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    upsert = AsyncMock()
+
+    with (
+        patch(
+            "backend.data.db_accessors.experts_db",
+            return_value=expert_store,
+        ),
+        patch("backend.copilot.model.upsert_chat_session", new=upsert),
+    ):
+        result = await _normalize_expert_session_tenancy(session)
+
+    assert result is session
+    assert session.credentials == {"github": {"id": "current-credential"}}
+    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        "user-1", "expert-1"
+    )
+    upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
+    published = _TrackedStream(events=[])
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        organization_id="session-org",
+        team_id="session-team",
+    )
+    session.session_id = "sess-1"
+    session.credentials = {"github": {"id": "autopilot-credential"}}
+    expert_store = MagicMock()
+    expert_store.resolve_expert_personal_tenancy = AsyncMock()
+    upsert = AsyncMock()
+    stream_fn = MagicMock(return_value=MagicMock())
+    entry = _make_entry().model_copy(
+        update={"organization_id": "entry-org", "team_id": "entry-team"}
+    )
+
+    with (
+        patch(
+            "backend.copilot.executor.processor.ChatConfig",
+            return_value=MagicMock(test_mode=True),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_dummy",
+            stream_fn,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=published,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.data.db_accessors.experts_db",
+            return_value=expert_store,
+        ),
+        patch("backend.copilot.model.upsert_chat_session", new=upsert),
+    ):
+        await CoPilotProcessor()._execute_async(
+            entry,
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
+
+    assert (session.organization_id, session.team_id) == (
+        "session-org",
+        "session-team",
+    )
+    assert session.credentials == {"github": {"id": "autopilot-credential"}}
+    expert_store.resolve_expert_personal_tenancy.assert_not_awaited()
+    upsert.assert_not_awaited()
+    assert stream_fn.call_args.kwargs["session"] is session
+    assert stream_fn.call_args.kwargs["organization_id"] == "entry-org"
+    assert stream_fn.call_args.kwargs["team_id"] == "entry-team"
+
+
+@pytest.mark.asyncio
+async def test_unowned_expert_session_fails_before_engine_work() -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        organization_id="victim-org",
+        team_id="victim-team",
+        expert_id="victim-expert",
+    )
+    session.session_id = "sess-1"
+    expert_store = MagicMock()
+    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+        side_effect=PermissionError("expert is not owned by user")
+    )
+    dummy_engine = MagicMock()
+    baseline_engine = MagicMock()
+    sdk_engine = MagicMock()
+    upsert = AsyncMock()
+    mark_completed = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.data.db_accessors.experts_db",
+            return_value=expert_store,
+        ),
+        patch("backend.copilot.model.upsert_chat_session", new=upsert),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_dummy",
+            dummy_engine,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_baseline",
+            baseline_engine,
+        ),
+        patch(
+            "backend.copilot.sdk.service.stream_chat_completion_sdk",
+            sdk_engine,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mark_completed,
+        ),
+        pytest.raises(PermissionError, match="not owned"),
+    ):
+        await CoPilotProcessor()._execute_async(
+            _make_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
+
+    dummy_engine.assert_not_called()
+    baseline_engine.assert_not_called()
+    sdk_engine.assert_not_called()
+    upsert.assert_not_awaited()
+    mark_completed.assert_awaited_once_with(
+        "sess-1", error_message="expert is not owned by user"
+    )
 
 
 def _codex_entry(

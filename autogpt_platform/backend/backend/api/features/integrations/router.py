@@ -21,6 +21,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.data.db_accessors import experts_db
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -876,6 +877,19 @@ async def _execute_webhook_preset_trigger(
         )
         return
 
+    expert_tenancy: tuple[str, str | None] | None = None
+    if preset.expert_id is not None:
+        try:
+            expert_tenancy = await experts_db().resolve_expert_personal_tenancy(
+                webhook.user_id, preset.expert_id
+            )
+        except Exception:
+            logger.warning(
+                "Refusing expert webhook preset because its personal tenancy "
+                "could not be validated"
+            )
+            return
+
     graph = await get_graph(
         preset.graph_id, preset.graph_version, user_id=webhook.user_id
     )
@@ -902,10 +916,13 @@ async def _execute_webhook_preset_trigger(
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
     try:
-        # Resource-follows-parent: attribute to the preset's org/team (set
-        # from its parent graph), falling back to the webhook's own tag,
-        # then to the owner's default team for untagged legacy rows.
-        if preset.organization_id:
+        # Expert resources survive personal-org conversion: active ownership
+        # above is authoritative and the run follows the owner's current
+        # personal tenancy even when legacy preset/webhook tags are stale.
+        # Non-expert resources continue to follow their stored parent scope.
+        if expert_tenancy is not None:
+            org_id, ws_id = expert_tenancy
+        elif preset.organization_id:
             org_id, ws_id = preset.organization_id, preset.team_id
         elif webhook.organization_id:
             org_id, ws_id = webhook.organization_id, webhook.team_id

@@ -24,6 +24,8 @@ def _graph():
     graph.id = "graph-1"
     graph.version = 1
     graph.webhook_input_node = node
+    graph.organization_id = "shared-org"
+    graph.team_id = "shared-team"
     return graph
 
 
@@ -46,7 +48,7 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None):
     )
 
 
-async def _setup():
+async def _setup(*, expert_id: str | None = None):
     return await setup_triggered_preset(
         user_id=_USER,
         graph_id="graph-1",
@@ -55,6 +57,7 @@ async def _setup():
         description="",
         trigger_config={"repo": "owner/repo"},
         agent_credentials={},
+        expert_id=expert_id,
     )
 
 
@@ -68,6 +71,31 @@ async def test_creates_preset_on_success():
         result = await _setup()
     assert result is preset
     create_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_trigger_is_created_in_personal_scope():
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_create as create_mock,
+        p_webhook as webhook_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_expert_personal_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        result = await _setup(expert_id="expert-1")
+
+    assert result is preset
+    assert webhook_mock.await_args.kwargs["organization_id"] == "personal-org"
+    assert webhook_mock.await_args.kwargs["team_id"] == "personal-team"
+    assert create_mock.await_args.kwargs["expert_id"] == "expert-1"
 
 
 @pytest.mark.asyncio
@@ -102,12 +130,21 @@ async def test_webhook_setup_rejected_raises():
 # ---- update_triggered_preset ----
 
 
-def _preset(*, webhook_id=None):
+def _preset(
+    *,
+    webhook_id=None,
+    expert_id=None,
+    organization_id="shared-org",
+    team_id="shared-team",
+):
     preset = MagicMock()
     preset.id = "preset-1"
     preset.graph_id = "graph-1"
     preset.graph_version = 1
     preset.webhook_id = webhook_id
+    preset.expert_id = expert_id
+    preset.organization_id = organization_id
+    preset.team_id = team_id
     return preset
 
 
@@ -164,6 +201,54 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
     m["setup"].assert_awaited_once()
     m["set_webhook"].assert_awaited_once()
     m["prune"].assert_awaited_once_with(_USER, "wh-old")
+
+
+@pytest.mark.asyncio
+async def test_update_expert_trigger_keeps_personal_scope():
+    current = _preset(
+        webhook_id="wh-old",
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    with (
+        _update_patches(current=current) as m,
+        patch(
+            f"{_PATH}.experts_db.resolve_expert_personal_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/repo"},
+            credentials={},
+        )
+
+    assert m["setup"].await_args.kwargs["organization_id"] == "personal-org"
+    assert m["setup"].await_args.kwargs["team_id"] == "personal-team"
+
+
+@pytest.mark.asyncio
+async def test_update_legacy_expert_trigger_rehomes_through_new_webhook():
+    current = _preset(webhook_id="wh-old", expert_id="expert-1")
+    with (
+        _update_patches(current=current) as m,
+        patch(
+            f"{_PATH}.experts_db.resolve_expert_personal_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/repo"},
+            credentials={},
+        )
+
+    assert m["setup"].await_args.kwargs["organization_id"] == "personal-org"
+    assert m["setup"].await_args.kwargs["team_id"] == "personal-team"
+    m["set_webhook"].assert_awaited_once_with(_USER, "preset-1", "wh-new")
 
 
 @pytest.mark.asyncio

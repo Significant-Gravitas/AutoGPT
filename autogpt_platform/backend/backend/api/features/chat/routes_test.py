@@ -1425,6 +1425,37 @@ def test_create_session_with_archived_expert_returns_404(
     mock_create.assert_not_called()
 
 
+def test_create_session_maps_raced_expert_validation_to_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """An expert archived after route validation still fails without a 500."""
+    from backend.api.features.experts import experts_db
+
+    mock_create = _mock_create_chat_session(mocker)
+    mock_create.side_effect = experts_db.ExpertNotFoundError("expert-1")
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Expert not found"}
+
+
+def test_create_session_maps_missing_personal_org_to_503(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from backend.api.features.experts import experts_db
+
+    mock_create = _mock_create_chat_session(mocker)
+    mock_create.side_effect = experts_db.ExpertPersonalTenancyNotFoundError("expert-1")
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Expert personal organization is unavailable"}
+
+
 def test_create_session_rejects_builder_graph_id_with_expert_id(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

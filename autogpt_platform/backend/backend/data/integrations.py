@@ -193,6 +193,8 @@ async def find_webhook_by_credentials_and_props(
     credentials_id: str,
     webhook_type: str,
     resource: str,
+    organization_id: str | None,
+    team_id: str | None,
     events: list[str] | None = None,
 ) -> Webhook | None:
     where: IntegrationWebhookWhereInput = {
@@ -200,6 +202,8 @@ async def find_webhook_by_credentials_and_props(
         "credentialsId": credentials_id,
         "webhookType": webhook_type,
         "resource": resource,
+        "organizationId": organization_id,
+        "teamId": team_id,
     }
     if events is not None:
         where["events"] = {"has_every": events}
@@ -207,10 +211,29 @@ async def find_webhook_by_credentials_and_props(
     return Webhook.from_db(webhook) if webhook else None
 
 
+async def find_webhook_by_credentials_and_props_any_tenant(
+    user_id: str,
+    credentials_id: str,
+    webhook_type: str,
+    resource: str,
+) -> Webhook | None:
+    webhook = await IntegrationWebhook.prisma().find_first(
+        where={
+            "userId": user_id,
+            "credentialsId": credentials_id,
+            "webhookType": webhook_type,
+            "resource": resource,
+        }
+    )
+    return Webhook.from_db(webhook) if webhook else None
+
+
 async def find_webhook_by_graph_and_props(
     user_id: str,
     provider: str,
     webhook_type: str,
+    organization_id: str | None,
+    team_id: str | None,
     graph_id: Optional[str] = None,
     preset_id: Optional[str] = None,
 ) -> Webhook | None:
@@ -219,6 +242,8 @@ async def find_webhook_by_graph_and_props(
         "userId": user_id,
         "provider": provider,
         "webhookType": webhook_type,
+        "organizationId": organization_id,
+        "teamId": team_id,
     }
 
     if preset_id:

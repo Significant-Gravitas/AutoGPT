@@ -301,6 +301,9 @@ async def update_chat_session(
     total_prompt_tokens: int | None = None,
     total_completion_tokens: int | None = None,
     title: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    update_tenancy: bool = False,
 ) -> ChatSessionInfo | None:
     """Update a chat session's mutable fields.
 
@@ -322,6 +325,9 @@ async def update_chat_session(
         data["totalCompletionTokens"] = total_completion_tokens
     if title is not None:
         data["title"] = title
+    if update_tenancy:
+        data["organizationId"] = organization_id
+        data["teamId"] = team_id
 
     # Returns the bare session row (no eager Messages include): pulling the
     # full message history per update was a top-egress query, and the only

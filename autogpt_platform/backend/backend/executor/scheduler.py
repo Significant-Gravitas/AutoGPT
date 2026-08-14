@@ -1865,6 +1865,11 @@ class Scheduler(AppService):
         team_id: Optional[str] = None,
         expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        if expert_id is not None:
+            organization_id, team_id = run_async(
+                experts_db().resolve_expert_personal_tenancy(user_id, expert_id)
+            )
+
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
         run_async(
@@ -2096,7 +2101,9 @@ class Scheduler(AppService):
         With *organization_id* (from a membership-verified RequestContext)
         the org/team visibility rules apply instead of strict ownership:
         own schedules + org-home schedules + schedules of teams in
-        *team_ids* (resolved by the caller, who has async DB access).
+        *team_ids* (resolved by the caller, who has async DB access). Expert
+        schedules remain owner-only for scoped calls. Trusted global callers
+        that provide neither *user_id* nor *organization_id* receive all jobs.
         """
         jobs: list[JobObj] = self._get_jobs_cached()
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
@@ -2106,7 +2113,12 @@ class Scheduler(AppService):
                 continue
             if kind is not None and info.kind != kind:
                 continue
-            if organization_id is not None:
+            if info.expert_id is not None:
+                if (
+                    user_id is not None or organization_id is not None
+                ) and info.user_id != user_id:
+                    continue
+            elif organization_id is not None:
                 # GraphExecutionJobArgs defaults organization_id to "" —
                 # normalise so untagged rows never match an org clause.
                 info_org = info.organization_id or None

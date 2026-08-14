@@ -194,6 +194,12 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     """Reverse of ``detach_expert_triggers``, for re-hire revival:
     reactivate the presets archiving deactivated (never ones the user had
     turned off themselves) and recreate schedules from the stored cadence."""
+    # Local import avoids the experts_db -> scheduling module cycle. Re-hire
+    # may happen after a personal-org conversion, so restoring a trigger also
+    # moves its preset to the active owner's current personal tenancy.
+    from backend.api.features.experts.experts_db import resolve_expert_personal_tenancy
+
+    organization_id, team_id = await resolve_expert_personal_tenancy(user_id, expert_id)
     await prisma.models.AgentPreset.prisma().update_many(
         where={
             "expertId": expert_id,
@@ -201,7 +207,12 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
             "isDeleted": False,
             "deactivatedByExpertArchive": True,
         },
-        data={"isActive": True, "deactivatedByExpertArchive": False},
+        data={
+            "isActive": True,
+            "deactivatedByExpertArchive": False,
+            "organizationId": organization_id,
+            "teamId": team_id,
+        },
     )
     workflows = await prisma.models.ExpertWorkflow.prisma().find_many(
         where={

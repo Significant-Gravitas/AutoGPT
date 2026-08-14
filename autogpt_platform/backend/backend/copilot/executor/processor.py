@@ -11,7 +11,7 @@ import os
 import subprocess
 import threading
 import time
-from typing import Callable, cast
+from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
@@ -30,6 +30,9 @@ from backend.util.retry import func_retry
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
+
+if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 
@@ -208,6 +211,25 @@ async def _building_mode_forces_sdk(session_id: str) -> bool:
 
     session = await get_chat_session(session_id)
     return session is not None and session_entered_building_mode(session)
+
+
+async def _normalize_expert_session_tenancy(session: "ChatSession") -> "ChatSession":
+    if session.expert_id is None:
+        return session
+
+    from backend.copilot.model import upsert_chat_session
+    from backend.data.db_accessors import experts_db
+
+    organization_id, team_id = await experts_db().resolve_expert_personal_tenancy(
+        session.user_id, session.expert_id
+    )
+    if (session.organization_id, session.team_id) == (organization_id, team_id):
+        return session
+
+    session.organization_id = organization_id
+    session.team_id = team_id
+    session.credentials = {}
+    return await upsert_chat_session(session, persist_tenancy=True)
 
 
 def execute_copilot_turn(
@@ -534,6 +556,8 @@ class CoPilotProcessor:
             ):
                 raise RuntimeError("codex_session_route_mismatch")
 
+            session = await _normalize_expert_session_tenancy(session)
+
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
                 from backend.integrations.codex.credential_codec import (
@@ -647,8 +671,14 @@ class CoPilotProcessor:
                 model=entry.model,
                 permissions=entry.permissions,
                 request_arrival_at=entry.request_arrival_at,
-                organization_id=entry.organization_id,
-                team_id=entry.team_id,
+                organization_id=(
+                    session.organization_id
+                    if session.expert_id is not None
+                    else entry.organization_id
+                ),
+                team_id=(
+                    session.team_id if session.expert_id is not None else entry.team_id
+                ),
                 credential_lease=credential_lease,
                 session=session,
             )

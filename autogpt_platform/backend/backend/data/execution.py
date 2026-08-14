@@ -708,6 +708,22 @@ class GraphExecutionsPaginated(BaseModel):
     pagination: Pagination
 
 
+def _execution_visibility_filters(
+    user_id: str,
+    organization_id: str,
+    team_ids: list[str],
+) -> list[AgentGraphExecutionWhereInput]:
+    """Keep expert runs owner-only while sharing non-expert org/team runs."""
+    shared_visibility = cast(
+        AgentGraphExecutionWhereInput,
+        visibility_filter(user_id, organization_id, team_ids),
+    )
+    expert_visibility: AgentGraphExecutionWhereInput = {
+        "OR": [{"expertId": None}, {"userId": user_id}]
+    }
+    return [shared_visibility, expert_visibility]
+
+
 async def get_graph_executions_paginated(
     user_id: str,
     graph_id: Optional[str] = None,
@@ -729,12 +745,9 @@ async def get_graph_executions_paginated(
     }
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where_filter["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where_filter["AND"] = _execution_visibility_filters(
+            user_id, organization_id, team_ids
+        )
     else:
         where_filter["userId"] = user_id
 
@@ -778,12 +791,7 @@ async def get_graph_execution_meta(
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where["AND"] = _execution_visibility_filters(user_id, organization_id, team_ids)
     else:
         where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(where=where)
@@ -826,12 +834,7 @@ async def get_graph_execution(
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where["AND"] = _execution_visibility_filters(user_id, organization_id, team_ids)
     else:
         where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(

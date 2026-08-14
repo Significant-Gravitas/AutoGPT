@@ -48,9 +48,12 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             credentials_id=credentials.id,
             webhook_type=webhook_type,
             resource=resource,
+            organization_id=organization_id,
+            team_id=team_id,
             events=events,
         ):
-            return webhook
+            if self._matches_tenancy(webhook, organization_id, team_id):
+                return webhook
 
         return await self._create_webhook(
             user_id=user_id,
@@ -88,15 +91,18 @@ class BaseWebhooksManager(ABC, Generic[WT]):
                 user_id=user_id,
                 provider=self.PROVIDER_NAME.value,
                 webhook_type=webhook_type,
+                organization_id=organization_id,
+                team_id=team_id,
                 graph_id=graph_id,
                 preset_id=preset_id,
             )
         ):
-            if set(current_webhook.events) != set(events):
-                current_webhook = await integrations.update_webhook(
-                    current_webhook.id, events=events
-                )
-            return current_webhook
+            if self._matches_tenancy(current_webhook, organization_id, team_id):
+                if set(current_webhook.events) != set(events):
+                    current_webhook = await integrations.update_webhook(
+                        current_webhook.id, events=events
+                    )
+                return current_webhook
 
         return await self._create_webhook(
             user_id=user_id,
@@ -106,6 +112,14 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             organization_id=organization_id,
             team_id=team_id,
         )
+
+    @staticmethod
+    def _matches_tenancy(
+        webhook: integrations.Webhook,
+        organization_id: str | None,
+        team_id: str | None,
+    ) -> bool:
+        return webhook.organization_id == organization_id and webhook.team_id == team_id
 
     async def prune_webhook_if_dangling(
         self, user_id: str, webhook_id: str, credentials: Optional[Credentials]

@@ -224,6 +224,91 @@ async def test_get_expert_excludes_archived_experts(server: SpinTestServer, test
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_resolve_expert_personal_tenancy_uses_owner_personal_scope():
+    find_first = AsyncMock(return_value=SimpleNamespace(id="expert-1"))
+    manager = SimpleNamespace(find_first=find_first)
+    lookup = AsyncMock(return_value=("personal-org", "personal-team"))
+
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=manager),
+        patch.object(experts_db, "get_user_default_team", lookup),
+    ):
+        result = await experts_db.resolve_expert_personal_tenancy("owner-1", "expert-1")
+
+    assert result == ("personal-org", "personal-team")
+    find_first.assert_awaited_once_with(
+        where={
+            "id": "expert-1",
+            "ownerUserId": "owner-1",
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    lookup.assert_awaited_once_with("owner-1")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_resolve_expert_personal_tenancy_rejects_unauthorized_experts():
+    find_first = AsyncMock(side_effect=[None, None, None])
+    manager = SimpleNamespace(find_first=find_first)
+    lookup = AsyncMock(return_value=("org-should-not-leak", "team-should-not-leak"))
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=manager),
+        patch.object(experts_db, "get_user_default_team", lookup),
+    ):
+        for rejected_id in ("other-owners-expert", "template", "archived"):
+            with pytest.raises(experts_db.ExpertNotFoundError):
+                await experts_db.resolve_expert_personal_tenancy(
+                    "attacker", rejected_id
+                )
+
+    lookup.assert_not_awaited()
+    assert all(
+        call.kwargs["where"]["ownerUserId"] == "attacker"
+        and call.kwargs["where"]["isTemplate"] is False
+        and call.kwargs["where"]["isArchived"] is False
+        for call in find_first.await_args_list
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_resolve_expert_personal_tenancy_fails_without_complete_scope():
+    manager = SimpleNamespace(
+        find_first=AsyncMock(return_value=SimpleNamespace(id="expert-1"))
+    )
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=manager),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new_callable=AsyncMock,
+            return_value=(None, None),
+        ),
+    ):
+        with pytest.raises(experts_db.ExpertPersonalTenancyNotFoundError):
+            await experts_db.resolve_expert_personal_tenancy("owner-1", "expert-1")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_resolve_expert_personal_tenancy_allows_missing_default_team():
+    manager = SimpleNamespace(
+        find_first=AsyncMock(return_value=SimpleNamespace(id="expert-1"))
+    )
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=manager),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new_callable=AsyncMock,
+            return_value=("personal-org", None),
+        ),
+    ):
+        assert await experts_db.resolve_expert_personal_tenancy(
+            "owner-1", "expert-1"
+        ) == ("personal-org", None)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_owner_can_update_expert_soul(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)

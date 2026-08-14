@@ -5,6 +5,7 @@ the copilot-turn scheduling feature so they're exercised by the regular
 backend test job (and counted by codecov), not just the integration suite.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -822,6 +823,118 @@ def test_add_copilot_turn_schedule_persists_expert_scope():
     assert info.expert_id == "expert-1"
 
 
+def test_add_graph_schedule_pins_expert_to_personal_tenancy():
+    scheduler = Scheduler(register_system_tasks=False)
+    job = _mock_job({})
+    expert_store = MagicMock()
+    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    call_count = 0
+
+    def fake_run_async(coro, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return asyncio.run(coro)
+        coro.close()
+        return None
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=fake_run_async),
+        patch.object(scheduler, "_persist_schedule", return_value=job) as persist,
+    ):
+        info = scheduler.add_graph_execution_schedule(
+            user_id="owner-1",
+            graph_id="graph-1",
+            graph_version=1,
+            cron="0 9 * * *",
+            input_data={},
+            input_credentials={},
+            user_timezone="UTC",
+            organization_id="shared-org",
+            team_id="shared-team",
+            expert_id="expert-1",
+        )
+
+    expert_store.resolve_expert_personal_tenancy.assert_awaited_once_with(
+        "owner-1", "expert-1"
+    )
+    job_args = persist.call_args.kwargs["job_args"]
+    assert job_args.organization_id == "personal-org"
+    assert job_args.team_id == "personal-team"
+    assert job_args.expert_id == "expert-1"
+    assert info.organization_id == "personal-org"
+    assert info.team_id == "personal-team"
+
+
+def test_add_graph_schedule_rejects_invalid_expert_before_persisting():
+    scheduler = Scheduler(register_system_tasks=False)
+    expert_store = MagicMock()
+    expert_store.resolve_expert_personal_tenancy = AsyncMock(
+        side_effect=ValueError("not found")
+    )
+
+    def reject_run_async(coro, *args, **kwargs):
+        return asyncio.run(coro)
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=reject_run_async),
+        patch.object(scheduler, "_persist_schedule") as persist,
+        pytest.raises(ValueError, match="not found"),
+    ):
+        scheduler.add_graph_execution_schedule(
+            user_id="attacker",
+            graph_id="graph-1",
+            graph_version=1,
+            cron="0 9 * * *",
+            input_data={},
+            input_credentials={},
+            user_timezone="UTC",
+            organization_id="victim-org",
+            team_id="victim-team",
+            expert_id="victim-expert",
+        )
+
+    persist.assert_not_called()
+
+
+def test_add_graph_schedule_keeps_autopilot_tenancy():
+    scheduler = Scheduler(register_system_tasks=False)
+    job = _mock_job({})
+    expert_store = MagicMock()
+    expert_store.resolve_expert_personal_tenancy = AsyncMock()
+
+    def fake_run_async(coro, *args, **kwargs):
+        coro.close()
+        return None
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=fake_run_async),
+        patch.object(scheduler, "_persist_schedule", return_value=job) as persist,
+    ):
+        scheduler.add_graph_execution_schedule(
+            user_id="owner-1",
+            graph_id="graph-1",
+            graph_version=1,
+            cron="0 9 * * *",
+            input_data={},
+            input_credentials={},
+            user_timezone="UTC",
+            organization_id="shared-org",
+            team_id="shared-team",
+        )
+
+    expert_store.resolve_expert_personal_tenancy.assert_not_awaited()
+    job_args = persist.call_args.kwargs["job_args"]
+    assert job_args.organization_id == "shared-org"
+    assert job_args.team_id == "shared-team"
+    assert job_args.expert_id is None
+
+
 # ---------------------------------------------------------------------------
 # System-job registration — the Stripe tier reconciliation sweep
 # ---------------------------------------------------------------------------
@@ -902,7 +1015,15 @@ class TestScheduleOrgVisibility:
 
         return sched, [j for j, _ in jobs], fake_job_to_info
 
-    def _graph_info(self, *, user_id, organization_id="", team_id=None, sid="s1"):
+    def _graph_info(
+        self,
+        *,
+        user_id,
+        organization_id="",
+        team_id=None,
+        expert_id=None,
+        sid="s1",
+    ):
         return GraphExecutionJobInfo(
             id=sid,
             name="n",
@@ -916,6 +1037,7 @@ class TestScheduleOrgVisibility:
             input_credentials={},
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
     def _run(self, infos, **kwargs):
@@ -971,6 +1093,38 @@ class TestScheduleOrgVisibility:
         ]
         result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
         assert result == []
+
+    def test_expert_schedule_hidden_from_shared_team_members(self):
+        infos = [
+            self._graph_info(
+                user_id="expert-owner",
+                organization_id="shared-org",
+                team_id="shared-team",
+                expert_id="expert-1",
+                sid="legacy-shared-expert-job",
+            )
+        ]
+        result = self._run(
+            infos,
+            user_id="shared-team-member",
+            organization_id="shared-org",
+            team_ids=["shared-team"],
+        )
+        assert result == []
+
+    def test_global_no_filter_includes_expert_schedules(self):
+        infos = [
+            self._graph_info(
+                user_id="expert-owner",
+                organization_id="personal-org",
+                expert_id="expert-1",
+                sid="expert-job",
+            )
+        ]
+
+        result = self._run(infos)
+
+        assert [r.schedule_id for r in result] == ["expert-job"]
 
     def test_no_org_mode_is_strict_ownership(self):
         infos = [

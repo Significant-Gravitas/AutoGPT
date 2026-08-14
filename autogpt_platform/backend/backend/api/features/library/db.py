@@ -1983,9 +1983,9 @@ async def create_preset(
         webhook_id: Internal-only; not part of the public request model. Only
             trusted callers (the setup-trigger flow, legacy migration) pass a
             webhook they provisioned for the caller.
-        expert_id: Expert attribution, resolved by the route layer (this
-            module cannot import experts_db without a cycle). Runs fired by
-            the preset inherit it.
+        expert_id: Expert attribution resolved by a trusted caller. The
+            active owned expert is revalidated here and forces personal
+            tenancy; runs fired by the preset inherit it.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -2009,11 +2009,33 @@ async def create_preset(
             "not found or not accessible"
         )
 
+    webhook = None
     # Refuse to attach a webhook the caller doesn't own
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
             raise NotFoundError(f"Webhook #{webhook_id} not found")
+
+    if expert_id:
+        # Local import avoids the experts_db -> library_db import cycle. Expert
+        # presets are personal resources even when their graph is shared.
+        from backend.api.features.experts.experts_db import (
+            resolve_expert_personal_tenancy,
+        )
+
+        try:
+            organization_id, team_id = await resolve_expert_personal_tenancy(
+                user_id, expert_id
+            )
+        except Exception as e:
+            raise NotFoundError(f"Expert #{expert_id} not found") from e
+        if webhook is not None and (
+            webhook.organization_id,
+            webhook.team_id,
+        ) != (organization_id, team_id):
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
+    else:
+        organization_id, team_id = graph.organization_id, graph.team_id
 
     create_input = prisma.types.AgentPresetCreateInput(
         userId=user_id,
@@ -2035,10 +2057,10 @@ async def create_preset(
             ]
         },
     )
-    if graph.organization_id:
-        create_input["organizationId"] = graph.organization_id
-    if graph.team_id:
-        create_input["teamId"] = graph.team_id
+    if organization_id:
+        create_input["organizationId"] = organization_id
+    if team_id:
+        create_input["teamId"] = team_id
     if expert_id:
         create_input["expertId"] = expert_id
     new_preset = await prisma.models.AgentPreset.prisma().create(
@@ -2142,8 +2164,26 @@ async def update_preset(
     logger.debug(
         f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
+
+    expert_tenancy: tuple[str, str | None] | None = None
+    if current.expert_id:
+        from backend.api.features.experts.experts_db import (
+            resolve_expert_personal_tenancy,
+        )
+
+        try:
+            expert_tenancy = await resolve_expert_personal_tenancy(
+                user_id, current.expert_id
+            )
+        except Exception as e:
+            raise NotFoundError(f"Preset #{preset_id} not found") from e
+
     async with transaction() as tx:
         update_data: prisma.types.AgentPresetUpdateInput = {}
+        if expert_tenancy is not None:
+            organization_id, team_id = expert_tenancy
+            update_data["organizationId"] = organization_id
+            update_data["teamId"] = team_id
         if name:
             update_data["name"] = name
         if description:
@@ -2195,18 +2235,37 @@ async def set_preset_webhook(
         raise NotFoundError(f"Preset #{preset_id} not found")
 
     # Refuse to attach a webhook the caller doesn't own
+    update_data: prisma.types.AgentPresetUpdateInput = (
+        {"Webhook": {"connect": {"id": webhook_id}}}
+        if webhook_id
+        else {"Webhook": {"disconnect": True}}
+    )
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
             raise NotFoundError(f"Webhook #{webhook_id} not found")
+        if current.expertId:
+            from backend.api.features.experts.experts_db import (
+                resolve_expert_personal_tenancy,
+            )
+
+            try:
+                organization_id, team_id = await resolve_expert_personal_tenancy(
+                    user_id, current.expertId
+                )
+            except Exception as e:
+                raise NotFoundError(f"Preset #{preset_id} not found") from e
+            if (webhook.organization_id, webhook.team_id) != (
+                organization_id,
+                team_id,
+            ):
+                raise NotFoundError(f"Webhook #{webhook_id} not found")
+            update_data["organizationId"] = organization_id
+            update_data["teamId"] = team_id
 
     updated = await prisma.models.AgentPreset.prisma().update(
         where={"id": preset_id},
-        data=(
-            {"Webhook": {"connect": {"id": webhook_id}}}
-            if webhook_id
-            else {"Webhook": {"disconnect": True}}
-        ),
+        data=update_data,
         include=AGENT_PRESET_INCLUDE,
     )
     if not updated:

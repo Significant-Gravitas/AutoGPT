@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from backend.api.features.library.model import LibraryAgentPreset
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
@@ -28,6 +29,56 @@ logger = logging.getLogger(__name__)
 # Presets are returned in a single page; the response carries total_count so the
 # model can tell when the list is truncated and narrow via a filter instead.
 _LIST_PAGE_SIZE = 100
+
+
+def _is_in_session_scope(preset: LibraryAgentPreset, session: ChatSession) -> bool:
+    return preset.expert_id == session.expert_id
+
+
+async def _get_scoped_preset(
+    user_id: str, preset_id: str, session: ChatSession
+) -> LibraryAgentPreset | None:
+    try:
+        preset = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
+    except NotFoundError:
+        return None
+    if preset is None or not _is_in_session_scope(preset, session):
+        return None
+    return preset
+
+
+async def _list_scoped_presets(
+    user_id: str,
+    graph_id: str | None,
+    session: ChatSession,
+) -> list[LibraryAgentPreset]:
+    ldb = library_db()
+    first_page = await ldb.list_presets(
+        user_id=user_id,
+        page=1,
+        page_size=_LIST_PAGE_SIZE,
+        graph_id=graph_id,
+    )
+    scoped = [
+        preset for preset in first_page.presets if _is_in_session_scope(preset, session)
+    ]
+    total_pages = max(
+        1,
+        (first_page.pagination.total_items + _LIST_PAGE_SIZE - 1) // _LIST_PAGE_SIZE,
+    )
+    for page in range(2, total_pages + 1):
+        response = await ldb.list_presets(
+            user_id=user_id,
+            page=page,
+            page_size=_LIST_PAGE_SIZE,
+            graph_id=graph_id,
+        )
+        scoped.extend(
+            preset
+            for preset in response.presets
+            if _is_in_session_scope(preset, session)
+        )
+    return scoped
 
 
 class PresetSummary(BaseModel):
@@ -145,10 +196,8 @@ class ListPresetsTool(BaseTool):
                 )
             graph_id = lib_agent.graph_id
 
-        response = await ldb.list_presets(
-            user_id=user_id, page=1, page_size=_LIST_PAGE_SIZE, graph_id=graph_id
-        )
-        total_count = response.pagination.total_items
+        scoped_presets = await _list_scoped_presets(user_id, graph_id, session)
+        total_count = len(scoped_presets)
         presets = [
             PresetSummary(
                 id=p.id,
@@ -161,7 +210,7 @@ class ListPresetsTool(BaseTool):
                 webhook_url=p.webhook.url if p.webhook else None,
                 provider=p.webhook.provider if p.webhook else None,
             )
-            for p in response.presets
+            for p in scoped_presets[:_LIST_PAGE_SIZE]
         ]
 
         if not presets:
@@ -256,21 +305,20 @@ class UpdatePresetTool(BaseTool):
                 session_id=session_id,
             )
 
+        current = await _get_scoped_preset(user_id, preset_id, session)
+        if current is None:
+            return ErrorResponse(
+                message=f"Preset '{preset_id}' not found.",
+                error="preset_not_found",
+                session_id=session_id,
+            )
+
         merged_inputs = None
         credentials = None
         new_inputs = kwargs.get("inputs")
         if new_inputs:
             # Reconfigure: merge over current inputs and reuse the stored
             # credentials so the webhook can be re-registered.
-            current = await library_db().get_preset(
-                user_id=user_id, preset_id=preset_id
-            )
-            if not current:
-                return ErrorResponse(
-                    message=f"Preset '{preset_id}' not found.",
-                    error="preset_not_found",
-                    session_id=session_id,
-                )
             merged_inputs = {**current.inputs, **new_inputs}
             credentials = current.credentials
 
@@ -361,8 +409,8 @@ class DeletePresetTool(BaseTool):
             )
 
         # Fetch first for the name + a clean not-found message.
-        current = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
-        if not current:
+        current = await _get_scoped_preset(user_id, preset_id, session)
+        if current is None:
             return ErrorResponse(
                 message=f"Preset '{preset_id}' not found.",
                 error="preset_not_found",
