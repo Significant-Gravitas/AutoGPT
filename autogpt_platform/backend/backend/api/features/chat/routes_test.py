@@ -336,6 +336,28 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     assert response.status_code == 200
 
 
+def test_stream_chat_allows_an_active_expert_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "expert-active"
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "keep working"},
+    )
+
+    assert response.status_code == 200
+    active_check.assert_awaited_once_with(test_user_id, "expert-active")
+    mocks.enqueue.assert_awaited_once()
+
+
 def test_stream_chat_rejects_an_archived_expert_session(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -1606,6 +1628,29 @@ def test_queue_pending_message_session_not_found_returns_404(
         json={"message": "hi"},
     )
     assert response.status_code == 404
+
+
+def test_queue_pending_message_allows_an_active_expert_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_session = _mock_stream_queue_internals(mocker)
+    assert mock_session is not None
+    mock_session.expert_id = "expert-active"
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["buffer_length"] == 1
+    active_check.assert_awaited_once_with(test_user_id, "expert-active")
 
 
 def test_queue_pending_message_rejects_an_archived_expert_session(
