@@ -171,12 +171,15 @@ def classify_output_type(value: object) -> str:
     earn a specific type. Everything else stays ``"unknown"`` and falls back
     to the run-details link.
     """
-    if (
-        isinstance(value, list)
-        and value
-        and all(isinstance(row, dict) for row in value)
-    ):
-        return "table"
+    if isinstance(value, list) and value:
+        if all(isinstance(row, dict) for row in value):
+            return "table"
+        if all(isinstance(item, str) for item in value):
+            strings = [item.strip() for item in value if item.strip()]
+            if strings and all(_is_image_url(item) for item in strings):
+                return "image"
+            if len("\n\n".join(strings)) >= _DOC_MIN_LENGTH:
+                return "doc"
     if isinstance(value, str):
         stripped = value.strip()
         if _is_image_url(stripped):
@@ -194,7 +197,8 @@ def classify_run_output(outputs: Mapping[str, list[Any]]) -> tuple[str, str | No
     first pin must not mask a table on the second. Falls back to
     ``("unknown", None)`` when nothing renders. A pin that emitted a single
     list-of-dicts value and one that emitted several dict rows both read as
-    a ``"table"``.
+    a ``"table"``. Multiple text values are classified as one document,
+    while multiple image URLs select the image viewer.
     """
     for key, values in outputs.items():
         if not values:

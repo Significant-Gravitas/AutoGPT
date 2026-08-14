@@ -191,6 +191,19 @@ def test_classify_output_type_doc_from_long_text():
     assert classify_output_type("word " * 100) == "doc"
 
 
+def test_classify_output_type_handles_multi_value_string_pins():
+    assert classify_output_type(["word " * 25, "word " * 25]) == "doc"
+    assert (
+        classify_output_type(
+            [
+                "https://cdn.example.com/first.png",
+                "https://cdn.example.com/second.webp",
+            ]
+        )
+        == "image"
+    )
+
+
 def test_classify_output_type_unknown_for_short_text_and_scalars():
     assert classify_output_type("ok") == "unknown"
     assert classify_output_type(42) == "unknown"

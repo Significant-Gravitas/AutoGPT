@@ -54,6 +54,19 @@ describe("WorkOutputSheet helpers", () => {
     expect(pickOutputForType({}, "doc", null)).toBeNull();
   });
 
+  it("pickOutputForType renders multi-value string pins consistently", () => {
+    expect(
+      pickOutputForType({ report: ["First", "Second"] }, "doc", "report"),
+    ).toBe("First\n\nSecond");
+    expect(
+      pickOutputForType(
+        { images: ["https://example.com/1.png", "https://example.com/2.png"] },
+        "image",
+        "images",
+      ),
+    ).toBe("https://example.com/1.png");
+  });
+
   it("tableColumns unions keys across rows in first-seen order", () => {
     expect(tableColumns([{ a: 1 }, { b: 2, a: 3 }])).toEqual(["a", "b"]);
   });

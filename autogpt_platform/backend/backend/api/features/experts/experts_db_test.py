@@ -810,14 +810,14 @@ def test_outputs_from_node_execs_prefers_execution_data_and_orders_by_time():
     assert outputs == {"rows": [1, 2]}
 
 
-def test_outputs_from_node_execs_orders_mixed_timestamps_chronologically():
+def test_outputs_from_node_execs_orders_queued_rows_before_unqueued_rows():
     outputs = experts_db._outputs_from_node_execs(
         [
             _output_node_exec("rows", 2, added_minutes=0, queued_minutes=5),
             _output_node_exec("rows", 1, added_minutes=1),
         ]
     )
-    assert outputs == {"rows": [1, 2]}
+    assert outputs == {"rows": [2, 1]}
 
 
 def test_outputs_from_node_execs_skips_rows_without_name():

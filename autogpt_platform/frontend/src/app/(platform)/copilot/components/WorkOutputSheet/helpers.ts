@@ -23,7 +23,11 @@ export function asTableRows(value: unknown): Record<string, unknown>[] | null {
   return null;
 }
 
-function collapsePin(values: unknown[]): unknown {
+function collapsePin(values: unknown[], outputType: OutputType): unknown {
+  if (values.length > 1 && values.every((value) => typeof value === "string")) {
+    if (outputType === "doc") return values.join("\n\n");
+    if (outputType === "image") return values[0];
+  }
   return values.length === 1 ? values[0] : values;
 }
 
@@ -50,12 +54,12 @@ export function pickOutputForType(
   if (outputKey) {
     const values = outputs[outputKey];
     if (Array.isArray(values) && values.length > 0) {
-      return collapsePin(values);
+      return collapsePin(values, outputType);
     }
   }
   for (const values of Object.values(outputs)) {
     if (!Array.isArray(values) || values.length === 0) continue;
-    const value = collapsePin(values);
+    const value = collapsePin(values, outputType);
     if (rendersAs(value, outputType)) return value;
   }
   return null;

@@ -258,7 +258,7 @@ def _outputs_from_node_execs(
     time, keyed by the block's ``name`` input, valued by its ``value``."""
     ordered = sorted(
         node_execs,
-        key=lambda ne: ne.queuedTime or ne.addedTime,
+        key=lambda ne: (ne.queuedTime is None, ne.queuedTime or ne.addedTime),
     )
     outputs: dict[str, list[JsonValue]] = defaultdict(list)
     for node_exec in ordered:
