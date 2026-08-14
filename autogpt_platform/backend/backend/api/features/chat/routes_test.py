@@ -1453,7 +1453,9 @@ def test_create_session_maps_missing_personal_org_to_503(
     response = client.post("/sessions", json={"expert_id": "expert-1"})
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Expert personal organization is unavailable"}
+    assert response.json() == {
+        "detail": "Your expert workspace is still being set up. Try again shortly."
+    }
 
 
 def test_create_session_rejects_builder_graph_id_with_expert_id(

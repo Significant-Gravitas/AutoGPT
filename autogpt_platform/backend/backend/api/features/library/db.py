@@ -1977,6 +1977,20 @@ async def get_preset(
     return library_model.LibraryAgentPreset.from_db(preset)
 
 
+async def _resolve_private_expert_tenancy_or_not_found(
+    user_id: str,
+    expert_id: str,
+    not_found_message: str,
+) -> tuple[str, str | None]:
+    """Map only an inaccessible private expert to the caller's 404 contract."""
+    from backend.api.features.experts import experts_db
+
+    try:
+        return await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise NotFoundError(not_found_message) from e
+
+
 async def create_preset(
     user_id: str,
     preset: library_model.LibraryAgentPresetCreatable,
@@ -2027,18 +2041,11 @@ async def create_preset(
             raise NotFoundError(f"Webhook #{webhook_id} not found")
 
     if expert_id:
-        # Local import avoids the experts_db -> library_db import cycle. Expert
-        # presets are personal resources even when their graph is shared.
-        from backend.api.features.experts.experts_db import (
-            resolve_private_expert_tenancy,
+        organization_id, team_id = await _resolve_private_expert_tenancy_or_not_found(
+            user_id,
+            expert_id,
+            f"Expert #{expert_id} not found",
         )
-
-        try:
-            organization_id, team_id = await resolve_private_expert_tenancy(
-                user_id, expert_id
-            )
-        except Exception as e:
-            raise NotFoundError(f"Expert #{expert_id} not found") from e
         if webhook is not None and (
             webhook.organization_id,
             webhook.team_id,
@@ -2177,16 +2184,11 @@ async def update_preset(
 
     expert_tenancy: tuple[str, str | None] | None = None
     if current.expert_id:
-        from backend.api.features.experts.experts_db import (
-            resolve_private_expert_tenancy,
+        expert_tenancy = await _resolve_private_expert_tenancy_or_not_found(
+            user_id,
+            current.expert_id,
+            f"Preset #{preset_id} not found",
         )
-
-        try:
-            expert_tenancy = await resolve_private_expert_tenancy(
-                user_id, current.expert_id
-            )
-        except Exception as e:
-            raise NotFoundError(f"Preset #{preset_id} not found") from e
 
     async with transaction() as tx:
         update_data: prisma.types.AgentPresetUpdateInput = {}
@@ -2255,16 +2257,13 @@ async def set_preset_webhook(
         if webhook.user_id != user_id:
             raise NotFoundError(f"Webhook #{webhook_id} not found")
         if current.expertId:
-            from backend.api.features.experts.experts_db import (
-                resolve_private_expert_tenancy,
-            )
-
-            try:
-                organization_id, team_id = await resolve_private_expert_tenancy(
-                    user_id, current.expertId
+            organization_id, team_id = (
+                await _resolve_private_expert_tenancy_or_not_found(
+                    user_id,
+                    current.expertId,
+                    f"Preset #{preset_id} not found",
                 )
-            except Exception as e:
-                raise NotFoundError(f"Preset #{preset_id} not found") from e
+            )
             if (webhook.organization_id, webhook.team_id) != (
                 organization_id,
                 team_id,

@@ -82,7 +82,7 @@ async def setup_triggered_preset(
             organization_id, team_id = await experts_db.resolve_private_expert_tenancy(
                 user_id, effective_expert_id
             )
-        except Exception as e:
+        except experts_db.ExpertNotFoundError as e:
             raise NotFoundError(f"Expert #{effective_expert_id} not found") from e
     else:
         organization_id, team_id = graph.organization_id, graph.team_id
@@ -156,7 +156,7 @@ async def update_triggered_preset(
                             user_id, current.expert_id
                         )
                     )
-                except Exception as e:
+                except experts_db.ExpertNotFoundError as e:
                     raise NotFoundError(f"Preset #{preset_id} not found") from e
             else:
                 organization_id, team_id = graph.organization_id, graph.team_id

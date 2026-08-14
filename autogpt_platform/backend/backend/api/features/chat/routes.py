@@ -722,7 +722,7 @@ async def create_session(
         except experts_db.ExpertPrivateTenancyNotFoundError as e:
             raise HTTPException(
                 status_code=503,
-                detail="Expert personal organization is unavailable",
+                detail="Your expert workspace is still being set up. Try again shortly.",
             ) from e
 
     return CreateSessionResponse(

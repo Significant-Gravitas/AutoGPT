@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.features.experts import experts_db
 from backend.api.features.library.triggers import (
     delete_preset_with_webhook_cleanup,
     setup_triggered_preset,
@@ -96,6 +97,48 @@ async def test_expert_trigger_is_created_in_personal_scope():
     assert webhook_mock.await_args.kwargs["organization_id"] == "personal-org"
     assert webhook_mock.await_args.kwargs["team_id"] == "personal-team"
     assert create_mock.await_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_expert_trigger_maps_inaccessible_expert_to_not_found():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(side_effect=experts_db.ExpertNotFoundError("expert-1")),
+        ),
+    ):
+        with pytest.raises(NotFoundError, match="Expert #expert-1 not found"):
+            await _setup(expert_id="expert-1")
+
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_trigger_propagates_transient_tenancy_failure():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(side_effect=RuntimeError("database unavailable")),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            await _setup(expert_id="expert-1")
+
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

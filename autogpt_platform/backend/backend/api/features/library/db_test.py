@@ -9,6 +9,7 @@ import prisma.fields
 import prisma.models
 import pytest
 
+from backend.api.features.experts import experts_db
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
@@ -1197,6 +1198,77 @@ async def test_create_expert_preset_forces_personal_tenancy(mocker):
 
 
 @pytest.mark.asyncio
+async def test_create_expert_preset_accepts_matching_private_webhook(mocker):
+    created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
+        id="preset-expert",
+        userId="owner",
+        name="Expert Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+        organizationId="personal-org",
+        teamId="personal-team",
+        expertId="expert-1",
+    )
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(
+            return_value=MagicMock(organization_id="shared-org", team_id="shared-team")
+        ),
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(
+            return_value=MagicMock(
+                user_id="owner",
+                organization_id="personal-org",
+                team_id="personal-team",
+            )
+        ),
+    )
+    mocker.patch.object(
+        experts_db,
+        "resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("personal-org", "personal-team")),
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    await db.create_preset(
+        user_id="owner",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=1,
+            name="Expert Preset",
+            description="",
+            is_active=True,
+        ),
+        webhook_id="private-webhook",
+        expert_id="expert-1",
+    )
+
+    create_data = mock_preset_client.create.await_args.kwargs["data"]
+    assert create_data["webhookId"] == "private-webhook"
+    assert create_data["organizationId"] == "personal-org"
+    assert create_data["teamId"] == "personal-team"
+    assert create_data["expertId"] == "expert-1"
+
+
+@pytest.mark.asyncio
 async def test_create_expert_preset_rejects_shared_webhook(mocker):
     mocker.patch.object(
         db.graph_db,
@@ -1309,7 +1381,7 @@ async def test_update_expert_preset_fails_before_mutation_when_expert_is_unavail
     )
     mocker.patch(
         "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
-        new=AsyncMock(side_effect=ValueError("expert unavailable")),
+        new=AsyncMock(side_effect=experts_db.ExpertNotFoundError("unavailable-expert")),
     )
     mock_preset_client = AsyncMock()
     mocker.patch.object(
@@ -1319,6 +1391,33 @@ async def test_update_expert_preset_fails_before_mutation_when_expert_is_unavail
     with pytest.raises(NotFoundError, match="Preset #preset-1 not found"):
         await db.update_preset(
             user_id="attacker",
+            preset_id="preset-1",
+            is_active=True,
+        )
+
+    mock_preset_client.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_expert_preset_propagates_transient_tenancy_failure(mocker):
+    mocker.patch.object(
+        db,
+        "get_preset",
+        new=AsyncMock(return_value=MagicMock(name="Preset", expert_id="expert-1")),
+    )
+    mocker.patch.object(
+        experts_db,
+        "resolve_private_expert_tenancy",
+        new=AsyncMock(side_effect=RuntimeError("database unavailable")),
+    )
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await db.update_preset(
+            user_id="owner",
             preset_id="preset-1",
             is_active=True,
         )

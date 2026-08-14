@@ -877,8 +877,8 @@ async def upsert_chat_session(
                 f"Failed to persist chat session {session.session_id} to database"
             ) from db_error
 
-        # Ordinary upserts retain the existing best-effort cache-on-DB-error
-        # behavior. Tenancy changes return above after eviction instead.
+        # Ordinary upserts keep best-effort cache-on-DB-error behavior;
+        # tenancy changes return above after eviction instead.
         # Title (update_session_title) and pin state (update_session_pinned)
         # are mutated *outside* this lock — they only touch their single field,
         # not messages — so a concurrent rename, auto-title, or pin/unpin may

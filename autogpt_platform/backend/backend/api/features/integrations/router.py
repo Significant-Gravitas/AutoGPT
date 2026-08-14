@@ -886,7 +886,8 @@ async def _execute_webhook_preset_trigger(
         except Exception:
             logger.warning(
                 "Refusing private expert webhook preset because its tenancy "
-                "could not be validated"
+                "could not be validated",
+                exc_info=True,
             )
             return
 
