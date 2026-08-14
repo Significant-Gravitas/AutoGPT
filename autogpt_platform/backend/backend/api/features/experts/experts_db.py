@@ -16,6 +16,10 @@ from backend.api.features.library import db as library_db
 from backend.api.features.orgs.db import get_user_default_team
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
+from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
+)
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -28,18 +32,6 @@ class ExpertTemplateNotFoundError(Exception):
     def __init__(self, template_id: str):
         super().__init__(f"Expert template {template_id} not found")
         self.template_id = template_id
-
-
-class ExpertNotFoundError(Exception):
-    def __init__(self, expert_id: str):
-        super().__init__(f"Expert {expert_id} not found")
-        self.expert_id = expert_id
-
-
-class ExpertPrivateTenancyNotFoundError(Exception):
-    def __init__(self, expert_id: str):
-        super().__init__(f"Private tenancy for expert {expert_id} not found")
-        self.expert_id = expert_id
 
 
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:

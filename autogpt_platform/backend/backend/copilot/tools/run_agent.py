@@ -17,7 +17,13 @@ from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.clients import get_database_manager_async_client, get_scheduler_client
-from backend.util.exceptions import DatabaseError, GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    DatabaseError,
+    ExpertNotFoundError,
+    GraphValidationError,
+    MissingConfigError,
+    NotFoundError,
+)
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
@@ -422,10 +428,30 @@ class RunAgentTool(BaseTool):
                     result.saved_preset_id = saved_preset_id
             return result
 
+        except ExpertNotFoundError:
+            return ErrorResponse(
+                message="This expert is no longer available. Please start a new chat.",
+                error="expert_not_found",
+                session_id=session_id,
+            )
         except NotFoundError as e:
             return ErrorResponse(
                 message=f"Agent '{params.username_agent_slug}' not found",
                 error=str(e) if str(e) else "not_found",
+                session_id=session_id,
+            )
+        except MissingConfigError:
+            return ErrorResponse(
+                message=(
+                    "Your expert workspace is still being set up. Try again shortly."
+                    if session.expert_id is not None
+                    else "Required configuration is temporarily unavailable. Try again shortly."
+                ),
+                error=(
+                    "expert_workspace_unavailable"
+                    if session.expert_id is not None
+                    else "configuration_unavailable"
+                ),
                 session_id=session_id,
             )
         except DatabaseError as e:

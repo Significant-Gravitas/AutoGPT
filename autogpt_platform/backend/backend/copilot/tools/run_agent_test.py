@@ -7,7 +7,10 @@ import pytest
 from backend.data.execution import ExecutionStatus
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
-from backend.util.exceptions import GraphValidationError
+from backend.util.exceptions import (
+    ExpertPrivateTenancyNotFoundError,
+    GraphValidationError,
+)
 
 from ._test_data import (
     make_session,
@@ -875,6 +878,38 @@ async def test_run_agent_execution_credential_race_returns_setup_card(
     assert result_data.get("type") == "setup_requirements"
     assert "setup_info" in result_data
     assert result_data["setup_info"]["user_readiness"]["ready_to_run"] is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_expert_workspace_unavailable_returns_stable_error(
+    setup_test_data,
+):
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    session = make_session(user_id=user.id, expert_id="expert-1")
+
+    with patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        new_callable=AsyncMock,
+        side_effect=ExpertPrivateTenancyNotFoundError("expert-1"),
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=agent_marketplace_id,
+            inputs={"test_input": "value"},
+            dry_run=False,
+            session=session,
+        )
+
+    result_data = orjson.loads(response.output)
+    assert result_data["error"] == "expert_workspace_unavailable"
+    assert result_data["message"] == (
+        "Your expert workspace is still being set up. Try again shortly."
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
