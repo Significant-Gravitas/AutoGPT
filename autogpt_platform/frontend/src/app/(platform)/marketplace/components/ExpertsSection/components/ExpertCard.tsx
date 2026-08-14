@@ -8,10 +8,10 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import { getExpertAccent, getExpertAvatarUrl } from "../helpers";
 import {
+  Alert01Icon,
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
   FlashIcon,
-  Refresh01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -105,8 +105,8 @@ export function ExpertCard({ expert, hiredState, onClick }: Props) {
             <Skeleton className="h-5 w-20 rounded-full" />
           ) : hiredState === "error" ? (
             <span className="flex items-center gap-1.5 text-base font-medium text-amber-700">
-              <Icon icon={Refresh01Icon} size={16} />
-              Retry team status
+              <Icon icon={Alert01Icon} size={16} />
+              Team status unavailable
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">

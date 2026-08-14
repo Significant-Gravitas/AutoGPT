@@ -278,7 +278,7 @@ describe("Marketplace ExpertsSection", () => {
     expect(hireButton.hasAttribute("disabled")).toBe(true);
   });
 
-  test("offers a retryable card state instead of hiring when the lookup fails", async () => {
+  test("offers a retryable team status instead of hiring when the lookup fails", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler401(),
@@ -289,13 +289,17 @@ describe("Marketplace ExpertsSection", () => {
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(screen.queryByText("Hire")).toBeNull();
     expect(screen.queryByText("On your team")).toBeNull();
-    expect(await screen.findByText("Retry team status")).toBeDefined();
+    expect(await screen.findByText("Team status unavailable")).toBeDefined();
+
+    await userEvent.click(await screen.findByText("Maria"));
+
+    expect(
+      await screen.findByText("Team status unavailable right now."),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
 
     server.use(getListExpertsMockHandler([hiredMaria]));
-    await userEvent.click(screen.getByText("Retry team status"));
-
-    expect(await screen.findByText("On your team")).toBeDefined();
-    await userEvent.click(screen.getByText("Maria"));
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     // After a successful retry the sheet resolves to the real hired state.
     expect(

@@ -26,10 +26,6 @@ export function useExpertsSection() {
   );
   const hasHiredLookupData = expertsQuery.data !== undefined;
 
-  function retryHiredLookup() {
-    void expertsQuery.refetch();
-  }
-
   return {
     templates: templatesQuery.data ?? [],
     hiredTemplateIds,
@@ -42,7 +38,6 @@ export function useExpertsSection() {
       !hasHiredLookupData &&
       expertsQuery.isError &&
       !expertsQuery.isFetching,
-    retryHiredLookup,
     isLoading: isLoggedIn && templatesQuery.isLoading,
     isError: templatesQuery.isError,
     selectedTemplateId,

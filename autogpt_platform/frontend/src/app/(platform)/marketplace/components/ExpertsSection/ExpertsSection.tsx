@@ -13,7 +13,6 @@ export function ExpertsSection() {
     hiredTemplateIds,
     isHiredLookupUnresolved,
     isHiredLookupError,
-    retryHiredLookup,
     isLoading,
     isError,
     selectedTemplateId,
@@ -54,11 +53,7 @@ export function ExpertsSection() {
                       ? "hired"
                       : "available"
               }
-              onClick={
-                isHiredLookupError
-                  ? retryHiredLookup
-                  : () => openTemplate(template.id)
-              }
+              onClick={() => openTemplate(template.id)}
             />
           ))}
         </div>
