@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -231,6 +232,27 @@ async def test_weekly_spends_degrades_an_unexpected_read_failure_to_zero():
         spends = await experts_db._weekly_spends(["expert-ok", "expert-bad"])
 
     assert spends == {"expert-ok": 125, "expert-bad": 0}
+
+
+@pytest.mark.asyncio
+async def test_weekly_spends_limits_concurrent_reads():
+    active_reads = 0
+    peak_reads = 0
+
+    async def read(_: str) -> int:
+        nonlocal active_reads, peak_reads
+        active_reads += 1
+        peak_reads = max(peak_reads, active_reads)
+        await asyncio.sleep(0)
+        active_reads -= 1
+        return 125
+
+    expert_ids = [f"expert-{index}" for index in range(25)]
+    with patch.object(experts_db, "get_weekly_spend", side_effect=read):
+        spends = await experts_db._weekly_spends(expert_ids)
+
+    assert peak_reads == experts_db._WEEKLY_SPEND_READ_CONCURRENCY
+    assert spends == {expert_id: 125 for expert_id in expert_ids}
 
 
 @pytest.mark.asyncio(loop_scope="session")
