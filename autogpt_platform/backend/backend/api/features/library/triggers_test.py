@@ -75,15 +75,45 @@ async def test_creates_preset_on_success():
 @pytest.mark.asyncio
 async def test_setup_prefers_session_expert_over_graph_match():
     """A trigger created inside an expert chat is that expert's work: the
-    session's expert wins and the graph match isn't even consulted."""
+    (still-active) session expert wins and the graph match isn't consulted."""
     preset = MagicMock(id="preset-1")
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
         graph=_graph(), preset=preset, graph_expert="expert-graph"
     )
-    with p_graph, p_creds, p_webhook, p_expert as expert_mock, p_create as create_mock:
+    p_get_expert = patch(
+        f"{_PATH}.experts_db.get_expert",
+        new=AsyncMock(return_value=MagicMock()),  # active + owned
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_get_expert,
+        p_expert as expert_mock,
+        p_create as create_mock,
+    ):
         await _setup(expert_id="expert-session")
     assert create_mock.call_args.kwargs["expert_id"] == "expert-session"
     expert_mock.assert_not_awaited()  # short-circuited by the session expert
+
+
+@pytest.mark.asyncio
+async def test_setup_archived_session_expert_falls_back_to_graph_match():
+    """Archived-session regression: a chat kept open after its expert is
+    archived still carries the stored expert id. The trigger must NOT be
+    attributed to the archived expert (the budget gate would skip every
+    delivery forever) — it falls back to the graph match instead."""
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset, graph_expert="expert-graph"
+    )
+    p_get_expert = patch(
+        f"{_PATH}.experts_db.get_expert",
+        new=AsyncMock(return_value=None),  # archived / not owned
+    )
+    with p_graph, p_creds, p_webhook, p_get_expert, p_expert, p_create as create_mock:
+        await _setup(expert_id="expert-archived")
+    assert create_mock.call_args.kwargs["expert_id"] == "expert-graph"
 
 
 @pytest.mark.asyncio

@@ -240,10 +240,13 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
 @pytest.mark.asyncio
 async def test_execute_copilot_turn_forwards_expert_id_to_fresh_session():
     """A follow-up scheduled from an expert chat mints its fresh session scoped
-    to that expert, so runs inside the scheduled turn stay attributed to her."""
+    to that expert, so runs inside the scheduled turn stay attributed to her.
+    The expert must be re-validated (active + owned) at fire time."""
     args = _args(session_id=None, expert_id="expert-1")
     new_session = MagicMock(session_id="new-session-uuid")
     mock_create_session = AsyncMock(return_value=new_session)
+    mock_experts = MagicMock()
+    mock_experts.get_expert = AsyncMock(return_value=MagicMock())  # still active
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=AsyncMock()),
@@ -251,10 +254,41 @@ async def test_execute_copilot_turn_forwards_expert_id_to_fresh_session():
         patch(
             "backend.executor.scheduler.create_chat_session", new=mock_create_session
         ),
+        patch("backend.executor.scheduler.experts_db", return_value=mock_experts),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
+    mock_experts.get_expert.assert_awaited_once_with(
+        "user-1", "expert-1", include_workflows=False
+    )
     assert mock_create_session.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_degrades_to_plain_session_when_expert_archived():
+    """If the expert was archived (or un-owned) between scheduling and fire
+    time, the fresh session must be created WITHOUT the stale expertId —
+    otherwise schedules/triggers created inside it inherit an id that the
+    archived-expert budget gate blocks forever."""
+    args = _args(session_id=None, expert_id="expert-1")
+    new_session = MagicMock(session_id="new-session-uuid")
+    mock_create_session = AsyncMock(return_value=new_session)
+    mock_schedule_turn = AsyncMock()
+    mock_experts = MagicMock()
+    mock_experts.get_expert = AsyncMock(return_value=None)  # archived / not owned
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=AsyncMock()),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch("backend.executor.scheduler.experts_db", return_value=mock_experts),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert mock_create_session.call_args.kwargs["expert_id"] is None
+    mock_schedule_turn.assert_awaited_once()  # turn still fires, just plain
 
 
 @pytest.mark.asyncio
@@ -454,6 +488,19 @@ async def test_reschedule_after_cap_preserves_user_timezone():
         await _reschedule_one_shot_after_cap(args)
     kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
     assert kwargs["user_timezone"] == "America/New_York"
+
+
+@pytest.mark.asyncio
+async def test_reschedule_after_cap_preserves_expert_id():
+    """The reschedule path must forward the original expert_id, otherwise a
+    capped expert follow-up retries into a plain session and its work escapes
+    the expert's thread and budget."""
+    args = _args(cap_retry_count=0, expert_id="expert-1")
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+    kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert kwargs["expert_id"] == "expert-1"
 
 
 @pytest.mark.asyncio

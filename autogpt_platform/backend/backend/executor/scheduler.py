@@ -38,6 +38,7 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
+from backend.data.db_accessors import experts_db
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
@@ -259,12 +260,27 @@ async def _execute_copilot_turn(**kwargs):
         # otherwise — orphan turns into a missing session would never
         # surface in any UI.
         if args.session_id is None:
+            # Re-validate the captured expert at fire time: if she was archived
+            # (or is no longer owned) after scheduling, degrade to a plain
+            # session instead of persisting a stale expertId — schedules or
+            # triggers created inside such a session would be permanently
+            # skipped by the archived-expert budget gate.
+            expert_id = args.expert_id
+            if expert_id and not await experts_db().get_expert(
+                args.user_id, expert_id, include_workflows=False
+            ):
+                logger.warning(
+                    f"Copilot turn schedule {args.schedule_id}: expert "
+                    f"{expert_id} is no longer active/owned — creating a "
+                    f"plain (non-expert) session instead"
+                )
+                expert_id = None
             new_session = await create_chat_session(
                 args.user_id,
                 dry_run=False,
                 organization_id=args.organization_id,
                 team_id=args.team_id,
-                expert_id=args.expert_id,
+                expert_id=expert_id,
             )
             target_session_id = new_session.session_id
             target_session = new_session
@@ -372,6 +388,9 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             # turn to the user's default org after a cap retry.
             organization_id=args.organization_id,
             team_id=args.team_id,
+            # And for expert attribution — dropping it would fire the retried
+            # turn into a plain session, escaping the expert's thread/budget.
+            expert_id=args.expert_id,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "

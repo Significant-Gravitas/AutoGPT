@@ -62,6 +62,19 @@ async def setup_triggered_preset(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
 
+    # Only an ACTIVE owned expert can claim the trigger: an archived expert's
+    # historical chat stays loadable and keeps its stored expert id, but a
+    # trigger attributed to her would look active while every delivery is
+    # skipped by the archived-expert run-budget gate.
+    if expert_id and not await experts_db.get_expert(
+        user_id, expert_id, include_workflows=False
+    ):
+        logger.warning(
+            f"Ignoring inactive/unowned expert {expert_id} for trigger on "
+            f"graph #{graph_id} — falling back to graph-match attribution"
+        )
+        expert_id = None
+
     trigger_config_with_credentials = {
         **trigger_config,
         **(
