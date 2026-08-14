@@ -55,8 +55,13 @@ def _to_model(
     latest_run: prisma.models.AgentGraphExecution | None = None,
     weekly_spend: int = 0,
 ) -> Expert:
-    # Templates hold a JSON envelope of {description, samples} in
-    # voicePreferences; hired copies hold the user's plain-text pick.
+    """Translate the overloaded ``voicePreferences`` column safely.
+
+    Template rows store an internal ``{description, samples}`` JSON envelope
+    so the hire flow can present choices. Hired rows must store only the final
+    plain-text preference that is safe to render in prompts. Keep this branch
+    on ``isTemplate`` until those representations have separate columns.
+    """
     if row.isTemplate:
         voice_preferences, voice_samples = decode_voice_preferences(
             row.voicePreferences

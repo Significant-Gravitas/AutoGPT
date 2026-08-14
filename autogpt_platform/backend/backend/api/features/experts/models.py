@@ -115,8 +115,9 @@ def decode_voice_preferences(raw: str) -> tuple[str, list[VoiceSample]]:
     """Inverse of ``encode_voice_preferences``.
 
     Templates carry the JSON envelope; hired copies carry a plain string,
-    which round-trips back unchanged with no samples. Malformed or legacy
-    values degrade to ``(raw, [])`` rather than raising.
+    which round-trips back unchanged with no samples. Once a value identifies
+    itself as the template envelope, malformed fields degrade to safe empty
+    values so serialized JSON can never leak into an expert's prompt.
     """
     if not raw:
         return "", []
@@ -129,13 +130,13 @@ def decode_voice_preferences(raw: str) -> tuple[str, list[VoiceSample]]:
     description = envelope.get("description")
     envelope_samples = envelope.get("samples")
     if not isinstance(description, str) or not isinstance(envelope_samples, list):
-        return raw, []
-    try:
-        samples = [
-            VoiceSample(label=item["label"], text=item["text"])
-            for item in envelope_samples
-            if isinstance(item, dict) and "label" in item and "text" in item
-        ]
-    except ValidationError:
-        return raw, []
+        return "", []
+    samples: list[VoiceSample] = []
+    for item in envelope_samples:
+        if not isinstance(item, dict):
+            continue
+        try:
+            samples.append(VoiceSample.model_validate(item))
+        except ValidationError:
+            continue
     return description, samples

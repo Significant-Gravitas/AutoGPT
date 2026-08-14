@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -75,16 +77,37 @@ def test_decode_non_envelope_json_degrades_to_plain_string():
 
 
 @pytest.mark.parametrize(
-    "raw",
+    ("raw", "expected_description"),
     [
         # One malformed template row must degrade, never fail template
         # listing or hiring.
-        '{"description": "x", "samples": null}',
-        '{"description": "x", "samples": "not-a-list"}',
-        '{"description": "x", "samples": [{"label": 1, "text": null}]}',
-        '{"description": 42, "samples": []}',
-        '{"description": null, "samples": []}',
+        ('{"description": "x", "samples": null}', ""),
+        ('{"description": "x", "samples": "not-a-list"}', ""),
+        ('{"description": "x", "samples": [{"label": 1, "text": null}]}', "x"),
+        ('{"description": 42, "samples": []}', ""),
+        ('{"description": null, "samples": []}', ""),
     ],
 )
-def test_decode_malformed_envelope_degrades_without_raising(raw: str):
-    assert decode_voice_preferences(raw) == (raw, [])
+def test_decode_malformed_envelope_degrades_without_raising(
+    raw: str, expected_description: str
+):
+    assert decode_voice_preferences(raw) == (expected_description, [])
+
+
+def test_decode_mixed_sample_list_keeps_only_valid_samples():
+    raw = json.dumps(
+        {
+            "description": "Clear and direct.",
+            "samples": [
+                {"label": "Punchy", "text": "Ship it."},
+                {"label": 1, "text": None},
+                "not-an-object",
+                {"label": "Warm"},
+            ],
+        }
+    )
+
+    description, samples = decode_voice_preferences(raw)
+
+    assert description == "Clear and direct."
+    assert samples == [VoiceSample(label="Punchy", text="Ship it.")]
