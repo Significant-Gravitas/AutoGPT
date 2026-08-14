@@ -5532,7 +5532,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Expert workspace unavailable" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       }

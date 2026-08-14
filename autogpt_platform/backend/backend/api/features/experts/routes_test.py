@@ -166,6 +166,23 @@ def test_hire_expert_unknown_template_returns_404(
     assert response.status_code == 404
 
 
+def test_rehire_expert_workspace_unavailable_returns_503(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1"),
+    )
+
+    response = client.post("/experts", json={"template_id": "template-1"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Your expert workspace is still being set up. Try again shortly."
+    }
+
+
 # ─── Get ───────────────────────────────────────────────────────────────
 
 

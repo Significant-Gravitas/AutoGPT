@@ -265,6 +265,83 @@ async def test_existing_non_private_hire_is_never_revived():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_rehire_missing_private_tenancy_does_not_unarchive():
+    row = SimpleNamespace(
+        id="expert-1",
+        ownerUserId="owner-1",
+        isArchived=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+    )
+    expert_client = SimpleNamespace(update=AsyncMock())
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new=AsyncMock(return_value=(None, None)),
+        ),
+        patch.object(
+            scheduling, "resume_expert_schedules", new_callable=AsyncMock
+        ) as resume,
+        patch.object(
+            scheduling, "reattach_expert_triggers", new_callable=AsyncMock
+        ) as reattach,
+    ):
+        with pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError):
+            await experts_db._existing_hire_result(row)
+
+    expert_client.update.assert_not_awaited()
+    resume.assert_not_awaited()
+    reattach.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rehire_reattach_failure_restores_archived_state():
+    row = SimpleNamespace(
+        id="expert-1",
+        ownerUserId="owner-1",
+        isArchived=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+    )
+    revived = SimpleNamespace(**{**row.__dict__, "isArchived": False})
+    expert_client = SimpleNamespace(update=AsyncMock(side_effect=[revived, row]))
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+        patch.object(
+            scheduling,
+            "resume_expert_schedules",
+            new=AsyncMock(return_value=True),
+        ),
+        patch.object(
+            scheduling,
+            "reattach_expert_triggers",
+            new=AsyncMock(side_effect=RuntimeError("scheduler unavailable")),
+        ),
+        patch.object(
+            scheduling, "pause_expert_schedules", new_callable=AsyncMock
+        ) as pause,
+    ):
+        with pytest.raises(RuntimeError, match="scheduler unavailable"):
+            await experts_db._existing_hire_result(row)
+
+    assert expert_client.update.await_count == 2
+    assert expert_client.update.await_args_list[0].kwargs["data"] == {
+        "isArchived": False
+    }
+    assert expert_client.update.await_args_list[1].kwargs["data"] == {
+        "isArchived": True
+    }
+    pause.assert_awaited_once_with(
+        "owner-1", "expert-1", reason="Expert re-hire did not complete"
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_resolve_private_expert_tenancy_uses_owner_personal_scope():
     find_first = AsyncMock(return_value=SimpleNamespace(id="expert-1"))
     manager = SimpleNamespace(find_first=find_first)

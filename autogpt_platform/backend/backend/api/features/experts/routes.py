@@ -36,7 +36,10 @@ async def list_expert_templates() -> list[Expert]:
 @router.post(
     "",
     operation_id="hire_expert",
-    responses={404: {"description": "Expert template not found"}},
+    responses={
+        404: {"description": "Expert template not found"},
+        503: {"description": "Expert workspace unavailable"},
+    },
 )
 async def hire_expert(
     request: HireRequest,
@@ -46,6 +49,11 @@ async def hire_expert(
         return await experts_db.hire_expert(user_id, request.template_id, request.name)
     except experts_db.ExpertTemplateNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Your expert workspace is still being set up. Try again shortly.",
+        ) from e
 
 
 @router.get("", operation_id="list_experts")

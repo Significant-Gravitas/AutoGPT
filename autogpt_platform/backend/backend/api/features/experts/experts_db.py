@@ -245,6 +245,13 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
     if row.visibility != ResourceVisibility.PRIVATE:
         raise ExpertNotFoundError(row.id)
     if row.isArchived:
+        owner_user_id = row.ownerUserId
+        if not owner_user_id:
+            raise ExpertNotFoundError(row.id)
+        organization_id, _ = await get_user_default_team(owner_user_id)
+        if organization_id is None:
+            raise ExpertPrivateTenancyNotFoundError(row.id)
+
         revived = await prisma.models.Expert.prisma().update(
             where={"id": row.id},
             data={"isArchived": False},
@@ -252,21 +259,35 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
         )
         if revived is not None:
             row = revived
-        if row.ownerUserId:
-            await scheduling.resume_expert_schedules(row.ownerUserId, row.id)
+        try:
+            await scheduling.resume_expert_schedules(owner_user_id, row.id)
+            await scheduling.reattach_expert_triggers(owner_user_id, row.id)
+        except Exception:
+            logger.exception(
+                f"Failed to reattach triggers while reviving expert #{row.id}"
+            )
             try:
-                await scheduling.reattach_expert_triggers(row.ownerUserId, row.id)
+                await prisma.models.Expert.prisma().update(
+                    where={"id": row.id},
+                    data={"isArchived": True},
+                )
+                await scheduling.pause_expert_schedules(
+                    owner_user_id,
+                    row.id,
+                    reason="Expert re-hire did not complete",
+                )
             except Exception:
                 logger.exception(
-                    f"Failed to reattach triggers while reviving expert #{row.id}"
+                    f"Failed to restore archived state for expert #{row.id}"
                 )
-            # Resume/reattach mutated pause state and workflow scheduleIds
-            # after `row` was read — reload so the result isn't stale.
-            refreshed = await prisma.models.Expert.prisma().find_unique(
-                where={"id": row.id}, include=_WORKFLOW_INCLUDE
-            )
-            if refreshed is not None:
-                row = refreshed
+            raise
+        # Resume/reattach mutated pause state and workflow scheduleIds after
+        # `row` was read — reload so the result isn't stale.
+        refreshed = await prisma.models.Expert.prisma().find_unique(
+            where={"id": row.id}, include=_WORKFLOW_INCLUDE
+        )
+        if refreshed is not None:
+            row = refreshed
     return HireResult(expert=_to_model(row), failed_preloads=[])
 
 
