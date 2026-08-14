@@ -328,6 +328,40 @@ describe("MemoryVisualizer — memory scope", () => {
     });
   });
 
+  test("expert-list refetch errors keep the selected cached expert", async () => {
+    let expertsRequestFails = false;
+    setupBaseHandlers();
+    server.use(
+      http.get("*/api/experts", () =>
+        expertsRequestFails
+          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+          : HttpResponse.json([makeExpert("expert-ada", "Ada")]),
+      ),
+    );
+    render(<MemoryVisualizerWithRefetch />);
+
+    const selector = await screen.findByRole("combobox", {
+      name: "Memory scope",
+    });
+    await waitFor(() =>
+      expect((selector as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    await screen.findByText("Expert memory is read-only.");
+    toastMock.mockClear();
+
+    expertsRequestFails = true;
+    await userEvent.click(
+      screen.getByRole("button", { name: "Refetch experts" }),
+    );
+
+    await screen.findByText("Failed to load experts.");
+    expect(selector.textContent).toContain("Ada");
+    expect(screen.getByText("Expert memory is read-only.")).toBeDefined();
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+
   test("empty and error scope states are announced without blocking AutoPilot", async () => {
     setupBaseHandlers();
     render(<MemoryVisualizer />);

@@ -17,13 +17,14 @@ export function useMemoryScope() {
   const experts = expertsQuery.data;
 
   useEffect(() => {
-    if (selectedScope === AUTOPILOT_MEMORY_SCOPE || expertsQuery.isLoading) {
+    if (
+      selectedScope === AUTOPILOT_MEMORY_SCOPE ||
+      expertsQuery.isLoading ||
+      expertsQuery.error
+    ) {
       return;
     }
-    if (
-      expertsQuery.error ||
-      !experts?.some(({ id }) => id === selectedScope)
-    ) {
+    if (!experts?.some(({ id }) => id === selectedScope)) {
       setSelectedScope(AUTOPILOT_MEMORY_SCOPE);
       toast({
         title: "Expert no longer available",
