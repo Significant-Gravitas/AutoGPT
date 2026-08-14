@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import prisma.enums
+import prisma.errors
 import prisma.models
 import pytest
 
