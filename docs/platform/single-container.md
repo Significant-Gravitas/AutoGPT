@@ -349,6 +349,10 @@ output as secret-bearing material.
 
 Only port `3000` should be published. Internal AppService RPC is bound to the
 container's loopback interface, and Valkey traffic requires authentication.
+On Linux, Docker-managed forwarding can bypass firewall policy expressed only
+through tools such as UFW. The loopback address in
+`--publish 127.0.0.1:3000:3000` is the exposure control; changing it to a
+non-loopback address can expose the app regardless of an INPUT-chain rule.
 
 ## Optional processes
 
@@ -407,6 +411,8 @@ with `/data`:
   BACKUP_DIR="${PWD}/autogpt-backups"
   BACKUP_FILE="autogpt-data-$(date -u +%Y%m%dT%H%M%SZ).tgz"
   PARTIAL_FILE="${BACKUP_FILE}.partial"
+  CHECKSUM_FILE="${BACKUP_FILE}.sha256"
+  CHECKSUM_PARTIAL="${CHECKSUM_FILE}.partial"
   # Invoked by the EXIT trap below.
   # shellcheck disable=SC2329
   restart_autogpt() {
@@ -427,7 +433,9 @@ with `/data`:
   mkdir -p "${BACKUP_DIR}"
   chmod 700 "${BACKUP_DIR}"
   if [[ -e "${BACKUP_DIR}/${BACKUP_FILE}" || \
-        -e "${BACKUP_DIR}/${PARTIAL_FILE}" ]]; then
+        -e "${BACKUP_DIR}/${PARTIAL_FILE}" || \
+        -e "${BACKUP_DIR}/${CHECKSUM_FILE}" || \
+        -e "${BACKUP_DIR}/${CHECKSUM_PARTIAL}" ]]; then
     echo "Refusing to overwrite an existing backup: ${BACKUP_FILE}" >&2
     exit 1
   fi
@@ -445,9 +453,18 @@ with `/data`:
     "${BACKUP_IMAGE}" \
     -czf "/backup/${PARTIAL_FILE}" -C /data .
 
+  BACKUP_SHA256="$(docker run --rm \
+    --entrypoint sha256sum \
+    --volume "${BACKUP_DIR}:/backup:ro" \
+    "${BACKUP_IMAGE}" \
+    "/backup/${PARTIAL_FILE}" | awk '{print $1}')"
+  printf '%s  %s\n' "${BACKUP_SHA256}" "${BACKUP_FILE}" \
+    > "${BACKUP_DIR}/${CHECKSUM_PARTIAL}"
   mv "${BACKUP_DIR}/${PARTIAL_FILE}" "${BACKUP_DIR}/${BACKUP_FILE}"
-  printf 'Backup written to %s with image %s\n' \
-    "${BACKUP_DIR}/${BACKUP_FILE}" "${BACKUP_IMAGE}"
+  mv "${BACKUP_DIR}/${CHECKSUM_PARTIAL}" \
+    "${BACKUP_DIR}/${CHECKSUM_FILE}"
+  printf 'Backup written to %s with checksum %s and image %s\n' \
+    "${BACKUP_DIR}/${BACKUP_FILE}" "${BACKUP_SHA256}" "${BACKUP_IMAGE}"
 )
 ```
 
@@ -458,8 +475,9 @@ if a later backup command fails. Verify that it is running again:
 docker inspect --format '{{.State.Status}}' autogpt
 ```
 
-Record the exact image reference or digest, environment file, Git commit, and
-backup checksum beside the archive. The archive is plaintext and contains user
+The block writes the checksum to `<archive>.sha256`. Record the exact image
+reference or digest, environment file, and Git commit beside the archive. The
+archive is plaintext and contains user
 content, provider credentials, auth keys, and database passwords. Encrypt it
 with an approved backup mechanism and remove unencrypted staging copies.
 
@@ -476,6 +494,7 @@ immutable tag or digest recorded with that backup. If the archive is not under
   : "${BACKUP_FILE:?Set BACKUP_FILE to the timestamped archive filename}"
   : "${RESTORE_IMAGE:?Set RESTORE_IMAGE to the recorded immutable image}"
   BACKUP_DIR="${BACKUP_DIR:-${PWD}/autogpt-backups}"
+  CHECKSUM_FILE="${BACKUP_FILE}.sha256"
   RESTORE_VOLUME="autogpt-data-restored-$(date -u +%Y%m%dT%H%M%SZ)"
 
   if [[ "${BACKUP_FILE}" == */* ]]; then
@@ -484,6 +503,25 @@ immutable tag or digest recorded with that backup. If the archive is not under
   fi
   if [[ ! -f "${BACKUP_DIR}/${BACKUP_FILE}" ]]; then
     echo "Backup archive does not exist: ${BACKUP_DIR}/${BACKUP_FILE}" >&2
+    exit 1
+  fi
+  if [[ ! -f "${BACKUP_DIR}/${CHECKSUM_FILE}" ]]; then
+    echo "Backup checksum does not exist: ${BACKUP_DIR}/${CHECKSUM_FILE}" >&2
+    exit 1
+  fi
+  EXPECTED_SHA256="$(awk 'NR == 1 {print $1}' \
+    "${BACKUP_DIR}/${CHECKSUM_FILE}")"
+  if [[ ! "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Backup checksum is not a valid SHA-256 digest" >&2
+    exit 1
+  fi
+  ACTUAL_SHA256="$(docker run --rm \
+    --entrypoint sha256sum \
+    --volume "${BACKUP_DIR}:/backup:ro" \
+    "${RESTORE_IMAGE}" \
+    "/backup/${BACKUP_FILE}" | awk '{print $1}')"
+  if [[ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]]; then
+    echo "Backup checksum verification failed" >&2
     exit 1
   fi
   if docker volume inspect "${RESTORE_VOLUME}" >/dev/null 2>&1; then
@@ -503,6 +541,10 @@ immutable tag or digest recorded with that backup. If the archive is not under
     "${BACKUP_FILE}" "${RESTORE_VOLUME}"
 )
 ```
+
+Use only an archive and checksum obtained through a trusted backup process. A
+matching untrusted checksum detects accidental corruption but does not prove
+who created the archive.
 
 Validate the restored layout without starting application services or allowing
 network access. Set `RESTORE_VOLUME` to the volume printed above and reuse the
