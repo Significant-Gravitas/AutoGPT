@@ -774,11 +774,7 @@ async def _execute_dream_pass_async(
 
     ttl = _resolve_lock_ttl(transport_is_local)
     try:
-        lock_context = (
-            dream_lock(user_id, ttl_seconds=ttl)
-            if expert_id is None
-            else dream_lock(user_id, ttl_seconds=ttl, expert_id=expert_id)
-        )
+        lock_context = dream_lock(user_id, ttl_seconds=ttl, expert_id=expert_id)
         async with lock_context as dream_lock_handle:
             # Pre-flight billing check. Runs inside the lock so a
             # paywalled user doesn't burn the slot for an eligible
@@ -805,11 +801,7 @@ async def _execute_dream_pass_async(
                     skip_reason=budget_skip or "insufficient_credits",
                 )
 
-            input_bundle = (
-                await gather_dream_input(user_id)
-                if expert_id is None
-                else await gather_dream_input(user_id, expert_id=expert_id)
-            )
+            input_bundle = await gather_dream_input(user_id, expert_id=expert_id)
 
             if not input_bundle.episodes and not input_bundle.facts:
                 # Nothing to consolidate — early-return as skipped so the
@@ -838,11 +830,7 @@ async def _execute_dream_pass_async(
             # silent no_new_activity skip would neuter it for up to the
             # marker's 35-day TTL.
             last_completed = (
-                (
-                    await _read_last_completed_marker(user_id)
-                    if expert_id is None
-                    else await _read_last_completed_marker(user_id, expert_id)
-                )
+                await _read_last_completed_marker(user_id, expert_id)
                 if status_id is None
                 else None
             )
@@ -978,35 +966,23 @@ async def _execute_dream_pass_async(
                 len(input_bundle.facts),
                 known_fact_uuids=input_bundle.known_fact_uuids,
             )
-            if expert_id is None:
-                apply_stats = await apply_operations(
-                    user_id,
-                    pass_id,
-                    ops,
-                    known_fact_uuids=input_bundle.known_fact_uuids,
-                    lock_handle=dream_lock_handle,
-                )
-            else:
-                apply_stats = await apply_operations(
-                    user_id,
-                    pass_id,
-                    ops,
-                    expert_id=expert_id,
-                    known_fact_uuids=input_bundle.known_fact_uuids,
-                    lock_handle=dream_lock_handle,
-                )
+            apply_stats = await apply_operations(
+                user_id,
+                pass_id,
+                ops,
+                expert_id=expert_id,
+                known_fact_uuids=input_bundle.known_fact_uuids,
+                lock_handle=dream_lock_handle,
+            )
             # Apply succeeded (even as a no-op) — stamp the marker so the
             # next nightly pass can skip when nothing new has landed.
             # Stamped with the gather-window end so episodes that arrived
             # mid-pass still count as new next time. Sync path only: batch
             # apply runs hours later in batch_callbacks, which doesn't
             # stamp yet.
-            if expert_id is None:
-                await _stamp_last_completed_marker(user_id, input_bundle.window_end)
-            else:
-                await _stamp_last_completed_marker(
-                    user_id, input_bundle.window_end, expert_id
-                )
+            await _stamp_last_completed_marker(
+                user_id, input_bundle.window_end, expert_id
+            )
 
             completed_at = datetime.now(timezone.utc)
             snapshot = apply_stats.get("snapshot")
@@ -1105,8 +1081,6 @@ async def execute_dream_pass(
     user-visible status row as each phase lands. AgentProbe + other
     sync callers pass ``None`` and never hit the batch path.
     """
-    if expert_id is None:
-        return await _execute_dream_pass_async(user_id, status_id=status_id)
     return await _execute_dream_pass_async(
         user_id, status_id=status_id, expert_id=expert_id
     )

@@ -59,10 +59,19 @@ class TestDeriveMemoryGroupId:
         assert first != second
         assert len(first) <= 128
 
-    def test_expert_namespace_includes_owner(self) -> None:
-        assert derive_memory_group_id("user-1", "expert-1") != derive_memory_group_id(
+    def test_same_expert_keeps_namespace_across_callers(self) -> None:
+        assert derive_memory_group_id("user-1", "expert-1") == derive_memory_group_id(
             "user-2", "expert-1"
         )
+
+    def test_different_experts_remain_distinct_across_callers(self) -> None:
+        assert derive_memory_group_id("user-1", "expert-1") != derive_memory_group_id(
+            "user-2", "expert-2"
+        )
+
+    def test_expert_namespace_still_validates_caller_id(self) -> None:
+        with pytest.raises(ValueError, match="invalid characters"):
+            derive_memory_group_id("user.with.dots", "expert-1")
 
     def test_expert_namespace_is_deterministic(self) -> None:
         assert derive_memory_group_id("user-1", "expert-1") == derive_memory_group_id(

@@ -440,23 +440,14 @@ async def _create_dream_session(
 
     session_id = str(uuidlib.uuid4())
     metadata = ChatSessionMetadata(kind="dream", dream_pass_id=pass_id)
-    if expert_id is None:
-        await chat_db().create_chat_session(
-            session_id=session_id,
-            user_id=user_id,
-            organization_id=org_id,
-            team_id=team_id,
-            metadata=metadata,
-        )
-    else:
-        await chat_db().create_chat_session(
-            session_id=session_id,
-            user_id=user_id,
-            organization_id=org_id,
-            team_id=team_id,
-            metadata=metadata,
-            expert_id=expert_id,
-        )
+    await chat_db().create_chat_session(
+        session_id=session_id,
+        user_id=user_id,
+        organization_id=org_id,
+        team_id=team_id,
+        metadata=metadata,
+        expert_id=expert_id,
+    )
     # ``create_chat_session`` takes no title; set it via the dedicated
     # accessor so the session doesn't render as "(untitled)" in the chat
     # list. Best-effort: a cosmetic title failure must never abort apply —
