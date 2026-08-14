@@ -11,6 +11,7 @@ import {
   getFilterView,
   getUnadoptedAgents,
   getVisibleGroups,
+  pruneAdoptedTargetKeys,
 } from "./helpers";
 
 function makeWorkflow(over: Partial<ExpertWorkflowRef>): ExpertWorkflowRef {
@@ -280,6 +281,35 @@ describe("getAdoptTargetVersionId", () => {
     expect(
       getAdoptTargetVersionId(makeAgent({ store_listing_version_id: null })),
     ).toBe(null);
+  });
+});
+
+describe("pruneAdoptedTargetKeys", () => {
+  it("removes confirmed and fired-expert targets before the set grows", () => {
+    const pending = makeExpert({ id: "pending", workflows: [] });
+    const confirmed = makeExpert({
+      id: "confirmed",
+      workflows: [makeWorkflow({ store_listing_version_id: "slv-exact" })],
+    });
+    const fired = makeExpert({ id: "fired", workflows: [] });
+    const agent = makeAgent({ store_listing_version_id: "slv-exact" });
+    const keys = new Set([
+      getAdoptTargetKey(agent, pending),
+      getAdoptTargetKey(agent, confirmed),
+      getAdoptTargetKey(agent, fired),
+    ]);
+
+    expect(pruneAdoptedTargetKeys(keys, [agent], [pending, confirmed])).toEqual(
+      new Set([getAdoptTargetKey(agent, pending)]),
+    );
+  });
+
+  it("preserves the set identity when no targets can be pruned", () => {
+    const expert = makeExpert({ workflows: [] });
+    const agent = makeAgent({ store_listing_version_id: "slv-exact" });
+    const keys = new Set([getAdoptTargetKey(agent, expert)]);
+
+    expect(pruneAdoptedTargetKeys(keys, [agent], [expert])).toBe(keys);
   });
 });
 

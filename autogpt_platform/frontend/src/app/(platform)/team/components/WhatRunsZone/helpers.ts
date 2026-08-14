@@ -137,6 +137,42 @@ export function getAdoptTargetKey(agent: LibraryAgent, expert: Expert) {
   return `${agent.id}:${expert.id}`;
 }
 
+function parseAdoptTargetKey(key: string) {
+  const separator = key.lastIndexOf(":");
+  if (separator < 1 || separator === key.length - 1) return null;
+  return {
+    agentId: key.slice(0, separator),
+    expertId: key.slice(separator + 1),
+  };
+}
+
+export function pruneAdoptedTargetKeys(
+  adoptedTargetKeys: Set<string>,
+  agents: LibraryAgent[],
+  experts: Expert[],
+) {
+  if (adoptedTargetKeys.size === 0) return adoptedTargetKeys;
+
+  const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+  const expertsById = new Map(experts.map((expert) => [expert.id, expert]));
+  const next = new Set<string>();
+  for (const key of adoptedTargetKeys) {
+    const target = parseAdoptTargetKey(key);
+    if (!target) continue;
+    const agent = agentsById.get(target.agentId);
+    const expert = expertsById.get(target.expertId);
+    if (!agent || !expert) continue;
+    const versionId = getAdoptTargetVersionId(agent);
+    if (!versionId) continue;
+    const isConfirmed = expert.workflows.some(
+      (workflow) => workflow.store_listing_version_id === versionId,
+    );
+    if (!isConfirmed) next.add(key);
+  }
+
+  return next.size === adoptedTargetKeys.size ? adoptedTargetKeys : next;
+}
+
 /** The immutable marketplace version matching this agent's exact graph
  *  snapshot, resolved server-side. Pure-local agents have none, so Adopt is
  *  hidden for them — the install endpoint only accepts a

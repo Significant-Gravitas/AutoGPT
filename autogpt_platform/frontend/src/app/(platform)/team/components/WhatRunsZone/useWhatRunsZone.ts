@@ -16,6 +16,7 @@ import {
   getAdoptTargetVersionId,
   getUnadoptedAgents,
   getVisibleGroups,
+  pruneAdoptedTargetKeys,
   WhatRunsFilter,
 } from "./helpers";
 
@@ -63,15 +64,20 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   async function adopt(agent: LibraryAgent, expert: Expert) {
     const versionId = getAdoptTargetVersionId(agent);
     if (!versionId || pendingLibraryAgentIds.has(agent.id)) return;
+    const targetKey = getAdoptTargetKey(agent, expert);
     setPendingLibraryAgentIds((current) => new Set(current).add(agent.id));
     try {
       await installWorkflow({
         expertId: expert.id,
         data: { store_listing_version_id: versionId },
       });
-      setAdoptedTargetKeys((current) =>
-        new Set(current).add(getAdoptTargetKey(agent, expert)),
-      );
+      setAdoptedTargetKeys((current) => {
+        const next = new Set(
+          pruneAdoptedTargetKeys(current, libraryAgents, experts),
+        );
+        next.add(targetKey);
+        return next;
+      });
       await queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
       });
