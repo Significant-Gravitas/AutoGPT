@@ -88,6 +88,8 @@ export function useCopilotPage() {
   const isResolvingExpertIdentity = Boolean(
     isExpertsEnabled && activeExpertId && !hasExpertsSettled,
   );
+  const isExpertSendLocked =
+    isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
   const {
     messages: currentMessages,
@@ -210,6 +212,7 @@ export function useCopilotPage() {
     const hasAttachments =
       (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
     if (!trimmed && !hasAttachments) return;
+    if (isExpertSendLocked) return;
 
     // Sending anything retires the greeting for good: flag it done on
     // the server (kept in the DB, just never shown again) and cache the
@@ -270,7 +273,11 @@ export function useCopilotPage() {
     await sendNewMessage(message, files, workspaceFiles);
   }
 
-  useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
+  useWorkflowImportAutoSubmit({
+    onSend,
+    setPendingFileParts,
+    isSendLocked: isExpertSendLocked,
+  });
 
   useSessionTitlePoll({ sessionId, status, isReconnecting });
 
