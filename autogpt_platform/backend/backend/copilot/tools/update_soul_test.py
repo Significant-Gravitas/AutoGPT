@@ -66,8 +66,8 @@ async def _confirm(session, **kwargs):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_preview_never_writes_even_with_confirm_true():
-    """The old confirm=true shortcut must not exist: the preview tool has no
-    write path, so a model-supplied confirm flag changes nothing."""
+    """A model-supplied confirm flag must be inert: the preview tool has no
+    write path, so nothing it is called with can cause a write."""
     mock_db, patchers = _mock_env(expert=_current_expert())
     with patchers[0], patchers[1]:
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
@@ -232,3 +232,108 @@ async def test_both_tools_require_authentication():
     )
     assert isinstance(preview, ErrorResponse)
     assert isinstance(confirm, ErrorResponse)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_preview_rejects_blank_identity_before_storing():
+    """Invalid input must die at preview — never become a stored proposal
+    that explodes after the user has already approved the diff."""
+    fake_redis = _FakeRedis()
+    mock_db, patchers = _mock_env(expert=_current_expert(), redis=fake_redis)
+    with patchers[0], patchers[1]:
+        session = make_session(_TEST_USER_ID, expert_id="exp-1")
+        resp = await _preview(session, identity="   ")
+    assert isinstance(resp, ErrorResponse)
+    assert "identity" in resp.message
+    assert fake_redis.store == {}
+    mock_db.update_soul_fields.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_preview_rejects_overlong_field():
+    fake_redis = _FakeRedis()
+    mock_db, patchers = _mock_env(expert=_current_expert(), redis=fake_redis)
+    with patchers[0], patchers[1]:
+        session = make_session(_TEST_USER_ID, expert_id="exp-1")
+        resp = await _preview(session, voice_preferences="x" * 4_001)
+    assert isinstance(resp, ErrorResponse)
+    assert fake_redis.store == {}
+    mock_db.update_soul_fields.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_preview_strips_whitespace_so_diff_matches_persisted():
+    mock_db, patchers = _mock_env(expert=_current_expert(), updated=SimpleNamespace())
+    with patchers[0], patchers[1]:
+        session = make_session(_TEST_USER_ID, expert_id="exp-1")
+        preview = await _preview(session, voice_preferences="  New voice.  ")
+        assert isinstance(preview, ExpertSoulUpdatedResponse)
+        assert [(c.field, c.after) for c in preview.changes] == [
+            ("voice_preferences", "New voice.")
+        ]
+        resp = await _confirm(session, confirmation_id=preview.confirmation_id)
+    assert isinstance(resp, ExpertSoulUpdatedResponse) and resp.applied is True
+    mock_db.update_soul_fields.assert_awaited_once_with(
+        _TEST_USER_ID, "exp-1", voice_preferences="New voice."
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_confirm_rejects_other_user():
+    """The proposal.user_id binding is the core authz boundary: an id issued
+    to one user must be useless to any other."""
+    mock_db, patchers = _mock_env(expert=_current_expert())
+    with patchers[0], patchers[1]:
+        session = make_session(_TEST_USER_ID, expert_id="exp-1")
+        preview = await _preview(session, voice_preferences="New voice.")
+        assert isinstance(preview, ExpertSoulUpdatedResponse)
+        resp = await ConfirmExpertSoulUpdateTool()._execute(
+            user_id="some-other-user",
+            session=session,
+            confirmation_id=preview.confirmation_id,
+        )
+    assert isinstance(resp, ErrorResponse)
+    mock_db.update_soul_fields.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_confirm_rejects_other_expert():
+    mock_db, patchers = _mock_env(expert=_current_expert())
+    with patchers[0], patchers[1]:
+        session_a = make_session(_TEST_USER_ID, expert_id="exp-1")
+        preview = await _preview(session_a, voice_preferences="New voice.")
+        assert isinstance(preview, ExpertSoulUpdatedResponse)
+        session_b = make_session(_TEST_USER_ID, expert_id="exp-2")
+        resp = await _confirm(session_b, confirmation_id=preview.confirmation_id)
+    assert isinstance(resp, ErrorResponse)
+    mock_db.update_soul_fields.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_confirm_recovers_from_corrupt_stored_proposal():
+    from .update_soul import _proposal_key
+
+    fake_redis = _FakeRedis()
+    fake_redis.store[_proposal_key("corrupt-id")] = "{not valid json"
+    mock_db, patchers = _mock_env(expert=_current_expert(), redis=fake_redis)
+    with patchers[0], patchers[1]:
+        session = make_session(_TEST_USER_ID, expert_id="exp-1")
+        resp = await _confirm(session, confirmation_id="corrupt-id")
+    assert isinstance(resp, ErrorResponse)
+    assert "fresh preview" in resp.message
+    mock_db.update_soul_fields.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_apply_failure_returns_recoverable_error():
+    """The id is already consumed when the write runs, so a surprise failure
+    must come back as guidance to re-preview, not an uncaught exception."""
+    mock_db, patchers = _mock_env(expert=_current_expert())
+    mock_db.update_soul_fields.side_effect = RuntimeError("db transport down")
+    with patchers[0], patchers[1]:
+        session = make_session(_TEST_USER_ID, expert_id="exp-1")
+        preview = await _preview(session, voice_preferences="New voice.")
+        assert isinstance(preview, ExpertSoulUpdatedResponse)
+        resp = await _confirm(session, confirmation_id=preview.confirmation_id)
+    assert isinstance(resp, ErrorResponse)
+    assert "re-preview" in resp.message

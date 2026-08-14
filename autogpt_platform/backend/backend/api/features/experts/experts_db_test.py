@@ -5,11 +5,12 @@ from unittest.mock import AsyncMock, patch
 
 import prisma.enums
 import prisma.models
+import pydantic
 import pytest
 
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
-from backend.api.features.experts.models import ExpertSoulUpdate
+from backend.api.features.experts.models import ExpertSoulFieldsPatch, ExpertSoulUpdate
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.data.graph import Graph, Node
@@ -766,3 +767,26 @@ async def test_update_soul_fields_concurrent_disjoint_edits_both_persist(
     assert fetched is not None
     assert fetched.voice_preferences == "Warm and concise."
     assert fetched.boundaries == "Never email externally."
+
+
+def test_expert_soul_fields_patch_rejects_blank_identity():
+    with pytest.raises(pydantic.ValidationError):
+        ExpertSoulFieldsPatch(identity="   ")
+
+
+def test_expert_soul_fields_patch_enforces_length_caps():
+    with pytest.raises(pydantic.ValidationError):
+        ExpertSoulFieldsPatch(identity="x" * 10_001)
+    with pytest.raises(pydantic.ValidationError):
+        ExpertSoulFieldsPatch(voice_preferences="x" * 4_001)
+    with pytest.raises(pydantic.ValidationError):
+        ExpertSoulFieldsPatch(boundaries="x" * 4_001)
+
+
+def test_expert_soul_fields_patch_strips_and_preserves_none():
+    patch = ExpertSoulFieldsPatch(
+        voice_preferences="   ", boundaries="  Keep it short.  "
+    )
+    assert patch.voice_preferences == ""
+    assert patch.boundaries == "Keep it short."
+    assert patch.identity is None

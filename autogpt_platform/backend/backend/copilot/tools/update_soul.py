@@ -15,6 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from backend.api.features.experts.models import ExpertSoulFieldsPatch
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
@@ -114,16 +115,36 @@ class UpdateExpertSoulTool(BaseTool):
         if not session.expert_id:
             return ErrorResponse(message=_PLAIN_SESSION_REFUSAL, session_id=session_id)
 
-        edits = {
+        supplied = {
             field: kwargs[field]
             for field in _EDITABLE_FIELDS
             if isinstance(kwargs.get(field), str)
         }
-        if not edits:
+        if not supplied:
             return ErrorResponse(
                 message="Provide at least one of identity, voice_preferences, or boundaries.",
                 session_id=session_id,
             )
+        # Validate + normalize (strip, length caps, non-blank identity) up
+        # front, so a bad value can never survive into a stored proposal and
+        # explode only at confirm time — and so the previewed values are
+        # exactly what will be persisted.
+        try:
+            patch = ExpertSoulFieldsPatch(**supplied)
+        except ValidationError as e:
+            detail = "; ".join(
+                f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}"
+                for err in e.errors()
+            )
+            return ErrorResponse(
+                message=f"Invalid Soul edit — {detail}",
+                session_id=session_id,
+            )
+        edits = {
+            field: value
+            for field in _EDITABLE_FIELDS
+            if (value := getattr(patch, field)) is not None
+        }
 
         expert = await experts_db().get_expert(
             user_id, session.expert_id, include_workflows=False
@@ -289,11 +310,28 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
                 session_id=session_id,
             )
 
-        await experts_db().update_soul_fields(
-            user_id,
-            session.expert_id,
-            **{change.field: change.after for change in proposal.changes},
-        )
+        # Proposals are validated before storage, so this should never raise —
+        # but the confirmation_id is already consumed here, so any surprise
+        # (expert archived mid-flight, transport error) must surface as a
+        # recoverable message instead of an uncaught exception.
+        try:
+            await experts_db().update_soul_fields(
+                user_id,
+                session.expert_id,
+                **{change.field: change.after for change in proposal.changes},
+            )
+        except Exception:
+            logger.warning(
+                "Soul edit apply failed for user %s", user_id[:12], exc_info=True
+            )
+            return ErrorResponse(
+                message=(
+                    "Couldn't apply the Soul edit — the proposal has been "
+                    "discarded. Call update_expert_soul again to re-preview "
+                    "and retry."
+                ),
+                session_id=session_id,
+            )
         return ExpertSoulUpdatedResponse(
             message="Soul updated. Tell the user exactly what changed.",
             session_id=session_id,
