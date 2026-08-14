@@ -101,6 +101,10 @@ def AICredentialsField() -> Optional[AICredentials]:
         discriminator_mapping={
             model.value: model.metadata.provider for model in LLMModel
         },
+        discriminator_type_mapping={
+            model.value: [] if model.metadata.provider == ProviderName.OLLAMA else ["api_key"]
+            for model in LLMModel
+        },
         default=None,
     )
 
@@ -1089,7 +1093,7 @@ class AITextSummarizerBlock(AIBlockBase):
 
         for i in range(0, len(words), chunk_size):
             if len(chunks) >= MAX_CHUNKS:
-                break  # Limit the number of chunks to prevent memory exhaustion
+                break  # Limit the number of chunks to prevent excessive memory use
             chunk = " ".join(words[i : i + max_tokens])
             chunks.append(chunk)
 
