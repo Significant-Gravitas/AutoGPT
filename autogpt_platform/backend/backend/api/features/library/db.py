@@ -1883,7 +1883,12 @@ async def get_folder_agents_map(
 
 
 async def list_presets(
-    user_id: str, page: int, page_size: int, graph_id: Optional[str] = None
+    user_id: str,
+    page: int,
+    page_size: int,
+    graph_id: Optional[str] = None,
+    expert_id: str | None = None,
+    filter_by_expert: bool = False,
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
@@ -1893,6 +1898,9 @@ async def list_presets(
         page: The current page index (1-based).
         page_size: Number of items to retrieve per page.
         graph_id: Agent Graph ID to filter by.
+        expert_id: Expert ID to match when expert filtering is enabled.
+        filter_by_expert: Whether to filter by the exact expert scope. This allows
+            ``None`` to select AutoPilot presets instead of disabling the filter.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.
@@ -1916,6 +1924,8 @@ async def list_presets(
     }
     if graph_id:
         query_filter["agentGraphId"] = graph_id
+    if filter_by_expert:
+        query_filter["expertId"] = expert_id
 
     presets_records = await prisma.models.AgentPreset.prisma().find_many(
         where=query_filter,

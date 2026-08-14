@@ -734,7 +734,7 @@ class RunAgentTool(BaseTool):
                 error="preset_not_found",
                 session_id=session_id,
             )
-        if preset.expert_id is not None and preset.expert_id != session.expert_id:
+        if preset.expert_id != session.expert_id:
             return ErrorResponse(
                 message=f"Preset '{params.preset_id}' not found.",
                 error="preset_not_found",

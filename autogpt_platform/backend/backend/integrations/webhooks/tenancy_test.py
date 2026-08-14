@@ -344,6 +344,7 @@ async def test_concurrent_telegram_setup_allows_only_one_tenancy(
     acquired_keys: list[object] = []
     released_keys: list[object] = []
     mutex_instances: list[object] = []
+    loser_waiting = asyncio.Event()
 
     class SerializedMutex:
         def __init__(self, _redis: object) -> None:
@@ -351,6 +352,8 @@ async def test_concurrent_telegram_setup_allows_only_one_tenancy(
 
         async def acquire(self, key: object) -> None:
             acquired_keys.append(key)
+            if distributed_lock.locked():
+                loser_waiting.set()
             await distributed_lock.acquire()
 
         async def release(self, key: object) -> None:
@@ -455,7 +458,7 @@ async def test_concurrent_telegram_setup_allows_only_one_tenancy(
                 team_id="team-1",
             )
         )
-        await asyncio.wait_for(provider_started.wait(), timeout=1)
+        await asyncio.wait_for(provider_started.wait(), timeout=5)
         loser = asyncio.create_task(
             loser_manager.get_suitable_auto_webhook(
                 user_id="user-1",
@@ -467,10 +470,10 @@ async def test_concurrent_telegram_setup_allows_only_one_tenancy(
                 team_id="team-2",
             )
         )
-        await asyncio.sleep(0)
+        await asyncio.wait_for(loser_waiting.wait(), timeout=5)
         release_provider.set()
         results = await asyncio.wait_for(
-            asyncio.gather(winner, loser, return_exceptions=True), timeout=1
+            asyncio.gather(winner, loser, return_exceptions=True), timeout=5
         )
 
     assert isinstance(results[0], integrations.Webhook)

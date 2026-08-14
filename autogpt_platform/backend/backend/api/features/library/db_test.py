@@ -17,6 +17,37 @@ from . import db
 from . import model as library_model
 
 
+@pytest.mark.parametrize("expert_id", [None, "expert-1"])
+@pytest.mark.asyncio
+async def test_list_presets_filters_exact_expert_scope(mocker, expert_id):
+    client = MagicMock(
+        find_many=AsyncMock(return_value=[]),
+        count=AsyncMock(return_value=0),
+    )
+    mocker.patch("prisma.models.AgentPreset.prisma", return_value=client)
+
+    await db.list_presets(
+        user_id="user-1",
+        page=2,
+        page_size=25,
+        expert_id=expert_id,
+        filter_by_expert=True,
+    )
+
+    expected_where = {
+        "userId": "user-1",
+        "isDeleted": False,
+        "expertId": expert_id,
+    }
+    client.find_many.assert_awaited_once_with(
+        where=expected_where,
+        skip=25,
+        take=25,
+        include=db.AGENT_PRESET_INCLUDE,
+    )
+    client.count.assert_awaited_once_with(where=expected_where)
+
+
 @pytest.mark.asyncio
 async def test_get_library_agents(mocker):
     # Mock data

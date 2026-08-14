@@ -99,16 +99,10 @@ async def test_list_truncation_hint_when_more_than_one_page(session):
     first_page = [_preset(id=f"preset-{i}") for i in range(100)]
     ldb = MagicMock()
     ldb.list_presets = AsyncMock(
-        side_effect=[
-            MagicMock(
-                presets=first_page,
-                pagination=MagicMock(total_items=101),
-            ),
-            MagicMock(
-                presets=[_preset(id="preset-100")],
-                pagination=MagicMock(total_items=101),
-            ),
-        ]
+        return_value=MagicMock(
+            presets=first_page,
+            pagination=MagicMock(total_items=101),
+        )
     )
     with patch(f"{_PATH}.library_db", return_value=ldb):
         result = await ListPresetsTool()._execute(user_id=_USER, session=session)
@@ -121,20 +115,15 @@ async def test_list_truncation_hint_when_more_than_one_page(session):
 @pytest.mark.asyncio
 async def test_list_second_page_is_exactly_scoped_to_current_expert():
     session = make_session(_USER, expert_id="expert-a")
-    first_page = [
-        *[_preset(id=f"a-{i}", expert_id="expert-a") for i in range(60)],
-        *[_preset(id=f"b-{i}", expert_id="expert-b") for i in range(40)],
-    ]
     second_page = [
-        *[_preset(id=f"a-{i}", expert_id="expert-a") for i in range(60, 110)],
-        *[_preset(id=f"b-{i}", expert_id="expert-b") for i in range(40, 80)],
+        *[_preset(id=f"a-{i}", expert_id="expert-a") for i in range(100, 110)],
+        _preset(id="b-leak", expert_id="expert-b"),
     ]
     ldb = MagicMock()
     ldb.list_presets = AsyncMock(
-        side_effect=[
-            MagicMock(presets=first_page, pagination=MagicMock(total_items=190)),
-            MagicMock(presets=second_page, pagination=MagicMock(total_items=190)),
-        ]
+        return_value=MagicMock(
+            presets=second_page, pagination=MagicMock(total_items=110)
+        )
     )
 
     with patch(f"{_PATH}.library_db", return_value=ldb):
@@ -150,6 +139,14 @@ async def test_list_second_page_is_exactly_scoped_to_current_expert():
         f"a-{i}" for i in range(100, 110)
     ]
     assert all(not preset.id.startswith("b-") for preset in result.presets)
+    ldb.list_presets.assert_awaited_once_with(
+        user_id=_USER,
+        page=2,
+        page_size=100,
+        graph_id=None,
+        expert_id="expert-a",
+        filter_by_expert=True,
+    )
 
 
 @pytest.mark.parametrize(("page", "page_size"), [(0, 100), (1, 0), (1, 101)])
@@ -191,7 +188,7 @@ async def test_list_only_returns_current_persona_scope(session_expert_id, expect
                 _preset(id="preset-a", expert_id="expert-a"),
                 _preset(id="preset-b", expert_id="expert-b"),
             ],
-            pagination=MagicMock(total_items=3),
+            pagination=MagicMock(total_items=1),
         )
     )
 

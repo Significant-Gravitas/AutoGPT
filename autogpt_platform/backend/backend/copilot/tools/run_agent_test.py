@@ -1240,6 +1240,29 @@ async def test_run_preset_rejects_other_memory_scope():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_expert_session_rejects_autopilot_preset():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user", expert_id="expert-a")
+    preset = MagicMock(id="p1", expert_id=None)
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=preset)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock()
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p1")
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_not_found"
+    mock_graph_db.get_graph.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_rejects_webhook_trigger():
     """A webhook-triggered preset can't be run on demand (it fires on its
     event); reject cleanly without attempting execution."""

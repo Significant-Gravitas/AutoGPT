@@ -2067,7 +2067,7 @@ def _mock_expert_personal_tenancy(
     mocker: MockerFixture,
     *,
     organization_id: str = "personal-org",
-    team_id: str = "personal-team",
+    team_id: str | None = "personal-team",
     error: Exception | None = None,
 ):
     expert_store = mocker.MagicMock()
@@ -2118,6 +2118,21 @@ def _mock_add_graph_execution_requeue_path(
         return_value=graph_exec
     )
     execution_store.update_node_execution_status_batch = mocker.AsyncMock()
+    user = mocker.MagicMock(timezone="UTC")
+    mocker.patch("backend.executor.utils.user_db").get_user_by_id = mocker.AsyncMock(
+        return_value=user
+    )
+    settings = mocker.MagicMock(
+        human_in_the_loop_safe_mode=True,
+        sensitive_action_safe_mode=False,
+    )
+    mocker.patch("backend.executor.utils.graph_db").get_graph_settings = (
+        mocker.AsyncMock(return_value=settings)
+    )
+    workspace = mocker.MagicMock(id="workspace-1")
+    mocker.patch("backend.executor.utils.workspace_db").get_or_create_workspace = (
+        mocker.AsyncMock(return_value=workspace)
+    )
     mocker.patch("backend.executor.utils.onboarding_db").increment_onboarding_runs = (
         mocker.AsyncMock()
     )

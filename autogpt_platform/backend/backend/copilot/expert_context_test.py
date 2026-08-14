@@ -141,12 +141,20 @@ class TestBuildExpertIdentitySuffix:
     async def test_transient_lookup_error_is_retried_once(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(side_effect=[RuntimeError("db down"), _expert()])
+        mock_db.resolve_expert_personal_tenancy = AsyncMock(
+            return_value=("personal-org", "personal-team")
+        )
         sleep_mock = AsyncMock()
         with (
             patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
             patch(f"{_EC}.asyncio.sleep", new=sleep_mock),
         ):
-            result = await build_expert_identity_suffix("user-1", "exp-1")
+            result = await build_expert_identity_suffix(
+                "user-1",
+                "exp-1",
+                organization_id="personal-org",
+                team_id="personal-team",
+            )
 
         assert "<expert_identity>" in result
         assert mock_db.get_expert.await_count == 2

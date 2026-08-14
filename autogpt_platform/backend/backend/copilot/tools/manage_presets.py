@@ -50,34 +50,21 @@ async def _list_scoped_presets(
     user_id: str,
     graph_id: str | None,
     session: ChatSession,
-) -> list[LibraryAgentPreset]:
-    ldb = library_db()
-    first_page = await ldb.list_presets(
+    page: int,
+    page_size: int,
+) -> tuple[list[LibraryAgentPreset], int]:
+    response = await library_db().list_presets(
         user_id=user_id,
-        page=1,
-        page_size=_MAX_PAGE_SIZE,
+        page=page,
+        page_size=page_size,
         graph_id=graph_id,
+        expert_id=session.expert_id,
+        filter_by_expert=True,
     )
     scoped = [
-        preset for preset in first_page.presets if _is_in_session_scope(preset, session)
+        preset for preset in response.presets if _is_in_session_scope(preset, session)
     ]
-    total_pages = max(
-        1,
-        (first_page.pagination.total_items + _MAX_PAGE_SIZE - 1) // _MAX_PAGE_SIZE,
-    )
-    for page in range(2, total_pages + 1):
-        response = await ldb.list_presets(
-            user_id=user_id,
-            page=page,
-            page_size=_MAX_PAGE_SIZE,
-            graph_id=graph_id,
-        )
-        scoped.extend(
-            preset
-            for preset in response.presets
-            if _is_in_session_scope(preset, session)
-        )
-    return scoped
+    return scoped, response.pagination.total_items
 
 
 class PresetSummary(BaseModel):
@@ -223,10 +210,10 @@ class ListPresetsTool(BaseTool):
                 )
             graph_id = lib_agent.graph_id
 
-        scoped_presets = await _list_scoped_presets(user_id, graph_id, session)
-        total_count = len(scoped_presets)
+        page_presets, total_count = await _list_scoped_presets(
+            user_id, graph_id, session, page, page_size
+        )
         start = (page - 1) * page_size
-        page_presets = scoped_presets[start : start + page_size]
         presets = [
             PresetSummary(
                 id=p.id,
