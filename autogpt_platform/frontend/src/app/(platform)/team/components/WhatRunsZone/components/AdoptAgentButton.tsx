@@ -10,12 +10,12 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import { useState } from "react";
 
-interface Props {
+type Props = {
   agent: LibraryAgent;
   experts: Expert[];
   isPending: boolean;
   onAdopt: (agent: LibraryAgent, expert: Expert) => void;
-}
+};
 
 export function AdoptAgentButton({
   agent,

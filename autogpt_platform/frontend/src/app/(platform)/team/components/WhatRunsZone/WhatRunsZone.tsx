@@ -9,10 +9,10 @@ import { YourAgentsList } from "./components/YourAgentsList";
 import { WhatRunsFilter } from "./helpers";
 import { useWhatRunsZone } from "./useWhatRunsZone";
 
-interface Props {
+type Props = {
   experts: Expert[];
   schedules: GraphExecutionJobInfo[];
-}
+};
 
 const GROUP_EMPTY_MESSAGES: Partial<Record<WhatRunsFilter, string>> = {
   workflows: "No workflows installed yet.",

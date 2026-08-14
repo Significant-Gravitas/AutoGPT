@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
 import { WHAT_RUNS_FILTERS, WhatRunsFilter } from "../helpers";
 
-interface Props {
+type Props = {
   value: WhatRunsFilter;
   onChange: (filter: WhatRunsFilter) => void;
-}
+};
 
 export function WhatRunsFilters({ value, onChange }: Props) {
   return (

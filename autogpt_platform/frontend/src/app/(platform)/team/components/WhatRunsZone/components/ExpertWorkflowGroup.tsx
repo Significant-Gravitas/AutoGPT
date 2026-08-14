@@ -9,9 +9,9 @@ import { getLastRunLabel, workflowNeedsSetup } from "../../../helpers";
 import { STATUS_BADGE_CLASS } from "../constants";
 import { ExpertWorkflowGroupData } from "../helpers";
 
-interface Props {
+type Props = {
   group: ExpertWorkflowGroupData;
-}
+};
 
 export function ExpertWorkflowGroup({ group }: Props) {
   const { expert, workflows } = group;

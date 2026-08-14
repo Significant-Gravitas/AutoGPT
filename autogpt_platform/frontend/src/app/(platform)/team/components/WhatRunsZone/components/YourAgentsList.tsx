@@ -13,7 +13,7 @@ import { STATUS_BADGE_CLASS } from "../constants";
 import { getAdoptableExperts, getAdoptTargetVersionId } from "../helpers";
 import { AdoptAgentButton } from "./AdoptAgentButton";
 
-interface Props {
+type Props = {
   agents: LibraryAgent[];
   experts: Expert[];
   libraryAgentCount: number;
@@ -24,7 +24,7 @@ interface Props {
   isErrorLoadingMoreAgents: boolean;
   onLoadMore: () => void;
   onAdopt: (agent: LibraryAgent, expert: Expert) => void;
-}
+};
 
 export function YourAgentsList({
   agents,
