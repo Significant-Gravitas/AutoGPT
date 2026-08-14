@@ -109,6 +109,14 @@ export function isKickoffMessage(message: UIMessage): boolean {
   return getKickoffExpertId(message) !== null;
 }
 
+export function shouldClearKickoffParam(
+  isExpertsEnabled: boolean,
+  hasLoadedExperts: boolean,
+  expertId: string | null,
+): boolean {
+  return !isExpertsEnabled || (hasLoadedExperts && expertId === null);
+}
+
 export function stripKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
   return messages.filter((message) => !isKickoffMessage(message));
 }

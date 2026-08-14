@@ -13,6 +13,7 @@ import {
   markKickoffDone,
   markKickoffPending,
   parseLegacyKickoffExpertId,
+  shouldClearKickoffParam,
   stripKickoffMessages,
   stripLegacyKickoffMarker,
   withKickoffLock,
@@ -66,6 +67,18 @@ describe("buildKickoffMessage", () => {
     expect(message.text).toContain("Never pretend a run succeeded.");
     expect(message.text).not.toContain("EXPERT_KICKOFF");
     expect(message.text).not.toContain(EXPERT_ID);
+  });
+});
+
+describe("shouldClearKickoffParam", () => {
+  it("preserves kickoff through a retryable expert-map error and recovery", () => {
+    expect(shouldClearKickoffParam(true, false, null)).toBe(false);
+    expect(shouldClearKickoffParam(true, true, EXPERT_ID)).toBe(false);
+  });
+
+  it("clears kickoff only when experts are disabled or a loaded map misses it", () => {
+    expect(shouldClearKickoffParam(false, false, null)).toBe(true);
+    expect(shouldClearKickoffParam(true, true, null)).toBe(true);
   });
 });
 

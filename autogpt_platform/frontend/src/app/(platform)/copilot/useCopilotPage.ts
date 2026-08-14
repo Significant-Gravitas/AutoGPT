@@ -18,6 +18,7 @@ import {
   buildKickoffMessage,
   getKickoffAttemptToken,
   isKickoffMessage,
+  shouldClearKickoffParam,
   type ExpertKickoffMetadata,
 } from "./expertKickoff";
 import { useExpertKickoff } from "./useExpertKickoff";
@@ -89,17 +90,13 @@ export function useCopilotPage() {
 
   useEffect(() => {
     if (kickoffParam !== "1") return;
-    if (!isExpertsEnabled) {
-      void setKickoffParam(null, { history: "replace" });
+    if (!shouldClearKickoffParam(isExpertsEnabled, hasLoadedExperts, expertId))
       return;
-    }
-    if (isLoadingExperts) return;
-    if (expertId) return;
     void setKickoffParam(null, { history: "replace" });
   }, [
     expertId,
+    hasLoadedExperts,
     isExpertsEnabled,
-    isLoadingExperts,
     kickoffParam,
     setKickoffParam,
   ]);
