@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,6 +11,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
+import { getGetV2GetGraphQueryKey } from "@/app/api/__generated__/endpoints/admin/admin";
 import {
   getGetV2GetCommunityRebuildStatusMockHandler200,
   getGetV2GetCommunityRebuildStatusResponseMock200,
@@ -123,6 +125,59 @@ function MemoryVisualizerWithRefetch() {
       <button type="button" onClick={() => queryClient.invalidateQueries()}>
         Refetch experts
       </button>
+    </>
+  );
+}
+
+const PERSISTENT_GRAPH_PARAMS = {
+  include_episodes: true,
+  include_communities: true,
+  node_limit: 10000,
+  edge_limit: 20000,
+};
+
+function MemoryVisualizerWithPersistentGraphCache() {
+  const queryClient = useQueryClient();
+  const [ready, setReady] = useState(false);
+  const [expertCacheInvalidated, setExpertCacheInvalidated] = useState<
+    boolean | undefined
+  >();
+
+  function loadVisualizer() {
+    queryClient.setQueryDefaults(getGetV2GetGraphQueryKey("me"), {
+      staleTime: Infinity,
+    });
+    setReady(true);
+  }
+
+  function inspectExpertCache() {
+    setExpertCacheInvalidated(
+      queryClient.getQueryState(
+        getGetV2GetGraphQueryKey("me", {
+          ...PERSISTENT_GRAPH_PARAMS,
+          expert_id: "expert-ada",
+        }),
+      )?.isInvalidated,
+    );
+  }
+
+  if (!ready) {
+    return (
+      <button type="button" onClick={loadVisualizer}>
+        Load persistent graph cache
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <MemoryVisualizer />
+      <button type="button" onClick={inspectExpertCache}>
+        Inspect expert cache
+      </button>
+      <output data-testid="expert-cache-invalidated">
+        {String(expertCacheInvalidated)}
+      </output>
     </>
   );
 }
@@ -443,6 +498,86 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     await screen.findByRole("button", {
       name: /batch submitted \(consolidate\)/i,
     });
+  });
+
+  test("job completion refreshes every AutoPilot graph filter cache without invalidating expert memory", async () => {
+    setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
+    const graphRequests = new Map<string, number>();
+    server.use(
+      http.get("*/api/admin/memory/:userId/graph", ({ request }) => {
+        const url = new URL(request.url);
+        const requestKey = [
+          url.searchParams.get("expert_id") ?? "autopilot",
+          url.searchParams.get("include_episodes"),
+          url.searchParams.get("include_communities"),
+        ].join(":");
+        graphRequests.set(requestKey, (graphRequests.get(requestKey) ?? 0) + 1);
+        return HttpResponse.json({
+          ...getGetV2GetGraphResponseMock200(),
+          nodes: [],
+          edges: [],
+          truncated: false,
+        });
+      }),
+      getPostV2TriggerDreamPassMockHandler202({
+        ...getPostV2TriggerDreamPassResponseMock202(),
+        job_id: "job-dream-cache",
+        state: "queued",
+      }),
+      getGetV2GetDreamPassStatusMockHandler200({
+        ...getGetV2GetDreamPassStatusResponseMock200(),
+        job_id: "job-dream-cache",
+        kind: "dream_pass",
+        state: "complete",
+      }),
+    );
+    render(<MemoryVisualizerWithPersistentGraphCache />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Load persistent graph cache" }),
+    );
+
+    await waitFor(() =>
+      expect(graphRequests.get("autopilot:false:true")).toBe(1),
+    );
+    const episodes = await screen.findByRole("checkbox", {
+      name: /episodes/i,
+    });
+    await userEvent.click(episodes);
+    await waitFor(() =>
+      expect(graphRequests.get("autopilot:true:true")).toBe(1),
+    );
+
+    const selector = screen.getByRole("combobox", { name: "Memory scope" });
+    await waitFor(() =>
+      expect((selector as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    await waitFor(() =>
+      expect(graphRequests.get("expert-ada:true:true")).toBe(1),
+    );
+
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    await userEvent.click(episodes);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dream pass/i }),
+    );
+
+    await waitFor(() =>
+      expect(graphRequests.get("autopilot:false:true")).toBe(2),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Inspect expert cache" }),
+    );
+    expect(screen.getByTestId("expert-cache-invalidated").textContent).toBe(
+      "false",
+    );
+
+    await userEvent.click(episodes);
+    await waitFor(() =>
+      expect(graphRequests.get("autopilot:true:true")).toBe(2),
+    );
   });
 
   test("status-endpoint 500 stops polling + reactivates the dream button", async () => {

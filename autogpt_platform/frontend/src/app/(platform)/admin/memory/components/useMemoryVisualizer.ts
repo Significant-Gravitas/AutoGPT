@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import {
   getGetV2GetCommunityRebuildStatusQueryKey,
   getGetV2GetDreamPassStatusQueryKey,
@@ -53,6 +53,21 @@ type TerminalState = Extract<JobStateValue, "complete" | "errored">;
 
 function isTerminal(state: JobStateValue | undefined): state is TerminalState {
   return state === "complete" || state === "errored";
+}
+
+function invalidateAutoPilotGraphQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({
+    queryKey: getGetV2GetGraphQueryKey(USER_ID),
+    predicate: ({ queryKey }) => {
+      const params = queryKey[1];
+      return !(
+        typeof params === "object" &&
+        params !== null &&
+        "expert_id" in params &&
+        params.expert_id !== undefined
+      );
+    },
+  });
 }
 
 export function useMemoryVisualizer(expertID?: string) {
@@ -163,9 +178,7 @@ export function useMemoryVisualizer(expertID?: string) {
         queryClient.invalidateQueries({
           queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
         });
-        queryClient.invalidateQueries({
-          queryKey: getGetV2GetGraphQueryKey(USER_ID, autoPilotGraphParams),
-        });
+        invalidateAutoPilotGraphQueries(queryClient);
       },
       onError: (error: Error) => {
         toast({
@@ -232,9 +245,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID, autoPilotGraphParams),
-      });
+      invalidateAutoPilotGraphQueries(queryClient);
     },
     toast,
   );
@@ -255,9 +266,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID, autoPilotGraphParams),
-      });
+      invalidateAutoPilotGraphQueries(queryClient);
     },
     toast,
   );
@@ -278,9 +287,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID, autoPilotGraphParams),
-      });
+      invalidateAutoPilotGraphQueries(queryClient);
     },
     toast,
   );
