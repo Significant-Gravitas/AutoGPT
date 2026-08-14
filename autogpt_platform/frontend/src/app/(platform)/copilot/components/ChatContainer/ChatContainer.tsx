@@ -21,6 +21,11 @@ import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
+import {
+  getKickoffExpertId,
+  stripLegacyKickoffMarker,
+  type ExpertKickoffMetadata,
+} from "../../expertKickoff";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -48,6 +53,7 @@ export interface ChatContainerProps {
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
+    metadata?: ExpertKickoffMetadata,
   ) => void | Promise<void>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
@@ -71,6 +77,8 @@ export interface ChatContainerProps {
    * expert's latest thread — the composer stays locked so a draft can't be
    * lost to that navigation. */
   isAdoptingExpertSession?: boolean;
+  /** True while a newly hired expert's first session is being opened. */
+  isKickoffStarting?: boolean;
 }
 export const ChatContainer = ({
   messages,
@@ -100,6 +108,7 @@ export const ChatContainer = ({
   turnStats,
   expertIdentity,
   isAdoptingExpertSession,
+  isKickoffStarting,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -160,7 +169,17 @@ export const ChatContainer = ({
       .map((p) => p.text)
       .join("");
     if (lastText) {
-      onSend(lastText);
+      const kickoffExpertId = lastUserMsg
+        ? getKickoffExpertId(lastUserMsg)
+        : null;
+      onSend(
+        kickoffExpertId ? stripLegacyKickoffMarker(lastText) : lastText,
+        undefined,
+        undefined,
+        kickoffExpertId
+          ? { kind: "expert_kickoff", expertId: kickoffExpertId }
+          : undefined,
+      );
     }
   }, [messages, onSend]);
 
@@ -257,6 +276,8 @@ export const ChatContainer = ({
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
               isAdoptingExpertSession={isAdoptingExpertSession}
+              isKickoffStarting={isKickoffStarting}
+              expertName={expertIdentity?.name}
             />
           )}
         </div>

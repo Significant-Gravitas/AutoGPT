@@ -1,9 +1,10 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./helpers";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
@@ -13,7 +14,10 @@ import { useCopilotStreamStore } from "./copilotStreamStore";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
-import { buildKickoffMessage } from "./expertKickoff";
+import {
+  buildKickoffMessage,
+  type ExpertKickoffMetadata,
+} from "./expertKickoff";
 import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
@@ -53,9 +57,42 @@ export function useCopilotPage() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
-  const [kickoffParam] = useQueryState("kickoff", parseAsString);
-  const expertId = isExpertsEnabled ? expertIdParam : null;
-  const { expertsById } = useExpertMap();
+  const [kickoffParam, setKickoffParam] = useQueryState(
+    "kickoff",
+    parseAsString,
+  );
+  const { expertsById, isLoadingExperts, hasLoadedExperts } = useExpertMap();
+  const validExpertIdParam =
+    expertIdParam && isValidUUID(expertIdParam) ? expertIdParam : null;
+  const expertId =
+    isExpertsEnabled &&
+    hasLoadedExperts &&
+    validExpertIdParam &&
+    expertsById.has(validExpertIdParam)
+      ? validExpertIdParam
+      : null;
+  const isKickoffResolving =
+    isExpertsEnabled &&
+    kickoffParam === "1" &&
+    validExpertIdParam !== null &&
+    isLoadingExperts;
+
+  useEffect(() => {
+    if (kickoffParam !== "1") return;
+    if (!isExpertsEnabled) {
+      void setKickoffParam(null, { history: "replace" });
+      return;
+    }
+    if (isLoadingExperts) return;
+    if (expertId) return;
+    void setKickoffParam(null, { history: "replace" });
+  }, [
+    expertId,
+    isExpertsEnabled,
+    isLoadingExperts,
+    kickoffParam,
+    setKickoffParam,
+  ]);
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
@@ -206,6 +243,7 @@ export function useCopilotPage() {
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
+    metadata?: ExpertKickoffMetadata,
   ) {
     const trimmed = message.trim();
     const hasAttachments =
@@ -249,7 +287,7 @@ export function useCopilotPage() {
           err instanceof Error &&
           err.name === "QueueFollowUpNotActiveError"
         ) {
-          await sendNewMessage(message, files, workspaceFiles);
+          await sendNewMessage(message, files, workspaceFiles, metadata);
           return;
         }
         toast({
@@ -268,25 +306,34 @@ export function useCopilotPage() {
     if (sessionId) {
       isInflightRef.current = true;
     }
-    await sendNewMessage(message, files, workspaceFiles);
+    await sendNewMessage(message, files, workspaceFiles, metadata);
   }
 
   useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
 
-  useExpertKickoff({
+  const { isKickoffStarting } = useExpertKickoff({
     expertId,
     kickoff: isExpertsEnabled && kickoffParam === "1",
     sessionId,
     sessionExpertId,
-    // Empty by both the server's account (hydration finished, nothing there)
-    // and the client's (no optimistic in-flight send) — the signal that a
-    // kickoff session was created but its first send never landed.
-    isThreadEmpty:
+    hasPersistedMessages:
       sessionId && hydratedMessages !== undefined
-        ? hydratedMessages.length === 0 && messages.length === 0
+        ? hydratedMessages.length > 0
         : null,
-    onAdoptSession: (id) => void setSessionId(id),
-    onKickoff: (id) => onSend(buildKickoffMessage(id)),
+    isClientThreadEmpty: messages.length === 0,
+    onAdoptSession: setSessionId,
+    async onKickoff(id) {
+      const kickoffMessage = buildKickoffMessage(id);
+      await sendNewMessage(
+        kickoffMessage.text,
+        undefined,
+        undefined,
+        kickoffMessage.metadata,
+      );
+    },
+    onSettled() {
+      void setKickoffParam(null, { history: "replace" });
+    },
   });
 
   useSessionTitlePoll({ sessionId, status, isReconnecting });
@@ -327,5 +374,6 @@ export function useCopilotPage() {
     sessionChatStatus,
     expertIdentity,
     isAdoptingExpertSession,
+    isKickoffStarting: isKickoffResolving || isKickoffStarting,
   };
 }

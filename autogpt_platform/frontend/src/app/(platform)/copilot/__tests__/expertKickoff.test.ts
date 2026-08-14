@@ -1,49 +1,75 @@
 import type { UIMessage } from "ai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildKickoffMessage,
   clearKickoffPending,
-  deriveKickoffMessageId,
+  getKickoffExpertId,
+  getKickoffExpertIdFromMetadata,
   getKickoffStatus,
   isKickoffMessage,
   isKickoffText,
   kickoffStorageKey,
   markKickoffDone,
   markKickoffPending,
+  parseLegacyKickoffExpertId,
   stripKickoffMessages,
+  stripLegacyKickoffMarker,
+  withKickoffLock,
 } from "../expertKickoff";
 
 const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
 
-function userMessage(id: string, text: string): UIMessage {
-  return { id, role: "user", parts: [{ type: "text", text }] } as UIMessage;
+function userMessage(
+  id: string,
+  text: string,
+  metadata?: UIMessage["metadata"],
+): UIMessage {
+  return {
+    id,
+    role: "user",
+    parts: [{ type: "text", text }],
+    metadata,
+  } as UIMessage;
 }
 
-function assistantMessage(id: string, text: string): UIMessage {
+function assistantMessage(
+  id: string,
+  text: string,
+  metadata?: UIMessage["metadata"],
+): UIMessage {
   return {
     id,
     role: "assistant",
     parts: [{ type: "text", text }],
+    metadata,
   } as UIMessage;
 }
 
 describe("buildKickoffMessage", () => {
-  it("prefixes the structural marker and instructs the day-one job", () => {
+  it("keeps routing data in metadata and sends a clean day-one prompt", () => {
     const message = buildKickoffMessage(EXPERT_ID);
-    expect(message.startsWith(`[[EXPERT_KICKOFF:${EXPERT_ID}]]`)).toBe(true);
-    expect(message).toContain("You were just hired.");
-    expect(message).toContain("Introduce yourself in 2-3 sentences");
-    expect(message).toContain("run_agent");
-    expect(message).toContain("Never pretend a run succeeded.");
+
+    expect(message.metadata).toEqual({
+      kind: "expert_kickoff",
+      expertId: EXPERT_ID,
+    });
+    expect(message.text).toContain("You were just hired.");
+    expect(message.text).toContain("Introduce yourself in 2-3 sentences");
+    expect(message.text).toContain("run_agent");
+    expect(message.text).toContain("If no workflow is installed");
+    expect(message.text).toContain("Never pretend a run succeeded.");
+    expect(message.text).not.toContain("EXPERT_KICKOFF");
+    expect(message.text).not.toContain(EXPERT_ID);
   });
 });
 
-describe("isKickoffMessage / stripKickoffMessages", () => {
-  it("keys on the structural marker, never on prose content", () => {
+describe("kickoff message identification", () => {
+  it("uses first-class metadata without matching ordinary prose", () => {
+    const kickoff = buildKickoffMessage(EXPERT_ID);
+
     expect(
-      isKickoffMessage(userMessage("m1", buildKickoffMessage(EXPERT_ID))),
+      isKickoffMessage(userMessage("m1", kickoff.text, kickoff.metadata)),
     ).toBe(true);
-    // A user pasting the kickoff WORDING (no marker) keeps their bubble.
     expect(
       isKickoffMessage(
         userMessage(
@@ -52,76 +78,83 @@ describe("isKickoffMessage / stripKickoffMessages", () => {
         ),
       ),
     ).toBe(false);
-    // Same marked text on an assistant message is never hidden.
     expect(
-      isKickoffMessage(assistantMessage("m3", buildKickoffMessage(EXPERT_ID))),
+      isKickoffMessage(assistantMessage("m3", kickoff.text, kickoff.metadata)),
     ).toBe(false);
   });
 
+  it("accepts persisted snake-case metadata and rejects malformed metadata", () => {
+    expect(
+      getKickoffExpertIdFromMetadata({
+        kind: "expert_kickoff",
+        expert_id: EXPERT_ID,
+      }),
+    ).toBe(EXPERT_ID);
+    expect(
+      getKickoffExpertIdFromMetadata({
+        kind: "expert_kickoff",
+        expert_id: "not-a-uuid",
+      }),
+    ).toBeNull();
+    expect(
+      getKickoffExpertIdFromMetadata({ kind: "ordinary", expertId: EXPERT_ID }),
+    ).toBeNull();
+  });
+
   it("removes only kickoff messages from the transcript", () => {
+    const kickoff = buildKickoffMessage(EXPERT_ID);
     const messages = [
-      userMessage("m1", buildKickoffMessage(EXPERT_ID)),
+      userMessage("m1", kickoff.text, kickoff.metadata),
       assistantMessage("m2", "Hi, I'm Maria. Here's my day-one plan."),
       userMessage("m3", "Sounds good, go ahead."),
     ];
 
-    expect(stripKickoffMessages(messages).map((m) => m.id)).toEqual([
-      "m2",
-      "m3",
-    ]);
-  });
-
-  it("isKickoffText detects the marker prefix", () => {
-    expect(isKickoffText(buildKickoffMessage(EXPERT_ID))).toBe(true);
-    expect(isKickoffText("You were just hired.")).toBe(false);
-  });
-});
-
-describe("deriveKickoffMessageId", () => {
-  it("derives a deterministic attempt-0 id for the first kickoff", () => {
-    const id = deriveKickoffMessageId([
-      userMessage("m1", buildKickoffMessage(EXPERT_ID)),
-    ]);
-    expect(id).toBe(`expert-kickoff-${EXPERT_ID}-0`);
-    expect(id!.length).toBeLessThanOrEqual(64);
-  });
-
-  it("increments the attempt when a prior kickoff exists (retry path)", () => {
-    const id = deriveKickoffMessageId([
-      userMessage("m1", buildKickoffMessage(EXPERT_ID)),
-      assistantMessage("m2", "stream failed"),
-      userMessage("m3", buildKickoffMessage(EXPERT_ID)),
-    ]);
-    expect(id).toBe(`expert-kickoff-${EXPERT_ID}-1`);
-  });
-
-  it("returns null for ordinary user messages", () => {
-    expect(deriveKickoffMessageId([userMessage("m1", "Hello there")])).toBe(
-      null,
+    expect(stripKickoffMessages(messages).map((message) => message.id)).toEqual(
+      ["m2", "m3"],
     );
-    expect(deriveKickoffMessageId([])).toBe(null);
+  });
+
+  it("strictly recognizes legacy markers for backward compatibility", () => {
+    const legacy = `[[EXPERT_KICKOFF:${EXPERT_ID}]]\n\nLegacy prompt`;
+
+    expect(parseLegacyKickoffExpertId(legacy)).toBe(EXPERT_ID);
+    expect(isKickoffText(legacy)).toBe(true);
+    expect(stripLegacyKickoffMarker(legacy)).toBe("Legacy prompt");
+    expect(getKickoffExpertId(userMessage("legacy", legacy))).toBe(EXPERT_ID);
+    expect(
+      parseLegacyKickoffExpertId(`[[EXPERT_KICKOFF:${EXPERT_ID}] Legacy`),
+    ).toBeNull();
+    expect(
+      parseLegacyKickoffExpertId("[[EXPERT_KICKOFF:not-a-uuid]]"),
+    ).toBeNull();
+    expect(
+      parseLegacyKickoffExpertId(`prefix [[EXPERT_KICKOFF:${EXPERT_ID}]]`),
+    ).toBeNull();
   });
 });
 
 describe("kickoff status state machine", () => {
   afterEach(() => {
     window.localStorage.clear();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
-  it("namespaces the key per expert", () => {
-    expect(kickoffStorageKey("expert-maria")).toBe(
-      "expert-kickoff-expert-maria",
+  it("uses a distinct, expert-scoped storage namespace", () => {
+    expect(kickoffStorageKey(EXPERT_ID)).toBe(
+      `expert-kickoff-status:${EXPERT_ID}`,
     );
   });
 
-  it("walks idle → pending → done", () => {
+  it("walks idle → pending → done independently per expert", () => {
+    const otherExpert = "3f8b0f7e-9f30-4a3b-a6a1-000000000002";
+
     expect(getKickoffStatus(EXPERT_ID)).toBe("idle");
     markKickoffPending(EXPERT_ID);
     expect(getKickoffStatus(EXPERT_ID)).toBe("pending");
     markKickoffDone(EXPERT_ID);
     expect(getKickoffStatus(EXPERT_ID)).toBe("done");
-    // A different expert stays independent.
-    expect(getKickoffStatus("expert-juan")).toBe("idle");
+    expect(getKickoffStatus(otherExpert)).toBe("idle");
   });
 
   it("clearKickoffPending releases pending but never done", () => {
@@ -134,7 +167,7 @@ describe("kickoff status state machine", () => {
     expect(getKickoffStatus(EXPERT_ID)).toBe("done");
   });
 
-  it("expires a stale pending so a crashed tab can't consume the kickoff", () => {
+  it("expires stale pending state so a crashed tab cannot consume kickoff", () => {
     window.localStorage.setItem(
       kickoffStorageKey(EXPERT_ID),
       `pending:${Date.now() - 10 * 60 * 1000}`,
@@ -142,8 +175,23 @@ describe("kickoff status state machine", () => {
     expect(getKickoffStatus(EXPERT_ID)).toBe("idle");
   });
 
-  it("reads the legacy '1' value as done", () => {
-    window.localStorage.setItem(kickoffStorageKey(EXPERT_ID), "1");
+  it("reads the previous key and value formats during rollout", () => {
+    window.localStorage.setItem(`expert-kickoff-${EXPERT_ID}`, "1");
     expect(getKickoffStatus(EXPERT_ID)).toBe("done");
+  });
+
+  it("serializes cross-tab work with the Web Locks API", async () => {
+    const request = vi.fn(
+      async (_name: string, action: () => Promise<string>) => action(),
+    );
+    vi.stubGlobal("navigator", { locks: { request } });
+
+    await expect(
+      withKickoffLock(EXPERT_ID, async () => "started"),
+    ).resolves.toBe("started");
+    expect(request).toHaveBeenCalledWith(
+      `expert-kickoff-status:${EXPERT_ID}`,
+      expect.any(Function),
+    );
   });
 });

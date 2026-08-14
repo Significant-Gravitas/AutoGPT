@@ -45,20 +45,9 @@ export function useExpertProfileSheet(
           : undefined,
         variant: "success",
         action: (
-          <div className="flex gap-2">
-            <Button
-              as="NextLink"
-              href={`/copilot?expertId=${result.expert.id}&kickoff=1`}
-              variant="secondary"
-              size="small"
-              unmask={false}
-            >
-              {`Chat with ${result.expert.name}`}
-            </Button>
-            <Button as="NextLink" href="/team" variant="ghost" size="small">
-              View team
-            </Button>
-          </div>
+          <Button as="NextLink" href="/team" variant="ghost" size="small">
+            View team
+          </Button>
         ),
       });
       // Hiring isn't installing: hand the user straight to the expert's thread

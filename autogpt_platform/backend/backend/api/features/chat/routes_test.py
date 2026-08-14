@@ -264,7 +264,11 @@ def _mock_stream_internals(
     # The route anchors turn tenancy on the session row
     # (session.organization_id / session.team_id), so the stub must carry
     # both — None exercises the legacy ctx-fallback path.
-    mock_session = mocker.MagicMock(organization_id=None, team_id=None)
+    mock_session = mocker.MagicMock(
+        organization_id=None,
+        team_id=None,
+        expert_id=None,
+    )
     mock_session.metadata.llm_auth_provider = llm_auth_provider
     mock_session.metadata.llm_credential_id = (
         "cred-codex" if llm_auth_provider == "codex" else None
@@ -275,6 +279,11 @@ def _mock_stream_internals(
     )
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.chat_message_exists",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -299,7 +308,11 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
-    return types.SimpleNamespace(enqueue=mock_schedule, paywall=mock_paywall)
+    return types.SimpleNamespace(
+        enqueue=mock_schedule,
+        paywall=mock_paywall,
+        session=mock_session,
+    )
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -351,6 +364,144 @@ def test_stream_chat_skips_enqueue_for_duplicate_message(
     # None, so no further dispatch happened (verified by the helper's own
     # contract — see schedule_chat_turn tests).
     mocks.enqueue.assert_called_once()
+
+
+def test_stream_chat_canonicalizes_expert_kickoff(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = expert_id
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "You were just hired.",
+            "message_id": "attacker-controlled-id",
+            "expert_kickoff": True,
+        },
+    )
+
+    assert response.status_code == 200
+    call = mocks.enqueue.await_args.kwargs
+    assert call["message_id"] == chat_routes.expert_kickoff_message_id(
+        test_user_id,
+        "sess-1",
+        expert_id,
+    )
+    assert call["message_metadata"] == {
+        "hidden": True,
+        "kind": "expert_kickoff",
+        "expert_id": expert_id,
+    }
+
+
+def test_stream_chat_short_circuits_persisted_expert_kickoff(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    mocker.patch(
+        "backend.api.features.chat.routes.chat_message_exists",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "You were just hired.", "expert_kickoff": True},
+    )
+
+    assert response.status_code == 200
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_does_not_queue_kickoff_behind_an_unrelated_turn(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    queue_pending = mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "You were just hired.", "expert_kickoff": True},
+    )
+
+    assert response.status_code == 409
+    queue_pending.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_rejects_kickoff_for_plain_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "You were just hired.", "expert_kickoff": True},
+    )
+
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"message": "", "expert_kickoff": True},
+        {
+            "message": "You were just hired.",
+            "is_user_message": False,
+            "expert_kickoff": True,
+        },
+    ],
+)
+def test_stream_chat_rejects_invalid_kickoff_message_shape(
+    mocker: pytest_mock.MockerFixture,
+    payload: dict,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+
+    response = client.post("/sessions/sess-1/stream", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "expert_kickoff requires a non-empty user message"
+    )
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_scopes_client_message_id_to_owner_and_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "message_id": "client-click-id"},
+    )
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs[
+        "message_id"
+    ] == chat_routes.scoped_client_message_id(
+        test_user_id,
+        "sess-1",
+        "client-click-id",
+    )
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────
@@ -1395,6 +1546,48 @@ def test_create_session_with_expert_id_persists_it(
     mock_get.assert_called_once_with(test_user_id, "expert-1")
     mock_create.assert_called_once()
     assert mock_create.call_args.kwargs["expert_id"] == "expert-1"
+
+
+def test_create_expert_kickoff_session_uses_atomic_get_or_create(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    from backend.copilot.model import ChatSession
+
+    expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    mock_get = _mock_get_expert(mocker, _make_expert(expert_id))
+    mock_create = _mock_create_chat_session(mocker)
+    existing = ChatSession.new(test_user_id, dry_run=False, expert_id=expert_id)
+    mock_get_or_create = mocker.patch.object(
+        chat_routes,
+        "get_or_create_expert_kickoff_session",
+        new=AsyncMock(return_value=existing),
+        create=True,
+    )
+
+    response = client.post(
+        "/sessions",
+        json={"expert_id": expert_id, "expert_kickoff": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == existing.session_id
+    mock_get.assert_awaited_once_with(test_user_id, expert_id)
+    mock_get_or_create.assert_awaited_once()
+    assert mock_get_or_create.await_args.args[:2] == (test_user_id, expert_id)
+    mock_create.assert_not_awaited()
+
+
+def test_create_expert_kickoff_session_requires_expert_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions", json={"expert_kickoff": True})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "expert_kickoff requires expert_id"
+    mock_create.assert_not_awaited()
 
 
 def test_create_session_with_other_users_expert_returns_404(

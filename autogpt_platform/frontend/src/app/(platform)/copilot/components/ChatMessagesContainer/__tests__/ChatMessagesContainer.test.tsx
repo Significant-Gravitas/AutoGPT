@@ -723,6 +723,7 @@ describe("ChatMessagesContainer — expert kickoff hiding", () => {
   });
 
   it("hides the marked kickoff user message but renders the reply", () => {
+    const kickoff = buildKickoffMessage("3f8b0f7e-9f30-4a3b-a6a1-000000000001");
     render(
       <ChatMessagesContainer
         {...baseProps}
@@ -731,9 +732,8 @@ describe("ChatMessagesContainer — expert kickoff hiding", () => {
           {
             id: "m1",
             role: "user",
-            parts: [
-              { type: "text", text: buildKickoffMessage("expert-maria") },
-            ],
+            parts: [{ type: "text", text: kickoff.text }],
+            metadata: kickoff.metadata,
           },
           {
             id: "m2",

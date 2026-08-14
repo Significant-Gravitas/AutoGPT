@@ -332,10 +332,8 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
 }: Props) {
-  // The expert-kickoff control prompt is filtered HERE — at the transcript
-  // renderer only — so retry/recovery consumers upstream still see the raw
-  // list (e.g. ChatContainer's handleRetry needs the kickoff to count as the
-  // last user message).
+  // The expert-kickoff control prompt is filtered at the transcript renderer
+  // only so lifecycle, dedup and metadata-preserving retry logic still see it.
   const messages = useMemo(
     () => stripKickoffMessages(allMessages),
     [allMessages],

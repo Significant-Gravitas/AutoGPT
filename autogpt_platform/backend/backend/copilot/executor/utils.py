@@ -6,6 +6,7 @@ Defines two exchanges and queues following the graph executor pattern:
 """
 
 import logging
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -485,6 +486,7 @@ async def schedule_chat_turn(
     user_id: str,
     message: str,
     message_id: str | None = None,
+    message_metadata: dict[str, Any] | None = None,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
@@ -530,6 +532,7 @@ async def schedule_chat_turn(
                 id=message_id,
                 role="user" if is_user_message else "assistant",
                 content=message,
+                metadata=message_metadata,
             )
             is_duplicate = (
                 await append_and_save_message(session_id, chat_message)

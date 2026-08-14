@@ -127,13 +127,19 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
   ChatMessagesContainer: ({
     bottomContentPadding,
+    onRetry,
   }: {
     bottomContentPadding?: number;
+    onRetry?: () => void;
   }) => (
     <div
       data-testid="chat-messages-container"
       data-bottom-padding={bottomContentPadding ?? 0}
-    />
+    >
+      <button type="button" onClick={onRetry}>
+        Retry message
+      </button>
+    </div>
   ),
 }));
 
@@ -231,6 +237,34 @@ describe("ChatContainer", () => {
 
     expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("preserves expert kickoff metadata when retrying its hidden prompt", () => {
+    const onSend = vi.fn();
+    const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "kickoff",
+            role: "user",
+            parts: [{ type: "text", text: "private kickoff prompt" }],
+            metadata: { kind: "expert_kickoff", expertId },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "private kickoff prompt",
+      undefined,
+      undefined,
+      { kind: "expert_kickoff", expertId },
+    );
   });
 
   it("does not render the shared-chat notice for unshared chats", async () => {

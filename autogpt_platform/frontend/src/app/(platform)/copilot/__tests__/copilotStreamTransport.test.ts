@@ -23,12 +23,13 @@ function makeRefs() {
   };
 }
 
-function lastMessage(text: string) {
+function lastMessage(text: string, metadata?: unknown) {
   return [
     {
       id: "ai-sdk-generated-id",
       role: "user" as const,
       parts: [{ type: "text" as const, text }],
+      metadata,
     },
   ];
 }
@@ -137,7 +138,7 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
   );
 });
 
-describe("copilotStreamTransport — expert kickoff dedup ids", () => {
+describe("copilotStreamTransport — expert kickoff routing", () => {
   const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
 
   function prep(transport: ReturnType<typeof createCopilotTransport>) {
@@ -148,56 +149,33 @@ describe("copilotStreamTransport — expert kickoff dedup ids", () => {
             id: string;
             role: "user" | "assistant";
             parts: Array<{ type: "text"; text: string }>;
+            metadata?: unknown;
           }>;
-        }) => Promise<{ body: { message_id?: string } }>;
+        }) => Promise<{
+          body: { message_id?: string; expert_kickoff?: boolean };
+        }>;
       }
     ).prepareSendMessagesRequest;
   }
 
-  it("derives the same attempt-0 id for the first kickoff in any tab", async () => {
+  it("marks kickoff requests while leaving the canonical id to the server", async () => {
     const transport = createCopilotTransport({
       sessionId: "sess-1",
       ...makeRefs(),
     });
     const kickoff = buildKickoffMessage(EXPERT_ID);
 
-    const tabA = await prep(transport)({ messages: lastMessage(kickoff) });
-    const tabB = await prep(transport)({ messages: lastMessage(kickoff) });
-
-    // Two tabs racing the same first kickoff collide on the PK server-side,
-    // so the turn (and its workflow side effects) fires exactly once.
-    expect(tabA.body.message_id).toBe(`expert-kickoff-${EXPERT_ID}-0`);
-    expect(tabB.body.message_id).toBe(tabA.body.message_id);
-  });
-
-  it("advances the attempt on retry so a failed kickoff is not dead-ended by dedup", async () => {
-    const transport = createCopilotTransport({
-      sessionId: "sess-1",
-      ...makeRefs(),
+    const tabA = await prep(transport)({
+      messages: lastMessage(kickoff.text, kickoff.metadata),
     });
-    const kickoff = buildKickoffMessage(EXPERT_ID);
-
-    const retry = await prep(transport)({
-      messages: [
-        {
-          id: "m1",
-          role: "user" as const,
-          parts: [{ type: "text" as const, text: kickoff }],
-        },
-        {
-          id: "m2",
-          role: "assistant" as const,
-          parts: [{ type: "text" as const, text: "stream failed" }],
-        },
-        {
-          id: "m3",
-          role: "user" as const,
-          parts: [{ type: "text" as const, text: kickoff }],
-        },
-      ],
+    const tabB = await prep(transport)({
+      messages: lastMessage(kickoff.text, kickoff.metadata),
     });
 
-    expect(retry.body.message_id).toBe(`expert-kickoff-${EXPERT_ID}-1`);
+    expect(tabA.body.expert_kickoff).toBe(true);
+    expect(tabA.body.message_id).toMatch(UUID_RE);
+    expect(tabB.body.message_id).toMatch(UUID_RE);
+    expect(tabB.body.message_id).not.toBe(tabA.body.message_id);
   });
 
   it("keeps random UUIDs for ordinary messages", async () => {
@@ -211,5 +189,6 @@ describe("copilotStreamTransport — expert kickoff dedup ids", () => {
     });
 
     expect(out.body.message_id).toMatch(UUID_RE);
+    expect(out.body.expert_kickoff).toBe(false);
   });
 });

@@ -73,6 +73,14 @@ async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
     return ChatSessionInfo.from_db(session) if session else None
 
 
+async def chat_message_exists(message_id: str) -> bool:
+    """Return whether a globally unique chat-message ID is already persisted."""
+    return (
+        await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+        is not None
+    )
+
+
 def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     """AND-clause scoping a user's own sessions to the active org.
 

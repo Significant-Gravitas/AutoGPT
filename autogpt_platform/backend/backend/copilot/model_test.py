@@ -1217,6 +1217,119 @@ async def test_get_session_from_db_returns_none_when_missing(
 # ─── get_or_create_builder_session ─────────────────────────────────────
 
 
+def test_expert_kickoff_session_id_is_stable_and_owner_scoped() -> None:
+    from .model import expert_kickoff_session_id
+
+    first = expert_kickoff_session_id("user-a", "expert-a")
+
+    assert first == expert_kickoff_session_id("user-a", "expert-a")
+    assert first != expert_kickoff_session_id("user-b", "expert-a")
+    assert first != expert_kickoff_session_id("user-a", "expert-b")
+    assert first != expert_kickoff_session_id("user-a", "expert-a", "organization-a")
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_expert_kickoff_session_recovers_create_race(
+    mocker: MockerFixture,
+) -> None:
+    from backend.util.exceptions import DatabaseError
+
+    from .model import expert_kickoff_session_id, get_or_create_expert_kickoff_session
+
+    existing = ChatSession.new("user-a", dry_run=False, expert_id="expert-a")
+    existing.session_id = expert_kickoff_session_id("user-a", "expert-a")
+    get_session = mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=[None, existing],
+    )
+    mocker.patch(
+        "backend.copilot.model.get_user_sessions",
+        new_callable=mocker.AsyncMock,
+        return_value=([], 0),
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("duplicate session id"),
+    )
+
+    result = await get_or_create_expert_kickoff_session(
+        "user-a",
+        "expert-a",
+        dry_run=False,
+    )
+
+    assert result is existing
+    assert get_session.await_count == 2
+    assert create_session.await_args.kwargs["session_id"] == existing.session_id
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_expert_kickoff_session_reraises_real_db_failure(
+    mocker: MockerFixture,
+) -> None:
+    from backend.util.exceptions import DatabaseError
+
+    from .model import get_or_create_expert_kickoff_session
+
+    mocker.patch(
+        "backend.copilot.model.get_user_sessions",
+        new_callable=mocker.AsyncMock,
+        return_value=([], 0),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("database unavailable"),
+    )
+
+    with pytest.raises(DatabaseError, match="database unavailable"):
+        await get_or_create_expert_kickoff_session(
+            "user-a",
+            "expert-a",
+            dry_run=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_expert_kickoff_session_adopts_latest_thread(
+    mocker: MockerFixture,
+) -> None:
+    from .model import get_or_create_expert_kickoff_session
+
+    existing = ChatSession.new("user-a", dry_run=False, expert_id="expert-a")
+    mocker.patch(
+        "backend.copilot.model.get_user_sessions",
+        new_callable=mocker.AsyncMock,
+        return_value=([existing], 1),
+    )
+    get_session = mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    result = await get_or_create_expert_kickoff_session(
+        "user-a",
+        "expert-a",
+        dry_run=False,
+    )
+
+    assert result is existing
+    get_session.assert_awaited_once_with(existing.session_id, "user-a")
+    create_session.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_get_or_create_builder_session_raises_when_graph_not_owned(
     mocker: MockerFixture,

@@ -54,6 +54,7 @@ RoutingSource = Literal[
 
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
+_EXPERT_KICKOFF_SESSION_NAMESPACE = uuid.UUID("3fd5434f-225a-53e8-b248-1a749a925892")
 
 
 def _get_session_cache_key(session_id: str) -> str:
@@ -381,6 +382,7 @@ class ChatSession(ChatSessionInfo):
         user_id: str,
         *,
         dry_run: bool,
+        session_id: str | None = None,
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
         organization_id: str | None = None,
@@ -390,7 +392,7 @@ class ChatSession(ChatSessionInfo):
         expert_id: str | None = None,
     ) -> Self:
         return cls(
-            session_id=str(uuid.uuid4()),
+            session_id=session_id or str(uuid.uuid4()),
             user_id=user_id,
             title=None,
             messages=[],
@@ -1163,6 +1165,7 @@ async def create_chat_session(
     user_id: str,
     *,
     dry_run: bool,
+    session_id: str | None = None,
     builder_graph_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -1192,6 +1195,7 @@ async def create_chat_session(
     session = ChatSession.new(
         user_id,
         dry_run=dry_run,
+        session_id=session_id,
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
         organization_id=organization_id,
@@ -1224,6 +1228,65 @@ async def create_chat_session(
         logger.warning(f"Failed to cache new session {session.session_id}: {e}")
 
     return session
+
+
+def expert_kickoff_session_id(
+    user_id: str,
+    expert_id: str,
+    organization_id: str | None = None,
+) -> str:
+    """Return the canonical first-session ID for one user's expert."""
+    return str(
+        uuid.uuid5(
+            _EXPERT_KICKOFF_SESSION_NAMESPACE,
+            f"{user_id}:{organization_id or 'personal'}:{expert_id}",
+        )
+    )
+
+
+async def get_or_create_expert_kickoff_session(
+    user_id: str,
+    expert_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+) -> ChatSession:
+    """Atomically create or adopt the canonical expert kickoff session."""
+    sessions, _ = await get_user_sessions(
+        user_id,
+        limit=1,
+        organization_id=organization_id,
+        expert_id=expert_id,
+    )
+    if sessions:
+        existing = await get_chat_session(sessions[0].session_id, user_id)
+        if existing is not None:
+            return existing
+
+    session_id = expert_kickoff_session_id(user_id, expert_id, organization_id)
+    existing = await get_chat_session(session_id, user_id)
+    if existing is not None:
+        return existing
+
+    try:
+        return await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            session_id=session_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
+        )
+    except DatabaseError:
+        existing = await get_chat_session(session_id, user_id)
+        if existing is not None and existing.expert_id == expert_id:
+            return existing
+        raise
 
 
 async def get_or_create_builder_session(

@@ -90,7 +90,8 @@ describe("Marketplace ExpertsSection", () => {
     );
 
     expect(await screen.findByText("Maria joined your team")).toBeDefined();
-    expect(await screen.findByText("Chat with Maria")).toBeDefined();
+    expect(await screen.findByText("View team")).toBeDefined();
+    expect(screen.queryByText("Chat with Maria")).toBeNull();
   });
 
   test("stays hidden and fetches nothing for signed-out visitors", async () => {
