@@ -55,7 +55,7 @@ function isTerminal(state: JobStateValue | undefined): state is TerminalState {
   return state === "complete" || state === "errored";
 }
 
-export function useMemoryVisualizer() {
+export function useMemoryVisualizer(expertID?: string) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [force, setForce] = useState(false);
@@ -74,13 +74,16 @@ export function useMemoryVisualizer() {
     string | undefined
   >();
 
-  const overview = useGetV2GetMemoryOverview(USER_ID);
-  const graph = useGetV2GetGraph(USER_ID, {
+  const memoryScopeParams = expertID ? { expert_id: expertID } : undefined;
+  const graphParams = {
     include_episodes: includeEpisodes,
     include_communities: includeCommunities,
     node_limit: 10000,
     edge_limit: 20000,
-  });
+    ...(expertID ? { expert_id: expertID } : {}),
+  };
+  const overview = useGetV2GetMemoryOverview(USER_ID, memoryScopeParams);
+  const graph = useGetV2GetGraph(USER_ID, graphParams);
 
   // --- Triggers (POST → 202 + job_id) ---------------------------------------
 
@@ -154,10 +157,13 @@ export function useMemoryVisualizer() {
           });
         }
         queryClient.invalidateQueries({
-          queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+          queryKey: getGetV2GetMemoryOverviewQueryKey(
+            USER_ID,
+            memoryScopeParams,
+          ),
         });
         queryClient.invalidateQueries({
-          queryKey: getGetV2GetGraphQueryKey(USER_ID),
+          queryKey: getGetV2GetGraphQueryKey(USER_ID, graphParams),
         });
       },
       onError: (error: Error) => {
@@ -223,10 +229,10 @@ export function useMemoryVisualizer() {
         queryKey: getGetV2GetDreamPassStatusQueryKey(USER_ID, activeDreamJobId),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID, memoryScopeParams),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID),
+        queryKey: getGetV2GetGraphQueryKey(USER_ID, graphParams),
       });
     },
     toast,
@@ -246,10 +252,10 @@ export function useMemoryVisualizer() {
         ),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID, memoryScopeParams),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID),
+        queryKey: getGetV2GetGraphQueryKey(USER_ID, graphParams),
       });
     },
     toast,
@@ -269,10 +275,10 @@ export function useMemoryVisualizer() {
         ),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID, memoryScopeParams),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID),
+        queryKey: getGetV2GetGraphQueryKey(USER_ID, graphParams),
       });
     },
     toast,
@@ -281,18 +287,22 @@ export function useMemoryVisualizer() {
   // --- Action callbacks ---------------------------------------------------
 
   function triggerRebuild() {
+    if (expertID) return;
     rebuild.mutate({ userId: USER_ID, params: { force } });
   }
 
   function triggerDream() {
+    if (expertID) return;
     dream.mutate({ userId: USER_ID });
   }
 
   function triggerRatification() {
+    if (expertID) return;
     ratification.mutate({ userId: USER_ID });
   }
 
   function triggerNightly() {
+    if (expertID) return;
     nightly.mutate({ userId: USER_ID });
   }
 

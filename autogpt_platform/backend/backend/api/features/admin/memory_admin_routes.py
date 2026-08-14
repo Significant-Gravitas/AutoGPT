@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from redis.exceptions import ResponseError
 
+from backend.api.features.experts import experts_db
 from backend.copilot.dream.job_status import (
     JobKind,
     JobState,
@@ -33,7 +34,7 @@ from backend.copilot.dream.job_status import (
 from backend.copilot.dream.nightly_batch import NightlyBatchResult
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
-from backend.copilot.graphiti.client import derive_group_id
+from backend.copilot.graphiti.client import derive_group_id, derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.util.clients import get_scheduler_client
@@ -56,6 +57,7 @@ class MemoryOverview(BaseModel):
     """Counts surfaced in the visualizer's header strip."""
 
     user_id: str
+    expert_id: str | None = None
     group_id: str
     entities: int
     episodes: int
@@ -137,6 +139,7 @@ class GraphEdge(BaseModel):
 
 class GraphResponse(BaseModel):
     user_id: str
+    expert_id: str | None = None
     group_id: str
     nodes: list[GraphNode]
     edges: list[GraphEdge]
@@ -182,6 +185,27 @@ class RebuildResult(BaseModel):
 def _resolve_user_id(user_id: str, caller_id: str) -> str:
     """``"me"`` resolves to the calling admin's own id."""
     return caller_id if user_id == "me" else user_id
+
+
+async def _resolve_memory_scope(
+    user_id: str, expert_id: str | None
+) -> tuple[str, str | None]:
+    try:
+        user_group_id = derive_memory_group_id(user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if expert_id is None:
+        return user_group_id, None
+
+    expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None or expert.is_template or expert.is_archived:
+        raise HTTPException(status_code=404, detail="Expert not found")
+
+    try:
+        return derive_memory_group_id(user_id, expert.id), expert.id
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _audit_cross_user_access(
@@ -289,6 +313,7 @@ async def get_memory_overview(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
 ) -> MemoryOverview:
     target = _resolve_user_id(user_id, caller_id)
     _audit_cross_user_access(
@@ -297,10 +322,7 @@ async def get_memory_overview(
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    group_id, resolved_expert_id = await _resolve_memory_scope(target, expert_id)
 
     driver = _open_driver(group_id)
     try:
@@ -318,6 +340,7 @@ async def get_memory_overview(
 
     return MemoryOverview(
         user_id=target,
+        expert_id=resolved_expert_id,
         group_id=group_id,
         entities=entities,
         episodes=episodes,
@@ -525,6 +548,7 @@ async def get_graph(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
     node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
     edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
     include_episodes: Annotated[bool, Query()] = False,
@@ -547,10 +571,7 @@ async def get_graph(
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    group_id, resolved_expert_id = await _resolve_memory_scope(target, expert_id)
 
     # Build the labels-of-interest list for the node queries — one
     # Cypher per label so the label can travel through the result row
@@ -674,6 +695,7 @@ async def get_graph(
 
     return GraphResponse(
         user_id=target,
+        expert_id=resolved_expert_id,
         group_id=group_id,
         nodes=nodes,
         edges=edges,

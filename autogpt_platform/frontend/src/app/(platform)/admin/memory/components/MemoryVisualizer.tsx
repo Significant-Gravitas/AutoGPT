@@ -8,6 +8,8 @@ import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
 import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
 import { DreamUsageSummary } from "./DreamUsageSummary/DreamUsageSummary";
+import { MemoryScopeSelector } from "./MemoryScopeSelector";
+import { useMemoryScope } from "./useMemoryScope";
 
 // Polling envelope shared across all three job kinds — see the matching
 // alias in useMemoryVisualizer.ts. Narrowed to a specific kind at the
@@ -18,6 +20,37 @@ type AnyJobStatus =
   | CommunityRebuildJobStatus;
 
 export function MemoryVisualizer() {
+  const {
+    selectedScope,
+    setSelectedScope,
+    selectedExpertID,
+    experts,
+    expertsLoading,
+    expertsError,
+  } = useMemoryScope();
+
+  return (
+    <div className="space-y-4">
+      <MemoryScopeSelector
+        value={selectedScope}
+        onValueChange={setSelectedScope}
+        experts={experts}
+        loading={expertsLoading}
+        error={expertsError}
+      />
+      <MemoryScopeView
+        key={selectedExpertID ?? "autopilot"}
+        expertID={selectedExpertID}
+      />
+    </div>
+  );
+}
+
+interface MemoryScopeViewProps {
+  expertID?: string;
+}
+
+function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
   const {
     overview,
     overviewData,
@@ -40,7 +73,8 @@ export function MemoryVisualizer() {
     activeDreamJobId,
     activeNightlyJobId,
     activeRebuildJobId,
-  } = useMemoryVisualizer();
+  } = useMemoryVisualizer(expertID);
+  const readOnly = !!expertID;
 
   // Per-label / per-relationship visibility toggles. Selected via a Set
   // of "hidden" entries — empty set = show everything.
@@ -96,6 +130,7 @@ export function MemoryVisualizer() {
       />
 
       <ControlBar
+        readOnly={readOnly}
         onRebuild={triggerRebuild}
         rebuildActiveJobId={activeRebuildJobId}
         rebuildStatus={rebuildStatusData}
@@ -118,7 +153,7 @@ export function MemoryVisualizer() {
         edgeCount={edges.length}
       />
 
-      <DreamResultPanel status={dreamStatusData} />
+      {readOnly ? null : <DreamResultPanel status={dreamStatusData} />}
 
       <div className="grid grid-cols-12 gap-4">
         <Sidebar
@@ -221,6 +256,7 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
 }
 
 interface ControlBarProps {
+  readOnly: boolean;
   onRebuild: () => void;
   rebuildActiveJobId: string | undefined;
   rebuildStatus: AnyJobStatus | undefined;
@@ -244,6 +280,7 @@ interface ControlBarProps {
 }
 
 function ControlBar({
+  readOnly,
   onRebuild,
   rebuildActiveJobId,
   rebuildStatus,
@@ -270,55 +307,65 @@ function ControlBar({
   const nightlyActive = !!nightlyActiveJobId;
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md border bg-white p-3 text-sm">
-      <button
-        type="button"
-        onClick={onRebuild}
-        disabled={rebuildActive}
-        className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-      >
-        {rebuildActive
-          ? jobButtonLabel(rebuildStatus, "Rebuilding…")
-          : "Rebuild communities"}
-      </button>
-      <label className="flex items-center gap-2 text-gray-700">
-        <input
-          type="checkbox"
-          checked={force}
-          onChange={(e) => setForce(e.target.checked)}
-        />
-        Force
-      </label>
-      <span className="mx-2 h-5 border-l border-gray-200" />
-      <button
-        type="button"
-        onClick={onDream}
-        disabled={dreamActive}
-        className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-        title="Run ONLY the dream pass (consolidate → recombine → sanitize) — skips community rebuild and ratification."
-      >
-        {dreamActive ? jobButtonLabel(dreamStatus, "Dreaming…") : "Dream pass"}
-      </button>
-      <button
-        type="button"
-        onClick={onRatification}
-        disabled={ratificationPending}
-        className="rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
-        title="Run ONLY the ratification supersession sweep — promotes hit tentatives, supersedes unratified ones past their grace period."
-      >
-        {ratificationPending ? "Ratifying…" : "Ratification"}
-      </button>
-      <button
-        type="button"
-        onClick={onNightly}
-        disabled={nightlyActive}
-        className="rounded-md bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
-        title="Run the FULL nightly batch — what the 03:00 cron does. Fans out dream pass + ratification sweep (+ future P2/P3/P4/P11 stages) in one pass."
-      >
-        {nightlyActive
-          ? jobButtonLabel(nightlyStatus, "Running nightly…")
-          : "Nightly batch"}
-      </button>
-      <span className="mx-2 h-5 border-l border-gray-200" />
+      {readOnly ? (
+        <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">
+          Read-only
+        </span>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={onRebuild}
+            disabled={rebuildActive}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {rebuildActive
+              ? jobButtonLabel(rebuildStatus, "Rebuilding…")
+              : "Rebuild communities"}
+          </button>
+          <label className="flex items-center gap-2 text-gray-700">
+            <input
+              type="checkbox"
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+            />
+            Force
+          </label>
+          <span className="mx-2 h-5 border-l border-gray-200" />
+          <button
+            type="button"
+            onClick={onDream}
+            disabled={dreamActive}
+            className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            title="Run ONLY the dream pass (consolidate → recombine → sanitize) — skips community rebuild and ratification."
+          >
+            {dreamActive
+              ? jobButtonLabel(dreamStatus, "Dreaming…")
+              : "Dream pass"}
+          </button>
+          <button
+            type="button"
+            onClick={onRatification}
+            disabled={ratificationPending}
+            className="rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+            title="Run ONLY the ratification supersession sweep — promotes hit tentatives, supersedes unratified ones past their grace period."
+          >
+            {ratificationPending ? "Ratifying…" : "Ratification"}
+          </button>
+          <button
+            type="button"
+            onClick={onNightly}
+            disabled={nightlyActive}
+            className="rounded-md bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+            title="Run the FULL nightly batch — what the 03:00 cron does. Fans out dream pass + ratification sweep (+ future P2/P3/P4/P11 stages) in one pass."
+          >
+            {nightlyActive
+              ? jobButtonLabel(nightlyStatus, "Running nightly…")
+              : "Nightly batch"}
+          </button>
+          <span className="mx-2 h-5 border-l border-gray-200" />
+        </>
+      )}
       <label className="flex items-center gap-2 text-gray-700">
         <input
           type="checkbox"

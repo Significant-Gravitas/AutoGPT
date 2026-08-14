@@ -1632,6 +1632,18 @@
             "description": "User id or 'me'"
           },
           {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Expert Id"
+            }
+          },
+          {
             "name": "node_limit",
             "in": "query",
             "required": false,
@@ -1813,6 +1825,18 @@
               "title": "User Id"
             },
             "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Expert Id"
+            }
           }
         ],
         "responses": {
@@ -18911,6 +18935,10 @@
       "GraphResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "group_id": { "type": "string", "title": "Group Id" },
           "nodes": {
             "items": { "$ref": "#/components/schemas/GraphNode" },
@@ -20534,6 +20562,10 @@
       "MemoryOverview": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "group_id": { "type": "string", "title": "Group Id" },
           "entities": { "type": "integer", "title": "Entities" },
           "episodes": { "type": "integer", "title": "Episodes" },

@@ -8,6 +8,9 @@ import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from redis.exceptions import ResponseError
 
+from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.copilot.graphiti.client import derive_memory_group_id
+
 from .memory_admin_routes import router as memory_admin_router
 
 app = fastapi.FastAPI()
@@ -33,6 +36,31 @@ def _driver_returning(*query_results) -> AsyncMock:
     driver.execute_query.side_effect = [(r, None, None) for r in query_results]
     driver.close = AsyncMock()
     return driver
+
+
+def _expert(
+    expert_id: str,
+    *,
+    is_template: bool = False,
+    is_archived: bool = False,
+) -> Expert:
+    return Expert(
+        id=expert_id,
+        name="Memory Expert",
+        avatar_url=None,
+        role="Researcher",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="Keep this expert's memory isolated.",
+        voice_preferences="",
+        boundaries="",
+        protected_soul_rules=list(PROTECTED_SOUL_RULES),
+        is_template=is_template,
+        source_template_id=None,
+        is_archived=is_archived,
+        workflows=[],
+    )
 
 
 class TestOverview:
@@ -116,6 +144,128 @@ class TestOverview:
             with pytest.raises(TypeError, match="bad query param"):
                 bare_client.get("/admin/memory/abc/overview")
         driver.close.assert_awaited_once()
+
+
+class TestExpertMemoryScope:
+    def test_owned_expert_opens_exact_server_derived_group(self) -> None:
+        expert_id = "expert-owned"
+        expected_group = derive_memory_group_id("abc", expert_id)
+        driver = _driver_returning(
+            [{"c": 1}], [{"c": 2}], [{"c": 3}], [{"c": 4}], [{"c": 5}]
+        )
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/overview?expert_id={expert_id}")
+
+        assert resp.status_code == 200
+        assert resp.json()["expert_id"] == expert_id
+        assert resp.json()["group_id"] == expected_group
+        get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+        open_driver.assert_called_once_with(expected_group)
+
+    def test_owned_expert_graph_uses_expert_group(self) -> None:
+        expert_id = "expert-owned"
+        expected_group = derive_memory_group_id("abc", expert_id)
+        driver = _driver_returning([], [], [])
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/graph?expert_id={expert_id}")
+
+        assert resp.status_code == 200
+        assert resp.json()["expert_id"] == expert_id
+        assert resp.json()["group_id"] == expected_group
+        open_driver.assert_called_once_with(expected_group)
+
+    @pytest.mark.parametrize(
+        "expert_id",
+        ["cross-user-expert", "unowned-expert"],
+    )
+    def test_unowned_expert_is_404_before_driver(self, expert_id: str) -> None:
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=None),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/overview?expert_id={expert_id}")
+
+        assert resp.status_code == 404
+        assert resp.json() == {"detail": "Expert not found"}
+        get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+        open_driver.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "expert",
+        [
+            _expert("template-expert", is_template=True),
+            _expert("archived-expert", is_archived=True),
+        ],
+        ids=["template", "archived"],
+    )
+    def test_inactive_or_template_expert_is_404_before_driver(
+        self, expert: Expert
+    ) -> None:
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=expert),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/graph?expert_id={expert.id}")
+
+        assert resp.status_code == 404
+        assert resp.json() == {"detail": "Expert not found"}
+        open_driver.assert_not_called()
+
+    def test_raw_group_id_query_cannot_select_memory_scope(self) -> None:
+        driver = _driver_returning(
+            [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+        )
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(
+                "/admin/memory/abc/overview?group_id=expert_attacker_controlled"
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["expert_id"] is None
+        assert resp.json()["group_id"] == "user_abc"
+        get_expert.assert_not_awaited()
+        open_driver.assert_called_once_with("user_abc")
+
+    def test_non_admin_expert_request_never_reaches_lookup_or_driver(
+        self, mock_jwt_user
+    ) -> None:
+        app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get("/admin/memory/abc/graph?expert_id=expert-owned")
+
+        assert resp.status_code == 403
+        get_expert.assert_not_awaited()
+        open_driver.assert_not_called()
 
 
 class TestListEntities:
@@ -251,11 +401,12 @@ class TestRebuildCommunitiesPolling:
         scheduler.schedule_immediate_community_rebuild = AsyncMock(
             return_value={"scheduled": True, "job_id": "x", "kind": "rebuild"}
         )
-        with patch(
-            f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
-        ), patch(
-            f"{_MOCK_MODULE}.write_initial_status",
-            new=_make_fake_initial_status("rebuild"),
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(
+                f"{_MOCK_MODULE}.write_initial_status",
+                new=_make_fake_initial_status("rebuild"),
+            ),
         ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 202
@@ -276,13 +427,13 @@ class TestRebuildCommunitiesPolling:
             side_effect=RuntimeError("scheduler unreachable")
         )
         mark_errored = AsyncMock()
-        with patch(
-            f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
-        ), patch(
-            f"{_MOCK_MODULE}.write_initial_status",
-            new=_make_fake_initial_status("rebuild"),
-        ), patch(
-            f"{_MOCK_MODULE}.mark_errored", mark_errored
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(
+                f"{_MOCK_MODULE}.write_initial_status",
+                new=_make_fake_initial_status("rebuild"),
+            ),
+            patch(f"{_MOCK_MODULE}.mark_errored", mark_errored),
         ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 500
@@ -375,6 +526,7 @@ class TestAdminGating:
             "/admin/memory/abc/entities",
             "/admin/memory/abc/facts",
             "/admin/memory/abc/communities",
+            "/admin/memory/abc/graph",
         ]:
             resp = client.get(path)
             assert resp.status_code == 403, path

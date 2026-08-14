@@ -2,7 +2,12 @@ import { describe, expect, test, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV2GetCommunityRebuildStatusMockHandler200,
@@ -18,6 +23,8 @@ import {
   getPostV2TriggerDreamPassMockHandler202,
   getPostV2TriggerDreamPassResponseMock202,
 } from "@/app/api/__generated__/endpoints/admin/admin.msw";
+import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import type { Expert } from "@/app/api/__generated__/models/expert";
 
 // react-force-graph-2d uses HTMLCanvas + window APIs and pulls in d3 at
 // import time. In the jsdom test env neither exists, so swap it for a
@@ -28,8 +35,29 @@ vi.mock("react-force-graph-2d", () => ({
 
 import { MemoryVisualizer } from "../components/MemoryVisualizer";
 
-function setupBaseHandlers() {
+function makeExpert(id: string, name: string): Expert {
+  return {
+    id,
+    name,
+    avatar_url: null,
+    role: "Researcher",
+    tagline: null,
+    bio: null,
+    skills: [],
+    identity: "",
+    voice_preferences: "",
+    boundaries: "",
+    protected_soul_rules: [],
+    is_template: false,
+    source_template_id: null,
+    is_archived: false,
+    workflows: [],
+  };
+}
+
+function setupBaseHandlers(experts: Expert[] = []) {
   server.use(
+    getListExpertsMockHandler200(experts),
     getGetV2GetMemoryOverviewMockHandler200({
       ...getGetV2GetMemoryOverviewResponseMock200(),
       user_id: "u-1",
@@ -50,6 +78,95 @@ function setupBaseHandlers() {
     }),
   );
 }
+
+describe("MemoryVisualizer — memory scope", () => {
+  test("uses AutoPilot memory by default without sending expert_id", async () => {
+    setupBaseHandlers();
+    const overviewScopes: Array<string | null> = [];
+    const graphScopes: Array<string | null> = [];
+    server.use(
+      http.get("*/api/admin/memory/:userId/overview", ({ request }) => {
+        overviewScopes.push(new URL(request.url).searchParams.get("expert_id"));
+        return HttpResponse.json({
+          ...getGetV2GetMemoryOverviewResponseMock200(),
+          entities: 12,
+        });
+      }),
+      http.get("*/api/admin/memory/:userId/graph", ({ request }) => {
+        graphScopes.push(new URL(request.url).searchParams.get("expert_id"));
+        return HttpResponse.json({
+          ...getGetV2GetGraphResponseMock200(),
+          nodes: [],
+          edges: [],
+          truncated: false,
+        });
+      }),
+    );
+
+    render(<MemoryVisualizer />);
+
+    expect(
+      (await screen.findByRole("combobox", { name: "Memory scope" }))
+        .textContent,
+    ).toContain("AutoPilot");
+    await screen.findByText("12");
+    await waitFor(() => {
+      expect(overviewScopes).toEqual([null]);
+      expect(graphScopes).toEqual([null]);
+    });
+    expect(screen.getByRole("button", { name: /dream pass/i })).toBeDefined();
+  });
+
+  test("selecting an expert scopes reads and hides memory maintenance", async () => {
+    setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
+    const overviewScopes: Array<string | null> = [];
+    const graphScopes: Array<string | null> = [];
+    server.use(
+      http.get("*/api/admin/memory/:userId/overview", ({ request }) => {
+        overviewScopes.push(new URL(request.url).searchParams.get("expert_id"));
+        return HttpResponse.json(getGetV2GetMemoryOverviewResponseMock200());
+      }),
+      http.get("*/api/admin/memory/:userId/graph", ({ request }) => {
+        graphScopes.push(new URL(request.url).searchParams.get("expert_id"));
+        return HttpResponse.json({
+          ...getGetV2GetGraphResponseMock200(),
+          nodes: [],
+          edges: [],
+          truncated: false,
+        });
+      }),
+    );
+
+    render(<MemoryVisualizer />);
+
+    const selector = await screen.findByRole("combobox", {
+      name: "Memory scope",
+    });
+    await waitFor(() => {
+      expect((selector as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+
+    expect(
+      await screen.findByText("Expert memory is read-only."),
+    ).toBeDefined();
+    await waitFor(() => {
+      expect(overviewScopes).toContain("expert-ada");
+      expect(graphScopes).toContain("expert-ada");
+    });
+    expect(
+      screen.queryByRole("button", { name: /rebuild communities/i }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /dream pass/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /ratification/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /nightly batch/i })).toBeNull();
+    expect(screen.queryByTestId("dream-result-panel")).toBeNull();
+    expect(
+      screen.getByRole("checkbox", { name: /communities/i }),
+    ).toBeDefined();
+  });
+});
 
 describe("MemoryVisualizer — 202 + polling contract", () => {
   test("renders rebuild and dream buttons + the overview chip", async () => {
