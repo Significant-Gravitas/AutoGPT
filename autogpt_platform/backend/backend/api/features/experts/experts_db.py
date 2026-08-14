@@ -276,6 +276,7 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
                     row.id,
                     reason="Expert re-hire did not complete",
                 )
+                await scheduling.detach_expert_triggers(owner_user_id, row.id)
             except Exception:
                 logger.exception(
                     f"Failed to restore archived state for expert #{row.id}"

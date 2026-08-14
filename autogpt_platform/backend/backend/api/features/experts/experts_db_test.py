@@ -325,6 +325,9 @@ async def test_rehire_reattach_failure_restores_archived_state():
         patch.object(
             scheduling, "pause_expert_schedules", new_callable=AsyncMock
         ) as pause,
+        patch.object(
+            scheduling, "detach_expert_triggers", new_callable=AsyncMock
+        ) as detach,
     ):
         with pytest.raises(RuntimeError, match="scheduler unavailable"):
             await experts_db._existing_hire_result(row)
@@ -339,6 +342,7 @@ async def test_rehire_reattach_failure_restores_archived_state():
     pause.assert_awaited_once_with(
         "owner-1", "expert-1", reason="Expert re-hire did not complete"
     )
+    detach.assert_awaited_once_with("owner-1", "expert-1")
 
 
 @pytest.mark.asyncio(loop_scope="session")
