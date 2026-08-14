@@ -1,5 +1,7 @@
 """Tests for the two-step Soul edit flow (preview + confirm-by-id)."""
 
+import asyncio
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,10 +9,12 @@ import pytest
 
 from ._test_data import make_session
 from .models import ErrorResponse, ExpertSoulUpdatedResponse
+from .soul_proposal import proposal_key
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
 
 _TEST_USER_ID = "test-user-update-soul"
 _MODULE = "backend.copilot.tools.update_soul"
+_PROPOSAL_MODULE = "backend.copilot.tools.soul_proposal"
 
 
 class _FakeRedis:
@@ -30,6 +34,23 @@ class _FakeRedis:
         return 1 if self.store.pop(key, None) is not None else 0
 
 
+class _ConcurrentReadRedis(_FakeRedis):
+    """Hold both GETs until they have read the same proposal."""
+
+    def __init__(self):
+        super().__init__()
+        self.readers = 0
+        self.both_read = asyncio.Event()
+
+    async def get(self, key):
+        value = await super().get(key)
+        self.readers += 1
+        if self.readers == 2:
+            self.both_read.set()
+        await self.both_read.wait()
+        return value
+
+
 def _current_expert():
     return SimpleNamespace(
         identity="Old identity.",
@@ -38,12 +59,21 @@ def _current_expert():
     )
 
 
-def _mock_env(*, expert=None, updated=None, redis=None):
+@contextmanager
+def _patch_databases(mock_db):
+    with (
+        patch(f"{_MODULE}.experts_db", MagicMock(return_value=mock_db)),
+        patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=mock_db)),
+    ):
+        yield
+
+
+def _mock_env(*, expert=None, applied=True, redis=None):
     mock_db = MagicMock()
     mock_db.get_expert = AsyncMock(return_value=expert)
-    mock_db.update_soul_fields = AsyncMock(return_value=updated)
+    mock_db.update_soul_fields_if_current = AsyncMock(return_value=applied)
     patchers = [
-        patch(f"{_MODULE}.experts_db", MagicMock(return_value=mock_db)),
+        _patch_databases(mock_db),
         patch(
             f"{_MODULE}.get_redis_async",
             AsyncMock(return_value=redis or _FakeRedis()),
@@ -78,12 +108,12 @@ async def test_preview_never_writes_even_with_confirm_true():
     assert [(c.field, c.before, c.after) for c in resp.changes] == [
         ("voice_preferences", "Old voice.", "New voice.")
     ]
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_confirm_applies_exact_previewed_proposal():
-    mock_db, patchers = _mock_env(expert=_current_expert(), updated=SimpleNamespace())
+    mock_db, patchers = _mock_env(expert=_current_expert())
     with patchers[0], patchers[1]:
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         preview = await _preview(session, voice_preferences="New voice.")
@@ -94,8 +124,11 @@ async def test_confirm_applies_exact_previewed_proposal():
     assert [(c.field, c.before, c.after) for c in resp.changes] == [
         ("voice_preferences", "Old voice.", "New voice.")
     ]
-    mock_db.update_soul_fields.assert_awaited_once_with(
-        _TEST_USER_ID, "exp-1", voice_preferences="New voice."
+    mock_db.update_soul_fields_if_current.assert_awaited_once_with(
+        _TEST_USER_ID,
+        "exp-1",
+        voice_preferences="New voice.",
+        expected_voice_preferences="Old voice.",
     )
 
 
@@ -112,12 +145,12 @@ async def test_confirm_rejects_field_values():
             identity="Sneaky replacement.",
         )
     assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_confirmation_id_is_single_use():
-    mock_db, patchers = _mock_env(expert=_current_expert(), updated=SimpleNamespace())
+    mock_db, patchers = _mock_env(expert=_current_expert())
     with patchers[0], patchers[1]:
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         preview = await _preview(session, voice_preferences="New voice.")
@@ -126,26 +159,44 @@ async def test_confirmation_id_is_single_use():
         second = await _confirm(session, confirmation_id=preview.confirmation_id)
     assert isinstance(first, ExpertSoulUpdatedResponse) and first.applied is True
     assert isinstance(second, ErrorResponse)
-    mock_db.update_soul_fields.assert_awaited_once()
+    mock_db.update_soul_fields_if_current.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_confirms_apply_exactly_once():
+    redis = _ConcurrentReadRedis()
+    mock_db, patchers = _mock_env(expert=_current_expert(), redis=redis)
+    with patchers[0], patchers[1]:
+        session = make_session(_TEST_USER_ID, expert_id="exp-1")
+        preview = await _preview(session, voice_preferences="New voice.")
+        assert isinstance(preview, ExpertSoulUpdatedResponse)
+        results = await asyncio.gather(
+            _confirm(session, confirmation_id=preview.confirmation_id),
+            _confirm(session, confirmation_id=preview.confirmation_id),
+        )
+
+    assert sum(isinstance(result, ExpertSoulUpdatedResponse) for result in results) == 1
+    assert sum(isinstance(result, ErrorResponse) for result in results) == 1
+    mock_db.update_soul_fields_if_current.assert_awaited_once()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_confirm_rejects_stale_before_state():
     """A Soul that changed between preview and confirm discards the proposal."""
-    mock_db, patchers = _mock_env(expert=_current_expert())
+    mock_db, patchers = _mock_env(expert=_current_expert(), applied=False)
     with patchers[0], patchers[1]:
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         preview = await _preview(session, voice_preferences="New voice.")
         assert isinstance(preview, ExpertSoulUpdatedResponse)
-        mock_db.get_expert.return_value = SimpleNamespace(
-            identity="Old identity.",
-            voice_preferences="Changed elsewhere meanwhile.",
-            boundaries="Old boundaries.",
-        )
         resp = await _confirm(session, confirmation_id=preview.confirmation_id)
     assert isinstance(resp, ErrorResponse)
     assert "changed since" in resp.message
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_awaited_once_with(
+        _TEST_USER_ID,
+        "exp-1",
+        voice_preferences="New voice.",
+        expected_voice_preferences="Old voice.",
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -155,7 +206,7 @@ async def test_confirm_rejects_unknown_id():
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         resp = await _confirm(session, confirmation_id="never-issued")
     assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -166,9 +217,11 @@ async def test_confirm_rejects_proposal_from_other_session():
         preview = await _preview(session_a, voice_preferences="New voice.")
         assert isinstance(preview, ExpertSoulUpdatedResponse)
         session_b = make_session(_TEST_USER_ID, expert_id="exp-1")
-        resp = await _confirm(session_b, confirmation_id=preview.confirmation_id)
-    assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+        rejected = await _confirm(session_b, confirmation_id=preview.confirmation_id)
+        accepted = await _confirm(session_a, confirmation_id=preview.confirmation_id)
+    assert isinstance(rejected, ErrorResponse)
+    assert isinstance(accepted, ExpertSoulUpdatedResponse)
+    mock_db.update_soul_fields_if_current.assert_awaited_once()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -188,7 +241,7 @@ async def test_confirm_plain_session_refuses():
         session = make_session(_TEST_USER_ID)  # no expert_id
         resp = await _confirm(session, confirmation_id="anything")
     assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -198,7 +251,7 @@ async def test_preview_no_fields_rejected():
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         resp = await _preview(session)
     assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -208,7 +261,7 @@ async def test_preview_noop_when_values_match_current():
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         resp = await _preview(session, voice_preferences="Old voice.")
     assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -218,7 +271,7 @@ async def test_preview_missing_expert_errors():
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         resp = await _preview(session, identity="x")
     assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -246,7 +299,7 @@ async def test_preview_rejects_blank_identity_before_storing():
     assert isinstance(resp, ErrorResponse)
     assert "identity" in resp.message
     assert fake_redis.store == {}
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -258,12 +311,12 @@ async def test_preview_rejects_overlong_field():
         resp = await _preview(session, voice_preferences="x" * 4_001)
     assert isinstance(resp, ErrorResponse)
     assert fake_redis.store == {}
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_preview_strips_whitespace_so_diff_matches_persisted():
-    mock_db, patchers = _mock_env(expert=_current_expert(), updated=SimpleNamespace())
+    mock_db, patchers = _mock_env(expert=_current_expert())
     with patchers[0], patchers[1]:
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         preview = await _preview(session, voice_preferences="  New voice.  ")
@@ -273,8 +326,11 @@ async def test_preview_strips_whitespace_so_diff_matches_persisted():
         ]
         resp = await _confirm(session, confirmation_id=preview.confirmation_id)
     assert isinstance(resp, ExpertSoulUpdatedResponse) and resp.applied is True
-    mock_db.update_soul_fields.assert_awaited_once_with(
-        _TEST_USER_ID, "exp-1", voice_preferences="New voice."
+    mock_db.update_soul_fields_if_current.assert_awaited_once_with(
+        _TEST_USER_ID,
+        "exp-1",
+        voice_preferences="New voice.",
+        expected_voice_preferences="Old voice.",
     )
 
 
@@ -292,8 +348,10 @@ async def test_confirm_rejects_other_user():
             session=session,
             confirmation_id=preview.confirmation_id,
         )
+        accepted = await _confirm(session, confirmation_id=preview.confirmation_id)
     assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+    assert isinstance(accepted, ExpertSoulUpdatedResponse)
+    mock_db.update_soul_fields_if_current.assert_awaited_once()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -305,23 +363,23 @@ async def test_confirm_rejects_other_expert():
         assert isinstance(preview, ExpertSoulUpdatedResponse)
         session_b = make_session(_TEST_USER_ID, expert_id="exp-2")
         resp = await _confirm(session_b, confirmation_id=preview.confirmation_id)
+        accepted = await _confirm(session_a, confirmation_id=preview.confirmation_id)
     assert isinstance(resp, ErrorResponse)
-    mock_db.update_soul_fields.assert_not_called()
+    assert isinstance(accepted, ExpertSoulUpdatedResponse)
+    mock_db.update_soul_fields_if_current.assert_awaited_once()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_confirm_recovers_from_corrupt_stored_proposal():
-    from .update_soul import _proposal_key
-
     fake_redis = _FakeRedis()
-    fake_redis.store[_proposal_key("corrupt-id")] = "{not valid json"
+    fake_redis.store[proposal_key("corrupt-id")] = "{not valid json"
     mock_db, patchers = _mock_env(expert=_current_expert(), redis=fake_redis)
     with patchers[0], patchers[1]:
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         resp = await _confirm(session, confirmation_id="corrupt-id")
     assert isinstance(resp, ErrorResponse)
     assert "fresh preview" in resp.message
-    mock_db.update_soul_fields.assert_not_called()
+    mock_db.update_soul_fields_if_current.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -329,7 +387,9 @@ async def test_apply_failure_returns_recoverable_error():
     """The id is already consumed when the write runs, so a surprise failure
     must come back as guidance to re-preview, not an uncaught exception."""
     mock_db, patchers = _mock_env(expert=_current_expert())
-    mock_db.update_soul_fields.side_effect = RuntimeError("db transport down")
+    mock_db.update_soul_fields_if_current.side_effect = RuntimeError(
+        "db transport down"
+    )
     with patchers[0], patchers[1]:
         session = make_session(_TEST_USER_ID, expert_id="exp-1")
         preview = await _preview(session, voice_preferences="New voice.")

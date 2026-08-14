@@ -9,13 +9,12 @@ aborts the apply. Mirrors the memory_forget_search -> memory_forget_confirm
 flow in graphiti_forget.py.
 """
 
-import logging
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
-from backend.api.features.experts.models import ExpertSoulFieldsPatch
+from backend.api.features.experts.models import Expert, ExpertSoulFieldsPatch
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
@@ -25,37 +24,49 @@ from .models import (
     ErrorResponse,
     ExpertSoulUpdatedResponse,
     SoulFieldChange,
+    SoulFieldName,
     ToolResponseBase,
 )
-
-logger = logging.getLogger(__name__)
+from .soul_proposal import (
+    PROPOSAL_TTL_SECONDS,
+    SoulEditProposal,
+    apply_proposal,
+    load_bound_proposal,
+    proposal_key,
+)
 
 _PLAIN_SESSION_REFUSAL = (
     "I can only edit an expert's Soul inside that expert's chat. Open a thread "
     "with a hired expert to change their identity, voice, or boundaries."
 )
 
-_EDITABLE_FIELDS = ("identity", "voice_preferences", "boundaries")
-
-_PROPOSAL_KEY_PREFIX = "copilot:soul_edit_proposal:"
-_PROPOSAL_TTL_SECONDS = 15 * 60
-
-
-class _SoulEditProposal(BaseModel):
-    """The exact pending edit stored between preview and confirm."""
-
-    user_id: str
-    session_id: str
-    expert_id: str
-    changes: list[SoulFieldChange]
+_EDITABLE_FIELDS: tuple[SoulFieldName, ...] = (
+    "identity",
+    "voice_preferences",
+    "boundaries",
+)
 
 
-def _proposal_key(confirmation_id: str) -> str:
-    return f"{_PROPOSAL_KEY_PREFIX}{confirmation_id}"
+def _soul_snapshot(expert: Expert) -> dict[SoulFieldName, str]:
+    return {
+        "identity": expert.identity,
+        "voice_preferences": expert.voice_preferences,
+        "boundaries": expert.boundaries,
+    }
 
 
-def _soul_snapshot(expert) -> dict[str, str]:
-    return {field: getattr(expert, field) for field in _EDITABLE_FIELDS}
+def _session_guard(user_id: str | None, session: ChatSession) -> ErrorResponse | None:
+    if not user_id:
+        return ErrorResponse(
+            message="Please sign in to edit an expert's Soul.",
+            session_id=session.session_id,
+        )
+    if not session.expert_id:
+        return ErrorResponse(
+            message=_PLAIN_SESSION_REFUSAL,
+            session_id=session.session_id,
+        )
+    return None
 
 
 class UpdateExpertSoulTool(BaseTool):
@@ -107,13 +118,10 @@ class UpdateExpertSoulTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
-        if not user_id:
-            return ErrorResponse(
-                message="Please sign in to edit an expert's Soul.",
-                session_id=session_id,
-            )
-        if not session.expert_id:
-            return ErrorResponse(message=_PLAIN_SESSION_REFUSAL, session_id=session_id)
+        if error := _session_guard(user_id, session):
+            return error
+        assert user_id is not None
+        assert session.expert_id is not None
 
         supplied = {
             field: kwargs[field]
@@ -125,10 +133,6 @@ class UpdateExpertSoulTool(BaseTool):
                 message="Provide at least one of identity, voice_preferences, or boundaries.",
                 session_id=session_id,
             )
-        # Validate + normalize (strip, length caps, non-blank identity) up
-        # front, so a bad value can never survive into a stored proposal and
-        # explode only at confirm time — and so the previewed values are
-        # exactly what will be persisted.
         try:
             patch = ExpertSoulFieldsPatch(**supplied)
         except ValidationError as e:
@@ -168,7 +172,7 @@ class UpdateExpertSoulTool(BaseTool):
             )
 
         confirmation_id = str(uuid.uuid4())
-        proposal = _SoulEditProposal(
+        proposal = SoulEditProposal(
             user_id=user_id,
             session_id=session_id,
             expert_id=session.expert_id,
@@ -176,8 +180,8 @@ class UpdateExpertSoulTool(BaseTool):
         )
         redis = await get_redis_async()
         await redis.setex(
-            _proposal_key(confirmation_id),
-            _PROPOSAL_TTL_SECONDS,
+            proposal_key(confirmation_id),
+            PROPOSAL_TTL_SECONDS,
             proposal.model_dump_json(),
         )
         return ExpertSoulUpdatedResponse(
@@ -235,13 +239,10 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
-        if not user_id:
-            return ErrorResponse(
-                message="Please sign in to edit an expert's Soul.",
-                session_id=session_id,
-            )
-        if not session.expert_id:
-            return ErrorResponse(message=_PLAIN_SESSION_REFUSAL, session_id=session_id)
+        if error := _session_guard(user_id, session):
+            return error
+        assert user_id is not None
+        assert session.expert_id is not None
 
         if any(field in kwargs for field in _EDITABLE_FIELDS):
             return ErrorResponse(
@@ -258,83 +259,18 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
                 session_id=session_id,
             )
 
-        stale_preview_error = ErrorResponse(
-            message=(
-                "This confirmation_id is unknown, expired, or already used. "
-                "Call update_expert_soul again for a fresh preview."
-            ),
-            session_id=session_id,
-        )
         redis = await get_redis_async()
-        key = _proposal_key(confirmation_id)
-        raw = await redis.get(key)
-        # DEL's return value arbitrates concurrent confirms: only the caller
-        # that actually removed the key may apply, making the id single-use.
-        consumed = await redis.delete(key)
-        if raw is None or consumed == 0:
-            return stale_preview_error
-        try:
-            proposal = _SoulEditProposal.model_validate_json(raw)
-        except ValidationError:
-            logger.warning(
-                "Discarding malformed soul-edit proposal for user %s", user_id[:12]
-            )
-            return stale_preview_error
-
-        if (
-            proposal.user_id != user_id
-            or proposal.expert_id != session.expert_id
-            or proposal.session_id != session_id
-        ):
-            return ErrorResponse(
-                message="This confirmation_id belongs to a different chat or expert.",
-                session_id=session_id,
-            )
-
-        expert = await experts_db().get_expert(
-            user_id, session.expert_id, include_workflows=False
+        proposal = await load_bound_proposal(
+            redis,
+            confirmation_id,
+            user_id,
+            session,
         )
-        if expert is None:
-            return ErrorResponse(
-                message="This expert no longer exists.",
-                session_id=session_id,
-            )
-        current = _soul_snapshot(expert)
-        if any(current[change.field] != change.before for change in proposal.changes):
-            return ErrorResponse(
-                message=(
-                    "The expert's Soul changed since this preview, so the "
-                    "proposal was discarded. Call update_expert_soul again to "
-                    "preview against the current Soul."
-                ),
-                session_id=session_id,
-            )
-
-        # Proposals are validated before storage, so this should never raise —
-        # but the confirmation_id is already consumed here, so any surprise
-        # (expert archived mid-flight, transport error) must surface as a
-        # recoverable message instead of an uncaught exception.
-        try:
-            await experts_db().update_soul_fields(
-                user_id,
-                session.expert_id,
-                **{change.field: change.after for change in proposal.changes},
-            )
-        except Exception:
-            logger.warning(
-                "Soul edit apply failed for user %s", user_id[:12], exc_info=True
-            )
-            return ErrorResponse(
-                message=(
-                    "Couldn't apply the Soul edit — the proposal has been "
-                    "discarded. Call update_expert_soul again to re-preview "
-                    "and retry."
-                ),
-                session_id=session_id,
-            )
-        return ExpertSoulUpdatedResponse(
-            message="Soul updated. Tell the user exactly what changed.",
-            session_id=session_id,
-            applied=True,
-            changes=proposal.changes,
+        if isinstance(proposal, ErrorResponse):
+            return proposal
+        return await apply_proposal(
+            user_id,
+            session.expert_id,
+            session_id,
+            proposal,
         )

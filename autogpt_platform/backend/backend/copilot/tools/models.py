@@ -489,10 +489,13 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     current_understanding: dict[str, Any] = Field(default_factory=dict)
 
 
+SoulFieldName = Literal["identity", "voice_preferences", "boundaries"]
+
+
 class SoulFieldChange(BaseModel):
     """One field's before/after values for an expert soul edit."""
 
-    field: str
+    field: SoulFieldName
     before: str
     after: str
 

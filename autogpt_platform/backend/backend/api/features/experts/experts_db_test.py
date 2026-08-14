@@ -769,6 +769,60 @@ async def test_update_soul_fields_concurrent_disjoint_edits_both_persist(
     assert fetched.boundaries == "Never email externally."
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_rejects_empty_patch():
+    with pytest.raises(ValueError, match="At least one Soul field"):
+        await experts_db.update_soul_fields("user-1", "expert-1")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_if_current_is_atomic(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    before = hired.expert.voice_preferences
+
+    applied = await experts_db.update_soul_fields_if_current(
+        test_user.id,
+        hired.expert.id,
+        voice_preferences="Warm and concise.",
+        expected_voice_preferences=before,
+    )
+    stale_apply = await experts_db.update_soul_fields_if_current(
+        test_user.id,
+        hired.expert.id,
+        voice_preferences="Stale overwrite.",
+        expected_voice_preferences=before,
+    )
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert applied is True
+    assert stale_apply is False
+    assert fetched is not None
+    assert fetched.voice_preferences == "Warm and concise."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_if_current_scopes_by_owner(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    applied = await experts_db.update_soul_fields_if_current(
+        other_user.id,
+        hired.expert.id,
+        identity="Hijacked identity.",
+        expected_identity=hired.expert.identity,
+    )
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert applied is False
+    assert fetched is not None
+    assert fetched.identity == hired.expert.identity
+
+
 def test_expert_soul_fields_patch_rejects_blank_identity():
     with pytest.raises(pydantic.ValidationError):
         ExpertSoulFieldsPatch(identity="   ")
