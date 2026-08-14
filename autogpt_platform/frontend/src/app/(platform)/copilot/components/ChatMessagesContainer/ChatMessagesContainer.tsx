@@ -20,6 +20,7 @@ import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import { stripKickoffMessages } from "../../expertKickoff";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -310,7 +311,7 @@ export function LoadMoreSentinel({
 }
 
 export function ChatMessagesContainer({
-  messages,
+  messages: allMessages,
   status,
   error,
   isLoading,
@@ -331,6 +332,14 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
 }: Props) {
+  // The expert-kickoff control prompt is filtered HERE — at the transcript
+  // renderer only — so retry/recovery consumers upstream still see the raw
+  // list (e.g. ChatContainer's handleRetry needs the kickoff to count as the
+  // last user message).
+  const messages = useMemo(
+    () => stripKickoffMessages(allMessages),
+    [allMessages],
+  );
   // The in-chat "progress in the sidebar" notice only applies to the old
   // sidebar surface — hide it entirely when the task bar is on.
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);

@@ -13,7 +13,7 @@ import { useCopilotStreamStore } from "./copilotStreamStore";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
-import { buildKickoffMessage, stripKickoffMessages } from "./expertKickoff";
+import { buildKickoffMessage } from "./expertKickoff";
 import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
@@ -62,6 +62,7 @@ export function useCopilotPage() {
 
   const {
     sessionId,
+    setSessionId,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
@@ -276,22 +277,23 @@ export function useCopilotPage() {
     expertId,
     kickoff: isExpertsEnabled && kickoffParam === "1",
     sessionId,
-    onKickoff: () => void onSend(buildKickoffMessage()),
+    sessionExpertId,
+    // Empty by both the server's account (hydration finished, nothing there)
+    // and the client's (no optimistic in-flight send) — the signal that a
+    // kickoff session was created but its first send never landed.
+    isThreadEmpty:
+      sessionId && hydratedMessages !== undefined
+        ? hydratedMessages.length === 0 && messages.length === 0
+        : null,
+    onAdoptSession: (id) => void setSessionId(id),
+    onKickoff: (id) => onSend(buildKickoffMessage(id)),
   });
-
-  // The kickoff prompt is sent only to provoke the expert's introduction, so
-  // it must never appear as a user bubble — filter it from what the thread
-  // renders while leaving it in the stream/queue bookkeeping above.
-  const visibleMessages = useMemo(
-    () => stripKickoffMessages(displayMessages),
-    [displayMessages],
-  );
 
   useSessionTitlePoll({ sessionId, status, isReconnecting });
 
   return {
     sessionId,
-    messages: visibleMessages,
+    messages: displayMessages,
     status,
     error,
     stop,

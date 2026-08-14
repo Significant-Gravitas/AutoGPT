@@ -11,6 +11,7 @@ vi.mock("../helpers", () => ({
 }));
 
 import { createCopilotTransport } from "../copilotStreamTransport";
+import { buildKickoffMessage } from "../expertKickoff";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -134,4 +135,81 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
       expect(out.body.message_id).not.toBe("ai-sdk-generated-id");
     },
   );
+});
+
+describe("copilotStreamTransport — expert kickoff dedup ids", () => {
+  const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+
+  function prep(transport: ReturnType<typeof createCopilotTransport>) {
+    return (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: {
+          messages: Array<{
+            id: string;
+            role: "user" | "assistant";
+            parts: Array<{ type: "text"; text: string }>;
+          }>;
+        }) => Promise<{ body: { message_id?: string } }>;
+      }
+    ).prepareSendMessagesRequest;
+  }
+
+  it("derives the same attempt-0 id for the first kickoff in any tab", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-1",
+      ...makeRefs(),
+    });
+    const kickoff = buildKickoffMessage(EXPERT_ID);
+
+    const tabA = await prep(transport)({ messages: lastMessage(kickoff) });
+    const tabB = await prep(transport)({ messages: lastMessage(kickoff) });
+
+    // Two tabs racing the same first kickoff collide on the PK server-side,
+    // so the turn (and its workflow side effects) fires exactly once.
+    expect(tabA.body.message_id).toBe(`expert-kickoff-${EXPERT_ID}-0`);
+    expect(tabB.body.message_id).toBe(tabA.body.message_id);
+  });
+
+  it("advances the attempt on retry so a failed kickoff is not dead-ended by dedup", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-1",
+      ...makeRefs(),
+    });
+    const kickoff = buildKickoffMessage(EXPERT_ID);
+
+    const retry = await prep(transport)({
+      messages: [
+        {
+          id: "m1",
+          role: "user" as const,
+          parts: [{ type: "text" as const, text: kickoff }],
+        },
+        {
+          id: "m2",
+          role: "assistant" as const,
+          parts: [{ type: "text" as const, text: "stream failed" }],
+        },
+        {
+          id: "m3",
+          role: "user" as const,
+          parts: [{ type: "text" as const, text: kickoff }],
+        },
+      ],
+    });
+
+    expect(retry.body.message_id).toBe(`expert-kickoff-${EXPERT_ID}-1`);
+  });
+
+  it("keeps random UUIDs for ordinary messages", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-1",
+      ...makeRefs(),
+    });
+
+    const out = await prep(transport)({
+      messages: lastMessage("You were just hired."),
+    });
+
+    expect(out.body.message_id).toMatch(UUID_RE);
+  });
 });

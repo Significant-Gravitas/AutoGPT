@@ -6,13 +6,18 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import type { UIMessage } from "ai";
 import { http, HttpResponse } from "msw";
 import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
-import { buildKickoffMessage, markKickedOff } from "../expertKickoff";
+import {
+  buildKickoffMessage,
+  getKickoffStatus,
+  kickoffStorageKey,
+  markKickoffDone,
+  markKickoffPending,
+} from "../expertKickoff";
 import { useCopilotUIStore } from "../store";
 import { useChatSession } from "../useChatSession";
 import { useExpertKickoff } from "../useExpertKickoff";
@@ -35,6 +40,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 
 const sendSpy = vi.hoisted(() => vi.fn());
 
+const EXPERT_ID = "expert-maria";
+
 afterEach(() => {
   cleanup();
   server.resetHandlers();
@@ -48,7 +55,13 @@ afterEach(() => {
 function KickoffHarness() {
   const [expertId] = useQueryState("expertId", parseAsString);
   const [kickoff] = useQueryState("kickoff", parseAsString);
-  const { sessionId, createSession } = useChatSession({ expertId });
+  const {
+    sessionId,
+    setSessionId,
+    sessionExpertId,
+    hydratedMessages,
+    createSession,
+  } = useChatSession({ expertId });
   const isUserStoppingRef = { current: false };
   const { onSend } = useSendMessage({
     sessionId,
@@ -60,7 +73,13 @@ function KickoffHarness() {
     expertId,
     kickoff: kickoff === "1",
     sessionId,
-    onKickoff: () => void onSend(buildKickoffMessage()),
+    sessionExpertId,
+    isThreadEmpty:
+      sessionId && hydratedMessages !== undefined
+        ? hydratedMessages.length === 0
+        : null,
+    onAdoptSession: (id) => void setSessionId(id),
+    onKickoff: (id) => onSend(buildKickoffMessage(id)),
   });
   return <div data-testid="session-id">{sessionId ?? "none"}</div>;
 }
@@ -92,6 +111,17 @@ function stubTransports() {
   );
 }
 
+function makeSessionPayload(id: string, messages: unknown[] = []) {
+  return {
+    id,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-02T00:00:00Z",
+    user_id: "user-1",
+    expert_id: EXPERT_ID,
+    messages,
+  };
+}
+
 describe("useExpertKickoff", () => {
   it("creates an expert session and sends the kickoff message exactly once", async () => {
     let createBody: unknown = null;
@@ -108,45 +138,39 @@ describe("useExpertKickoff", () => {
           id: "kickoff-session-1",
           created_at: "2026-01-01T00:00:00Z",
           user_id: "user-1",
-          expert_id: "expert-maria",
+          expert_id: EXPERT_ID,
         });
       }),
       http.get("*/api/chat/sessions/kickoff-session-1", () =>
-        HttpResponse.json({
-          id: "kickoff-session-1",
-          created_at: "2026-01-01T00:00:00Z",
-          updated_at: "2026-01-01T00:00:00Z",
-          user_id: "user-1",
-          expert_id: "expert-maria",
-          messages: [],
-        }),
+        HttpResponse.json(makeSessionPayload("kickoff-session-1")),
       ),
     );
 
-    renderKickoff("?expertId=expert-maria&kickoff=1");
+    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
 
     await waitFor(() => expect(createCount).toBe(1));
     expect(createBody).toEqual({
-      expert_id: "expert-maria",
+      expert_id: EXPERT_ID,
       llm_auth_provider: "platform",
     });
 
     await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
     const firstArg = sendSpy.mock.calls[0][0] as { text: string };
-    expect(firstArg.text).toBe(buildKickoffMessage());
+    expect(firstArg.text).toBe(buildKickoffMessage(EXPERT_ID));
 
-    // The message is never re-sent even after everything settles.
+    // The accepted send flips the latch to done, and nothing re-fires.
+    await waitFor(() => expect(getKickoffStatus(EXPERT_ID)).toBe("done"));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(sendSpy).toHaveBeenCalledTimes(1);
     expect(createCount).toBe(1);
   });
 
-  it("no-ops on a second visit once the expert has been kicked off", async () => {
-    markKickedOff("expert-maria");
+  it("no-ops on a second visit once the kickoff is done", async () => {
+    markKickoffDone(EXPERT_ID);
     let createCount = 0;
     server.use(
       stubTransports(),
-      // The list query here is `useChatSession`'s adoption lookup, not the
+      // This list query is `useChatSession`'s adoption lookup, not the
       // kickoff's — returning empty keeps the user on the new-task screen.
       http.get("*/api/chat/sessions", () =>
         HttpResponse.json({ sessions: [], total: 0 }),
@@ -157,16 +181,63 @@ describe("useExpertKickoff", () => {
       }),
     );
 
-    renderKickoff("?expertId=expert-maria&kickoff=1");
+    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
 
     await new Promise((resolve) => setTimeout(resolve, 80));
-    // The localStorage latch keeps the kickoff from creating or sending again.
     expect(sendSpy).not.toHaveBeenCalled();
     expect(createCount).toBe(0);
     expect(screen.getByTestId("session-id").textContent).toBe("none");
   });
 
-  it("adopts the existing thread and skips the kickoff when one already exists", async () => {
+  it("stands down while another tab holds a fresh pending latch", async () => {
+    markKickoffPending(EXPERT_ID);
+    let createCount = 0;
+    server.use(
+      stubTransports(),
+      http.get("*/api/chat/sessions", () =>
+        HttpResponse.json({ sessions: [], total: 0 }),
+      ),
+      http.post("*/api/chat/sessions", () => {
+        createCount += 1;
+        return HttpResponse.json({ id: "should-not-happen" });
+      }),
+    );
+
+    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(createCount).toBe(0);
+    // The other tab's pending latch is left untouched for it to resolve.
+    expect(getKickoffStatus(EXPERT_ID)).toBe("pending");
+  });
+
+  it("releases the latch when session creation fails so a retry stays possible", async () => {
+    let createCount = 0;
+    server.use(
+      stubTransports(),
+      http.get("*/api/chat/sessions", () =>
+        HttpResponse.json({ sessions: [], total: 0 }),
+      ),
+      http.post("*/api/chat/sessions", () => {
+        createCount += 1;
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
+
+    await waitFor(() => expect(createCount).toBe(1));
+    // Failure surfaces via the standard error toast; the kickoff is NOT
+    // consumed — the latch returns to idle so the next visit retries.
+    await waitFor(() => expect(getKickoffStatus(EXPERT_ID)).toBe("idle"));
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(
+      window.localStorage.getItem(kickoffStorageKey(EXPERT_ID)),
+    ).toBeNull();
+  });
+
+  it("adopts a thread with history and retires the kickoff without sending", async () => {
     let createCount = 0;
     server.use(
       stubTransports(),
@@ -176,7 +247,7 @@ describe("useExpertKickoff", () => {
             {
               id: "existing-maria",
               title: "Maria thread",
-              expert_id: "expert-maria",
+              expert_id: EXPERT_ID,
               is_processing: false,
               created_at: "2026-01-01T00:00:00Z",
               updated_at: "2026-01-02T00:00:00Z",
@@ -186,14 +257,16 @@ describe("useExpertKickoff", () => {
         }),
       ),
       http.get("*/api/chat/sessions/existing-maria", () =>
-        HttpResponse.json({
-          id: "existing-maria",
-          created_at: "2026-01-01T00:00:00Z",
-          updated_at: "2026-01-02T00:00:00Z",
-          user_id: "user-1",
-          expert_id: "expert-maria",
-          messages: [] as UIMessage[],
-        }),
+        HttpResponse.json(
+          makeSessionPayload("existing-maria", [
+            {
+              id: "m1",
+              role: "user",
+              content: "Plan my week",
+              created_at: "2026-01-01T00:00:00Z",
+            },
+          ]),
+        ),
       ),
       http.post("*/api/chat/sessions", () => {
         createCount += 1;
@@ -201,15 +274,60 @@ describe("useExpertKickoff", () => {
       }),
     );
 
-    renderKickoff("?expertId=expert-maria&kickoff=1");
+    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
 
     await waitFor(() =>
       expect(screen.getByTestId("session-id").textContent).toBe(
         "existing-maria",
       ),
     );
+    await waitFor(() => expect(getKickoffStatus(EXPERT_ID)).toBe("done"));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(sendSpy).not.toHaveBeenCalled();
     expect(createCount).toBe(0);
+  });
+
+  it("resends the kickoff into an adopted EMPTY expert session (crashed tab recovery)", async () => {
+    let createCount = 0;
+    server.use(
+      stubTransports(),
+      http.get("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          sessions: [
+            {
+              id: "orphan-kickoff",
+              title: "New chat",
+              expert_id: EXPERT_ID,
+              is_processing: false,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+          ],
+          total: 1,
+        }),
+      ),
+      http.get("*/api/chat/sessions/orphan-kickoff", () =>
+        HttpResponse.json(makeSessionPayload("orphan-kickoff")),
+      ),
+      http.post("*/api/chat/sessions", () => {
+        createCount += 1;
+        return HttpResponse.json({ id: "should-not-happen" });
+      }),
+    );
+
+    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "orphan-kickoff",
+      ),
+    );
+    // The empty session means the previous kickoff never landed — resend into
+    // the existing thread rather than leaving a silent dead chat.
+    await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
+    const firstArg = sendSpy.mock.calls[0][0] as { text: string };
+    expect(firstArg.text).toBe(buildKickoffMessage(EXPERT_ID));
+    expect(createCount).toBe(0);
+    await waitFor(() => expect(getKickoffStatus(EXPERT_ID)).toBe("done"));
   });
 });

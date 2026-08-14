@@ -2,6 +2,7 @@ import { act } from "@testing-library/react";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
+import { buildKickoffMessage } from "../../../expertKickoff";
 
 const mockScrollEl = {
   scrollHeight: 100,
@@ -711,5 +712,64 @@ describe("ChatMessagesContainer — readOnly mode", () => {
       />,
     );
     expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+});
+
+// ── expert-kickoff hiding ─────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — expert kickoff hiding", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("hides the marked kickoff user message but renders the reply", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages={false}
+        messages={[
+          {
+            id: "m1",
+            role: "user",
+            parts: [
+              { type: "text", text: buildKickoffMessage("expert-maria") },
+            ],
+          },
+          {
+            id: "m2",
+            role: "assistant",
+            parts: [{ type: "text", text: "Hi, I'm Maria." }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.queryAllByTestId("message-user")).toHaveLength(0);
+    expect(screen.getAllByTestId("message-assistant").length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("keeps a user message that merely repeats the kickoff wording", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages={false}
+        messages={[
+          {
+            id: "m1",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "You were just hired. Introduce yourself in 2-3 sentences in your voice",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByTestId("message-user")).toHaveLength(1);
   });
 });

@@ -4,6 +4,7 @@ import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
+import { deriveKickoffMessageId } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
@@ -97,10 +98,18 @@ export function createCopilotTransport({
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
           mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
-          // Supplying options forces uuid's getRandomValues path. Unlike
-          // crypto.randomUUID, getRandomValues is available on plain-HTTP LAN
-          // origins used by the local single-container appliance.
-          message_id: uuidv4({}),
+          // Expert-kickoff sends use a DETERMINISTIC id derived from the
+          // expert + attempt number so concurrent tabs racing the same
+          // first kickoff collide on the PK and the turn (with its
+          // workflow side effects) fires exactly once; a retry sees the
+          // failed kickoff in `messages`, derives the next attempt, and
+          // starts a fresh turn.
+          //
+          // All other sends: supplying options forces uuid's
+          // getRandomValues path. Unlike crypto.randomUUID,
+          // getRandomValues is available on plain-HTTP LAN origins used
+          // by the local single-container appliance.
+          message_id: deriveKickoffMessageId(messages) ?? uuidv4({}),
         },
         headers: await getCopilotAuthHeaders(),
       };

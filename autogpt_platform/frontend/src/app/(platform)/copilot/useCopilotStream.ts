@@ -16,6 +16,7 @@ import {
 } from "./copilotChatRegistry";
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
+import { isKickoffText } from "./expertKickoff";
 import {
   deduplicateMessages,
   extractSendMessageText,
@@ -203,20 +204,30 @@ export function useCopilotStream({
             useCopilotStreamStore.getState().getCoord(sessionId)
               .lastSubmittedMessageText ?? null;
           if (unsentText) {
-            // The 429 callback fires async — by the time it lands, the user
-            // may have started typing a new draft. Only restore + clear the
-            // recovery slot when the composer is empty; otherwise leave the
-            // unsent text in the per-session store so a reload / resume can
-            // surface it later instead of silently dropping it.
-            const composer = document.getElementById(
-              "chat-input",
-            ) as HTMLTextAreaElement | null;
-            const composerEmpty = !composer || composer.value.length === 0;
-            if (composerEmpty) {
-              setInitialPrompt(unsentText);
+            // The expert-kickoff control prompt must never surface in the
+            // user's composer — drop the recovery slot instead of restoring
+            // it. Its bubble below is dropped too; the once-per-expert
+            // pending latch expires so a later visit can retry the kickoff.
+            if (isKickoffText(unsentText)) {
               useCopilotStreamStore
                 .getState()
                 .updateCoord(sessionId, { lastSubmittedMessageText: null });
+            } else {
+              // The 429 callback fires async — by the time it lands, the user
+              // may have started typing a new draft. Only restore + clear the
+              // recovery slot when the composer is empty; otherwise leave the
+              // unsent text in the per-session store so a reload / resume can
+              // surface it later instead of silently dropping it.
+              const composer = document.getElementById(
+                "chat-input",
+              ) as HTMLTextAreaElement | null;
+              const composerEmpty = !composer || composer.value.length === 0;
+              if (composerEmpty) {
+                setInitialPrompt(unsentText);
+                useCopilotStreamStore
+                  .getState()
+                  .updateCoord(sessionId, { lastSubmittedMessageText: null });
+              }
             }
             setMessages((prev) => {
               const last = prev[prev.length - 1];
