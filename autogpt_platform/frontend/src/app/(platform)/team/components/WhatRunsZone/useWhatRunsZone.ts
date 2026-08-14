@@ -10,7 +10,7 @@ import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   getAdoptTargetKey,
   getAdoptTargetVersionId,
@@ -50,15 +50,18 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
 
   const { mutateAsync: installWorkflow } = useInstallExpertWorkflow();
 
-  const libraryAgents = agentsQuery.data
-    ? unpaginate(agentsQuery.data, "agents")
-    : [];
-  const unadoptedAgents = getUnadoptedAgents(
-    libraryAgents,
-    experts,
-    adoptedTargetKeys,
+  const libraryAgents = useMemo(
+    () => (agentsQuery.data ? unpaginate(agentsQuery.data, "agents") : []),
+    [agentsQuery.data],
   );
-  const groups = getVisibleGroups(experts, schedules, filter);
+  const unadoptedAgents = useMemo(
+    () => getUnadoptedAgents(libraryAgents, experts, adoptedTargetKeys),
+    [adoptedTargetKeys, experts, libraryAgents],
+  );
+  const groups = useMemo(
+    () => getVisibleGroups(experts, schedules, filter),
+    [experts, filter, schedules],
+  );
   const showAgents = filter === "all" || filter === "agents";
 
   async function adopt(agent: LibraryAgent, expert: Expert) {

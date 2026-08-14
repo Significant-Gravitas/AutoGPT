@@ -842,6 +842,10 @@ describe("TeamPage", () => {
     const pausedMaria: Expert = {
       ...scheduledMaria,
       schedules_paused_at: new Date("2026-08-14T12:00:00Z"),
+      workflows: scheduledMaria.workflows.map((workflow) => ({
+        ...workflow,
+        schedule_id: null,
+      })),
     };
     server.use(
       getListExpertsMockHandler([pausedMaria]),
@@ -855,6 +859,7 @@ describe("TeamPage", () => {
     expect(within(group).getAllByText("Paused")).toHaveLength(1);
     expect(within(workflow).queryByText("Paused")).toBeNull();
     expect(within(workflow).queryByText("Every day at 07:40")).toBeNull();
+    expect(within(workflow).queryByText("Needs setup")).toBeNull();
   });
 
   test("links a workflow with a missing job to its setup page", async () => {
@@ -1064,6 +1069,31 @@ describe("TeamPage", () => {
     expect(await within(agents).findByText("Second-page Agent")).toBeDefined();
     expect(requestedPages).toEqual(["1", "2"]);
     expect(hiddenFilters).toEqual(["false", "false"]);
+  });
+
+  test("does not claim every agent is adopted while more pages remain", async () => {
+    const installedAgent = makeLibraryAgent({
+      id: "lib-installed",
+      graph_id: "graph-1",
+      name: "Content Calendar",
+      store_listing_version_id: "slv-1",
+    });
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([installedAgent], 101, 1),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    expect(
+      within(agents).queryByText("Every agent is already on your team."),
+    ).toBeNull();
+    expect(
+      within(agents).getByRole("button", { name: "Load more agents" }),
+    ).toBeDefined();
   });
 
   test("keeps page one visible and retries when loading page two fails", async () => {

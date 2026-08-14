@@ -331,34 +331,15 @@ async def install_workflow(
     if existing is not None:
         return _to_workflow_ref(existing)
 
-    from backend.api.features.library._add_to_library import (
-        add_graph_to_library,
-        resolve_graph_for_library,
+    library_agent = await library_db.add_store_agent_to_library(
+        store_listing_version_id, user_id
     )
-
-    graph_model, store_version = await resolve_graph_for_library(
-        store_listing_version_id, user_id, admin=False
-    )
-
-    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
-        where={
-            "userId": user_id,
-            "agentGraphId": store_version.agentGraphId,
-            "agentGraphVersion": store_version.agentGraphVersion,
-            "isDeleted": False,
-            "isArchived": False,
-        }
-    )
-    library_agent_id = library_agent.id if library_agent else None
-    if library_agent_id is None:
-        added_agent = await add_graph_to_library(graph_model, user_id, store_version)
-        library_agent_id = added_agent.id
     try:
         row = await prisma.models.ExpertWorkflow.prisma().create(
             data={
                 "expertId": expert_id,
                 "storeListingVersionId": store_listing_version_id,
-                "libraryAgentId": library_agent_id,
+                "libraryAgentId": library_agent.id,
             },
             include=_WORKFLOW_ROW_INCLUDE,
         )

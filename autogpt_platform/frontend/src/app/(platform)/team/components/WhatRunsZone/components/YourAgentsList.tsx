@@ -44,11 +44,13 @@ export function YourAgentsList({
         Your agents
       </Text>
       {agents.length === 0 ? (
-        <Text variant="small" className="text-zinc-500">
-          {libraryAgentCount === 0
-            ? "No agents in your library yet."
-            : "Every agent is already on your team."}
-        </Text>
+        !hasMoreAgents ? (
+          <Text variant="small" className="text-zinc-500">
+            {libraryAgentCount === 0
+              ? "No agents in your library yet."
+              : "Every agent is already on your team."}
+          </Text>
+        ) : null
       ) : (
         <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white">
           {agents.map((agent) => {
