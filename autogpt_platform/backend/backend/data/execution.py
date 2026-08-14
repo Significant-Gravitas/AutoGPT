@@ -1115,6 +1115,9 @@ async def update_graph_execution_stats(
     status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
     cascade_running_children: bool = True,
+    update_tenancy: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphExecution | None:
     """Update a graph_exec's status and/or stats.
 
@@ -1130,12 +1133,18 @@ async def update_graph_execution_stats(
     reason to leave child rows untouched (e.g. resume flows or
     speculative writes that will be reconciled separately).
     """
-    if not status and not stats:
+    if not status and not stats and not update_tenancy:
         raise ValueError(
             f"Must provide either status or stats to update for execution {graph_exec_id}"
         )
 
     update_data: AgentGraphExecutionUpdateManyMutationInput = {}
+
+    if update_tenancy:
+        if not organization_id:
+            raise ValueError("organization_id is required when updating tenancy")
+        update_data["organizationId"] = organization_id
+        update_data["teamId"] = team_id
 
     if stats:
         stats_dict = stats.model_dump()

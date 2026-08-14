@@ -115,7 +115,51 @@ async def test_list_truncation_hint_when_more_than_one_page(session):
     assert isinstance(result, PresetListResponse)
     assert result.total_count == 101
     assert len(result.presets) == 100
-    assert "101" in result.message and "first 100" in result.message
+    assert "101" in result.message and "1-100" in result.message
+
+
+@pytest.mark.asyncio
+async def test_list_second_page_is_exactly_scoped_to_current_expert():
+    session = make_session(_USER, expert_id="expert-a")
+    first_page = [
+        *[_preset(id=f"a-{i}", expert_id="expert-a") for i in range(60)],
+        *[_preset(id=f"b-{i}", expert_id="expert-b") for i in range(40)],
+    ]
+    second_page = [
+        *[_preset(id=f"a-{i}", expert_id="expert-a") for i in range(60, 110)],
+        *[_preset(id=f"b-{i}", expert_id="expert-b") for i in range(40, 80)],
+    ]
+    ldb = MagicMock()
+    ldb.list_presets = AsyncMock(
+        side_effect=[
+            MagicMock(presets=first_page, pagination=MagicMock(total_items=190)),
+            MagicMock(presets=second_page, pagination=MagicMock(total_items=190)),
+        ]
+    )
+
+    with patch(f"{_PATH}.library_db", return_value=ldb):
+        result = await ListPresetsTool()._execute(
+            user_id=_USER, session=session, page=2, page_size=100
+        )
+
+    assert isinstance(result, PresetListResponse)
+    assert result.total_count == 110
+    assert result.page == 2
+    assert result.page_size == 100
+    assert [preset.id for preset in result.presets] == [
+        f"a-{i}" for i in range(100, 110)
+    ]
+    assert all(not preset.id.startswith("b-") for preset in result.presets)
+
+
+@pytest.mark.parametrize(("page", "page_size"), [(0, 100), (1, 0), (1, 101)])
+@pytest.mark.asyncio
+async def test_list_rejects_unsafe_pagination(session, page, page_size):
+    result = await ListPresetsTool()._execute(
+        user_id=_USER, session=session, page=page, page_size=page_size
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "invalid_pagination"
 
 
 @pytest.mark.asyncio

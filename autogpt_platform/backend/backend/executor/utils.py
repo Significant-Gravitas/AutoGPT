@@ -1299,6 +1299,8 @@ async def add_graph_execution(
             organization_id, team_id = await _resolve_expert_execution_tenancy(
                 user_id, expert_id
             )
+            graph_exec.organization_id = organization_id
+            graph_exec.team_id = team_id
             if not bypass_paywall:
                 await _enforce_expert_run_budget(user_id, expert_id)
 
@@ -1427,8 +1429,12 @@ async def add_graph_execution(
             # params are authoritative; on resume/requeue (params unset)
             # recover them from the persisted execution row so the run
             # doesn't silently fall back to user-only scope.
-            organization_id=organization_id or graph_exec.organization_id,
-            team_id=team_id or graph_exec.team_id,
+            organization_id=(
+                organization_id
+                if expert_id
+                else organization_id or graph_exec.organization_id
+            ),
+            team_id=team_id if expert_id else team_id or graph_exec.team_id,
             # Same recovery rule as org/team: explicit param on create,
             # persisted row on resume/requeue.
             expert_id=expert_id or graph_exec.expert_id,
@@ -1468,6 +1474,9 @@ async def add_graph_execution(
         updated_exec = await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=ExecutionStatus.QUEUED,
+            update_tenancy=expert_id is not None,
+            organization_id=organization_id if expert_id else None,
+            team_id=team_id if expert_id else None,
         )
 
         # Verify the status update succeeded (prevents duplicate queueing in race conditions)

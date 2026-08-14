@@ -2163,6 +2163,36 @@ async def test_expert_execution_uses_authoritative_personal_tenancy(
 
 
 @pytest.mark.asyncio
+async def test_expert_execution_allows_personal_tenancy_without_default_team(
+    mocker: MockerFixture,
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="personal-org", team_id=None
+    )
+    _mock_expert_personal_tenancy(mocker, organization_id="personal-org", team_id=None)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="expert-owner",
+        expert_id="expert-1",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "personal-org"
+    assert create_kwargs["team_id"] is None
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.organization_id == "personal-org"
+    assert context.team_id is None
+    update_kwargs = mock_edb.update_graph_execution_stats.await_args.kwargs
+    assert update_kwargs["update_tenancy"] is True
+    assert update_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_nested_expert_execution_inherits_expert_and_personal_tenancy(
     mocker: MockerFixture,
 ):
@@ -2376,6 +2406,31 @@ async def test_expert_requeue_uses_current_tenancy_after_conversion(
     assert context.expert_id == "expert-1"
     execution_store.update_graph_execution_stats.assert_awaited_once()
     queue.publish_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_clears_legacy_team_when_personal_team_is_none(
+    mocker: MockerFixture,
+):
+    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+    _mock_expert_personal_tenancy(mocker, organization_id="personal-org", team_id=None)
+
+    await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    context = captured["execution_context"]
+    assert context.organization_id == "personal-org"
+    assert context.team_id is None
+    update_kwargs = execution_store.update_graph_execution_stats.await_args.kwargs
+    assert update_kwargs["update_tenancy"] is True
+    assert update_kwargs["organization_id"] == "personal-org"
+    assert update_kwargs["team_id"] is None
 
 
 @pytest.mark.asyncio

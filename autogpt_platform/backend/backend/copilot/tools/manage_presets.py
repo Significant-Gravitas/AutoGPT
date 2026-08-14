@@ -26,9 +26,8 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
-# Presets are returned in a single page; the response carries total_count so the
-# model can tell when the list is truncated and narrow via a filter instead.
-_LIST_PAGE_SIZE = 100
+_DEFAULT_PAGE_SIZE = 100
+_MAX_PAGE_SIZE = 100
 
 
 def _is_in_session_scope(preset: LibraryAgentPreset, session: ChatSession) -> bool:
@@ -56,7 +55,7 @@ async def _list_scoped_presets(
     first_page = await ldb.list_presets(
         user_id=user_id,
         page=1,
-        page_size=_LIST_PAGE_SIZE,
+        page_size=_MAX_PAGE_SIZE,
         graph_id=graph_id,
     )
     scoped = [
@@ -64,13 +63,13 @@ async def _list_scoped_presets(
     ]
     total_pages = max(
         1,
-        (first_page.pagination.total_items + _LIST_PAGE_SIZE - 1) // _LIST_PAGE_SIZE,
+        (first_page.pagination.total_items + _MAX_PAGE_SIZE - 1) // _MAX_PAGE_SIZE,
     )
     for page in range(2, total_pages + 1):
         response = await ldb.list_presets(
             user_id=user_id,
             page=page,
-            page_size=_LIST_PAGE_SIZE,
+            page_size=_MAX_PAGE_SIZE,
             graph_id=graph_id,
         )
         scoped.extend(
@@ -102,9 +101,9 @@ class PresetListResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.PRESET_LIST
     presets: list[PresetSummary]
-    # Total presets matching the filter; > len(presets) means the list is
-    # truncated to one page — narrow with graph_id/library_agent_id.
     total_count: int
+    page: int
+    page_size: int
 
 
 class PresetUpdatedResponse(ToolResponseBase):
@@ -161,6 +160,19 @@ class ListPresetsTool(BaseTool):
                     "type": "string",
                     "description": "Filter by graph.",
                 },
+                "page": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "description": "Page number (1-based).",
+                },
+                "page_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": _MAX_PAGE_SIZE,
+                    "default": _DEFAULT_PAGE_SIZE,
+                    "description": "Presets per page (1-100).",
+                },
             },
             "required": [],
         }
@@ -181,6 +193,21 @@ class ListPresetsTool(BaseTool):
 
         library_agent_id: str | None = kwargs.get("library_agent_id")
         graph_id: str | None = kwargs.get("graph_id")
+        page = kwargs.get("page", 1)
+        page_size = kwargs.get("page_size", _DEFAULT_PAGE_SIZE)
+        if (
+            isinstance(page, bool)
+            or not isinstance(page, int)
+            or page < 1
+            or isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= _MAX_PAGE_SIZE
+        ):
+            return ErrorResponse(
+                message="page must be at least 1 and page_size must be between 1 and 100.",
+                error="invalid_pagination",
+                session_id=session_id,
+            )
 
         ldb = library_db()
         if library_agent_id:
@@ -198,6 +225,8 @@ class ListPresetsTool(BaseTool):
 
         scoped_presets = await _list_scoped_presets(user_id, graph_id, session)
         total_count = len(scoped_presets)
+        start = (page - 1) * page_size
+        page_presets = scoped_presets[start : start + page_size]
         presets = [
             PresetSummary(
                 id=p.id,
@@ -210,15 +239,19 @@ class ListPresetsTool(BaseTool):
                 webhook_url=p.webhook.url if p.webhook else None,
                 provider=p.webhook.provider if p.webhook else None,
             )
-            for p in scoped_presets[:_LIST_PAGE_SIZE]
+            for p in page_presets
         ]
 
         if not presets:
-            message = "No presets found."
-        elif total_count > len(presets):
             message = (
-                f"Showing the first {len(presets)} of {total_count} presets. "
-                "Narrow the list with graph_id or library_agent_id."
+                "No presets found."
+                if total_count == 0
+                else f"No presets found on page {page}; {total_count} preset(s) match."
+            )
+        elif start > 0 or start + len(presets) < total_count:
+            message = (
+                f"Showing presets {start + 1}-{start + len(presets)} "
+                f"of {total_count}."
             )
         else:
             message = f"Found {total_count} preset(s)."
@@ -226,6 +259,8 @@ class ListPresetsTool(BaseTool):
             message=message,
             presets=presets,
             total_count=total_count,
+            page=page,
+            page_size=page_size,
             session_id=session_id,
         )
 
