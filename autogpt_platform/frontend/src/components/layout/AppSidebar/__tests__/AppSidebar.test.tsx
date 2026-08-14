@@ -1,4 +1,11 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getGetHomeDashboardMockHandler200,
+  getGetHomeDashboardResponseMock200,
+} from "@/app/api/__generated__/endpoints/home/home.msw";
+import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
+import type { HomeAgentStatusStatus } from "@/app/api/__generated__/models/homeAgentStatusStatus";
+import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -6,6 +13,22 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppSidebar } from "../AppSidebar";
+
+function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
+  return { ...getGetHomeDashboardResponseMock200(), agents };
+}
+
+function makeAgent(
+  id: string,
+  name: string,
+  status: HomeAgentStatusStatus,
+): HomeAgentStatus {
+  return {
+    expert: { id, name, role: "Expert", avatar_url: null },
+    status,
+    detail: "Ready for the next task",
+  };
+}
 
 // The global next/link mock only exports `default`; AppSidebar also imports
 // `useLinkStatus`, so re-mock here with a no-op pending status.
@@ -49,7 +72,10 @@ function renderSidebar() {
 
 beforeEach(() => {
   useGetFlagMock.mockReturnValue(false);
-  server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
+  server.use(
+    getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+    getGetHomeDashboardMockHandler200(dashboardWith([])),
+  );
 });
 
 afterEach(() => {
@@ -104,5 +130,64 @@ describe("AppSidebar", () => {
   it("shows the recent-chats empty state once sessions resolve", async () => {
     renderSidebar();
     expect(await screen.findByText(/no conversations yet/i)).toBeDefined();
+  });
+
+  it("nests hired experts under Team with a Your AI row and a Hire link", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(
+      getGetHomeDashboardMockHandler200(
+        dashboardWith([makeAgent("expert-maria", "Maria", "working")]),
+      ),
+    );
+    renderSidebar();
+
+    const memberLink = await screen.findByRole("link", { name: /Maria/i });
+    expect(memberLink.getAttribute("href")).toBe(
+      "/copilot?expertId=expert-maria",
+    );
+
+    const yourAi = screen.getByRole("link", { name: /your ai/i });
+    expect(yourAi.getAttribute("href")).toBe("/copilot");
+
+    const hire = screen.getByRole("link", { name: /^hire$/i });
+    expect(hire.getAttribute("href")).toBe("/marketplace#experts");
+  });
+
+  it("maps each member status to its presence colour", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(
+      getGetHomeDashboardMockHandler200(
+        dashboardWith([
+          makeAgent("e-working", "Working Expert", "working"),
+          makeAgent("e-ready", "Ready Expert", "ready"),
+          makeAgent("e-paused", "Paused Expert", "paused"),
+          makeAgent("e-setup", "Setup Expert", "needs_setup"),
+          makeAgent("e-failed", "Failed Expert", "failed"),
+        ]),
+      ),
+    );
+    renderSidebar();
+
+    expect(
+      (await screen.findByRole("img", { name: "Working" })).className,
+    ).toContain("bg-amber-500");
+    expect(screen.getByRole("img", { name: "Ready" }).className).toContain(
+      "bg-emerald-500",
+    );
+    expect(screen.getByRole("img", { name: "Paused" }).className).toContain(
+      "bg-zinc-300",
+    );
+    expect(
+      screen.getByRole("img", { name: "Needs setup" }).className,
+    ).toContain("bg-zinc-300");
+    expect(
+      screen.getByRole("img", { name: "Needs attention" }).className,
+    ).toContain("bg-emerald-500");
+  });
+
+  it("omits the nested team members when the hire-experts flag is off", () => {
+    renderSidebar();
+    expect(screen.queryByText("Your AI")).toBeNull();
+    expect(screen.queryByRole("link", { name: /^hire$/i })).toBeNull();
   });
 });

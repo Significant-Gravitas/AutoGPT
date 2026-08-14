@@ -23,7 +23,7 @@ export function ExpertsSection() {
   }
 
   return (
-    <section className="mb-20">
+    <section id="experts" className="mb-20 scroll-mt-24">
       <SectionHeader
         titleIcon={<AITeamIcon size={30} />}
         title="Meet the AI Experts"

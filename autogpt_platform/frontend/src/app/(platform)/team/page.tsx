@@ -8,6 +8,7 @@ import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPic
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { notFound } from "next/navigation";
 import { AutopilotCard } from "./components/AutopilotCard";
+import { CreateMenu } from "./components/CreateMenu/CreateMenu";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
@@ -52,14 +53,17 @@ export default function TeamPage() {
 
   return (
     <main className={MAIN_CLASS}>
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2.5">
-          <AITeamIcon size={36} className="shrink-0 text-black" />
-          <Text variant="h3">Your Team</Text>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2.5">
+            <AITeamIcon size={36} className="shrink-0 text-black" />
+            <Text variant="h3">Your Team</Text>
+          </div>
+          <Text variant="body" className="max-w-prose text-zinc-600">
+            Autopilot and your hired experts, ready to work.
+          </Text>
         </div>
-        <Text variant="body" className="max-w-prose text-zinc-600">
-          Autopilot and your hired experts, ready to work.
-        </Text>
+        <CreateMenu />
       </div>
       <div className={GRID_CLASS}>
         <AutopilotCard />
