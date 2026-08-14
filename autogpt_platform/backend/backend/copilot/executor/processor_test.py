@@ -28,6 +28,10 @@ from backend.copilot.executor.processor import (
     sync_fail_close_session,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.expert_context import (
+    EXPERT_SESSION_MISSING_MESSAGE,
+    ExpertSessionUnavailableError,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.codex.transport import (
@@ -383,6 +387,56 @@ class TestExecuteAsyncAclose:
         get_session_mock.assert_awaited_once_with("sess-1", "user-1")
         assert stream_fn.call_args.kwargs["session"] is session
         assert stream_fn.call_args.kwargs["session"].expert_id == "expert-1"
+
+    @pytest.mark.asyncio
+    async def test_missing_expert_publishes_actionable_stream_error(self) -> None:
+        async def failing_expert_stream():
+            raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE)
+            yield MagicMock()
+
+        stream = failing_expert_stream()
+        mark_completed = AsyncMock()
+        session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+        session.session_id = "sess-1"
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=MagicMock(test_mode=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                return_value=stream,
+            ),
+            patch(
+                "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
+                return_value=stream,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                return_value=stream,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=mark_completed,
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            pytest.raises(ExpertSessionUnavailableError),
+        ):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(),
+                threading.Event(),
+                MagicMock(),
+                _make_log(),
+            )
+
+        mark_completed.assert_awaited_once_with(
+            "sess-1",
+            error_message=EXPERT_SESSION_MISSING_MESSAGE,
+        )
 
 
 def _codex_entry(
