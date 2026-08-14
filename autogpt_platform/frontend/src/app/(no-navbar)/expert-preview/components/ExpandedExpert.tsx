@@ -53,6 +53,7 @@ export function ExpandedExpert({ selected, onClose }: Props) {
                 <Dialog.Close asChild>
                   <button
                     type="button"
+                    data-testid="expert-preview-backdrop"
                     aria-label={`Close ${selected.profession.label} preview`}
                     className="absolute inset-0 cursor-zoom-out"
                   />

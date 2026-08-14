@@ -99,13 +99,19 @@ describe("ExpertPreviewPage", () => {
     );
     await user.tab();
     expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
 
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(trigger);
   });
 
-  test("closes on click and restores the exact duplicated trigger", async () => {
+  test("closes on backdrop click and restores the duplicated trigger", async () => {
     const user = userEvent.setup();
     render(<ExpertPreviewPage />);
     const triggers = screen.getAllByRole("button", {
@@ -117,9 +123,7 @@ describe("ExpertPreviewPage", () => {
     await screen.findByRole("dialog", {
       name: "Creative Director",
     });
-    await user.click(
-      screen.getByRole("button", { name: "Close Creative Director preview" }),
-    );
+    await user.click(screen.getByTestId("expert-preview-backdrop"));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(trigger);
