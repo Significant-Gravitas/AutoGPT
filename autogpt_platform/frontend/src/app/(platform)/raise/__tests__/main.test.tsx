@@ -1,10 +1,17 @@
-import { getCreateRaisedExpertMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { NamingMomentCard } from "@/app/(platform)/copilot/components/NamingMomentCard/NamingMomentCard";
+import { getGetV2ListSessionsMockHandler } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
+import {
+  getCreateRaisedExpertMockHandler,
+  getListExpertsMockHandler,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetV2GetSpecificAgentMockHandler,
   getGetV2ListStoreAgentsMockHandler,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import type { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
@@ -38,15 +45,16 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isLoggedIn: true, user: { id: "user-1" } }),
 }));
 
-const { pushMock, notFoundMock } = vi.hoisted(() => ({
+const { pushMock, notFoundMock, searchParamsMock } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   notFoundMock: vi.fn(),
+  searchParamsMock: { current: new URLSearchParams() },
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
   usePathname: () => "/raise",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => searchParamsMock.current,
   useParams: () => ({}),
   notFound: () => {
     notFoundMock();
@@ -143,9 +151,11 @@ async function walkToReviewWithJob() {
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  window.localStorage.clear();
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   pushMock.mockClear();
   notFoundMock.mockClear();
+  searchParamsMock.current = new URLSearchParams();
 });
 
 afterEach(() => {
@@ -345,4 +355,115 @@ test("a refresh resumes the draft from session storage", async () => {
 
   expect(await screen.findByText("How should Nova write?")).toBeDefined();
   expect(screen.getByText("Nova's Soul")).toBeDefined();
+});
+
+test("from=naming shows the naming opener and skips the first job step", async () => {
+  searchParamsMock.current = new URLSearchParams("from=naming");
+  let captured: unknown = null;
+  server.use(
+    getCreateRaisedExpertMockHandler(async (info) => {
+      captured = await info.request.json();
+      return {
+        expert: raisedExpert,
+        first_job_installed: false,
+      } as RaiseResult;
+    }),
+  );
+
+  renderRaise();
+
+  expect(await screen.findByText("Let's make it official.")).toBeTruthy();
+
+  const nameInput = await screen.findByPlaceholderText("Type a name…");
+  await userEvent.type(nameInput, "Juno");
+  await userEvent.click(screen.getByRole("button", { name: "Name me" }));
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+
+  // Straight to review — the first job step never renders.
+  await userEvent.click(await screen.findByRole("button", { name: /life/ }));
+
+  await waitFor(() => expect(captured).not.toBeNull());
+  expect(screen.queryByText("SEO Blog Writer")).toBeNull();
+  expect(
+    (captured as Record<string, unknown>).first_job_store_listing_version_id,
+  ).toBeNull();
+  await waitFor(() =>
+    expect(pushMock).toHaveBeenCalledWith("/copilot?expertId=raised-1"),
+  );
+});
+
+// Reads the experts list exactly like useRecipientPicker's useExpertMap does,
+// sharing the render's QueryClient — so it observes the same cache entry the
+// copilot page would read right after the raise flow navigates.
+function ExpertsCacheProbe() {
+  const query = useListExperts({
+    query: {
+      select: (response) =>
+        response.status === 200 ? response.data : undefined,
+    },
+  });
+  const names = (query.data ?? []).map((expert) => expert.name);
+  return (
+    <div>{`cached-experts:${names.length ? names.join(",") : "none"}`}</div>
+  );
+}
+
+const aSession = {
+  id: "session-1",
+  created_at: "2026-08-14T00:00:00Z",
+  updated_at: "2026-08-14T00:00:00Z",
+  is_processing: false,
+} as SessionSummaryResponse;
+
+test("finishing naming reconciles the cached empty experts list so the new expert survives and the card is gone", async () => {
+  searchParamsMock.current = new URLSearchParams("from=naming");
+  let created = false;
+  server.use(
+    getListExpertsMockHandler(() => (created ? [raisedExpert] : [])),
+    getGetV2ListSessionsMockHandler({ sessions: [aSession], total: 2 }),
+    getCreateRaisedExpertMockHandler(() => {
+      created = true;
+      return {
+        expert: raisedExpert,
+        first_job_installed: false,
+      } as RaiseResult;
+    }),
+  );
+
+  render(
+    <>
+      <RaisePage />
+      <NamingMomentCard />
+      <ExpertsCacheProbe />
+    </>,
+  );
+
+  // The stale-success setup from the review: a cached 200 with zero experts,
+  // eligibility satisfied, card showing.
+  expect(await screen.findByText("cached-experts:none")).toBeTruthy();
+  expect(
+    await screen.findByRole("button", { name: "Give me a name" }),
+  ).toBeTruthy();
+
+  const nameInput = await screen.findByPlaceholderText("Type a name…");
+  await userEvent.type(nameInput, "Otto");
+  await userEvent.click(screen.getByRole("button", { name: "Name me" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /life/ }));
+
+  await waitFor(() =>
+    expect(pushMock).toHaveBeenCalledWith("/copilot?expertId=raised-1"),
+  );
+  // The cache was reconciled before navigation: the expert is readable
+  // without waiting for a refetch, so the recipient picker keeps ?expertId=
+  // and the naming card's eligibility flips off.
+  expect(await screen.findByText("cached-experts:Otto")).toBeTruthy();
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Give me a name" })).toBeNull(),
+  );
 });

@@ -1,27 +1,40 @@
-import { useCreateRaisedExpert } from "@/app/api/__generated__/endpoints/experts/experts";
+import {
+  getListExpertsQueryKey,
+  useCreateRaisedExpert,
+  type listExpertsResponse,
+} from "@/app/api/__generated__/endpoints/experts/experts";
 import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import type { VoicePickResult } from "@/components/organisms/VoicePicker/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import {
   buildTranscript,
   clearDraft,
   loadDraft,
+  normalizeDraftForNaming,
   previousStep,
   resolveVoicePreferences,
   saveDraft,
   voiceSummaryLabel,
   VOICE_SAMPLES,
   type RaiseDraft,
+  type RaiseStep,
 } from "./helpers";
 
 export function useRaisePage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const isNaming = searchParams.get("from") === "naming";
   const { mutateAsync: createRaisedExpert, isPending } =
     useCreateRaisedExpert();
-  const [draft, setDraft] = useState<RaiseDraft>(loadDraft);
+  const [draft, setDraft] = useState<RaiseDraft>(() =>
+    isNaming ? normalizeDraftForNaming(loadDraft()) : loadDraft(),
+  );
+  const afterVoiceStep: RaiseStep = isNaming ? "review" : "firstJob";
   // Synchronous latch: isPending only flips after a rerender, so a rapid
   // double-click could dispatch two POSTs without it. Stays latched after
   // success (we are navigating away); resets only on error so the user
@@ -52,7 +65,7 @@ export function useRaisePage() {
       voicePreferences: preferences,
       voiceLabel: voiceSummaryLabel(result, VOICE_SAMPLES),
       voiceSkipped: false,
-      step: "firstJob",
+      step: afterVoiceStep,
     });
   }
 
@@ -61,7 +74,7 @@ export function useRaisePage() {
       voicePreferences: "",
       voiceLabel: null,
       voiceSkipped: true,
-      step: "firstJob",
+      step: afterVoiceStep,
     });
   }
 
@@ -74,7 +87,7 @@ export function useRaisePage() {
   }
 
   function goBack() {
-    update({ step: previousStep(draft.step) });
+    update({ step: previousStep(draft.step, isNaming) });
   }
 
   async function finish() {
@@ -97,6 +110,21 @@ export function useRaisePage() {
           variant: "default",
         });
       }
+      // A cached successful `[]` from before the raise would still be
+      // readable on the copilot page (invalidation alone keeps stale data
+      // visible during the background refetch), where the recipient picker
+      // would drop the unknown ?expertId= and the naming card would
+      // reappear. Reconcile the cache with the new expert before navigating.
+      queryClient.setQueryData<listExpertsResponse>(
+        getListExpertsQueryKey(),
+        (cached) =>
+          cached?.status === 200 &&
+          !cached.data.some(
+            (cachedExpert) => cachedExpert.id === result.expert.id,
+          )
+            ? { ...cached, data: [...cached.data, result.expert] }
+            : cached,
+      );
       const kickoff = result.expert.workflows.length > 0 ? "&kickoff=1" : "";
       router.push(`/copilot?expertId=${result.expert.id}${kickoff}`);
     } catch (error) {
@@ -120,7 +148,7 @@ export function useRaisePage() {
 
   return {
     step: draft.step,
-    messages: buildTranscript(draft),
+    messages: buildTranscript(draft, isNaming),
     name: draft.name,
     voiceLabel: draft.voiceLabel,
     firstJob: draft.firstJob,

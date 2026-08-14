@@ -24,6 +24,7 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
 import { GreetingLoader } from "./components/GreetingLoader";
 import { CopilotHome } from "../CopilotHome/CopilotHome";
+import { NamingMomentCard } from "../NamingMomentCard/NamingMomentCard";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
 
@@ -140,6 +141,15 @@ export function EmptySession({
             <GreetingLoader />
           ) : (
             <EmptyHero name={greetingName} />
+          )}
+
+          {/* An existing user whose AI has never been named gets one nudge
+              above the composer; the card gates itself on eligibility and
+              renders nothing otherwise. */}
+          {!intro.isVisible && !intro.isAwaitingGreeting && (
+            <div className="mb-4">
+              <NamingMomentCard />
+            </div>
           )}
 
           {/* Held back while the greeting is on its way — it enters with

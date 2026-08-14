@@ -21,6 +21,7 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 
 export const RAISE_PROMPTS = {
   name: "Hi. I don't have a name yet — that's where you come in.",
+  namingOpener: "Let's make it official.",
   voice: (name: string) =>
     `Nice to meet you, ${name}. How should I sound when I write?`,
   firstJob:
@@ -84,19 +85,46 @@ interface RaiseMessage {
 }
 
 const STEP_ORDER: RaiseStep[] = ["name", "voice", "firstJob", "review"];
+// The naming moment reaches this flow for an AI that has already been working
+// with the user — a first job would be redundant, so that step is dropped.
+const STEP_ORDER_NAMING: RaiseStep[] = ["name", "voice", "review"];
 
-export function previousStep(step: RaiseStep): RaiseStep {
-  const index = STEP_ORDER.indexOf(step);
-  return STEP_ORDER[Math.max(index - 1, 0)];
+function stepOrder(isNaming: boolean): RaiseStep[] {
+  return isNaming ? STEP_ORDER_NAMING : STEP_ORDER;
+}
+
+export function previousStep(step: RaiseStep, isNaming = false): RaiseStep {
+  const order = stepOrder(isNaming);
+  const index = order.indexOf(step);
+  return order[Math.max(index - 1, 0)];
+}
+
+// A draft abandoned mid-way through the regular flow can sit at the firstJob
+// step or carry a picked job; naming mode has no first-job step, so both are
+// dropped before the draft is reused.
+export function normalizeDraftForNaming(draft: RaiseDraft): RaiseDraft {
+  return {
+    ...draft,
+    firstJob: null,
+    firstJobSkipped: false,
+    step: draft.step === "firstJob" ? "review" : draft.step,
+  };
 }
 
 // The transcript is derived from the draft rather than accumulated, so
 // back transitions and refresh restores always rebuild it consistently.
-export function buildTranscript(draft: RaiseDraft): RaiseMessage[] {
+export function buildTranscript(
+  draft: RaiseDraft,
+  isNaming = false,
+): RaiseMessage[] {
+  const stepIndex = stepOrder(isNaming).indexOf(draft.step);
   const messages: RaiseMessage[] = [
-    { id: "assistant-name", role: "assistant", text: RAISE_PROMPTS.name },
+    {
+      id: "assistant-name",
+      role: "assistant",
+      text: isNaming ? RAISE_PROMPTS.namingOpener : RAISE_PROMPTS.name,
+    },
   ];
-  const stepIndex = STEP_ORDER.indexOf(draft.step);
 
   if (stepIndex >= 1) {
     messages.push(
@@ -109,18 +137,24 @@ export function buildTranscript(draft: RaiseDraft): RaiseMessage[] {
     );
   }
   if (stepIndex >= 2) {
-    messages.push(
-      {
-        id: "user-voice",
-        role: "user",
-        text: draft.voiceLabel ?? VOICE_SKIPPED_LABEL,
-      },
-      {
-        id: "assistant-first-job",
+    messages.push({
+      id: "user-voice",
+      role: "user",
+      text: draft.voiceLabel ?? VOICE_SKIPPED_LABEL,
+    });
+    if (isNaming) {
+      messages.push({
+        id: "assistant-review",
         role: "assistant",
-        text: RAISE_PROMPTS.firstJob,
-      },
-    );
+        text: RAISE_PROMPTS.review,
+      });
+      return messages;
+    }
+    messages.push({
+      id: "assistant-first-job",
+      role: "assistant",
+      text: RAISE_PROMPTS.firstJob,
+    });
   }
   if (stepIndex >= 3) {
     messages.push(
