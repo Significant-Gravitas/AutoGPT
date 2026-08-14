@@ -16,11 +16,15 @@ export function useNamingMomentCard() {
   const userId = user?.id ?? null;
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const isExpertsEnabled = Boolean(enabled);
-  const queriesEnabled = isExpertsEnabled && ready;
 
   const [isDismissed, setIsDismissed] = useState(() =>
     peekNamingMomentDismissed(userId),
   );
+
+  // Dismissal is known synchronously from localStorage, so a permanently
+  // dismissed user never pays for the experts/sessions probes on every
+  // empty-state mount just to compute an eligibility that is already false.
+  const queriesEnabled = isExpertsEnabled && ready && !isDismissed;
 
   useEffect(
     function syncDismissedFromStorage() {

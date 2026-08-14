@@ -149,3 +149,30 @@ test("'Not now' dismisses the card and persists the dismissal", async () => {
     expect(screen.queryByRole("button", { name: "Give me a name" })).toBeNull(),
   );
 });
+
+test("a dismissed user fires no experts or sessions requests on mount", async () => {
+  window.localStorage.setItem("autogpt:naming-moment-dismissed:user-1", "true");
+  let expertsRequests = 0;
+  let sessionsRequests = 0;
+  server.use(
+    getListExpertsMockHandler(() => {
+      expertsRequests += 1;
+      return [];
+    }),
+    getGetV2ListSessionsMockHandler(() => {
+      sessionsRequests += 1;
+      return { sessions: [aSession], total: 3 };
+    }),
+  );
+
+  render(<NamingMomentCard />);
+
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Give me a name" })).toBeNull(),
+  );
+  // The card unrenders synchronously either way; give a wrongly-enabled query
+  // enough event-loop turns to reach the mock server before asserting silence.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(expertsRequests).toBe(0);
+  expect(sessionsRequests).toBe(0);
+});
