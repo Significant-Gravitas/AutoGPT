@@ -5501,6 +5501,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Expert template not found" },
+          "409": { "description": "Active expert limit reached" },
           "422": {
             "description": "Validation Error",
             "content": {

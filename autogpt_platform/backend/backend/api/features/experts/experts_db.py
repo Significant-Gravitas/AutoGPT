@@ -3,6 +3,7 @@ from typing import Literal
 
 import prisma.errors
 import prisma.models
+import prisma.types
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
@@ -185,14 +186,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     if template is None:
         raise ExpertTemplateNotFoundError(template_id)
 
-    existing = await prisma.models.Expert.prisma().find_first(
-        where={"ownerUserId": user_id, "sourceTemplateId": template_id},
-        include=_WORKFLOW_INCLUDE,
-    )
-    if existing is not None:
-        return await _existing_hire_result(existing)
-
-    create_data: dict = {
+    create_data: prisma.types.ExpertCreateInput = {
         "ownerUserId": user_id,
         "name": name or template.name,
         "avatarUrl": template.avatarUrl,
@@ -207,17 +201,20 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     }
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
+
     try:
-        expert = await prisma.models.Expert.prisma().create(data=create_data)
+        expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
     except prisma.errors.UniqueViolationError:
-        # Lost a concurrent hire race; the winner's row satisfies idempotency.
-        raced = await prisma.models.Expert.prisma().find_first(
-            where={"ownerUserId": user_id, "sourceTemplateId": template_id},
-            include=_WORKFLOW_INCLUDE,
-        )
-        if raced is None:
-            raise
-        return await _existing_hire_result(raced)
+        # A caller running older code may not participate in the advisory lock.
+        # Retry after the failed transaction so its winning row is handled by
+        # the same capacity-aware path.
+        expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
+
+    if state == "existing":
+        return HireResult(expert=_to_model(expert), failed_preloads=[])
+    if state == "revived":
+        expert = await _resume_revived_hire(expert)
+        return HireResult(expert=_to_model(expert), failed_preloads=[])
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
 
@@ -229,38 +226,80 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     return HireResult(expert=_to_model(hydrated), failed_preloads=failed)
 
 
-async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
-    """Idempotent-hire result for an already-existing hired copy.
+async def _reserve_hired_expert(
+    user_id: str,
+    template_id: str,
+    create_data: prisma.types.ExpertCreateInput,
+) -> tuple[prisma.models.Expert, Literal["existing", "revived", "created"]]:
+    """Atomically get, revive, or create one hired expert.
 
-    Re-hiring an archived expert revives it — the unique
-    (ownerUserId, sourceTemplateId) constraint means a fresh row cannot be
-    created, and returning the archived row as-is would hand back a
-    "successful" hire that stays invisible to list_experts/get_expert.
+    Hires share the same per-user lock and active-team capacity check as
+    raised experts. An idempotent retry of an already-active hire does not
+    consume capacity, while reviving an archived hire does.
     """
-    if row.isArchived:
-        revived = await prisma.models.Expert.prisma().update(
-            where={"id": row.id},
-            data={"isArchived": False},
+    async with transaction() as tx:
+        await _lock_expert_creation(tx, user_id)
+        existing = await tx.expert.find_first(
+            where={"ownerUserId": user_id, "sourceTemplateId": template_id},
             include=_WORKFLOW_INCLUDE,
         )
-        if revived is not None:
-            row = revived
-        if row.ownerUserId:
-            await scheduling.resume_expert_schedules(row.ownerUserId, row.id)
-            try:
-                await scheduling.reattach_expert_triggers(row.ownerUserId, row.id)
-            except Exception:
-                logger.exception(
-                    f"Failed to reattach triggers while reviving expert #{row.id}"
-                )
-            # Resume/reattach mutated pause state and workflow scheduleIds
-            # after `row` was read — reload so the result isn't stale.
-            refreshed = await prisma.models.Expert.prisma().find_unique(
-                where={"id": row.id}, include=_WORKFLOW_INCLUDE
+        if existing is not None:
+            if not existing.isArchived:
+                return existing, "existing"
+            await _ensure_active_expert_capacity(tx, user_id)
+            revived = await tx.expert.update(
+                where={"id": existing.id},
+                data={"isArchived": False},
+                include=_WORKFLOW_INCLUDE,
             )
-            if refreshed is not None:
-                row = refreshed
-    return HireResult(expert=_to_model(row), failed_preloads=[])
+            if revived is None:
+                raise ExpertNotFoundError(existing.id)
+            return revived, "revived"
+
+        await _ensure_active_expert_capacity(tx, user_id)
+        created = await tx.expert.create(
+            data=create_data,
+            include=_WORKFLOW_INCLUDE,
+        )
+        return created, "created"
+
+
+async def _resume_revived_hire(row: prisma.models.Expert) -> prisma.models.Expert:
+    if row.ownerUserId is None:
+        return row
+
+    await scheduling.resume_expert_schedules(row.ownerUserId, row.id)
+    try:
+        await scheduling.reattach_expert_triggers(row.ownerUserId, row.id)
+    except Exception:
+        logger.exception(f"Failed to reattach triggers while reviving expert #{row.id}")
+
+    # Resume/reattach mutated pause state and workflow scheduleIds after `row`
+    # was read — reload so the result isn't stale.
+    refreshed = await prisma.models.Expert.prisma().find_unique(
+        where={"id": row.id}, include=_WORKFLOW_INCLUDE
+    )
+    return refreshed or row
+
+
+async def _lock_expert_creation(tx: prisma.Prisma, user_id: str) -> None:
+    # execute_raw, not query_raw: pg_advisory_xact_lock returns void,
+    # which Prisma cannot deserialize as a result column.
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", user_id
+    )
+
+
+async def _ensure_active_expert_capacity(tx: prisma.Prisma, user_id: str) -> None:
+    active_count = await tx.expert.count(
+        where={
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    if active_count >= ACTIVE_EXPERT_LIMIT:
+        raise ExpertLimitExceededError(ACTIVE_EXPERT_LIMIT)
 
 
 async def create_raised_expert(
@@ -324,20 +363,8 @@ async def _create_raised_expert_row(
     voice_preferences: str | None,
 ) -> prisma.models.Expert:
     async with transaction() as tx:
-        # execute_raw, not query_raw: pg_advisory_xact_lock returns void,
-        # which Prisma cannot deserialize as a result column.
-        await tx.execute_raw(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", user_id
-        )
-        active_count = await tx.expert.count(
-            where={
-                "ownerUserId": user_id,
-                "isTemplate": False,
-                "isArchived": False,
-            }
-        )
-        if active_count >= ACTIVE_EXPERT_LIMIT:
-            raise ExpertLimitExceededError(ACTIVE_EXPERT_LIMIT)
+        await _lock_expert_creation(tx, user_id)
+        await _ensure_active_expert_capacity(tx, user_id)
         lifetime_raised_count = await tx.expert.count(
             where={
                 "ownerUserId": user_id,

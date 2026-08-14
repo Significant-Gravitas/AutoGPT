@@ -188,6 +188,29 @@ def test_hire_expert_unknown_template_returns_404(
     assert response.status_code == 404
 
 
+def test_hire_expert_at_cap_returns_409(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertLimitExceededError(20),
+    )
+
+    response = client.post("/experts", json={"template_id": "template-1"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "active_expert_limit",
+        "limit": 20,
+    }
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_hire_active_cap",
+    )
+
+
 # ─── Raise ─────────────────────────────────────────────────────────────
 
 
