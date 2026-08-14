@@ -5540,15 +5540,14 @@
         "summary": "List Expert Identities",
         "description": "List the lightweight active and archived identity projection for chat.",
         "operationId": "list_expert_identities",
-        "security": [{ "HTTPBearerJWT": [] }],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
                   "items": { "$ref": "#/components/schemas/ExpertIdentity" },
+                  "type": "array",
                   "title": "Response List Expert Identities"
                 }
               }
@@ -5557,7 +5556,8 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/experts/templates": {
@@ -17797,21 +17797,6 @@
         ],
         "title": "Expert"
       },
-      "ExpertIdentity": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "avatar_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Avatar Url"
-          },
-          "role": { "type": "string", "title": "Role" },
-          "is_archived": { "type": "boolean", "title": "Is Archived" }
-        },
-        "type": "object",
-        "required": ["id", "name", "avatar_url", "role", "is_archived"],
-        "title": "ExpertIdentity"
-      },
       "ExpertDetachPreview": {
         "properties": {
           "schedule_names": {
@@ -17829,6 +17814,21 @@
         "required": ["schedule_names", "trigger_names"],
         "title": "ExpertDetachPreview",
         "description": "What archiving the expert would pause — drives the confirm dialog."
+      },
+      "ExpertIdentity": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "role": { "type": "string", "title": "Role" },
+          "is_archived": { "type": "boolean", "title": "Is Archived" }
+        },
+        "type": "object",
+        "required": ["id", "name", "avatar_url", "role", "is_archived"],
+        "title": "ExpertIdentity"
       },
       "ExpertSoulUpdate": {
         "properties": {
