@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
@@ -126,9 +126,16 @@ def decode_voice_preferences(raw: str) -> tuple[str, list[VoiceSample]]:
         return raw, []
     if not isinstance(envelope, dict) or "samples" not in envelope:
         return raw, []
-    samples = [
-        VoiceSample(label=item["label"], text=item["text"])
-        for item in envelope.get("samples", [])
-        if isinstance(item, dict) and "label" in item and "text" in item
-    ]
-    return envelope.get("description") or "", samples
+    description = envelope.get("description")
+    envelope_samples = envelope.get("samples")
+    if not isinstance(description, str) or not isinstance(envelope_samples, list):
+        return raw, []
+    try:
+        samples = [
+            VoiceSample(label=item["label"], text=item["text"])
+            for item in envelope_samples
+            if isinstance(item, dict) and "label" in item and "text" in item
+        ]
+    except ValidationError:
+        return raw, []
+    return description, samples

@@ -1,4 +1,5 @@
 import {
+  getGetExpertQueryKey,
   getListExpertsQueryKey,
   useHireExpert,
   useListExperts,
@@ -111,6 +112,15 @@ export function useExpertProfileSheet(
           boundaries: hired.boundaries,
         },
       });
+      // The hire-time refetch cached the pre-voice expert as fresh; without
+      // this, a Soul edit within the stale window would silently write that
+      // old description back over the chosen voice.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() }),
+        queryClient.invalidateQueries({
+          queryKey: getGetExpertQueryKey(hired.id),
+        }),
+      ]);
     } catch {
       // The hire itself succeeded; keep the picker open so the choice can be
       // retried, and point at the Soul editor as the fallback.

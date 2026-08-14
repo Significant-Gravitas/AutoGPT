@@ -72,3 +72,19 @@ def test_decode_non_envelope_json_degrades_to_plain_string():
 
     assert description == '{"foo": "bar"}'
     assert samples == []
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        # One malformed template row must degrade, never fail template
+        # listing or hiring.
+        '{"description": "x", "samples": null}',
+        '{"description": "x", "samples": "not-a-list"}',
+        '{"description": "x", "samples": [{"label": 1, "text": null}]}',
+        '{"description": 42, "samples": []}',
+        '{"description": null, "samples": []}',
+    ],
+)
+def test_decode_malformed_envelope_degrades_without_raising(raw: str):
+    assert decode_voice_preferences(raw) == (raw, [])

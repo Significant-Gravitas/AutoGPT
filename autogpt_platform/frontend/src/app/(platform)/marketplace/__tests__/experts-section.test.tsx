@@ -8,7 +8,7 @@ import {
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
@@ -186,6 +186,45 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("Maria joined your team")).toBeDefined();
     expect(soulPatched).toBe(false);
+  });
+
+  test("refetches expert queries after the voice save so later Soul edits see it", async () => {
+    let listRequests = 0;
+    let voicePatched = false;
+    server.use(
+      getListExpertTemplatesMockHandler([mariaWithSamples]),
+      getListExpertsMockHandler(() => {
+        listRequests += 1;
+        return voicePatched ? [hiredMaria] : [];
+      }),
+      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getUpdateExpertSoulMockHandler(() => {
+        voicePatched = true;
+        return hiredMaria;
+      }),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire Maria" }),
+    );
+    expect(await screen.findByText("How should Maria write?")).toBeDefined();
+    const requestsBeforePick = listRequests;
+    await userEvent.click(await screen.findByText("Punchy and bold"));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use this voice" }),
+    );
+
+    // The hire-time refetch cached the pre-voice expert as fresh for 60s; a
+    // post-PATCH refetch is what keeps a follow-up Soul edit from writing the
+    // stale description back over the chosen voice.
+    expect(await screen.findByText("Maria joined your team")).toBeDefined();
+    await waitFor(() =>
+      expect(listRequests).toBeGreaterThan(requestsBeforePick),
+    );
+    expect(voicePatched).toBe(true);
   });
 
   test("keeps the voice pick open when the soul PATCH fails", async () => {

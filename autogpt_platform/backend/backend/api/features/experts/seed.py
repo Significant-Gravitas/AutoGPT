@@ -31,11 +31,6 @@ class PreloadSeed(TypedDict):
     cron: str | None
 
 
-class VoiceSampleSeed(TypedDict):
-    label: str
-    text: str
-
-
 class RosterEntry(TypedDict):
     name: str
     role: str
@@ -47,7 +42,7 @@ class RosterEntry(TypedDict):
     voice_preferences: str
     # Two writing samples in the persona's voice; the hire flow shows these as
     # the "how should {name} write?" pick right after hire.
-    voice_samples: list[VoiceSampleSeed]
+    voice_samples: list[VoiceSample]
     boundaries: str
     preloads: list[PreloadSeed]
 
@@ -75,14 +70,14 @@ Your day-to-day work spans content strategy, social copy, email campaigns, and S
 You are direct about trade-offs. If a campaign idea is clever but off-brand, you say so and propose an alternative. You ask for the product's voice guidelines, target audience, and differentiators when they are missing, and you never invent customer claims or statistics. When you use a workflow, you treat its output as a first draft and refine it in the product's voice.""",
         "voice_preferences": "Clear, confident, direct, and free of generic marketing jargon.",
         "voice_samples": [
-            {
-                "label": "Punchy and bold",
-                "text": "Stop guessing what your buyers actually want. In 90 days we turned a vague value prop into a category story — and doubled demo bookings. No fluff, no filler, just the line that makes them lean in.",
-            },
-            {
-                "label": "Warm and story-led",
-                "text": "Every campaign starts with a person, not a product. Meet Dana: forty tabs open, no time to read your pricing page. Our job is to write the one sentence that makes her stop scrolling and feel understood.",
-            },
+            VoiceSample(
+                label="Punchy and bold",
+                text="Stop guessing what your buyers actually want. In 90 days we turned a vague value prop into a category story — and doubled demo bookings. No fluff, no filler, just the line that makes them lean in.",
+            ),
+            VoiceSample(
+                label="Warm and story-led",
+                text="Every campaign starts with a person, not a product. Meet Dana: forty tabs open, no time to read your pricing page. Our job is to write the one sentence that makes her stop scrolling and feel understood.",
+            ),
         ],
         "boundaries": "Never invent customer claims or statistics. Ask for missing voice guidelines, audience details, and differentiators.",
         "preloads": [
@@ -114,14 +109,14 @@ Your core work is prospecting and outreach preparation. You research accounts, s
 You are rigorous about data quality. You flag when contact information looks stale, you never fabricate a prospect's details, and you mark your confidence level when a finding is inferred rather than confirmed. When a workflow returns a lead list, you review it against the ideal customer profile before presenting it, and you note which leads you would prioritize and why.""",
         "voice_preferences": "Short, specific, honest, and plain-spoken about trade-offs.",
         "voice_samples": [
-            {
-                "label": "Direct and brief",
-                "text": "Hi Sam — saw you just opened a second warehouse in Austin. That usually means shipping errors start eating margins. We cut those by 30% for two teams your size. Worth 15 minutes this week?",
-            },
-            {
-                "label": "Consultative",
-                "text": "Hi Sam, congrats on the Austin expansion. Curious how you're handling fulfillment across both sites right now — a couple of teams I work with hit the same crossroads and found one change that saved them a lot of rework. Happy to share if it's useful.",
-            },
+            VoiceSample(
+                label="Direct and brief",
+                text="Hi Sam — saw you just opened a second warehouse in Austin. That usually means shipping errors start eating margins. We cut those by 30% for two teams your size. Worth 15 minutes this week?",
+            ),
+            VoiceSample(
+                label="Consultative",
+                text="Hi Sam, congrats on the Austin expansion. Curious how you're handling fulfillment across both sites right now — a couple of teams I work with hit the same crossroads and found one change that saved them a lot of rework. Happy to share if it's useful.",
+            ),
         ],
         "boundaries": "Never fabricate prospect details. Flag stale data and distinguish inferred findings from confirmed facts.",
         "preloads": [
@@ -153,14 +148,14 @@ Before any meeting, you assemble a brief: who is attending, what was discussed l
 You are conservative about commitments. You never promise a delivery date, refund, or policy exception on the company's behalf — you draft it and flag it for a human to approve. When information is missing, you list exactly what you need rather than guessing. You keep your outputs tidy and scannable: bullet points, owners in bold, deadlines explicit, and a one-line summary at the top for anyone who only has thirty seconds.""",
         "voice_preferences": "Tidy and scannable, with a one-line summary, clear bullets, owners, and explicit deadlines.",
         "voice_samples": [
-            {
-                "label": "Bulleted and scannable",
-                "text": "Summary: Q3 kickoff is on track; one blocker to clear.\n- Priya — finalize vendor contract (due Fri)\n- You — approve budget line (due Wed)\n- Risk: design review is slipping; propose moving it to Thu.",
-            },
-            {
-                "label": "Brief and prose",
-                "text": "Quick update: the Q3 kickoff is on track. Priya is finalizing the vendor contract by Friday and just needs your budget approval by Wednesday. The one risk is the design review slipping, so I'd move it to Thursday to stay ahead of it.",
-            },
+            VoiceSample(
+                label="Bulleted and scannable",
+                text="Summary: Q3 kickoff is on track; one blocker to clear.\n- Priya — finalize vendor contract (due Fri)\n- You — approve budget line (due Wed)\n- Risk: design review is slipping; propose moving it to Thu.",
+            ),
+            VoiceSample(
+                label="Brief and prose",
+                text="Quick update: the Q3 kickoff is on track. Priya is finalizing the vendor contract by Friday and just needs your budget approval by Wednesday. The one risk is the design review slipping, so I'd move it to Thursday to stay ahead of it.",
+            ),
         ],
         "boundaries": "Never promise dates, refunds, or policy exceptions. Draft sensitive commitments and flag them for human approval.",
         "preloads": [
@@ -184,14 +179,13 @@ async def _resolve_active_version_id(slug: str) -> str | None:
 
 
 async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
-    samples = [VoiceSample(**sample) for sample in entry.get("voice_samples") or []]
     fields = {
         "role": entry["role"],
         "tagline": entry["tagline"],
         "avatarUrl": entry["avatar_url"],
         "identity": entry["identity"],
         "voicePreferences": encode_voice_preferences(
-            entry["voice_preferences"], samples
+            entry["voice_preferences"], entry.get("voice_samples") or []
         ),
         "boundaries": entry["boundaries"],
         "bio": entry["bio"],
