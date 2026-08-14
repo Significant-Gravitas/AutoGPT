@@ -439,7 +439,7 @@ class OrchestratorBlock(Block):
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
-        credentials: Optional[llm.AICredentials] = llm.AICredentialsField()
+        credentials: llm.AICredentials | None = llm.AICredentialsField()
         multiple_tool_calls: bool = SchemaField(
             title="Multiple Tool Calls",
             default=False,
@@ -1699,8 +1699,7 @@ class OrchestratorBlock(Block):
         # Extended thinking does not support subscription-mode (platform-managed credits).
         # Use *credential* provider for routing (not model metadata provider),
         # because a user may select an Anthropic model but route through OpenRouter.
-        provider = credentials.provider
-        if not credentials.api_key:
+        if credentials is None or not credentials.api_key:
             yield (
                 "error",
                 (
@@ -1709,6 +1708,7 @@ class OrchestratorBlock(Block):
                 ),
             )
             return
+        provider = credentials.provider
         api_key = credentials.api_key.get_secret_value()
         if provider == "open_router":
             # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
