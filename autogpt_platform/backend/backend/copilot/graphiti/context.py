@@ -60,14 +60,14 @@ def _signal_units(message: str) -> int:
     the refresh for those users.  So each CJK/ideographic character counts as
     its own unit and is added to the whitespace-word count of the rest.
     """
-    cjk = sum(1 for ch in message if _is_ideographic(ch))
+    cjk = sum(1 for ch in message if _is_unspaced_script(ch))
     # Words made of non-CJK runs; CJK chars are counted individually above, so
     # exclude them from the whitespace-split count to avoid double counting.
-    non_cjk = "".join(" " if _is_ideographic(ch) else ch for ch in message)
+    non_cjk = "".join(" " if _is_unspaced_script(ch) else ch for ch in message)
     return cjk + len(non_cjk.split())
 
 
-def _is_ideographic(ch: str) -> bool:
+def _is_unspaced_script(ch: str) -> bool:
     # CJK Unified Ideographs, Hiragana, Katakana, Hangul, Thai — scripts whose
     # tokens are not whitespace-delimited.  Range checks only, no deps.
     code = ord(ch)
@@ -290,16 +290,23 @@ def _spawn_ratification_hits(user_id: str, edges) -> None:
 # consumer at once rather than each reader separately.
 #
 # Matched by pattern, not exact string: an LLM parses XML fuzzily, so
-# ``</temporal_context >``, ``</Temporal_Context>`` and ``</ temporal_context>``
-# all read as a closing tag to the model even though none of them equals the
-# literal. An exact-string replace would neutralise the tidy spelling and let
-# every variant through — which is the only spelling an attacker would use.
-_CONTEXT_CLOSE_TAG_NEUTRALISED = "<!/temporal_context>"
-_CONTEXT_CLOSE_TAG_RE = re.compile(r"<\s*/\s*temporal_context\s*>", re.IGNORECASE)
+# ``</temporal_context >``, ``</Temporal_Context>``, ``</ temporal_context>``
+# and ``</temporal_context ignore>`` all read as a closing tag to the model
+# even though none equals the literal. An exact-string replace would
+# neutralise the tidy spelling and let every variant through — and the tidy
+# spelling is the one an attacker would never use. ``[^>]*`` therefore
+# absorbs trailing junk, and ``\b`` keeps ``</temporal_contextual>`` (a
+# different word) untouched.
+#
+# BOTH directions are neutralised. A bare ``<temporal_context …>`` open tag
+# inside retrieved text can't end the block, but it can plant nested
+# structure the model mis-scopes — and only the builder is entitled to emit
+# the delimiter in either direction.
+_CONTEXT_TAG_RE = re.compile(r"<\s*(/?)\s*temporal_context\b[^>]*>", re.IGNORECASE)
 
 
 def _neutralise_context_tags(text: str) -> str:
-    return _CONTEXT_CLOSE_TAG_RE.sub(_CONTEXT_CLOSE_TAG_NEUTRALISED, text)
+    return _CONTEXT_TAG_RE.sub(lambda m: f"<!{m.group(1)}temporal_context>", text)
 
 
 def _format_context(edges, episodes) -> str | None:

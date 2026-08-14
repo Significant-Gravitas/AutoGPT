@@ -506,8 +506,9 @@ async def _refresh_follow_up_warm_context(
 ) -> str | None:
     """Fill in warm context on a follow-up user turn (SECRT-2378).
 
-    Mirrors the SDK engine's ``_append_follow_up_warm_context`` gate so both
-    engines read alike and this one is independently testable.
+    Parallels the SDK engine's ``_append_follow_up_warm_context`` gate (with
+    the documented divergence below) so both engines read alike and this one
+    is independently testable.
 
     Called AFTER the pending fold so the retrieval query is the COMBINED
     message: a queued substantive request paired with a short current send
@@ -521,14 +522,19 @@ async def _refresh_follow_up_warm_context(
     skips recall where the SDK path would force it. Tracked as follow-up debt;
     a substantive post-compaction turn refreshes on both engines.
 
-    Returns the refreshed block, or ``warm_ctx`` unchanged when the gate
-    doesn't fire.
+    Returns the refreshed block, or ``warm_ctx`` unchanged whenever the
+    refresh produces nothing — an inner substance-gate skip and an empty
+    retrieval both fall back rather than overwrite. ``warm_ctx`` is always
+    None on follow-ups today, so this only matters if first-turn context ever
+    reaches this path; returning the inner None directly would silently wipe
+    it, which is the opposite of what the name promises.
     """
     if not (graphiti_enabled and user_id and is_user_message):
         return warm_ctx
     if pre_drain_msg_count <= 1:
         return warm_ctx
-    return await refresh_warm_context(user_id, message)
+    refreshed = await refresh_warm_context(user_id, message)
+    return refreshed if refreshed else warm_ctx
 
 
 def _emit(state: "_BaselineStreamState", event: StreamBaseResponse) -> None:

@@ -2460,6 +2460,42 @@ class TestStripEphemeralMemoryFromCliJsonl:
         line = self._user_line(block)
         assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
 
+    def _user_line_str(self, text: str) -> bytes:
+        """A user entry whose ``content`` is a BARE STRING.
+
+        The CLI emits this shape as well as the list-of-blocks one, so it
+        drives ``_CLIUserTextMessage`` rather than ``_CLIUserBlocksMessage``.
+        """
+        return (
+            b'{"type":"user","message":{"role":"user","content":'
+            + json.dumps(text).encode()
+            + b"}}\n"
+        )
+
+    def test_strips_the_block_from_bare_string_content(self):
+        # The string-content branch is a real CLI shape but every other test
+        # here uses list-form blocks, so this path could strand injected
+        # memory in the transcript with the whole suite green.
+        block = _mark_injected_memory_block(
+            "<temporal_context>\n  - stale fact\n</temporal_context>"
+        )
+        line = self._user_line_str(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"stale fact" not in result
+        restored = json.loads(result.strip())["message"]["content"]
+        # Still a bare string, and the user's own text is byte-identical.
+        assert restored == "deploy staging now"
+
+    def test_bare_string_that_is_only_the_block_is_left_intact(self):
+        # Emptying the content is what --resume rejects, so this fails safe
+        # by keeping the line rather than emitting "".
+        block = _mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        line = self._user_line_str(block)
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
     def test_round_trips_with_the_injector(self):
         # What _append_follow_up_warm_context stamps, the stripper removes.
         query_with_block = "the user turn\n\n" + _mark_injected_memory_block(

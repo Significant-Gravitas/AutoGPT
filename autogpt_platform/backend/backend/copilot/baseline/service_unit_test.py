@@ -2870,3 +2870,31 @@ class TestRefreshFollowUpWarmContext:
             )
 
         assert mock_refresh.await_args.args[1] == folded
+
+    @pytest.mark.asyncio
+    async def test_empty_refresh_preserves_incoming_context(self):
+        """The outer gate fires but the refresh yields nothing — an inner
+        substance-gate skip on a trivial message, or an empty graph.
+
+        Returning that None straight through would WIPE context the caller
+        already had, which is the opposite of this helper's contract. Benign
+        today only because ``warm_ctx`` is always None on follow-ups; this
+        pins the behaviour so a future change that does populate it can't
+        silently drop it.
+        """
+        with patch(
+            "backend.copilot.baseline.service.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_refresh:
+            out = await _refresh_follow_up_warm_context(
+                "<temporal_context>first</temporal_context>",
+                graphiti_enabled=True,
+                user_id="u-1",
+                is_user_message=True,
+                pre_drain_msg_count=4,
+                message="ok",
+            )
+
+        mock_refresh.assert_awaited_once()
+        assert out == "<temporal_context>first</temporal_context>"
