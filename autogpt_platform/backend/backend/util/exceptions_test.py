@@ -23,6 +23,10 @@ _GRAPH_EXECUTION_SQL = (
 _SQL_LEGACY_ERROR_PREDICATE = re.compile(
     r"""ge\."stats"::jsonb->>'error'\s*(?P<operator>=|~)\s*'(?P<pattern>(?:''|[^'])*)'"""
 )
+_SQL_NO_CREDITS_BRANCH = re.compile(
+    r"""WHEN\s+CAST\(ge\."executionStatus"\s+AS\s+TEXT\)\s*=\s*'FAILED'\s+AND\s*\(\s*ge\."stats"::jsonb->>'failure_reason'\s*=\s*'insufficient_balance'.*?\)\s*THEN\s+'NO_CREDITS'""",
+    re.DOTALL,
+)
 _LEGACY_BALANCE_CORPUS = (
     ("You have no credits left to run an agent.", True),
     ("Insufficient balance of $0.0, where this will cost $1.25", True),
@@ -48,8 +52,14 @@ _LEGACY_BALANCE_CORPUS = (
 )
 
 
+def _read_graph_execution_sql() -> str:
+    if not _GRAPH_EXECUTION_SQL.exists():
+        pytest.skip("analytics SQL is not included in this backend package")
+    return _GRAPH_EXECUTION_SQL.read_text(encoding="utf-8")
+
+
 def _matches_analytics_sql_legacy_predicate(message: str) -> bool:
-    sql = _GRAPH_EXECUTION_SQL.read_text(encoding="utf-8")
+    sql = _read_graph_execution_sql()
     predicates = [
         (match["operator"], match["pattern"].replace("''", "'"))
         for match in _SQL_LEGACY_ERROR_PREDICATE.finditer(sql)
@@ -78,6 +88,12 @@ def test_typed_insufficient_balance_error_is_classified_by_type():
         get_execution_failure_reason(error)
         == ExecutionFailureReason.INSUFFICIENT_BALANCE
     )
+
+
+def test_analytics_sql_gates_structured_credit_failures_on_failed_status():
+    sql = _read_graph_execution_sql()
+
+    assert _SQL_NO_CREDITS_BRANCH.search(sql)
 
 
 def test_untyped_balance_error_is_not_classified():

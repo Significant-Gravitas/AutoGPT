@@ -71,6 +71,18 @@ def test_legacy_failure_reason_is_derived_only_for_failed_executions(
     assert execution.stats.failure_reason == expected_reason
 
 
+def test_failed_execution_without_error_has_no_derived_failure_reason():
+    execution = GraphExecutionMeta.from_db(
+        _db_execution(
+            status=ExecutionStatus.FAILED,
+            stats={"error": None},
+        )
+    )
+
+    assert execution.stats is not None
+    assert execution.stats.failure_reason is None
+
+
 def test_persisted_failure_reason_is_preserved():
     execution = GraphExecutionMeta.from_db(
         _db_execution(

@@ -958,16 +958,6 @@ class ExecutionProcessor:
                 graph_exec_id=graph_exec.graph_exec_id,
                 status=ExecutionStatus.RUNNING,
             )
-        elif exec_meta.status == ExecutionStatus.FAILED:
-            exec_meta.status = ExecutionStatus.RUNNING
-            log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was disturbed, continuing where it left off."
-            )
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=ExecutionStatus.RUNNING,
-            )
         else:
             log_metadata.warning(
                 f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
@@ -1084,12 +1074,15 @@ class ExecutionProcessor:
         running_node_evaluation = self.running_node_evaluation
 
         try:
-            if not graph_exec.execution_context.dry_run:
+            if (
+                not graph_exec.execution_context.dry_run
+                and settings.config.enable_credit
+            ):
                 credit_balance = _get_execution_credit_balance(db_client, graph_exec)
                 if credit_balance <= 0:
                     raise InsufficientBalanceError(
                         user_id=graph_exec.user_id,
-                        message="You have no credits left to run an agent.",
+                        message=f"The billed account has {credit_balance} credits but needs 1",
                         balance=credit_balance,
                         amount=1,
                     )

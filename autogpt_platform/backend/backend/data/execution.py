@@ -303,6 +303,19 @@ class GraphExecutionMeta(BaseDbModel):
                 )
             stats = None
 
+        failure_reason = stats.failure_reason if stats else None
+        if (
+            stats
+            and failure_reason is None
+            and execution_status == ExecutionStatus.FAILED
+        ):
+            # Historical error text may include provider-controlled content, so
+            # this compatibility path accepts only the anchored full-message forms.
+            failure_reason = get_execution_failure_reason(
+                stats.error,
+                allow_legacy_text=True,
+            )
+
         return GraphExecutionMeta(
             id=_graph_exec.id,
             user_id=_graph_exec.userId,
@@ -338,15 +351,7 @@ class GraphExecutionMeta(BaseDbModel):
                         if isinstance(stats.error, Exception)
                         else stats.error
                     ),
-                    failure_reason=stats.failure_reason
-                    or (
-                        get_execution_failure_reason(
-                            stats.error,
-                            allow_legacy_text=True,
-                        )
-                        if execution_status == ExecutionStatus.FAILED
-                        else None
-                    ),
+                    failure_reason=failure_reason,
                     activity_status=stats.activity_status,
                     correctness_score=stats.correctness_score,
                 )

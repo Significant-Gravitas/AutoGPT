@@ -101,8 +101,8 @@ class ExecutionFailureReason(str, Enum):
 
 
 # Keep this legacy-only fallback synchronized with the equivalent predicates in
-# autogpt_platform/analytics/queries/graph_execution.sql. Live failures must be
-# classified by exception type before serialization, never by these messages.
+# autogpt_platform/analytics/queries/graph_execution.sql and the shared corpus in
+# exceptions_test.py. Live failures are classified by type, never by these messages.
 _LEGACY_INSUFFICIENT_BALANCE_PATTERNS = (
     re.compile(r"You have no credits left to run an agent\."),
     re.compile(
