@@ -24,9 +24,10 @@ const FALLBACK_ARCHIVED_NAME = "This expert";
  * Fail closed: once the roster query has SETTLED (success or error), a
  * session pointing at an expert we can't resolve is treated as archived
  * (read-only history, generic name) — never a writable plain Autopilot
- * thread. Passing the settled flag rather than the success flag is
- * load-bearing: a failed roster fetch must not fail open into a writable
- * composer.
+ * thread. A cached identity can still supply its name after a failed
+ * refetch, but is marked unavailable and read-only. Passing the settled
+ * flag rather than the success flag is load-bearing: a failed roster fetch
+ * must not fail open into a writable composer.
  */
 export function resolveExpertIdentity(
   activeExpertId: string | null,
@@ -36,7 +37,11 @@ export function resolveExpertIdentity(
 ): ExpertIdentity | null {
   if (!activeExpertId) return null;
   const found = expertsById.get(activeExpertId);
-  if (found) return found;
+  if (found) {
+    return hasExpertsErrored
+      ? { ...found, isArchived: true, isUnavailable: true }
+      : found;
+  }
   if (!hasExpertsSettled) return null;
   return {
     id: activeExpertId,
@@ -53,9 +58,9 @@ export function resolveExpertIdentity(
  *
  * CONTRACT: `expertsById` deliberately includes ARCHIVED experts — it is the
  * identity source for read-only fired-expert threads, so it must keep
- * resolving names after an expert leaves the active roster. Consumers that
- * present experts as addressable receive the separate `activeExperts`
- * projection instead of iterating this map.
+ * resolving names after an expert leaves the active roster or a background
+ * refetch fails. Consumers that present experts as addressable receive the
+ * separate `activeExperts` projection instead of iterating this map.
  */
 export function useExpertMap() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
@@ -88,11 +93,11 @@ export function useExpertMap() {
     };
   }, [expertsQuery.data]);
 
-  const canUseIdentities = isExpertsEnabled && !expertsQuery.isError;
+  const canAddressExperts = isExpertsEnabled && !expertsQuery.isError;
 
   return {
-    expertsById: canUseIdentities ? expertCollections.expertsById : EMPTY_MAP,
-    activeExperts: canUseIdentities
+    expertsById: isExpertsEnabled ? expertCollections.expertsById : EMPTY_MAP,
+    activeExperts: canAddressExperts
       ? expertCollections.activeExperts
       : EMPTY_EXPERTS,
     // A disabled query reports `isPending` forever, so all flags stay gated

@@ -232,7 +232,7 @@ describe("Copilot expert thread — fail-closed identity", () => {
 
     const notice = await screen.findByTestId("archived-expert-notice");
     expect(notice.textContent).toContain(
-      "is temporarily unavailable — this thread is read-only",
+      "Maria is temporarily unavailable — this thread is read-only",
     );
     expect(screen.queryByTestId("composer")).toBeNull();
   });
