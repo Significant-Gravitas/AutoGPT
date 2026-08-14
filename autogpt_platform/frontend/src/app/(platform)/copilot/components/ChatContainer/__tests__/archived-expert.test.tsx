@@ -89,6 +89,7 @@ const mariaIdentity = {
   avatarUrl: null,
   role: "Marketing Strategist",
   isArchived: false,
+  isUnavailable: false,
 };
 
 describe("ChatContainer — archived expert", () => {
@@ -127,6 +128,21 @@ describe("ChatContainer — archived expert", () => {
         {...baseProps}
         onSend={onSend}
         expertIdentity={{ ...mariaIdentity, isArchived: true }}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("error-retry"));
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("never resends through error retry while expert identity is unresolved", () => {
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        isResolvingExpertIdentity
       />,
     );
 

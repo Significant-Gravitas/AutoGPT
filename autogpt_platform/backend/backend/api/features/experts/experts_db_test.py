@@ -163,46 +163,34 @@ async def test_rehire_after_archive_revives_expert(server: SpinTestServer, test_
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_list_experts_include_archived_returns_fired_experts(
-    server: SpinTestServer, test_user
-):
-    template = await _seed_template(name="Maria", preload_listings=[])
-    hired = await experts_db.hire_expert(test_user.id, template.id, None)
-    await experts_db.archive_expert(test_user.id, hired.expert.id)
-
-    active_ids = {e.id for e in await experts_db.list_experts(test_user.id)}
-    assert hired.expert.id not in active_ids
-
-    with_archived = await experts_db.list_experts(test_user.id, include_archived=True)
-    archived = next(e for e in with_archived if e.id == hired.expert.id)
-    assert archived.is_archived is True
-
-
-@pytest.mark.asyncio(loop_scope="session")
 async def test_list_expert_identities_is_lightweight_and_includes_archived(
-    server: SpinTestServer, test_user
+    server: SpinTestServer, test_user, other_user
 ):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    other_hired = await experts_db.hire_expert(other_user.id, template.id, None)
     await experts_db.archive_expert(test_user.id, hired.expert.id)
 
     with (
         patch.object(experts_db, "_latest_runs", new_callable=AsyncMock) as latest_runs,
         patch.object(
-            experts_db, "get_weekly_spend", new_callable=AsyncMock
+            experts_db, "_weekly_spends", new_callable=AsyncMock
         ) as weekly_spend,
     ):
         identities = await experts_db.list_expert_identities(test_user.id)
 
+    identity_ids = {item.id for item in identities}
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.name == hired.expert.name
     assert identity.is_archived is True
+    assert template.id not in identity_ids
+    assert other_hired.expert.id not in identity_ids
     latest_runs.assert_not_awaited()
     weekly_spend.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_list_experts_reads_weekly_spend_per_expert(
+async def test_list_experts_reads_weekly_spend_for_each_expert(
     server: SpinTestServer, test_user
 ):
     hired = [
@@ -217,12 +205,39 @@ async def test_list_experts_reads_weekly_spend_per_expert(
 
     with patch.object(
         experts_db,
-        "get_weekly_spend",
-        new=AsyncMock(side_effect=lambda expert_id: spends.get(expert_id, 0)),
+        "_weekly_spends",
+        new=AsyncMock(return_value=spends),
     ):
         experts = await experts_db.list_experts(test_user.id)
 
     assert {e.id: e.weekly_spend for e in experts if e.id in spends} == spends
+
+
+@pytest.mark.asyncio
+async def test_weekly_spends_degrades_an_unexpected_read_failure_to_zero():
+    async def read(expert_id: str) -> int:
+        if expert_id == "expert-bad":
+            raise RuntimeError("redis read failed")
+        return 125
+
+    with patch.object(experts_db, "get_weekly_spend", side_effect=read):
+        spends = await experts_db._weekly_spends(["expert-ok", "expert-bad"])
+
+    assert spends == {"expert-ok": 125, "expert-bad": 0}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_is_expert_active_scopes_owner_and_archive_state(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert await experts_db.is_expert_active(test_user.id, hired.expert.id)
+    assert not await experts_db.is_expert_active(other_user.id, hired.expert.id)
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    assert not await experts_db.is_expert_active(test_user.id, hired.expert.id)
 
 
 @pytest.mark.asyncio(loop_scope="session")

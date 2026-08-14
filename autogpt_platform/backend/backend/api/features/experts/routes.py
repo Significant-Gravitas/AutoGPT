@@ -51,16 +51,10 @@ async def hire_expert(
 
 @router.get("", operation_id="list_experts")
 async def list_experts(
-    include_archived: bool = False,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> list[Expert]:
-    """List the user's hired experts.
-
-    ``include_archived`` returns fired experts too, so chat threads can keep
-    resolving their (now read-only) identity after the expert leaves the
-    active roster.
-    """
-    return await experts_db.list_experts(user_id, include_archived=include_archived)
+    """List the user's active hired experts."""
+    return await experts_db.list_experts(user_id)
 
 
 @router.get("/identities", operation_id="list_expert_identities")

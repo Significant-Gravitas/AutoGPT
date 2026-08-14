@@ -8,11 +8,13 @@ export interface ExpertIdentity {
   avatarUrl: string | null;
   role: string | null;
   isArchived: boolean;
+  isUnavailable: boolean;
 }
 
 export type ExpertIdentityMap = Map<string, ExpertIdentity>;
 
 const EMPTY_MAP: ExpertIdentityMap = new Map();
+const EMPTY_EXPERTS: ExpertIdentity[] = [];
 
 const FALLBACK_ARCHIVED_NAME = "This expert";
 
@@ -30,6 +32,7 @@ export function resolveExpertIdentity(
   activeExpertId: string | null,
   expertsById: ExpertIdentityMap,
   hasExpertsSettled: boolean,
+  hasExpertsErrored = false,
 ): ExpertIdentity | null {
   if (!activeExpertId) return null;
   const found = expertsById.get(activeExpertId);
@@ -41,19 +44,8 @@ export function resolveExpertIdentity(
     avatarUrl: null,
     role: null,
     isArchived: true,
+    isUnavailable: hasExpertsErrored,
   };
-}
-
-/**
- * Active-roster projection of the identity map. `expertsById` includes
- * ARCHIVED experts by contract (see useExpertMap) — any consumer that lets
- * the user address or pick an expert must go through this filter instead of
- * iterating the raw map.
- */
-export function getActiveExperts(
-  expertsById: ExpertIdentityMap,
-): ExpertIdentity[] {
-  return [...expertsById.values()].filter((expert) => !expert.isArchived);
 }
 
 /**
@@ -62,8 +54,8 @@ export function getActiveExperts(
  * CONTRACT: `expertsById` deliberately includes ARCHIVED experts — it is the
  * identity source for read-only fired-expert threads, so it must keep
  * resolving names after an expert leaves the active roster. Consumers that
- * present experts as addressable (pickers, rosters, mention lists) must use
- * `getActiveExperts` instead of iterating the map directly.
+ * present experts as addressable receive the separate `activeExperts`
+ * projection instead of iterating this map.
  */
 export function useExpertMap() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
@@ -78,31 +70,36 @@ export function useExpertMap() {
   // Memoized on purpose: the identities read out of this map are passed as
   // props (`expertIdentity`) down the whole chat tree, so rebuilding it every
   // render would hand every consumer a fresh object identity each time.
-  const expertsById = useMemo(() => {
+  const expertCollections = useMemo(() => {
     const experts = expertsQuery.data;
-    if (!experts) return EMPTY_MAP;
-    return new Map(
-      experts.map((expert) => [
-        expert.id,
-        {
-          id: expert.id,
-          name: expert.name,
-          avatarUrl: expert.avatar_url ?? null,
-          role: expert.role ?? null,
-          isArchived: expert.is_archived,
-        },
-      ]),
-    );
+    if (!experts)
+      return { expertsById: EMPTY_MAP, activeExperts: EMPTY_EXPERTS };
+    const identities = experts.map((expert) => ({
+      id: expert.id,
+      name: expert.name,
+      avatarUrl: expert.avatar_url ?? null,
+      role: expert.role,
+      isArchived: expert.is_archived,
+      isUnavailable: false,
+    }));
+    return {
+      expertsById: new Map(identities.map((expert) => [expert.id, expert])),
+      activeExperts: identities.filter((expert) => !expert.isArchived),
+    };
   }, [expertsQuery.data]);
 
+  const canUseIdentities = isExpertsEnabled && !expertsQuery.isError;
+
   return {
-    expertsById:
-      isExpertsEnabled && !expertsQuery.isError ? expertsById : EMPTY_MAP,
+    expertsById: canUseIdentities ? expertCollections.expertsById : EMPTY_MAP,
+    activeExperts: canUseIdentities
+      ? expertCollections.activeExperts
+      : EMPTY_EXPERTS,
     // A disabled query reports `isPending` forever, so all flags stay gated
     // on the feature flag to remain honest when experts are off.
     isLoadingExperts: isExpertsEnabled && expertsQuery.isFetching,
-    hasLoadedExperts:
-      isExpertsEnabled && expertsQuery.isSuccess && !expertsQuery.isFetching,
+    hasExpertsErrored:
+      isExpertsEnabled && expertsQuery.isError && !expertsQuery.isFetching,
     // Settled = success OR error. resolveExpertIdentity keys off this so an
     // errored roster fetch fails closed (read-only) instead of open.
     hasExpertsSettled:

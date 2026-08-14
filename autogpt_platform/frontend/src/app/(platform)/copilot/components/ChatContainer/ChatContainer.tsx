@@ -134,7 +134,10 @@ export const ChatContainer = ({
     isSessionUnavailable || isLimitReached || !!isResolvingExpertIdentity;
   // A fired (archived) expert's threads stay as read-only history — the
   // composer is replaced by a quiet notice so no new turns can be sent.
-  const isExpertArchived = Boolean(expertIdentity?.isArchived);
+  const archivedExpertIdentity = expertIdentity?.isArchived
+    ? expertIdentity
+    : null;
+  const isExpertArchived = archivedExpertIdentity !== null;
   const isSendLocked = isExpertArchived || !!isResolvingExpertIdentity;
   const guardedOnSend = isSendLocked ? () => undefined : onSend;
   const inputLayoutId = "copilot-2-chat-input";
@@ -202,9 +205,10 @@ export const ChatContainer = ({
                 bottomContentPadding={usageCardHeight}
                 expertIdentity={expertIdentity}
               />
-              {isExpertArchived ? (
+              {archivedExpertIdentity ? (
                 <ArchivedExpertNotice
-                  expertName={expertIdentity?.name ?? "This expert"}
+                  expertName={archivedExpertIdentity.name}
+                  isUnavailable={archivedExpertIdentity.isUnavailable}
                 />
               ) : (
                 <motion.div

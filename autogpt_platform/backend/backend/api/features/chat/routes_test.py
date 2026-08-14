@@ -264,7 +264,11 @@ def _mock_stream_internals(
     # The route anchors turn tenancy on the session row
     # (session.organization_id / session.team_id), so the stub must carry
     # both — None exercises the legacy ctx-fallback path.
-    mock_session = mocker.MagicMock(organization_id=None, team_id=None)
+    mock_session = mocker.MagicMock(
+        organization_id=None,
+        team_id=None,
+        expert_id=None,
+    )
     mock_session.metadata.llm_auth_provider = llm_auth_provider
     mock_session.metadata.llm_credential_id = (
         "cred-codex" if llm_auth_provider == "codex" else None
@@ -299,7 +303,11 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
-    return types.SimpleNamespace(enqueue=mock_schedule, paywall=mock_paywall)
+    return types.SimpleNamespace(
+        enqueue=mock_schedule,
+        paywall=mock_paywall,
+        session=mock_session,
+    )
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -326,6 +334,29 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     )
     # Should get past validation — 200 streaming response expected
     assert response.status_code == 200
+
+
+def test_stream_chat_rejects_an_archived_expert_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "expert-archived"
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "keep working"},
+    )
+
+    assert response.status_code == 404
+    active_check.assert_awaited_once_with(test_user_id, "expert-archived")
+    mocks.enqueue.assert_not_awaited()
+    mocks.paywall.assert_not_awaited()
 
 
 # ─── Duplicate message dedup ──────────────────────────────────────────
@@ -1496,6 +1527,7 @@ def _mock_stream_queue_internals(
     if session_exists:
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
+        mock_session.expert_id = None
         mocker.patch(
             "backend.api.features.chat.routes._validate_and_get_session",
             new_callable=AsyncMock,
@@ -1543,6 +1575,7 @@ def _mock_stream_queue_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    return mock_session if session_exists else None
 
 
 def test_queue_pending_message_returns_200_when_turn_in_flight(
@@ -1573,6 +1606,28 @@ def test_queue_pending_message_session_not_found_returns_404(
         json={"message": "hi"},
     )
     assert response.status_code == 404
+
+
+def test_queue_pending_message_rejects_an_archived_expert_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_session = _mock_stream_queue_internals(mocker)
+    assert mock_session is not None
+    mock_session.expert_id = "expert-archived"
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up"},
+    )
+
+    assert response.status_code == 404
+    active_check.assert_awaited_once_with(test_user_id, "expert-archived")
 
 
 def test_queue_pending_message_without_active_turn_returns_409(

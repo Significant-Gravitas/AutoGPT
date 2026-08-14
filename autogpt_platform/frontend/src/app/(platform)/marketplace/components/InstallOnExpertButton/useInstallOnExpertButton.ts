@@ -11,7 +11,7 @@ export function useInstallOnExpertButton() {
 
   const canFetchExperts = Boolean(hireExpertsEnabled) && isLoggedIn;
 
-  const expertsQuery = useListExperts(undefined, {
+  const expertsQuery = useListExperts({
     query: {
       select: (x) => x.data as Expert[],
       enabled: canFetchExperts,

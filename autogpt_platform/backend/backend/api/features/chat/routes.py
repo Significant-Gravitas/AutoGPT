@@ -155,6 +155,16 @@ async def _validate_and_get_session(
     return session
 
 
+async def _validate_expert_session_is_writable(
+    session: ChatSessionInfo,
+    user_id: str,
+) -> None:
+    if session.expert_id is None:
+        return
+    if not await experts_db.is_expert_active(user_id, session.expert_id):
+        raise HTTPException(status_code=404, detail="Expert not found")
+
+
 # Minimum age before the orphan-reset paths (``get_session`` and
 # ``cancel_session_task``) will touch a ``chatStatus='running'`` session
 # that has no live Redis stream.  Lower bound has to clear the
@@ -1356,20 +1366,6 @@ async def stream_chat_post(
     """
     import time
 
-    # Fire-and-forget; per-user Redis dedup inside the helper provides
-    # cross-process / cross-restart idempotency. Same pattern as
-    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
-    from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
-
-    # Spawned through the shared helper: the loop only holds a weak
-    # reference, so an unretained task can be GC'd mid-flight — leaving the
-    # Redis marker unwritten and making every subsequent turn redo the whole
-    # registration.
-    spawn_background_task(
-        ensure_morning_briefing_scheduled(user_id),
-        name=f"morning-briefing-register-{user_id[:12]}",
-    )
-
     stream_start_time = time.perf_counter()
     # Wall-clock arrival time, propagated to the executor so the turn-start
     # drain can order pending messages relative to this request (pending
@@ -1384,6 +1380,22 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_session(session_id, user_id)
+    await _validate_expert_session_is_writable(session, user_id)
+
+    # Fire-and-forget; per-user Redis dedup inside the helper provides
+    # cross-process / cross-restart idempotency. Same pattern as
+    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
+    from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
+
+    # Spawned through the shared helper: the loop only holds a weak
+    # reference, so an unretained task can be GC'd mid-flight — leaving the
+    # Redis marker unwritten and making every subsequent turn redo the whole
+    # registration.
+    spawn_background_task(
+        ensure_morning_briefing_scheduled(user_id),
+        name=f"morning-briefing-register-{user_id[:12]}",
+    )
+
     is_platform_route = session.metadata.llm_auth_provider == "platform"
     if is_platform_route:
         await enforce_payment_paywall(user_id)
@@ -1718,6 +1730,7 @@ async def queue_pending_message(
 ):
     """Queue a follow-up message while the session has an active turn."""
     session = await _validate_and_get_session(session_id, user_id)
+    await _validate_expert_session_is_writable(session, user_id)
     if session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
     try:

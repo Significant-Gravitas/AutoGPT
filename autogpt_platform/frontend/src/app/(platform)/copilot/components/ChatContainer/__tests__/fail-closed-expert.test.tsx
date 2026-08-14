@@ -83,11 +83,12 @@ const maria: Expert = {
 // would surface as a writable thread rather than being masked by a hand-set prop.
 function ExpertThreadHarness({ activeExpertId }: { activeExpertId: string }) {
   const queryClient = useQueryClient();
-  const { expertsById, hasExpertsSettled } = useExpertMap();
+  const { expertsById, hasExpertsSettled, hasExpertsErrored } = useExpertMap();
   const expertIdentity = resolveExpertIdentity(
     activeExpertId,
     expertsById,
     hasExpertsSettled,
+    hasExpertsErrored,
   );
   return (
     <>
@@ -140,8 +141,9 @@ describe("Copilot expert thread — fail-closed identity", () => {
 
     const notice = await screen.findByTestId("archived-expert-notice");
     expect(notice.textContent).toContain(
-      "was let go — this thread is read-only",
+      "is temporarily unavailable — this thread is read-only",
     );
+    expect(notice.getAttribute("role")).toBe("status");
     expect(screen.queryByTestId("composer")).toBeNull();
   });
 
@@ -162,7 +164,11 @@ describe("Copilot expert thread — fail-closed identity", () => {
 
     render(<ExpertThreadHarness activeExpertId="expert-maria" />);
 
-    await waitFor(() => expect(screen.getByTestId("composer")).toBeDefined());
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("composer") as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
     expect(screen.queryByTestId("archived-expert-notice")).toBeNull();
   });
 
@@ -226,7 +232,7 @@ describe("Copilot expert thread — fail-closed identity", () => {
 
     const notice = await screen.findByTestId("archived-expert-notice");
     expect(notice.textContent).toContain(
-      "was let go — this thread is read-only",
+      "is temporarily unavailable — this thread is read-only",
     );
     expect(screen.queryByTestId("composer")).toBeNull();
   });

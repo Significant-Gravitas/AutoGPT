@@ -15,7 +15,7 @@ export function useExpertsSection() {
   const templatesQuery = useListExpertTemplates({
     query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
   });
-  const expertsQuery = useListExperts(undefined, {
+  const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
   });
 

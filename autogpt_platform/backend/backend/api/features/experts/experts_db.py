@@ -3,7 +3,6 @@ import logging
 
 import prisma.errors
 import prisma.models
-import prisma.types
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
@@ -23,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
+_WEEKLY_SPEND_READ_CONCURRENCY = 10
 
 
 class ExpertTemplateNotFoundError(Exception):
@@ -113,24 +113,38 @@ async def list_templates() -> list[Expert]:
     return [_to_model(row) for row in rows]
 
 
-async def list_experts(user_id: str, include_archived: bool = False) -> list[Expert]:
-    where: prisma.types.ExpertWhereInput = {
-        "ownerUserId": user_id,
-        "isTemplate": False,
-    }
-    if not include_archived:
-        where["isArchived"] = False
+async def _weekly_spends(expert_ids: list[str]) -> dict[str, int]:
+    semaphore = asyncio.Semaphore(_WEEKLY_SPEND_READ_CONCURRENCY)
+
+    async def read(expert_id: str) -> tuple[str, int]:
+        async with semaphore:
+            try:
+                return expert_id, await get_weekly_spend(expert_id)
+            except Exception:
+                logger.warning(
+                    "Failed to read weekly spend for expert #%s",
+                    expert_id,
+                    exc_info=True,
+                )
+                return expert_id, 0
+
+    return dict(await asyncio.gather(*(read(expert_id) for expert_id in expert_ids)))
+
+
+async def list_experts(user_id: str) -> list[Expert]:
     rows = await prisma.models.Expert.prisma().find_many(
-        where=where,
+        where={
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
         include=_WORKFLOW_INCLUDE,
     )
     latest_runs = await _latest_runs([row.id for row in rows])
-    # Keep team and marketplace roster loads from serializing one Redis
-    # round-trip per active expert.
-    weekly_spends = await asyncio.gather(*(get_weekly_spend(row.id) for row in rows))
+    weekly_spends = await _weekly_spends([row.id for row in rows])
     return [
-        _to_model(row, latest_runs.get(row.id), spend)
-        for row, spend in zip(rows, weekly_spends)
+        _to_model(row, latest_runs.get(row.id), weekly_spends.get(row.id, 0))
+        for row in rows
     ]
 
 
@@ -140,6 +154,20 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
         where={"ownerUserId": user_id, "isTemplate": False}
     )
     return [_to_identity(row) for row in rows]
+
+
+async def is_expert_active(user_id: str, expert_id: str) -> bool:
+    return (
+        await prisma.models.Expert.prisma().count(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        > 0
+    )
 
 
 async def get_expert(
