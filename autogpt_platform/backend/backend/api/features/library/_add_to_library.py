@@ -25,20 +25,12 @@ from backend.util.json import SafeJson
 logger = logging.getLogger(__name__)
 
 
-async def resolve_graph_for_library(
+async def resolve_store_version_for_library(
     store_listing_version_id: str,
-    user_id: str,
     *,
     admin: bool,
-) -> tuple[GraphModel, prisma.models.StoreListingVersion]:
-    """Look up a StoreListingVersion and resolve its graph.
-
-    When ``admin=True``, uses ``get_graph_as_admin`` to bypass the marketplace
-    APPROVED-only check.  Otherwise uses the regular ``get_graph``.
-
-    Returns the resolved graph together with the StoreListingVersion, so callers
-    can snapshot marketplace metadata without re-querying it.
-    """
+) -> prisma.models.StoreListingVersion:
+    """Look up an installable StoreListingVersion and its graph reference."""
     if admin:
         slv = await prisma.models.StoreListingVersion.prisma().find_unique(
             where={"id": store_listing_version_id}, include={"AgentGraph": True}
@@ -55,19 +47,52 @@ async def resolve_graph_for_library(
         raise NotFoundError(
             f"Store listing version {store_listing_version_id} not found or invalid"
         )
+    return slv
 
-    ag = slv.AgentGraph
-    if admin:
-        graph_model = await graph_db.get_graph_as_admin(
+
+async def resolve_graph_model_for_library(
+    store_listing_version: prisma.models.StoreListingVersion,
+    user_id: str,
+    *,
+    admin: bool,
+) -> GraphModel:
+    """Resolve the graph for an already-validated marketplace version."""
+    ag = store_listing_version.AgentGraph
+    if not ag:
+        raise NotFoundError(
+            f"Store listing version {store_listing_version.id} has no graph"
+        )
+
+    graph_model = (
+        await graph_db.get_graph_as_admin(
             graph_id=ag.id, version=ag.version, user_id=user_id
         )
-    else:
-        graph_model = await graph_db.get_graph(
+        if admin
+        else await graph_db.get_graph(
             graph_id=ag.id, version=ag.version, user_id=user_id
         )
-
+    )
     if not graph_model:
         raise NotFoundError(f"Graph #{ag.id} v{ag.version} not found or accessible")
+    return graph_model
+
+
+async def resolve_graph_for_library(
+    store_listing_version_id: str,
+    user_id: str,
+    *,
+    admin: bool,
+) -> tuple[GraphModel, prisma.models.StoreListingVersion]:
+    """Look up a StoreListingVersion and resolve its graph.
+
+    When ``admin=True``, uses ``get_graph_as_admin`` to bypass the marketplace
+    APPROVED-only check.  Otherwise uses the regular ``get_graph``.
+
+    Returns the resolved graph together with the StoreListingVersion, so callers
+    can snapshot marketplace metadata without re-querying it.
+    """
+    slv = await resolve_store_version_for_library(store_listing_version_id, admin=admin)
+    graph_model = await resolve_graph_model_for_library(slv, user_id, admin=admin)
     return graph_model, slv
 
 
@@ -89,6 +114,44 @@ def _marketplace_metadata(
             else None
         ),
     }
+
+
+async def restore_existing_library_agent(
+    store_listing_version: prisma.models.StoreListingVersion,
+    user_id: str,
+) -> library_model.LibraryAgent | None:
+    """Restore and return an existing library entry without loading its graph."""
+    ag = store_listing_version.AgentGraph
+    if not ag:
+        raise NotFoundError(
+            f"Store listing version {store_listing_version.id} has no graph"
+        )
+
+    client = prisma.models.LibraryAgent.prisma()
+    where = {
+        "userId_agentGraphId_agentGraphVersion": {
+            "userId": user_id,
+            "agentGraphId": ag.id,
+            "agentGraphVersion": ag.version,
+        }
+    }
+    existing = await client.find_unique(where=where)
+    if existing is None:
+        return None
+
+    restored = await client.update(
+        where=where,
+        data={
+            "isDeleted": False,
+            "isArchived": False,
+            **_marketplace_metadata(store_listing_version),
+        },
+        include=library_agent_include(
+            user_id, include_nodes=False, include_executions=False
+        ),
+    )
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=ag.id)
+    return library_model.LibraryAgent.from_db(restored, schedule_info=schedule_info)
 
 
 async def add_graph_to_library(

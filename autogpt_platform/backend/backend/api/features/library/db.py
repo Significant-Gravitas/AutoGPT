@@ -1258,14 +1258,25 @@ async def add_store_agent_to_library(
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    from ._add_to_library import add_graph_to_library, resolve_graph_for_library
+    from ._add_to_library import (
+        add_graph_to_library,
+        resolve_graph_model_for_library,
+        resolve_store_version_for_library,
+        restore_existing_library_agent,
+    )
 
     logger.debug(
         f"Adding agent from store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
-    graph_model, store_listing_version = await resolve_graph_for_library(
-        store_listing_version_id, user_id, admin=False
+    store_listing_version = await resolve_store_version_for_library(
+        store_listing_version_id, admin=False
+    )
+    existing = await restore_existing_library_agent(store_listing_version, user_id)
+    if existing is not None:
+        return existing
+    graph_model = await resolve_graph_model_for_library(
+        store_listing_version, user_id, admin=False
     )
     return await add_graph_to_library(graph_model, user_id, store_listing_version)
 
@@ -1275,14 +1286,25 @@ async def add_store_agent_to_library_as_admin(
 ) -> library_model.LibraryAgent:
     """Admin variant that uses `get_graph_as_admin` to bypass marketplace
     APPROVED-only checks, allowing admins to add pending agents for review."""
-    from ._add_to_library import add_graph_to_library, resolve_graph_for_library
+    from ._add_to_library import (
+        add_graph_to_library,
+        resolve_graph_model_for_library,
+        resolve_store_version_for_library,
+        restore_existing_library_agent,
+    )
 
     logger.warning(
         f"ADMIN adding agent from store listing version "
         f"#{store_listing_version_id} to library for user #{user_id}"
     )
-    graph_model, store_listing_version = await resolve_graph_for_library(
-        store_listing_version_id, user_id, admin=True
+    store_listing_version = await resolve_store_version_for_library(
+        store_listing_version_id, admin=True
+    )
+    existing = await restore_existing_library_agent(store_listing_version, user_id)
+    if existing is not None:
+        return existing
+    graph_model = await resolve_graph_model_for_library(
+        store_listing_version, user_id, admin=True
     )
     return await add_graph_to_library(graph_model, user_id, store_listing_version)
 

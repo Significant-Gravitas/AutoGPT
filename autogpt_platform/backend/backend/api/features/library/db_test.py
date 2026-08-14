@@ -380,6 +380,7 @@ async def test_add_agent_to_library(mocker):
     )
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_unique = mocker.AsyncMock(return_value=None)
     mock_library_agent.return_value.create = mocker.AsyncMock(
         return_value=mock_library_agent_data
     )
@@ -439,6 +440,64 @@ async def test_add_agent_to_library(mocker):
     assert create_call_args.kwargs["include"] == library_agent_include(
         "test-user", include_nodes=False, include_executions=False
     )
+
+
+@pytest.mark.asyncio
+async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker):
+    agent_graph = MagicMock(id="agent1", version=1)
+    store_version = MagicMock(
+        id="version123",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        AgentGraph=agent_graph,
+        description="Marketplace description",
+        imageUrls=["https://example.com/agent.png"],
+    )
+    store_version.name = "Marketplace agent"
+    existing = MagicMock(id="library-agent")
+    restored = MagicMock(id="library-agent")
+    converted = MagicMock(id="library-agent")
+
+    store_client = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    store_client.return_value.find_first = mocker.AsyncMock(return_value=store_version)
+    library_client = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library_client.return_value.find_unique = mocker.AsyncMock(return_value=existing)
+    library_client.return_value.update = mocker.AsyncMock(return_value=restored)
+    library_client.return_value.create = mocker.AsyncMock()
+    get_graph = mocker.patch(
+        "backend.api.features.library._add_to_library.graph_db.get_graph",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.library._add_to_library._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
+    )
+    from_db = mocker.patch(
+        "backend.api.features.library.model.LibraryAgent.from_db",
+        return_value=converted,
+    )
+
+    result = await db.add_store_agent_to_library("version123", "test-user")
+
+    assert result is converted
+    get_graph.assert_not_awaited()
+    library_client.return_value.create.assert_not_awaited()
+    update_call = library_client.return_value.update.call_args
+    assert update_call.kwargs["where"] == {
+        "userId_agentGraphId_agentGraphVersion": {
+            "userId": "test-user",
+            "agentGraphId": "agent1",
+            "agentGraphVersion": 1,
+        }
+    }
+    assert update_call.kwargs["data"] == {
+        "isDeleted": False,
+        "isArchived": False,
+        "name": "Marketplace agent",
+        "description": "Marketplace description",
+        "imageUrl": "https://example.com/agent.png",
+    }
+    from_db.assert_called_once_with(restored, schedule_info={})
 
 
 @pytest.mark.asyncio(loop_scope="session")
