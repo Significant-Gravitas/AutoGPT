@@ -64,21 +64,26 @@ _pending_funnel_writes: set[asyncio.Task] = set()
 
 
 async def _write_funnel_event(
-    user_id: str, event: str, data: dict, data_index: str
+    user_id: str, event: str, data: dict, data_index: str | None
 ) -> None:
     try:
-        if data_index != event:
+        effective_data_index = event if data_index is None else data_index
+        if data_index is not None:
             # An explicit index is an idempotency key: retries and requeues
             # pass the same one, so an existing row means this exact event
             # already landed. Best-effort read-then-write — a lost race
             # duplicates one analytics row, which beats a schema migration
             # for instrumentation.
             existing = await prisma.models.AnalyticsDetails.prisma().find_first(
-                where={"userId": user_id, "type": event, "dataIndex": data_index}
+                where={
+                    "userId": user_id,
+                    "type": event,
+                    "dataIndex": effective_data_index,
+                }
             )
             if existing is not None:
                 return
-        await log_raw_analytics(user_id, event, data, data_index)
+        await log_raw_analytics(user_id, event, data, effective_data_index)
     except Exception:
         logger.exception("Failed to log funnel event %s for user %s", event, user_id)
 
@@ -94,9 +99,7 @@ async def emit_funnel_event(
     `data_index` is given, which also makes the emission idempotent under
     retries.
     """
-    task = asyncio.create_task(
-        _write_funnel_event(user_id, event, data, data_index or event)
-    )
+    task = asyncio.create_task(_write_funnel_event(user_id, event, data, data_index))
     _pending_funnel_writes.add(task)
     task.add_done_callback(_pending_funnel_writes.discard)
 

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -785,6 +786,31 @@ async def test_reviving_archived_expert_emits_hire_completed(
     await experts_db.archive_expert(test_user.id, hired.expert.id)
     with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
         await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_awaited_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_revival_emits_hire_completed_once(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        first, second = await asyncio.gather(
+            experts_db.hire_expert(test_user.id, template.id, None),
+            experts_db.hire_expert(test_user.id, template.id, None),
+        )
+
+    assert first.expert.id == hired.expert.id
+    assert second.expert.id == hired.expert.id
+    assert not first.expert.is_archived
+    assert not second.expert.is_archived
     emit.assert_awaited_once_with(
         test_user.id,
         "hire_completed",
