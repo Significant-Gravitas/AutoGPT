@@ -5575,52 +5575,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experts/{expert_id}/pod": {
-      "patch": {
-        "tags": ["v2", "experts", "experts", "private"],
-        "summary": "Assign Expert Pod",
-        "operationId": "assign_expert_pod",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "expert_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Expert Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/AssignPodRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Expert" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "404": { "description": "Expert or pod not found" },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/experts/templates": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -5741,6 +5695,52 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/pod": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Assign Expert Pod",
+        "operationId": "assign_expert_pod",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AssignPodRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert or pod not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -14480,6 +14480,16 @@
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
       },
+      "AssignPodRequest": {
+        "properties": {
+          "pod_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pod Id"
+          }
+        },
+        "type": "object",
+        "title": "AssignPodRequest"
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -16532,6 +16542,19 @@
         "required": ["name", "slug"],
         "title": "CreateOrgRequest"
       },
+      "CreatePodRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "CreatePodRequest"
+      },
       "CreateSessionRequest": {
         "properties": {
           "dry_run": {
@@ -17862,6 +17885,24 @@
         ],
         "title": "Expert"
       },
+      "ExpertDetachPreview": {
+        "properties": {
+          "schedule_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Schedule Names"
+          },
+          "trigger_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Trigger Names"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_names", "trigger_names"],
+        "title": "ExpertDetachPreview",
+        "description": "What archiving the expert would pause — drives the confirm dialog."
+      },
       "ExpertPod": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -17894,47 +17935,6 @@
         "type": "object",
         "required": ["id", "name", "created_at", "members"],
         "title": "ExpertPodWithMembers"
-      },
-      "CreatePodRequest": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Name"
-          }
-        },
-        "type": "object",
-        "required": ["name"],
-        "title": "CreatePodRequest"
-      },
-      "AssignPodRequest": {
-        "properties": {
-          "pod_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Pod Id"
-          }
-        },
-        "type": "object",
-        "title": "AssignPodRequest"
-      },
-      "ExpertDetachPreview": {
-        "properties": {
-          "schedule_names": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Schedule Names"
-          },
-          "trigger_names": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Trigger Names"
-          }
-        },
-        "type": "object",
-        "required": ["schedule_names", "trigger_names"],
-        "title": "ExpertDetachPreview",
-        "description": "What archiving the expert would pause — drives the confirm dialog."
       },
       "ExpertSoulUpdate": {
         "properties": {
