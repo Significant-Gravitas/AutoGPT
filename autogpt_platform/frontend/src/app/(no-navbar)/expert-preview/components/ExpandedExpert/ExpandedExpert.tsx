@@ -7,10 +7,10 @@ import Image from "next/image";
 import { getProfessionImageSrc } from "../../helpers";
 import { SelectedExpert } from "../../useExpertPreview";
 
-interface Props {
+type Props = {
   selected: SelectedExpert | null;
   onClose: () => void;
-}
+};
 
 // iOS sheet curve — decelerates hard so the avatar settles instead of landing flat.
 const EXPAND_TRANSITION = { duration: 0.3, ease: [0.32, 0.72, 0, 1] as const };

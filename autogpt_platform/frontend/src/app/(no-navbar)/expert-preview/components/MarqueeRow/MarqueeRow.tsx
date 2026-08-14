@@ -7,14 +7,14 @@ import Image from "next/image";
 import { getProfessionImageSrc, Profession } from "../../helpers";
 import { SelectedExpert } from "../../useExpertPreview";
 
-interface Props {
+type Props = {
   professions: Profession[];
   rowIndex: number;
   reverse?: boolean;
   durationSeconds: number;
   paused: boolean;
   onSelect: (selected: SelectedExpert) => void;
-}
+};
 
 export function MarqueeRow({
   professions,
