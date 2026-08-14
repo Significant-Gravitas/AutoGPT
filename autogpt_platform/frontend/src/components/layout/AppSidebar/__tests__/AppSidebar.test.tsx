@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppSidebar } from "../AppSidebar";
+import { SIDEBAR_TEAM_PREVIEW_COUNT } from "../components/SidebarTeamMembers/SidebarTeamMembers";
 
 function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
   return { ...getGetHomeDashboardResponseMock200(), agents };
@@ -183,7 +184,7 @@ describe("AppSidebar", () => {
     ).toContain("bg-zinc-300");
     expect(
       screen.getByRole("img", { name: "Needs attention" }).className,
-    ).toContain("bg-emerald-500");
+    ).toContain("bg-red-500");
   });
 
   it("keeps Your AI and Hire visible when the user has no hired experts", async () => {
@@ -231,6 +232,51 @@ describe("AppSidebar", () => {
     expect(
       screen.getByRole("link", { name: /^hire$/i }).getAttribute("href"),
     ).toBe("/marketplace#experts");
+  });
+
+  it("shows every member without View all at exactly the preview count", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(
+      getGetHomeDashboardMockHandler200(
+        dashboardWith(
+          Array.from({ length: SIDEBAR_TEAM_PREVIEW_COUNT }, (_, i) =>
+            makeAgent(`expert-${i}`, `Expert ${i}`, "ready"),
+          ),
+        ),
+      ),
+    );
+    renderSidebar();
+
+    expect(
+      await screen.findByRole("link", {
+        name: new RegExp(`Expert ${SIDEBAR_TEAM_PREVIEW_COUNT - 1}`),
+      }),
+    ).toBeDefined();
+    expect(screen.queryByRole("link", { name: /view all/i })).toBeNull();
+  });
+
+  it("shows View all as soon as the roster exceeds the preview count", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(
+      getGetHomeDashboardMockHandler200(
+        dashboardWith(
+          Array.from({ length: SIDEBAR_TEAM_PREVIEW_COUNT + 1 }, (_, i) =>
+            makeAgent(`expert-${i}`, `Expert ${i}`, "ready"),
+          ),
+        ),
+      ),
+    );
+    renderSidebar();
+
+    const viewAll = await screen.findByRole("link", {
+      name: new RegExp(`view all \\(${SIDEBAR_TEAM_PREVIEW_COUNT + 1}\\)`, "i"),
+    });
+    expect(viewAll.getAttribute("href")).toBe("/team");
+    expect(
+      screen.queryByRole("link", {
+        name: new RegExp(`Expert ${SIDEBAR_TEAM_PREVIEW_COUNT}`),
+      }),
+    ).toBeNull();
   });
 
   it("omits the nested team members when the hire-experts flag is off", () => {

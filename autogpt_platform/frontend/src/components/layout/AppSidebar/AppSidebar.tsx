@@ -28,8 +28,8 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
-import { SidebarTeamMembers } from "./components/SidebarTeamMembers/SidebarTeamMembers";
 import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
+import { SidebarTeamMembers } from "./components/SidebarTeamMembers/SidebarTeamMembers";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import {
   ArrowDown01Icon,

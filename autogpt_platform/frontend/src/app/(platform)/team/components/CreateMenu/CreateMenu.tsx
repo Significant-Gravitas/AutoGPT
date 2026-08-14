@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
+import { MARKETPLACE_EXPERTS_HREF } from "@/lib/constants";
 import {
   FlowIcon,
   PlusSignIcon,
@@ -28,7 +29,7 @@ export function CreateMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuItem asChild>
-          <Link href="/marketplace#experts">
+          <Link href={MARKETPLACE_EXPERTS_HREF}>
             <Icon icon={UserAdd01Icon} className="mr-2 size-4" />
             Hire an expert
           </Link>

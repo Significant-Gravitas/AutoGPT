@@ -8,6 +8,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
+import { MARKETPLACE_EXPERTS_HREF } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
@@ -17,8 +18,6 @@ import {
   getPresenceLabel,
 } from "./helpers";
 import { useSidebarTeamMembers } from "./useSidebarTeamMembers";
-
-const HIRE_HREF = "/marketplace#experts";
 
 // Caps the nested list so the sidebar's overflow-hidden container can never
 // clip the trailing "Hire" action; the full roster lives on /team.
@@ -59,7 +58,7 @@ export function SidebarTeamMembers() {
 
       <SidebarMenuSubItem>
         <SidebarMenuSubButton asChild className="text-zinc-500">
-          <Link href={HIRE_HREF}>
+          <Link href={MARKETPLACE_EXPERTS_HREF}>
             <Icon icon={PlusSignIcon} className="size-4" />
             <span className="truncate">Hire</span>
           </Link>

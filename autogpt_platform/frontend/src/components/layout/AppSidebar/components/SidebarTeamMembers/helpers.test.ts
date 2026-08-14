@@ -15,9 +15,12 @@ describe("getPresenceColor", () => {
     expect(getPresenceColor("needs_setup")).toBe("bg-zinc-300");
   });
 
-  it("shows every other status as a live green dot", () => {
+  it("flags failed experts in red", () => {
+    expect(getPresenceColor("failed")).toBe("bg-red-500");
+  });
+
+  it("shows ready experts as a live green dot", () => {
     expect(getPresenceColor("ready")).toBe("bg-emerald-500");
-    expect(getPresenceColor("failed")).toBe("bg-emerald-500");
   });
 });
 
@@ -36,5 +39,9 @@ describe("getExpertChatHref", () => {
     expect(getExpertChatHref("expert-123")).toBe(
       "/copilot?expertId=expert-123",
     );
+  });
+
+  it("url-encodes the expert id", () => {
+    expect(getExpertChatHref("a/b&c")).toBe("/copilot?expertId=a%2Fb%26c");
   });
 });
