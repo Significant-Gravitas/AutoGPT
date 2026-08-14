@@ -21,6 +21,14 @@ class ExpertWorkflowRef(BaseModel):
     schedule_id: str | None = None
 
 
+class ExpertIdentity(BaseModel):
+    id: str
+    name: str
+    avatar_url: str | None
+    role: str
+    is_archived: bool
+
+
 class Expert(BaseModel):
     id: str
     name: str

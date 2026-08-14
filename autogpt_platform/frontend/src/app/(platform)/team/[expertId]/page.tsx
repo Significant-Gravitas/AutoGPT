@@ -9,26 +9,17 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
 import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import {
-  ArrowLeft02Icon,
-  Logout03Icon,
-  MoreVerticalIcon,
-} from "@hugeicons/core-free-icons";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { getLastRunLabel } from "../helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
+import { FireExpertMenu } from "../components/FireExpertMenu/FireExpertMenu";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
@@ -147,27 +138,12 @@ export default function ExpertDetailPage() {
           >
             Chat
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={`${expert.name} actions`}
-                data-testid="expert-detail-actions"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-zinc-500 ring-1 ring-inset ring-black/5 transition-colors hover:bg-white hover:text-zinc-800"
-              >
-                <Icon icon={MoreVerticalIcon} size={18} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6}>
-              <DropdownMenuItem
-                onSelect={openFire}
-                className="flex cursor-pointer items-center gap-2 text-red-600 focus:bg-red-50 focus:text-red-700"
-              >
-                <Icon icon={Logout03Icon} size={14} />
-                Fire {expert.name}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <FireExpertMenu
+            expertName={expert.name}
+            onFire={openFire}
+            testId="expert-detail-actions"
+            triggerClassName="bg-white/70 text-zinc-500 ring-1 ring-inset ring-black/5 hover:bg-white hover:text-zinc-800"
+          />
         </div>
       </header>
 

@@ -9,6 +9,7 @@ from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertIdentity,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -48,6 +49,16 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         description=listing.description if listing else None,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
+    )
+
+
+def _to_identity(row: prisma.models.Expert) -> ExpertIdentity:
+    return ExpertIdentity(
+        id=row.id,
+        name=row.name,
+        avatar_url=row.avatarUrl,
+        role=row.role,
+        is_archived=row.isArchived,
     )
 
 
@@ -122,6 +133,14 @@ async def list_experts(user_id: str, include_archived: bool = False) -> list[Exp
         _to_model(row, latest_runs.get(row.id), spend)
         for row, spend in zip(rows, weekly_spends)
     ]
+
+
+async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
+    """Return the lifetime roster without hydrating team-page details."""
+    rows = await prisma.models.Expert.prisma().find_many(
+        where={"ownerUserId": user_id, "isTemplate": False}
+    )
+    return [_to_identity(row) for row in rows]
 
 
 async def get_expert(

@@ -19,12 +19,12 @@ export function useExpertsSection() {
     query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
   });
 
-  const hiredTemplateIds = new Set(
-    (expertsQuery.data ?? [])
-      .filter((expert) => !expert.is_archived)
-      .map((expert) => expert.source_template_id)
-      .filter((id): id is string => Boolean(id)),
-  );
+  const hiredTemplateIds = new Set<string>();
+  for (const expert of expertsQuery.data ?? []) {
+    if (!expert.is_archived && expert.source_template_id) {
+      hiredTemplateIds.add(expert.source_template_id);
+    }
+  }
 
   return {
     templates: templatesQuery.data ?? [],

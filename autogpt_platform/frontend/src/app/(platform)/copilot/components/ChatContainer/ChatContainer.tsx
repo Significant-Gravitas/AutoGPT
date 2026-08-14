@@ -68,6 +68,9 @@ export interface ChatContainerProps {
   /** Expert identity for expert-scoped sessions (thread header + assistant
    * avatar/name). Null = default header. */
   expertIdentity?: ExpertIdentity | null;
+  /** True while an expert-scoped session's active/archived identity is still
+   * unresolved. Keep every send path locked until the roster settles. */
+  isResolvingExpertIdentity?: boolean;
   /** True while a `?expertId=` deep link may still swap this view for the
    * expert's latest thread — the composer stays locked so a draft can't be
    * lost to that navigation. */
@@ -100,6 +103,7 @@ export const ChatContainer = ({
   onDroppedFilesConsumed,
   turnStats,
   expertIdentity,
+  isResolvingExpertIdentity,
   isAdoptingExpertSession,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
@@ -126,7 +130,8 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
-  const isInputDisabled = isSessionUnavailable || isLimitReached;
+  const isInputDisabled =
+    isSessionUnavailable || isLimitReached || !!isResolvingExpertIdentity;
   // A fired (archived) expert's threads stay as read-only history — the
   // composer is replaced by a quiet notice so no new turns can be sent.
   const isExpertArchived = Boolean(expertIdentity?.isArchived);
@@ -157,7 +162,7 @@ export const ChatContainer = ({
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   // Archived threads are read-only history — retry must never resurrect a send.
   const handleRetry = useCallback(() => {
-    if (isExpertArchived) return;
+    if (isExpertArchived || isResolvingExpertIdentity) return;
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
     const lastText = lastUserMsg?.parts
       .filter(
@@ -168,7 +173,7 @@ export const ChatContainer = ({
     if (lastText) {
       onSend(lastText);
     }
-  }, [isExpertArchived, messages, onSend]);
+  }, [isExpertArchived, isResolvingExpertIdentity, messages, onSend]);
 
   return (
     <CopilotChatActionsProvider onSend={onSend}>

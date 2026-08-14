@@ -64,16 +64,16 @@ export function useFireExpertDialog({
   });
 
   function handleFire() {
-    // Only an unsettled preview blocks firing — the preview is informational,
-    // so a failed request must not hard-block the destructive action. The
-    // button is disabled while loading; this guards stale clicks too.
-    if (previewQuery.isPending) return;
+    // Any in-flight preview blocks firing, including a manual retry with
+    // cached data. A failed, settled preview remains informational and does
+    // not hard-block the destructive action.
+    if (previewQuery.isFetching) return;
     mutate({ expertId });
   }
 
   return {
     preview: previewQuery.data ?? null,
-    isPreviewLoading: previewQuery.isPending,
+    isPreviewLoading: previewQuery.isFetching,
     isPreviewError: previewQuery.isError,
     isPreviewReady: previewQuery.isSuccess,
     retryPreview: previewQuery.refetch,

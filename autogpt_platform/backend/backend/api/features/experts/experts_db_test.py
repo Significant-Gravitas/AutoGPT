@@ -179,6 +179,29 @@ async def test_list_experts_include_archived_returns_fired_experts(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_list_expert_identities_is_lightweight_and_includes_archived(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with (
+        patch.object(experts_db, "_latest_runs", new_callable=AsyncMock) as latest_runs,
+        patch.object(
+            experts_db, "get_weekly_spend", new_callable=AsyncMock
+        ) as weekly_spend,
+    ):
+        identities = await experts_db.list_expert_identities(test_user.id)
+
+    identity = next(item for item in identities if item.id == hired.expert.id)
+    assert identity.name == hired.expert.name
+    assert identity.is_archived is True
+    latest_runs.assert_not_awaited()
+    weekly_spend.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_list_experts_reads_weekly_spend_per_expert(
     server: SpinTestServer, test_user
 ):

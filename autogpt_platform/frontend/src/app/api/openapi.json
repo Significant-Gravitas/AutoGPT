@@ -5534,6 +5534,32 @@
         }
       }
     },
+    "/api/experts/identities": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Identities",
+        "description": "List the lightweight active and archived identity projection for chat.",
+        "operationId": "list_expert_identities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ExpertIdentity" },
+                  "title": "Response List Expert Identities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/experts/templates": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -17770,6 +17796,21 @@
           "workflows"
         ],
         "title": "Expert"
+      },
+      "ExpertIdentity": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "role": { "type": "string", "title": "Role" },
+          "is_archived": { "type": "boolean", "title": "Is Archived" }
+        },
+        "type": "object",
+        "required": ["id", "name", "avatar_url", "role", "is_archived"],
+        "title": "ExpertIdentity"
       },
       "ExpertDetachPreview": {
         "properties": {

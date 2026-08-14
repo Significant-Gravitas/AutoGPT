@@ -85,6 +85,9 @@ export function useCopilotPage() {
     () => resolveExpertIdentity(activeExpertId, expertsById, hasExpertsSettled),
     [activeExpertId, expertsById, hasExpertsSettled],
   );
+  const isResolvingExpertIdentity = Boolean(
+    activeExpertId && !hasExpertsSettled,
+  );
 
   const {
     messages: currentMessages,
@@ -306,6 +309,7 @@ export function useCopilotPage() {
     sessionDryRun,
     sessionChatStatus,
     expertIdentity,
+    isResolvingExpertIdentity,
     isAdoptingExpertSession,
   };
 }

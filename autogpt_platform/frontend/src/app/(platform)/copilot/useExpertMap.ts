@@ -1,4 +1,4 @@
-import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
+import { useListExpertIdentities } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useMemo } from "react";
 
@@ -67,16 +67,13 @@ export function getActiveExperts(
  */
 export function useExpertMap() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const expertsQuery = useListExperts(
-    { include_archived: true },
-    {
-      query: {
-        enabled: isExpertsEnabled,
-        select: (response) =>
-          response.status === 200 ? response.data : undefined,
-      },
+  const expertsQuery = useListExpertIdentities({
+    query: {
+      enabled: isExpertsEnabled,
+      select: (response) =>
+        response.status === 200 ? response.data : undefined,
     },
-  );
+  });
 
   // Memoized on purpose: the identities read out of this map are passed as
   // props (`expertIdentity`) down the whole chat tree, so rebuilding it every

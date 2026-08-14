@@ -8,6 +8,7 @@ import { getGetV1ListExecutionSchedulesForAUserQueryKey } from "@/app/api/__gene
 import { server } from "@/mocks/mock-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useFireExpertDialog } from "./useFireExpertDialog";
@@ -106,5 +107,61 @@ describe("useFireExpertDialog invalidation", () => {
     expect(result.current.isPreviewReady).toBe(false);
     act(() => result.current.handleFire());
     expect(archiveSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not fire while a cached preview is being retried", async () => {
+    const archiveSpy = vi.fn();
+    server.use(
+      getGetExpertDetachPreviewMockHandler({
+        schedule_names: ["Weekly report"],
+        trigger_names: [],
+      }),
+      getArchiveExpertMockHandler(archiveSpy),
+    );
+
+    const client = makeClient();
+    const { result } = renderHook(
+      () =>
+        useFireExpertDialog({
+          expertId: "expert-maria",
+          expertName: "Maria",
+          open: true,
+          onClose: vi.fn(),
+        }),
+      { wrapper: makeWrapper(client) },
+    );
+    await waitFor(() => expect(result.current.isPreviewReady).toBe(true));
+
+    let releaseRetry: () => void = () => undefined;
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetry = resolve;
+    });
+    server.use(
+      http.get("*/api/experts/:expertId/detach-preview", async () => {
+        await retryGate;
+        return HttpResponse.json({
+          schedule_names: ["Weekly report"],
+          trigger_names: [],
+        });
+      }),
+    );
+
+    let retryPromise: Promise<unknown> | undefined;
+    act(() => {
+      retryPromise = result.current.retryPreview();
+    });
+    await waitFor(() => expect(result.current.isPreviewLoading).toBe(true));
+
+    act(() => result.current.handleFire());
+    expect(archiveSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseRetry();
+      await retryPromise;
+    });
+    await waitFor(() => expect(result.current.isPreviewLoading).toBe(false));
+
+    act(() => result.current.handleFire());
+    await waitFor(() => expect(archiveSpy).toHaveBeenCalledTimes(1));
   });
 });

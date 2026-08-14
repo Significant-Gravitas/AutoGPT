@@ -10,7 +10,7 @@ const AUTOPILOT_RECIPIENT: RecipientOption = {
 };
 
 export function useRecipientPicker() {
-  const { expertsById, isLoadingExperts, hasLoadedExperts } = useExpertMap();
+  const { expertsById, isLoadingExperts, hasExpertsSettled } = useExpertMap();
   const [expertIdParam, setExpertIdParam] = useQueryState(
     "expertId",
     parseAsString,
@@ -22,12 +22,12 @@ export function useRecipientPicker() {
   // rejects with a 404 on every send. Drop it so both agree on Autopilot.
   useEffect(
     function clearUnknownExpertParam() {
-      if (!hasLoadedExperts || !expertIdParam) return;
+      if (!hasExpertsSettled || !expertIdParam) return;
       const expert = expertsById.get(expertIdParam);
       if (expert && !expert.isArchived) return;
       void setExpertIdParam(null);
     },
-    [hasLoadedExperts, expertIdParam, expertsById, setExpertIdParam],
+    [hasExpertsSettled, expertIdParam, expertsById, setExpertIdParam],
   );
 
   // The identity map includes archived experts (useExpertMap contract); only

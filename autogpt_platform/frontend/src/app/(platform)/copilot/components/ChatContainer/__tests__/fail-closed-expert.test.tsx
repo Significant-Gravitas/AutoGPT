@@ -1,7 +1,7 @@
-import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { resolveExpertIdentity, useExpertMap } from "../../../useExpertMap";
@@ -20,7 +20,9 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 });
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
-  ChatInput: () => <div data-testid="composer" />,
+  ChatInput: ({ disabled }: { disabled?: boolean }) => (
+    <button type="button" data-testid="composer" disabled={disabled} />
+  ),
 }));
 
 vi.mock(
@@ -84,14 +86,20 @@ function ExpertThreadHarness({ activeExpertId }: { activeExpertId: string }) {
     expertsById,
     hasExpertsSettled,
   );
-  return <ChatContainer {...baseProps} expertIdentity={expertIdentity} />;
+  return (
+    <ChatContainer
+      {...baseProps}
+      expertIdentity={expertIdentity}
+      isResolvingExpertIdentity={!hasExpertsSettled}
+    />
+  );
 }
 
 describe("Copilot expert thread — fail-closed identity", () => {
   it("keeps a fired expert's thread read-only with their real name", async () => {
     let requestedUrl: string | null = null;
     server.use(
-      http.get("*/api/experts", ({ request }) => {
+      http.get("*/api/experts/identities", ({ request }) => {
         requestedUrl = request.url;
         return HttpResponse.json([{ ...maria, is_archived: true }]);
       }),
@@ -104,12 +112,12 @@ describe("Copilot expert thread — fail-closed identity", () => {
       "Maria was let go — this thread is read-only",
     );
     expect(screen.queryByTestId("composer")).toBeNull();
-    expect(requestedUrl).toContain("include_archived=true");
+    expect(requestedUrl).toContain("/api/experts/identities");
   });
 
   it("fails closed to read-only when the roster fetch errors", async () => {
     server.use(
-      http.get("*/api/experts", () =>
+      http.get("*/api/experts/identities", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -124,7 +132,7 @@ describe("Copilot expert thread — fail-closed identity", () => {
   });
 
   it("fails closed to read-only when the expert is gone from a loaded roster", async () => {
-    server.use(getListExpertsMockHandler([]));
+    server.use(getListExpertIdentitiesMockHandler([]));
 
     render(<ExpertThreadHarness activeExpertId="expert-ghost" />);
 
@@ -136,11 +144,38 @@ describe("Copilot expert thread — fail-closed identity", () => {
   });
 
   it("keeps the composer for an active expert still on the roster", async () => {
-    server.use(getListExpertsMockHandler([maria]));
+    server.use(getListExpertIdentitiesMockHandler([maria]));
 
     render(<ExpertThreadHarness activeExpertId="expert-maria" />);
 
     await waitFor(() => expect(screen.getByTestId("composer")).toBeDefined());
     expect(screen.queryByTestId("archived-expert-notice")).toBeNull();
+  });
+
+  it("keeps the composer disabled until an expert identity resolves", async () => {
+    let releaseRequest: () => void = () => undefined;
+    const requestGate = new Promise<void>((resolve) => {
+      releaseRequest = resolve;
+    });
+    server.use(
+      http.get("*/api/experts/identities", async () => {
+        await requestGate;
+        return HttpResponse.json([maria]);
+      }),
+    );
+
+    render(<ExpertThreadHarness activeExpertId="expert-maria" />);
+
+    expect((screen.getByTestId("composer") as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    act(() => releaseRequest());
+
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("composer") as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
   });
 });

@@ -20,6 +20,7 @@ from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertIdentity,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -202,6 +203,40 @@ def test_get_expert_returns_expert(
     mock_get.assert_awaited_once_with(test_user_id, "expert-1")
 
 
+def test_list_expert_identities_returns_lifetime_roster_projection(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    identities = [
+        ExpertIdentity(
+            id="expert-1",
+            name="Maria",
+            avatar_url=None,
+            role="Marketing Specialist",
+            is_archived=True,
+        )
+    ]
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_expert_identities",
+        new_callable=AsyncMock,
+        return_value=identities,
+    )
+
+    response = client.get("/experts/identities")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": "expert-1",
+            "name": "Maria",
+            "avatar_url": None,
+            "role": "Marketing Specialist",
+            "is_archived": True,
+        }
+    ]
+    mock_list.assert_awaited_once_with(test_user_id)
+
+
 # ─── Soul ──────────────────────────────────────────────────────────────
 
 
@@ -376,6 +411,7 @@ def test_install_workflow_unknown_expert_returns_404(
 def test_delete_then_list_excludes_archived(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    configured_snapshot: Snapshot,
 ) -> None:
     experts = [_make_expert(id="expert-1"), _make_expert(id="expert-2", name="Max")]
 
@@ -419,6 +455,10 @@ def test_delete_then_list_excludes_archived(
     with_archived = client.get("/experts", params={"include_archived": True})
     assert with_archived.status_code == 200
     assert {e["id"] for e in with_archived.json()} == {"expert-1", "expert-2"}
+    configured_snapshot.assert_match(
+        json.dumps(with_archived.json(), indent=2, sort_keys=True),
+        "experts_list_with_archived",
+    )
 
 
 def test_delete_unknown_expert_returns_404(
