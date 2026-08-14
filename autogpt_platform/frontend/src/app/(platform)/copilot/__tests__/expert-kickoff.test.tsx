@@ -229,6 +229,7 @@ describe("useExpertKickoff", () => {
     expect(screen.getByTestId("client-message-count").textContent).toBe("1");
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
     expect(screen.getByTestId("kickoff-param").textContent).toBe("1");
+    expect(screen.getByTestId("kickoff-starting").textContent).toBe("true");
 
     persistedMessages = [persistedKickoffMessage()];
     fireEvent.click(screen.getByRole("button", { name: "Refresh session" }));
@@ -239,6 +240,7 @@ describe("useExpertKickoff", () => {
     await waitFor(() =>
       expect(screen.getByTestId("settled-count").textContent).toBe("1"),
     );
+    expect(screen.getByTestId("kickoff-starting").textContent).toBe("false");
     expect(sendSpy).toHaveBeenCalledTimes(1);
     expect(createCount).toBe(1);
   });
@@ -373,6 +375,7 @@ describe("useExpertKickoff", () => {
     await waitFor(() =>
       expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done"),
     );
+    expect(screen.getByTestId("kickoff-starting").textContent).toBe("false");
     expect(requestedExpertId).toBe(EXPERT_ID);
     expect(requestedPinnedFirst).toBe("false");
     expect(sendSpy).not.toHaveBeenCalled();
@@ -423,5 +426,6 @@ describe("useExpertKickoff", () => {
     });
     expect(createCount).toBe(0);
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
+    expect(screen.getByTestId("kickoff-starting").textContent).toBe("true");
   });
 });

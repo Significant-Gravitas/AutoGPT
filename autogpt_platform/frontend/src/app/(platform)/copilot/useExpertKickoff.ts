@@ -180,7 +180,6 @@ export function useExpertKickoff({
       kickoff &&
       !!userId &&
       !!expertId &&
-      !sessionId &&
       !(
         failedKickoff?.userId === userId && failedKickoff.expertId === expertId
       ) &&

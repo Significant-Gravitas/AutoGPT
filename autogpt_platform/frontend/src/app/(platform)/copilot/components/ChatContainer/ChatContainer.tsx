@@ -77,7 +77,7 @@ export interface ChatContainerProps {
    * expert's latest thread — the composer stays locked so a draft can't be
    * lost to that navigation. */
   isAdoptingExpertSession?: boolean;
-  /** True while a newly hired expert's first session is being opened. */
+  /** True until a newly hired expert's first kickoff has been handed off. */
   isKickoffStarting?: boolean;
 }
 export const ChatContainer = ({
@@ -134,7 +134,8 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
-  const isInputDisabled = isSessionUnavailable || isLimitReached;
+  const isInputDisabled =
+    isSessionUnavailable || isLimitReached || !!isKickoffStarting;
   const inputLayoutId = "copilot-2-chat-input";
 
   // Measure the usage-limit overlay so the messages scroll area can pad its

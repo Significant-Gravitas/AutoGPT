@@ -101,7 +101,9 @@ vi.mock("framer-motion", () => {
 });
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
-  ChatInput: () => <div data-testid="chat-input" />,
+  ChatInput: ({ disabled }: { disabled?: boolean }) => (
+    <input data-testid="chat-input" disabled={disabled} />
+  ),
 }));
 
 vi.mock("@/components/atoms/Tooltip/BaseTooltip", () => ({
@@ -237,6 +239,14 @@ describe("ChatContainer", () => {
 
     expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the session composer disabled while expert kickoff is starting", () => {
+    render(<ChatContainer {...baseProps} isKickoffStarting />);
+
+    expect(
+      (screen.getByTestId("chat-input") as HTMLInputElement).disabled,
+    ).toBe(true);
   });
 
   it("preserves expert kickoff metadata when retrying its hidden prompt", () => {
