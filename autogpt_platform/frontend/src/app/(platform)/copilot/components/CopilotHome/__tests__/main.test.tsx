@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
+import userEvent from "@testing-library/user-event";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
@@ -8,14 +9,9 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetBriefingsGetLatestBriefingMockHandler200 } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
-import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
-import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
-import { getGetV2GetPendingReviewsMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
-import type { Expert } from "@/app/api/__generated__/models/expert";
-import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { EmptySession } from "../../EmptySession/EmptySession";
 
-// Rendered through EmptySession, not CopilotHome directly: the briefing home
+// Rendered through EmptySession, not CopilotHome directly: the briefing recap
 // mounts inside it, and the onboarding surface + composer recipient picker
 // that live there must survive the experts flag being on.
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
@@ -39,9 +35,7 @@ const baseProps = {
 
 // Guarantees the pulse strip has at least one chip regardless of faker's
 // random defaults — an agent with an external trigger always produces a
-// "listening" sitrep item. Also pins pending reviews to empty since the
-// generated mock otherwise returns 1-10 random reviews by default, which
-// would make the needs-attention slot non-deterministic across tests.
+// "listening" sitrep item.
 function mockPulseStripAgent() {
   const base = getGetV2ListLibraryAgentsResponseMock();
   server.use(
@@ -58,102 +52,6 @@ function mockPulseStripAgent() {
       },
     }),
     getGetV1ListAllExecutionsMockHandler([]),
-    getGetV2GetPendingReviewsMockHandler200([]),
-  );
-}
-
-const pendingReview: PendingHumanReviewModel = {
-  node_exec_id: "ne-1",
-  node_id: "n-1",
-  user_id: "u-1",
-  graph_exec_id: "run-1",
-  graph_id: "g-1",
-  graph_version: 1,
-  payload: { to: "x@y.com" },
-  instructions: "Approve outreach email",
-  editable: true,
-  status: "WAITING",
-  expert_id: "exp-1",
-  expert_name: "Ana",
-  expert_avatar_url: null,
-  agent_name: "Lead Finder",
-  library_agent_id: "lib-1",
-  session_id: null,
-  created_at: new Date(),
-};
-
-const healthyExpert: Expert = {
-  id: "expert-healthy",
-  name: "Sales Scout",
-  avatar_url: null,
-  role: "Sales Researcher",
-  bio: null,
-  skills: [],
-  tagline: "Finds leads while you sleep",
-  identity: "You are a senior sales researcher.",
-  voice_preferences: "",
-  boundaries: "",
-  protected_soul_rules: [],
-  is_template: false,
-  source_template_id: null,
-  is_archived: false,
-  workflows: [],
-  last_run_at: new Date("2026-08-06T10:00:00Z"),
-  last_run_status: "COMPLETED",
-};
-
-const pausedExpert: Expert = {
-  id: "expert-paused",
-  name: "Support Bot",
-  avatar_url: null,
-  role: "Support Triager",
-  bio: null,
-  skills: [],
-  tagline: "Triages tickets",
-  identity: "You are a support triager.",
-  voice_preferences: "",
-  boundaries: "",
-  protected_soul_rules: [],
-  is_template: false,
-  source_template_id: null,
-  is_archived: false,
-  workflows: [],
-  schedules_paused_at: new Date("2026-08-05T10:00:00Z"),
-};
-
-const needsSetupExpert: Expert = {
-  id: "expert-needs-setup",
-  name: "Ops Analyst",
-  avatar_url: null,
-  role: "Operations Analyst",
-  bio: null,
-  skills: [],
-  tagline: "Keeps the ops dashboard current",
-  identity: "You are an operations analyst.",
-  voice_preferences: "",
-  boundaries: "",
-  protected_soul_rules: [],
-  is_template: false,
-  source_template_id: null,
-  is_archived: false,
-  workflows: [
-    {
-      id: "wf-1",
-      store_listing_version_id: "slv-1",
-      library_agent_id: "lib-1",
-      graph_id: "graph-1",
-      name: "Daily Report",
-      description: null,
-      schedule_cron: "0 9 * * *",
-      schedule_id: null,
-    },
-  ],
-};
-
-function mockTeamStrip() {
-  server.use(
-    getListExpertsMockHandler200([healthyExpert, pausedExpert]),
-    getGetV1ListExecutionSchedulesForAUserMockHandler([]),
   );
 }
 
@@ -226,74 +124,124 @@ test("renders briefing sections when a briefing is available", async () => {
   );
   render(<EmptySession {...baseProps} />);
 
-  expect(await screen.findByText("What ran")).toBeDefined();
-  expect(screen.getByText("What was found")).toBeDefined();
-  // Findings carry their agent name, matching the thread markdown.
+  expect(await screen.findByText("Recap")).toBeDefined();
+  expect(screen.getByText("Lead Finder")).toBeDefined();
+  expect(screen.getByText("Ticket Triager")).toBeDefined();
+  // A summary carries the expert it came from, matching the thread markdown.
   const finding = screen.getByText(/Found 3 leads/);
-  expect(finding.textContent).toContain("Lead Finder");
+  expect(finding.textContent).toContain("Sales Scout");
 
-  // The card does not repeat the decisions: the needs-attention list below
+  // The recap does not repeat the decisions: the needs-you list on /home
   // shows the same pending reviews, and it can act on them.
   expect(screen.queryByText(/Needs your decision/)).toBeNull();
 });
 
-test("renders the team strip with hired experts", async () => {
+test("shows three runs, then all of them behind the show-all toggle", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200({
+      id: "briefing-1",
+      briefing_date: new Date(),
+      created_at: new Date(),
+      delivered_at: null,
+      content: {
+        generated_at: new Date(),
+        timezone: "UTC",
+        zero_expert_fallback: false,
+        run_items: Array.from({ length: 5 }, (_, i) => ({
+          expert_id: null,
+          expert_name: null,
+          expert_avatar_url: null,
+          agent_name: `Agent ${i}`,
+          graph_id: `graph-${i}`,
+          execution_id: `exec-${i}`,
+          library_agent_id: null,
+          status: "COMPLETED",
+          summary: null,
+          link: null,
+        })),
+        decision_items: [],
+        decision_total: 0,
+      },
+    }),
+  );
+  render(<EmptySession {...baseProps} />);
+
+  // Every row stays mounted so the card can animate its height in both
+  // directions; the collapsed card clips to three rows visually, and only
+  // the expanded one scrolls.
+  expect(await screen.findByText("Agent 4")).toBeDefined();
+  expect(screen.getByRole("list").className).toContain("overflow-hidden");
+
+  await userEvent.click(
+    screen.getByRole("button", { name: /Show all results \(5\)/ }),
+  );
+
+  expect(screen.getByRole("list").className).toContain("overflow-y-auto");
+  expect(screen.getByRole("button", { name: /Show less/ })).toBeDefined();
+});
+
+test("links each row straight at its run", async () => {
+  mockPulseStripAgent();
+  server.use(
+    getGetBriefingsGetLatestBriefingMockHandler200({
+      id: "briefing-1",
+      briefing_date: new Date(),
+      created_at: new Date(),
+      delivered_at: null,
+      content: {
+        generated_at: new Date(),
+        timezone: "UTC",
+        zero_expert_fallback: false,
+        run_items: [
+          {
+            expert_id: "expert-1",
+            expert_name: "Sales Scout",
+            expert_avatar_url: null,
+            agent_name: "Lead Finder",
+            graph_id: "graph-1",
+            execution_id: "exec-1",
+            library_agent_id: "lib-1",
+            status: "COMPLETED",
+            summary: "Found 3 leads",
+            link: "/library/agents/lib-1/runs/exec-1",
+          },
+        ],
+        decision_items: [],
+        decision_total: 0,
+      },
+    }),
+  );
+  render(<EmptySession {...baseProps} />);
+
+  const row = await screen.findByRole("link", { name: /Lead Finder/ });
+  expect(row.getAttribute("href")).toBe("/library/agents/lib-1/runs/exec-1");
+});
+
+test("keeps the decisions inbox and team status off the copilot recap", async () => {
+  // Both moved to /home. Proving the pending-reviews query never fires is
+  // what keeps the inbox from creeping back in: absent text alone would
+  // also pass while the request was still in flight. (The experts query has
+  // no such tell — the composer's recipient picker still needs it.)
   mockPulseStripAgent();
   server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
-  mockTeamStrip();
-  render(<EmptySession {...baseProps} />);
 
-  expect(await screen.findByText("Sales Scout")).toBeDefined();
-  expect(screen.getByText("Support Bot")).toBeDefined();
-  expect(screen.getByText("Paused")).toBeDefined();
+  const requestedPaths: string[] = [];
+  function record({ request }: { request: Request }) {
+    requestedPaths.push(new URL(request.url).pathname);
+  }
+  server.events.on("request:start", record);
 
-  // Each Chat link names its expert, so screen readers can tell the
-  // repeated links apart.
-  expect(
-    screen
-      .getByRole("link", { name: "Chat with Sales Scout" })
-      .getAttribute("href"),
-  ).toBe("/copilot?expertId=expert-healthy");
-  expect(
-    screen
-      .getByRole("link", { name: "Chat with Support Bot" })
-      .getAttribute("href"),
-  ).toBe("/copilot?expertId=expert-paused");
-});
+  try {
+    render(<EmptySession {...baseProps} />);
+    await screen.findByText("What's happening with your agents");
 
-test("uses singular grammar for a single workflow needing setup", async () => {
-  mockPulseStripAgent();
-  server.use(
-    getGetBriefingsGetLatestBriefingMockHandler200(null),
-    getListExpertsMockHandler200([needsSetupExpert]),
-    getGetV1ListExecutionSchedulesForAUserMockHandler([]),
-  );
-  render(<EmptySession {...baseProps} />);
-
-  expect(await screen.findByText("1 workflow needs setup")).toBeDefined();
-});
-
-test("renders a needs-attention row when a review is pending", async () => {
-  mockPulseStripAgent();
-  server.use(
-    getGetBriefingsGetLatestBriefingMockHandler200(null),
-    getGetV2GetPendingReviewsMockHandler200([pendingReview]),
-  );
-  render(<EmptySession {...baseProps} />);
-
-  expect(await screen.findByText("Approve outreach email")).toBeDefined();
-});
-
-test("does not render the needs-attention slot when there are no pending reviews", async () => {
-  mockPulseStripAgent();
-  server.use(
-    getGetBriefingsGetLatestBriefingMockHandler200(null),
-    getGetV2GetPendingReviewsMockHandler200([]),
-  );
-  render(<EmptySession {...baseProps} />);
-
-  await screen.findByText("What's happening with your agents");
-  expect(screen.queryByText(/Needs your attention/)).toBeNull();
+    expect(requestedPaths.some((path) => path.includes("review"))).toBe(false);
+    expect(screen.queryByText(/Needs your attention/)).toBeNull();
+    expect(screen.queryByRole("link", { name: /Chat with/ })).toBeNull();
+  } finally {
+    server.events.removeListener("request:start", record);
+  }
 });
 
 test("shows an error card instead of the pulse strip when the briefing fetch fails", async () => {
@@ -309,25 +257,9 @@ test("shows an error card instead of the pulse strip when the briefing fetch fai
   expect(screen.queryByText("What's happening with your agents")).toBeNull();
 });
 
-test("shows an error card when the pending-reviews fetch fails", async () => {
-  mockPulseStripAgent();
-  server.use(
-    getGetBriefingsGetLatestBriefingMockHandler200(null),
-    http.get("/api/proxy/api/review/pending", () =>
-      HttpResponse.json({ detail: "boom" }, { status: 500 }),
-    ),
-  );
-  render(<EmptySession {...baseProps} />);
-
-  expect(
-    await screen.findByText("Failed to load pending reviews"),
-  ).toBeDefined();
-  expect(screen.queryByText(/Needs your attention/)).toBeNull();
-});
-
 test("keeps the onboarding surface and recipient picker with the experts flag on", async () => {
   // hire-experts and onboarding-brain-dump are independent flags aimed at
-  // overlapping beta cohorts; the briefing home must not cancel the other
+  // overlapping beta cohorts; the briefing recap must not cancel the other
   // rollout out from under a brand-new user.
   mockPulseStripAgent();
   server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
@@ -378,8 +310,8 @@ test("renders a run row without a link when the briefing has no deep link", asyn
 });
 
 test("does not render a hollow briefing card when there are no runs", async () => {
-  // A run paused on an approval is not terminal, so it never lands in "What
-  // ran" — leaving a card that would show only a date.
+  // A run paused on an approval is not terminal, so it never lands in the
+  // run list — leaving a card that would show only a date.
   mockPulseStripAgent();
   server.use(
     getGetBriefingsGetLatestBriefingMockHandler200({
@@ -409,7 +341,11 @@ test("does not render a hollow briefing card when there are no runs", async () =
   );
   render(<EmptySession {...baseProps} />);
 
-  await screen.findByPlaceholderText(/./);
+  // The pulse strip has to take over: the decisions inbox that used to carry
+  // this case is on /home now, so without it the empty state is blank.
+  expect(
+    await screen.findByText("What's happening with your agents"),
+  ).toBeDefined();
   expect(screen.queryByText("This morning")).toBeNull();
-  expect(screen.queryByText("What ran")).toBeNull();
+  expect(screen.queryByText("Recap")).toBeNull();
 });

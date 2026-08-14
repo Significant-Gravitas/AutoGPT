@@ -92,15 +92,7 @@ export function EmptySession({
   }, []);
 
   return (
-    <div
-      className={cn(
-        "relative flex h-full flex-1 justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10",
-        // The whole greeting flow reads top-down like a letter, so it
-        // anchors to the top from its first visible frame; the regular
-        // hero stays vertically centered.
-        intro.anchorTop ? "items-start" : "items-center",
-      )}
-    >
+    <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
       {!isBrainDumpEnabled && (
         <DotDistortionShader
           dotGap={14}
@@ -116,7 +108,16 @@ export function EmptySession({
         onClose={intro.closeWelcome}
       />
       <motion.div
-        className="relative z-10 w-full max-w-[52rem] text-center"
+        className={cn(
+          "relative z-10 w-full max-w-[52rem] text-center",
+          // The whole greeting flow reads top-down like a letter, so it
+          // anchors to the top from its first visible frame; the regular
+          // hero centers itself. `my-auto` rather than the parent's
+          // `items-center`: auto margins collapse to 0 once the content is
+          // taller than the scroller, where centering would push the top of
+          // the page above the scroll origin and make it unreachable.
+          !intro.anchorTop && "my-auto",
+        )}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -140,24 +141,6 @@ export function EmptySession({
           ) : (
             <EmptyHero name={greetingName} />
           )}
-
-          {!intro.isVisible &&
-            !intro.isAwaitingGreeting &&
-            (isExpertsEnabled ? (
-              // The briefing home takes the chips' slot and falls back to
-              // them — still on their own flag — when there's no briefing.
-              <CopilotHome
-                fallback={
-                  isAgentBriefingEnabled ? (
-                    <PulseChips chips={pulseChips} onChipClick={onSend} />
-                  ) : null
-                }
-              />
-            ) : (
-              isAgentBriefingEnabled && (
-                <PulseChips chips={pulseChips} onChipClick={onSend} />
-              )
-            ))}
 
           {/* Held back while the greeting is on its way — it enters with
               the greeting page instead of sitting under a bare hero. */}
@@ -215,6 +198,27 @@ export function EmptySession({
               </motion.div>
             </div>
           )}
+
+          {/* The recap sits under the composer: the empty state's job is to
+              get a message typed, so the briefing reads as context below it
+              rather than as a wall above it. */}
+          {!intro.isVisible &&
+            !intro.isAwaitingGreeting &&
+            (isExpertsEnabled ? (
+              <div className="mx-auto mb-6 w-full max-w-[42rem]">
+                <CopilotHome
+                  fallback={
+                    isAgentBriefingEnabled ? (
+                      <PulseChips chips={pulseChips} onChipClick={onSend} />
+                    ) : null
+                  }
+                />
+              </div>
+            ) : (
+              isAgentBriefingEnabled && (
+                <PulseChips chips={pulseChips} onChipClick={onSend} />
+              )
+            ))}
         </div>
 
         {/* The greeting page is deliberately quiet: its own prompts are

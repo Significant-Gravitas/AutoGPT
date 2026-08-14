@@ -12,6 +12,5 @@ export function useCopilotHome() {
     isLoadingBriefing: isLoading,
     isBriefingError: isError,
     refetchBriefing: refetch,
-    hasBriefing: Boolean(data),
   };
 }

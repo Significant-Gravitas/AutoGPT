@@ -63,6 +63,8 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
     expect(screen.getByText("Files")).toBeDefined();
+    // /home 404s without the experts flag, so it must not be offered here.
+    expect(screen.queryByText("Home")).toBeNull();
   });
 
   it("shows Team instead of Agents when the hire-experts flag is on", () => {
@@ -71,6 +73,13 @@ describe("AppSidebar", () => {
     const teamLink = screen.getByRole("link", { name: /team/i });
     expect(teamLink.getAttribute("href")).toBe("/team");
     expect(screen.queryByText("Agents")).toBeNull();
+  });
+
+  it("adds a Home link when the hire-experts flag is on", () => {
+    useGetFlagMock.mockReturnValue(true);
+    renderSidebar();
+    const homeLink = screen.getByRole("link", { name: /home/i });
+    expect(homeLink.getAttribute("href")).toBe("/home");
   });
 
   it("renders the New Task call-to-action pointing at /copilot", () => {
