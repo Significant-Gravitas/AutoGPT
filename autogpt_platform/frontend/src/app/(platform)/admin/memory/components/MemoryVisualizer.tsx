@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CommunityRebuildJobStatus } from "@/app/api/__generated__/models/communityRebuildJobStatus";
 import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStatus";
 import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
@@ -39,10 +39,7 @@ export function MemoryVisualizer() {
         loading={expertsLoading}
         error={expertsError}
       />
-      <MemoryScopeView
-        key={selectedExpertID ?? "autopilot"}
-        expertID={selectedExpertID}
-      />
+      <MemoryScopeView expertID={selectedExpertID} />
     </div>
   );
 }
@@ -86,6 +83,12 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
     new Set(),
   );
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
+
+  useEffect(() => {
+    setHiddenNodeTypes(new Set());
+    setHiddenEdgeTypes(new Set());
+    setSelectedUuid(null);
+  }, [expertID]);
 
   const nodes = graphData?.nodes ?? [];
   const edges = graphData?.edges ?? [];

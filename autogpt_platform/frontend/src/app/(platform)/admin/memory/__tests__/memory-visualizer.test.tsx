@@ -27,6 +27,12 @@ import {
 import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 
+const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  useToast: () => ({ toast: toastMock }),
+}));
+
 // react-force-graph-2d uses HTMLCanvas + window APIs and pulls in d3 at
 // import time. In the jsdom test env neither exists, so swap it for a
 // trivial stub so MemoryVisualizer's tree is renderable.
@@ -209,6 +215,51 @@ describe("MemoryVisualizer — memory scope", () => {
     ).toBeDefined();
   });
 
+  test("scope switches preserve in-flight AutoPilot job tracking", async () => {
+    setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
+    let dreamRequests = 0;
+    server.use(
+      http.post("*/api/admin/memory/:userId/dream", () => {
+        dreamRequests += 1;
+        return HttpResponse.json(
+          {
+            ...getPostV2TriggerDreamPassResponseMock202(),
+            job_id: "job-dream-switch",
+            state: "queued",
+          },
+          { status: 202 },
+        );
+      }),
+      getGetV2GetDreamPassStatusMockHandler200({
+        ...getGetV2GetDreamPassStatusResponseMock200(),
+        job_id: "job-dream-switch",
+        kind: "dream_pass",
+        state: "running",
+        current_phase: "consolidate",
+      }),
+    );
+    render(<MemoryVisualizer />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dream pass/i }),
+    );
+    await screen.findByRole("button", { name: /consolidate…/i });
+
+    const selector = screen.getByRole("combobox", { name: "Memory scope" });
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    await screen.findByText("Expert memory is read-only.");
+
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+
+    const activeButton = await screen.findByRole("button", {
+      name: /consolidate…/i,
+    });
+    expect((activeButton as HTMLButtonElement).disabled).toBe(true);
+    expect(dreamRequests).toBe(1);
+  });
+
   test("expert callbacks stay read-only even when invoked directly", async () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     render(<MemoryActionHarness />);
@@ -271,6 +322,25 @@ describe("MemoryVisualizer — memory scope", () => {
 
     await waitFor(() => expect(selector.textContent).toContain("AutoPilot"));
     expect(screen.queryByText("Expert memory is read-only.")).toBeNull();
+    expect(toastMock).toHaveBeenCalledWith({
+      title: "Expert no longer available",
+      description: "Showing AutoPilot account memory instead.",
+    });
+  });
+
+  test("empty and error scope states are announced without blocking AutoPilot", async () => {
+    setupBaseHandlers();
+    render(<MemoryVisualizer />);
+
+    const emptyState = await screen.findByText("No experts for this account.");
+    expect(emptyState.closest('[aria-live="polite"]')).not.toBeNull();
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Memory scope",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 });
 
