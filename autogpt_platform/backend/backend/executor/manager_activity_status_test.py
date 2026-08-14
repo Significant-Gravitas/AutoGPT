@@ -218,8 +218,8 @@ def test_graph_start_credit_failure_records_structured_reason(credit_balance):
     assert status == ExecutionStatus.FAILED
     assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
     assert stats.error == (
-        "The billed account needs at least 1 credit to run this agent. "
-        "Please add credits or ask the billing owner, then try again."
+        "At least 1 credit must be available to run this agent. "
+        "Please make more credits available and try again."
     )
     db_client.get_org_credits.assert_called_once_with(org_id="org-1")
     db_client.get_credits.assert_not_called()
@@ -268,7 +268,16 @@ def test_graph_start_skips_balance_check_when_credits_are_disabled():
     db_client.get_credits.assert_not_called()
 
 
-def test_nested_credit_failure_marker_makes_graph_fail_without_raised_graph_error():
+@pytest.mark.parametrize(
+    ("cancelled", "expected_status"),
+    [
+        (False, ExecutionStatus.FAILED),
+        (True, ExecutionStatus.TERMINATED),
+    ],
+)
+def test_nested_credit_failure_marker_respects_cancellation_precedence(
+    cancelled, expected_status
+):
     execution = GraphExecutionEntry(
         user_id="user-1",
         graph_exec_id="exec-1",
@@ -299,6 +308,10 @@ def test_nested_credit_failure_marker_makes_graph_fail_without_raised_graph_erro
         coroutine.close()
         return completed_future
 
+    cancel = threading.Event()
+    if cancelled:
+        cancel.set()
+
     with (
         patch("backend.executor.manager.get_db_client", return_value=db_client),
         patch(
@@ -308,12 +321,12 @@ def test_nested_credit_failure_marker_makes_graph_fail_without_raised_graph_erro
     ):
         _, status = processor._on_graph_execution(
             graph_exec=execution,
-            cancel=threading.Event(),
+            cancel=cancel,
             log_metadata=MagicMock(),
             execution_stats=stats,
             cluster_lock=MagicMock(),
         )
 
-    assert status == ExecutionStatus.FAILED
+    assert status == expected_status
     assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
     assert stats.error == "Organization has 0 credits but needs 25"

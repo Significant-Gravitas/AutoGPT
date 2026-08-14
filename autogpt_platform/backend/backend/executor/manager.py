@@ -83,7 +83,10 @@ from backend.util.retry import (
 from backend.util.settings import Settings
 
 from . import billing, expert_posts
-from .activity_status_generator import generate_activity_status_for_execution
+from .activity_status_generator import (
+    INSUFFICIENT_BALANCE_GUIDANCE,
+    generate_activity_status_for_execution,
+)
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
@@ -1085,9 +1088,8 @@ class ExecutionProcessor:
                     raise InsufficientBalanceError(
                         user_id=graph_exec.user_id,
                         message=(
-                            f"The billed account needs at least {required_balance} credit "
-                            "to run this agent. Please add credits or ask the billing "
-                            "owner, then try again."
+                            f"At least {required_balance} credit must be available to run "
+                            f"this agent. {INSUFFICIENT_BALANCE_GUIDANCE}"
                         ),
                         balance=credit_balance,
                         amount=required_balance,

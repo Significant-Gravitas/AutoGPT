@@ -1109,8 +1109,8 @@ class TestDeterministicFailureResponse:
 
         assert result is not None
         assert result["correctness_score"] == 0.0
-        assert "insufficient" in result["activity_status"].lower()
-        assert "billed account" in result["activity_status"].lower()
+        assert "enough credits" in result["activity_status"].lower()
+        assert "billing owner" not in result["activity_status"].lower()
 
     @pytest.mark.parametrize(
         "status",

@@ -45,9 +45,10 @@ _MAX_OUTPUT_TOKENS = 150
 # supply an explicit value — same pattern ``ChatConfig._apply_local_aux_models``
 # uses for ``title_model`` / ``simulation_model``.
 _DEFAULT_MODEL_NAME = "gpt-4o-mini"
+INSUFFICIENT_BALANCE_GUIDANCE = "Please make more credits available and try again."
 INSUFFICIENT_BALANCE_SUMMARY = (
-    "This run couldn't complete because the available credit balance was insufficient. "
-    "Please add credits to the billed account, or ask its billing owner, before trying again."
+    "This run couldn't complete because there weren't enough credits available. "
+    f"{INSUFFICIENT_BALANCE_GUIDANCE}"
 )
 
 
