@@ -4,24 +4,26 @@ import { Avatar, AvatarFallback } from "@/components/atoms/Avatar/Avatar";
 import { raisedIdentity } from "../../helpers";
 import { expertInitials } from "./helpers";
 
-interface Props {
+type Props = {
   name: string;
   voiceLabel: string | null;
   firstJobName: string | null;
-}
+};
 
 export function SoulPreviewPanel({ name, voiceLabel, firstJobName }: Props) {
   return (
-    <aside className="flex flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
-      <div className="flex items-center gap-3 border-b border-zinc-200 px-6 py-5">
+    <aside className="flex flex-col overflow-hidden rounded-3xl border border-border bg-background shadow-sm">
+      <div className="flex items-center gap-3 border-b border-border px-6 py-5">
         <Avatar className="h-11 w-11">
           <AvatarFallback>{expertInitials(name)}</AvatarFallback>
         </Avatar>
         <div>
-          <h2 className="text-lg font-semibold tracking-[-0.01em] text-zinc-900">
+          <h2 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
             {name ? `${name}'s Soul` : "A new Soul"}
           </h2>
-          <p className="text-sm text-zinc-500">Edit any line, anytime.</p>
+          <p className="text-sm text-muted-foreground">
+            Edit any line, anytime.
+          </p>
         </div>
       </div>
 
@@ -51,23 +53,23 @@ export function SoulPreviewPanel({ name, voiceLabel, firstJobName }: Props) {
   );
 }
 
-interface SoulLineProps {
+type SoulLineProps = {
   label: string;
   value: string | null;
   placeholder: string;
-}
+};
 
 function SoulLine({ label, value, placeholder }: SoulLineProps) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="text-xs font-medium uppercase tracking-[0.12em] text-purple-600">
+      <dt className="text-xs font-medium uppercase tracking-[0.12em] text-accent">
         {label}
       </dt>
       <dd
         className={
           value
-            ? "text-[15px] text-zinc-800"
-            : "text-[15px] italic text-zinc-400"
+            ? "text-[15px] text-foreground"
+            : "text-[15px] italic text-muted-foreground"
         }
       >
         {value ?? placeholder}

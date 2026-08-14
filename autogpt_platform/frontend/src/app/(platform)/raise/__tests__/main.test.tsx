@@ -187,6 +187,9 @@ test("walks name → voice → first job, posts the payload, and kicks off", asy
   );
 
   renderRaise();
+  expect(
+    await screen.findByRole("log", { name: "Raise expert conversation" }),
+  ).toBeDefined();
   await walkToReviewWithJob();
 
   await userEvent.click(
@@ -306,6 +309,35 @@ test("a rapid double-click on finish sends a single POST", async () => {
 
   await waitFor(() => expect(pushMock).toHaveBeenCalled());
   expect(postCount).toBe(1);
+});
+
+test("unlocks finish after a raise POST fails so the user can retry", async () => {
+  let postCount = 0;
+  useStoreHandlers();
+  server.use(
+    http.post("/api/proxy/api/experts/raise", () => {
+      postCount += 1;
+      return HttpResponse.json({ detail: "Raise failed" }, { status: 500 });
+    }),
+  );
+
+  renderRaise();
+  await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+
+  await userEvent.click(await screen.findByRole("button", { name: /life/ }));
+  expect(await screen.findByText("Couldn't raise Otto")).toBeDefined();
+  await waitFor(() => expect(postCount).toBe(1));
+
+  const retry = screen.getByRole("button", { name: /Bring Otto to life/ });
+  expect((retry as HTMLButtonElement).disabled).toBe(false);
+  await userEvent.click(retry);
+  await waitFor(() => expect(postCount).toBe(2));
 });
 
 test("keeps navigation locked after success until the route unmounts", async () => {

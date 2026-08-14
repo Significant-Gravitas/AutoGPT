@@ -29,7 +29,7 @@ export function ExpertsSection() {
     // stays open even when the template list is empty or failed to load.
     return (
       <section id="experts" className="mb-20">
-        <RaiseLink />
+        <RaiseLink standalone />
       </section>
     );
   }
@@ -71,13 +71,19 @@ export function ExpertsSection() {
   );
 }
 
-function RaiseLink() {
+type RaiseLinkProps = {
+  standalone?: boolean;
+};
+
+function RaiseLink({ standalone = false }: RaiseLinkProps) {
   return (
     <Link
       href="/raise"
       className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
     >
-      …or raise your own expert from scratch
+      {standalone
+        ? "Raise your own expert from scratch"
+        : "…or raise your own expert from scratch"}
     </Link>
   );
 }

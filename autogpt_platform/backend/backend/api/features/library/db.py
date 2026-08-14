@@ -2,7 +2,7 @@ import asyncio
 import itertools
 import logging
 from datetime import datetime, timezone
-from typing import Literal, Optional, cast
+from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
 import prisma.errors
@@ -17,7 +17,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.data.db import transaction
+from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.graph import GraphSettings
 from backend.data.includes import (
@@ -1186,6 +1186,46 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
     await prisma.models.LibraryAgent.prisma().delete_many(
         where={"agentGraphId": graph_id, "userId": user_id}
     )
+
+
+async def is_store_listing_version_available_for_install(
+    store_listing_version_id: str,
+    *,
+    tx: prisma.Prisma | None = None,
+    lock_rows: bool = False,
+) -> bool:
+    """Validate one exact marketplace version for a library install.
+
+    Both the preflight and transactional revalidation use this query. The
+    shared row lock blocks withdrawal while permitting concurrent installs of
+    the same popular listing.
+    """
+    if lock_rows and tx is None:
+        raise ValueError("lock_rows requires a transaction client")
+
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    lock_clause = "FOR SHARE OF slv, sl" if lock_rows else ""
+    query = cast(
+        LiteralString,
+        """
+        SELECT slv.id
+        FROM {schema_prefix}"StoreListingVersion" AS slv
+        JOIN {schema_prefix}"StoreListing" AS sl
+          ON sl.id = slv."storeListingId"
+        WHERE slv.id = $1
+          AND slv."isDeleted" = false
+          AND slv."isAvailable" = true
+          AND slv."submissionStatus" = 'APPROVED'
+          AND sl."isDeleted" = false
+        {lock_clause}
+        """.format(
+            schema_prefix=schema_prefix, lock_clause=lock_clause
+        ),
+    )
+    client = tx if tx is not None else prisma.get_client()
+    rows = await client.query_raw(query, store_listing_version_id)
+    return bool(rows)
 
 
 async def add_store_agent_to_library(
