@@ -283,9 +283,9 @@ def _mock_stream_internals(
         return_value=False,
     )
     mocker.patch(
-        "backend.api.features.chat.routes.chat_message_exists",
+        "backend.api.features.chat.routes.chat_message_has_assistant_reply",
         new_callable=AsyncMock,
-        return_value=False,
+        return_value=None,
     )
     mock_paywall = mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -397,13 +397,79 @@ def test_stream_chat_canonicalizes_expert_kickoff(
     }
 
 
-def test_stream_chat_short_circuits_persisted_expert_kickoff(
+def test_stream_chat_short_circuits_completed_expert_kickoff(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
     mocker.patch(
-        "backend.api.features.chat.routes.chat_message_exists",
+        "backend.api.features.chat.routes.chat_message_has_assistant_reply",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "You were just hired.", "expert_kickoff": True},
+    )
+
+    assert response.status_code == 200
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_redispatches_orphaned_expert_kickoff(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    mocker.patch(
+        "backend.api.features.chat.routes.chat_message_has_assistant_reply",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "You were just hired.", "expert_kickoff": True},
+    )
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["message_already_persisted"] is True
+
+
+def test_stream_chat_returns_retryable_limit_for_orphaned_expert_kickoff(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    mocker.patch(
+        "backend.api.features.chat.routes.chat_message_has_assistant_reply",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("try again")
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "You were just hired.", "expert_kickoff": True},
+    )
+
+    assert response.status_code == 429
+    assert response.json() == {"detail": "try again"}
+
+
+def test_stream_chat_does_not_redispatch_running_persisted_kickoff(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    mocker.patch(
+        "backend.api.features.chat.routes.chat_message_has_assistant_reply",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -1562,7 +1628,6 @@ def test_create_expert_kickoff_session_uses_atomic_get_or_create(
         chat_routes,
         "get_or_create_expert_kickoff_session",
         new=AsyncMock(return_value=existing),
-        create=True,
     )
 
     response = client.post(
@@ -2251,6 +2316,21 @@ def test_list_sessions_filters_by_expert_id(
     data = response.json()
     assert data["sessions"][0]["expert_id"] == "expert-1"
     assert mock_get.call_args.kwargs["expert_id"] == "expert-1"
+
+
+def test_list_sessions_can_request_strict_recency(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([], 0),
+    )
+
+    response = client.get("/sessions?pinned_first=false")
+
+    assert response.status_code == 200
+    assert mock_get.await_args.kwargs["pinned_first"] is False
 
 
 def test_list_sessions_marks_running_as_processing(

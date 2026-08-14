@@ -8,5 +8,6 @@ export function latestExpertSessionParams(
   return {
     expert_id: expertId ?? undefined,
     limit: LATEST_EXPERT_SESSION_LIMIT,
+    pinned_first: false,
   };
 }

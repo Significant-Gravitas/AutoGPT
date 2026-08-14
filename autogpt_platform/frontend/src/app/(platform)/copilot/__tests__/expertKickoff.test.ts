@@ -18,6 +18,7 @@ import {
 } from "../expertKickoff";
 
 const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+const USER_ID = "user-1";
 
 function userMessage(
   id: string,
@@ -140,44 +141,48 @@ describe("kickoff status state machine", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses a distinct, expert-scoped storage namespace", () => {
-    expect(kickoffStorageKey(EXPERT_ID)).toBe(
-      `expert-kickoff-status:${EXPERT_ID}`,
+  it("uses a distinct, user-and-expert-scoped storage namespace", () => {
+    expect(kickoffStorageKey(USER_ID, EXPERT_ID)).toBe(
+      `expert-kickoff-status:${USER_ID}:${EXPERT_ID}`,
     );
   });
 
-  it("walks idle → pending → done independently per expert", () => {
+  it("walks idle → pending → done independently per user and expert", () => {
     const otherExpert = "3f8b0f7e-9f30-4a3b-a6a1-000000000002";
+    const otherUser = "user-2";
 
-    expect(getKickoffStatus(EXPERT_ID)).toBe("idle");
-    markKickoffPending(EXPERT_ID);
-    expect(getKickoffStatus(EXPERT_ID)).toBe("pending");
-    markKickoffDone(EXPERT_ID);
-    expect(getKickoffStatus(EXPERT_ID)).toBe("done");
-    expect(getKickoffStatus(otherExpert)).toBe("idle");
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
+    markKickoffPending(USER_ID, EXPERT_ID);
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
+    markKickoffDone(USER_ID, EXPERT_ID);
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done");
+    expect(getKickoffStatus(USER_ID, otherExpert)).toBe("idle");
+    expect(getKickoffStatus(otherUser, EXPERT_ID)).toBe("idle");
   });
 
   it("clearKickoffPending releases pending but never done", () => {
-    markKickoffPending(EXPERT_ID);
-    clearKickoffPending(EXPERT_ID);
-    expect(getKickoffStatus(EXPERT_ID)).toBe("idle");
+    markKickoffPending(USER_ID, EXPERT_ID);
+    clearKickoffPending(USER_ID, EXPERT_ID);
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
 
-    markKickoffDone(EXPERT_ID);
-    clearKickoffPending(EXPERT_ID);
-    expect(getKickoffStatus(EXPERT_ID)).toBe("done");
+    markKickoffDone(USER_ID, EXPERT_ID);
+    clearKickoffPending(USER_ID, EXPERT_ID);
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done");
   });
 
   it("expires stale pending state so a crashed tab cannot consume kickoff", () => {
     window.localStorage.setItem(
-      kickoffStorageKey(EXPERT_ID),
+      kickoffStorageKey(USER_ID, EXPERT_ID),
       `pending:${Date.now() - 10 * 60 * 1000}`,
     );
-    expect(getKickoffStatus(EXPERT_ID)).toBe("idle");
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
   });
 
-  it("reads the previous key and value formats during rollout", () => {
+  it("ignores unscoped legacy state so it cannot leak between accounts", () => {
     window.localStorage.setItem(`expert-kickoff-${EXPERT_ID}`, "1");
-    expect(getKickoffStatus(EXPERT_ID)).toBe("done");
+    window.localStorage.setItem(`expert-kickoff-status:${EXPERT_ID}`, "done");
+
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle");
   });
 
   it("serializes cross-tab work with the Web Locks API", async () => {
@@ -187,10 +192,19 @@ describe("kickoff status state machine", () => {
     vi.stubGlobal("navigator", { locks: { request } });
 
     await expect(
-      withKickoffLock(EXPERT_ID, async () => "started"),
+      withKickoffLock(USER_ID, EXPERT_ID, async () => "started"),
     ).resolves.toBe("started");
-    expect(request).toHaveBeenCalledWith(
-      `expert-kickoff-status:${EXPERT_ID}`,
+    await expect(
+      withKickoffLock("user-2", EXPERT_ID, async () => "also-started"),
+    ).resolves.toBe("also-started");
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      `expert-kickoff-status:${USER_ID}:${EXPERT_ID}`,
+      expect.any(Function),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      `expert-kickoff-status:user-2:${EXPERT_ID}`,
       expect.any(Function),
     );
   });

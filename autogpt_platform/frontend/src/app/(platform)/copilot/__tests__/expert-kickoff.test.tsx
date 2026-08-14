@@ -1,7 +1,6 @@
 import { server } from "@/mocks/mock-server";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -43,13 +42,13 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 
 const sendSpy = vi.hoisted(() => vi.fn());
 
+const USER_ID = "user-1";
 const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const KICKOFF_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const EXISTING_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000002";
 const ORPHAN_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000003";
 
 afterEach(() => {
-  cleanup();
   server.resetHandlers();
   sendSpy.mockReset();
   flagState.values = { "hire-experts": true };
@@ -96,7 +95,8 @@ function KickoffHarness() {
     isUserStoppingRef,
   });
 
-  useExpertKickoff({
+  const { isKickoffStarting } = useExpertKickoff({
+    userId: USER_ID,
     expertId,
     kickoff: kickoff === "1",
     sessionId,
@@ -121,6 +121,7 @@ function KickoffHarness() {
       <div data-testid="session-id">{sessionId ?? "none"}</div>
       <div data-testid="kickoff-param">{kickoff ?? "none"}</div>
       <div data-testid="settled-count">{settledCount}</div>
+      <div data-testid="kickoff-starting">{String(isKickoffStarting)}</div>
       <div data-testid="client-message-count">{clientMessages.length}</div>
       <button type="button" onClick={() => void refetchSession()}>
         Refresh session
@@ -161,7 +162,7 @@ function makeSessionPayload(id: string, messages: unknown[] = []) {
     id,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-02T00:00:00Z",
-    user_id: "user-1",
+    user_id: USER_ID,
     expert_id: EXPERT_ID,
     messages,
   };
@@ -198,7 +199,7 @@ describe("useExpertKickoff", () => {
         return HttpResponse.json({
           id: KICKOFF_SESSION_ID,
           created_at: "2026-01-01T00:00:00Z",
-          user_id: "user-1",
+          user_id: USER_ID,
           expert_id: EXPERT_ID,
         });
       }),
@@ -226,13 +227,15 @@ describe("useExpertKickoff", () => {
       metadata: kickoff.metadata,
     });
     expect(screen.getByTestId("client-message-count").textContent).toBe("1");
-    expect(getKickoffStatus(EXPERT_ID)).toBe("pending");
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
     expect(screen.getByTestId("kickoff-param").textContent).toBe("1");
 
     persistedMessages = [persistedKickoffMessage()];
     fireEvent.click(screen.getByRole("button", { name: "Refresh session" }));
 
-    await waitFor(() => expect(getKickoffStatus(EXPERT_ID)).toBe("done"));
+    await waitFor(() =>
+      expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done"),
+    );
     await waitFor(() =>
       expect(screen.getByTestId("settled-count").textContent).toBe("1"),
     );
@@ -241,7 +244,7 @@ describe("useExpertKickoff", () => {
   });
 
   it("does nothing on a second visit after persisted completion", async () => {
-    markKickoffDone(EXPERT_ID);
+    markKickoffDone(USER_ID, EXPERT_ID);
     let listCount = 0;
     let createCount = 0;
     server.use(
@@ -268,7 +271,7 @@ describe("useExpertKickoff", () => {
   });
 
   it("stands down while another tab holds a fresh pending latch", async () => {
-    markKickoffPending(EXPERT_ID);
+    markKickoffPending(USER_ID, EXPERT_ID);
     let listCount = 0;
     let createCount = 0;
     server.use(
@@ -288,7 +291,7 @@ describe("useExpertKickoff", () => {
     await waitFor(() => expect(listCount).toBeGreaterThan(0));
     expect(sendSpy).not.toHaveBeenCalled();
     expect(createCount).toBe(0);
-    expect(getKickoffStatus(EXPERT_ID)).toBe("pending");
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
   });
 
   it("releases pending state when atomic session creation fails", async () => {
@@ -307,19 +310,28 @@ describe("useExpertKickoff", () => {
     renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
 
     await waitFor(() => expect(createCount).toBe(1));
-    await waitFor(() => expect(getKickoffStatus(EXPERT_ID)).toBe("idle"));
+    await waitFor(() =>
+      expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("idle"),
+    );
     expect(sendSpy).not.toHaveBeenCalled();
     expect(
-      window.localStorage.getItem(kickoffStorageKey(EXPERT_ID)),
+      window.localStorage.getItem(kickoffStorageKey(USER_ID, EXPERT_ID)),
     ).toBeNull();
+    expect(screen.getByTestId("kickoff-starting").textContent).toBe("false");
+    expect(screen.getByTestId("settled-count").textContent).toBe("1");
   });
 
   it("adopts a thread with history and retires kickoff without sending", async () => {
     let createCount = 0;
+    let requestedExpertId: string | null = null;
+    let requestedPinnedFirst: string | null = null;
     server.use(
       stubTransports(),
-      http.get("*/api/chat/sessions", () =>
-        HttpResponse.json({
+      http.get("*/api/chat/sessions", ({ request }) => {
+        const url = new URL(request.url);
+        requestedExpertId = url.searchParams.get("expert_id");
+        requestedPinnedFirst = url.searchParams.get("pinned_first");
+        return HttpResponse.json({
           sessions: [
             {
               id: EXISTING_SESSION_ID,
@@ -331,8 +343,8 @@ describe("useExpertKickoff", () => {
             },
           ],
           total: 1,
-        }),
-      ),
+        });
+      }),
       http.get(`*/api/chat/sessions/${EXISTING_SESSION_ID}`, () =>
         HttpResponse.json(
           makeSessionPayload(EXISTING_SESSION_ID, [
@@ -358,7 +370,11 @@ describe("useExpertKickoff", () => {
         EXISTING_SESSION_ID,
       ),
     );
-    await waitFor(() => expect(getKickoffStatus(EXPERT_ID)).toBe("done"));
+    await waitFor(() =>
+      expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done"),
+    );
+    expect(requestedExpertId).toBe(EXPERT_ID);
+    expect(requestedPinnedFirst).toBe("false");
     expect(sendSpy).not.toHaveBeenCalled();
     expect(createCount).toBe(0);
   });
@@ -406,6 +422,6 @@ describe("useExpertKickoff", () => {
       metadata: kickoff.metadata,
     });
     expect(createCount).toBe(0);
-    expect(getKickoffStatus(EXPERT_ID)).toBe("pending");
+    expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
   });
 });

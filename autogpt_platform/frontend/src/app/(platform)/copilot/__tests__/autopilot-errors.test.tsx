@@ -38,7 +38,11 @@ vi.mock("../helpers", async (importActual) => {
 });
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
+  useAuth: () => ({
+    user: { id: "test-user" },
+    isUserLoading: false,
+    isLoggedIn: true,
+  }),
 }));
 
 const flagState = vi.hoisted(() => ({ experts: false }));
@@ -149,8 +153,12 @@ describe("AutoPilot streaming — error paths", () => {
         timeout: 5000,
       }),
     ).toBeDefined();
-    await waitFor(() => expect(getKickoffStatus(expertId)).toBe("idle"));
-    expect(window.localStorage.getItem(kickoffStorageKey(expertId))).toBeNull();
+    await waitFor(() =>
+      expect(getKickoffStatus("test-user", expertId)).toBe("idle"),
+    );
+    expect(
+      window.localStorage.getItem(kickoffStorageKey("test-user", expertId)),
+    ).toBeNull();
     expect(useCopilotStreamStore.getState().getCoord(TEST_SESSION_ID)).toEqual({
       lastSubmittedMessageText: null,
       lastSubmittedKickoffExpertId: null,

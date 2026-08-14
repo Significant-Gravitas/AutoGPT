@@ -3,7 +3,6 @@ import type { UIMessage } from "ai";
 
 const EXPERT_KICKOFF_KIND = "expert_kickoff";
 const KICKOFF_STORAGE_PREFIX = "expert-kickoff-status:";
-const LEGACY_STORAGE_PREFIX = "expert-kickoff-";
 const LEGACY_MARKER_PATTERN =
   /^\[\[EXPERT_KICKOFF:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\](?:\n\n)?/i;
 const PENDING_TTL_MS = 2 * 60 * 1000;
@@ -84,22 +83,21 @@ export function stripKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
   return messages.filter((message) => !isKickoffMessage(message));
 }
 
-export function kickoffStorageKey(expertId: string): string {
-  return `${KICKOFF_STORAGE_PREFIX}${expertId}`;
+export function kickoffStorageKey(userId: string, expertId: string): string {
+  return `${KICKOFF_STORAGE_PREFIX}${userId}:${expertId}`;
 }
 
-function readKickoffStorage(expertId: string): string | null {
-  const current = window.localStorage.getItem(kickoffStorageKey(expertId));
-  return (
-    current ??
-    window.localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${expertId}`)
-  );
+function readKickoffStorage(userId: string, expertId: string): string | null {
+  return window.localStorage.getItem(kickoffStorageKey(userId, expertId));
 }
 
-export function getKickoffStatus(expertId: string): KickoffStatus {
+export function getKickoffStatus(
+  userId: string,
+  expertId: string,
+): KickoffStatus {
   if (typeof window === "undefined") return "idle";
   try {
-    const value = readKickoffStorage(expertId);
+    const value = readKickoffStorage(userId, expertId);
     if (value === null) return "idle";
     if (value === "done" || value === "1") return "done";
     if (!value.startsWith("pending:")) return "idle";
@@ -112,11 +110,11 @@ export function getKickoffStatus(expertId: string): KickoffStatus {
   }
 }
 
-export function markKickoffPending(expertId: string): void {
+export function markKickoffPending(userId: string, expertId: string): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
-      kickoffStorageKey(expertId),
+      kickoffStorageKey(userId, expertId),
       `pending:${Date.now()}`,
     );
   } catch {
@@ -124,22 +122,21 @@ export function markKickoffPending(expertId: string): void {
   }
 }
 
-export function markKickoffDone(expertId: string): void {
+export function markKickoffDone(userId: string, expertId: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(kickoffStorageKey(expertId), "done");
+    window.localStorage.setItem(kickoffStorageKey(userId, expertId), "done");
   } catch {
     return;
   }
 }
 
-export function clearKickoffPending(expertId: string): void {
+export function clearKickoffPending(userId: string, expertId: string): void {
   if (typeof window === "undefined") return;
   try {
-    const value = readKickoffStorage(expertId);
+    const value = readKickoffStorage(userId, expertId);
     if (value?.startsWith("pending:")) {
-      window.localStorage.removeItem(kickoffStorageKey(expertId));
-      window.localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${expertId}`);
+      window.localStorage.removeItem(kickoffStorageKey(userId, expertId));
     }
   } catch {
     return;
@@ -147,12 +144,10 @@ export function clearKickoffPending(expertId: string): void {
 }
 
 export async function withKickoffLock<T>(
+  userId: string,
   expertId: string,
   action: () => Promise<T>,
 ): Promise<T | undefined> {
   if (typeof navigator === "undefined" || !navigator.locks) return action();
-  return navigator.locks.request(
-    `${KICKOFF_STORAGE_PREFIX}${expertId}`,
-    action,
-  );
+  return navigator.locks.request(kickoffStorageKey(userId, expertId), action);
 }

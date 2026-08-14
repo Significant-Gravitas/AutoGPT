@@ -28,7 +28,10 @@ from backend.copilot.config import (
     CopilotLLMModel,
     CopilotMode,
 )
-from backend.copilot.db import chat_message_exists, get_chat_messages_paginated
+from backend.copilot.db import (
+    chat_message_has_assistant_reply,
+    get_chat_messages_paginated,
+)
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.expert_kickoff import (
     expert_kickoff_message_id,
@@ -443,6 +446,13 @@ async def list_sessions(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     expert_id: str | None = Query(default=None, max_length=128),
+    pinned_first: bool = Query(
+        default=True,
+        description=(
+            "Keep pinned sessions before recent sessions. Set false for "
+            "strict recency when adopting the latest expert thread."
+        ),
+    ),
 ) -> ListSessionsResponse:
     """
     List chat sessions for the authenticated user.
@@ -455,12 +465,18 @@ async def list_sessions(
         limit: Maximum number of sessions to return (1-100).
         offset: Number of sessions to skip for pagination.
         expert_id: Restrict the listing to sessions scoped to this expert.
+        pinned_first: Whether pinned sessions precede strict recency ordering.
 
     Returns:
         ListSessionsResponse: List of session summaries and total count.
     """
     sessions, total_count = await get_user_sessions(
-        user_id, limit, offset, organization_id=ctx.org_id, expert_id=expert_id
+        user_id,
+        limit,
+        offset,
+        organization_id=ctx.org_id,
+        expert_id=expert_id,
+        pinned_first=pinned_first,
     )
 
     # Batch-check Redis for active stream status on each session
@@ -1436,6 +1452,8 @@ async def stream_chat_post(
         else None
     )
     message_metadata: dict[str, Any] | None = None
+    persisted_kickoff_has_reply: bool | None = None
+    resume_persisted_kickoff = False
     if request.expert_kickoff:
         if not request.is_user_message or not message.strip():
             raise HTTPException(
@@ -1453,8 +1471,10 @@ async def stream_chat_post(
             session.expert_id,
         )
         message_metadata = expert_kickoff_metadata(session.expert_id)
-        if await chat_message_exists(message_id):
-            return _empty_ui_message_stream_response()
+        persisted_kickoff_has_reply = await chat_message_has_assistant_reply(
+            message_id,
+            session_id,
+        )
 
     # Session-anchored tenancy: the ChatSession row is the authoritative
     # org/team for every turn in it — a user whose active header org
@@ -1480,6 +1500,8 @@ async def stream_chat_post(
 
     if turn_in_flight:
         if request.expert_kickoff:
+            if persisted_kickoff_has_reply is not None:
+                return _empty_ui_message_stream_response()
             raise HTTPException(
                 status_code=409,
                 detail="expert kickoff requires an idle session",
@@ -1496,6 +1518,11 @@ async def stream_chat_post(
         except HTTPException as exc:
             if exc.status_code != 409:
                 raise
+
+    if request.expert_kickoff and persisted_kickoff_has_reply is not None:
+        if persisted_kickoff_has_reply:
+            return _empty_ui_message_stream_response()
+        resume_persisted_kickoff = True
 
     # Permission resolution is only needed below for the actual turn — keep
     # it after the queue-fall-through so a queued mid-turn request returns
@@ -1571,6 +1598,7 @@ async def stream_chat_post(
             message=message,
             message_id=message_id,
             message_metadata=message_metadata,
+            message_already_persisted=resume_persisted_kickoff,
             is_user_message=request.is_user_message,
             context=request.context,
             file_ids=sanitized_file_ids,
@@ -1583,7 +1611,9 @@ async def stream_chat_post(
             permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
         )
-    except ConcurrentTurnLimitError:
+    except ConcurrentTurnLimitError as exc:
+        if resume_persisted_kickoff:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
         # if total in-flight (running + queued) is still under the hard
         # cap (default 15), persist the user's message and flip the

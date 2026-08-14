@@ -12,6 +12,21 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
+const mockRouterPush = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    back: vi.fn(),
+    forward: vi.fn(),
+    prefetch: vi.fn(),
+    push: mockRouterPush,
+    refresh: vi.fn(),
+    replace: vi.fn(),
+  }),
+  usePathname: () => "/marketplace",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
@@ -68,6 +83,7 @@ function renderMarketplace() {
 
 describe("Marketplace ExpertsSection", () => {
   beforeEach(() => {
+    mockRouterPush.mockReset();
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
@@ -92,6 +108,9 @@ describe("Marketplace ExpertsSection", () => {
     expect(await screen.findByText("Maria joined your team")).toBeDefined();
     expect(await screen.findByText("View team")).toBeDefined();
     expect(screen.queryByText("Chat with Maria")).toBeNull();
+    expect(mockRouterPush).toHaveBeenCalledWith(
+      `/copilot?expertId=${hiredMaria.id}&kickoff=1`,
+    );
   });
 
   test("stays hidden and fetches nothing for signed-out visitors", async () => {

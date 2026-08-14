@@ -141,6 +141,7 @@ export function useCopilotPage() {
     rateLimitMessage,
     dismissRateLimit,
   } = useCopilotStream({
+    userId: user?.id ?? null,
     sessionId,
     hydratedMessages,
     hasActiveStream,
@@ -312,6 +313,7 @@ export function useCopilotPage() {
   useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
 
   const { isKickoffStarting } = useExpertKickoff({
+    userId: user?.id ?? null,
     expertId,
     kickoff: isExpertsEnabled && kickoffParam === "1",
     sessionId,

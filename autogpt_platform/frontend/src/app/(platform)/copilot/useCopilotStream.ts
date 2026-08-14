@@ -65,6 +65,7 @@ const FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH = 8;
 const STREAM_RENDER_THROTTLE_MS = 30;
 
 interface UseCopilotStreamArgs {
+  userId?: string | null;
   sessionId: string | null;
   hydratedMessages: UIMessage[] | undefined;
   hasActiveStream: boolean;
@@ -76,6 +77,7 @@ interface UseCopilotStreamArgs {
 }
 
 export function useCopilotStream({
+  userId = null,
   sessionId,
   hydratedMessages,
   hasActiveStream,
@@ -215,7 +217,7 @@ export function useCopilotStream({
             // it. Its bubble below is dropped too; the once-per-expert
             // pending latch expires so a later visit can retry the kickoff.
             if (kickoffExpertId) {
-              clearKickoffPending(kickoffExpertId);
+              if (userId) clearKickoffPending(userId, kickoffExpertId);
               useCopilotStreamStore.getState().updateCoord(sessionId, {
                 lastSubmittedMessageText: null,
                 lastSubmittedKickoffExpertId: null,
@@ -253,7 +255,7 @@ export function useCopilotStream({
         isUserStoppingRef,
       });
       if (kickoffExpertId) {
-        clearKickoffPending(kickoffExpertId);
+        if (userId) clearKickoffPending(userId, kickoffExpertId);
         useCopilotStreamStore.getState().updateCoord(sessionId, {
           lastSubmittedMessageText: null,
           lastSubmittedKickoffExpertId: null,
@@ -295,7 +297,14 @@ export function useCopilotStream({
         chatRuntime.onError = undefined;
       }
     };
-  }, [chatRuntime, sessionId, refetchSession]);
+  }, [
+    chatRuntime,
+    sessionId,
+    refetchSession,
+    setInitialPrompt,
+    setMessages,
+    userId,
+  ]);
 
   // Flipped to ``true`` the first time the user actually hits Send on this
   // mount. Lets the ``hasConnectedThisMountRef`` latch below distinguish

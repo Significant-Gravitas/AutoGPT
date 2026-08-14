@@ -1,4 +1,4 @@
-import { OrbitLoader } from "../../OrbitLoader/OrbitLoader";
+import { OrbitLoader } from "../../../OrbitLoader/OrbitLoader";
 
 interface Props {
   expertName?: string;

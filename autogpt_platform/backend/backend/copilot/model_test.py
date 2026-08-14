@@ -1304,7 +1304,7 @@ async def test_get_or_create_expert_kickoff_session_adopts_latest_thread(
     from .model import get_or_create_expert_kickoff_session
 
     existing = ChatSession.new("user-a", dry_run=False, expert_id="expert-a")
-    mocker.patch(
+    get_sessions = mocker.patch(
         "backend.copilot.model.get_user_sessions",
         new_callable=mocker.AsyncMock,
         return_value=([existing], 1),
@@ -1326,6 +1326,7 @@ async def test_get_or_create_expert_kickoff_session_adopts_latest_thread(
     )
 
     assert result is existing
+    assert get_sessions.await_args.kwargs["pinned_first"] is False
     get_session.assert_awaited_once_with(existing.session_id, "user-a")
     create_session.assert_not_awaited()
 

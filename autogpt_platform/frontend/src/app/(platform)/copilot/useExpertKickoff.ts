@@ -3,7 +3,7 @@ import {
   useGetV2ListSessions,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   clearKickoffPending,
   getKickoffStatus,
@@ -14,6 +14,7 @@ import {
 import { latestExpertSessionParams } from "./expertSessionQuery";
 
 interface Args {
+  userId: string | null;
   expertId: string | null;
   kickoff: boolean;
   sessionId: string | null;
@@ -26,6 +27,7 @@ interface Args {
 }
 
 export function useExpertKickoff({
+  userId,
   expertId,
   kickoff,
   sessionId,
@@ -39,9 +41,17 @@ export function useExpertKickoff({
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const firedRef = useRef(false);
   const settledRef = useRef(false);
-  const isArmed = isExpertsEnabled && kickoff && !!expertId;
+  const [failedKickoff, setFailedKickoff] = useState<{
+    userId: string;
+    expertId: string;
+  } | null>(null);
+  const isArmed = isExpertsEnabled && kickoff && !!userId && !!expertId;
   const wantsSession = isArmed && !sessionId && !!expertId;
-  const wantsCreatePath = wantsSession && getKickoffStatus(expertId) === "idle";
+  const wantsCreatePath =
+    wantsSession &&
+    !!userId &&
+    !!expertId &&
+    getKickoffStatus(userId, expertId) === "idle";
 
   const sessionsQuery = useGetV2ListSessions(
     latestExpertSessionParams(expertId),
@@ -50,7 +60,10 @@ export function useExpertKickoff({
         enabled: wantsSession,
         refetchOnWindowFocus: false,
         refetchInterval:
-          wantsSession && getKickoffStatus(expertId) === "pending"
+          wantsSession &&
+          userId &&
+          expertId &&
+          getKickoffStatus(userId, expertId) === "pending"
             ? 1_000
             : false,
       },
@@ -70,41 +83,49 @@ export function useExpertKickoff({
     onSettledRef.current = onSettled;
   }, [onAdoptSession, onKickoff, onSettled]);
 
+  useEffect(() => {
+    firedRef.current = false;
+    settledRef.current = false;
+  }, [expertId, userId]);
+
   const settleKickoff = useRef(() => {
     if (settledRef.current) return;
     settledRef.current = true;
     onSettledRef.current();
   }).current;
 
-  const fireKickoff = useRef(async (id: string) => {
+  const fireKickoff = useRef(async (ownerId: string, id: string) => {
     try {
       await onKickoffRef.current(id);
     } catch {
-      clearKickoffPending(id);
+      clearKickoffPending(ownerId, id);
+      firedRef.current = false;
+      setFailedKickoff({ userId: ownerId, expertId: id });
+      settleKickoff();
     }
   }).current;
 
-  const beginKickoff = useRef((id: string) => {
+  const beginKickoff = useRef((ownerId: string, id: string) => {
     if (firedRef.current) return;
     firedRef.current = true;
-    void withKickoffLock(id, async () => {
-      if (getKickoffStatus(id) !== "idle") {
+    void withKickoffLock(ownerId, id, async () => {
+      if (getKickoffStatus(ownerId, id) !== "idle") {
         firedRef.current = false;
         return;
       }
-      markKickoffPending(id);
-      await fireKickoff(id);
+      markKickoffPending(ownerId, id);
+      await fireKickoff(ownerId, id);
     });
   }).current;
 
   useEffect(() => {
-    if (!isArmed || !expertId) return;
-    if (getKickoffStatus(expertId) !== "done") return;
+    if (!isArmed || !userId || !expertId) return;
+    if (getKickoffStatus(userId, expertId) !== "done") return;
     settleKickoff();
-  }, [expertId, isArmed, settleKickoff]);
+  }, [expertId, isArmed, settleKickoff, userId]);
 
   useEffect(() => {
-    if (!isArmed || !expertId || sessionId) return;
+    if (!isArmed || !userId || !expertId || sessionId) return;
     const sessions =
       sessionsQuery.data?.status === 200
         ? sessionsQuery.data.data.sessions
@@ -114,9 +135,9 @@ export function useExpertKickoff({
       return;
     }
     if (sessions === null && !sessionsQuery.isError) return;
-    if (getKickoffStatus(expertId) !== "idle") return;
+    if (getKickoffStatus(userId, expertId) !== "idle") return;
     if (transportsQuery.data?.status !== 200) return;
-    beginKickoff(expertId);
+    beginKickoff(userId, expertId);
   }, [
     beginKickoff,
     expertId,
@@ -125,21 +146,22 @@ export function useExpertKickoff({
     sessionsQuery.data,
     sessionsQuery.isError,
     transportsQuery.data,
+    userId,
   ]);
 
   useEffect(() => {
-    if (!isArmed || !expertId || !sessionId) return;
+    if (!isArmed || !userId || !expertId || !sessionId) return;
     if (sessionExpertId !== expertId || hasPersistedMessages === null) return;
 
     if (hasPersistedMessages) {
-      markKickoffDone(expertId);
+      markKickoffDone(userId, expertId);
       settleKickoff();
       return;
     }
 
     if (!isClientThreadEmpty) return;
-    if (getKickoffStatus(expertId) !== "idle") return;
-    beginKickoff(expertId);
+    if (getKickoffStatus(userId, expertId) !== "idle") return;
+    beginKickoff(userId, expertId);
   }, [
     beginKickoff,
     expertId,
@@ -149,14 +171,19 @@ export function useExpertKickoff({
     sessionExpertId,
     sessionId,
     settleKickoff,
+    userId,
   ]);
 
   return {
     isKickoffStarting:
       isExpertsEnabled &&
       kickoff &&
+      !!userId &&
       !!expertId &&
       !sessionId &&
-      getKickoffStatus(expertId) !== "done",
+      !(
+        failedKickoff?.userId === userId && failedKickoff.expertId === expertId
+      ) &&
+      getKickoffStatus(userId, expertId) !== "done",
   };
 }
