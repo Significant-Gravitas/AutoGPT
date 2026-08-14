@@ -130,6 +130,7 @@ def _record_execution_failure(
     error: BaseException,
 ) -> None:
     """Record an error without erasing a trusted reason promoted by a node."""
+    # Later untyped graph errors update the message but keep an earlier typed node reason sticky.
     if failure_reason := get_execution_failure_reason(error):
         execution_stats.failure_reason = failure_reason
     execution_stats.error = str(error) or type(error).__name__

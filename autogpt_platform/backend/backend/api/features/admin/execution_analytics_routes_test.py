@@ -54,6 +54,45 @@ async def test_process_batch_allows_credit_failure_without_openai_key():
 
 
 @pytest.mark.asyncio
+async def test_process_batch_skips_non_credit_failure_without_llm_client():
+    execution = SimpleNamespace(
+        id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+        user_id="user-1",
+        status=ExecutionStatus.FAILED,
+        stats=GraphExecutionMeta.Stats(error="Connection timeout"),
+        started_at=None,
+        ended_at=None,
+    )
+    db_client = AsyncMock()
+    request = ExecutionAnalyticsRequest(graph_id="graph-1")
+
+    with (
+        patch(
+            "backend.api.features.admin.execution_analytics_routes.update_graph_execution_stats",
+            new=AsyncMock(),
+        ) as mock_update,
+        patch(
+            "backend.executor.activity_status_generator.get_openai_client",
+            return_value=None,
+        ) as mock_get_openai_client,
+    ):
+        results = await _process_batch([execution], request, db_client)
+
+    assert len(results) == 1
+    assert results[0].status == "skipped"
+    assert results[0].summary_text is None
+    assert results[0].score is None
+    assert results[0].error_message == "Activity generation returned None"
+    mock_update.assert_not_awaited()
+    mock_get_openai_client.assert_called_once_with(prefer_openrouter=True)
+    db_client.get_node_executions.assert_not_awaited()
+    db_client.get_graph_metadata.assert_not_awaited()
+    db_client.get_graph.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_generate_analytics_only_skips_complete_existing_analysis():
     complete_execution = SimpleNamespace(
         id="exec-complete",
