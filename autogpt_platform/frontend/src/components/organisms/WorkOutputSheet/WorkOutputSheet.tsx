@@ -182,6 +182,7 @@ function OutputTable({
   const columns = allColumns.slice(0, MAX_PREVIEW_COLUMNS);
   const truncated =
     rows.length > visibleRows.length || allColumns.length > columns.length;
+
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
@@ -195,51 +196,85 @@ function OutputTable({
           Export CSV
         </Button>
       </div>
-      <div className="overflow-x-auto rounded-xl ring-1 ring-inset ring-zinc-200">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-zinc-50 text-left">
-              {columns.map((column) => (
-                <th
-                  key={column}
-                  className="px-3 py-2 font-medium text-zinc-600"
-                >
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row, index) => (
-              <tr key={index} className="border-t border-zinc-100">
-                {columns.map((column) => (
-                  <td key={column} className="px-3 py-2 text-zinc-700">
-                    {cellText(row[column])}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <OutputTablePreview rows={visibleRows} columns={columns} />
       {truncated ? (
-        <Text variant="small" className="text-zinc-500">
-          Showing the first {visibleRows.length} of {rows.length} rows and{" "}
-          {columns.length} of {allColumns.length} columns. The CSV export
-          matches this preview
-          {runLink ? (
-            <>
-              {" — "}
-              <Link href={runLink} className="underline">
-                open the full run
-              </Link>{" "}
-              for everything
-            </>
-          ) : null}
-          .
-        </Text>
+        <OutputTableTruncationNotice
+          visibleRowCount={visibleRows.length}
+          rowCount={rows.length}
+          visibleColumnCount={columns.length}
+          columnCount={allColumns.length}
+          runLink={runLink}
+        />
       ) : null}
     </div>
+  );
+}
+
+interface OutputTablePreviewProps {
+  rows: Record<string, unknown>[];
+  columns: string[];
+}
+
+function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
+  return (
+    <div className="overflow-x-auto rounded-xl ring-1 ring-inset ring-zinc-200">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="bg-zinc-50 text-left">
+            {columns.map((column) => (
+              <th key={column} className="px-3 py-2 font-medium text-zinc-600">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index} className="border-t border-zinc-100">
+              {columns.map((column) => (
+                <td key={column} className="px-3 py-2 text-zinc-700">
+                  {cellText(row[column])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+interface OutputTableTruncationNoticeProps {
+  visibleRowCount: number;
+  rowCount: number;
+  visibleColumnCount: number;
+  columnCount: number;
+  runLink?: string | null;
+}
+
+function OutputTableTruncationNotice({
+  visibleRowCount,
+  rowCount,
+  visibleColumnCount,
+  columnCount,
+  runLink,
+}: OutputTableTruncationNoticeProps) {
+  return (
+    <Text variant="small" className="text-zinc-500">
+      Showing the first {visibleRowCount} of {rowCount} rows and{" "}
+      {visibleColumnCount} of {columnCount} columns. The CSV export matches this
+      preview
+      {runLink ? (
+        <>
+          {" — "}
+          <Link href={runLink} className="underline">
+            open the full run
+          </Link>{" "}
+          for everything
+        </>
+      ) : null}
+      .
+    </Text>
   );
 }
 
