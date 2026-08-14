@@ -14,15 +14,44 @@ export type ExpertIdentityMap = Map<string, ExpertIdentity>;
 
 const EMPTY_MAP: ExpertIdentityMap = new Map();
 
+const FALLBACK_ARCHIVED_NAME = "This expert";
+
+export function resolveExpertIdentity(
+  activeExpertId: string | null,
+  expertsById: ExpertIdentityMap,
+  hasLoadedExperts: boolean,
+): ExpertIdentity | null {
+  if (!activeExpertId) return null;
+  const found = expertsById.get(activeExpertId);
+  if (found) return found;
+  // Fail closed: once the roster has loaded, a session pointing at an expert
+  // we can't resolve is treated as archived (read-only history) — never a
+  // writable plain Autopilot thread.
+  if (!hasLoadedExperts) return null;
+  return {
+    id: activeExpertId,
+    name: FALLBACK_ARCHIVED_NAME,
+    avatarUrl: null,
+    role: null,
+    isArchived: true,
+  };
+}
+
 export function useExpertMap() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const expertsQuery = useListExperts({
-    query: {
-      enabled: isExpertsEnabled,
-      select: (response) =>
-        response.status === 200 ? response.data : undefined,
+  // Include archived experts so a fired expert's chat threads keep resolving
+  // their identity as read-only history — the active roster/marketplace/sidebar
+  // use the paramless query and never see archived rows.
+  const expertsQuery = useListExperts(
+    { include_archived: true },
+    {
+      query: {
+        enabled: isExpertsEnabled,
+        select: (response) =>
+          response.status === 200 ? response.data : undefined,
+      },
     },
-  });
+  );
 
   // Memoized on purpose: the identities read out of this map are passed as
   // props (`expertIdentity`) down the whole chat tree, so rebuilding it every

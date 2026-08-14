@@ -163,6 +163,22 @@ async def test_rehire_after_archive_revives_expert(server: SpinTestServer, test_
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_list_experts_include_archived_returns_fired_experts(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    active_ids = {e.id for e in await experts_db.list_experts(test_user.id)}
+    assert hired.expert.id not in active_ids
+
+    with_archived = await experts_db.list_experts(test_user.id, include_archived=True)
+    archived = next(e for e in with_archived if e.id == hired.expert.id)
+    assert archived.is_archived is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_install_workflow_on_archived_expert_raises(
     server: SpinTestServer, test_user
 ):

@@ -36,7 +36,7 @@ export function useInstallWorkflowPicker({
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
-  const expertsQuery = useListExperts({
+  const expertsQuery = useListExperts(undefined, {
     query: { select: (x) => x.data as Expert[], enabled: open },
   });
   const hiredExperts = (expertsQuery.data ?? []).filter(

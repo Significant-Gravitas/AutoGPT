@@ -22,7 +22,15 @@ export function FireExpertDialog({
   onClose,
   onFired,
 }: Props) {
-  const { preview, isFiring, handleFire } = useFireExpertDialog({
+  const {
+    preview,
+    isPreviewLoading,
+    isPreviewError,
+    isPreviewReady,
+    retryPreview,
+    isFiring,
+    handleFire,
+  } = useFireExpertDialog({
     expertId,
     expertName,
     open,
@@ -30,6 +38,12 @@ export function FireExpertDialog({
     onFired,
   });
   const summary = getFireSummary(preview);
+
+  function getAutomationLineText() {
+    if (isPreviewLoading) return "Checking what will pause…";
+    if (isPreviewError) return "We couldn't check what will pause.";
+    return summary.automationLine;
+  }
 
   return (
     <Dialog
@@ -49,19 +63,34 @@ export function FireExpertDialog({
           </Text>
           <ul className="flex flex-col gap-2.5">
             <FireLine>Installed workflows stay in your library.</FireLine>
-            <FireLine>{summary.scheduleLine}</FireLine>
+            <FireLine>{getAutomationLineText()}</FireLine>
             <FireLine>Chat threads become read-only history.</FireLine>
             <FireLine>Their work stays yours.</FireLine>
           </ul>
-          {summary.names.length > 0 ? (
+          {isPreviewError ? (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-red-50 px-3.5 py-3 ring-1 ring-inset ring-red-200/80">
+              <Text variant="small" className="text-red-700">
+                Couldn&apos;t load what will pause.
+              </Text>
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={() => retryPreview()}
+                data-testid="fire-preview-retry"
+              >
+                Retry
+              </Button>
+            </div>
+          ) : null}
+          {isPreviewReady && summary.items.length > 0 ? (
             <div className="rounded-xl bg-zinc-50 px-3.5 py-3 ring-1 ring-inset ring-zinc-200/80">
               <Text variant="small" className="text-zinc-500">
                 Pausing now
               </Text>
               <ul className="mt-1 flex flex-col gap-0.5">
-                {summary.names.map((name) => (
-                  <li key={name} className="truncate text-sm text-zinc-700">
-                    {name}
+                {summary.items.map((item) => (
+                  <li key={item.id} className="truncate text-sm text-zinc-700">
+                    {item.name}
                   </li>
                 ))}
               </ul>
@@ -74,6 +103,7 @@ export function FireExpertDialog({
             <Button
               variant="destructive"
               loading={isFiring}
+              disabled={!isPreviewReady}
               onClick={handleFire}
               data-testid="fire-expert-confirm"
             >

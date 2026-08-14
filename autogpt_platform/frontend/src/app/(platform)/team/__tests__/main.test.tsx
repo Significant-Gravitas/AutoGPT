@@ -8,6 +8,7 @@ import {
   getUpdateExpertSoulMockHandler,
   getUpdateExpertSoulMockHandler422,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { delay, http, HttpResponse } from "msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -444,7 +445,7 @@ describe("TeamPage", () => {
       within(dialog).getByText("Installed workflows stay in your library."),
     ).toBeDefined();
     expect(
-      await within(dialog).findByText("2 scheduled runs will pause."),
+      await within(dialog).findByText("2 automations will pause."),
     ).toBeDefined();
     expect(
       within(dialog).getByText("Chat threads become read-only history."),
@@ -478,7 +479,9 @@ describe("TeamPage", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );
-    fireEvent.click(await screen.findByTestId("fire-expert-confirm"));
+    const confirm = await screen.findByTestId("fire-expert-confirm");
+    await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(confirm);
 
     await waitFor(() => expect(archiveSpy).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByText("Maria")).toBeNull());
@@ -487,6 +490,84 @@ describe("TeamPage", () => {
       expect.objectContaining({
         description: "You can re-hire Maria anytime from the marketplace.",
       }),
+    );
+  });
+
+  test("blocks firing until the detach preview resolves", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.get("*/api/experts/expert-maria/detach-preview", async () => {
+        await delay(60);
+        return HttpResponse.json({
+          schedule_names: [],
+          trigger_names: [],
+        });
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+      button: 0,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Fire Maria/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
+    expect(within(dialog).getByText("Checking what will pause…")).toBeDefined();
+    expect(
+      screen.getByTestId("fire-expert-confirm").hasAttribute("disabled"),
+    ).toBe(true);
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("fire-expert-confirm").hasAttribute("disabled"),
+      ).toBe(false),
+    );
+  });
+
+  test("surfaces an error with retry when the detach preview fails", async () => {
+    let previewRequests = 0;
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.get("*/api/experts/expert-maria/detach-preview", () => {
+        previewRequests += 1;
+        if (previewRequests === 1) {
+          return new HttpResponse(null, { status: 404 });
+        }
+        return HttpResponse.json({
+          schedule_names: [],
+          trigger_names: [],
+        });
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+      button: 0,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Fire Maria/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
+    expect(
+      await within(dialog).findByText("Couldn't load what will pause."),
+    ).toBeDefined();
+    expect(
+      screen.getByTestId("fire-expert-confirm").hasAttribute("disabled"),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByTestId("fire-preview-retry"));
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("fire-expert-confirm").hasAttribute("disabled"),
+      ).toBe(false),
     );
   });
 
@@ -509,7 +590,9 @@ describe("TeamPage", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );
-    fireEvent.click(await screen.findByTestId("fire-expert-confirm"));
+    const confirm = await screen.findByTestId("fire-expert-confirm");
+    await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(confirm);
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(

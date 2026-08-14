@@ -15,7 +15,7 @@ export function useExpertProfileSheet(
 ) {
   const queryClient = useQueryClient();
 
-  const expertsQuery = useListExperts({
+  const expertsQuery = useListExperts(undefined, {
     query: { select: (x) => x.data as Expert[] },
   });
 

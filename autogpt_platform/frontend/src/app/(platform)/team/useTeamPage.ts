@@ -14,7 +14,7 @@ export function useTeamPage({ enabled }: Args) {
   const [soulExpertId, setSoulExpertId] = useState<string | null>(null);
   const [soulDrawerKey, setSoulDrawerKey] = useState(0);
 
-  const expertsQuery = useListExperts({
+  const expertsQuery = useListExperts(undefined, {
     query: { select: (x) => x.data as Expert[], enabled },
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({

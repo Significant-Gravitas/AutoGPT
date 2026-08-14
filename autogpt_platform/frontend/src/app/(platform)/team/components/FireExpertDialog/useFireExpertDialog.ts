@@ -1,10 +1,13 @@
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import {
+  getGetExpertQueryKey,
   getListExpertsQueryKey,
   useArchiveExpert,
   useGetExpertDetachPreview,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { okData } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface Args {
@@ -31,7 +34,19 @@ export function useFireExpertDialog({
   const { mutate, isPending: isFiring } = useArchiveExpert({
     mutation: {
       onSuccess: () => {
+        // The paramless list key is a prefix of the archived-inclusive one used
+        // by useExpertMap, so a single invalidate refreshes roster, marketplace,
+        // sidebar and the chat identity map. The rest of the expert's cached
+        // footprint (detail page, home team strip, schedules drawer) would
+        // otherwise stay stale for the global 60s window.
         queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getGetExpertQueryKey(expertId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetHomeDashboardQueryKey(),
+        });
+        invalidateAllScheduleQueries(queryClient);
         toast({
           title: `${expertName} was let go`,
           description: `You can re-hire ${expertName} anytime from the marketplace.`,
@@ -49,11 +64,18 @@ export function useFireExpertDialog({
   });
 
   function handleFire() {
+    // The confirm button is disabled until the preview succeeds, but guard the
+    // handler too so a stale click can never fire without a settled preview.
+    if (!previewQuery.isSuccess) return;
     mutate({ expertId });
   }
 
   return {
     preview: previewQuery.data ?? null,
+    isPreviewLoading: previewQuery.isPending,
+    isPreviewError: previewQuery.isError,
+    isPreviewReady: previewQuery.isSuccess,
+    retryPreview: previewQuery.refetch,
     isFiring,
     handleFire,
   };

@@ -2,6 +2,7 @@ import logging
 
 import prisma.errors
 import prisma.models
+import prisma.types
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
@@ -100,13 +101,15 @@ async def list_templates() -> list[Expert]:
     return [_to_model(row) for row in rows]
 
 
-async def list_experts(user_id: str) -> list[Expert]:
+async def list_experts(user_id: str, include_archived: bool = False) -> list[Expert]:
+    where: prisma.types.ExpertWhereInput = {
+        "ownerUserId": user_id,
+        "isTemplate": False,
+    }
+    if not include_archived:
+        where["isArchived"] = False
     rows = await prisma.models.Expert.prisma().find_many(
-        where={
-            "ownerUserId": user_id,
-            "isTemplate": False,
-            "isArchived": False,
-        },
+        where=where,
         include=_WORKFLOW_INCLUDE,
     )
     latest_runs = await _latest_runs([row.id for row in rows])

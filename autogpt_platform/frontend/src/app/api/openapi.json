@@ -5457,6 +5457,18 @@
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Experts",
         "operationId": "list_experts",
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Archived"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",

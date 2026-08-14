@@ -1,0 +1,122 @@
+import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { Expert } from "@/app/api/__generated__/models/expert";
+import { server } from "@/mocks/mock-server";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { describe, expect, it, vi } from "vitest";
+import { resolveExpertIdentity, useExpertMap } from "../../../useExpertMap";
+import { ChatContainer } from "../ChatContainer";
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    // Only HIRE_EXPERTS is on: useExpertMap runs, artifacts/task-bar stay off.
+    useGetFlag: (flag: string) => flag === "hire-experts",
+  };
+});
+
+vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
+  ChatInput: () => <div data-testid="composer" />,
+}));
+
+vi.mock(
+  "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer",
+  () => ({
+    ChatMessagesContainer: () => <div data-testid="messages" />,
+  }),
+);
+
+vi.mock(
+  "@/app/(platform)/copilot/components/ChatContainer/useAutoOpenArtifacts",
+  () => ({
+    useAutoOpenArtifacts: () => undefined,
+  }),
+);
+
+vi.mock(
+  "@/app/(platform)/copilot/components/UsageLimits/useIsUsageLimitReached",
+  () => ({
+    useIsUsageLimitReached: () => false,
+  }),
+);
+
+const baseProps = {
+  messages: [],
+  status: "ready",
+  error: undefined,
+  sessionId: "s1",
+  isLoadingSession: false,
+  isCreatingSession: false,
+  onCreateSession: vi.fn(),
+  onSend: vi.fn(),
+  onStop: vi.fn(),
+};
+
+const maria: Expert = {
+  id: "expert-maria",
+  name: "Maria",
+  avatar_url: null,
+  role: "Marketing Strategist",
+  tagline: null,
+  bio: null,
+  skills: [],
+  identity: "You are Maria.",
+  voice_preferences: "Warm.",
+  boundaries: "Honest.",
+  protected_soul_rules: [],
+  is_template: false,
+  source_template_id: "template-maria",
+  is_archived: false,
+  workflows: [],
+};
+
+// The session already knows its expert; identity is resolved by the SAME
+// endpoint→map→resolve chain production uses, so a fail-open regression here
+// would surface as a writable thread rather than being masked by a hand-set prop.
+function ExpertThreadHarness({ activeExpertId }: { activeExpertId: string }) {
+  const { expertsById, hasLoadedExperts } = useExpertMap();
+  const expertIdentity = resolveExpertIdentity(
+    activeExpertId,
+    expertsById,
+    hasLoadedExperts,
+  );
+  return <ChatContainer {...baseProps} expertIdentity={expertIdentity} />;
+}
+
+describe("Copilot expert thread — fail-closed identity", () => {
+  it("keeps a fired expert's thread read-only with their real name", async () => {
+    server.use(getListExpertsMockHandler([{ ...maria, is_archived: true }]));
+
+    render(<ExpertThreadHarness activeExpertId="expert-maria" />);
+
+    const notice = await screen.findByTestId("archived-expert-notice");
+    expect(notice.textContent).toContain(
+      "Maria was let go — this thread is read-only",
+    );
+    expect(screen.queryByTestId("composer")).toBeNull();
+  });
+
+  it("fails closed to read-only when the expert is gone from a loaded roster", async () => {
+    server.use(getListExpertsMockHandler([]));
+
+    render(<ExpertThreadHarness activeExpertId="expert-ghost" />);
+
+    const notice = await screen.findByTestId("archived-expert-notice");
+    expect(notice.textContent).toContain(
+      "was let go — this thread is read-only",
+    );
+    expect(screen.queryByTestId("composer")).toBeNull();
+  });
+
+  it("keeps the composer for an active expert still on the roster", async () => {
+    server.use(getListExpertsMockHandler([maria]));
+
+    render(<ExpertThreadHarness activeExpertId="expert-maria" />);
+
+    await waitFor(() => expect(screen.getByTestId("composer")).toBeDefined());
+    expect(screen.queryByTestId("archived-expert-notice")).toBeNull();
+  });
+});

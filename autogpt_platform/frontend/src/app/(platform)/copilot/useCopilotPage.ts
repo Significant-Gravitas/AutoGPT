@@ -15,7 +15,7 @@ import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
-import { useExpertMap } from "./useExpertMap";
+import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
@@ -52,7 +52,7 @@ export function useCopilotPage() {
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;
-  const { expertsById } = useExpertMap();
+  const { expertsById, hasLoadedExperts } = useExpertMap();
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
@@ -81,10 +81,10 @@ export function useCopilotPage() {
   // NEXT session will address, and it is absent whenever a thread is reached
   // from global search, a bookmark or a shared link.
   const activeExpertId = sessionId ? sessionExpertId : expertId;
-  const expertIdentity =
-    isExpertsEnabled && activeExpertId
-      ? (expertsById.get(activeExpertId) ?? null)
-      : null;
+  const expertIdentity = useMemo(
+    () => resolveExpertIdentity(activeExpertId, expertsById, hasLoadedExperts),
+    [activeExpertId, expertsById, hasLoadedExperts],
+  );
 
   const {
     messages: currentMessages,
