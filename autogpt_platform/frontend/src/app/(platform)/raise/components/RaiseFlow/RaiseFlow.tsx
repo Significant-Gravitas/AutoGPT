@@ -29,17 +29,23 @@ export function RaiseFlow() {
   } = useRaisePage();
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-muted/30 px-4 pb-16 pt-6 sm:px-6 lg:px-8">
       <div className="mx-auto grid w-full max-w-[1000px] gap-6 lg:grid-cols-[1fr_minmax(300px,360px)]">
         <div className="order-2 flex flex-col gap-4 lg:order-1">
-          <div className="flex flex-col gap-3">
+          <div
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            aria-label="Raise expert conversation"
+            className="flex flex-col gap-3"
+          >
             {messages.map((message) =>
               message.role === "assistant" ? (
                 <AssistantBubble key={message.id} text={message.text} />
               ) : (
                 <div
                   key={message.id}
-                  className="max-w-[80%] self-end rounded-3xl rounded-br-lg bg-purple-600 px-5 py-3.5 text-[15px] leading-relaxed text-white"
+                  className="max-w-[80%] self-end rounded-3xl rounded-br-lg bg-accent px-5 py-3.5 text-[15px] leading-relaxed text-accent-foreground"
                 >
                   {message.text}
                 </div>
@@ -53,7 +59,7 @@ export function RaiseFlow() {
                 type="button"
                 onClick={goBack}
                 disabled={isSubmitting}
-                className="mb-3 flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 disabled:opacity-50"
+                className="mb-3 flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               >
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 Back

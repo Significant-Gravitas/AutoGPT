@@ -8,6 +8,7 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
@@ -127,15 +128,32 @@ describe("Marketplace ExpertsSection", () => {
 
     await waitFor(
       () => {
-        expect(
-          screen
-            .getByRole("link", { name: /raise your own expert from scratch/i })
-            .getAttribute("href"),
-        ).toBe("/raise");
+        const raiseLink = screen.getByRole("link", {
+          name: "Raise your own expert from scratch",
+        });
+        expect(raiseLink.getAttribute("href")).toBe("/raise");
+        expect(raiseLink.textContent).not.toContain("…or");
         expect(screen.queryByText("Meet the AI Experts")).toBeNull();
       },
       { timeout: 5_000 },
     );
+  });
+
+  test("uses standalone raise copy when templates fail to load", async () => {
+    server.use(
+      http.get("/api/proxy/api/experts/templates", () =>
+        HttpResponse.json({ detail: "Unavailable" }, { status: 500 }),
+      ),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    const raiseLink = await screen.findByRole("link", {
+      name: "Raise your own expert from scratch",
+    });
+    expect(raiseLink.getAttribute("href")).toBe("/raise");
+    expect(raiseLink.textContent).not.toContain("…or");
   });
 
   test("hired template shows hired state", async () => {

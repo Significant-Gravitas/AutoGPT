@@ -1,7 +1,6 @@
 import logging
-from typing import Literal, LiteralString, cast
+from typing import Literal
 
-import prisma.enums
 import prisma.errors
 import prisma.models
 
@@ -15,7 +14,7 @@ from backend.api.features.experts.models import (
     RaiseResult,
 )
 from backend.api.features.library import db as library_db
-from backend.data.db import get_database_schema, transaction
+from backend.data.db import transaction
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -360,36 +359,20 @@ async def _create_raised_expert_row(
         )
 
 
-def _schema_format(query_template: str) -> LiteralString:
-    schema = get_database_schema()
-    schema_prefix = f'"{schema}".' if schema != "public" else ""
-    return cast(LiteralString, query_template.format(schema_prefix=schema_prefix))
-
-
 async def _install_first_job(
     user_id: str,
     expert_id: str,
     store_listing_version_id: str,
 ) -> None:
     async with transaction() as tx:
-        eligible_rows = await tx.query_raw(
-            _schema_format(
-                """
-                SELECT slv.id
-                FROM {schema_prefix}"StoreListingVersion" AS slv
-                JOIN {schema_prefix}"StoreListing" AS sl
-                  ON sl.id = slv."storeListingId"
-                WHERE slv.id = $1
-                  AND slv."isDeleted" = false
-                  AND slv."isAvailable" = true
-                  AND slv."submissionStatus" = 'APPROVED'
-                  AND sl."isDeleted" = false
-                FOR UPDATE OF slv, sl
-                """
-            ),
-            store_listing_version_id,
+        is_installable = (
+            await library_db.is_store_listing_version_available_for_install(
+                store_listing_version_id,
+                tx=tx,
+                lock_rows=True,
+            )
         )
-        if not eligible_rows:
+        if not is_installable:
             raise FirstJobUnavailableError(store_listing_version_id)
 
         expert = await tx.expert.find_first(
@@ -421,16 +404,10 @@ async def _validate_first_job_listing(store_listing_version_id: str) -> None:
     The shared library install path authorizes by graph, which would let a
     pending or deleted version UUID pointing at an approved graph slip
     through and link the expert to an unapproved row."""
-    row = await prisma.models.StoreListingVersion.prisma().find_first(
-        where={
-            "id": store_listing_version_id,
-            "isDeleted": False,
-            "isAvailable": True,
-            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-            "StoreListing": {"is": {"isDeleted": False}},
-        }
+    is_installable = await library_db.is_store_listing_version_available_for_install(
+        store_listing_version_id
     )
-    if row is None:
+    if not is_installable:
         raise FirstJobUnavailableError(store_listing_version_id)
 
 

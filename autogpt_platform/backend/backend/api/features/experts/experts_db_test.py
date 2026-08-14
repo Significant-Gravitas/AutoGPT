@@ -10,6 +10,7 @@ import pytest
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.features.experts.models import ExpertSoulUpdate
+from backend.api.features.library import db as library_db
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.data.graph import Graph, Node
@@ -208,6 +209,35 @@ async def test_raise_expert_installs_first_job(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_restores_existing_first_job_library_agent(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    slv_id = await _seed_store_listing(server)
+    existing = await library_db.add_store_agent_to_library(slv_id, owner.id)
+    existing_row = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": existing.id}
+    )
+    assert existing_row is not None
+    original_tenancy = (existing_row.organizationId, existing_row.teamId)
+    await prisma.models.LibraryAgent.prisma().update(
+        where={"id": existing.id},
+        data={"isDeleted": True, "isArchived": True},
+    )
+
+    raised = await experts_db.create_raised_expert(owner.id, "Nova", None, None, slv_id)
+
+    restored = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": existing.id}
+    )
+    assert restored is not None
+    assert restored.isDeleted is False
+    assert restored.isArchived is False
+    assert (restored.organizationId, restored.teamId) == original_tenancy
+    assert raised.expert.workflows[0].library_agent_id == existing.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_first_job_install_rolls_back_library_agent_on_link_failure(
     server: SpinTestServer,
 ):
@@ -324,6 +354,40 @@ async def test_raise_expert_rejects_unapproved_first_job(server: SpinTestServer)
         await experts_db.create_raised_expert(
             owner.id, "Otto", None, None, pending_slv_id
         )
+
+    assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_rejects_pending_version_of_approved_graph(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    approved_slv_id = await _seed_store_listing(server)
+    approved = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": approved_slv_id}
+    )
+    assert approved is not None
+    pending = await prisma.models.StoreListingVersion.prisma().create(
+        data={
+            "version": approved.version + 1,
+            "agentGraphId": approved.agentGraphId,
+            "agentGraphVersion": approved.agentGraphVersion,
+            "name": approved.name,
+            "subHeading": approved.subHeading,
+            "videoUrl": approved.videoUrl,
+            "agentOutputDemoUrl": approved.agentOutputDemoUrl,
+            "imageUrls": approved.imageUrls,
+            "description": approved.description,
+            "instructions": approved.instructions,
+            "categories": approved.categories,
+            "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+            "storeListingId": approved.storeListingId,
+        }
+    )
+
+    with pytest.raises(experts_db.FirstJobUnavailableError):
+        await experts_db.create_raised_expert(owner.id, "Otto", None, None, pending.id)
 
     assert await experts_db.list_experts(owner.id) == []
 

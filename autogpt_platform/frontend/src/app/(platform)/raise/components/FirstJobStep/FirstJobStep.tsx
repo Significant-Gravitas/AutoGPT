@@ -9,10 +9,10 @@ import { cn } from "@/lib/utils";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useFirstJobStep } from "./useFirstJobStep";
 
-interface Props {
+type Props = {
   onPick: (job: { id: string; name: string }) => void;
   onSkip: () => void;
-}
+};
 
 export function FirstJobStep({ onPick, onSkip }: Props) {
   const {
@@ -51,7 +51,7 @@ export function FirstJobStep({ onPick, onSkip }: Props) {
           />
         ))
       ) : (
-        <p className="rounded-2xl border border-zinc-200 bg-white p-5 text-sm text-zinc-500">
+        <p className="rounded-2xl border border-border bg-background p-5 text-sm text-muted-foreground">
           No starter jobs are available right now. You can skip for now.
         </p>
       )}
@@ -74,11 +74,11 @@ export function FirstJobStep({ onPick, onSkip }: Props) {
   );
 }
 
-interface JobCardProps {
+type JobCardProps = {
   agent: StoreAgent;
   isSelected: boolean;
   onSelect: () => void;
-}
+};
 
 function JobCard({ agent, isSelected, onSelect }: JobCardProps) {
   return (
@@ -89,24 +89,24 @@ function JobCard({ agent, isSelected, onSelect }: JobCardProps) {
       className={cn(
         "w-full rounded-2xl border p-4 text-left transition-colors",
         isSelected
-          ? "border-purple-300 bg-purple-50/40 ring-2 ring-purple-200"
-          : "border-zinc-200 bg-white hover:border-zinc-300",
+          ? "border-accent bg-accent/5 ring-2 ring-accent/20"
+          : "border-border bg-background hover:border-foreground/30",
       )}
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[15px] font-medium text-zinc-900">
+        <span className="text-[15px] font-medium text-foreground">
           {agent.agent_name}
         </span>
         {isSelected ? (
           <Icon
             icon={CheckmarkCircle02Icon}
             size={18}
-            className="shrink-0 text-purple-600"
+            className="shrink-0 text-accent"
           />
         ) : null}
       </div>
       {agent.sub_heading ? (
-        <p className="mt-1 line-clamp-2 text-sm text-zinc-500">
+        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
           {agent.sub_heading}
         </p>
       ) : null}
