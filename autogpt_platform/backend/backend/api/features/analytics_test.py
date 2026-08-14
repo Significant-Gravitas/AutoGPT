@@ -1,5 +1,6 @@
 """Tests for analytics API endpoints."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, Mock
 
@@ -347,6 +348,10 @@ def test_log_raw_analytics_service_error(
 # =============================================================================
 
 
+async def _drain_funnel_writes() -> None:
+    await asyncio.gather(*backend.data.analytics._pending_funnel_writes)
+
+
 async def test_emit_funnel_event_forwards_to_log_raw_analytics(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -358,10 +363,32 @@ async def test_emit_funnel_event_forwards_to_log_raw_analytics(
     await backend.data.analytics.emit_funnel_event(
         "user-1", "hire_completed", {"template_id": "t-1"}
     )
+    await _drain_funnel_writes()
 
     mock_log.assert_awaited_once_with(
         "user-1", "hire_completed", {"template_id": "t-1"}, "hire_completed"
     )
+
+
+async def test_emit_funnel_event_does_not_block_on_write(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    write_started = asyncio.Event()
+    release_write = asyncio.Event()
+
+    async def _slow_write(*args) -> None:
+        write_started.set()
+        await release_write.wait()
+
+    mocker.patch("backend.data.analytics.log_raw_analytics", side_effect=_slow_write)
+
+    # The caller returns before the write even starts, let alone finishes.
+    await backend.data.analytics.emit_funnel_event("user-1", "hire_completed", {})
+    assert not write_started.is_set()
+
+    release_write.set()
+    await _drain_funnel_writes()
+    assert write_started.is_set()
 
 
 async def test_emit_funnel_event_swallows_errors(
@@ -375,3 +402,46 @@ async def test_emit_funnel_event_swallows_errors(
 
     # Instrumentation must never raise into the caller.
     await backend.data.analytics.emit_funnel_event("user-1", "hire_failed", {})
+    await _drain_funnel_writes()
+
+
+async def test_emit_funnel_event_skips_duplicate_idempotency_key(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_log = mocker.patch(
+        "backend.data.analytics.log_raw_analytics",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "prisma.models.AnalyticsDetails.prisma",
+        return_value=Mock(find_first=AsyncMock(return_value=Mock())),
+    )
+
+    await backend.data.analytics.emit_funnel_event(
+        "user-1", "briefing_delivered", {"briefing_id": "b-1"}, "briefing_delivered:b-1"
+    )
+    await _drain_funnel_writes()
+
+    mock_log.assert_not_awaited()
+
+
+async def test_emit_funnel_event_writes_unseen_idempotency_key(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_log = mocker.patch(
+        "backend.data.analytics.log_raw_analytics",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "prisma.models.AnalyticsDetails.prisma",
+        return_value=Mock(find_first=AsyncMock(return_value=None)),
+    )
+
+    await backend.data.analytics.emit_funnel_event(
+        "user-1", "briefing_delivered", {"briefing_id": "b-1"}, "briefing_delivered:b-1"
+    )
+    await _drain_funnel_writes()
+
+    mock_log.assert_awaited_once_with(
+        "user-1", "briefing_delivered", {"briefing_id": "b-1"}, "briefing_delivered:b-1"
+    )

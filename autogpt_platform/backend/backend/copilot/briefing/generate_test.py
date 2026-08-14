@@ -286,7 +286,9 @@ async def test_generate_skips_when_already_delivered(monkeypatch):
     )
     delivered_record = MagicMock(delivered_at=datetime(2026, 8, 7, 9, 5))
     client = MagicMock(get_briefing_for_date=AsyncMock(return_value=delivered_record))
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     result = await generate.generate_and_deliver_briefing("user-1")
     assert result == {"status": "skipped", "reason": "already_delivered"}
@@ -321,7 +323,9 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     expert = make_expert()
     execution = make_exec()
@@ -411,7 +415,9 @@ def _patch_generate_env(monkeypatch, generate, client):
         "user_db",
         lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
 
 @pytest.mark.asyncio
@@ -536,7 +542,9 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     # The workflow shares "g-1" with the library agent below but carries no
     # library_agent_id of its own — the merge must not clobber the
@@ -735,7 +743,9 @@ async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     monkeypatch.setattr(
         generate,
@@ -798,7 +808,9 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
         append_plain_session_message=AsyncMock(),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     monkeypatch.setattr(
         generate,
@@ -856,7 +868,9 @@ async def test_generate_bounds_the_execution_query(monkeypatch):
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     get_graph_executions = AsyncMock(return_value=[make_exec()])
     monkeypatch.setattr(
@@ -1139,9 +1153,13 @@ async def test_generate_emits_events_on_delivery(monkeypatch):
         "user-1",
         "briefing_generated",
         {"run_count": 4, "decision_count": 2, "has_content": True},
+        None,
     )
     client.emit_funnel_event.assert_any_await(
-        "user-1", "briefing_delivered", {"briefing_id": "briefing-1"}
+        "user-1",
+        "briefing_delivered",
+        {"briefing_id": "briefing-1"},
+        "briefing_delivered:briefing-1",
     )
 
 
@@ -1168,4 +1186,5 @@ async def test_generate_emits_briefing_generated_when_nothing_to_say(monkeypatch
         "user-1",
         "briefing_generated",
         {"run_count": 0, "decision_count": 0, "has_content": False},
+        None,
     )

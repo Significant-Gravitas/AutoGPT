@@ -623,7 +623,9 @@ def _expert_run_completed_event(
 
     Mirrors the gating in ``expert_posts._post_run_result`` so the funnel
     counts exactly the runs that can post: an expert-attributed, non-dry-run,
-    top-level execution that reached a terminal status.
+    top-level execution that reached a terminal status. Execution origin
+    (schedule vs manual vs webhook) is not persisted anywhere, so the event
+    covers every such run rather than pretending to know the trigger.
     """
     context = graph_exec.execution_context
     expert_id = context.expert_id if context else None
@@ -633,7 +635,20 @@ def _expert_run_completed_event(
         return None
     if status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
         return None
-    return {"expert_id": expert_id, "status": str(status)}
+    return {
+        "expert_id": expert_id,
+        "status": str(status),
+        "graph_exec_id": graph_exec.graph_exec_id,
+    }
+
+
+def _observe_funnel_emission(future: Future) -> None:
+    """The RPC write already left the surrounding try/except when this runs —
+    transport failures would otherwise vanish with the discarded future."""
+    try:
+        future.result()
+    except Exception:
+        logger.exception("Expert run funnel emission failed after submission")
 
 
 class ExecutionProcessor:
@@ -1016,22 +1031,6 @@ class ExecutionProcessor:
             expert_posts.handle_expert_run_post(
                 db_client, graph_exec, exec_meta.status, exec_stats
             )
-            run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
-            if run_event is not None:
-                try:
-                    asyncio.run_coroutine_threadsafe(
-                        get_db_async_client().emit_funnel_event(
-                            graph_exec.user_id,
-                            "expert_scheduled_run_completed",
-                            run_event,
-                        ),
-                        self.node_execution_loop,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to emit expert run completion for run "
-                        f"#{graph_exec.graph_exec_id}"
-                    )
 
             update_graph_execution_state(
                 db_client=db_client,
@@ -1039,6 +1038,29 @@ class ExecutionProcessor:
                 status=exec_meta.status,
                 stats=exec_stats,
             )
+
+            # Only after the terminal state is durably saved: a failed state
+            # write requeues this message, and emitting first would double-
+            # count the rerun. The graph_exec_id-keyed index dedups the
+            # remaining requeue window on the service side.
+            run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
+            if run_event is not None:
+                try:
+                    future = asyncio.run_coroutine_threadsafe(
+                        get_db_async_client().emit_funnel_event(
+                            graph_exec.user_id,
+                            "expert_run_completed",
+                            run_event,
+                            f"expert_run_completed:{graph_exec.graph_exec_id}",
+                        ),
+                        self.node_execution_loop,
+                    )
+                    future.add_done_callback(_observe_funnel_emission)
+                except Exception:
+                    logger.exception(
+                        "Failed to emit expert run completion for run "
+                        f"#{graph_exec.graph_exec_id}"
+                    )
 
     async def charge_node_usage(
         self,

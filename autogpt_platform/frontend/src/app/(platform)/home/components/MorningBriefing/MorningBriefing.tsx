@@ -5,7 +5,7 @@ import {
   InboxIcon,
   TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -32,7 +32,10 @@ export function MorningBriefing({ dashboard, className }: Props) {
     visibleOutcomes,
   } = useMorningBriefing({ outcomes: briefing.outcomes });
 
+  const openedRef = useRef(false);
   useEffect(() => {
+    if (openedRef.current) return;
+    openedRef.current = true;
     trackFunnel("briefing_opened");
   }, []);
 

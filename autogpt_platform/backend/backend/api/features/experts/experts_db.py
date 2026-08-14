@@ -144,7 +144,7 @@ async def get_expert(
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
     try:
-        result = await _hire_expert_impl(user_id, template_id, name)
+        result, activated = await _hire_expert_impl(user_id, template_id, name)
     except Exception:
         await emit_funnel_event(
             user_id,
@@ -152,20 +152,24 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
             {"template_id": template_id, "failed_preloads_count": 0},
         )
         raise
-    await emit_funnel_event(
-        user_id,
-        "hire_completed",
-        {
-            "template_id": template_id,
-            "failed_preloads_count": len(result.failed_preloads),
-        },
-    )
+    if activated:
+        await emit_funnel_event(
+            user_id,
+            "hire_completed",
+            {
+                "template_id": template_id,
+                "failed_preloads_count": len(result.failed_preloads),
+            },
+        )
     return result
 
 
 async def _hire_expert_impl(
     user_id: str, template_id: str, name: str | None
-) -> HireResult:
+) -> tuple[HireResult, bool]:
+    """Returns the hire result plus whether an inactive→active transition
+    actually happened — idempotent re-hires and lost races report False so
+    the funnel counts each hire exactly once."""
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
         include=_WORKFLOW_INCLUDE,
@@ -178,7 +182,7 @@ async def _hire_expert_impl(
         include=_WORKFLOW_INCLUDE,
     )
     if existing is not None:
-        return await _existing_hire_result(existing)
+        return await _existing_hire_result(existing), existing.isArchived
 
     create_data: dict = {
         "ownerUserId": user_id,
@@ -205,7 +209,7 @@ async def _hire_expert_impl(
         )
         if raced is None:
             raise
-        return await _existing_hire_result(raced)
+        return await _existing_hire_result(raced), raced.isArchived
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
 
@@ -214,7 +218,7 @@ async def _hire_expert_impl(
     )
     if hydrated is None:
         raise ExpertNotFoundError(expert.id)
-    return HireResult(expert=_to_model(hydrated), failed_preloads=failed)
+    return HireResult(expert=_to_model(hydrated), failed_preloads=failed), True
 
 
 async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
@@ -435,11 +439,24 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
 
 async def archive_expert(user_id: str, expert_id: str) -> None:
     updated = await prisma.models.Expert.prisma().update_many(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
         data={"isArchived": True},
     )
     if updated == 0:
-        raise ExpertNotFoundError(expert_id)
+        already_archived = await prisma.models.Expert.prisma().find_first(
+            where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        )
+        if already_archived is None:
+            raise ExpertNotFoundError(expert_id)
+        # Re-archiving is an idempotent no-op: schedules were paused and
+        # triggers detached on the first call, and the funnel must count
+        # each firing once.
+        return
     await emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
     await scheduling.pause_expert_schedules(
         user_id, expert_id, reason="Expert archived"

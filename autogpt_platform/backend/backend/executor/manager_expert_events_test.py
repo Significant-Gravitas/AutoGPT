@@ -21,12 +21,17 @@ def test_emits_for_terminal_expert_run():
     assert event == {
         "expert_id": "e-1",
         "status": str(ExecutionStatus.COMPLETED),
+        "graph_exec_id": "run-1",
     }
 
 
 def test_emits_for_failed_expert_run():
     event = _expert_run_completed_event(_graph_exec(), ExecutionStatus.FAILED)
-    assert event == {"expert_id": "e-1", "status": str(ExecutionStatus.FAILED)}
+    assert event == {
+        "expert_id": "e-1",
+        "status": str(ExecutionStatus.FAILED),
+        "graph_exec_id": "run-1",
+    }
 
 
 def test_skips_non_expert_run():

@@ -1,5 +1,6 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { StrictMode } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
@@ -447,4 +448,32 @@ test("emits the home_viewed funnel event once the dashboard mounts", async () =>
 
   await screen.findByRole("heading", { name: "Needs you" });
   await waitFor(() => expect(funnelEvents).toContain("home_viewed"));
+});
+
+test("view events fire exactly once under StrictMode effect replay", async () => {
+  const funnelEvents: string[] = [];
+  server.use(
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      const body = (await request.json()) as { type: string };
+      funnelEvents.push(body.type);
+      return HttpResponse.json({ status: "ok" });
+    }),
+  );
+  mockDashboard(dashboard);
+
+  render(
+    <StrictMode>
+      <HomePage />
+    </StrictMode>,
+  );
+
+  await screen.findByRole("heading", { name: "Your briefing" });
+  await waitFor(() => {
+    expect(funnelEvents).toContain("home_viewed");
+    expect(funnelEvents).toContain("briefing_opened");
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(funnelEvents.filter((e) => e === "home_viewed")).toHaveLength(1);
+  expect(funnelEvents.filter((e) => e === "briefing_opened")).toHaveLength(1);
 });
