@@ -18,7 +18,9 @@ export function AgentRow({ agent }: Props) {
   return (
     <Link
       href={`/team/${agent.expert.id}`}
-      onClick={() => trackFunnel("home_team_member_clicked")}
+      onClick={() =>
+        trackFunnel("home_team_member_clicked", { expert_id: agent.expert.id })
+      }
       className="group -mx-2 flex min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
       <ExpertAvatar

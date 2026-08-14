@@ -6,16 +6,30 @@
 
 import { postAnalyticsLogRawAnalytics } from "@/app/api/__generated__/endpoints/analytics/analytics";
 
-type FunnelEvent =
+type EmptyFunnelEvent =
   | "experts_section_viewed"
-  | "expert_profile_opened"
   | "hire_started"
   | "expert_thread_created"
   | "home_viewed"
-  | "briefing_opened"
-  | "briefing_outcome_clicked"
-  | "home_attention_actioned"
-  | "home_team_member_clicked";
+  | "briefing_opened";
+
+interface FunnelEventProperties {
+  expert_profile_opened: { template_id: string };
+  briefing_outcome_clicked: { status: string };
+  home_attention_actioned: {
+    kind: string;
+    action: "approve" | "decline";
+  };
+  home_team_member_clicked: { expert_id: string };
+}
+
+type FunnelEvent = EmptyFunnelEvent | keyof FunnelEventProperties;
+
+export function trackFunnel(event: EmptyFunnelEvent): void;
+export function trackFunnel<Event extends keyof FunnelEventProperties>(
+  event: Event,
+  properties: FunnelEventProperties[Event],
+): void;
 
 export function trackFunnel(
   event: FunnelEvent,

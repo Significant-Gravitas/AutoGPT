@@ -214,6 +214,18 @@ function ExpertSessionHarness() {
   );
 }
 
+function AutopilotSessionHarness() {
+  const { createSession, sessionId } = useChatSession();
+  return (
+    <div>
+      <div data-testid="session-id">{sessionId ?? "none"}</div>
+      <button onClick={() => void createSession().catch(() => {})}>
+        create
+      </button>
+    </div>
+  );
+}
+
 /** Mirrors `CopilotPage`, which keys the chat host on the session id — every
  *  session change (including "New Chat" clearing it) remounts `useChatSession`
  *  with fresh refs. */
@@ -227,10 +239,16 @@ const NuqsWrapper = withNuqsTestingAdapter({
   hasMemory: true,
 });
 
+const EmptyNuqsWrapper = withNuqsTestingAdapter({
+  searchParams: "",
+  hasMemory: true,
+});
+
 describe("useChatSession — expert sessions", () => {
   it("creates a session with expert_id when visiting /copilot?expertId=expert-maria", async () => {
     let createBody: unknown = null;
     let transportInventoryLoaded = false;
+    const funnelEvents: string[] = [];
     server.use(
       http.post("*/api/chat/sessions", async ({ request }) => {
         createBody = await request.json();
@@ -265,6 +283,11 @@ describe("useChatSession — expert sessions", () => {
         });
       }),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+      http.post(/log_raw_analytics/, async ({ request }) => {
+        const body = (await request.json()) as { type: string };
+        funnelEvents.push(body.type);
+        return HttpResponse.json({ status: "ok" });
+      }),
     );
 
     render(
@@ -283,6 +306,70 @@ describe("useChatSession — expert sessions", () => {
         llm_auth_provider: "platform",
       });
     });
+    await waitFor(() =>
+      expect(funnelEvents).toContain("expert_thread_created"),
+    );
+  });
+
+  it("does not emit expert_thread_created for an Autopilot session", async () => {
+    let transportInventoryLoaded = false;
+    const funnelEvents: string[] = [];
+    server.use(
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          id: "new-autopilot-session",
+          created_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          expert_id: null,
+        }),
+      ),
+      http.get("*/api/chat/sessions/new-autopilot-session", () =>
+        HttpResponse.json({
+          id: "new-autopilot-session",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () => {
+        transportInventoryLoaded = true;
+        return HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        });
+      }),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+      http.post(/log_raw_analytics/, async ({ request }) => {
+        const body = (await request.json()) as { type: string };
+        funnelEvents.push(body.type);
+        return HttpResponse.json({ status: "ok" });
+      }),
+    );
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <EmptyNuqsWrapper>
+          <AutopilotSessionHarness />
+        </EmptyNuqsWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() => expect(transportInventoryLoaded).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "new-autopilot-session",
+      ),
+    );
+
+    expect(funnelEvents).not.toContain("expert_thread_created");
   });
 
   it("opens the expert's latest thread when one already exists", async () => {

@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
-import { trackFunnel } from "@/services/experts/experts-analytics";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
@@ -20,13 +19,10 @@ export function ExpertsSection() {
     closeSheet,
   } = useExpertsSection();
 
-  const viewedRef = useRef(false);
-  useEffect(() => {
-    if (viewedRef.current) return;
-    if (isLoading || isError || templates.length === 0) return;
-    viewedRef.current = true;
-    trackFunnel("experts_section_viewed");
-  }, [isLoading, isError, templates.length]);
+  useTrackFunnelViewOnce(
+    "experts_section_viewed",
+    !isLoading && !isError && templates.length > 0,
+  );
 
   if (isError || (!isLoading && templates.length === 0)) {
     return null;

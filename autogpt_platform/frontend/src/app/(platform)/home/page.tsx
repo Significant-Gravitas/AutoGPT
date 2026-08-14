@@ -1,12 +1,11 @@
 "use client";
 
 import { notFound } from "next/navigation";
-import { useEffect, useRef } from "react";
 import { getGreetingName } from "@/app/(platform)/copilot/components/EmptySession/helpers";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { trackFunnel } from "@/services/experts/experts-analytics";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { AgentTeam } from "./components/AgentTeam/AgentTeam";
 import { HomeHeader } from "./components/HomeHeader/HomeHeader";
@@ -27,13 +26,10 @@ export default function HomePage() {
     enabled: Boolean(enabled) && ready,
   });
 
-  const viewedRef = useRef(false);
-  useEffect(() => {
-    if (viewedRef.current) return;
-    if (!ready || isLoading || isError || !dashboard || !enabled) return;
-    viewedRef.current = true;
-    trackFunnel("home_viewed");
-  }, [ready, isLoading, isError, dashboard, enabled]);
+  useTrackFunnelViewOnce(
+    "home_viewed",
+    ready && !isLoading && !isError && Boolean(dashboard) && Boolean(enabled),
+  );
 
   if (!ready || isLoading) {
     return <HomeSkeleton />;

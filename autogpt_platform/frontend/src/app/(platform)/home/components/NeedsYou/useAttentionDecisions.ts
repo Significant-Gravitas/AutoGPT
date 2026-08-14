@@ -23,10 +23,6 @@ export function useAttentionDecisions() {
 
   async function decide(item: HomeAttentionItem, approved: boolean) {
     if (!item.review) return;
-    trackFunnel("home_attention_actioned", {
-      kind: item.kind,
-      action: approved ? "approve" : "decline",
-    });
     setPending(item.id, true);
     try {
       const response = await processReviews(
@@ -43,6 +39,10 @@ export function useAttentionDecisions() {
         const message = response.status === 200 ? response.data.error : null;
         throw new Error(message || "The review could not be processed.");
       }
+      trackFunnel("home_attention_actioned", {
+        kind: item.kind,
+        action: approved ? "approve" : "decline",
+      });
       toast({ title: approved ? "Approved" : "Declined" });
       await queryClient.invalidateQueries({
         queryKey: getGetHomeDashboardQueryKey(),

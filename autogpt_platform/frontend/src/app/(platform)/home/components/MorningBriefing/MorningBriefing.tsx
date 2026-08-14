@@ -5,11 +5,10 @@ import {
   InboxIcon,
   TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
-import { useEffect, useRef } from "react";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { trackFunnel } from "@/services/experts/experts-analytics";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { formatBriefingWindowStart } from "../../helpers";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
@@ -32,12 +31,7 @@ export function MorningBriefing({ dashboard, className }: Props) {
     visibleOutcomes,
   } = useMorningBriefing({ outcomes: briefing.outcomes });
 
-  const openedRef = useRef(false);
-  useEffect(() => {
-    if (openedRef.current) return;
-    openedRef.current = true;
-    trackFunnel("briefing_opened");
-  }, []);
+  useTrackFunnelViewOnce("briefing_opened");
 
   return (
     <HomeTile

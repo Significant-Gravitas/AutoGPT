@@ -256,11 +256,21 @@ test("falls back to an Unknown badge for an unrecognised agent status", async ()
 test("approving an item one-tap sends the review decision", async () => {
   const user = userEvent.setup();
   const reviewRequests: unknown[] = [];
+  const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
   mockDashboard({ ...dashboard, attention: [approvalItem] });
   server.use(
     http.post("/api/proxy/api/review/action", async ({ request }) => {
       reviewRequests.push(await request.json());
       return HttpResponse.json({ failed_count: 0, processed_count: 1 });
+    }),
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      funnelBodies.push(
+        (await request.json()) as {
+          type: string;
+          data: Record<string, unknown>;
+        },
+      );
+      return HttpResponse.json({ status: "ok" });
     }),
   );
 
@@ -282,6 +292,46 @@ test("approving an item one-tap sends the review decision", async () => {
       },
     ],
   });
+  await waitFor(() =>
+    expect(
+      funnelBodies.find((body) => body.type === "home_attention_actioned")
+        ?.data,
+    ).toEqual({ kind: "approval", action: "approve" }),
+  );
+});
+
+test("does not count a failed attention decision as actioned", async () => {
+  const user = userEvent.setup();
+  const funnelEvents: string[] = [];
+  let reviewAttempts = 0;
+  mockDashboard({ ...dashboard, attention: [approvalItem] });
+  server.use(
+    http.post("/api/proxy/api/review/action", () => {
+      reviewAttempts += 1;
+      return HttpResponse.json({
+        failed_count: 1,
+        processed_count: 0,
+        error: "review failed",
+      });
+    }),
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      const body = (await request.json()) as { type: string };
+      funnelEvents.push(body.type);
+      return HttpResponse.json({ status: "ok" });
+    }),
+  );
+
+  render(<HomePage />);
+  const approveButton = await screen.findByRole("button", {
+    name: "Approve: Approve the camera shortlist",
+  });
+  await user.click(approveButton);
+
+  await waitFor(() => expect(reviewAttempts).toBe(1));
+  await waitFor(() =>
+    expect(approveButton.hasAttribute("disabled")).toBe(false),
+  );
+  expect(funnelEvents).not.toContain("home_attention_actioned");
 });
 
 test("keeps a Review deep link alongside the approval shortcuts", async () => {
@@ -366,14 +416,56 @@ test("labels a filter option for an unrecognised briefing status", async () => {
   ).toBeDefined();
 });
 
+test("tracks briefing outcomes and team members with useful dimensions", async () => {
+  const user = userEvent.setup();
+  const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
+  mockDashboard(dashboard);
+  server.use(
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      funnelBodies.push(
+        (await request.json()) as {
+          type: string;
+          data: Record<string, unknown>;
+        },
+      );
+      return HttpResponse.json({ status: "ok" });
+    }),
+  );
+
+  render(<HomePage />);
+  await user.click(
+    await screen.findByRole("link", { name: /Your camera research is ready/ }),
+  );
+  await user.click(
+    await screen.findByRole("link", { name: /Maria.*working/i }),
+  );
+
+  await waitFor(() => {
+    expect(
+      funnelBodies.find((body) => body.type === "briefing_outcome_clicked")
+        ?.data,
+    ).toEqual({ status: "completed" });
+    expect(
+      funnelBodies.find((body) => body.type === "home_team_member_clicked")
+        ?.data,
+    ).toEqual({ expert_id: "maria" });
+  });
+});
+
 test("shows a retryable page error when the aggregate cannot load", async () => {
   let attempts = 0;
+  const funnelEvents: string[] = [];
   server.use(
     http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () => {
       attempts += 1;
       return attempts === 1
         ? HttpResponse.json({ detail: "boom" }, { status: 500 })
         : HttpResponse.json(dashboard);
+    }),
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      const body = (await request.json()) as { type: string };
+      funnelEvents.push(body.type);
+      return HttpResponse.json({ status: "ok" });
     }),
   );
 
@@ -383,12 +475,32 @@ test("shows a retryable page error when the aggregate cannot load", async () => 
   expect(
     await screen.findByText("Your Home briefing could not be loaded"),
   ).toBeDefined();
+  expect(funnelEvents).not.toContain("home_viewed");
 
   await user.click(screen.getByRole("button", { name: /try again/i }));
 
   expect(
     await screen.findByRole("heading", { name: "Needs you" }),
   ).toBeDefined();
+  await waitFor(() => expect(funnelEvents).toContain("home_viewed"));
+});
+
+test("does not track home_viewed while feature state is loading", async () => {
+  const funnelEvents: string[] = [];
+  setFlagStatusMock.mockReturnValueOnce({ enabled: true, ready: false });
+  server.use(
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      const body = (await request.json()) as { type: string };
+      funnelEvents.push(body.type);
+      return HttpResponse.json({ status: "ok" });
+    }),
+  );
+
+  render(<HomePage />);
+  expect(screen.getByLabelText("Loading Home…")).toBeDefined();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(funnelEvents).not.toContain("home_viewed");
 });
 
 test("calls notFound when the experts feature is disabled", () => {
