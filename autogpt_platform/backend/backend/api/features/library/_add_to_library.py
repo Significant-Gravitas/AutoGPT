@@ -245,4 +245,8 @@ async def add_graph_to_library(
         f"to library for user #{user_id}"
     )
     schedule_info = await _fetch_schedule_info(user_id, graph_id=graph_model.id)
-    return library_model.LibraryAgent.from_db(added_agent, schedule_info=schedule_info)
+    return library_model.LibraryAgent.from_db(
+        added_agent,
+        schedule_info=schedule_info,
+        store_listing_version_id=store_listing_version.id,
+    )

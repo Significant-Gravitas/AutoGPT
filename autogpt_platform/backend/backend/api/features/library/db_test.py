@@ -440,6 +440,7 @@ async def test_add_agent_to_library(mocker):
     assert create_call_args.kwargs["include"] == library_agent_include(
         "test-user", include_nodes=False, include_executions=False
     )
+    assert mock_from_db.call_args.kwargs["store_listing_version_id"] == "version123"
 
 
 @pytest.mark.asyncio
