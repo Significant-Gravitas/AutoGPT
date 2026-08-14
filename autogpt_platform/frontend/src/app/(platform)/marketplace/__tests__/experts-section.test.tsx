@@ -202,7 +202,7 @@ describe("Marketplace ExpertsSection", () => {
     expect(screen.getByText("Included with your plan")).toBeDefined();
     expect(
       screen.getByText(
-        "Maria is an AI teammate. She'll always tell you before acting outside the platform.",
+        "Maria is an AI teammate. They'll always tell you before acting outside the platform.",
       ),
     ).toBeDefined();
   });
@@ -222,7 +222,7 @@ describe("Marketplace ExpertsSection", () => {
     expect(await screen.findByText("Included with your plan")).toBeDefined();
     expect(
       screen.getByText(
-        "Maria is an AI teammate. She'll always tell you before acting outside the platform.",
+        "Maria is an AI teammate. They'll always tell you before acting outside the platform.",
       ),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Hire Maria" })).toBeDefined();
@@ -231,6 +231,29 @@ describe("Marketplace ExpertsSection", () => {
     expect(screen.queryByText("What Maria sets up on day one")).toBeNull();
     expect(screen.queryByText("Skills")).toBeNull();
     expect(screen.queryByText("Workflows Maria brings")).toBeNull();
+  });
+
+  test("uses gender-neutral disclosure copy for every expert", async () => {
+    const maxTemplate = {
+      ...mariaTemplate,
+      id: "template-max",
+      name: "Max",
+      role: "Sales Strategist",
+    };
+    server.use(
+      getListExpertTemplatesMockHandler([maxTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Max"));
+    expect(
+      await screen.findByText(
+        "Max is an AI teammate. They'll always tell you before acting outside the platform.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/She'll always tell you/)).toBeNull();
   });
 
   test("keeps the hire action gated while the team lookup is unresolved", async () => {

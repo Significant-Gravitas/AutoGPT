@@ -456,7 +456,9 @@ describe("TeamPage", () => {
     expect(screen.queryByText("No schedules yet")).toBeNull();
 
     server.use(getGetV1ListExecutionSchedulesForAUserMockHandler([]));
-    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    const retry = screen.getByRole("button", { name: "Retry" });
+    expect(retry.closest("a")).toBeNull();
+    await userEvent.click(retry);
 
     expect(await screen.findByText("No schedules yet")).toBeDefined();
     expect(screen.queryByText("Schedules unavailable")).toBeNull();

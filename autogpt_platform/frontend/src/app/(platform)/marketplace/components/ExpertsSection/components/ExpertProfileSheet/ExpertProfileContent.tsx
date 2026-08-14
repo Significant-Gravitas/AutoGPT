@@ -139,7 +139,7 @@ export function ExpertProfileContent({
           Included with your plan
         </div>
         <p className="text-[13px] leading-relaxed text-zinc-500">
-          {`${expert.name} is an AI teammate. She'll always tell you before acting outside the platform.`}
+          {`${expert.name} is an AI teammate. They'll always tell you before acting outside the platform.`}
         </p>
       </div>
 

@@ -54,14 +54,12 @@ export function ExpertTeamCard({
     onEditSoul(expert.id);
   }
 
-  function handleRetrySchedulesClick(event: MouseEvent) {
-    event.preventDefault();
-    event.stopPropagation();
+  function handleRetrySchedulesClick() {
     onRetrySchedules();
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
+    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
       <Link
         href={`/team/${expert.id}`}
         aria-label={`View ${expert.name}`}
@@ -101,35 +99,35 @@ export function ExpertTeamCard({
             className={cn("h-1.5", !weeklySpend && "opacity-50")}
           />
         </div>
-        <Text variant="small" className="min-h-5 text-zinc-500">
-          {schedulesStatus === "loading" ? (
-            "Loading schedules…"
-          ) : schedulesStatus === "error" ? (
-            <>
-              Schedules unavailable{" "}
-              <button
-                type="button"
-                onClick={handleRetrySchedulesClick}
-                className="underline underline-offset-2 hover:text-zinc-700"
-              >
-                Retry
-              </button>
-            </>
-          ) : (
-            (scheduleLabel ?? "No schedules yet")
-          )}
-        </Text>
-        <div className="flex min-h-5 items-center gap-2">
-          <Text variant="small" className="text-zinc-500">
-            {workflowCount} {workflowCount === 1 ? "workflow" : "workflows"}
-          </Text>
-          {needsSetupCount > 0 ? (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
-              {needsSetupCount} {needsSetupCount === 1 ? "needs" : "need"} setup
-            </span>
-          ) : null}
-        </div>
       </Link>
+      <Text variant="small" className="min-h-5 text-zinc-500">
+        {schedulesStatus === "loading" ? (
+          "Loading schedules…"
+        ) : schedulesStatus === "error" ? (
+          <>
+            Schedules unavailable{" "}
+            <button
+              type="button"
+              onClick={handleRetrySchedulesClick}
+              className="underline underline-offset-2 hover:text-zinc-700"
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          (scheduleLabel ?? "No schedules yet")
+        )}
+      </Text>
+      <div className="flex min-h-5 items-center gap-2">
+        <Text variant="small" className="text-zinc-500">
+          {workflowCount} {workflowCount === 1 ? "workflow" : "workflows"}
+        </Text>
+        {needsSetupCount > 0 ? (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
+            {needsSetupCount} {needsSetupCount === 1 ? "needs" : "need"} setup
+          </span>
+        ) : null}
+      </div>
       {isPaused ? (
         <div className="flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
           <Text variant="small" className="text-amber-700">
