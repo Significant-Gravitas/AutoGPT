@@ -40,9 +40,6 @@ def _driver_returning(*query_results) -> AsyncMock:
 
 def _expert(
     expert_id: str,
-    *,
-    is_template: bool = False,
-    is_archived: bool = False,
 ) -> Expert:
     return Expert(
         id=expert_id,
@@ -56,9 +53,9 @@ def _expert(
         voice_preferences="",
         boundaries="",
         protected_soul_rules=list(PROTECTED_SOUL_RULES),
-        is_template=is_template,
+        is_template=False,
         source_template_id=None,
-        is_archived=is_archived,
+        is_archived=False,
         workflows=[],
     )
 
@@ -147,6 +144,39 @@ class TestOverview:
 
 
 class TestExpertMemoryScope:
+    def test_invalid_autopilot_scope_is_400_before_driver(self) -> None:
+        with (
+            patch(
+                f"{_MOCK_MODULE}.derive_memory_group_id",
+                side_effect=ValueError("invalid memory owner"),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get("/admin/memory/abc/overview")
+
+        assert resp.status_code == 400
+        assert resp.json() == {"detail": "invalid memory owner"}
+        open_driver.assert_not_called()
+
+    def test_invalid_expert_scope_is_400_before_driver(self) -> None:
+        expert_id = "expert-owned"
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ),
+            patch(
+                f"{_MOCK_MODULE}.derive_memory_group_id",
+                side_effect=ValueError("invalid expert memory scope"),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/graph?expert_id={expert_id}")
+
+        assert resp.status_code == 400
+        assert resp.json() == {"detail": "invalid expert memory scope"}
+        open_driver.assert_not_called()
+
     def test_owned_expert_opens_exact_server_derived_group(self) -> None:
         expert_id = "expert-owned"
         expected_group = derive_memory_group_id("abc", expert_id)
@@ -188,7 +218,12 @@ class TestExpertMemoryScope:
 
     @pytest.mark.parametrize(
         "expert_id",
-        ["cross-user-expert", "unowned-expert"],
+        [
+            "cross-user-expert",
+            "unowned-expert",
+            "template-expert",
+            "archived-expert",
+        ],
     )
     def test_unowned_expert_is_404_before_driver(self, expert_id: str) -> None:
         with (
@@ -203,30 +238,6 @@ class TestExpertMemoryScope:
         assert resp.status_code == 404
         assert resp.json() == {"detail": "Expert not found"}
         get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
-        open_driver.assert_not_called()
-
-    @pytest.mark.parametrize(
-        "expert",
-        [
-            _expert("template-expert", is_template=True),
-            _expert("archived-expert", is_archived=True),
-        ],
-        ids=["template", "archived"],
-    )
-    def test_inactive_or_template_expert_is_404_before_driver(
-        self, expert: Expert
-    ) -> None:
-        with (
-            patch(
-                f"{_MOCK_MODULE}.experts_db.get_expert",
-                new=AsyncMock(return_value=expert),
-            ),
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
-        ):
-            resp = client.get(f"/admin/memory/abc/graph?expert_id={expert.id}")
-
-        assert resp.status_code == 404
-        assert resp.json() == {"detail": "Expert not found"}
         open_driver.assert_not_called()
 
     def test_raw_group_id_query_cannot_select_memory_scope(self) -> None:
@@ -250,8 +261,9 @@ class TestExpertMemoryScope:
         get_expert.assert_not_awaited()
         open_driver.assert_called_once_with("user_abc")
 
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
     def test_non_admin_expert_request_never_reaches_lookup_or_driver(
-        self, mock_jwt_user
+        self, mock_jwt_user, endpoint: str
     ) -> None:
         app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
         with (
@@ -261,11 +273,34 @@ class TestExpertMemoryScope:
             ) as get_expert,
             patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
         ):
-            resp = client.get("/admin/memory/abc/graph?expert_id=expert-owned")
+            resp = client.get(f"/admin/memory/abc/{endpoint}?expert_id=expert-owned")
 
         assert resp.status_code == 403
         get_expert.assert_not_awaited()
         open_driver.assert_not_called()
+
+    def test_cross_user_expert_audit_records_resolved_scope(
+        self, mock_jwt_admin
+    ) -> None:
+        expert_id = "expert-owned"
+        expected_group = derive_memory_group_id("abc", expert_id)
+        driver = _driver_returning([], [], [])
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get(f"/admin/memory/abc/graph?expert_id={expert_id}")
+
+        assert resp.status_code == 200
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert expert_id in message
+        assert expected_group in message
 
 
 class TestListEntities:

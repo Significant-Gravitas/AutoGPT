@@ -20,6 +20,7 @@ Returned strings carry their own separators so callers can concatenate
 directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 """
 
+import asyncio
 import logging
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
@@ -30,6 +31,15 @@ logger = logging.getLogger(__name__)
 
 class ExpertSessionUnavailableError(RuntimeError):
     """The persisted expert scope cannot safely supply its identity."""
+
+
+EXPERT_SESSION_MISSING_MESSAGE = (
+    "This expert is no longer available. Please start a new chat."
+)
+EXPERT_SESSION_TEMPORARY_MESSAGE = (
+    "This expert is temporarily unavailable. Please try again."
+)
+_EXPERT_LOOKUP_RETRY_DELAY_SECONDS = 0.1
 
 
 def escape_prompt_xml_tags(value: str) -> str:
@@ -59,19 +69,11 @@ async def build_expert_identity_suffix(
         raise ExpertSessionUnavailableError(
             "Expert session identity is unavailable without an authenticated user."
         )
-    db = experts_db()
-    try:
-        expert = await db.get_expert(user_id, expert_id, include_workflows=False)
-    except Exception as e:
-        logger.warning(f"Failed to build expert identity suffix: {e}")
-        raise ExpertSessionUnavailableError(
-            "The expert for this session is temporarily unavailable."
-        ) from e
+    expert = await _load_expert_identity(user_id, expert_id)
     if expert is None or expert.is_archived:
-        raise ExpertSessionUnavailableError(
-            "The expert for this session no longer exists or is archived."
-        )
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE)
 
+    db = experts_db()
     try:
         personal_org_id, personal_team_id = await db.resolve_expert_personal_tenancy(
             user_id, expert_id
@@ -106,6 +108,27 @@ async def build_expert_identity_suffix(
         f"you are {name}.\n"
         f"</expert_identity>"
     )
+
+
+async def _load_expert_identity(user_id: str, expert_id: str) -> Expert | None:
+    for attempt in range(2):
+        try:
+            return await experts_db().get_expert(
+                user_id, expert_id, include_workflows=False
+            )
+        except Exception as error:
+            if attempt == 0:
+                logger.warning(
+                    "Expert identity lookup failed; retrying once",
+                    exc_info=True,
+                )
+                await asyncio.sleep(_EXPERT_LOOKUP_RETRY_DELAY_SECONDS)
+                continue
+            logger.warning("Expert identity lookup failed after retry", exc_info=True)
+            raise ExpertSessionUnavailableError(
+                EXPERT_SESSION_TEMPORARY_MESSAGE
+            ) from error
+    raise AssertionError("Expert identity lookup retry loop did not return")
 
 
 async def build_expert_context(user_id: str | None, expert_id: str | None) -> str:

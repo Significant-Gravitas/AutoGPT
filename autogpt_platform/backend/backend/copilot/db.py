@@ -679,6 +679,7 @@ async def get_user_session_count(
     user_id: str,
     organization_id: str | None = None,
     expert_id: str | None = None,
+    autopilot_only: bool = False,
 ) -> int:
     """Get the total number of chat sessions for a user.
 
@@ -688,6 +689,8 @@ async def get_user_session_count(
     """
     if expert_id == "":
         raise ValueError("expert_id must be non-empty")
+    if expert_id is not None and autopilot_only:
+        raise ValueError("expert_id and autopilot_only are mutually exclusive")
 
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
@@ -699,6 +702,8 @@ async def get_user_session_count(
     if expert_id is not None:
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
+    elif autopilot_only:
+        conditions.append('"expertId" IS NULL')
     rows = await db.query_raw_with_schema(
         'SELECT COUNT(*)::int AS "count" FROM {schema_prefix}"ChatSession" WHERE '
         + " AND ".join(conditions),

@@ -9,6 +9,7 @@ import { useMemoryVisualizer } from "./useMemoryVisualizer";
 import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
 import { DreamUsageSummary } from "./DreamUsageSummary/DreamUsageSummary";
 import { MemoryScopeSelector } from "./MemoryScopeSelector";
+import { MaintenanceControls } from "./MaintenanceControls";
 import { useMemoryScope } from "./useMemoryScope";
 
 // Polling envelope shared across all three job kinds — see the matching
@@ -73,8 +74,8 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
     activeDreamJobId,
     activeNightlyJobId,
     activeRebuildJobId,
+    readOnly,
   } = useMemoryVisualizer(expertID);
-  const readOnly = !!expertID;
 
   // Per-label / per-relationship visibility toggles. Selected via a Set
   // of "hidden" entries — empty set = show everything.
@@ -312,59 +313,21 @@ function ControlBar({
           Read-only
         </span>
       ) : (
-        <>
-          <button
-            type="button"
-            onClick={onRebuild}
-            disabled={rebuildActive}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {rebuildActive
-              ? jobButtonLabel(rebuildStatus, "Rebuilding…")
-              : "Rebuild communities"}
-          </button>
-          <label className="flex items-center gap-2 text-gray-700">
-            <input
-              type="checkbox"
-              checked={force}
-              onChange={(e) => setForce(e.target.checked)}
-            />
-            Force
-          </label>
-          <span className="mx-2 h-5 border-l border-gray-200" />
-          <button
-            type="button"
-            onClick={onDream}
-            disabled={dreamActive}
-            className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-            title="Run ONLY the dream pass (consolidate → recombine → sanitize) — skips community rebuild and ratification."
-          >
-            {dreamActive
-              ? jobButtonLabel(dreamStatus, "Dreaming…")
-              : "Dream pass"}
-          </button>
-          <button
-            type="button"
-            onClick={onRatification}
-            disabled={ratificationPending}
-            className="rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
-            title="Run ONLY the ratification supersession sweep — promotes hit tentatives, supersedes unratified ones past their grace period."
-          >
-            {ratificationPending ? "Ratifying…" : "Ratification"}
-          </button>
-          <button
-            type="button"
-            onClick={onNightly}
-            disabled={nightlyActive}
-            className="rounded-md bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
-            title="Run the FULL nightly batch — what the 03:00 cron does. Fans out dream pass + ratification sweep (+ future P2/P3/P4/P11 stages) in one pass."
-          >
-            {nightlyActive
-              ? jobButtonLabel(nightlyStatus, "Running nightly…")
-              : "Nightly batch"}
-          </button>
-          <span className="mx-2 h-5 border-l border-gray-200" />
-        </>
+        <MaintenanceControls
+          onRebuild={onRebuild}
+          rebuildActive={rebuildActive}
+          rebuildStatus={rebuildStatus}
+          force={force}
+          setForce={setForce}
+          onDream={onDream}
+          dreamActive={dreamActive}
+          dreamStatus={dreamStatus}
+          onRatification={onRatification}
+          ratificationPending={ratificationPending}
+          onNightly={onNightly}
+          nightlyActive={nightlyActive}
+          nightlyStatus={nightlyStatus}
+        />
       )}
       <label className="flex items-center gap-2 text-gray-700">
         <input
@@ -407,22 +370,6 @@ function ControlBar({
   );
 }
 
-function jobButtonLabel(
-  status: AnyJobStatus | undefined,
-  fallback: string,
-): string {
-  if (!status) return fallback;
-  if (status.state === "submitted") {
-    return status.current_phase
-      ? `Batch submitted (${status.current_phase})…`
-      : "Batch submitted…";
-  }
-  if (status.current_phase) {
-    return `${capitalize(status.current_phase)}…`;
-  }
-  return fallback;
-}
-
 function jobStateSummary(status: AnyJobStatus): string {
   if (status.state === "running" && status.current_phase) {
     return `${status.state} (${status.current_phase})`;
@@ -433,10 +380,6 @@ function jobStateSummary(status: AnyJobStatus): string {
       : "batch submitted";
   }
   return status.state;
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 interface SidebarProps {

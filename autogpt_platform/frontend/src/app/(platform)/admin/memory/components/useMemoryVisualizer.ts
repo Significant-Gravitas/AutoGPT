@@ -61,6 +61,7 @@ export function useMemoryVisualizer(expertID?: string) {
   const [force, setForce] = useState(false);
   const [includeEpisodes, setIncludeEpisodes] = useState(false);
   const [includeCommunities, setIncludeCommunities] = useState(true);
+  const readOnly = expertID !== undefined;
 
   // Track the in-flight job per kind so the polling hooks know what
   // to watch. ``undefined`` means no job in flight for that kind.
@@ -80,7 +81,7 @@ export function useMemoryVisualizer(expertID?: string) {
     include_communities: includeCommunities,
     node_limit: 10000,
     edge_limit: 20000,
-    ...(expertID ? { expert_id: expertID } : {}),
+    ...(memoryScopeParams ?? {}),
   };
   const overview = useGetV2GetMemoryOverview(USER_ID, memoryScopeParams);
   const graph = useGetV2GetGraph(USER_ID, graphParams);
@@ -287,22 +288,22 @@ export function useMemoryVisualizer(expertID?: string) {
   // --- Action callbacks ---------------------------------------------------
 
   function triggerRebuild() {
-    if (expertID) return;
+    if (readOnly) return;
     rebuild.mutate({ userId: USER_ID, params: { force } });
   }
 
   function triggerDream() {
-    if (expertID) return;
+    if (readOnly) return;
     dream.mutate({ userId: USER_ID });
   }
 
   function triggerRatification() {
-    if (expertID) return;
+    if (readOnly) return;
     ratification.mutate({ userId: USER_ID });
   }
 
   function triggerNightly() {
-    if (expertID) return;
+    if (readOnly) return;
     nightly.mutate({ userId: USER_ID });
   }
 
@@ -323,6 +324,7 @@ export function useMemoryVisualizer(expertID?: string) {
     dream,
     ratification,
     nightly,
+    readOnly,
     triggerRebuild,
     triggerDream,
     triggerRatification,

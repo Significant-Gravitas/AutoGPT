@@ -190,16 +190,16 @@ def _resolve_user_id(user_id: str, caller_id: str) -> str:
 async def _resolve_memory_scope(
     user_id: str, expert_id: str | None
 ) -> tuple[str, str | None]:
-    try:
-        user_group_id = derive_memory_group_id(user_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    """Derive an owned memory group without trusting client group identifiers."""
 
     if expert_id is None:
-        return user_group_id, None
+        try:
+            return derive_memory_group_id(user_id), None
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
-    if expert is None or expert.is_template or expert.is_archived:
+    if expert is None:
         raise HTTPException(status_code=404, detail="Expert not found")
 
     try:
@@ -214,6 +214,8 @@ def _audit_cross_user_access(
     caller_id: str,
     target_id: str,
     jwt_payload: dict,
+    expert_id: str | None = None,
+    group_id: str | None = None,
 ) -> None:
     """Log admin reads/writes against another user's memory.
 
@@ -227,9 +229,15 @@ def _audit_cross_user_access(
     caller_email = jwt_payload.get("email") or jwt_payload.get("user_metadata", {}).get(
         "email", ""
     )
+    memory_scope = (
+        f"expert {expert_id} (group {group_id})"
+        if expert_id is not None
+        else f"AutoPilot (group {group_id})"
+    )
     logger.info(
         f"Admin memory access: {caller_id} ({caller_email}) "
-        f"acting on user {target_id} for {request.method} {request.url}"
+        f"acting on user {target_id}, scope {memory_scope}, "
+        f"for {request.method} {request.url}"
     )
 
 
@@ -316,13 +324,15 @@ async def get_memory_overview(
     expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
 ) -> MemoryOverview:
     target = _resolve_user_id(user_id, caller_id)
+    group_id, resolved_expert_id = await _resolve_memory_scope(target, expert_id)
     _audit_cross_user_access(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=resolved_expert_id,
+        group_id=group_id,
     )
-    group_id, resolved_expert_id = await _resolve_memory_scope(target, expert_id)
 
     driver = _open_driver(group_id)
     try:
@@ -565,13 +575,15 @@ async def get_graph(
     typical inspector view.
     """
     target = _resolve_user_id(user_id, caller_id)
+    group_id, resolved_expert_id = await _resolve_memory_scope(target, expert_id)
     _audit_cross_user_access(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=resolved_expert_id,
+        group_id=group_id,
     )
-    group_id, resolved_expert_id = await _resolve_memory_scope(target, expert_id)
 
     # Build the labels-of-interest list for the node queries — one
     # Cypher per label so the label can travel through the result row

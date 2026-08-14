@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   fireEvent,
@@ -34,6 +35,7 @@ vi.mock("react-force-graph-2d", () => ({
 }));
 
 import { MemoryVisualizer } from "../components/MemoryVisualizer";
+import { useMemoryVisualizer } from "../components/useMemoryVisualizer";
 
 function makeExpert(id: string, name: string): Expert {
   return {
@@ -76,6 +78,46 @@ function setupBaseHandlers(experts: Expert[] = []) {
       edges: [],
       truncated: false,
     }),
+  );
+}
+
+function MemoryActionHarness() {
+  const memory = useMemoryVisualizer("expert-ada");
+  return (
+    <>
+      <button type="button" onClick={memory.triggerRebuild}>
+        Rebuild callback
+      </button>
+      <button type="button" onClick={memory.triggerDream}>
+        Dream callback
+      </button>
+      <button type="button" onClick={memory.triggerRatification}>
+        Ratification callback
+      </button>
+      <button type="button" onClick={memory.triggerNightly}>
+        Nightly callback
+      </button>
+      <span data-testid="mutation-states">
+        {[
+          memory.rebuild.isIdle,
+          memory.dream.isIdle,
+          memory.ratification.isIdle,
+          memory.nightly.isIdle,
+        ].join(",")}
+      </span>
+    </>
+  );
+}
+
+function MemoryVisualizerWithRefetch() {
+  const queryClient = useQueryClient();
+  return (
+    <>
+      <MemoryVisualizer />
+      <button type="button" onClick={() => queryClient.invalidateQueries()}>
+        Refetch experts
+      </button>
+    </>
   );
 }
 
@@ -165,6 +207,70 @@ describe("MemoryVisualizer — memory scope", () => {
     expect(
       screen.getByRole("checkbox", { name: /communities/i }),
     ).toBeDefined();
+  });
+
+  test("expert callbacks stay read-only even when invoked directly", async () => {
+    setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
+    render(<MemoryActionHarness />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Rebuild callback" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Dream callback" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Ratification callback" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Nightly callback" }),
+    );
+
+    expect(screen.getByTestId("mutation-states").textContent).toBe(
+      "true,true,true,true",
+    );
+  });
+
+  test("expert-list errors keep AutoPilot memory available", async () => {
+    setupBaseHandlers();
+    server.use(
+      http.get("*/api/experts", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+
+    render(<MemoryVisualizer />);
+
+    await screen.findByText("Failed to load experts.");
+    const selector = screen.getByRole("combobox", { name: "Memory scope" });
+    expect((selector as HTMLButtonElement).disabled).toBe(false);
+    expect(selector.textContent).toContain("AutoPilot");
+    await screen.findByText("12");
+  });
+
+  test("removed experts reset the selected scope to AutoPilot", async () => {
+    let experts = [makeExpert("expert-ada", "Ada")];
+    setupBaseHandlers();
+    server.use(http.get("*/api/experts", () => HttpResponse.json(experts)));
+    render(<MemoryVisualizerWithRefetch />);
+
+    const selector = await screen.findByRole("combobox", {
+      name: "Memory scope",
+    });
+    await waitFor(() =>
+      expect((selector as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    await screen.findByText("Expert memory is read-only.");
+
+    experts = [];
+    await userEvent.click(
+      screen.getByRole("button", { name: "Refetch experts" }),
+    );
+
+    await waitFor(() => expect(selector.textContent).toContain("AutoPilot"));
+    expect(screen.queryByText("Expert memory is read-only.")).toBeNull();
   });
 });
 
