@@ -46,6 +46,8 @@ from backend.copilot.config import CopilotLLMModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
@@ -1564,8 +1566,6 @@ async def _fetch_graphiti_context(
     session: ChatSession,
     message: str | None,
 ) -> str | None:
-    from backend.copilot.graphiti.context import fetch_warm_context
-
     return await fetch_warm_context(
         user_id,
         message or "",
@@ -1580,8 +1580,6 @@ async def _enqueue_graphiti_turn(
     message: str,
     assistant_msg: str,
 ) -> None:
-    from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-
     await enqueue_conversation_turn(
         user_id,
         session_id,

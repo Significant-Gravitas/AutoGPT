@@ -28,6 +28,7 @@ from backend.executor.scheduler import (
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
+    _reschedule_one_shot_after_expert_unavailable,
     _self_delete_copilot_turn_schedule,
     reconcile_stripe_tiers,
 )
@@ -300,6 +301,32 @@ async def test_execute_copilot_turn_rejects_missing_expert_before_fresh_session(
 
 
 @pytest.mark.asyncio
+async def test_fresh_expert_one_shot_retries_when_lookup_is_unavailable():
+    args = _args(session_id=None, expert_id="expert-1")
+    mock_create_session = AsyncMock()
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="unavailable"),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session",
+            new=mock_create_session,
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_reschedule.assert_awaited_once_with(args)
+
+
+@pytest.mark.asyncio
 async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
     args = _args(session_id=None)
     payload = args.model_dump(mode="json", exclude={"expert_id"})
@@ -366,6 +393,56 @@ async def test_execute_copilot_turn_dispatches_when_expert_scope_matches():
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     mock_schedule_turn.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_explicit_expert_one_shot_retries_when_lookup_is_unavailable():
+    args = _args(expert_id="expert-1")
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-1"))
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=mock_schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", new=mock_get_session),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="unavailable"),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
+    mock_reschedule.assert_awaited_once_with(args)
+
+
+@pytest.mark.asyncio
+async def test_expert_cron_does_not_duplicate_retry_when_lookup_is_unavailable():
+    args = _args(
+        session_id=None,
+        expert_id="expert-1",
+        run_at=None,
+        cron="* * * * *",
+    )
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="unavailable"),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_reschedule.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -624,6 +701,31 @@ async def test_reschedule_after_cap_swallows_errors():
     with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
         # Must not raise — best-effort retry.
         await _reschedule_one_shot_after_cap(args)
+
+
+@pytest.mark.asyncio
+async def test_expert_lookup_retry_preserves_scope_and_is_bounded():
+    args = _args(
+        cap_retry_count=0,
+        expert_id="expert-1",
+        organization_id="org-1",
+        team_id="team-1",
+    )
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_expert_unavailable(args)
+
+    kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+    assert kwargs["cap_retry_count"] == 1
+    assert kwargs["expert_id"] == "expert-1"
+    assert kwargs["organization_id"] == "org-1"
+    assert kwargs["team_id"] == "team-1"
+
+    exhausted = args.model_copy(update={"cap_retry_count": _MAX_CAP_RETRIES})
+    mock_client.reset_mock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_expert_unavailable(exhausted)
+    mock_client.add_copilot_turn_schedule.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

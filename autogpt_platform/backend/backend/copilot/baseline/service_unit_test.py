@@ -58,18 +58,20 @@ async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None
         )
     )
 
-    with patch(
-        "backend.copilot.baseline.service.build_expert_identity_suffix",
-        new=identity_mock,
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=identity_mock,
+        ),
+        pytest.raises(ExpertSessionUnavailableError),
     ):
-        with pytest.raises(ExpertSessionUnavailableError):
-            async for _ in stream_chat_completion_baseline(
-                session_id=session.session_id,
-                message="private prompt",
-                user_id="user-1",
-                session=session,
-            ):
-                pass
+        async for _ in stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message="private prompt",
+            user_id="user-1",
+            session=session,
+        ):
+            pass
 
     identity_mock.assert_awaited_once_with("user-1", "expert-1")
     assert session.messages == []
@@ -85,7 +87,7 @@ async def test_fetch_graphiti_context_uses_expert_session_scope() -> None:
     fetch_mock = AsyncMock(return_value="expert context")
 
     with patch(
-        "backend.copilot.graphiti.context.fetch_warm_context",
+        "backend.copilot.baseline.service.fetch_warm_context",
         new=fetch_mock,
     ):
         context = await _fetch_graphiti_context(
@@ -112,7 +114,7 @@ async def test_enqueue_graphiti_turn_uses_expert_session_scope() -> None:
     enqueue_mock = AsyncMock()
 
     with patch(
-        "backend.copilot.graphiti.ingest.enqueue_conversation_turn",
+        "backend.copilot.baseline.service.enqueue_conversation_turn",
         new=enqueue_mock,
     ):
         await _enqueue_graphiti_turn(

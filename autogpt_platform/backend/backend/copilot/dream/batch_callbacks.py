@@ -118,7 +118,7 @@ async def _read_state(pass_id: str) -> dict[str, dict[str, Any]]:
 
 
 async def _write_phase_to_state(
-    *, pass_id: str, phase: DreamPhase, row: "BatchResultRow"
+    *, pass_id: str, phase: DreamPhase, row: BatchResultRow
 ) -> None:
     from backend.data.redis_client import get_redis_async
 
@@ -275,7 +275,7 @@ async def _release_lock(
 
 
 async def handle_dream_batch_result(
-    entry: "PendingEntry", rows: list["BatchResultRow"]
+    entry: PendingEntry, rows: list[BatchResultRow]
 ) -> None:
     """BatchExecutor entry — called once per finished phase batch.
 
@@ -401,7 +401,7 @@ async def handle_dream_batch_result(
 
 async def _handle_phase_result(
     *,
-    rows: list["BatchResultRow"],
+    rows: list[BatchResultRow],
     user_id: str,
     expert_id: str | None = None,
     pass_id: str,

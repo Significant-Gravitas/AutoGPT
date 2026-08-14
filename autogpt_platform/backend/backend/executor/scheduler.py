@@ -302,6 +302,8 @@ async def _execute_copilot_turn(**kwargs):
                     )
                     if expert_status == "missing":
                         await _self_delete_copilot_turn_schedule(args)
+                    elif args.run_at is not None:
+                        await _reschedule_one_shot_after_expert_unavailable(args)
                     return
             if args.expert_id is None:
                 new_session = await create_chat_session(
@@ -358,6 +360,8 @@ async def _execute_copilot_turn(**kwargs):
                     )
                     if expert_status == "missing":
                         await _self_delete_copilot_turn_schedule(args)
+                    elif args.run_at is not None:
+                        await _reschedule_one_shot_after_expert_unavailable(args)
                     return
             target_session_id = args.session_id
             target_session = session
@@ -419,7 +423,30 @@ _MAX_CAP_RETRIES = 1
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
-    """Re-create a one-shot copilot-turn schedule a few minutes in the future.
+    await _reschedule_one_shot(
+        args,
+        reason="concurrency cap",
+        name_suffix="cap-retry",
+    )
+
+
+async def _reschedule_one_shot_after_expert_unavailable(
+    args: "CopilotTurnJobArgs",
+) -> None:
+    await _reschedule_one_shot(
+        args,
+        reason="transient expert lookup failure",
+        name_suffix="expert-lookup-retry",
+    )
+
+
+async def _reschedule_one_shot(
+    args: "CopilotTurnJobArgs",
+    *,
+    reason: str,
+    name_suffix: str,
+) -> None:
+    """Re-create a one-shot copilot-turn schedule after a transient failure.
 
     Best-effort: failures are logged. Schedules that have already been
     retried ``_MAX_CAP_RETRIES`` times are dropped to avoid loops. The
@@ -430,7 +457,7 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
         logger.error(
             f"Dropping one-shot copilot turn for session "
             f"{_session_id_label(args)} — exhausted {_MAX_CAP_RETRIES} "
-            f"concurrency-cap retry/retries"
+            f"retry/retries after {reason}"
         )
         return
     try:
@@ -442,7 +469,7 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             session_id=args.session_id,
             message=args.message,
             run_at=new_run_at,
-            name=f"{args.schedule_id or 'copilot'}-cap-retry",
+            name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
             cap_retry_count=args.cap_retry_count + 1,
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
@@ -456,13 +483,13 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
             f"{_session_id_label(args)} to {new_run_at.isoformat()} after "
-            f"concurrency cap (retry {args.cap_retry_count + 1}/"
+            f"{reason} (retry {args.cap_retry_count + 1}/"
             f"{_MAX_CAP_RETRIES})"
         )
     except Exception:
         logger.warning(
-            f"Failed to reschedule capped one-shot copilot turn for "
-            f"session {_session_id_label(args)}",
+            f"Failed to reschedule one-shot copilot turn for session "
+            f"{_session_id_label(args)} after {reason}",
             exc_info=True,
         )
 
