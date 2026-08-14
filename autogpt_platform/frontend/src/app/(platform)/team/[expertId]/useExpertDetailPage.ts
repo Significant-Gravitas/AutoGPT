@@ -57,6 +57,14 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     await Promise.all([expertQuery.refetch(), schedulesQuery.refetch()]);
   }
 
+  function openFire() {
+    setIsFireOpen(true);
+  }
+
+  function closeFire() {
+    setIsFireOpen(false);
+  }
+
   return {
     expert,
     isLoading: enabled && (expertQuery.isLoading || schedulesQuery.isLoading),
@@ -72,7 +80,7 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     resumeSchedules: () => resumeSchedules({ expertId }),
     isResuming,
     isFireOpen,
-    openFire: () => setIsFireOpen(true),
-    closeFire: () => setIsFireOpen(false),
+    openFire,
+    closeFire,
   };
 }

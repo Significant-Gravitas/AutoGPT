@@ -31,11 +31,19 @@ export function useExpertTeamCard(expertId: string) {
     resumeSchedules({ expertId });
   }
 
+  function openFire() {
+    setIsFireOpen(true);
+  }
+
+  function closeFire() {
+    setIsFireOpen(false);
+  }
+
   return {
     handleResume,
     isResuming,
     isFireOpen,
-    openFire: () => setIsFireOpen(true),
-    closeFire: () => setIsFireOpen(false),
+    openFire,
+    closeFire,
   };
 }

@@ -3,6 +3,15 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { ChatContainer } from "../ChatContainer";
 
+interface ChatMessagesContainerProps {
+  onRetry?: () => void;
+}
+
+interface CopilotChatActionsProviderProps {
+  onSend: (message: string) => void;
+  children: React.ReactNode;
+}
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -11,23 +20,31 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return { ...actual, useGetFlag: () => false };
 });
 
-vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
-  ChatInput: () => <div data-testid="composer" />,
-}));
+vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => {
+  function ChatInput() {
+    return <div data-testid="composer" />;
+  }
+
+  return { ChatInput };
+});
 
 vi.mock(
   "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer",
-  () => ({
-    ChatMessagesContainer: ({ onRetry }: { onRetry?: () => void }) => (
-      <div data-testid="messages">
-        <button
-          type="button"
-          data-testid="error-retry"
-          onClick={() => onRetry?.()}
-        />
-      </div>
-    ),
-  }),
+  () => {
+    function ChatMessagesContainer({ onRetry }: ChatMessagesContainerProps) {
+      return (
+        <div data-testid="messages">
+          <button
+            type="button"
+            data-testid="error-retry"
+            onClick={() => onRetry?.()}
+          />
+        </div>
+      );
+    }
+
+    return { ChatMessagesContainer };
+  },
 );
 
 vi.mock(
@@ -39,24 +56,25 @@ vi.mock(
 
 vi.mock(
   "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider",
-  () => ({
-    CopilotChatActionsProvider: ({
+  () => {
+    function CopilotChatActionsProvider({
       onSend,
       children,
-    }: {
-      onSend: (message: string) => void;
-      children: React.ReactNode;
-    }) => (
-      <>
-        <button
-          type="button"
-          data-testid="provider-send"
-          onClick={() => onSend("Send from a historical tool card")}
-        />
-        {children}
-      </>
-    ),
-  }),
+    }: CopilotChatActionsProviderProps) {
+      return (
+        <>
+          <button
+            type="button"
+            data-testid="provider-send"
+            onClick={() => onSend("Send from a historical tool card")}
+          />
+          {children}
+        </>
+      );
+    }
+
+    return { CopilotChatActionsProvider };
+  },
 );
 
 vi.mock(

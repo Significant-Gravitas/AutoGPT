@@ -16,6 +16,10 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useFireExpertDialog } from "./useFireExpertDialog";
 
+interface Props {
+  children: ReactNode;
+}
+
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
@@ -28,7 +32,7 @@ function makeClient() {
 }
 
 function makeWrapper(client: QueryClient) {
-  return function Wrapper({ children }: { children: ReactNode }) {
+  return function Wrapper({ children }: Props) {
     return (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
