@@ -17,8 +17,16 @@ from typing import TypedDict
 import prisma.models
 
 from backend.data import db as database
+from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
+
+# StoreListing slugs are only unique per owner, so slug resolution must be
+# scoped to the official creator — otherwise another creator publishing the
+# same slug could get their listing preloaded. Matches the username the
+# checked-in marketplace assets (backend/agents) publish under and the live
+# marketplace creator of the roster listings.
+OFFICIAL_CREATOR_USERNAME = "autogpt"
 
 
 class PreloadSeed(TypedDict):
@@ -47,9 +55,9 @@ ROSTER: list[RosterEntry] = [
     {
         "name": "Maria",
         "role": "Marketing",
-        "tagline": "Turns your product story into campaigns that land.",
+        "tagline": "Writes your LinkedIn posts, SEO articles, and webpage copy.",
         "avatar_url": "/experts/maria.svg",
-        "bio": """I'm a senior marketing strategist — fifteen years across B2B SaaS and consumer brands — and I lead with positioning before tactics: who the customer is, what keeps them up at night, and why they'd pick you over doing nothing. Hand me a rough idea and I'll come back with an outline, three headline options, and a full draft tied to a real goal — signups, demos booked, or rankings improved. I write clear, confident copy and rewrite anything that could just as easily sit on a competitor's site.""",
+        "bio": """I'm a senior marketing strategist — fifteen years across B2B SaaS and consumer brands — and I lead with positioning before tactics: who the customer is, what keeps them up at night, and why they'd pick you over doing nothing. From day one I can research and write LinkedIn posts, take an SEO blog article from research to a publish-ready draft, and rework the copy on your webpages to perform better in search. Everything ships in clear, confident prose with the jargon stripped out.""",
         "skills": [
             "Content strategy",
             "Social copy",
@@ -73,9 +81,9 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
     {
         "name": "Max",
         "role": "Sales",
-        "tagline": "Finds the right prospects and opens the right conversations.",
+        "tagline": "Finds your leads, their decision-makers, and their contact details.",
         "avatar_url": "/experts/max.svg",
-        "bio": """I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile: industry, size, trigger events, and the specific pain you remove. From there I research accounts, surface decision-makers, and draft first-touch messages that reference something real about the prospect, not a template with a name merged in. I'm rigorous about data quality: I flag stale contacts, mark what's inferred versus confirmed, and never invent a prospect's details.""",
+        "bio": """I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.""",
         "skills": [
             "Prospecting",
             "Lead qualification",
@@ -99,9 +107,9 @@ You are rigorous about data quality. You flag when contact information looks sta
     {
         "name": "Frankie",
         "role": "Ops",
-        "tagline": "Keeps the shop running: meetings, follow-ups, and busywork handled.",
+        "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
         "avatar_url": "/experts/frankie.svg",
-        "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to make the routine disappear — meeting prep, follow-up emails, support triage, scheduling, and the hundred small tasks that eat your day. I assemble a brief before every meeting and turn the notes afterward into action items with owners and dates, kept tidy and scannable with a one-line summary up top. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
+        "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings, draft replies to the support email flooding your inbox, and land a personalized morning digest on your desk at 7:40 every day. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
         "skills": [
             "Meeting prep",
             "Follow-ups",
@@ -127,13 +135,98 @@ You are conservative about commitments. You never promise a delivery date, refun
 ]
 
 
+# Cadences dropped when the roster consolidated on a single scheduled
+# workflow (Frankie's daily digest). _sync_preloads only reaches template
+# rows, so hires made before the change would keep firing these forever —
+# every seed run retries this cleanup until no hired copy still carries the
+# old template-managed cadence. Rows whose cron a user changed no longer
+# match and are deliberately left alone.
+REMOVED_TEMPLATE_CADENCES: list[tuple[str, str]] = [
+    ("automated-blog-writer", "0 9 * * 1"),
+    ("lead-finder-local-businesses", "0 8 * * 1"),
+    ("smart-meeting-brief", "0 7 * * 1-5"),
+]
+
+
 async def _resolve_active_version_id(slug: str) -> str | None:
+    # (owningUserId, slug) is the listing's uniqueness, and the username is
+    # unique, so this match is deterministic: at most one listing.
     listing = await prisma.models.StoreListing.prisma().find_first(
-        where={"slug": slug, "isDeleted": False}
+        where={
+            "slug": slug,
+            "isDeleted": False,
+            "CreatorProfile": {"is": {"username": OFFICIAL_CREATOR_USERNAME}},
+        }
     )
     if listing is None:
         return None
     return listing.activeVersionId
+
+
+async def _clear_removed_cadences() -> int:
+    """Migrate hired copies off cadences the roster no longer ships.
+
+    Deletes each hired copy's scheduler job by owner + scheduleId and clears
+    the row only once the job is confirmed gone (deleted now, or already
+    absent) — a scheduler failure preserves scheduleId/scheduleCron so the
+    next seed run retries, mirroring ``detach_expert_triggers``.
+    """
+    cleared = 0
+    live_by_owner: dict[str, set[str]] = {}
+    for slug, old_cron in REMOVED_TEMPLATE_CADENCES:
+        version_id = await _resolve_active_version_id(slug)
+        if version_id is None:
+            continue
+        rows = await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={
+                "storeListingVersionId": version_id,
+                "scheduleCron": old_cron,
+                "Expert": {"is": {"isTemplate": False}},
+            },
+            include={"Expert": True},
+        )
+        for row in rows:
+            owner = row.Expert.ownerUserId if row.Expert else None
+            if owner is None:
+                continue
+            if row.scheduleId is not None and not await _delete_live_schedule(
+                owner, row.scheduleId, live_by_owner
+            ):
+                continue
+            await prisma.models.ExpertWorkflow.prisma().update(
+                where={"id": row.id},
+                data={"scheduleId": None, "scheduleCron": None},
+            )
+            cleared += 1
+    if cleared:
+        logger.info(f"Cleared removed roster cadences on {cleared} hired workflows")
+    return cleared
+
+
+async def _delete_live_schedule(
+    owner_id: str, schedule_id: str, live_by_owner: dict[str, set[str]]
+) -> bool:
+    """Delete *schedule_id* if the scheduler still has it for *owner_id*.
+
+    Returns True when the job is confirmed gone; False on any scheduler
+    failure so the caller keeps the row for a later retry.
+    """
+    try:
+        if owner_id not in live_by_owner:
+            schedules = await get_scheduler_client().get_execution_schedules(
+                user_id=owner_id, kind="graph"
+            )
+            live_by_owner[owner_id] = {s.id for s in schedules}
+        if schedule_id not in live_by_owner[owner_id]:
+            return True
+        await get_scheduler_client().delete_schedule(schedule_id, user_id=owner_id)
+        return True
+    except Exception as e:
+        logger.warning(
+            f"Could not delete schedule #{schedule_id} for user #{owner_id}; "
+            f"keeping cadence for retry: {type(e).__name__}: {e}"
+        )
+        return False
 
 
 async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
@@ -169,14 +262,15 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
 
     A hire copies the template row, so roster updates would otherwise only
     ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/bio/skills forever. ``name`` is deliberately excluded — users may
-    have renamed their hire — as are ``role``/``identity``, which drive live
-    persona behaviour.
+    avatar/tagline/bio/skills forever. ``name`` is deliberately excluded —
+    users may have renamed their hire — as are ``role``/``identity``, which
+    drive live persona behaviour.
     """
     return await prisma.models.Expert.prisma().update_many(
         where={"sourceTemplateId": template.id, "isTemplate": False},
         data={
             "avatarUrl": template.avatarUrl,
+            "tagline": template.tagline,
             "bio": template.bio,
             "skills": template.skills,
         },
@@ -227,6 +321,7 @@ async def seed_roster() -> list[str]:
             f"Seeded expert template '{entry['name']}' (#{template.id}); "
             f"refreshed {refreshed} hired copies"
         )
+    await _clear_removed_cadences()
     return template_ids
 
 
