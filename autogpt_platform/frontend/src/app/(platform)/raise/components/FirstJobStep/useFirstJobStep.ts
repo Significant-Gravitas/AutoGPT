@@ -20,7 +20,7 @@ export function useFirstJobStep({ onPick }: Args) {
     { sorted_by: "runs", page_size: 3 },
     {
       query: {
-        select: (x) => x.data as StoreAgentsResponse,
+        select: (response) => response.data as StoreAgentsResponse,
         enabled: isLoggedIn,
       },
     },
@@ -32,7 +32,7 @@ export function useFirstJobStep({ onPick }: Args) {
     undefined,
     {
       query: {
-        select: (x) => x.data as StoreAgentDetails,
+        select: (response) => response.data as StoreAgentDetails,
         enabled: Boolean(selected),
       },
     },
