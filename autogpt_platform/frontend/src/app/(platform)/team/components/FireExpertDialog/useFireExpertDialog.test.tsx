@@ -1,4 +1,7 @@
-import { getGetExpertQueryKey } from "@/app/api/__generated__/endpoints/experts/experts";
+import {
+  getGetExpertQueryKey,
+  getListExpertIdentitiesQueryKey,
+} from "@/app/api/__generated__/endpoints/experts/experts";
 import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import {
   getArchiveExpertMockHandler,
@@ -73,6 +76,7 @@ describe("useFireExpertDialog invalidation", () => {
 
     const calls = invalidateSpy.mock.calls;
     expect(containsKey(calls, ["/api/experts"])).toBe(true);
+    expect(containsKey(calls, getListExpertIdentitiesQueryKey())).toBe(true);
     expect(containsKey(calls, getGetExpertQueryKey("expert-maria"))).toBe(true);
     expect(containsKey(calls, getGetHomeDashboardQueryKey())).toBe(true);
     expect(

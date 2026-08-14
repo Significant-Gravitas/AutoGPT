@@ -1,6 +1,7 @@
 import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import {
   getGetExpertQueryKey,
+  getListExpertIdentitiesQueryKey,
   getListExpertsQueryKey,
   useArchiveExpert,
   useGetExpertDetachPreview,
@@ -34,12 +35,10 @@ export function useFireExpertDialog({
   const { mutate, isPending: isFiring } = useArchiveExpert({
     mutation: {
       onSuccess: () => {
-        // The paramless list key is a prefix of the archived-inclusive one used
-        // by useExpertMap, so a single invalidate refreshes roster, marketplace,
-        // sidebar and the chat identity map. The rest of the expert's cached
-        // footprint (detail page, home team strip, schedules drawer) would
-        // otherwise stay stale for the global 60s window.
         queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getListExpertIdentitiesQueryKey(),
+        });
         queryClient.invalidateQueries({
           queryKey: getGetExpertQueryKey(expertId),
         });
