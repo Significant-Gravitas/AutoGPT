@@ -64,13 +64,17 @@ export function loadDraft(): RaiseDraft {
 export function saveDraft(draft: RaiseDraft) {
   try {
     window.sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  } catch {}
+  } catch {
+    // Draft persistence is best-effort when storage is blocked or full.
+  }
 }
 
 export function clearDraft() {
   try {
     window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
-  } catch {}
+  } catch {
+    // Clearing is best-effort under the same storage restrictions.
+  }
 }
 
 interface RaiseMessage {

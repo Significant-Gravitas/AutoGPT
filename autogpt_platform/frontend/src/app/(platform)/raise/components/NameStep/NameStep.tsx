@@ -16,13 +16,17 @@ export function NameStep({ onSubmit }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2.5">
+      <div
+        role="group"
+        aria-label="Suggested names"
+        className="flex flex-wrap gap-2.5"
+      >
         {NAME_CHIPS.map((chip) => (
           <button
             key={chip}
             type="button"
             onClick={() => onSubmit(chip)}
-            className="rounded-full border border-zinc-200 bg-white px-5 py-2.5 text-sm font-medium text-zinc-800 transition-colors hover:border-purple-300 hover:bg-purple-50/40"
+            className="rounded-full border border-border bg-background px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/5"
           >
             {chip}
           </button>

@@ -359,6 +359,11 @@ def test_create_raised_expert_requires_name(
             "v" * 4_001,
             "expert_raise_voice_preferences_too_long",
         ),
+        (
+            "first_job_store_listing_version_id",
+            "l" * 101,
+            "expert_raise_first_job_id_too_long",
+        ),
     ],
 )
 def test_create_raised_expert_rejects_overlong_fields(
@@ -431,6 +436,7 @@ def test_create_raised_expert_at_lifetime_cap_returns_409(
 
 def test_create_raised_expert_unavailable_first_job_returns_404(
     mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
 ) -> None:
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
@@ -447,6 +453,14 @@ def test_create_raised_expert_unavailable_first_job_returns_404(
     )
 
     assert response.status_code == 404
+    assert response.json()["detail"] == {
+        "code": "first_job_unavailable",
+        "store_listing_version_id": "listing-version-9",
+    }
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_raise_first_job_unavailable",
+    )
 
 
 # ─── Get ───────────────────────────────────────────────────────────────

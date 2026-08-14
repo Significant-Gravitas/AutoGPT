@@ -33,7 +33,7 @@ class CreateRaisedExpertRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     role: str | None = Field(default=None, max_length=100)
     voice_preferences: str | None = Field(default=None, max_length=4_000)
-    first_job_store_listing_version_id: str | None = None
+    first_job_store_listing_version_id: str | None = Field(default=None, max_length=100)
 
     @field_validator("name")
     @classmethod
@@ -93,7 +93,13 @@ async def create_raised_expert(
             request.first_job_store_listing_version_id,
         )
     except experts_db.FirstJobUnavailableError as e:
-        raise fastapi.HTTPException(status_code=404, detail=str(e))
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail={
+                "code": "first_job_unavailable",
+                "store_listing_version_id": e.store_listing_version_id,
+            },
+        )
     except experts_db.ExpertLimitExceededError as e:
         raise fastapi.HTTPException(
             status_code=409,

@@ -5,6 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { selectableCardClassName } from "@/components/organisms/VoicePicker/styles";
 import { cn } from "@/lib/utils";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useFirstJobStep } from "./useFirstJobStep";
@@ -18,22 +19,24 @@ export function FirstJobStep({ onPick, onSkip }: Props) {
   const {
     suggestions,
     isLoading,
-    hasError,
+    suggestionsHaveError,
+    selectedJobHasError,
     selected,
     select,
     isResolving,
     canConfirm,
     confirm,
-    retry,
+    retrySuggestions,
+    retrySelectedJob,
   } = useFirstJobStep({ onPick });
 
   return (
     <div className="flex flex-col gap-3">
-      {hasError ? (
+      {suggestionsHaveError ? (
         <ErrorCard
           context="starter jobs"
           hint="We couldn't load the available jobs. You can retry or skip for now."
-          onRetry={retry}
+          onRetry={retrySuggestions}
         />
       ) : isLoading ? (
         <div className="flex flex-col gap-3">
@@ -55,6 +58,14 @@ export function FirstJobStep({ onPick, onSkip }: Props) {
           No starter jobs are available right now. You can skip for now.
         </p>
       )}
+
+      {selectedJobHasError && !suggestionsHaveError ? (
+        <ErrorCard
+          context="that starter job"
+          hint="We couldn't load that job. Pick another, retry, or skip for now."
+          onRetry={retrySelectedJob}
+        />
+      ) : null}
 
       <footer className="flex items-center justify-between gap-3">
         <Button variant="ghost" onClick={onSkip}>
@@ -87,10 +98,8 @@ function JobCard({ agent, isSelected, onSelect }: JobCardProps) {
       onClick={onSelect}
       aria-pressed={isSelected}
       className={cn(
-        "w-full rounded-2xl border p-4 text-left transition-colors",
-        isSelected
-          ? "border-accent bg-accent/5 ring-2 ring-accent/20"
-          : "border-border bg-background hover:border-foreground/30",
+        selectableCardClassName(isSelected, true),
+        "w-full p-4 text-left",
       )}
     >
       <div className="flex items-center justify-between gap-3">
