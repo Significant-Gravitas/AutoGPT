@@ -212,8 +212,10 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
             where={"ownerUserId": user_id, "sourceTemplateId": template_id},
             include=_WORKFLOW_INCLUDE,
         )
-        if raced is None or raced.visibility != ResourceVisibility.PRIVATE:
+        if raced is None:
             raise
+        if raced.visibility != ResourceVisibility.PRIVATE:
+            raise ExpertNotFoundError(raced.id)
         return await _existing_hire_result(raced)
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])

@@ -166,6 +166,21 @@ def test_hire_expert_unknown_template_returns_404(
     assert response.status_code == 404
 
 
+def test_hire_existing_shared_expert_returns_generic_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("shared-expert"),
+    )
+
+    response = client.post("/experts", json={"template_id": "template-1"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Expert not found"}
+
+
 def test_rehire_expert_workspace_unavailable_returns_503(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

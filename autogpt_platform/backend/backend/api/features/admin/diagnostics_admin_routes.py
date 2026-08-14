@@ -429,6 +429,8 @@ async def requeue_single_execution(
             status_code=503,
             detail="The expert workspace is still being set up. Try again shortly.",
         ) from e
+    except experts_db.ExpertNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Expert not found") from e
 
     return RequeueExecutionResponse(
         success=True,

@@ -250,6 +250,43 @@ def test_requeue_single_expert_workspace_unavailable_returns_503(
     }
 
 
+def test_requeue_single_unavailable_expert_returns_generic_404(
+    mocker: pytest_mock.MockFixture,
+    admin_user_id: str,
+):
+    mock_exec_meta = GraphExecutionMeta(
+        id="exec-stuck-123",
+        user_id="user-123",
+        graph_id="graph-456",
+        graph_version=1,
+        inputs=None,
+        credential_inputs=None,
+        nodes_input_masks=None,
+        preset_id=None,
+        status=AgentExecutionStatus.QUEUED,
+        started_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(timezone.utc),
+        stats=None,
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_executions",
+        return_value=[mock_exec_meta],
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.add_graph_execution",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("shared-expert"),
+    )
+
+    response = client.post(
+        "/admin/diagnostics/executions/requeue",
+        json={"execution_id": "exec-stuck-123"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Expert not found"}
+
+
 def test_stop_single_execution_with_stop_graph_execution(
     mocker: pytest_mock.MockFixture,
     admin_user_id: str,

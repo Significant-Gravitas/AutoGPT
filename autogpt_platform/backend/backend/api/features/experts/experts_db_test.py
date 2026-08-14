@@ -266,6 +266,59 @@ async def test_existing_non_private_hire_is_never_revived():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_hire_existing_team_expert_fails_closed():
+    template = SimpleNamespace(id="template-1")
+    shared = SimpleNamespace(
+        id="shared-expert",
+        visibility=prisma.enums.ResourceVisibility.TEAM,
+    )
+    expert_client = SimpleNamespace(
+        find_first=AsyncMock(side_effect=[template, shared]),
+        create=AsyncMock(),
+    )
+
+    with patch.object(prisma.models.Expert, "prisma", return_value=expert_client):
+        with pytest.raises(experts_db.ExpertNotFoundError) as exc_info:
+            await experts_db.hire_expert("owner-1", "template-1", None)
+
+    assert exc_info.value.expert_id == "shared-expert"
+    expert_client.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_raced_org_expert_fails_closed():
+    template = SimpleNamespace(
+        id="template-1",
+        name="Maria",
+        avatarUrl=None,
+        role="Marketing Specialist",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="You are Maria.",
+        voicePreferences=None,
+        boundaries=None,
+        toolProfile=None,
+        Workflows=[],
+    )
+    raced = SimpleNamespace(
+        id="shared-expert",
+        visibility=prisma.enums.ResourceVisibility.ORG,
+    )
+    expert_client = SimpleNamespace(
+        find_first=AsyncMock(side_effect=[template, None, raced]),
+        create=AsyncMock(side_effect=prisma.errors.UniqueViolationError({})),
+    )
+
+    with patch.object(prisma.models.Expert, "prisma", return_value=expert_client):
+        with pytest.raises(experts_db.ExpertNotFoundError) as exc_info:
+            await experts_db.hire_expert("owner-1", "template-1", None)
+
+    assert exc_info.value.expert_id == "shared-expert"
+    expert_client.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_rehire_missing_private_tenancy_does_not_unarchive():
     row = SimpleNamespace(
         id="expert-1",

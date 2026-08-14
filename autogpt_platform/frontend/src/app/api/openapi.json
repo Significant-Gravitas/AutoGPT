@@ -5524,7 +5524,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Expert template not found" },
+          "404": { "description": "Expert or expert template not found" },
           "422": {
             "description": "Validation Error",
             "content": {
