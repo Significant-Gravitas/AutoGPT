@@ -15,7 +15,6 @@ from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.data.graph import Graph, Node
 from backend.data.user import get_or_create_user
-from backend.usecases.sample import create_test_user
 from backend.util.exceptions import ExpertRunPausedError
 from backend.util.test import SpinTestServer
 
@@ -34,12 +33,12 @@ def mock_embedding_functions():
 
 @pytest.fixture
 async def test_user():
-    return await create_test_user()
+    return await _create_seed_user()
 
 
 @pytest.fixture
 async def other_user():
-    return await create_test_user(alt_user=True)
+    return await _create_seed_user()
 
 
 async def _create_seed_user():
@@ -149,6 +148,97 @@ async def test_hire_expert_is_idempotent(server: SpinTestServer, test_user):
     assert first.expert.id == second.expert.id
     assert not first.expert.is_template
     assert first.expert.source_template_id == template.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_expert_is_idempotent_at_active_cap(server: SpinTestServer):
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    first = await experts_db.hire_expert(owner.id, template.id, None)
+    await prisma.models.Expert.prisma().create_many(
+        data=[
+            {
+                "ownerUserId": owner.id,
+                "name": f"Filler {i}",
+                "role": "",
+                "identity": f"I'm Filler {i}.",
+            }
+            for i in range(experts_db.ACTIVE_EXPERT_LIMIT - 1)
+        ]
+    )
+
+    second = await experts_db.hire_expert(owner.id, template.id, None)
+
+    assert second.expert.id == first.expert.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_expert_enforces_active_expert_cap(server: SpinTestServer):
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    await prisma.models.Expert.prisma().create_many(
+        data=[
+            {
+                "ownerUserId": owner.id,
+                "name": f"Filler {i}",
+                "role": "",
+                "identity": f"I'm Filler {i}.",
+            }
+            for i in range(experts_db.ACTIVE_EXPERT_LIMIT)
+        ]
+    )
+
+    with pytest.raises(experts_db.ExpertLimitExceededError):
+        await experts_db.hire_expert(owner.id, template.id, None)
+
+    assert (
+        await prisma.models.Expert.prisma().count(
+            where={"ownerUserId": owner.id, "sourceTemplateId": template.id}
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_and_raise_share_active_expert_cap(server: SpinTestServer):
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    await prisma.models.Expert.prisma().create_many(
+        data=[
+            {
+                "ownerUserId": owner.id,
+                "name": f"Filler {i}",
+                "role": "",
+                "identity": f"I'm Filler {i}.",
+            }
+            for i in range(experts_db.ACTIVE_EXPERT_LIMIT - 1)
+        ]
+    )
+
+    results = await asyncio.gather(
+        experts_db.hire_expert(owner.id, template.id, None),
+        experts_db.create_raised_expert(owner.id, "Nova", None, None, None),
+        return_exceptions=True,
+    )
+
+    assert sum(not isinstance(result, BaseException) for result in results) == 1
+    assert (
+        sum(
+            isinstance(result, experts_db.ExpertLimitExceededError)
+            for result in results
+        )
+        == 1
+    )
+    assert (
+        await prisma.models.Expert.prisma().count(
+            where={
+                "ownerUserId": owner.id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        == experts_db.ACTIVE_EXPERT_LIMIT
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -500,6 +590,34 @@ async def test_rehire_after_archive_revives_expert(server: SpinTestServer, test_
     assert hired.expert.id in {
         e.id for e in await experts_db.list_experts(test_user.id)
     }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rehire_archived_expert_respects_active_cap(server: SpinTestServer):
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(owner.id, template.id, None)
+    await experts_db.archive_expert(owner.id, hired.expert.id)
+    await prisma.models.Expert.prisma().create_many(
+        data=[
+            {
+                "ownerUserId": owner.id,
+                "name": f"Filler {i}",
+                "role": "",
+                "identity": f"I'm Filler {i}.",
+            }
+            for i in range(experts_db.ACTIVE_EXPERT_LIMIT)
+        ]
+    )
+
+    with pytest.raises(experts_db.ExpertLimitExceededError):
+        await experts_db.hire_expert(owner.id, template.id, None)
+
+    archived = await prisma.models.Expert.prisma().find_unique(
+        where={"id": hired.expert.id}
+    )
+    assert archived is not None
+    assert archived.isArchived
 
 
 @pytest.mark.asyncio(loop_scope="session")
