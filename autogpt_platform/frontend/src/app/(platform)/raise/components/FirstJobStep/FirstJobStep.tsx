@@ -4,6 +4,7 @@ import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useFirstJobStep } from "./useFirstJobStep";
@@ -17,22 +18,30 @@ export function FirstJobStep({ onPick, onSkip }: Props) {
   const {
     suggestions,
     isLoading,
+    hasError,
     selected,
     select,
     isResolving,
     canConfirm,
     confirm,
+    retry,
   } = useFirstJobStep({ onPick });
 
   return (
     <div className="flex flex-col gap-3">
-      {isLoading ? (
+      {hasError ? (
+        <ErrorCard
+          context="starter jobs"
+          hint="We couldn't load the available jobs. You can retry or skip for now."
+          onRetry={retry}
+        />
+      ) : isLoading ? (
         <div className="flex flex-col gap-3">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-20 w-full rounded-2xl" />
           ))}
         </div>
-      ) : (
+      ) : suggestions.length > 0 ? (
         suggestions.map((agent) => (
           <JobCard
             key={agent.slug}
@@ -41,6 +50,10 @@ export function FirstJobStep({ onPick, onSkip }: Props) {
             onSelect={() => select(agent)}
           />
         ))
+      ) : (
+        <p className="rounded-2xl border border-zinc-200 bg-white p-5 text-sm text-zinc-500">
+          No starter jobs are available right now. You can skip for now.
+        </p>
       )}
 
       <footer className="flex items-center justify-between gap-3">

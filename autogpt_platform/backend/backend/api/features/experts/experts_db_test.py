@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -165,6 +166,7 @@ async def test_raise_expert_creates_blank_owned_expert(server: SpinTestServer):
     assert "Otto" in raised.expert.identity
     assert raised.expert.workflows == []
     assert raised.first_job_installed is False
+    assert raised.first_job_failure_reason is None
     assert raised.expert.id in {e.id for e in await experts_db.list_experts(owner.id)}
 
 
@@ -200,8 +202,50 @@ async def test_raise_expert_installs_first_job(server: SpinTestServer):
     assert raised.expert.role == "Research Assistant"
     assert raised.expert.voice_preferences == "Warm and detailed."
     assert raised.first_job_installed is True
+    assert raised.first_job_failure_reason is None
     assert len(raised.expert.workflows) == 1
     assert raised.expert.workflows[0].store_listing_version_id == slv_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_first_job_install_rolls_back_library_agent_on_link_failure(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    slv_id = await _seed_store_listing(server)
+    expert = await prisma.models.Expert.prisma().create(
+        data={
+            "ownerUserId": owner.id,
+            "name": "Nova",
+            "role": "",
+            "identity": experts_db._raised_identity("Nova"),
+        }
+    )
+    await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": expert.id,
+            "storeListingVersionId": slv_id,
+        }
+    )
+
+    with pytest.raises(prisma.errors.UniqueViolationError):
+        await experts_db._install_first_job(owner.id, expert.id, slv_id)
+
+    listing = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": slv_id}, include={"AgentGraph": True}
+    )
+    assert listing is not None
+    assert listing.AgentGraph is not None
+    assert (
+        await prisma.models.LibraryAgent.prisma().count(
+            where={
+                "userId": owner.id,
+                "agentGraphId": listing.AgentGraph.id,
+                "agentGraphVersion": listing.AgentGraph.version,
+            }
+        )
+        == 0
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -220,6 +264,7 @@ async def test_raise_expert_reports_failed_first_job(server: SpinTestServer):
     assert not raised.expert.is_template
     assert raised.expert.workflows == []
     assert raised.first_job_installed is False
+    assert raised.first_job_failure_reason == "installation_failed"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -234,21 +279,40 @@ async def test_raise_expert_handles_braces_in_name(server: SpinTestServer):
 async def test_raise_expert_degrades_when_first_job_vanishes_mid_flight(
     server: SpinTestServer,
 ):
-    """Pre-create validation passes, but the listing is withdrawn before the
-    install — the raise must degrade honestly, not link the stale row."""
+    """A real withdrawal between precheck and locked install is rejected."""
     owner = await _create_seed_user()
     slv_id = await _seed_store_listing(server)
+    create_row = experts_db._create_raised_expert_row
+
+    async def create_then_withdraw(
+        user_id: str,
+        name: str,
+        role: str | None,
+        voice_preferences: str | None,
+    ) -> prisma.models.Expert:
+        expert = await create_row(user_id, name, role, voice_preferences)
+        await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": slv_id}, data={"isAvailable": False}
+        )
+        return expert
+
     with patch.object(
         experts_db,
-        "_validate_first_job_listing",
-        new_callable=AsyncMock,
-        side_effect=[None, experts_db.FirstJobUnavailableError(slv_id)],
+        "_create_raised_expert_row",
+        new=create_then_withdraw,
     ):
         raised = await experts_db.create_raised_expert(
             owner.id, "Otto", None, None, slv_id
         )
     assert raised.expert.workflows == []
     assert raised.first_job_installed is False
+    assert raised.first_job_failure_reason == "unavailable"
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={"expertId": raised.expert.id}
+        )
+        == 0
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -294,6 +358,69 @@ async def test_raise_expert_enforces_active_expert_cap(server: SpinTestServer):
         owner.id, "Fits Now", None, None, None
     )
     assert raised.expert.name == "Fits Now"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_serializes_concurrent_cap_checks(server: SpinTestServer):
+    owner = await _create_seed_user()
+    await prisma.models.Expert.prisma().create_many(
+        data=[
+            {
+                "ownerUserId": owner.id,
+                "name": f"Filler {i}",
+                "role": "",
+                "identity": f"I'm Filler {i}.",
+            }
+            for i in range(experts_db.ACTIVE_EXPERT_LIMIT - 1)
+        ]
+    )
+
+    results = await asyncio.gather(
+        experts_db.create_raised_expert(owner.id, "Alpha", None, None, None),
+        experts_db.create_raised_expert(owner.id, "Beta", None, None, None),
+        return_exceptions=True,
+    )
+
+    assert sum(not isinstance(result, BaseException) for result in results) == 1
+    assert (
+        sum(
+            isinstance(result, experts_db.ExpertLimitExceededError)
+            for result in results
+        )
+        == 1
+    )
+    assert (
+        await prisma.models.Expert.prisma().count(
+            where={
+                "ownerUserId": owner.id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        == experts_db.ACTIVE_EXPERT_LIMIT
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_enforces_lifetime_cap(server: SpinTestServer):
+    owner = await _create_seed_user()
+    await prisma.models.Expert.prisma().create_many(
+        data=[
+            {
+                "ownerUserId": owner.id,
+                "name": f"Archived {i}",
+                "role": "",
+                "identity": f"I'm Archived {i}.",
+                "isArchived": True,
+            }
+            for i in range(experts_db.LIFETIME_RAISED_EXPERT_LIMIT)
+        ]
+    )
+
+    with pytest.raises(experts_db.RaisedExpertLifetimeLimitExceededError):
+        await experts_db.create_raised_expert(
+            owner.id, "One Too Many", None, None, None
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")

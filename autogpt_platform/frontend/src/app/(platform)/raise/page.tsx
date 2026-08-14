@@ -2,8 +2,16 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
-import { RaiseFlow } from "./components/RaiseFlow/RaiseFlow";
+
+const RaiseFlow = dynamic(
+  () =>
+    import("./components/RaiseFlow/RaiseFlow").then(
+      (module) => module.RaiseFlow,
+    ),
+  { ssr: false, loading: RaiseSkeleton },
+);
 
 export default function RaisePage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);

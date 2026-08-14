@@ -1189,7 +1189,10 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
 
 
 async def add_store_agent_to_library(
-    store_listing_version_id: str, user_id: str
+    store_listing_version_id: str,
+    user_id: str,
+    *,
+    tx: prisma.Prisma | None = None,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user’s library.
 
@@ -1203,9 +1206,11 @@ async def add_store_agent_to_library(
         f"to library for user #{user_id}"
     )
     graph_model, store_listing_version = await resolve_graph_for_library(
-        store_listing_version_id, user_id, admin=False
+        store_listing_version_id, user_id, admin=False, tx=tx
     )
-    return await add_graph_to_library(graph_model, user_id, store_listing_version)
+    return await add_graph_to_library(
+        graph_model, user_id, store_listing_version, tx=tx
+    )
 
 
 async def add_store_agent_to_library_as_admin(

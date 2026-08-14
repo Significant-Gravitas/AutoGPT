@@ -9,7 +9,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { NamingMomentCard } from "../NamingMomentCard";
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
+const { authUserMock, setFlagStatusMock } = vi.hoisted(() => ({
+  authUserMock: { current: { id: "user-1" } },
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
 }));
 
@@ -28,7 +29,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
 });
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ isLoggedIn: true, user: { id: "user-1" } }),
+  useAuth: () => ({ isLoggedIn: true, user: authUserMock.current }),
 }));
 
 const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }));
@@ -69,6 +70,7 @@ function useHandlers({ experts, total }: { experts: Expert[]; total: number }) {
 }
 
 beforeEach(() => {
+  authUserMock.current = { id: "user-1" };
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   pushMock.mockClear();
   window.localStorage.clear();
@@ -148,6 +150,24 @@ test("'Not now' dismisses the card and persists the dismissal", async () => {
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Give me a name" })).toBeNull(),
   );
+});
+
+test("an account change resets dismissal state for the current user", async () => {
+  window.localStorage.setItem("autogpt:naming-moment-dismissed:user-1", "true");
+  useHandlers({ experts: [], total: 3 });
+
+  const { rerender } = render(<NamingMomentCard />);
+
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Give me a name" })).toBeNull(),
+  );
+
+  authUserMock.current = { id: "user-2" };
+  rerender(<NamingMomentCard />);
+
+  expect(
+    await screen.findByRole("button", { name: "Give me a name" }),
+  ).toBeTruthy();
 });
 
 test("a dismissed user fires no experts or sessions requests on mount", async () => {

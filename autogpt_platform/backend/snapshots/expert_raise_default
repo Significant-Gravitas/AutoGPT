@@ -1,0 +1,30 @@
+{
+  "expert": {
+    "avatar_url": null,
+    "bio": null,
+    "boundaries": "",
+    "id": "raised-1",
+    "identity": "I'm Otto, raised by you. I learn how you work and grow with you.",
+    "is_archived": false,
+    "is_template": false,
+    "last_run_at": null,
+    "last_run_status": null,
+    "name": "Otto",
+    "protected_soul_rules": [
+      "The expert discloses that it is AI when acting externally.",
+      "External actions require approval."
+    ],
+    "role": "",
+    "schedules_paused_at": null,
+    "skills": [],
+    "source_template_id": null,
+    "tagline": null,
+    "voice_preferences": "",
+    "voice_samples": [],
+    "weekly_budget": null,
+    "weekly_spend": 0,
+    "workflows": []
+  },
+  "first_job_failure_reason": null,
+  "first_job_installed": false
+}

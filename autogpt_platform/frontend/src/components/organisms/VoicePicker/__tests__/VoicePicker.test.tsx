@@ -33,6 +33,8 @@ describe("VoicePicker", () => {
     expect(screen.getByText("How should Maria write?")).toBeDefined();
     expect(screen.getByText("Punchy and bold")).toBeDefined();
     expect(screen.getByText("Warm and story-led")).toBeDefined();
+    expect(screen.getByRole("group", { name: "Writing voice" })).toBeDefined();
+    expect(screen.getAllByRole("radio")).toHaveLength(3);
   });
 
   test("keeps submit disabled until a choice is made", () => {
@@ -46,6 +48,13 @@ describe("VoicePicker", () => {
   test("picks a preset sample by choice", async () => {
     const { onPick } = setup();
     await userEvent.click(screen.getByText("Punchy and bold"));
+    expect(
+      (
+        screen.getByRole("radio", {
+          name: "Punchy and bold",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
     await userEvent.click(
       screen.getByRole("button", { name: "Use this voice" }),
     );
@@ -74,6 +83,18 @@ describe("VoicePicker", () => {
       choice: "custom",
       customText: "Keep it breezy.",
     });
+  });
+
+  test("shows the custom sample character limit", async () => {
+    setup();
+    expect(screen.getByText("0 / 2,000 characters")).toBeDefined();
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Paste a few sentences/),
+      "Keep it breezy.",
+    );
+
+    expect(screen.getByText("15 / 2,000 characters")).toBeDefined();
   });
 
   test("skips without picking a voice", async () => {

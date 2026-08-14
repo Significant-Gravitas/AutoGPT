@@ -181,6 +181,7 @@ test("walks name → voice → first job, posts the payload, and kicks off", asy
       return {
         expert: { ...raisedExpert, workflows: [installedWorkflow] },
         first_job_installed: true,
+        first_job_failure_reason: null,
       } as RaiseResult;
     }),
   );
@@ -217,6 +218,7 @@ test("skips voice and first job, posts a minimal payload without kickoff", async
       return {
         expert: raisedExpert,
         first_job_installed: false,
+        first_job_failure_reason: null,
       } as RaiseResult;
     }),
   );
@@ -252,6 +254,7 @@ test("surfaces a failed first-job install and skips kickoff", async () => {
     getCreateRaisedExpertMockHandler({
       expert: raisedExpert,
       first_job_installed: false,
+      first_job_failure_reason: "installation_failed",
     } as RaiseResult),
   );
 
@@ -265,7 +268,7 @@ test("surfaces a failed first-job install and skips kickoff", async () => {
   expect(
     await screen.findByText("Couldn't set up Otto's first job"),
   ).toBeDefined();
-  expect(screen.getByText(/from Otto's page anytime/)).toBeDefined();
+  expect(screen.getByText(/from their page anytime/)).toBeDefined();
   await waitFor(() =>
     expect(pushMock).toHaveBeenCalledWith("/copilot?expertId=raised-1"),
   );
@@ -280,6 +283,7 @@ test("a rapid double-click on finish sends a single POST", async () => {
       return {
         expert: raisedExpert,
         first_job_installed: false,
+        first_job_failure_reason: null,
       } as RaiseResult;
     }),
   );
@@ -304,12 +308,39 @@ test("a rapid double-click on finish sends a single POST", async () => {
   expect(postCount).toBe(1);
 });
 
+test("keeps navigation locked after success until the route unmounts", async () => {
+  useStoreHandlers();
+  server.use(
+    getCreateRaisedExpertMockHandler({
+      expert: raisedExpert,
+      first_job_installed: false,
+      first_job_failure_reason: null,
+    } as RaiseResult),
+  );
+
+  renderRaise();
+  await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /life/ }));
+
+  await waitFor(() => expect(pushMock).toHaveBeenCalled());
+  expect(
+    (screen.getByRole("button", { name: "Back" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+});
+
 test("shows a friendly limit message on 409", async () => {
   useStoreHandlers();
   server.use(
     http.post("/api/proxy/api/experts/raise", () =>
       HttpResponse.json(
-        { detail: "Active expert limit of 20 reached" },
+        { detail: { code: "active_expert_limit", limit: 20 } },
         { status: 409 },
       ),
     ),
@@ -327,6 +358,36 @@ test("shows a friendly limit message on 409", async () => {
   await userEvent.click(await screen.findByRole("button", { name: /life/ }));
 
   expect(await screen.findByText("Your team is full")).toBeDefined();
+  expect(pushMock).not.toHaveBeenCalled();
+});
+
+test("distinguishes the lifetime raised-expert limit", async () => {
+  useStoreHandlers();
+  server.use(
+    http.post("/api/proxy/api/experts/raise", () =>
+      HttpResponse.json(
+        {
+          detail: { code: "raised_expert_lifetime_limit", limit: 100 },
+        },
+        { status: 409 },
+      ),
+    ),
+  );
+
+  renderRaise();
+  await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /life/ }));
+
+  expect(
+    await screen.findByText("Expert creation limit reached"),
+  ).toBeDefined();
+  expect(screen.getByText(/Contact support/)).toBeDefined();
   expect(pushMock).not.toHaveBeenCalled();
 });
 
@@ -357,6 +418,87 @@ test("a refresh resumes the draft from session storage", async () => {
   expect(screen.getByText("Nova's Soul")).toBeDefined();
 });
 
+test("explains when the selected first job becomes unavailable", async () => {
+  useStoreHandlers();
+  server.use(
+    getCreateRaisedExpertMockHandler({
+      expert: raisedExpert,
+      first_job_installed: false,
+      first_job_failure_reason: "unavailable",
+    } as RaiseResult),
+  );
+
+  renderRaise();
+  await walkToReviewWithJob();
+  await userEvent.click(
+    await screen.findByRole("button", { name: /Bring Otto to life/ }),
+  );
+
+  expect(
+    await screen.findByText("SEO Blog Writer is no longer available"),
+  ).toBeDefined();
+  expect(screen.getByText(/choose another first job/)).toBeDefined();
+});
+
+test("keeps skip available when starter-job suggestions fail", async () => {
+  server.use(
+    http.get("/api/proxy/api/store/agents", () =>
+      HttpResponse.json({ detail: "Store unavailable" }, { status: 500 }),
+    ),
+  );
+
+  renderRaise();
+  await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+
+  expect(await screen.findByText("Something went wrong")).toBeDefined();
+  expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();
+});
+
+test("explains when there are no starter jobs", async () => {
+  server.use(
+    getGetV2ListStoreAgentsMockHandler({
+      ...storeAgentsResponse,
+      agents: [],
+      pagination: { ...storeAgentsResponse.pagination, total_items: 0 },
+    }),
+  );
+
+  renderRaise();
+  await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+
+  expect(
+    await screen.findByText(/No starter jobs are available right now/),
+  ).toBeDefined();
+  expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();
+});
+
+test("surfaces a selected job detail failure", async () => {
+  server.use(
+    getGetV2ListStoreAgentsMockHandler(storeAgentsResponse),
+    http.get("/api/proxy/api/store/agents/:username/:agentName", () =>
+      HttpResponse.json({ detail: "Details unavailable" }, { status: 500 }),
+    ),
+  );
+
+  renderRaise();
+  await userEvent.click(await screen.findByRole("button", { name: "Otto" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip for now" }),
+  );
+  await userEvent.click(await screen.findByText("SEO Blog Writer"));
+
+  expect(await screen.findByText("Something went wrong")).toBeDefined();
+  const confirm = screen.getByRole("button", { name: "Give me this job" });
+  expect((confirm as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();
+});
+
 test("from=naming shows the naming opener and skips the first job step", async () => {
   searchParamsMock.current = new URLSearchParams("from=naming");
   let captured: unknown = null;
@@ -377,12 +519,9 @@ test("from=naming shows the naming opener and skips the first job step", async (
   const nameInput = await screen.findByPlaceholderText("Type a name…");
   await userEvent.type(nameInput, "Juno");
   await userEvent.click(screen.getByRole("button", { name: "Name me" }));
-
   await userEvent.click(
     await screen.findByRole("button", { name: "Skip for now" }),
   );
-
-  // Straight to review — the first job step never renders.
   await userEvent.click(await screen.findByRole("button", { name: /life/ }));
 
   await waitFor(() => expect(captured).not.toBeNull());
@@ -395,9 +534,6 @@ test("from=naming shows the naming opener and skips the first job step", async (
   );
 });
 
-// Reads the experts list exactly like useRecipientPicker's useExpertMap does,
-// sharing the render's QueryClient — so it observes the same cache entry the
-// copilot page would read right after the raise flow navigates.
 function ExpertsCacheProbe() {
   const query = useListExperts({
     query: {
@@ -418,7 +554,7 @@ const aSession = {
   is_processing: false,
 } as SessionSummaryResponse;
 
-test("finishing naming reconciles the cached empty experts list so the new expert survives and the card is gone", async () => {
+test("finishing naming reconciles a cached empty experts list before navigation", async () => {
   searchParamsMock.current = new URLSearchParams("from=naming");
   let created = false;
   server.use(
@@ -441,8 +577,6 @@ test("finishing naming reconciles the cached empty experts list so the new exper
     </>,
   );
 
-  // The stale-success setup from the review: a cached 200 with zero experts,
-  // eligibility satisfied, card showing.
   expect(await screen.findByText("cached-experts:none")).toBeTruthy();
   expect(
     await screen.findByRole("button", { name: "Give me a name" }),
@@ -459,9 +593,6 @@ test("finishing naming reconciles the cached empty experts list so the new exper
   await waitFor(() =>
     expect(pushMock).toHaveBeenCalledWith("/copilot?expertId=raised-1"),
   );
-  // The cache was reconciled before navigation: the expert is readable
-  // without waiting for a refetch, so the recipient picker keeps ?expertId=
-  // and the naming card's eligibility flips off.
   expect(await screen.findByText("cached-experts:Otto")).toBeTruthy();
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Give me a name" })).toBeNull(),

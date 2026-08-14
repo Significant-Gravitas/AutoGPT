@@ -84,6 +84,11 @@ describe("Marketplace ExpertsSection", () => {
     renderMarketplace();
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    expect(
+      screen
+        .getByRole("link", { name: /raise your own expert from scratch/i })
+        .getAttribute("href"),
+    ).toBe("/raise");
     await userEvent.click(await screen.findByText("Maria"));
     await userEvent.click(
       await screen.findByRole("button", { name: "Hire Maria" }),
@@ -120,12 +125,17 @@ describe("Marketplace ExpertsSection", () => {
 
     renderMarketplace();
 
-    await waitFor(() => {
-      expect(
-        screen.getByText(/raise your own expert from scratch/),
-      ).toBeDefined();
-      expect(screen.queryByText("Meet the AI Experts")).toBeNull();
-    });
+    await waitFor(
+      () => {
+        expect(
+          screen
+            .getByRole("link", { name: /raise your own expert from scratch/i })
+            .getAttribute("href"),
+        ).toBe("/raise");
+        expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+      },
+      { timeout: 5_000 },
+    );
   });
 
   test("hired template shows hired state", async () => {

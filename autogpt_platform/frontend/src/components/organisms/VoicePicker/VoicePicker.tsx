@@ -2,11 +2,14 @@
 
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import { useId } from "react";
+import { SampleCard } from "./components/SampleCard";
 import type { VoicePickResult } from "./helpers";
+import { selectableCardClassName } from "./styles";
 import { useVoicePicker } from "./useVoicePicker";
+
+const MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS = 2_000;
+const CUSTOM_VOICE_TEXTAREA_ROWS = 3;
 
 interface Props {
   name?: string;
@@ -23,6 +26,9 @@ export function VoicePicker({
   onSkip,
   isSubmitting = false,
 }: Props) {
+  const choiceGroupName = useId();
+  const customTextareaId = useId();
+  const customCharacterCountId = `${customTextareaId}-character-count`;
   const {
     selected,
     customText,
@@ -36,51 +42,67 @@ export function VoicePicker({
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1.5">
-        <h2 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
+        <h2 className="text-2xl font-semibold tracking-[-0.02em] text-foreground">
           {name ? `How should ${name} write?` : "How should this expert write?"}
         </h2>
-        <p className="text-base text-zinc-500">
+        <p className="text-base text-muted-foreground">
           Pick the voice that feels right. You can fine-tune it anytime in the
           Soul editor.
         </p>
       </header>
 
-      <div className="flex flex-col gap-3">
-        {samples.slice(0, 2).map((sample, index) => (
-          <SampleCard
-            key={sample.label}
-            sample={sample}
-            isSelected={selected === (index === 0 ? "a" : "b")}
-            onSelect={() => selectSample(index === 0 ? "a" : "b")}
-          />
-        ))}
+      <fieldset className="flex flex-col gap-3">
+        <legend className="sr-only">Writing voice</legend>
+        {samples.slice(0, 2).map((sample, index) => {
+          const choice = index === 0 ? "a" : "b";
+          return (
+            <SampleCard
+              key={choice}
+              sample={sample}
+              choice={choice}
+              choiceGroupName={choiceGroupName}
+              isSelected={selected === choice}
+              onSelect={() => selectSample(choice)}
+            />
+          );
+        })}
 
-        <div
-          className={cn(
-            "rounded-2xl border p-5 transition-colors",
-            selected === "custom"
-              ? "border-purple-300 bg-purple-50/40 ring-2 ring-purple-200"
-              : "border-zinc-200 bg-white",
-          )}
-        >
+        <div className={selectableCardClassName(selected === "custom")}>
           <label
-            htmlFor="voice-custom"
-            className="mb-2 block text-xs font-medium uppercase tracking-[0.12em] text-purple-600"
+            htmlFor={`${customTextareaId}-choice`}
+            className="mb-2 block cursor-pointer text-xs font-medium uppercase tracking-[0.12em] text-accent"
           >
+            <input
+              id={`${customTextareaId}-choice`}
+              type="radio"
+              name={choiceGroupName}
+              value="custom"
+              checked={selected === "custom"}
+              onChange={focusCustom}
+              className="sr-only"
+            />
             Paste your own
           </label>
           <textarea
-            id="voice-custom"
+            id={customTextareaId}
             value={customText}
             onFocus={focusCustom}
             onChange={(event) => changeCustom(event.target.value)}
-            rows={3}
-            maxLength={2000}
+            rows={CUSTOM_VOICE_TEXTAREA_ROWS}
+            maxLength={MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS}
+            aria-describedby={customCharacterCountId}
             placeholder="Paste a few sentences written the way you'd like this expert to sound."
-            className="w-full resize-none rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm leading-relaxed text-black placeholder:text-zinc-500 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+            className="w-full resize-none rounded-xl border border-input bg-background px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
+          <p
+            id={customCharacterCountId}
+            className="mt-1.5 text-right text-xs text-muted-foreground"
+          >
+            {customText.length.toLocaleString()} /{" "}
+            {MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS.toLocaleString()} characters
+          </p>
         </div>
-      </div>
+      </fieldset>
 
       <footer className="flex items-center justify-between gap-3">
         <Button variant="ghost" onClick={onSkip} disabled={isSubmitting}>
@@ -97,43 +119,5 @@ export function VoicePicker({
         </Button>
       </footer>
     </div>
-  );
-}
-
-interface SampleCardProps {
-  sample: VoiceSample;
-  isSelected: boolean;
-  onSelect: () => void;
-}
-
-function SampleCard({ sample, isSelected, onSelect }: SampleCardProps) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={isSelected}
-      className={cn(
-        "w-full rounded-2xl border p-5 text-left transition-colors",
-        isSelected
-          ? "border-purple-300 bg-purple-50/40 ring-2 ring-purple-200"
-          : "border-zinc-200 bg-white hover:border-zinc-300",
-      )}
-    >
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-xs font-medium uppercase tracking-[0.12em] text-purple-600">
-          {sample.label}
-        </span>
-        {isSelected ? (
-          <Icon
-            icon={CheckmarkCircle02Icon}
-            size={18}
-            className="shrink-0 text-purple-600"
-          />
-        ) : null}
-      </div>
-      <p className="whitespace-pre-line text-[15px] leading-relaxed text-zinc-600">
-        {sample.text}
-      </p>
-    </button>
   );
 }

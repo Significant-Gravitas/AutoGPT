@@ -1,0 +1,41 @@
+{
+  "expert": {
+    "avatar_url": null,
+    "bio": null,
+    "boundaries": "",
+    "id": "raised-2",
+    "identity": "I'm Nova, raised by you. I learn how you work and grow with you.",
+    "is_archived": false,
+    "is_template": false,
+    "last_run_at": null,
+    "last_run_status": null,
+    "name": "Nova",
+    "protected_soul_rules": [
+      "The expert discloses that it is AI when acting externally.",
+      "External actions require approval."
+    ],
+    "role": "Research Assistant",
+    "schedules_paused_at": null,
+    "skills": [],
+    "source_template_id": null,
+    "tagline": null,
+    "voice_preferences": "Warm and detailed.",
+    "voice_samples": [],
+    "weekly_budget": null,
+    "weekly_spend": 0,
+    "workflows": [
+      {
+        "description": "Writes SEO-optimized blog posts",
+        "graph_id": "graph-1",
+        "id": "workflow-ref-1",
+        "library_agent_id": "library-agent-1",
+        "name": "SEO Blog Writer",
+        "schedule_cron": null,
+        "schedule_id": null,
+        "store_listing_version_id": "listing-version-1"
+      }
+    ]
+  },
+  "first_job_failure_reason": null,
+  "first_job_installed": true
+}

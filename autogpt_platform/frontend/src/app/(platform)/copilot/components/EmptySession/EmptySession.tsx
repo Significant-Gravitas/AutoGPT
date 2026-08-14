@@ -147,9 +147,7 @@ export function EmptySession({
               above the composer; the card gates itself on eligibility and
               renders nothing otherwise. */}
           {!intro.isVisible && !intro.isAwaitingGreeting && (
-            <div className="mb-4">
-              <NamingMomentCard />
-            </div>
+            <NamingMomentCard className="mb-4" />
           )}
 
           {/* Held back while the greeting is on its way — it enters with

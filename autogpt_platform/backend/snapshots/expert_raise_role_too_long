@@ -1,0 +1,16 @@
+{
+  "detail": [
+    {
+      "ctx": {
+        "max_length": 100
+      },
+      "input": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "loc": [
+        "body",
+        "role"
+      ],
+      "msg": "String should have at most 100 characters",
+      "type": "string_too_long"
+    }
+  ]
+}
