@@ -1,6 +1,4 @@
 import {
-  getListExpertIdentitiesQueryKey,
-  getListExpertsQueryKey,
   useHireExpert,
   useListExperts,
 } from "@/app/api/__generated__/endpoints/experts/experts";
@@ -8,6 +6,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { HireResult } from "@/app/api/__generated__/models/hireResult";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function useExpertProfileSheet(
@@ -34,12 +33,7 @@ export function useExpertProfileSheet(
     try {
       const response = await hireExpert({ data: { template_id: expert.id } });
       const result = response.data as HireResult;
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() }),
-        queryClient.invalidateQueries({
-          queryKey: getListExpertIdentitiesQueryKey(),
-        }),
-      ]);
+      await invalidateExpertRosterQueries(queryClient);
       toast({
         title: `${result.expert.name} joined your team`,
         description: result.failed_preloads.length

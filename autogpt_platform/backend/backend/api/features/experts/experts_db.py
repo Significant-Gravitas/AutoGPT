@@ -14,6 +14,7 @@ from backend.api.features.experts.models import (
     HireResult,
 )
 from backend.api.features.library import db as library_db
+from backend.data.db import query_raw_with_schema
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -49,16 +50,6 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         description=listing.description if listing else None,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
-    )
-
-
-def _to_identity(row: prisma.models.Expert) -> ExpertIdentity:
-    return ExpertIdentity(
-        id=row.id,
-        name=row.name,
-        avatar_url=row.avatarUrl,
-        role=row.role,
-        is_archived=row.isArchived,
     )
 
 
@@ -150,10 +141,16 @@ async def list_experts(user_id: str) -> list[Expert]:
 
 async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     """Return the lifetime roster without hydrating team-page details."""
-    rows = await prisma.models.Expert.prisma().find_many(
-        where={"ownerUserId": user_id, "isTemplate": False}
+    return await query_raw_with_schema(
+        """
+        SELECT "id", "name", "avatarUrl" AS "avatar_url", "role",
+               "isArchived" AS "is_archived"
+        FROM {schema_prefix}"Expert"
+        WHERE "ownerUserId" = $1 AND "isTemplate" = false
+        """,
+        user_id,
+        model=ExpertIdentity,
     )
-    return [_to_identity(row) for row in rows]
 
 
 async def is_expert_active(user_id: str, expert_id: str) -> bool:

@@ -713,6 +713,17 @@ describe("ChatMessagesContainer — expert identity", () => {
   });
 });
 
+function RecipientPickerHarness() {
+  const [expertId] = useQueryState("expertId", parseAsString);
+  const { recipient } = useRecipientPicker();
+  return (
+    <div>
+      <div data-testid="picker-expert-id">{expertId ?? "none"}</div>
+      <div data-testid="picker-recipient">{recipient.name}</div>
+    </div>
+  );
+}
+
 describe("recipient picker", () => {
   it("does not look up or adopt the expert's latest thread when the recipient is picked after mount", async () => {
     let expertListRequests = 0;
@@ -807,17 +818,6 @@ describe("recipient picker", () => {
       ),
     );
 
-    function RecipientPickerHarness() {
-      const [expertId] = useQueryState("expertId", parseAsString);
-      const { recipient } = useRecipientPicker();
-      return (
-        <div>
-          <div data-testid="picker-expert-id">{expertId ?? "none"}</div>
-          <div data-testid="picker-recipient">{recipient.name}</div>
-        </div>
-      );
-    }
-
     const ErrorWrapper = withNuqsTestingAdapter({
       searchParams: "?expertId=expert-maria",
       hasMemory: true,
@@ -826,6 +826,37 @@ describe("recipient picker", () => {
       <ErrorWrapper>
         <RecipientPickerHarness />
       </ErrorWrapper>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
+    );
+    expect(screen.getByTestId("picker-recipient").textContent).toBe(
+      "Autopilot",
+    );
+  });
+
+  it("clears an archived expert recipient after identities load", async () => {
+    server.use(
+      getListExpertIdentitiesMockHandler([
+        {
+          id: "expert-maria",
+          name: "Maria",
+          avatar_url: "https://example.com/maria.png",
+          role: "Marketing Strategist",
+          is_archived: true,
+        },
+      ]),
+    );
+
+    const ArchivedWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria",
+      hasMemory: true,
+    });
+    render(
+      <ArchivedWrapper>
+        <RecipientPickerHarness />
+      </ArchivedWrapper>,
     );
 
     await waitFor(() =>

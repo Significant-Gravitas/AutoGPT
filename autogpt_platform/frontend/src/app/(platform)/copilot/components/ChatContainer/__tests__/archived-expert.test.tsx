@@ -103,7 +103,7 @@ describe("ChatContainer — archived expert", () => {
     );
 
     expect(screen.getByTestId("archived-expert-notice").textContent).toContain(
-      "Maria was let go — this thread is read-only",
+      "Maria was fired — this thread is read-only",
     );
     expect(screen.queryByTestId("composer")).toBeNull();
   });

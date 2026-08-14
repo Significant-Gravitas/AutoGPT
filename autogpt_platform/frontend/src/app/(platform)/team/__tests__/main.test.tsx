@@ -557,7 +557,7 @@ describe("TeamPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
     expect(
       await within(dialog).findByText(
-        "We couldn't preview what pauses, but you can still let them go.",
+        "We couldn't preview what pauses, but you can still fire them.",
       ),
     ).toBeDefined();
     expect(
@@ -595,7 +595,7 @@ describe("TeamPage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
     await within(dialog).findByText(
-      "We couldn't preview what pauses, but you can still let them go.",
+      "We couldn't preview what pauses, but you can still fire them.",
     );
     const confirm = screen.getByTestId("fire-expert-confirm");
     expect(confirm.hasAttribute("disabled")).toBe(false);
@@ -631,6 +631,7 @@ describe("TeamPage", () => {
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Could not fire Maria",
+          description: "Maria is still on your team. Please try again.",
           variant: "destructive",
         }),
       ),

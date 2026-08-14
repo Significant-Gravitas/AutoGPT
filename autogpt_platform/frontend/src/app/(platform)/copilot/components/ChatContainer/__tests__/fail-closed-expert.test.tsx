@@ -124,7 +124,7 @@ describe("Copilot expert thread — fail-closed identity", () => {
 
     const notice = await screen.findByTestId("archived-expert-notice");
     expect(notice.textContent).toContain(
-      "Maria was let go — this thread is read-only",
+      "Maria was fired — this thread is read-only",
     );
     expect(screen.queryByTestId("composer")).toBeNull();
     expect(requestedUrl).toContain("/api/experts/identities");
@@ -154,7 +154,7 @@ describe("Copilot expert thread — fail-closed identity", () => {
 
     const notice = await screen.findByTestId("archived-expert-notice");
     expect(notice.textContent).toContain(
-      "was let go — this thread is read-only",
+      "was fired — this thread is read-only",
     );
     expect(screen.queryByTestId("composer")).toBeNull();
   });

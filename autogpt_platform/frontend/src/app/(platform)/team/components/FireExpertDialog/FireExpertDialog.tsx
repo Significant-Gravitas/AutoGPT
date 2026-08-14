@@ -42,7 +42,7 @@ export function FireExpertDialog({
   function getAutomationLineText() {
     if (isPreviewLoading) return "Checking what will pause…";
     if (isPreviewError)
-      return "We couldn't preview what pauses, but you can still let them go.";
+      return "We couldn't preview what pauses, but you can still fire them.";
     return summary.automationLine;
   }
 
@@ -60,7 +60,7 @@ export function FireExpertDialog({
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <Text variant="body" className="text-zinc-600">
-            Here is exactly what happens when you let {expertName} go.
+            Here is exactly what happens when you fire {expertName}.
           </Text>
           <ul className="flex flex-col gap-2.5">
             <FireLine>Installed workflows stay in your library.</FireLine>

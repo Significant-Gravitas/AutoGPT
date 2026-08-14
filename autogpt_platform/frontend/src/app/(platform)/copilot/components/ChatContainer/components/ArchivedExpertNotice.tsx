@@ -23,7 +23,7 @@ export function ArchivedExpertNotice({ expertName, isUnavailable }: Props) {
         <Text variant="small" className="text-muted-foreground">
           {isUnavailable
             ? `${expertName} is temporarily unavailable — this thread is read-only`
-            : `${expertName} was let go — this thread is read-only`}
+            : `${expertName} was fired — this thread is read-only`}
         </Text>
       </div>
     </div>

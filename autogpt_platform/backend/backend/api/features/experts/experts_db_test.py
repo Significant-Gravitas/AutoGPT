@@ -168,6 +168,8 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
 ):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    active_template = await _seed_template(name="Max", preload_listings=[])
+    active_hired = await experts_db.hire_expert(test_user.id, active_template.id, None)
     other_hired = await experts_db.hire_expert(other_user.id, template.id, None)
     await experts_db.archive_expert(test_user.id, hired.expert.id)
 
@@ -180,10 +182,16 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
         identities = await experts_db.list_expert_identities(test_user.id)
 
     identity_ids = {item.id for item in identities}
+    assert identity_ids == {hired.expert.id, active_hired.expert.id}
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.name == hired.expert.name
     assert identity.is_archived is True
+    active_identity = next(
+        item for item in identities if item.id == active_hired.expert.id
+    )
+    assert active_identity.is_archived is False
     assert template.id not in identity_ids
+    assert active_template.id not in identity_ids
     assert other_hired.expert.id not in identity_ids
     latest_runs.assert_not_awaited()
     weekly_spend.assert_not_awaited()

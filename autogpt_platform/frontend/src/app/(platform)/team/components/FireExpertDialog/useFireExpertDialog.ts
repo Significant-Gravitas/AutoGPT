@@ -1,13 +1,12 @@
 import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import {
   getGetExpertQueryKey,
-  getListExpertIdentitiesQueryKey,
-  getListExpertsQueryKey,
   useArchiveExpert,
   useGetExpertDetachPreview,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { okData } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -34,20 +33,19 @@ export function useFireExpertDialog({
 
   const { mutate, isPending: isFiring } = useArchiveExpert({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() });
-        queryClient.invalidateQueries({
-          queryKey: getListExpertIdentitiesQueryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetExpertQueryKey(expertId),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetHomeDashboardQueryKey(),
-        });
-        invalidateAllScheduleQueries(queryClient);
+      onSuccess: async () => {
+        await Promise.all([
+          invalidateExpertRosterQueries(queryClient),
+          queryClient.invalidateQueries({
+            queryKey: getGetExpertQueryKey(expertId),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: getGetHomeDashboardQueryKey(),
+          }),
+          invalidateAllScheduleQueries(queryClient),
+        ]);
         toast({
-          title: `${expertName} was let go`,
+          title: `${expertName} was fired`,
           description: `You can re-hire ${expertName} anytime from the marketplace.`,
         });
         onClose();
@@ -56,6 +54,7 @@ export function useFireExpertDialog({
       onError: () => {
         toast({
           title: `Could not fire ${expertName}`,
+          description: `${expertName} is still on your team. Please try again.`,
           variant: "destructive",
         });
       },
