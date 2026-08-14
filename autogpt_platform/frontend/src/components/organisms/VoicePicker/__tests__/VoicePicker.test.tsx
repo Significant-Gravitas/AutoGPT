@@ -72,10 +72,10 @@ describe("VoicePicker", () => {
 
   test("picks the user's own pasted sample", async () => {
     const { onPick } = setup();
-    await userEvent.type(
-      screen.getByPlaceholderText(/Paste a few sentences/),
-      "Keep it breezy.",
-    );
+    const customSample = screen.getByRole("textbox", {
+      name: "Custom voice sample",
+    });
+    await userEvent.type(customSample, "Keep it breezy.");
     await userEvent.click(
       screen.getByRole("button", { name: "Use this voice" }),
     );

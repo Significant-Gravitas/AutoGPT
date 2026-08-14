@@ -267,6 +267,46 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
     )
 
 
+def test_create_raised_expert_reports_first_job_installation_failure(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-3", name="Nova"),
+            first_job_installed=False,
+            first_job_failure_reason="installation_failed",
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={
+            "name": "Nova",
+            "first_job_store_listing_version_id": "listing-version-1",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["first_job_installed"] is False
+    assert data["first_job_failure_reason"] == "installation_failed"
+    mock_create.assert_awaited_once_with(
+        test_user_id,
+        "Nova",
+        None,
+        None,
+        "listing-version-1",
+    )
+    configured_snapshot.assert_match(
+        json.dumps(data, indent=2, sort_keys=True),
+        "expert_raise_first_job_installation_failure",
+    )
+
+
 def test_create_raised_expert_requires_name(
     mocker: pytest_mock.MockerFixture,
     configured_snapshot: Snapshot,
