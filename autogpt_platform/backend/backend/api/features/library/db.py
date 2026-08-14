@@ -1231,14 +1231,30 @@ async def is_store_listing_version_available_for_install(
 async def add_store_agent_to_library(
     store_listing_version_id: str,
     user_id: str,
-    *,
-    tx: prisma.Prisma | None = None,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user’s library.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
+    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=None)
+
+
+async def add_store_agent_to_library_in_transaction(
+    store_listing_version_id: str,
+    user_id: str,
+    tx: prisma.Prisma,
+) -> library_model.LibraryAgent:
+    """Add a marketplace agent using the caller's transaction."""
+    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=tx)
+
+
+async def _add_store_agent_to_library(
+    store_listing_version_id: str,
+    user_id: str,
+    *,
+    tx: prisma.Prisma | None,
+) -> library_model.LibraryAgent:
     from ._add_to_library import add_graph_to_library, resolve_graph_for_library
 
     logger.debug(
