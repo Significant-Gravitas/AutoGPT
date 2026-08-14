@@ -1275,7 +1275,7 @@ model AnalyticsDetails {
   // Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc.
   dataIndex String?
 
-  @@index([userId, type])
+  @@index([userId, type, dataIndex])
 }
 
 ////////////////////////////////////////////////////////////
