@@ -13,12 +13,14 @@ const PRESENCE: Record<
   failed: { color: "bg-red-500", label: "Needs attention" },
 };
 
+const UNKNOWN_PRESENCE = { color: "bg-zinc-300", label: "Unknown" };
+
 export function getPresenceColor(status: HomeAgentStatusStatus): string {
-  return PRESENCE[status].color;
+  return (PRESENCE[status] ?? UNKNOWN_PRESENCE).color;
 }
 
 export function getPresenceLabel(status: HomeAgentStatusStatus): string {
-  return PRESENCE[status].label;
+  return (PRESENCE[status] ?? UNKNOWN_PRESENCE).label;
 }
 
 // Opening an expert via `?expertId=` adopts that expert's latest thread (or

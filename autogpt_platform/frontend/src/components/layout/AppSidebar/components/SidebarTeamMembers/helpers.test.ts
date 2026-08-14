@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { HomeAgentStatusStatus } from "@/app/api/__generated__/models/homeAgentStatusStatus";
 import {
   getExpertChatHref,
   getPresenceColor,
@@ -22,6 +23,12 @@ describe("getPresenceColor", () => {
   it("shows ready experts as a live green dot", () => {
     expect(getPresenceColor("ready")).toBe("bg-emerald-500");
   });
+
+  it("falls back safely for a newer backend status", () => {
+    expect(getPresenceColor("future_status" as HomeAgentStatusStatus)).toBe(
+      "bg-zinc-300",
+    );
+  });
 });
 
 describe("getPresenceLabel", () => {
@@ -31,6 +38,12 @@ describe("getPresenceLabel", () => {
     expect(getPresenceLabel("needs_setup")).toBe("Needs setup");
     expect(getPresenceLabel("failed")).toBe("Needs attention");
     expect(getPresenceLabel("ready")).toBe("Ready");
+  });
+
+  it("labels a newer backend status without crashing", () => {
+    expect(getPresenceLabel("future_status" as HomeAgentStatusStatus)).toBe(
+      "Unknown",
+    );
   });
 });
 
