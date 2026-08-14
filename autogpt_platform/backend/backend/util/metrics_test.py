@@ -224,6 +224,23 @@ def test_before_send_drops_typed_insufficient_balance_error() -> None:
     assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is None
 
 
+def test_before_send_keeps_wrapper_around_insufficient_balance_error() -> None:
+    try:
+        try:
+            raise InsufficientBalanceError(
+                message="New producer wording without legacy keywords",
+                user_id="user-1",
+                balance=0,
+                amount=1,
+            )
+        except InsufficientBalanceError as error:
+            raise RuntimeError("Unexpected execution wrapper") from error
+    except RuntimeError:
+        exc_info = sys.exc_info()
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
+
+
 # ---------- FalkorDB connection-teardown noise → dropped ----------
 
 

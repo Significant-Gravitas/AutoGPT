@@ -2,6 +2,8 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -186,7 +188,8 @@ def test_untyped_node_failure_is_not_promoted_to_graph_failure():
     assert graph_stats.failure_reason is None
 
 
-def test_graph_start_credit_failure_records_structured_reason():
+@pytest.mark.parametrize("credit_balance", [0, -25])
+def test_graph_start_credit_failure_records_structured_reason(credit_balance):
     execution = GraphExecutionEntry(
         user_id="user-1",
         graph_exec_id="exec-1",
@@ -195,7 +198,7 @@ def test_graph_start_credit_failure_records_structured_reason():
         execution_context=ExecutionContext(organization_id="org-1"),
     )
     db_client = MagicMock()
-    db_client.get_org_credits.return_value = 0
+    db_client.get_org_credits.return_value = credit_balance
     processor = ExecutionProcessor()
     processor._cleanup_graph_execution = MagicMock()
     stats = GraphExecutionStats()
@@ -214,7 +217,12 @@ def test_graph_start_credit_failure_records_structured_reason():
 
     assert status == ExecutionStatus.FAILED
     assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
-    assert stats.error == "The billed account has 0 credits but needs 1"
+    assert stats.error == (
+        "The billed account needs at least 1 credit to run this agent. "
+        "Please add credits or ask the billing owner, then try again."
+    )
+    db_client.get_org_credits.assert_called_once_with(org_id="org-1")
+    db_client.get_credits.assert_not_called()
 
 
 def test_graph_start_skips_balance_check_when_credits_are_disabled():

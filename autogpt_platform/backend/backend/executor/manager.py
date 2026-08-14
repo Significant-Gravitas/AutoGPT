@@ -1079,12 +1079,17 @@ class ExecutionProcessor:
                 and settings.config.enable_credit
             ):
                 credit_balance = _get_execution_credit_balance(db_client, graph_exec)
-                if credit_balance <= 0:
+                required_balance = 1
+                if credit_balance < required_balance:
                     raise InsufficientBalanceError(
                         user_id=graph_exec.user_id,
-                        message=f"The billed account has {credit_balance} credits but needs 1",
+                        message=(
+                            f"The billed account needs at least {required_balance} credit "
+                            "to run this agent. Please add credits or ask the billing "
+                            "owner, then try again."
+                        ),
                         balance=credit_balance,
-                        amount=1,
+                        amount=required_balance,
                     )
 
             # Input moderation

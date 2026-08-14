@@ -289,8 +289,7 @@ async def generate_activity_status_for_execution(
     )
     if deterministic_result is not None:
         logger.info(
-            f"Skipping LLM analysis for {graph_exec_id}: "
-            "deterministic failure detected"
+            f"Skipping LLM analysis for {graph_exec_id}: deterministic failure detected"
         )
         return deterministic_result
 

@@ -49,6 +49,11 @@ _LEGACY_BALANCE_CORPUS = (
         "dynamic-cost blocks require a positive balance.",
         False,
     ),
+    (
+        "Insufficient balance to run Third-party API: "
+        "dynamic-cost blocks require a positive balance.",
+        False,
+    ),
 )
 
 

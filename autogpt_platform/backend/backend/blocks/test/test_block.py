@@ -5,13 +5,37 @@ import pytest
 from backend.blocks import get_blocks
 from backend.blocks._base import Block, BlockSchemaInput
 from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
+from backend.data.execution import ExecutionContext
 from backend.data.graph import BaseGraph
 from backend.data.model import SchemaField
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.test import execute_block_test
 
 SKIP_BLOCK_TESTS = {
     "HumanInTheLoopBlock",
 }
+
+
+async def test_execute_preserves_insufficient_balance_error_type():
+    error = InsufficientBalanceError(
+        message="Producer wording is irrelevant to classification",
+        user_id="user-1",
+        balance=0,
+        amount=1,
+    )
+
+    class BalanceFailingBlock(Block):
+        async def run(self, input_data, **kwargs):
+            raise error
+            yield
+
+    block = BalanceFailingBlock(id="credit-failure-block")
+
+    with pytest.raises(InsufficientBalanceError) as exc_info:
+        async for _ in block.execute({}, execution_context=ExecutionContext()):
+            pass
+
+    assert exc_info.value is error
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)

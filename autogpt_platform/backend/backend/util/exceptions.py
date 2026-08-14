@@ -110,7 +110,7 @@ _LEGACY_INSUFFICIENT_BALANCE_PATTERNS = (
         r"where this will cost \$-?\d+(?:\.\d+)?"
     ),
     re.compile(
-        r"Insufficient balance to run .+: "
+        r"Insufficient balance to run [A-Za-z_][A-Za-z0-9_]*: "
         r"dynamic-cost blocks require a positive balance\."
     ),
     re.compile(r"Organization has -?\d+ credits but needs \d+"),

@@ -42,6 +42,9 @@ def test_failure_reason_round_trips_through_api_stats():
     assert persisted.model_dump()["failure_reason"] == (
         ExecutionFailureReason.INSUFFICIENT_BALANCE
     )
+    assert persisted.model_dump(mode="json")["failure_reason"] == (
+        "insufficient_balance"
+    )
     assert persisted.correctness_score == 0.0
 
 

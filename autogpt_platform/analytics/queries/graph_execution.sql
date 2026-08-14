@@ -72,7 +72,7 @@ SELECT
                 AND (
                        ge."stats"::jsonb->>'error' = 'You have no credits left to run an agent.'
                     OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance of \$-?[0-9]+(\.[0-9]+)?, where this will cost \$-?[0-9]+(\.[0-9]+)?$'
-                    OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance to run .+: dynamic-cost blocks require a positive balance\.$'
+                    OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance to run [A-Za-z_][A-Za-z0-9_]*: dynamic-cost blocks require a positive balance\.$'
                     OR ge."stats"::jsonb->>'error' ~ '^Organization has -?[0-9]+ credits but needs [0-9]+$'
                    )
                 )
