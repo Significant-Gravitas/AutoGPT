@@ -2,6 +2,7 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
+import Link from "next/link";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
@@ -23,13 +24,21 @@ export function ExpertsSection() {
   }
 
   return (
-    <section className="mb-20">
+    <section id="experts" className="mb-20">
       <SectionHeader
         titleIcon={<AITeamIcon size={30} />}
         title="Meet the AI Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
         action={{ label: "View your team", href: "/team" }}
       />
+      <div className="-mt-3 mb-6">
+        <Link
+          href="/raise"
+          className="text-sm font-medium text-purple-600 transition-colors hover:text-purple-700"
+        >
+          …or raise your own expert from scratch
+        </Link>
+      </div>
       {isLoading ? (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (

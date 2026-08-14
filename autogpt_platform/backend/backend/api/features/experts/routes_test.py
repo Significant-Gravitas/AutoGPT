@@ -166,6 +166,73 @@ def test_hire_expert_unknown_template_returns_404(
     assert response.status_code == 404
 
 
+# ─── Raise ─────────────────────────────────────────────────────────────
+
+
+def test_create_raised_expert_returns_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    raised = _make_expert(id="raised-1", name="Otto", source_template_id=None)
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=raised,
+    )
+
+    response = client.post("/experts/raise", json={"name": "Otto"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == "raised-1"
+    assert data["source_template_id"] is None
+    mock_create.assert_awaited_once_with(test_user_id, "Otto", None, None, None)
+
+
+def test_create_raised_expert_passes_role_voice_and_first_job(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(id="raised-2", source_template_id=None),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={
+            "name": "Nova",
+            "role": "Research Assistant",
+            "voice_preferences": "Warm and detailed.",
+            "first_job_store_listing_version_id": "listing-version-1",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_create.assert_awaited_once_with(
+        test_user_id,
+        "Nova",
+        "Research Assistant",
+        "Warm and detailed.",
+        "listing-version-1",
+    )
+
+
+def test_create_raised_expert_requires_name(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/experts/raise", json={"name": "   "})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
 # ─── Get ───────────────────────────────────────────────────────────────
 
 

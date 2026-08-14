@@ -1,7 +1,7 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Security
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
@@ -28,6 +28,21 @@ class InstallWorkflowRequest(BaseModel):
     store_listing_version_id: str
 
 
+class CreateRaisedExpertRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    role: str | None = Field(default=None, max_length=100)
+    voice_preferences: str | None = Field(default=None, max_length=4_000)
+    first_job_store_listing_version_id: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Name must not be blank")
+        return stripped
+
+
 @router.get("/templates", operation_id="list_expert_templates")
 async def list_expert_templates() -> list[Expert]:
     return await experts_db.list_templates()
@@ -46,6 +61,20 @@ async def hire_expert(
         return await experts_db.hire_expert(user_id, request.template_id, request.name)
     except experts_db.ExpertTemplateNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/raise", operation_id="create_raised_expert")
+async def create_raised_expert(
+    request: CreateRaisedExpertRequest,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    return await experts_db.create_raised_expert(
+        user_id,
+        request.name,
+        request.role,
+        request.voice_preferences,
+        request.first_job_store_listing_version_id,
+    )
 
 
 @router.get("", operation_id="list_experts")

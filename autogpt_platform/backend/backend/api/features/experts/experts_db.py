@@ -18,6 +18,8 @@ from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
 
+_RAISED_IDENTITY = "I'm {name}, raised by you. I learn how you work and grow with you."
+
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
 
@@ -225,6 +227,50 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
             if refreshed is not None:
                 row = refreshed
     return HireResult(expert=_to_model(row), failed_preloads=[])
+
+
+async def create_raised_expert(
+    user_id: str,
+    name: str,
+    role: str | None,
+    voice_preferences: str | None,
+    first_job_store_listing_version_id: str | None,
+) -> Expert:
+    """Raise a blank expert owned by *user_id*.
+
+    A raised expert has no source template, so ``sourceTemplateId`` stays
+    NULL — Postgres treats NULLs as distinct under the
+    (ownerUserId, sourceTemplateId) unique index, so a user may raise any
+    number of experts. An optional first job is installed through the same
+    path as any other workflow; a failed install is logged, never fatal to
+    the raise itself.
+    """
+    expert = await prisma.models.Expert.prisma().create(
+        data={
+            "ownerUserId": user_id,
+            "name": name,
+            "role": role or "",
+            "identity": _RAISED_IDENTITY.format(name=name),
+            "voicePreferences": voice_preferences or "",
+        }
+    )
+
+    if first_job_store_listing_version_id is not None:
+        try:
+            await install_workflow(
+                user_id, expert.id, first_job_store_listing_version_id
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to install first job "
+                f"{first_job_store_listing_version_id} on raised "
+                f"expert #{expert.id} for user #{user_id}"
+            )
+
+    hydrated = await get_expert(user_id, expert.id)
+    if hydrated is None:
+        raise ExpertNotFoundError(expert.id)
+    return hydrated
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
