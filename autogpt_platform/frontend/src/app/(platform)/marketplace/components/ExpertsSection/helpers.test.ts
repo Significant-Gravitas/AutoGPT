@@ -5,6 +5,7 @@ import {
   getExpertAccent,
   getExpertAvatarUrl,
   getExpertFirstName,
+  getHiredExpertsLookup,
 } from "./helpers";
 
 describe("getExpertAccent", () => {
@@ -19,35 +20,75 @@ describe("getExpertAccent", () => {
 describe("getExpertAvatarUrl", () => {
   test("prefers the expert's own avatar_url", () => {
     expect(
-      getExpertAvatarUrl({ avatar_url: "/uploads/custom.png", role: "Sales" }),
+      getExpertAvatarUrl({
+        avatar_url: "/uploads/custom.png",
+        name: "Anybody",
+      }),
     ).toBe("/uploads/custom.png");
   });
 
-  test("falls back to a role-based persona avatar when avatar_url is null", () => {
-    expect(getExpertAvatarUrl({ avatar_url: null, role: "Marketing" })).toBe(
+  test("falls back to known seed persona avatars when avatar_url is null", () => {
+    expect(getExpertAvatarUrl({ avatar_url: null, name: "Maria" })).toBe(
       "/experts/maria.svg",
     );
-    expect(
-      getExpertAvatarUrl({ avatar_url: null, role: "Sales Development" }),
-    ).toBe("/experts/max.svg");
-    expect(getExpertAvatarUrl({ avatar_url: null, role: "Ops" })).toBe(
+    expect(getExpertAvatarUrl({ avatar_url: null, name: "Max" })).toBe(
+      "/experts/max.svg",
+    );
+    expect(getExpertAvatarUrl({ avatar_url: null, name: "Frankie" })).toBe(
       "/experts/frankie.svg",
     );
   });
 
-  test("returns null for an unplaceable role so the gradient marble shows", () => {
-    expect(getExpertAvatarUrl({ avatar_url: null, role: "Astrologer" })).toBe(
+  test("does not assign a persona face to an unrelated expert", () => {
+    expect(getExpertAvatarUrl({ avatar_url: null, name: "Other Maria" })).toBe(
       null,
     );
   });
 
   test("treats a whitespace-only avatar_url as absent", () => {
-    expect(getExpertAvatarUrl({ avatar_url: "   ", role: "Marketing" })).toBe(
+    expect(getExpertAvatarUrl({ avatar_url: "   ", name: "Maria" })).toBe(
       "/experts/maria.svg",
     );
-    expect(getExpertAvatarUrl({ avatar_url: "   ", role: "Astrologer" })).toBe(
-      null,
-    );
+    expect(getExpertAvatarUrl({ avatar_url: "   ", name: "Other" })).toBe(null);
+  });
+});
+
+describe("getHiredExpertsLookup", () => {
+  test("indexes hired experts by source template", () => {
+    const hired = { id: "hired-1", source_template_id: "template-1" };
+    const lookup = getHiredExpertsLookup([hired], {
+      isError: false,
+      isFetching: false,
+    });
+
+    expect(lookup.state).toBe("loaded");
+    expect(lookup.byTemplateId.get("template-1")).toBe(hired);
+  });
+
+  test("keeps cached lookup data usable during a refetch error", () => {
+    const hired = { id: "hired-1", source_template_id: "template-1" };
+    const lookup = getHiredExpertsLookup([hired], {
+      isError: true,
+      isFetching: false,
+    });
+
+    expect(lookup.state).toBe("loaded");
+    expect(lookup.byTemplateId.get("template-1")).toBe(hired);
+  });
+
+  test("distinguishes unresolved and terminal lookup failures", () => {
+    expect(
+      getHiredExpertsLookup(undefined, {
+        isError: false,
+        isFetching: true,
+      }).state,
+    ).toBe("loading");
+    expect(
+      getHiredExpertsLookup(undefined, {
+        isError: true,
+        isFetching: false,
+      }).state,
+    ).toBe("error");
   });
 });
 

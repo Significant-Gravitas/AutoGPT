@@ -54,10 +54,6 @@ export function ExpertTeamCard({
     onEditSoul(expert.id);
   }
 
-  function handleRetrySchedulesClick() {
-    onRetrySchedules();
-  }
-
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
       <Link
@@ -110,7 +106,7 @@ export function ExpertTeamCard({
               type="button"
               variant="ghost"
               size="small"
-              onClick={handleRetrySchedulesClick}
+              onClick={onRetrySchedules}
               className="h-auto min-w-0 border-0 px-1 py-0 text-xs underline underline-offset-2 hover:bg-transparent hover:text-zinc-700"
             >
               Retry

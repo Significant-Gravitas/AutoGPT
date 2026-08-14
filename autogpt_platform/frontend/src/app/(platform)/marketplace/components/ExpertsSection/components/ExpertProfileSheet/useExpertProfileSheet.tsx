@@ -8,6 +8,7 @@ import { HireResult } from "@/app/api/__generated__/models/hireResult";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { getHiredExpertsLookup } from "../../helpers";
 
 export function useExpertProfileSheet(
   expert: Expert | null,
@@ -19,24 +20,20 @@ export function useExpertProfileSheet(
     query: { select: (x) => x.data as Expert[] },
   });
 
-  // For templates the hired state is unknown until the experts query settles;
-  // defaulting to [] would misreport an already-hired expert as hireable.
-  const hiredLookup: "loading" | "error" | "loaded" =
+  const hiredExpertsLookup = getHiredExpertsLookup(
+    expertsQuery.data,
+    expertsQuery,
+  );
+  const hiredLookup =
     expert === null || !expert.is_template
-      ? "loaded"
-      : expertsQuery.isError
-        ? "error"
-        : expertsQuery.isSuccess
-          ? "loaded"
-          : "loading";
+      ? ("loaded" as const)
+      : hiredExpertsLookup.state;
 
   const hiredExpert =
     expert === null
       ? null
       : expert.is_template
-        ? ((expertsQuery.data ?? []).find(
-            (hired) => hired.source_template_id === expert.id,
-          ) ?? null)
+        ? (hiredExpertsLookup.byTemplateId.get(expert.id) ?? null)
         : expert;
 
   const isHired = hiredLookup === "loaded" && hiredExpert !== null;

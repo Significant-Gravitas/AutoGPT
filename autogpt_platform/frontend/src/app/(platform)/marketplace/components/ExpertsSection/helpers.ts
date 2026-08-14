@@ -56,23 +56,20 @@ const ACCENTS: Record<string, ExpertAccent> = {
 
 interface RoleTheme {
   accent: string;
-  avatar: string;
 }
 
-/** Role taxonomy for the roster. Each role maps to a colour accent and the
- *  committed persona avatar under `/public/experts`, so an expert with no
- *  `avatar_url` still shows a fitting face instead of a marble gradient. */
+/** Role taxonomy for the roster's colour and icon treatment. */
 const ROLE_THEMES: Array<[RegExp, RoleTheme]> = [
-  [
-    /marketing|growth|brand/i,
-    { accent: "violet", avatar: "/experts/maria.svg" },
-  ],
-  [/sales|revenue/i, { accent: "amber", avatar: "/experts/max.svg" }],
-  [
-    /ops|operations|support/i,
-    { accent: "sky", avatar: "/experts/frankie.svg" },
-  ],
+  [/marketing|growth|brand/i, { accent: "violet" }],
+  [/sales|revenue/i, { accent: "amber" }],
+  [/ops|operations|support/i, { accent: "sky" }],
 ];
+
+const PERSONA_AVATARS = new Map([
+  ["maria", "/experts/maria.svg"],
+  ["max", "/experts/max.svg"],
+  ["frankie", "/experts/frankie.svg"],
+]);
 
 function matchRoleTheme(role: string): RoleTheme | null {
   for (const [pattern, theme] of ROLE_THEMES) {
@@ -86,14 +83,33 @@ export function getExpertAccent(role: string): ExpertAccent {
   return theme ? ACCENTS[theme.accent] : ACCENTS.zinc;
 }
 
-/** Prefer the expert's own avatar, then a role-based persona avatar, so the
- *  marble gradient only appears for experts whose role we can't place. */
+/** Prefer the expert's own avatar, then a known seed persona's committed
+ *  avatar. Role alone cannot select a face: unrelated experts can share a
+ *  role without sharing an identity. */
 export function getExpertAvatarUrl(
-  expert: Pick<Expert, "avatar_url" | "role">,
+  expert: Pick<Expert, "avatar_url" | "name">,
 ): string | null {
   const customUrl = expert.avatar_url?.trim();
   if (customUrl) return customUrl;
-  return matchRoleTheme(expert.role)?.avatar ?? null;
+  return PERSONA_AVATARS.get(expert.name.trim().toLowerCase()) ?? null;
+}
+
+export function getHiredExpertsLookup<
+  T extends Pick<Expert, "id" | "source_template_id">,
+>(experts: T[] | undefined, query: { isError: boolean; isFetching: boolean }) {
+  const byTemplateId = new Map<string, T>();
+  for (const expert of experts ?? []) {
+    if (expert.source_template_id) {
+      byTemplateId.set(expert.source_template_id, expert);
+    }
+  }
+  const state =
+    experts !== undefined
+      ? ("loaded" as const)
+      : query.isError && !query.isFetching
+        ? ("error" as const)
+        : ("loading" as const);
+  return { byTemplateId, state };
 }
 
 export function getExpertFirstName(name: string): string {

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -633,6 +634,49 @@ async def test_list_experts_includes_last_run(server: SpinTestServer, test_user)
     fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert fetched is not None
     assert fetched.last_run_status == "COMPLETED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hired_workflows_keep_deterministic_creation_order(
+    server: SpinTestServer, test_user
+):
+    earlier_listing = await _seed_store_listing(server)
+    later_listing = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    now = datetime.now(timezone.utc)
+
+    await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": template.id,
+            "storeListingVersionId": later_listing,
+            "createdAt": now,
+        }
+    )
+    await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": template.id,
+            "storeListingVersionId": earlier_listing,
+            "createdAt": now - timedelta(days=1),
+        }
+    )
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert [
+        workflow.store_listing_version_id for workflow in hired.expert.workflows
+    ] == [
+        earlier_listing,
+        later_listing,
+    ]
+
+    listed = next(
+        expert
+        for expert in await experts_db.list_experts(test_user.id)
+        if expert.id == hired.expert.id
+    )
+    assert [workflow.store_listing_version_id for workflow in listed.workflows] == [
+        earlier_listing,
+        later_listing,
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")

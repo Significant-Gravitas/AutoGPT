@@ -153,7 +153,7 @@ export function ExpertProfileContent({
             {hiredExpertId ? (
               <Button
                 as="NextLink"
-                href={`/copilot?expertId=${hiredExpertId}`}
+                href={`/copilot?expertId=${encodeURIComponent(hiredExpertId)}`}
                 variant="primary"
                 className="h-12 w-full rounded-full text-base"
               >
