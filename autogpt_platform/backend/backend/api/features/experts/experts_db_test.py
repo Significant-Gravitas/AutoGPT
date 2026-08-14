@@ -854,9 +854,8 @@ async def test_assign_pod_deleted_concurrently_raises_not_found(
         prisma.models.ExpertPod.prisma().__class__,
         "find_first",
         side_effect=find_then_delete,
-    ):
-        with pytest.raises(experts_db.ExpertPodNotFoundError):
-            await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+    ), pytest.raises(experts_db.ExpertPodNotFoundError):
+        await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
