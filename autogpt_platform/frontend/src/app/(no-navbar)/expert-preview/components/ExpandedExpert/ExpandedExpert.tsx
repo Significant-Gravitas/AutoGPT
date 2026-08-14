@@ -4,8 +4,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Image from "next/image";
-import { getProfessionImageSrc } from "../helpers";
-import { SelectedExpert } from "../useExpertPreview";
+import { getProfessionImageSrc } from "../../helpers";
+import { SelectedExpert } from "../../useExpertPreview";
 
 interface Props {
   selected: SelectedExpert | null;
@@ -60,7 +60,7 @@ export function ExpandedExpert({ selected, onClose }: Props) {
                 </Dialog.Close>
                 <motion.div
                   layoutId={
-                    prefersReducedMotion ? undefined : selected.layoutId
+                    prefersReducedMotion ? undefined : selected.layoutID
                   }
                   transition={contentTransition}
                   className="pointer-events-none relative z-10 h-[22rem] w-[22rem] max-w-[80vw]"

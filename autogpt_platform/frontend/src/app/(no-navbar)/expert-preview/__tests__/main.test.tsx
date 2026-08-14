@@ -15,6 +15,10 @@ const motionState = vi.hoisted(() => ({ prefersReducedMotion: false }));
 vi.mock("framer-motion", async () => {
   const React = await import("react");
 
+  function AnimatePresence({ children }: { children: React.ReactNode }) {
+    return children;
+  }
+
   const MotionDiv = React.forwardRef<
     HTMLDivElement,
     React.HTMLAttributes<HTMLDivElement> & {
@@ -40,7 +44,7 @@ vi.mock("framer-motion", async () => {
   });
 
   return {
-    AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+    AnimatePresence,
     motion: { div: MotionDiv },
     useReducedMotion: () => motionState.prefersReducedMotion,
   };

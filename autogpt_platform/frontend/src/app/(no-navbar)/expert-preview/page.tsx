@@ -1,8 +1,8 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { ExpandedExpert } from "./components/ExpandedExpert";
-import { MarqueeRow } from "./components/MarqueeRow";
+import { ExpandedExpert } from "./components/ExpandedExpert/ExpandedExpert";
+import { MarqueeRow } from "./components/MarqueeRow/MarqueeRow";
 import { chunkIntoRows, PROFESSIONS } from "./helpers";
 import { useExpertPreview } from "./useExpertPreview";
 
