@@ -776,6 +776,14 @@ async def test_update_soul_fields_rejects_empty_patch():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_if_current_requires_expected_value():
+    with pytest.raises(ValueError, match="Expected value required"):
+        await experts_db.update_soul_fields_if_current(
+            "user-1", "expert-1", identity="New identity."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_update_soul_fields_if_current_is_atomic(
     server: SpinTestServer, test_user
 ):

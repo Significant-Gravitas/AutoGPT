@@ -47,7 +47,7 @@ class _ConcurrentReadRedis(_FakeRedis):
         self.readers += 1
         if self.readers == 2:
             self.both_read.set()
-        await self.both_read.wait()
+        await asyncio.wait_for(self.both_read.wait(), timeout=5)
         return value
 
 
