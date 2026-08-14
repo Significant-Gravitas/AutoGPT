@@ -5533,13 +5533,17 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Expert" }
+                "schema": { "$ref": "#/components/schemas/RaiseResult" }
               }
             }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": {
+            "description": "First job listing not found or unavailable"
+          },
+          "409": { "description": "Active expert limit reached" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -17755,6 +17759,12 @@
             "type": "string",
             "title": "Voice Preferences"
           },
+          "voice_samples": {
+            "items": { "$ref": "#/components/schemas/VoiceSample" },
+            "type": "array",
+            "title": "Voice Samples",
+            "default": []
+          },
           "boundaries": { "type": "string", "title": "Boundaries" },
           "protected_soul_rules": {
             "items": { "type": "string" },
@@ -22622,6 +22632,19 @@
         "title": "QueuePendingMessageResponse",
         "description": "Response returned when a message is queued because the session already\nhas a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback."
       },
+      "RaiseResult": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "first_job_installed": {
+            "type": "boolean",
+            "title": "First Job Installed"
+          }
+        },
+        "type": "object",
+        "required": ["expert", "first_job_installed"],
+        "title": "RaiseResult",
+        "description": "Result of raising a blank expert. ``first_job_installed`` is only\nTrue when a first job was requested and its install succeeded, so the\nclient can surface partial success instead of a silent no-op."
+      },
       "RateLimitResetResponse": {
         "properties": {
           "success": { "type": "boolean", "title": "Success" },
@@ -27268,6 +27291,16 @@
         "type": "object",
         "required": ["public_key"],
         "title": "VapidPublicKeyResponse"
+      },
+      "VoiceSample": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "text": { "type": "string", "title": "Text" }
+        },
+        "type": "object",
+        "required": ["label", "text"],
+        "title": "VoiceSample",
+        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire flow. The first sample is choice \"a\", the second choice \"b\"."
       },
       "Webhook": {
         "properties": {

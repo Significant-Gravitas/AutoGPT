@@ -10,6 +10,7 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseResult,
 )
 
 router = APIRouter(
@@ -63,18 +64,30 @@ async def hire_expert(
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
-@router.post("/raise", operation_id="create_raised_expert")
+@router.post(
+    "/raise",
+    operation_id="create_raised_expert",
+    responses={
+        404: {"description": "First job listing not found or unavailable"},
+        409: {"description": "Active expert limit reached"},
+    },
+)
 async def create_raised_expert(
     request: CreateRaisedExpertRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> Expert:
-    return await experts_db.create_raised_expert(
-        user_id,
-        request.name,
-        request.role,
-        request.voice_preferences,
-        request.first_job_store_listing_version_id,
-    )
+) -> RaiseResult:
+    try:
+        return await experts_db.create_raised_expert(
+            user_id,
+            request.name,
+            request.role,
+            request.voice_preferences,
+            request.first_job_store_listing_version_id,
+        )
+    except experts_db.FirstJobUnavailableError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except experts_db.ExpertLimitExceededError as e:
+        raise fastapi.HTTPException(status_code=409, detail=str(e))
 
 
 @router.get("", operation_id="list_experts")

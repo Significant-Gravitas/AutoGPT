@@ -1,7 +1,9 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { VOICE_SAMPLES } from "../../helpers";
 import { useRaisePage } from "../../useRaisePage";
 import { AssistantBubble } from "../AssistantBubble/AssistantBubble";
@@ -22,6 +24,7 @@ export function RaiseFlow() {
     skipVoice,
     pickFirstJob,
     skipFirstJob,
+    goBack,
     finish,
   } = useRaisePage();
 
@@ -45,6 +48,17 @@ export function RaiseFlow() {
           </div>
 
           <div className="mt-2">
+            {step !== "name" ? (
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={isSubmitting}
+                className="mb-3 flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 disabled:opacity-50"
+              >
+                <Icon icon={ArrowLeft02Icon} size={14} />
+                Back
+              </button>
+            ) : null}
             {step === "name" ? <NameStep onSubmit={submitName} /> : null}
             {step === "voice" ? (
               <VoicePicker

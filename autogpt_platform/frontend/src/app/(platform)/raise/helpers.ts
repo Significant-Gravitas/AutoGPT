@@ -1,12 +1,10 @@
+import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import {
   buildVoicePreferences,
   type VoicePickResult,
-  type VoiceSample,
 } from "@/components/organisms/VoicePicker/helpers";
 
 export type RaiseStep = "name" | "voice" | "firstJob" | "review";
-
-export const RAISE_STEPS: RaiseStep[] = ["name", "voice", "firstJob", "review"];
 
 export const NAME_CHIPS = ["Otto", "Nova", "Juno"];
 
@@ -30,6 +28,117 @@ export const RAISE_PROMPTS = {
   review: "That's me so far. Ready when you are — I'll open our first chat.",
 };
 
+export const VOICE_SKIPPED_LABEL = "I'll decide the voice later";
+export const FIRST_JOB_SKIPPED_LABEL = "Skip for now";
+
+export interface RaiseDraft {
+  step: RaiseStep;
+  name: string;
+  voicePreferences: string;
+  voiceLabel: string | null;
+  voiceSkipped: boolean;
+  firstJob: { id: string; name: string } | null;
+  firstJobSkipped: boolean;
+}
+
+export const EMPTY_DRAFT: RaiseDraft = {
+  step: "name",
+  name: "",
+  voicePreferences: "",
+  voiceLabel: null,
+  voiceSkipped: false,
+  firstJob: null,
+  firstJobSkipped: false,
+};
+
+const DRAFT_STORAGE_KEY = "raise-expert-draft";
+
+export function loadDraft(): RaiseDraft {
+  if (typeof window === "undefined") return EMPTY_DRAFT;
+  try {
+    const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return EMPTY_DRAFT;
+    const parsed = JSON.parse(raw) as Partial<RaiseDraft>;
+    return { ...EMPTY_DRAFT, ...parsed };
+  } catch {
+    return EMPTY_DRAFT;
+  }
+}
+
+export function saveDraft(draft: RaiseDraft) {
+  try {
+    window.sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  } catch {}
+}
+
+export function clearDraft() {
+  try {
+    window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {}
+}
+
+interface RaiseMessage {
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+}
+
+const STEP_ORDER: RaiseStep[] = ["name", "voice", "firstJob", "review"];
+
+export function previousStep(step: RaiseStep): RaiseStep {
+  const index = STEP_ORDER.indexOf(step);
+  return STEP_ORDER[Math.max(index - 1, 0)];
+}
+
+// The transcript is derived from the draft rather than accumulated, so
+// back transitions and refresh restores always rebuild it consistently.
+export function buildTranscript(draft: RaiseDraft): RaiseMessage[] {
+  const messages: RaiseMessage[] = [
+    { id: "assistant-name", role: "assistant", text: RAISE_PROMPTS.name },
+  ];
+  const stepIndex = STEP_ORDER.indexOf(draft.step);
+
+  if (stepIndex >= 1) {
+    messages.push(
+      { id: "user-name", role: "user", text: draft.name },
+      {
+        id: "assistant-voice",
+        role: "assistant",
+        text: RAISE_PROMPTS.voice(draft.name),
+      },
+    );
+  }
+  if (stepIndex >= 2) {
+    messages.push(
+      {
+        id: "user-voice",
+        role: "user",
+        text: draft.voiceLabel ?? VOICE_SKIPPED_LABEL,
+      },
+      {
+        id: "assistant-first-job",
+        role: "assistant",
+        text: RAISE_PROMPTS.firstJob,
+      },
+    );
+  }
+  if (stepIndex >= 3) {
+    messages.push(
+      {
+        id: "user-first-job",
+        role: "user",
+        text: draft.firstJob?.name ?? FIRST_JOB_SKIPPED_LABEL,
+      },
+      {
+        id: "assistant-review",
+        role: "assistant",
+        text: RAISE_PROMPTS.review,
+      },
+    );
+  }
+  return messages;
+}
+
 export function voiceSummaryLabel(
   result: VoicePickResult,
   samples: VoiceSample[],
@@ -39,6 +148,8 @@ export function voiceSummaryLabel(
   return sample?.label ?? "A voice";
 }
 
-export function resolveVoicePreferences(result: VoicePickResult): string {
+export function resolveVoicePreferences(
+  result: VoicePickResult,
+): string | null {
   return buildVoicePreferences(result, VOICE_SAMPLES);
 }

@@ -1,5 +1,6 @@
+import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { describe, expect, test } from "vitest";
-import { buildVoicePreferences, type VoiceSample } from "./helpers";
+import { buildVoicePreferences } from "./helpers";
 
 const samples: VoiceSample[] = [
   { label: "Punchy and bold", text: "Stop guessing what your buyers want." },
@@ -15,7 +16,7 @@ describe("buildVoicePreferences", () => {
     expect(result).toContain("Preferred writing style: Punchy and bold.");
     expect(result).toContain("Stop guessing what your buyers want.");
     // Renders verbatim into the prompt, so it must never be JSON.
-    expect(result.startsWith("{")).toBe(false);
+    expect(result?.startsWith("{")).toBe(false);
   });
 
   test("preset choice b keeps the second sample as the example", () => {
@@ -34,7 +35,14 @@ describe("buildVoicePreferences", () => {
     expect(result).not.toContain("  Keep it short and breezy.  ");
   });
 
-  test("returns an empty string when the chosen sample is missing", () => {
-    expect(buildVoicePreferences({ choice: "b" }, [samples[0]])).toBe("");
+  test("signals a missing chosen sample as null, never an empty string", () => {
+    expect(buildVoicePreferences({ choice: "b" }, [samples[0]])).toBeNull();
+  });
+
+  test("signals blank custom text as null, never an empty string", () => {
+    expect(
+      buildVoicePreferences({ choice: "custom", customText: "   " }, samples),
+    ).toBeNull();
+    expect(buildVoicePreferences({ choice: "custom" }, samples)).toBeNull();
   });
 });

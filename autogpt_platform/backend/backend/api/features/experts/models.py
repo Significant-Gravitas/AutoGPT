@@ -7,6 +7,14 @@ EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
 
 
+class VoiceSample(BaseModel):
+    """A short writing sample in a persona's own voice, offered as a pick in
+    the hire flow. The first sample is choice "a", the second choice "b"."""
+
+    label: str
+    text: str
+
+
 class ExpertWorkflowRef(BaseModel):
     id: str
     store_listing_version_id: str | None
@@ -31,6 +39,10 @@ class Expert(BaseModel):
     skills: list[str]
     identity: str
     voice_preferences: str
+    # Populated only on roster templates so the hire flow can offer a voice
+    # pick; always empty on hired copies, which persist the user's plain-text
+    # choice in voice_preferences instead.
+    voice_samples: list[VoiceSample] = []
     boundaries: str
     protected_soul_rules: list[str]
     is_template: bool
@@ -58,6 +70,15 @@ class ExpertDetachPreview(BaseModel):
 class HireResult(BaseModel):
     expert: Expert
     failed_preloads: list[str]
+
+
+class RaiseResult(BaseModel):
+    """Result of raising a blank expert. ``first_job_installed`` is only
+    True when a first job was requested and its install succeeded, so the
+    client can surface partial success instead of a silent no-op."""
+
+    expert: Expert
+    first_job_installed: bool
 
 
 class ExpertSoulUpdate(BaseModel):

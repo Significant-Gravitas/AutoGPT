@@ -51,11 +51,12 @@ async def _create_seed_user():
     )
 
 
-async def _seed_store_listing(server: SpinTestServer) -> str:
-    """Create a graph plus an APPROVED store listing on top of it.
+async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> str:
+    """Create a graph plus a store listing on top of it.
 
     Returns the StoreListingVersion ID, ready for
-    ``add_store_agent_to_library``. Mirrors the seeding pattern from
+    ``add_store_agent_to_library``. With ``approved=False`` the version is
+    left in its submitted PENDING state. Mirrors the seeding pattern from
     ``backend/data/graph_test.py::test_access_store_listing_graph``.
     """
     owner = await _create_seed_user()
@@ -95,14 +96,15 @@ async def _seed_store_listing(server: SpinTestServer) -> str:
     slv_id = listing.listing_version_id
     assert slv_id is not None, "Failed to create store listing"
 
-    await server.agent_server.test_review_store_listing(
-        store_model.ReviewSubmissionRequest(
-            store_listing_version_id=slv_id,
-            is_approved=True,
-            comments="seed",
-        ),
-        user_id=admin.id,
-    )
+    if approved:
+        await server.agent_server.test_review_store_listing(
+            store_model.ReviewSubmissionRequest(
+                store_listing_version_id=slv_id,
+                is_approved=True,
+                comments="seed",
+            ),
+            user_id=admin.id,
+        )
     return slv_id
 
 
@@ -148,70 +150,63 @@ async def test_hire_expert_is_idempotent(server: SpinTestServer, test_user):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_creates_blank_owned_expert(
-    server: SpinTestServer, test_user
-):
+async def test_raise_expert_creates_blank_owned_expert(server: SpinTestServer):
+    owner = await _create_seed_user()
     raised = await experts_db.create_raised_expert(
-        test_user.id,
+        owner.id,
         name="Otto",
         role=None,
         voice_preferences=None,
         first_job_store_listing_version_id=None,
     )
-    assert not raised.is_template
-    assert raised.source_template_id is None
-    assert raised.name == "Otto"
-    assert "Otto" in raised.identity
-    assert raised.workflows == []
-    assert raised.id in {e.id for e in await experts_db.list_experts(test_user.id)}
+    assert not raised.expert.is_template
+    assert raised.expert.source_template_id is None
+    assert raised.expert.name == "Otto"
+    assert "Otto" in raised.expert.identity
+    assert raised.expert.workflows == []
+    assert raised.first_job_installed is False
+    assert raised.expert.id in {e.id for e in await experts_db.list_experts(owner.id)}
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_allows_multiple_per_owner(
-    server: SpinTestServer, test_user
-):
-    first = await experts_db.create_raised_expert(
-        test_user.id, "Otto", None, None, None
-    )
-    second = await experts_db.create_raised_expert(
-        test_user.id, "Nova", None, None, None
-    )
-    assert first.id != second.id
-    owned = {e.id for e in await experts_db.list_experts(test_user.id)}
-    assert {first.id, second.id} <= owned
+async def test_raise_expert_allows_multiple_per_owner(server: SpinTestServer):
+    owner = await _create_seed_user()
+    first = await experts_db.create_raised_expert(owner.id, "Otto", None, None, None)
+    second = await experts_db.create_raised_expert(owner.id, "Nova", None, None, None)
+    assert first.expert.id != second.expert.id
+    owned = {e.id for e in await experts_db.list_experts(owner.id)}
+    assert {first.expert.id, second.expert.id} <= owned
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_is_scoped_to_owner(
-    server: SpinTestServer, test_user, other_user
-):
-    raised = await experts_db.create_raised_expert(
-        test_user.id, "Otto", None, None, None
-    )
-    assert await experts_db.get_expert(other_user.id, raised.id) is None
-    assert await experts_db.get_expert(test_user.id, raised.id) is not None
+async def test_raise_expert_is_scoped_to_owner(server: SpinTestServer, other_user):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(owner.id, "Otto", None, None, None)
+    assert await experts_db.get_expert(other_user.id, raised.expert.id) is None
+    assert await experts_db.get_expert(owner.id, raised.expert.id) is not None
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_installs_first_job(server: SpinTestServer, test_user):
+async def test_raise_expert_installs_first_job(server: SpinTestServer):
+    owner = await _create_seed_user()
     slv_id = await _seed_store_listing(server)
     raised = await experts_db.create_raised_expert(
-        test_user.id,
+        owner.id,
         name="Nova",
         role="Research Assistant",
         voice_preferences="Warm and detailed.",
         first_job_store_listing_version_id=slv_id,
     )
-    assert raised.role == "Research Assistant"
-    assert raised.voice_preferences == "Warm and detailed."
-    assert len(raised.workflows) == 1
-    assert raised.workflows[0].store_listing_version_id == slv_id
+    assert raised.expert.role == "Research Assistant"
+    assert raised.expert.voice_preferences == "Warm and detailed."
+    assert raised.first_job_installed is True
+    assert len(raised.expert.workflows) == 1
+    assert raised.expert.workflows[0].store_listing_version_id == slv_id
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_survives_failed_first_job(
-    server: SpinTestServer, test_user
-):
+async def test_raise_expert_reports_failed_first_job(server: SpinTestServer):
+    owner = await _create_seed_user()
     slv_id = await _seed_store_listing(server)
     with patch.object(
         experts_db.library_db,
@@ -220,10 +215,56 @@ async def test_raise_expert_survives_failed_first_job(
         side_effect=RuntimeError("install exploded"),
     ):
         raised = await experts_db.create_raised_expert(
-            test_user.id, "Otto", None, None, slv_id
+            owner.id, "Otto", None, None, slv_id
         )
-    assert not raised.is_template
-    assert raised.workflows == []
+    assert not raised.expert.is_template
+    assert raised.expert.workflows == []
+    assert raised.first_job_installed is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_rejects_unapproved_first_job(server: SpinTestServer):
+    owner = await _create_seed_user()
+    pending_slv_id = await _seed_store_listing(server, approved=False)
+
+    with pytest.raises(experts_db.FirstJobUnavailableError):
+        await experts_db.create_raised_expert(
+            owner.id, "Otto", None, None, pending_slv_id
+        )
+
+    assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_enforces_active_expert_cap(server: SpinTestServer):
+    owner = await _create_seed_user()
+    await prisma.models.Expert.prisma().create_many(
+        data=[
+            {
+                "ownerUserId": owner.id,
+                "name": f"Filler {i}",
+                "role": "",
+                "identity": f"I'm Filler {i}.",
+            }
+            for i in range(experts_db.ACTIVE_EXPERT_LIMIT)
+        ]
+    )
+
+    with pytest.raises(experts_db.ExpertLimitExceededError):
+        await experts_db.create_raised_expert(
+            owner.id, "One Too Many", None, None, None
+        )
+
+    filler = await prisma.models.Expert.prisma().find_first(
+        where={"ownerUserId": owner.id}
+    )
+    assert filler is not None
+    await experts_db.archive_expert(owner.id, filler.id)
+
+    raised = await experts_db.create_raised_expert(
+        owner.id, "Fits Now", None, None, None
+    )
+    assert raised.expert.name == "Fits Now"
 
 
 @pytest.mark.asyncio(loop_scope="session")

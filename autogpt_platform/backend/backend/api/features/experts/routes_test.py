@@ -23,6 +23,7 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseResult,
 )
 from backend.api.features.experts.routes import router
 
@@ -177,15 +178,16 @@ def test_create_raised_expert_returns_expert(
     mock_create = mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
         new_callable=AsyncMock,
-        return_value=raised,
+        return_value=RaiseResult(expert=raised, first_job_installed=False),
     )
 
     response = client.post("/experts/raise", json={"name": "Otto"})
 
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == "raised-1"
-    assert data["source_template_id"] is None
+    assert data["expert"]["id"] == "raised-1"
+    assert data["expert"]["source_template_id"] is None
+    assert data["first_job_installed"] is False
     mock_create.assert_awaited_once_with(test_user_id, "Otto", None, None, None)
 
 
@@ -196,7 +198,10 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
     mock_create = mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
         new_callable=AsyncMock,
-        return_value=_make_expert(id="raised-2", source_template_id=None),
+        return_value=RaiseResult(
+            expert=_make_expert(id="raised-2", source_template_id=None),
+            first_job_installed=True,
+        ),
     )
 
     response = client.post(
@@ -210,6 +215,7 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
     )
 
     assert response.status_code == 200
+    assert response.json()["first_job_installed"] is True
     mock_create.assert_awaited_once_with(
         test_user_id,
         "Nova",
@@ -231,6 +237,40 @@ def test_create_raised_expert_requires_name(
 
     assert response.status_code == 422
     mock_create.assert_not_awaited()
+
+
+def test_create_raised_expert_at_cap_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertLimitExceededError(20),
+    )
+
+    response = client.post("/experts/raise", json={"name": "Otto"})
+
+    assert response.status_code == 409
+
+
+def test_create_raised_expert_unavailable_first_job_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.FirstJobUnavailableError("listing-version-9"),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={
+            "name": "Otto",
+            "first_job_store_listing_version_id": "listing-version-9",
+        },
+    )
+
+    assert response.status_code == 404
 
 
 # ─── Get ───────────────────────────────────────────────────────────────
