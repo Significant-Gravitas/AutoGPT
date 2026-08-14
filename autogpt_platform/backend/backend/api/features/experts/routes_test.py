@@ -322,6 +322,7 @@ def test_create_raised_expert_rejects_overlong_fields(
 
 def test_create_raised_expert_at_cap_returns_409(
     mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
 ) -> None:
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
@@ -336,10 +337,15 @@ def test_create_raised_expert_at_cap_returns_409(
         "code": "active_expert_limit",
         "limit": 20,
     }
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_raise_active_cap",
+    )
 
 
 def test_create_raised_expert_at_lifetime_cap_returns_409(
     mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
 ) -> None:
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
@@ -354,6 +360,10 @@ def test_create_raised_expert_at_lifetime_cap_returns_409(
         "code": "raised_expert_lifetime_limit",
         "limit": 100,
     }
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_raise_lifetime_cap",
+    )
 
 
 def test_create_raised_expert_unavailable_first_job_returns_404(
