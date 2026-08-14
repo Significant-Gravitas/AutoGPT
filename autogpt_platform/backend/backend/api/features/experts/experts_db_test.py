@@ -9,11 +9,12 @@ import pytest
 
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
-from backend.api.features.experts.models import ExpertSoulUpdate
+from backend.api.features.experts.models import ExpertSoulUpdate, HireResult
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, Node
+from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import ExpertRunPausedError
@@ -154,6 +155,29 @@ async def _load_roster_store_assets() -> dict[str, str]:
         )
         expected[slug] = version_id
     return expected
+
+
+async def _hire_roster_and_assert_preloads(
+    hire_user: User,
+    templates: dict[str, prisma.models.Expert],
+    expected: dict[str, str],
+) -> dict[str, HireResult]:
+    scheduler = AsyncMock()
+    scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-1")
+    )
+    results: dict[str, HireResult] = {}
+    with patch.object(scheduling, "get_scheduler_client", return_value=scheduler):
+        for entry in seed.ROSTER:
+            result = await experts_db.hire_expert(
+                hire_user.id, templates[entry["name"]].id, None
+            )
+            assert result.failed_preloads == []
+            assert {w.store_listing_version_id for w in result.expert.workflows} == {
+                expected[p["slug"]] for p in entry["preloads"]
+            }
+            results[entry["name"]] = result
+    return results
 
 
 async def _transfer_listing_to_official_creator(slv_id: str) -> None:
@@ -732,21 +756,7 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     # A fresh user per run: a reused fixture user would make hire_expert
     # short-circuit to a previous run's copy and skip _install_preloads.
     hire_user = await _create_seed_user()
-    scheduler = AsyncMock()
-    scheduler.add_execution_schedule = AsyncMock(
-        return_value=SimpleNamespace(id="sched-1")
-    )
-    results = {}
-    with patch.object(scheduling, "get_scheduler_client", return_value=scheduler):
-        for entry in seed.ROSTER:
-            result = await experts_db.hire_expert(
-                hire_user.id, templates[entry["name"]].id, None
-            )
-            assert result.failed_preloads == []
-            assert {w.store_listing_version_id for w in result.expert.workflows} == {
-                expected[p["slug"]] for p in entry["preloads"]
-            }
-            results[entry["name"]] = result
+    results = await _hire_roster_and_assert_preloads(hire_user, templates, expected)
 
     frankie_crons = [
         w.schedule_cron for w in results["Frankie"].expert.workflows if w.schedule_cron
