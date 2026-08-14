@@ -56,6 +56,10 @@ function BioText({ text }: { text: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const isClampable = text.length > CLAMPED_BIO_LENGTH;
 
+  function handleToggleExpanded() {
+    setIsExpanded((isOpen) => !isOpen);
+  }
+
   return (
     <div>
       <p
@@ -69,7 +73,7 @@ function BioText({ text }: { text: string }) {
       {isClampable ? (
         <button
           type="button"
-          onClick={() => setIsExpanded((isOpen) => !isOpen)}
+          onClick={handleToggleExpanded}
           className="mt-2 flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
         >
           {isExpanded ? "Show less" : "Read more"}

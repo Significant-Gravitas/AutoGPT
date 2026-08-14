@@ -25,11 +25,13 @@ export function useTeamPage({ enabled }: Args) {
     (expert) => !expert.is_template && !expert.is_archived,
   );
 
-  const schedulesStatus = schedulesQuery.isError
-    ? ("error" as const)
-    : schedulesQuery.isSuccess
-      ? ("loaded" as const)
-      : ("loading" as const);
+  const schedulesStatus = schedulesQuery.isFetching
+    ? ("loading" as const)
+    : schedulesQuery.isError
+      ? ("error" as const)
+      : schedulesQuery.isSuccess
+        ? ("loaded" as const)
+        : ("loading" as const);
 
   function schedulesForExpert(expert: Expert) {
     return getExpertSchedules(expert, schedulesQuery.data ?? []);

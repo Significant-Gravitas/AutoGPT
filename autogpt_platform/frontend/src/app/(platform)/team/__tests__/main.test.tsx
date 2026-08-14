@@ -440,6 +440,9 @@ describe("TeamPage", () => {
   });
 
   test("keeps the roster visible and offers a retry when only the schedules query fails", async () => {
+    let resolveRetry:
+      | ((schedules: GraphExecutionJobInfo[]) => void)
+      | undefined;
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getGetV1ListExecutionSchedulesForAUserMockHandler401(),
@@ -455,10 +458,22 @@ describe("TeamPage", () => {
     expect(await screen.findByText("Schedules unavailable")).toBeDefined();
     expect(screen.queryByText("No schedules yet")).toBeNull();
 
-    server.use(getGetV1ListExecutionSchedulesForAUserMockHandler([]));
+    server.use(
+      getGetV1ListExecutionSchedulesForAUserMockHandler(
+        () =>
+          new Promise<GraphExecutionJobInfo[]>((resolve) => {
+            resolveRetry = resolve;
+          }),
+      ),
+    );
     const retry = screen.getByRole("button", { name: "Retry" });
     expect(retry.closest("a")).toBeNull();
     await userEvent.click(retry);
+
+    expect(await screen.findByText("Loading schedules…")).toBeDefined();
+    expect(screen.queryByText("Schedules unavailable")).toBeNull();
+    await waitFor(() => expect(resolveRetry).toBeDefined());
+    resolveRetry?.([]);
 
     expect(await screen.findByText("No schedules yet")).toBeDefined();
     expect(screen.queryByText("Schedules unavailable")).toBeNull();
