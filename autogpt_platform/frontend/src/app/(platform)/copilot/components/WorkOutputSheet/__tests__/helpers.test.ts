@@ -36,6 +36,16 @@ describe("WorkOutputSheet helpers", () => {
     ]);
   });
 
+  it("pickOutputForType normalizes a single record to a one-row table", () => {
+    expect(
+      pickOutputForType(
+        { results: [{ metric: "signups" }] },
+        "table",
+        "results",
+      ),
+    ).toEqual([{ metric: "signups" }]);
+  });
+
   it("pickOutputForType without a key skips pins that cannot render as the type", () => {
     const outputs = {
       status: ["ok"],

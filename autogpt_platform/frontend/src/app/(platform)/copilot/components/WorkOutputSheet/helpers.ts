@@ -24,6 +24,9 @@ export function asTableRows(value: unknown): Record<string, unknown>[] | null {
 }
 
 function collapsePin(values: unknown[], outputType: OutputType): unknown {
+  if (outputType === "table" && values.length === 1 && isRecord(values[0])) {
+    return values;
+  }
   if (values.length > 1 && values.every((value) => typeof value === "string")) {
     if (outputType === "doc") return values.join("\n\n");
     if (outputType === "image") return values[0];

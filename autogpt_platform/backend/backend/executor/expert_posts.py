@@ -171,6 +171,8 @@ def classify_output_type(value: object) -> str:
     earn a specific type. Everything else stays ``"unknown"`` and falls back
     to the run-details link.
     """
+    if isinstance(value, dict):
+        return "table"
     if isinstance(value, list) and value:
         if all(isinstance(row, dict) for row in value):
             return "table"
@@ -197,7 +199,8 @@ def classify_run_output(outputs: Mapping[str, list[Any]]) -> tuple[str, str | No
     first pin must not mask a table on the second. Falls back to
     ``("unknown", None)`` when nothing renders. A pin that emitted a single
     list-of-dicts value and one that emitted several dict rows both read as
-    a ``"table"``. Multiple text values are classified as one document,
+    a ``"table"``. A single dict row is also a one-row table. Multiple text
+    values are classified as one document,
     while multiple image URLs select the image viewer.
     """
     for key, values in outputs.items():

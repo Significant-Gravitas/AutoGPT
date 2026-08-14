@@ -182,6 +182,10 @@ def test_classify_output_type_table_from_list_of_dicts():
     assert classify_output_type([{"name": "A"}, {"name": "B"}]) == "table"
 
 
+def test_classify_output_type_table_from_single_dict():
+    assert classify_output_type({"name": "A"}) == "table"
+
+
 def test_classify_output_type_image_from_url_with_extension():
     assert classify_output_type("https://cdn.example.com/report.PNG") == "image"
     assert classify_output_type("https://cdn.example.com/chart.svg?v=2") == "image"
