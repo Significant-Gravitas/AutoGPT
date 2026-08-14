@@ -1,4 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
   Avatar,
@@ -7,10 +8,22 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { PencilIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import {
+  FolderIcon,
+  PencilIcon,
+  PlusSignIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import { MouseEvent } from "react";
 
 import { Progress } from "@/components/atoms/Progress/Progress";
@@ -24,15 +37,19 @@ import { useExpertTeamCard } from "./useExpertTeamCard";
 interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
+  pods: ExpertPod[];
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
+  onAssignPod: (expertId: string, podId: string | null) => void;
 }
 
 export function ExpertTeamCard({
   expert,
   schedules,
+  pods,
   onInstallWorkflow,
   onEditSoul,
+  onAssignPod,
 }: Props) {
   const workflowCount = expert.workflows.length;
   const needsSetupCount = getNeedsSetupCount(expert);
@@ -145,6 +162,42 @@ export function ExpertTeamCard({
         >
           Install workflow
         </Button>
+        {pods.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="small"
+                leftIcon={<Icon icon={FolderIcon} size={16} />}
+              >
+                Move to pod
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {pods.map((pod) => (
+                <DropdownMenuItem
+                  key={pod.id}
+                  onSelect={() => onAssignPod(expert.id, pod.id)}
+                >
+                  <span className="flex-1 truncate">{pod.name}</span>
+                  {expert.pod_id === pod.id ? (
+                    <Icon icon={Tick02Icon} size={16} className="ml-2" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+              {expert.pod_id ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => onAssignPod(expert.id, null)}
+                  >
+                    Remove from pod
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
     </div>
   );

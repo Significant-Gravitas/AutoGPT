@@ -1,7 +1,38 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { formatDistanceToNow } from "date-fns";
+
+interface PodGroup {
+  pod: ExpertPod;
+  experts: Expert[];
+}
+
+/** Split hired experts into their named pods (creation order, all pods kept
+ *  so a just-created empty pod still shows) plus the ungrouped remainder. An
+ *  expert whose `pod_id` points at a missing pod falls back to ungrouped. */
+export function groupExpertsByPods(
+  experts: Expert[],
+  pods: ExpertPod[],
+): { groups: PodGroup[]; ungrouped: Expert[] } {
+  const membersByPod = new Map<string, Expert[]>(
+    pods.map((pod) => [pod.id, []]),
+  );
+  const ungrouped: Expert[] = [];
+  for (const expert of experts) {
+    const members = expert.pod_id ? membersByPod.get(expert.pod_id) : undefined;
+    if (members) members.push(expert);
+    else ungrouped.push(expert);
+  }
+  return {
+    groups: pods.map((pod) => ({
+      pod,
+      experts: membersByPod.get(pod.id) ?? [],
+    })),
+    ungrouped,
+  };
+}
 
 export function getLastRunLabel(expert: Expert) {
   if (!expert.last_run_at) return null;

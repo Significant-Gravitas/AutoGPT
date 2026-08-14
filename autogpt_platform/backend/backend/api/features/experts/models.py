@@ -46,6 +46,18 @@ class Expert(BaseModel):
     weekly_budget: int | None = None
     weekly_spend: int = 0
     schedules_paused_at: datetime | None = None
+    # Owner-scoped grouping. None = ungrouped ("unpodded").
+    pod_id: str | None = None
+
+
+class ExpertPod(BaseModel):
+    id: str
+    name: str
+    created_at: datetime
+
+
+class ExpertPodWithMembers(ExpertPod):
+    members: list[Expert]
 
 
 class ExpertDetachPreview(BaseModel):

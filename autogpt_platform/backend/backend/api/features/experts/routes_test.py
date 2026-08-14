@@ -20,6 +20,8 @@ from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertPod,
+    ExpertPodWithMembers,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -425,5 +427,128 @@ def test_delete_unknown_expert_returns_404(
     )
 
     response = client.delete("/experts/nope")
+
+    assert response.status_code == 404
+
+
+# ─── Pods ──────────────────────────────────────────────────────────────
+
+
+def _make_pod(**overrides) -> ExpertPod:
+    values = {
+        "id": "pod-1",
+        "name": "Growth",
+        "created_at": "2026-08-14T00:00:00Z",
+    }
+    values.update(overrides)
+    return ExpertPod(**values)
+
+
+def test_create_pod_returns_pod(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.post("/experts/pods", json={"name": "Growth"})
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Growth"
+    mock_create.assert_awaited_once_with(test_user_id, "Growth")
+
+
+def test_create_pod_rejects_blank_name() -> None:
+    response = client.post("/experts/pods", json={"name": ""})
+    assert response.status_code == 422
+
+
+def test_list_pods_returns_pods_with_members(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    member = _make_expert(pod_id="pod-1")
+    pod = ExpertPodWithMembers(
+        id="pod-1",
+        name="Growth",
+        created_at="2026-08-14T00:00:00Z",
+        members=[member],
+    )
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_pods",
+        new_callable=AsyncMock,
+        return_value=[pod],
+    )
+
+    response = client.get("/experts/pods")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["id"] == "pod-1"
+    assert data[0]["members"][0]["id"] == "expert-1"
+    mock_list.assert_awaited_once_with(test_user_id)
+
+
+def test_assign_pod_returns_updated_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_assign = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        return_value=_make_expert(pod_id="pod-1"),
+    )
+
+    response = client.patch("/experts/expert-1/pod", json={"pod_id": "pod-1"})
+
+    assert response.status_code == 200
+    assert response.json()["pod_id"] == "pod-1"
+    mock_assign.assert_awaited_once_with(test_user_id, "expert-1", "pod-1")
+
+
+def test_assign_pod_null_detaches(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_assign = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        return_value=_make_expert(pod_id=None),
+    )
+
+    response = client.patch("/experts/expert-1/pod", json={"pod_id": None})
+
+    assert response.status_code == 200
+    assert response.json()["pod_id"] is None
+    mock_assign.assert_awaited_once_with(test_user_id, "expert-1", None)
+
+
+def test_assign_pod_unknown_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("nope"),
+    )
+
+    response = client.patch("/experts/nope/pod", json={"pod_id": "pod-1"})
+
+    assert response.status_code == 404
+
+
+def test_assign_pod_unknown_pod_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPodNotFoundError("nope"),
+    )
+
+    response = client.patch("/experts/expert-1/pod", json={"pod_id": "nope"})
 
     assert response.status_code == 404

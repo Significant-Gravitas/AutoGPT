@@ -7,6 +7,8 @@ from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
     Expert,
     ExpertDetachPreview,
+    ExpertPod,
+    ExpertPodWithMembers,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -26,6 +28,15 @@ class HireRequest(BaseModel):
 
 class InstallWorkflowRequest(BaseModel):
     store_listing_version_id: str
+
+
+class CreatePodRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class AssignPodRequest(BaseModel):
+    # None detaches the expert from its pod.
+    pod_id: str | None = None
 
 
 @router.get("/templates", operation_id="list_expert_templates")
@@ -53,6 +64,42 @@ async def list_experts(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> list[Expert]:
     return await experts_db.list_experts(user_id)
+
+
+# Pod routes are declared before "/{expert_id}" so "/experts/pods" is not
+# swallowed by the expert-detail path parameter.
+@router.post("/pods", operation_id="create_expert_pod")
+async def create_expert_pod(
+    request: CreatePodRequest,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertPod:
+    return await experts_db.create_pod(user_id, request.name)
+
+
+@router.get("/pods", operation_id="list_expert_pods")
+async def list_expert_pods(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertPodWithMembers]:
+    return await experts_db.list_pods(user_id)
+
+
+@router.patch(
+    "/{expert_id}/pod",
+    operation_id="assign_expert_pod",
+    responses={404: {"description": "Expert or pod not found"}},
+)
+async def assign_expert_pod(
+    expert_id: str,
+    request: AssignPodRequest,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    try:
+        return await experts_db.assign_pod(user_id, expert_id, request.pod_id)
+    except (
+        experts_db.ExpertNotFoundError,
+        experts_db.ExpertPodNotFoundError,
+    ) as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
 @router.get(

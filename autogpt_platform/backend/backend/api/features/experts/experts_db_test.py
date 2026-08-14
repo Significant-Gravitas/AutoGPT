@@ -709,3 +709,76 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
+
+
+# ─── Pods ──────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_and_list_pod_with_members(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    pod = await experts_db.create_pod(test_user.id, "Growth")
+    assigned = await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+    assert assigned.pod_id == pod.id
+
+    pods = await experts_db.list_pods(test_user.id)
+    matching = [p for p in pods if p.id == pod.id]
+    assert len(matching) == 1
+    assert matching[0].name == "Growth"
+    assert {m.id for m in matching[0].members} == {hired.expert.id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_pods_is_user_scoped(server: SpinTestServer, test_user, other_user):
+    mine = await experts_db.create_pod(test_user.id, "Mine")
+    await experts_db.create_pod(other_user.id, "Theirs")
+
+    pod_ids = {p.id for p in await experts_db.list_pods(test_user.id)}
+    assert mine.id in pod_ids
+    assert all(p.name != "Theirs" for p in await experts_db.list_pods(test_user.id))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_rejects_other_users_pod(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    foreign_pod = await experts_db.create_pod(other_user.id, "Theirs")
+
+    with pytest.raises(experts_db.ExpertPodNotFoundError):
+        await experts_db.assign_pod(test_user.id, hired.expert.id, foreign_pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_unknown_expert_raises(server: SpinTestServer, test_user):
+    pod = await experts_db.create_pod(test_user.id, "Growth")
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.assign_pod(test_user.id, "does-not-exist", pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_none_detaches(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    pod = await experts_db.create_pod(test_user.id, "Growth")
+    await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+
+    detached = await experts_db.assign_pod(test_user.id, hired.expert.id, None)
+    assert detached.pod_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_deleting_pod_detaches_its_experts(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    pod = await experts_db.create_pod(test_user.id, "Growth")
+    await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+
+    await prisma.models.ExpertPod.prisma().delete(where={"id": pod.id})
+
+    refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert refreshed is not None
+    assert refreshed.pod_id is None

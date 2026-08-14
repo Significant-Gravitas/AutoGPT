@@ -7,6 +7,8 @@ from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertPod,
+    ExpertPodWithMembers,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -32,6 +34,12 @@ class ExpertNotFoundError(Exception):
     def __init__(self, expert_id: str):
         super().__init__(f"Expert {expert_id} not found")
         self.expert_id = expert_id
+
+
+class ExpertPodNotFoundError(Exception):
+    def __init__(self, pod_id: str):
+        super().__init__(f"Pod {pod_id} not found")
+        self.pod_id = pod_id
 
 
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
@@ -75,6 +83,7 @@ def _to_model(
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
+        pod_id=row.podId,
     )
 
 
@@ -408,3 +417,70 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
         logger.exception(
             f"Failed to detach triggers while archiving expert #{expert_id}"
         )
+
+
+# ─── Pods (owner-scoped named groups) ──────────────────────────────────
+
+
+def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
+    return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)
+
+
+async def create_pod(user_id: str, name: str) -> ExpertPod:
+    row = await prisma.models.ExpertPod.prisma().create(
+        data={"userId": user_id, "name": name}
+    )
+    return _to_pod(row)
+
+
+async def list_pods(user_id: str) -> list[ExpertPodWithMembers]:
+    rows = await prisma.models.ExpertPod.prisma().find_many(
+        where={"userId": user_id},
+        include={
+            "Experts": {
+                "where": {"isTemplate": False, "isArchived": False},
+                "include": _WORKFLOW_INCLUDE,
+            }
+        },
+        order={"createdAt": "asc"},
+    )
+    return [
+        ExpertPodWithMembers(
+            id=row.id,
+            name=row.name,
+            created_at=row.createdAt,
+            members=[_to_model(member) for member in row.Experts or []],
+        )
+        for row in rows
+    ]
+
+
+async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert:
+    """Move a hired expert into *pod_id*, or clear it when ``None``.
+
+    Both the expert and the target pod must belong to *user_id*; a pod owned
+    by someone else is treated as not found rather than silently ignored.
+    """
+    if pod_id is not None:
+        pod = await prisma.models.ExpertPod.prisma().find_first(
+            where={"id": pod_id, "userId": user_id}
+        )
+        if pod is None:
+            raise ExpertPodNotFoundError(pod_id)
+
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        data={"podId": pod_id},
+    )
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert

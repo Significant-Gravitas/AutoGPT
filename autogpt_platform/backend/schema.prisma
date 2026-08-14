@@ -141,6 +141,7 @@ model User {
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
+  ExpertPods           ExpertPod[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -898,6 +899,10 @@ model Expert {
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
 
+  // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
+  podId String?
+  Pod   ExpertPod? @relation(fields: [podId], references: [id], onDelete: SetNull)
+
   // Tenancy
   organizationId String?
   teamId         String?
@@ -911,6 +916,7 @@ model Expert {
   @@index([isTemplate, isArchived])
   @@index([teamId])
   @@index([organizationId])
+  @@index([podId])
 }
 
 // Join between an Expert and a workflow (marketplace agent) installed on it.
@@ -956,6 +962,23 @@ model ExpertPauseEvent {
   clearedAt DateTime?
 
   @@index([expertId, createdAt])
+}
+
+// A user-owned named group of the user's own experts. Distinct from the
+// org-tenancy Team model: pods are a personal roster grouping with no
+// members, invites, or org. Deleting a pod detaches its experts (SetNull).
+model ExpertPod {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name String
+
+  Experts Expert[]
+
+  @@index([userId])
 }
 
 ////////////////////////////////////////////////////////////

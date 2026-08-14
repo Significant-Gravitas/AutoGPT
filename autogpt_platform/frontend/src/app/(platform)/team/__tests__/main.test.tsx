@@ -1,4 +1,7 @@
 import {
+  getAssignExpertPodMockHandler,
+  getCreateExpertPodMockHandler,
+  getListExpertPodsMockHandler,
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
@@ -7,6 +10,7 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertPodWithMembers } from "@/app/api/__generated__/models/expertPodWithMembers";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
 import {
@@ -25,7 +29,10 @@ const { setFlagStatusMock } = vi.hoisted(() => ({
 }));
 
 beforeEach(() => {
-  server.use(getGetV1ListExecutionSchedulesForAUserMockHandler([]));
+  server.use(
+    getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    getListExpertPodsMockHandler([]),
+  );
 });
 
 afterEach(() => {
@@ -434,6 +441,94 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     expect(await screen.findByText("Something went wrong")).toBeDefined();
+  });
+
+  test("groups experts under their pod with ungrouped members below", async () => {
+    const growthPod: ExpertPodWithMembers = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+      members: [],
+    };
+    const poddedMaria: Expert = { ...hiredMaria, pod_id: "pod-growth" };
+    const lee: Expert = {
+      ...hiredMaria,
+      id: "expert-lee",
+      name: "Lee",
+      pod_id: null,
+    };
+    server.use(
+      getListExpertsMockHandler([poddedMaria, lee]),
+      getListExpertPodsMockHandler([growthPod]),
+    );
+
+    render(<TeamPage />);
+
+    const podHeader = await screen.findByRole("heading", { name: "Growth" });
+    const maria = await screen.findByText("Maria");
+    const leeNode = await screen.findByText("Lee");
+    // Maria sits under the pod header; Lee is ungrouped further down.
+    expect(
+      podHeader.compareDocumentPosition(maria) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      maria.compareDocumentPosition(leeNode) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test("creates a pod from the New pod dialog", async () => {
+    const user = userEvent.setup();
+    let createdName: string | undefined;
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getCreateExpertPodMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { name: string };
+        createdName = body.name;
+        return {
+          id: "pod-new",
+          name: body.name,
+          created_at: new Date("2026-08-14T00:00:00Z"),
+        };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "New pod" }));
+    const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
+    await user.type(nameInput, "Growth");
+    await user.click(screen.getByRole("button", { name: "Create pod" }));
+
+    await waitFor(() => expect(createdName).toBe("Growth"));
+  });
+
+  test("moves an expert into a pod from the card menu", async () => {
+    const user = userEvent.setup();
+    const growthPod: ExpertPodWithMembers = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+      members: [],
+    };
+    let assignedPodId: string | null | undefined;
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler([growthPod]),
+      getAssignExpertPodMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { pod_id: string | null };
+        assignedPodId = body.pod_id;
+        return { ...hiredMaria, pod_id: body.pod_id };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    await user.click(screen.getByRole("button", { name: "Move to pod" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Growth/ }));
+
+    await waitFor(() => expect(assignedPodId).toBe("pod-growth"));
   });
 
   test("calls notFound() when the flag is resolved and disabled", () => {
