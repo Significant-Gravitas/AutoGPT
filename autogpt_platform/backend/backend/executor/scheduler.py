@@ -265,16 +265,17 @@ async def _execute_copilot_turn(**kwargs):
             # session instead of persisting a stale expertId — schedules or
             # triggers created inside such a session would be permanently
             # skipped by the archived-expert budget gate.
-            expert_id = args.expert_id
-            if expert_id and not await experts_db().get_expert(
-                args.user_id, expert_id, include_workflows=False
-            ):
-                logger.warning(
-                    f"Copilot turn schedule {args.schedule_id}: expert "
-                    f"{expert_id} is no longer active/owned — creating a "
-                    f"plain (non-expert) session instead"
+            expert_id = None
+            if args.expert_id:
+                expert_id = await experts_db().resolve_attributable_expert(
+                    args.user_id, args.expert_id
                 )
-                expert_id = None
+                if expert_id is None:
+                    logger.warning(
+                        f"Copilot turn schedule {args.schedule_id}: expert "
+                        f"{args.expert_id} is no longer active/owned — "
+                        f"creating a plain (non-expert) session instead"
+                    )
             new_session = await create_chat_session(
                 args.user_id,
                 dry_run=False,

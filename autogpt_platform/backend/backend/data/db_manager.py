@@ -497,6 +497,7 @@ class DatabaseManager(AppService):
     # Exposed so the Prisma-less copilot executor can resolve expert
     # identity/team context via db_accessors.experts_db().
     get_expert = _(experts_db.get_expert)
+    resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
 
@@ -817,6 +818,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Experts ============ #
     get_expert = d.get_expert
+    resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     enforce_expert_run_budget = d.enforce_expert_run_budget
 

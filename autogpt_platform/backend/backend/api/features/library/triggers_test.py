@@ -80,15 +80,15 @@ async def test_setup_prefers_session_expert_over_graph_match():
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
         graph=_graph(), preset=preset, graph_expert="expert-graph"
     )
-    p_get_expert = patch(
-        f"{_PATH}.experts_db.get_expert",
-        new=AsyncMock(return_value=MagicMock()),  # active + owned
+    p_validate = patch(
+        f"{_PATH}.experts_db.resolve_attributable_expert",
+        new=AsyncMock(return_value="expert-session"),  # active + owned
     )
     with (
         p_graph,
         p_creds,
         p_webhook,
-        p_get_expert,
+        p_validate,
         p_expert as expert_mock,
         p_create as create_mock,
     ):
@@ -98,22 +98,32 @@ async def test_setup_prefers_session_expert_over_graph_match():
 
 
 @pytest.mark.asyncio
-async def test_setup_archived_session_expert_falls_back_to_graph_match():
+async def test_setup_archived_session_expert_creates_unattributed_trigger():
     """Archived-session regression: a chat kept open after its expert is
     archived still carries the stored expert id. The trigger must NOT be
     attributed to the archived expert (the budget gate would skip every
-    delivery forever) — it falls back to the graph match instead."""
+    delivery forever) — and deliberately must NOT be re-attributed via the
+    graph match either, which could land Expert A's chat trigger on Expert
+    B's budget/thread. It is created unattributed."""
     preset = MagicMock(id="preset-1")
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
         graph=_graph(), preset=preset, graph_expert="expert-graph"
     )
-    p_get_expert = patch(
-        f"{_PATH}.experts_db.get_expert",
+    p_validate = patch(
+        f"{_PATH}.experts_db.resolve_attributable_expert",
         new=AsyncMock(return_value=None),  # archived / not owned
     )
-    with p_graph, p_creds, p_webhook, p_get_expert, p_expert, p_create as create_mock:
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_validate,
+        p_expert as expert_mock,
+        p_create as create_mock,
+    ):
         await _setup(expert_id="expert-archived")
-    assert create_mock.call_args.kwargs["expert_id"] == "expert-graph"
+    assert create_mock.call_args.kwargs["expert_id"] is None
+    expert_mock.assert_not_awaited()  # no graph-match re-attribution
 
 
 @pytest.mark.asyncio

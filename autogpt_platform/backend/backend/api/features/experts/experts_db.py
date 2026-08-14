@@ -389,6 +389,30 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
     return expert_ids.pop()
 
 
+async def resolve_attributable_expert(
+    user_id: str, expert_id: str | None
+) -> str | None:
+    """The attribution guard: return *expert_id* only if it names an ACTIVE
+    hired expert owned by *user_id*; otherwise ``None``.
+
+    Every path that stamps a session-captured expert onto a durable resource
+    (fresh follow-up sessions at fire time, webhook-triggered presets at setup
+    time) must pass through this check — an archived or unowned id would
+    create work that the archived-expert run-budget gate blocks forever.
+    """
+    if not expert_id:
+        return None
+    row = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    return row.id if row else None
+
+
 async def archive_expert(user_id: str, expert_id: str) -> None:
     updated = await prisma.models.Expert.prisma().update_many(
         where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},

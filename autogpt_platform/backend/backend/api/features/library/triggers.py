@@ -62,18 +62,26 @@ async def setup_triggered_preset(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
 
-    # Only an ACTIVE owned expert can claim the trigger: an archived expert's
-    # historical chat stays loadable and keeps its stored expert id, but a
-    # trigger attributed to her would look active while every delivery is
-    # skipped by the archived-expert run-budget gate.
-    if expert_id and not await experts_db.get_expert(
-        user_id, expert_id, include_workflows=False
-    ):
-        logger.warning(
-            f"Ignoring inactive/unowned expert {expert_id} for trigger on "
-            f"graph #{graph_id} — falling back to graph-match attribution"
-        )
-        expert_id = None
+    # Attribution. A supplied (session) expert wins, but only while ACTIVE and
+    # owned: an archived expert's historical chat stays loadable and keeps its
+    # stored expert id, and a trigger attributed to her would look active while
+    # every delivery is skipped by the archived-expert run-budget gate. A
+    # supplied-but-invalid expert makes the trigger UNATTRIBUTED — deliberately
+    # no graph-match re-attribution, which could land Expert A's chat trigger
+    # on Expert B's budget/thread. Without a supplied expert (the /presets
+    # route, plain chats), the pre-existing graph-match behaviour is unchanged:
+    # a trigger on an expert-installed workflow fires as that expert's work
+    # (unique (user, graph) → expert).
+    if expert_id:
+        validated = await experts_db.resolve_attributable_expert(user_id, expert_id)
+        if validated is None:
+            logger.warning(
+                f"Ignoring inactive/unowned expert {expert_id} for trigger on "
+                f"graph #{graph_id} — creating the trigger unattributed"
+            )
+        expert_id = validated
+    else:
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph.id)
 
     trigger_config_with_credentials = {
         **trigger_config,
@@ -109,13 +117,7 @@ async def setup_triggered_preset(
             is_active=True,
         ),
         webhook_id=new_webhook.id,
-        # A trigger set up inside an expert chat is that expert's work, so the
-        # session's expert (passed by the copilot tool) wins. Otherwise fall
-        # back to the graph match: a trigger on an expert-installed workflow
-        # fires as the expert's work (unique (user, graph) → expert). Route
-        # callers pass no expert and keep the graph-match behaviour unchanged.
-        expert_id=expert_id
-        or await experts_db.resolve_expert_for_graph(user_id, graph.id),
+        expert_id=expert_id,
     )
 
 

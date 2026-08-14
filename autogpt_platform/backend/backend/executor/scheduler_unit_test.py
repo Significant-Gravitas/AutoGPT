@@ -246,7 +246,9 @@ async def test_execute_copilot_turn_forwards_expert_id_to_fresh_session():
     new_session = MagicMock(session_id="new-session-uuid")
     mock_create_session = AsyncMock(return_value=new_session)
     mock_experts = MagicMock()
-    mock_experts.get_expert = AsyncMock(return_value=MagicMock())  # still active
+    mock_experts.resolve_attributable_expert = AsyncMock(
+        return_value="expert-1"  # still active + owned
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=AsyncMock()),
@@ -258,8 +260,8 @@ async def test_execute_copilot_turn_forwards_expert_id_to_fresh_session():
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
-    mock_experts.get_expert.assert_awaited_once_with(
-        "user-1", "expert-1", include_workflows=False
+    mock_experts.resolve_attributable_expert.assert_awaited_once_with(
+        "user-1", "expert-1"
     )
     assert mock_create_session.call_args.kwargs["expert_id"] == "expert-1"
 
@@ -275,7 +277,9 @@ async def test_execute_copilot_turn_degrades_to_plain_session_when_expert_archiv
     mock_create_session = AsyncMock(return_value=new_session)
     mock_schedule_turn = AsyncMock()
     mock_experts = MagicMock()
-    mock_experts.get_expert = AsyncMock(return_value=None)  # archived / not owned
+    mock_experts.resolve_attributable_expert = AsyncMock(
+        return_value=None  # archived / not owned
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -289,6 +293,29 @@ async def test_execute_copilot_turn_degrades_to_plain_session_when_expert_archiv
 
     assert mock_create_session.call_args.kwargs["expert_id"] is None
     mock_schedule_turn.assert_awaited_once()  # turn still fires, just plain
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_existing_session_skips_expert_revalidation():
+    """A follow-up into an EXISTING session doesn't mint a session, so no
+    expert re-validation happens — the session keeps whatever expert scope it
+    already has, and the fire path must not add a per-fire expert lookup."""
+    args = _args(expert_id="expert-1")  # session_id="session-1" from _args base
+    mock_experts = MagicMock()
+    mock_experts.resolve_attributable_expert = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=AsyncMock()),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch("backend.executor.scheduler.create_chat_session", new=AsyncMock()),
+        patch("backend.executor.scheduler.experts_db", return_value=mock_experts),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_experts.resolve_attributable_expert.assert_not_awaited()
 
 
 @pytest.mark.asyncio

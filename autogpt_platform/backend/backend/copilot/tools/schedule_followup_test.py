@@ -157,6 +157,37 @@ async def test_expert_session_attributes_followup_to_expert(tool):
 
 
 @pytest.mark.asyncio
+async def test_expert_session_attributes_recurring_cron_followup(tool):
+    """Recurring cron follow-ups from an expert chat carry the expert id too —
+    every weekly fire mints a session attributed to her, not just one-shots."""
+    session = make_session(_USER, expert_id="expert-1")
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(
+        return_value=_info(cron="0 9 * * 1")
+    )
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            f"{_TOOL_PATH}.is_followups_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, message="weekly check", cron="0 9 * * 1"
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    assert result.is_recurring is True
+    call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert call_kwargs["cron"] == "0 9 * * 1"
+    assert call_kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
 async def test_plain_session_does_not_attribute_followup(tool, session):
     """A plain (non-expert) chat forwards no expert to the scheduler."""
     mock_user_db = MagicMock()
