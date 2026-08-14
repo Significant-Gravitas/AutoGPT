@@ -379,9 +379,11 @@ def test_delete_then_list_excludes_archived(
 ) -> None:
     experts = [_make_expert(id="expert-1"), _make_expert(id="expert-2", name="Max")]
 
-    async def _list_experts(user_id: str) -> list[Expert]:
+    async def _list_experts(
+        user_id: str, include_archived: bool = False
+    ) -> list[Expert]:
         assert user_id == test_user_id
-        return [e for e in experts if not e.is_archived]
+        return [e for e in experts if include_archived or not e.is_archived]
 
     async def _archive_expert(user_id: str, expert_id: str) -> None:
         assert user_id == test_user_id
@@ -413,6 +415,10 @@ def test_delete_then_list_excludes_archived(
     after = client.get("/experts")
     assert after.status_code == 200
     assert {e["id"] for e in after.json()} == {"expert-2"}
+
+    with_archived = client.get("/experts", params={"include_archived": True})
+    assert with_archived.status_code == 200
+    assert {e["id"] for e in with_archived.json()} == {"expert-1", "expert-2"}
 
 
 def test_delete_unknown_expert_returns_404(
