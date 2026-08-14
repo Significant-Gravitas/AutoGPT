@@ -2,10 +2,10 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ArchiveIcon, CloudOffIcon } from "@hugeicons/core-free-icons";
 
-interface Props {
+type Props = {
   expertName: string;
   isUnavailable?: boolean;
-}
+};
 
 export function ArchivedExpertNotice({ expertName, isUnavailable }: Props) {
   return (

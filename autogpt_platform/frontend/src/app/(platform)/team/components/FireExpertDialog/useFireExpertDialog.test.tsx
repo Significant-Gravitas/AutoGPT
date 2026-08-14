@@ -16,9 +16,9 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useFireExpertDialog } from "./useFireExpertDialog";
 
-interface Props {
+type Props = {
   children: ReactNode;
-}
+};
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),

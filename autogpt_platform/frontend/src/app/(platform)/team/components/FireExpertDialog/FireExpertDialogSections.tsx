@@ -4,7 +4,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import type { ReactNode } from "react";
 import type { PauseItem } from "./helpers";
 
-interface PreviewProps {
+type PreviewProps = {
   expertName: string;
   automationLine: string;
   items: PauseItem[];
@@ -12,23 +12,23 @@ interface PreviewProps {
   isError: boolean;
   isReady: boolean;
   onRetry: () => unknown;
-}
+};
 
-interface FooterProps {
+type FooterProps = {
   expertName: string;
   isFiring: boolean;
   isPreviewLoading: boolean;
   onClose: () => void;
   onFire: () => void;
-}
+};
 
-interface PauseItemsPanelProps {
+type PauseItemsPanelProps = {
   items: PauseItem[];
-}
+};
 
-interface FireLineProps {
+type FireLineProps = {
   children: ReactNode;
-}
+};
 
 export function FireExpertPreview({
   expertName,

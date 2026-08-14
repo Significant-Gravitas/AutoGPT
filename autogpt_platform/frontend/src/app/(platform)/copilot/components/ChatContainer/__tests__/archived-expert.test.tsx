@@ -3,14 +3,14 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { ChatContainer } from "../ChatContainer";
 
-interface ChatMessagesContainerProps {
+type ChatMessagesContainerProps = {
   onRetry?: () => void;
-}
+};
 
-interface CopilotChatActionsProviderProps {
+type CopilotChatActionsProviderProps = {
   onSend: (message: string) => void;
   children: React.ReactNode;
-}
+};
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =

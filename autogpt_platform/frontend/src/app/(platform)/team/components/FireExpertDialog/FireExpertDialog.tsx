@@ -8,13 +8,13 @@ import {
 } from "./FireExpertDialogSections";
 import { useFireExpertDialog } from "./useFireExpertDialog";
 
-interface Props {
+type Props = {
   expertId: string;
   expertName: string;
   open: boolean;
   onClose: () => void;
   onFired?: () => void;
-}
+};
 
 export function FireExpertDialog({
   expertId,
