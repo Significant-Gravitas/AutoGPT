@@ -14,13 +14,13 @@ const CUSTOM_VOICE_TEXTAREA_ROWS = 3;
 const SELECTABLE_CARD_CLASS_NAME =
   "rounded-2xl border border-border bg-background p-5 transition-colors focus-within:ring-2 focus-within:ring-ring";
 
-interface Props {
+type Props = {
   name?: string;
   samples: VoiceSample[];
   onPick: (result: VoicePickResult) => void;
   onSkip: () => void;
   isSubmitting?: boolean;
-}
+};
 
 export function VoicePicker({
   name,
@@ -125,13 +125,13 @@ export function VoicePicker({
   );
 }
 
-interface SampleCardProps {
+type SampleCardProps = {
   sample: VoiceSample;
   choice: "a" | "b";
   choiceGroupName: string;
   isSelected: boolean;
   onSelect: () => void;
-}
+};
 
 function selectableCardClassName(isSelected: boolean, interactive = false) {
   return cn(
