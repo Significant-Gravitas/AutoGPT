@@ -9,6 +9,8 @@ import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
+import backend.data.analytics
+
 from .analytics import router as analytics_router
 
 app = fastapi.FastAPI()
@@ -338,3 +340,38 @@ def test_log_raw_analytics_service_error(
     error_detail = response.json()["detail"]
     assert "Analytics DB unreachable" in error_detail["message"]
     assert "hint" in error_detail
+
+
+# =============================================================================
+# emit_funnel_event (fire-and-forget funnel helper)
+# =============================================================================
+
+
+async def test_emit_funnel_event_forwards_to_log_raw_analytics(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_log = mocker.patch(
+        "backend.data.analytics.log_raw_analytics",
+        new_callable=AsyncMock,
+    )
+
+    await backend.data.analytics.emit_funnel_event(
+        "user-1", "hire_completed", {"template_id": "t-1"}
+    )
+
+    mock_log.assert_awaited_once_with(
+        "user-1", "hire_completed", {"template_id": "t-1"}, "hire_completed"
+    )
+
+
+async def test_emit_funnel_event_swallows_errors(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.data.analytics.log_raw_analytics",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("db down"),
+    )
+
+    # Instrumentation must never raise into the caller.
+    await backend.data.analytics.emit_funnel_event("user-1", "hire_failed", {})

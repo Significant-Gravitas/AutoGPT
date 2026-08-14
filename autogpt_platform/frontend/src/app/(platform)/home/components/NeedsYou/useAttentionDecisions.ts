@@ -4,6 +4,7 @@ import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/h
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 
 export function useAttentionDecisions() {
   const queryClient = useQueryClient();
@@ -22,6 +23,10 @@ export function useAttentionDecisions() {
 
   async function decide(item: HomeAttentionItem, approved: boolean) {
     if (!item.review) return;
+    trackFunnel("home_attention_actioned", {
+      kind: item.kind,
+      action: approved ? "approve" : "decline",
+    });
     setPending(item.id, true);
     try {
       const response = await processReviews(

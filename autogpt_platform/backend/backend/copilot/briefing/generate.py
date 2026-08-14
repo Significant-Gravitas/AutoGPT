@@ -252,6 +252,20 @@ async def _compose_fresh_briefing(
     )
 
 
+async def _emit_briefing_event(user_id: str, event: str, data: dict) -> None:
+    """Fire a briefing funnel event without ever affecting delivery.
+
+    The scheduler runs this Prisma-less, so the write rides the DB-manager
+    RPC — a transport hiccup must not sink the briefing.
+    """
+    try:
+        await get_database_manager_async_client().emit_funnel_event(
+            user_id, event, data
+        )
+    except Exception:
+        logger.exception("Failed to emit briefing funnel event %s", event)
+
+
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
     if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
         return {"status": "skipped", "reason": "flag_disabled"}
@@ -280,6 +294,11 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 # otherwise be re-gathered and re-composed on every future
                 # run. Stamp it so this user's cron stops reprocessing it.
                 await client.mark_briefing_delivered(user_id, record.id)
+            await _emit_briefing_event(
+                user_id,
+                "briefing_generated",
+                {"run_count": 0, "decision_count": 0, "has_content": False},
+            )
             return {"status": "skipped", "reason": "nothing_to_say"}
         if record is None:
             record = await client.create_briefing(
@@ -292,6 +311,15 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
             await client.update_briefing_content(
                 user_id, record.id, content.model_dump(mode="json")
             )
+        await _emit_briefing_event(
+            user_id,
+            "briefing_generated",
+            {
+                "run_count": content.completed_total + content.failed_total,
+                "decision_count": content.decision_total,
+                "has_content": True,
+            },
+        )
 
     message_id = str(
         uuid.uuid5(
@@ -306,6 +334,9 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
         metadata={"kind": "morning_briefing", "briefing_id": record.id},
     )
     await client.mark_briefing_delivered(user_id, record.id)
+    await _emit_briefing_event(
+        user_id, "briefing_delivered", {"briefing_id": record.id}
+    )
     return {
         "status": "delivered",
         "briefing_id": record.id,

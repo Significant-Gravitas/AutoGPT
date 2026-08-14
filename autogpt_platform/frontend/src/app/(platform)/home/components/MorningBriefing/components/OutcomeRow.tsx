@@ -8,6 +8,7 @@ import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBri
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDuration } from "../../../helpers";
 
@@ -85,6 +86,9 @@ export function OutcomeRow({ outcome }: Props) {
   return (
     <Link
       href={outcome.link}
+      onClick={() =>
+        trackFunnel("briefing_outcome_clicked", { status: outcome.status })
+      }
       className="group flex gap-3 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400 sm:px-5"
     >
       {content}

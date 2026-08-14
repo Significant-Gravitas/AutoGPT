@@ -431,3 +431,20 @@ test("renders the briefing unchanged when no narrative was generated", async () 
   ).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
 });
+
+test("emits the home_viewed funnel event once the dashboard mounts", async () => {
+  const funnelEvents: string[] = [];
+  server.use(
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      const body = (await request.json()) as { type: string };
+      funnelEvents.push(body.type);
+      return HttpResponse.json({ status: "ok" });
+    }),
+  );
+  mockDashboard(dashboard);
+
+  render(<HomePage />);
+
+  await screen.findByRole("heading", { name: "Needs you" });
+  await waitFor(() => expect(funnelEvents).toContain("home_viewed"));
+});

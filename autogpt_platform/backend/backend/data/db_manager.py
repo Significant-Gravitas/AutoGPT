@@ -53,6 +53,7 @@ from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
 from backend.data.analytics import (
+    emit_funnel_event,
     get_accuracy_trends_and_alerts,
     get_marketplace_graphs_for_monitoring,
 )
@@ -301,6 +302,7 @@ class DatabaseManager(AppService):
     get_accuracy_trends_and_alerts = _(get_accuracy_trends_and_alerts)
     get_frequently_executed_graphs = _(get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
+    emit_funnel_event = _(emit_funnel_event)
 
     # ============ Graphs ============ #
     get_node = _(get_node)
@@ -621,6 +623,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     @classmethod
     def get_service_type(cls):
         return DatabaseManager
+
+    # ============ Analytics ============ #
+    emit_funnel_event = d.emit_funnel_event
 
     # ============ Graph Executions ============ #
     create_graph_execution = d.create_graph_execution

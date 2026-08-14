@@ -12,6 +12,7 @@ from backend.api.features.experts.models import (
     HireResult,
 )
 from backend.api.features.library import db as library_db
+from backend.data.analytics import emit_funnel_event
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -142,6 +143,29 @@ async def get_expert(
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
+    try:
+        result = await _hire_expert_impl(user_id, template_id, name)
+    except Exception:
+        await emit_funnel_event(
+            user_id,
+            "hire_failed",
+            {"template_id": template_id, "failed_preloads_count": 0},
+        )
+        raise
+    await emit_funnel_event(
+        user_id,
+        "hire_completed",
+        {
+            "template_id": template_id,
+            "failed_preloads_count": len(result.failed_preloads),
+        },
+    )
+    return result
+
+
+async def _hire_expert_impl(
+    user_id: str, template_id: str, name: str | None
+) -> HireResult:
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
         include=_WORKFLOW_INCLUDE,
@@ -228,6 +252,14 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
+    before = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+    )
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -248,6 +280,10 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
+    if before is not None and before.voicePreferences != soul.voice_preferences:
+        await emit_funnel_event(
+            user_id, "writing_style_added", {"expert_id": expert_id}
+        )
     return expert
 
 
@@ -354,6 +390,14 @@ async def install_workflow(
         if raced is None:
             raise
         return _to_workflow_ref(raced)
+    await emit_funnel_event(
+        user_id,
+        "workflow_installed_on_expert",
+        {
+            "expert_id": expert_id,
+            "store_listing_version_id": store_listing_version_id,
+        },
+    )
     return _to_workflow_ref(row)
 
 
@@ -396,6 +440,7 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
     )
     if updated == 0:
         raise ExpertNotFoundError(expert_id)
+    await emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
     await scheduling.pause_expert_schedules(
         user_id, expert_id, reason="Expert archived"
     )

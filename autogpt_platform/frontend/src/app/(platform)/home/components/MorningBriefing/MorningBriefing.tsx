@@ -5,9 +5,11 @@ import {
   InboxIcon,
   TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
+import { useEffect } from "react";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { formatBriefingWindowStart } from "../../helpers";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
@@ -29,6 +31,10 @@ export function MorningBriefing({ dashboard, className }: Props) {
     selectFilter,
     visibleOutcomes,
   } = useMorningBriefing({ outcomes: briefing.outcomes });
+
+  useEffect(() => {
+    trackFunnel("briefing_opened");
+  }, []);
 
   return (
     <HomeTile

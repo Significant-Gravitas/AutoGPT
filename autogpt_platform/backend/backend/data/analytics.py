@@ -57,6 +57,18 @@ async def log_raw_analytics(
     return details
 
 
+async def emit_funnel_event(user_id: str, event: str, data: dict) -> None:
+    """Record a funnel event without ever raising into the caller.
+
+    Instrumentation must never break the action it measures, so a failed
+    analytics write is swallowed. The event name doubles as the index.
+    """
+    try:
+        await log_raw_analytics(user_id, event, data, event)
+    except Exception:
+        logger.exception("Failed to log funnel event %s for user %s", event, user_id)
+
+
 async def log_raw_metric(
     user_id: str,
     metric_name: str,

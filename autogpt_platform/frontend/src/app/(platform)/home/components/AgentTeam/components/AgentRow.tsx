@@ -4,6 +4,7 @@ import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentSt
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { formatWeeklySpend } from "../../../helpers";
 import { formatUntil } from "../../NowNext/helpers";
 import { StatusBadge } from "./StatusBadge";
@@ -17,6 +18,7 @@ export function AgentRow({ agent }: Props) {
   return (
     <Link
       href={`/team/${agent.expert.id}`}
+      onClick={() => trackFunnel("home_team_member_clicked")}
       className="group -mx-2 flex min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
       <ExpertAvatar

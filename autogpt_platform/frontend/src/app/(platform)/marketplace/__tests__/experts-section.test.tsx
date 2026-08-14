@@ -6,8 +6,9 @@ import {
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
@@ -121,5 +122,42 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(await screen.findByText("Hired")).toBeDefined();
+  });
+
+  test("emits funnel events when opening a profile and starting a hire", async () => {
+    const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
+    server.use(
+      http.post(/log_raw_analytics/, async ({ request }) => {
+        funnelBodies.push(
+          (await request.json()) as {
+            type: string;
+            data: Record<string, unknown>;
+          },
+        );
+        return HttpResponse.json({ status: "ok" });
+      }),
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+    await waitFor(() =>
+      expect(funnelBodies.map((b) => b.type)).toContain(
+        "expert_profile_opened",
+      ),
+    );
+    expect(
+      funnelBodies.find((b) => b.type === "expert_profile_opened")?.data,
+    ).toEqual({ template_id: mariaTemplate.id });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hire Maria" }),
+    );
+    await waitFor(() =>
+      expect(funnelBodies.map((b) => b.type)).toContain("hire_started"),
+    );
   });
 });

@@ -7,6 +7,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { HireResult } from "@/app/api/__generated__/models/hireResult";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function useExpertProfileSheet(
@@ -30,6 +31,7 @@ export function useExpertProfileSheet(
 
   async function hire() {
     if (!expert || !expert.is_template) return;
+    trackFunnel("hire_started");
     try {
       const response = await hireExpert({ data: { template_id: expert.id } });
       const result = response.data as HireResult;

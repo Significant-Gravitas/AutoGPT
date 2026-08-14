@@ -1097,3 +1097,75 @@ def test_narrative_cannot_forge_briefing_structure(narrative):
     ).splitlines()[2]
 
     assert line.startswith("\\")
+
+
+@pytest.mark.asyncio
+async def test_generate_emits_events_on_delivery(monkeypatch):
+    """A delivered briefing fires briefing_generated (with real counts) and
+    briefing_delivered through the DB-manager RPC client."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+    from backend.copilot.briefing.models import BriefingContent
+
+    briefing_record = MagicMock(id="briefing-1")
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=briefing_record),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+        emit_funnel_event=AsyncMock(),
+    )
+    _patch_generate_env(monkeypatch, generate, client)
+
+    content = BriefingContent(
+        generated_at=datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc),
+        timezone="UTC",
+        zero_expert_fallback=False,
+        run_items=[],
+        decision_items=[],
+        decision_total=2,
+        completed_total=3,
+        failed_total=1,
+    )
+    monkeypatch.setattr(
+        generate, "_compose_fresh_briefing", AsyncMock(return_value=content)
+    )
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    client.emit_funnel_event.assert_any_await(
+        "user-1",
+        "briefing_generated",
+        {"run_count": 4, "decision_count": 2, "has_content": True},
+    )
+    client.emit_funnel_event.assert_any_await(
+        "user-1", "briefing_delivered", {"briefing_id": "briefing-1"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_emits_briefing_generated_when_nothing_to_say(monkeypatch):
+    """An empty briefing still fires briefing_generated with has_content False."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        emit_funnel_event=AsyncMock(),
+    )
+    _patch_generate_env(monkeypatch, generate, client)
+    monkeypatch.setattr(
+        generate, "_compose_fresh_briefing", AsyncMock(return_value=None)
+    )
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    assert result == {"status": "skipped", "reason": "nothing_to_say"}
+    client.emit_funnel_event.assert_awaited_once_with(
+        "user-1",
+        "briefing_generated",
+        {"run_count": 0, "decision_count": 0, "has_content": False},
+    )
