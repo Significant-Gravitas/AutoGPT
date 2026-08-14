@@ -42,6 +42,33 @@ def _enqueue_mock(queue: asyncio.Queue) -> AsyncMock:
 
 class TestIngestionWorkerExceptionHandling:
     @pytest.mark.asyncio
+    async def test_worker_drops_payload_for_a_different_memory_group(self) -> None:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        queue.put_nowait(
+            {
+                "name": "cross-scope-episode",
+                "episode_body": "private memory",
+                "source": "message",
+                "source_description": "test",
+                "reference_time": None,
+                "group_id": "expert_other",
+            }
+        )
+        get_client = AsyncMock()
+
+        with patch.object(ingest, "get_graphiti_client", new=get_client):
+            original_timeout = ingest._WORKER_IDLE_TIMEOUT
+            ingest._WORKER_IDLE_TIMEOUT = 0.05
+            try:
+                await ingest._ingestion_worker("test-user", "expert_expected", queue)
+            finally:
+                ingest._WORKER_IDLE_TIMEOUT = original_timeout
+
+        get_client.assert_not_awaited()
+        assert queue.empty()
+        await asyncio.wait_for(queue.join(), timeout=0.1)
+
+    @pytest.mark.asyncio
     async def test_worker_continues_after_client_error(self) -> None:
         """If get_graphiti_client raises, the worker logs and continues."""
         queue: asyncio.Queue = asyncio.Queue(maxsize=10)
