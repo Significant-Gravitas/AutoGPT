@@ -1,7 +1,7 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Security
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
@@ -33,10 +33,20 @@ class InstallWorkflowRequest(BaseModel):
 class CreatePodRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Pod name must not be blank")
+        return stripped
+
 
 class AssignPodRequest(BaseModel):
-    # None detaches the expert from its pod.
-    pod_id: str | None = None
+    # Required but nullable: an explicit {"pod_id": null} detaches the
+    # expert, while an omitted field is rejected rather than treated as
+    # a silent detach.
+    pod_id: str | None
 
 
 @router.get("/templates", operation_id="list_expert_templates")
@@ -68,12 +78,19 @@ async def list_experts(
 
 # Pod routes are declared before "/{expert_id}" so "/experts/pods" is not
 # swallowed by the expert-detail path parameter.
-@router.post("/pods", operation_id="create_expert_pod")
+@router.post(
+    "/pods",
+    operation_id="create_expert_pod",
+    responses={409: {"description": "A pod with this name already exists"}},
+)
 async def create_expert_pod(
     request: CreatePodRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> ExpertPod:
-    return await experts_db.create_pod(user_id, request.name)
+    try:
+        return await experts_db.create_pod(user_id, request.name)
+    except experts_db.ExpertPodNameTakenError as e:
+        raise fastapi.HTTPException(status_code=409, detail=str(e))
 
 
 @router.get("/pods", operation_id="list_expert_pods")

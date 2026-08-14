@@ -5563,6 +5563,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "409": { "description": "A pod with this name already exists" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -14488,6 +14489,7 @@
           }
         },
         "type": "object",
+        "required": ["pod_id"],
         "title": "AssignPodRequest"
       },
       "AuthEmailRequest": {
@@ -17917,6 +17919,22 @@
         "required": ["id", "name", "created_at"],
         "title": "ExpertPod"
       },
+      "ExpertPodMember": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "role": { "type": "string", "title": "Role" },
+          "is_archived": { "type": "boolean", "title": "Is Archived" }
+        },
+        "type": "object",
+        "required": ["id", "name", "avatar_url", "role", "is_archived"],
+        "title": "ExpertPodMember",
+        "description": "Roster-display slice of an Expert. Deliberately excludes runtime\nfields (last run, weekly spend) that the pod listing does not hydrate —\na full Expert here would report them as null/0 rather than unknown."
+      },
       "ExpertPodWithMembers": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -17927,7 +17945,7 @@
             "title": "Created At"
           },
           "members": {
-            "items": { "$ref": "#/components/schemas/Expert" },
+            "items": { "$ref": "#/components/schemas/ExpertPodMember" },
             "type": "array",
             "title": "Members"
           }

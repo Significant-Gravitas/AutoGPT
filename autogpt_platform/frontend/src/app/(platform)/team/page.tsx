@@ -149,7 +149,10 @@ export default function TeamPage() {
           onRetry={() => refetch()}
         />
       ) : null}
-      {!isLoading && !isError && hiredExperts.length === 0 ? (
+      {!isLoading &&
+      !isError &&
+      hiredExperts.length === 0 &&
+      podGroups.length === 0 ? (
         <EmptyTeamState />
       ) : null}
       <InstallWorkflowPicker

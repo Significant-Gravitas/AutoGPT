@@ -21,6 +21,7 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertPod,
+    ExpertPodMember,
     ExpertPodWithMembers,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
@@ -444,9 +445,22 @@ def _make_pod(**overrides) -> ExpertPod:
     return ExpertPod(**values)
 
 
+def _make_pod_member(**overrides) -> ExpertPodMember:
+    values = {
+        "id": "expert-1",
+        "name": "Maria",
+        "avatar_url": None,
+        "role": "Marketing Specialist",
+        "is_archived": False,
+    }
+    values.update(overrides)
+    return ExpertPodMember(**values)
+
+
 def test_create_pod_returns_pod(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    configured_snapshot: Snapshot,
 ) -> None:
     mock_create = mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_pod",
@@ -459,23 +473,74 @@ def test_create_pod_returns_pod(
     assert response.status_code == 200
     assert response.json()["name"] == "Growth"
     mock_create.assert_awaited_once_with(test_user_id, "Growth")
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), "expert_pod_create"
+    )
 
 
-def test_create_pod_rejects_blank_name() -> None:
-    response = client.post("/experts/pods", json={"name": ""})
+def test_create_pod_strips_name(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.post("/experts/pods", json={"name": "  Growth  "})
+
+    assert response.status_code == 200
+    mock_create.assert_awaited_once_with(test_user_id, "Growth")
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_create_pod_rejects_blank_name(
+    name: str,
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.post("/experts/pods", json={"name": name})
+
     assert response.status_code == 422
+    mock_create.assert_not_awaited()
+    if name == "   ":
+        configured_snapshot.assert_match(
+            json.dumps(response.json(), indent=2, sort_keys=True),
+            "expert_pod_create_blank_name",
+        )
+
+
+def test_create_pod_duplicate_name_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPodNameTakenError("Growth"),
+    )
+
+    response = client.post("/experts/pods", json={"name": "Growth"})
+
+    assert response.status_code == 409
 
 
 def test_list_pods_returns_pods_with_members(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    configured_snapshot: Snapshot,
 ) -> None:
-    member = _make_expert(pod_id="pod-1")
     pod = ExpertPodWithMembers(
         id="pod-1",
         name="Growth",
         created_at="2026-08-14T00:00:00Z",
-        members=[member],
+        members=[_make_pod_member()],
     )
     mock_list = mocker.patch(
         "backend.api.features.experts.routes.experts_db.list_pods",
@@ -489,12 +554,20 @@ def test_list_pods_returns_pods_with_members(
     data = response.json()
     assert data[0]["id"] == "pod-1"
     assert data[0]["members"][0]["id"] == "expert-1"
+    # The member payload is the display summary only — it must not claim
+    # runtime fields (last run, weekly spend) that the listing never loads.
+    assert "weekly_spend" not in data[0]["members"][0]
+    assert "last_run_at" not in data[0]["members"][0]
     mock_list.assert_awaited_once_with(test_user_id)
+    configured_snapshot.assert_match(
+        json.dumps(data, indent=2, sort_keys=True), "expert_pods_list"
+    )
 
 
 def test_assign_pod_returns_updated_expert(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    configured_snapshot: Snapshot,
 ) -> None:
     mock_assign = mocker.patch(
         "backend.api.features.experts.routes.experts_db.assign_pod",
@@ -507,6 +580,9 @@ def test_assign_pod_returns_updated_expert(
     assert response.status_code == 200
     assert response.json()["pod_id"] == "pod-1"
     mock_assign.assert_awaited_once_with(test_user_id, "expert-1", "pod-1")
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), "expert_pod_assign"
+    )
 
 
 def test_assign_pod_null_detaches(
@@ -524,6 +600,22 @@ def test_assign_pod_null_detaches(
     assert response.status_code == 200
     assert response.json()["pod_id"] is None
     mock_assign.assert_awaited_once_with(test_user_id, "expert-1", None)
+
+
+def test_assign_pod_requires_explicit_pod_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """An empty body must not be interpreted as a detach."""
+    mock_assign = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        return_value=_make_expert(pod_id=None),
+    )
+
+    response = client.patch("/experts/expert-1/pod", json={})
+
+    assert response.status_code == 422
+    mock_assign.assert_not_awaited()
 
 
 def test_assign_pod_unknown_expert_returns_404(

@@ -56,8 +56,20 @@ class ExpertPod(BaseModel):
     created_at: datetime
 
 
+class ExpertPodMember(BaseModel):
+    """Roster-display slice of an Expert. Deliberately excludes runtime
+    fields (last run, weekly spend) that the pod listing does not hydrate —
+    a full Expert here would report them as null/0 rather than unknown."""
+
+    id: str
+    name: str
+    avatar_url: str | None
+    role: str
+    is_archived: bool
+
+
 class ExpertPodWithMembers(ExpertPod):
-    members: list[Expert]
+    members: list[ExpertPodMember]
 
 
 class ExpertDetachPreview(BaseModel):

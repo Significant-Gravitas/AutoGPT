@@ -978,7 +978,8 @@ model ExpertPod {
 
   Experts Expert[]
 
-  @@index([userId])
+  // Doubles as the userId lookup index for list_pods.
+  @@unique([userId, name])
 }
 
 ////////////////////////////////////////////////////////////

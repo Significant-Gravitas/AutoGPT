@@ -116,8 +116,13 @@ export function useTeamPage({ enabled }: Args) {
     podGroups: groups,
     ungroupedExperts: ungrouped,
     schedulesForExpert,
-    isLoading: enabled && (expertsQuery.isLoading || schedulesQuery.isLoading),
-    isError: expertsQuery.isError || schedulesQuery.isError,
+    isLoading:
+      enabled &&
+      (expertsQuery.isLoading ||
+        podsQuery.isLoading ||
+        schedulesQuery.isLoading),
+    isError:
+      expertsQuery.isError || podsQuery.isError || schedulesQuery.isError,
     refetch,
     installWorkflow,
     pickerExpertId,

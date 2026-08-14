@@ -8,6 +8,7 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertPod,
+    ExpertPodMember,
     ExpertPodWithMembers,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
@@ -40,6 +41,12 @@ class ExpertPodNotFoundError(Exception):
     def __init__(self, pod_id: str):
         super().__init__(f"Pod {pod_id} not found")
         self.pod_id = pod_id
+
+
+class ExpertPodNameTakenError(Exception):
+    def __init__(self, name: str):
+        super().__init__(f"A pod named {name!r} already exists")
+        self.name = name
 
 
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
@@ -426,22 +433,30 @@ def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
     return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)
 
 
-async def create_pod(user_id: str, name: str) -> ExpertPod:
-    row = await prisma.models.ExpertPod.prisma().create(
-        data={"userId": user_id, "name": name}
+def _to_pod_member(row: prisma.models.Expert) -> ExpertPodMember:
+    return ExpertPodMember(
+        id=row.id,
+        name=row.name,
+        avatar_url=row.avatarUrl,
+        role=row.role,
+        is_archived=row.isArchived,
     )
+
+
+async def create_pod(user_id: str, name: str) -> ExpertPod:
+    try:
+        row = await prisma.models.ExpertPod.prisma().create(
+            data={"userId": user_id, "name": name}
+        )
+    except prisma.errors.UniqueViolationError:
+        raise ExpertPodNameTakenError(name)
     return _to_pod(row)
 
 
 async def list_pods(user_id: str) -> list[ExpertPodWithMembers]:
     rows = await prisma.models.ExpertPod.prisma().find_many(
         where={"userId": user_id},
-        include={
-            "Experts": {
-                "where": {"isTemplate": False, "isArchived": False},
-                "include": _WORKFLOW_INCLUDE,
-            }
-        },
+        include={"Experts": {"where": {"isTemplate": False, "isArchived": False}}},
         order={"createdAt": "asc"},
     )
     return [
@@ -449,7 +464,7 @@ async def list_pods(user_id: str) -> list[ExpertPodWithMembers]:
             id=row.id,
             name=row.name,
             created_at=row.createdAt,
-            members=[_to_model(member) for member in row.Experts or []],
+            members=[_to_pod_member(member) for member in row.Experts or []],
         )
         for row in rows
     ]
@@ -468,15 +483,20 @@ async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert
         if pod is None:
             raise ExpertPodNotFoundError(pod_id)
 
-    updated = await prisma.models.Expert.prisma().update_many(
-        where={
-            "id": expert_id,
-            "ownerUserId": user_id,
-            "isTemplate": False,
-            "isArchived": False,
-        },
-        data={"podId": pod_id},
-    )
+    try:
+        updated = await prisma.models.Expert.prisma().update_many(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            },
+            data={"podId": pod_id},
+        )
+    except prisma.errors.ForeignKeyViolationError:
+        # The pod was deleted between the ownership check above and the
+        # update — surface the same not-found the check would have raised.
+        raise ExpertPodNotFoundError(pod_id or "")
     if updated == 0:
         raise ExpertNotFoundError(expert_id)
 

@@ -2,6 +2,7 @@ import {
   getAssignExpertPodMockHandler,
   getCreateExpertPodMockHandler,
   getListExpertPodsMockHandler,
+  getListExpertPodsMockHandler401,
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
@@ -529,6 +530,32 @@ describe("TeamPage", () => {
     await user.click(await screen.findByRole("menuitem", { name: /Growth/ }));
 
     await waitFor(() => expect(assignedPodId).toBe("pod-growth"));
+  });
+
+  test("keeps the roster in loading state until pods resolve", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler(() => new Promise(() => {})),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Autopilot");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Experts resolved but pods have not: no card may render yet, or a
+    // podded expert would flash as ungrouped.
+    expect(screen.queryByText("Maria")).toBeNull();
+  });
+
+  test("shows an error card when loading pods fails", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler401(),
+    );
+
+    render(<TeamPage />);
+
+    expect(await screen.findByText("Something went wrong")).toBeDefined();
   });
 
   test("calls notFound() when the flag is resolved and disabled", () => {
