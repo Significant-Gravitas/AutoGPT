@@ -74,6 +74,12 @@ async def test_get_library_agents(mocker):
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
+    # Function-scoped-loop tests must never run real prisma queries: a pooled
+    # connection created here would outlive this test's event loop and break
+    # later session-loop tests with "Event loop is closed".
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_many = mocker.AsyncMock(return_value=[])
+
     mocker.patch(
         "backend.api.features.library.db._fetch_execution_counts",
         new=mocker.AsyncMock(return_value={}),
@@ -660,6 +666,9 @@ async def test_list_favorite_library_agents(mocker):
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_many = mocker.AsyncMock(return_value=[])
+
     mocker.patch(
         "backend.api.features.library.db._fetch_execution_counts",
         new=mocker.AsyncMock(return_value={"agent-fav": 7}),
@@ -714,6 +723,9 @@ async def test_list_library_agents_skips_failed_agent(mocker):
         return_value=mock_library_agents
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_many = mocker.AsyncMock(return_value=[])
 
     mocker.patch(
         "backend.api.features.library.db._fetch_execution_counts",
