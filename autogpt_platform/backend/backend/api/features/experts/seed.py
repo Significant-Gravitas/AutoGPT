@@ -174,12 +174,23 @@ async def _clear_removed_cadences() -> int:
     cleared = 0
     live_by_owner: dict[str, set[str]] = {}
     for slug, old_cron in REMOVED_TEMPLATE_CADENCES:
-        version_id = await _resolve_active_version_id(slug)
-        if version_id is None:
-            continue
         rows = await prisma.models.ExpertWorkflow.prisma().find_many(
             where={
-                "storeListingVersionId": version_id,
+                "StoreListingVersion": {
+                    "is": {
+                        "StoreListing": {
+                            "is": {
+                                "slug": slug,
+                                "isDeleted": False,
+                                "CreatorProfile": {
+                                    "is": {
+                                        "username": OFFICIAL_CREATOR_USERNAME,
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
                 "scheduleCron": old_cron,
                 "Expert": {"is": {"isTemplate": False}},
             },

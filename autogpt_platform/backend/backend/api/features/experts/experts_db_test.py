@@ -778,6 +778,74 @@ async def test_seed_clears_removed_cadences_on_hired_copies(server: SpinTestServ
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_seed_clears_removed_cadence_after_listing_version_rotation(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    previous_version_id = await _seed_store_listing(server)
+    await _transfer_listing_to_official_creator(previous_version_id)
+    listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": previous_version_id}
+    )
+    previous = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": previous_version_id}
+    )
+    assert listing is not None
+    assert previous is not None
+
+    current = await prisma.models.StoreListingVersion.prisma().create(
+        data={
+            "version": previous.version + 1,
+            "agentGraphId": previous.agentGraphId,
+            "agentGraphVersion": previous.agentGraphVersion,
+            "name": previous.name,
+            "subHeading": previous.subHeading,
+            "imageUrls": previous.imageUrls,
+            "description": previous.description,
+            "categories": previous.categories,
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+            "storeListingId": listing.id,
+        }
+    )
+    await prisma.models.StoreListing.prisma().update(
+        where={"id": listing.id}, data={"activeVersionId": current.id}
+    )
+
+    removed_cron = "0 9 * * 1"
+    monkeypatch.setattr(
+        seed, "REMOVED_TEMPLATE_CADENCES", [(listing.slug, removed_cron)]
+    )
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(owner.id, template.id, None)
+    legacy = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": previous_version_id,
+            "scheduleCron": removed_cron,
+            "scheduleId": "sched-previous-version",
+        }
+    )
+    sched = AsyncMock()
+    sched.get_execution_schedules = AsyncMock(
+        return_value=[SimpleNamespace(id="sched-previous-version")]
+    )
+    sched.delete_schedule = AsyncMock()
+
+    with patch.object(seed, "get_scheduler_client", return_value=sched):
+        assert await seed._clear_removed_cadences() == 1
+
+    sched.delete_schedule.assert_awaited_once_with(
+        "sched-previous-version", user_id=owner.id
+    )
+    legacy_after = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": legacy.id}
+    )
+    assert legacy_after is not None
+    assert legacy_after.scheduleId is None
+    assert legacy_after.scheduleCron is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_seed_preserves_cadence_when_schedule_delete_fails(
     server: SpinTestServer,
 ):
