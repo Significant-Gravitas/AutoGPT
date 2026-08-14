@@ -39,8 +39,7 @@ interface Props {
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
-  isResolvingExpertIdentity?: boolean;
-  isAdoptingExpertSession?: boolean;
+  isInteractionLocked?: boolean;
 }
 
 export function EmptySession({
@@ -50,8 +49,7 @@ export function EmptySession({
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
-  isResolvingExpertIdentity,
-  isAdoptingExpertSession,
+  isInteractionLocked,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -62,10 +60,7 @@ export function EmptySession({
   const pulseChips = usePulseChips();
   const { options, recipient, isLoadingRecipient, selectRecipient } =
     useRecipientPicker();
-  const isComposerDisabled =
-    isCreatingSession ||
-    !!isResolvingExpertIdentity ||
-    !!isAdoptingExpertSession;
+  const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({

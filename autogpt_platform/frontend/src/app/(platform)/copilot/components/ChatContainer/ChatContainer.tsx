@@ -275,8 +275,7 @@ export const ChatContainer = ({
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
-              isResolvingExpertIdentity={isResolvingExpertIdentity}
-              isAdoptingExpertSession={isAdoptingExpertSession}
+              isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
             />
           )}
         </div>
