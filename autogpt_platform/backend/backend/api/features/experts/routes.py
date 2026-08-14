@@ -87,7 +87,15 @@ async def create_raised_expert(
     except experts_db.FirstJobUnavailableError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
     except experts_db.ExpertLimitExceededError as e:
-        raise fastapi.HTTPException(status_code=409, detail=str(e))
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={"code": "active_expert_limit", "limit": e.limit},
+        )
+    except experts_db.RaisedExpertLifetimeLimitExceededError as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={"code": "raised_expert_lifetime_limit", "limit": e.limit},
+        )
 
 
 @router.get("", operation_id="list_experts")

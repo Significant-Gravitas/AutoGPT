@@ -22638,12 +22638,26 @@
           "first_job_installed": {
             "type": "boolean",
             "title": "First Job Installed"
+          },
+          "first_job_failure_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["unavailable", "installation_failed"]
+              },
+              { "type": "null" }
+            ],
+            "title": "First Job Failure Reason"
           }
         },
         "type": "object",
-        "required": ["expert", "first_job_installed"],
+        "required": [
+          "expert",
+          "first_job_installed",
+          "first_job_failure_reason"
+        ],
         "title": "RaiseResult",
-        "description": "Result of raising a blank expert. ``first_job_installed`` is only\nTrue when a first job was requested and its install succeeded, so the\nclient can surface partial success instead of a silent no-op."
+        "description": "Result of raising a blank expert. ``first_job_installed`` is only\nTrue when a first job was requested and its install succeeded, so the\nclient can surface partial success instead of a silent no-op. The stable\nfailure reason distinguishes a listing withdrawn mid-flow from an install\nfailure."
       },
       "RateLimitResetResponse": {
         "properties": {
@@ -27300,7 +27314,7 @@
         "type": "object",
         "required": ["label", "text"],
         "title": "VoiceSample",
-        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire flow. The first sample is choice \"a\", the second choice \"b\"."
+        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire or raise flow. The first sample is choice \"a\", the second choice\n\"b\"."
       },
       "Webhook": {
         "properties": {

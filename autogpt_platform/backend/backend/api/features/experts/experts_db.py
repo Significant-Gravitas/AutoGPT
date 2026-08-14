@@ -1,4 +1,5 @@
 import logging
+from typing import Literal, LiteralString, cast
 
 import prisma.enums
 import prisma.errors
@@ -14,7 +15,7 @@ from backend.api.features.experts.models import (
     RaiseResult,
 )
 from backend.api.features.library import db as library_db
-from backend.data.db import transaction
+from backend.data.db import get_database_schema, transaction
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -28,10 +29,10 @@ def _raised_identity(name: str) -> str:
     return f"I'm {name}, raised by you. I learn how you work and grow with you."
 
 
-# Cap on active (non-archived) experts per user: raising is unbounded by
-# any unique index, and each expert amplifies list_experts with workflow
-# joins and a weekly-spend lookup.
+# The active cap bounds team-list fan-out. The lifetime raised-expert cap also
+# bounds durable rows when users repeatedly raise and archive experts.
 ACTIVE_EXPERT_LIMIT = 20
+LIFETIME_RAISED_EXPERT_LIMIT = 100
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
@@ -52,6 +53,12 @@ class ExpertNotFoundError(Exception):
 class ExpertLimitExceededError(Exception):
     def __init__(self, limit: int):
         super().__init__(f"Active expert limit of {limit} reached")
+        self.limit = limit
+
+
+class RaisedExpertLifetimeLimitExceededError(Exception):
+    def __init__(self, limit: int):
+        super().__init__(f"Raised expert lifetime limit of {limit} reached")
         self.limit = limit
 
 
@@ -267,21 +274,62 @@ async def create_raised_expert(
     """Raise a blank expert owned by *user_id*.
 
     A raised expert has no source template, so ``sourceTemplateId`` stays
-    NULL — Postgres treats NULLs as distinct under the
-    (ownerUserId, sourceTemplateId) unique index, so raising is bounded
-    only by ``ACTIVE_EXPERT_LIMIT``, enforced under a per-user advisory
-    lock so concurrent raises cannot slip past the cap. A requested first
-    job is validated up front and installed through the same path as any
-    other workflow; a failed install is logged and reported via
-    ``RaiseResult.first_job_installed``, never fatal to the raise itself.
+    NULL. Capacity checks and creation share a per-user advisory lock. A
+    requested first job is validated before creation, then its exact listing
+    rows are locked and revalidated through workflow association. Installation
+    failure remains non-fatal and is reported in the result.
     """
     if first_job_store_listing_version_id is not None:
         await _validate_first_job_listing(first_job_store_listing_version_id)
 
+    expert = await _create_raised_expert_row(user_id, name, role, voice_preferences)
+    first_job_installed = False
+    failure_reason: Literal["unavailable", "installation_failed"] | None = None
+    if first_job_store_listing_version_id is not None:
+        try:
+            await _install_first_job(
+                user_id, expert.id, first_job_store_listing_version_id
+            )
+            first_job_installed = True
+        except FirstJobUnavailableError:
+            failure_reason = "unavailable"
+            logger.warning(
+                f"First job {first_job_store_listing_version_id} became "
+                f"unavailable while raising expert #{expert.id} for user #{user_id}"
+            )
+        except Exception:
+            failure_reason = "installation_failed"
+            logger.exception(
+                f"Failed to install first job "
+                f"{first_job_store_listing_version_id} on raised "
+                f"expert #{expert.id} for user #{user_id}"
+            )
+
+    if first_job_installed:
+        hydrated = await get_expert(user_id, expert.id)
+        if hydrated is None:
+            raise ExpertNotFoundError(expert.id)
+    else:
+        hydrated = _to_model(expert)
+    return RaiseResult(
+        expert=hydrated,
+        first_job_installed=first_job_installed,
+        first_job_failure_reason=failure_reason,
+    )
+
+
+async def _create_raised_expert_row(
+    user_id: str,
+    name: str,
+    role: str | None,
+    voice_preferences: str | None,
+) -> prisma.models.Expert:
     async with transaction() as tx:
         # execute_raw, not query_raw: pg_advisory_xact_lock returns void,
         # which Prisma cannot deserialize as a result column.
-        await tx.execute_raw("SELECT pg_advisory_xact_lock(hashtext($1))", user_id)
+        await tx.execute_raw(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", user_id
+        )
         active_count = await tx.expert.count(
             where={
                 "ownerUserId": user_id,
@@ -291,7 +339,16 @@ async def create_raised_expert(
         )
         if active_count >= ACTIVE_EXPERT_LIMIT:
             raise ExpertLimitExceededError(ACTIVE_EXPERT_LIMIT)
-        expert = await tx.expert.create(
+        lifetime_raised_count = await tx.expert.count(
+            where={
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "sourceTemplateId": None,
+            }
+        )
+        if lifetime_raised_count >= LIFETIME_RAISED_EXPERT_LIMIT:
+            raise RaisedExpertLifetimeLimitExceededError(LIFETIME_RAISED_EXPERT_LIMIT)
+        return await tx.expert.create(
             data={
                 "ownerUserId": user_id,
                 "name": name,
@@ -301,29 +358,60 @@ async def create_raised_expert(
             }
         )
 
-    first_job_installed = False
-    if first_job_store_listing_version_id is not None:
-        try:
-            # Re-validate right before installing: the pre-create check
-            # happened outside any lock, and the shared install path
-            # authorizes by graph — a listing withdrawn in between must
-            # degrade to first_job_installed=False, not slip through.
-            await _validate_first_job_listing(first_job_store_listing_version_id)
-            await install_workflow(
-                user_id, expert.id, first_job_store_listing_version_id
-            )
-            first_job_installed = True
-        except Exception:
-            logger.exception(
-                f"Failed to install first job "
-                f"{first_job_store_listing_version_id} on raised "
-                f"expert #{expert.id} for user #{user_id}"
-            )
 
-    hydrated = await get_expert(user_id, expert.id)
-    if hydrated is None:
-        raise ExpertNotFoundError(expert.id)
-    return RaiseResult(expert=hydrated, first_job_installed=first_job_installed)
+def _schema_format(query_template: str) -> LiteralString:
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    return cast(LiteralString, query_template.format(schema_prefix=schema_prefix))
+
+
+async def _install_first_job(
+    user_id: str,
+    expert_id: str,
+    store_listing_version_id: str,
+) -> None:
+    async with transaction() as tx:
+        eligible_rows = await tx.query_raw(
+            _schema_format(
+                """
+                SELECT slv.id
+                FROM {schema_prefix}"StoreListingVersion" AS slv
+                JOIN {schema_prefix}"StoreListing" AS sl
+                  ON sl.id = slv."storeListingId"
+                WHERE slv.id = $1
+                  AND slv."isDeleted" = false
+                  AND slv."isAvailable" = true
+                  AND slv."submissionStatus" = 'APPROVED'
+                  AND sl."isDeleted" = false
+                FOR UPDATE OF slv, sl
+                """
+            ),
+            store_listing_version_id,
+        )
+        if not eligible_rows:
+            raise FirstJobUnavailableError(store_listing_version_id)
+
+        expert = await tx.expert.find_first(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        if expert is None:
+            raise ExpertNotFoundError(expert_id)
+
+        library_agent = await library_db.add_store_agent_to_library(
+            store_listing_version_id, user_id
+        )
+        await tx.expertworkflow.create(
+            data={
+                "expertId": expert_id,
+                "storeListingVersionId": store_listing_version_id,
+                "libraryAgentId": library_agent.id,
+            }
+        )
 
 
 async def _validate_first_job_listing(store_listing_version_id: str) -> None:

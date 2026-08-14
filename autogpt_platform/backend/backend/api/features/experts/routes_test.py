@@ -173,12 +173,17 @@ def test_hire_expert_unknown_template_returns_404(
 def test_create_raised_expert_returns_expert(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    configured_snapshot: Snapshot,
 ) -> None:
     raised = _make_expert(id="raised-1", name="Otto", source_template_id=None)
     mock_create = mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
         new_callable=AsyncMock,
-        return_value=RaiseResult(expert=raised, first_job_installed=False),
+        return_value=RaiseResult(
+            expert=raised,
+            first_job_installed=False,
+            first_job_failure_reason=None,
+        ),
     )
 
     response = client.post("/experts/raise", json={"name": "Otto"})
@@ -188,12 +193,17 @@ def test_create_raised_expert_returns_expert(
     assert data["expert"]["id"] == "raised-1"
     assert data["expert"]["source_template_id"] is None
     assert data["first_job_installed"] is False
+    assert data["first_job_failure_reason"] is None
     mock_create.assert_awaited_once_with(test_user_id, "Otto", None, None, None)
+    configured_snapshot.assert_match(
+        json.dumps(data, indent=2, sort_keys=True), "expert_raise_default"
+    )
 
 
 def test_create_raised_expert_passes_role_voice_and_first_job(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    configured_snapshot: Snapshot,
 ) -> None:
     mock_create = mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
@@ -201,6 +211,7 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
         return_value=RaiseResult(
             expert=_make_expert(id="raised-2", source_template_id=None),
             first_job_installed=True,
+            first_job_failure_reason=None,
         ),
     )
 
@@ -215,7 +226,8 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
     )
 
     assert response.status_code == 200
-    assert response.json()["first_job_installed"] is True
+    data = response.json()
+    assert data["first_job_installed"] is True
     mock_create.assert_awaited_once_with(
         test_user_id,
         "Nova",
@@ -223,10 +235,14 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
         "Warm and detailed.",
         "listing-version-1",
     )
+    configured_snapshot.assert_match(
+        json.dumps(data, indent=2, sort_keys=True), "expert_raise_first_job"
+    )
 
 
 def test_create_raised_expert_requires_name(
     mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
 ) -> None:
     mock_create = mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
@@ -237,6 +253,44 @@ def test_create_raised_expert_requires_name(
 
     assert response.status_code == 422
     mock_create.assert_not_awaited()
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_raise_blank_name",
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "snapshot_name"),
+    [
+        ("name", "n" * 101, "expert_raise_name_too_long"),
+        ("role", "r" * 101, "expert_raise_role_too_long"),
+        (
+            "voice_preferences",
+            "v" * 4_001,
+            "expert_raise_voice_preferences_too_long",
+        ),
+    ],
+)
+def test_create_raised_expert_rejects_overlong_fields(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+    field: str,
+    value: str,
+    snapshot_name: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+    )
+    payload = {"name": "Otto", field: value}
+
+    response = client.post("/experts/raise", json=payload)
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), snapshot_name
+    )
 
 
 def test_create_raised_expert_at_cap_returns_409(
@@ -251,6 +305,28 @@ def test_create_raised_expert_at_cap_returns_409(
     response = client.post("/experts/raise", json={"name": "Otto"})
 
     assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "active_expert_limit",
+        "limit": 20,
+    }
+
+
+def test_create_raised_expert_at_lifetime_cap_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.RaisedExpertLifetimeLimitExceededError(100),
+    )
+
+    response = client.post("/experts/raise", json={"name": "Otto"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "raised_expert_lifetime_limit",
+        "limit": 100,
+    }
 
 
 def test_create_raised_expert_unavailable_first_job_returns_404(
