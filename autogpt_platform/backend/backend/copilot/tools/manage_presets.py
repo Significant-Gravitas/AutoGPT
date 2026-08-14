@@ -17,6 +17,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
     InvalidInputError,
+    MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
 )
@@ -360,7 +361,7 @@ class UpdatePresetTool(BaseTool):
                 error="preset_not_found",
                 session_id=session_id,
             )
-        except (InvalidInputError, WebhookRegistrationError) as e:
+        except (InvalidInputError, MissingConfigError, WebhookRegistrationError) as e:
             return ErrorResponse(
                 message=str(e),
                 error="preset_update_failed",

@@ -15,6 +15,7 @@ from backend.copilot.tools.manage_presets import (
 from backend.copilot.tools.models import ErrorResponse
 from backend.util.exceptions import (
     InvalidInputError,
+    MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
 )
@@ -518,3 +519,26 @@ async def test_update_webhook_registration_error(session):
     assert isinstance(result, ErrorResponse)
     assert result.error == "preset_update_failed"
     assert "provider refused" in result.message
+
+
+@pytest.mark.asyncio
+async def test_update_expert_workspace_unavailable(session):
+    ldb = MagicMock()
+    ldb.get_preset = AsyncMock(return_value=_preset())
+    tdb = MagicMock()
+    tdb.update_triggered_preset = AsyncMock(
+        side_effect=MissingConfigError(
+            "Your expert workspace is still being set up. Try again shortly."
+        )
+    )
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+    ):
+        result = await UpdatePresetTool()._execute(
+            user_id=_USER, session=session, preset_id="preset-1", inputs={"repo": "x"}
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_update_failed"
+    assert "still being set up" in result.message

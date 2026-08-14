@@ -12,7 +12,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
@@ -135,6 +135,29 @@ async def test_expert_trigger_propagates_transient_tenancy_failure():
         ),
     ):
         with pytest.raises(RuntimeError, match="database unavailable"):
+            await _setup(expert_id="expert-1")
+
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_trigger_maps_missing_personal_tenancy_to_unavailable():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(
+                side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
+            ),
+        ),
+    ):
+        with pytest.raises(MissingConfigError, match="still being set up"):
             await _setup(expert_id="expert-1")
 
     webhook_mock.assert_not_awaited()
@@ -292,6 +315,30 @@ async def test_update_legacy_expert_trigger_rehomes_through_new_webhook():
     assert m["setup"].await_args.kwargs["organization_id"] == "personal-org"
     assert m["setup"].await_args.kwargs["team_id"] == "personal-team"
     m["set_webhook"].assert_awaited_once_with(_USER, "preset-1", "wh-new")
+
+
+@pytest.mark.asyncio
+async def test_update_expert_trigger_maps_missing_personal_tenancy_to_unavailable():
+    current = _preset(webhook_id="wh-old", expert_id="expert-1")
+    with (
+        _update_patches(current=current) as m,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(
+                side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
+            ),
+        ),
+    ):
+        with pytest.raises(MissingConfigError, match="still being set up"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"repo": "owner/repo"},
+                credentials={},
+            )
+
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
 
 
 @pytest.mark.asyncio

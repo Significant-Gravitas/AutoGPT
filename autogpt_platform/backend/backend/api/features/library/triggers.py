@@ -17,7 +17,7 @@ from backend.executor.utils import make_node_credentials_input_map
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 from . import db
 from . import model as models
@@ -25,6 +25,21 @@ from . import model as models
 logger = logging.getLogger(__name__)
 
 credentials_manager = IntegrationCredentialsManager()
+
+_EXPERT_WORKSPACE_UNAVAILABLE = (
+    "Your expert workspace is still being set up. Try again shortly."
+)
+
+
+async def _resolve_private_expert_tenancy(
+    user_id: str, expert_id: str, *, not_found_message: str
+) -> tuple[str, str | None]:
+    try:
+        return await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise NotFoundError(not_found_message) from e
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise MissingConfigError(_EXPERT_WORKSPACE_UNAVAILABLE) from e
 
 
 async def setup_triggered_preset(
@@ -51,6 +66,7 @@ async def setup_triggered_preset(
 
     Raises:
         NotFoundError: if the graph no longer exists / isn't accessible.
+        MissingConfigError: if the private expert workspace is unavailable.
         InvalidInputError: if the graph has no webhook node, or the webhook
             backend rejects the trigger config / credentials.
     """
@@ -78,12 +94,11 @@ async def setup_triggered_preset(
             user_id, graph.id
         )
     if effective_expert_id:
-        try:
-            organization_id, team_id = await experts_db.resolve_private_expert_tenancy(
-                user_id, effective_expert_id
-            )
-        except experts_db.ExpertNotFoundError as e:
-            raise NotFoundError(f"Expert #{effective_expert_id} not found") from e
+        organization_id, team_id = await _resolve_private_expert_tenancy(
+            user_id,
+            effective_expert_id,
+            not_found_message=f"Expert #{effective_expert_id} not found",
+        )
     else:
         organization_id, team_id = graph.organization_id, graph.team_id
 
@@ -133,6 +148,7 @@ async def update_triggered_preset(
 
     Raises:
         NotFoundError: if the preset (or, when reconfiguring, its graph) is gone.
+        MissingConfigError: if the private expert workspace is unavailable.
         InvalidInputError: if the webhook backend rejects the new trigger config.
     """
     current = await db.get_preset(user_id, preset_id)
@@ -150,14 +166,11 @@ async def update_triggered_preset(
             )
         if trigger_node := graph.webhook_input_node:
             if current.expert_id:
-                try:
-                    organization_id, team_id = (
-                        await experts_db.resolve_private_expert_tenancy(
-                            user_id, current.expert_id
-                        )
-                    )
-                except experts_db.ExpertNotFoundError as e:
-                    raise NotFoundError(f"Preset #{preset_id} not found") from e
+                organization_id, team_id = await _resolve_private_expert_tenancy(
+                    user_id,
+                    current.expert_id,
+                    not_found_message=f"Preset #{preset_id} not found",
+                )
             else:
                 organization_id, team_id = graph.organization_id, graph.team_id
             trigger_config_with_credentials = {
