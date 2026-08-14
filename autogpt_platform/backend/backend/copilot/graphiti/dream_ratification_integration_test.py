@@ -229,20 +229,22 @@ def stub_boundaries(
 
 @pytest_asyncio.fixture(loop_scope="function", autouse=True)
 async def cancel_ingestion_workers() -> AsyncIterator[None]:
-    """Stop the per-user ingestion worker before the test's loop closes.
+    """Stop per-memory-group ingestion workers before the test loop closes.
 
-    ``_ensure_worker`` spawns a task that idles for 60s waiting for more
+    ``_enqueue_payload`` spawns a task that idles for 60s waiting for more
     episodes. Left alone it outlives the test and pytest reports "Task was
     destroyed but it is pending". Reaching into ``_get_loop_state`` is the
     only handle on it — the registry is loop-local by design.
     """
     yield
     state = ingest_mod._get_loop_state()
-    workers = list(state.user_workers.values())
+    workers = list(state.group_workers.values())
     for worker in workers:
         worker.cancel()
     if workers:
         await asyncio.gather(*workers, return_exceptions=True)
+    assert not state.group_workers
+    assert not state.group_queues
 
 
 # --- Helpers ----------------------------------------------------------------
