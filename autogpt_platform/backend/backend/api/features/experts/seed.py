@@ -4,14 +4,15 @@ Run with: poetry run python -m backend.api.features.experts.seed
 
 Upserts the three roster templates (Maria, Max, Frankie) by template name,
 so repeated runs keep the same template ids. Preload workflows are resolved
-from store listing slugs; missing listings are logged and skipped, never
-fatal. Each upsert also refreshes the presentation fields (avatar, bio,
-skills) on experts already hired from that template, so roster changes reach
-existing users and not just new hires.
+from official store listing slugs; all listings are validated before any
+template is mutated. Each upsert also refreshes the presentation fields
+(avatar, bio, skills) on experts already hired from that template, so roster
+changes reach existing users and not just new hires.
 """
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from typing import TypedDict
 
 import prisma.models
@@ -231,6 +232,7 @@ async def _delete_live_schedule(
         if schedule_id not in live_by_owner[owner_id]:
             return True
         await get_scheduler_client().delete_schedule(schedule_id, user_id=owner_id)
+        live_by_owner[owner_id].discard(schedule_id)
         return True
     except Exception as e:
         logger.warning(
@@ -288,13 +290,21 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
     )
 
 
-async def _sync_preloads(template_id: str, entry: RosterEntry) -> None:
+async def _sync_preloads(
+    template_id: str,
+    entry: RosterEntry,
+    resolved_versions: Mapping[str, str] | None = None,
+) -> None:
     existing = await prisma.models.ExpertWorkflow.prisma().find_many(
         where={"expertId": template_id}
     )
     existing_by_version = {w.storeListingVersionId: w for w in existing}
     for preload in entry["preloads"]:
-        version_id = await _resolve_active_version_id(preload["slug"])
+        version_id = (
+            resolved_versions.get(preload["slug"])
+            if resolved_versions is not None
+            else await _resolve_active_version_id(preload["slug"])
+        )
         if version_id is None:
             logger.warning(
                 f"Store listing slug '{preload['slug']}' not found; "
@@ -320,12 +330,30 @@ async def _sync_preloads(template_id: str, entry: RosterEntry) -> None:
             )
 
 
+async def _resolve_roster_preloads() -> dict[str, str]:
+    slugs = {preload["slug"] for entry in ROSTER for preload in entry["preloads"]}
+    resolved = {
+        slug: version_id
+        for slug in sorted(slugs)
+        if (version_id := await _resolve_active_version_id(slug)) is not None
+    }
+    missing = sorted(slugs - resolved.keys())
+    if missing:
+        raise RuntimeError(
+            f"Official creator '{OFFICIAL_CREATOR_USERNAME}' is missing roster "
+            f"listings for: {', '.join(missing)}. Load marketplace store assets "
+            "before seeding the expert roster."
+        )
+    return resolved
+
+
 async def seed_roster() -> list[str]:
     """Upsert the roster templates and their preloads. Returns template ids."""
+    resolved_versions = await _resolve_roster_preloads()
     template_ids = []
     for entry in ROSTER:
         template = await _upsert_template(entry)
-        await _sync_preloads(template.id, entry)
+        await _sync_preloads(template.id, entry, resolved_versions)
         refreshed = await _backfill_hired_copies(template)
         template_ids.append(template.id)
         logger.info(

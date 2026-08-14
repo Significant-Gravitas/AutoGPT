@@ -646,6 +646,7 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_round_trip(server: SpinTestServer):
+    await _load_roster_store_assets()
     first_ids = await seed.seed_roster()
     assert len(first_ids) == 3
 
@@ -664,6 +665,22 @@ async def test_seed_roster_round_trip(server: SpinTestServer):
     templates_after = await experts_db.list_templates()
     seeded_after = [t for t in templates_after if t.id in second_ids]
     assert len(seeded_after) == 3
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    resolve = AsyncMock(return_value=None)
+    upsert = AsyncMock()
+    monkeypatch.setattr(seed, "_resolve_active_version_id", resolve)
+    monkeypatch.setattr(seed, "_upsert_template", upsert)
+
+    with pytest.raises(RuntimeError, match="Load marketplace store assets"):
+        await seed.seed_roster()
+
+    assert resolve.await_count == len(EXPECTED_ROSTER_PRELOAD_SLUGS)
+    upsert.assert_not_awaited()
 
 
 def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
@@ -860,6 +877,32 @@ async def test_seed_clears_removed_cadence_after_listing_version_rotation(
     assert legacy_after is not None
     assert legacy_after.scheduleId is None
     assert legacy_after.scheduleCron is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_live_schedule_updates_owner_cache():
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(
+        return_value=[SimpleNamespace(id="sched-shared")]
+    )
+    scheduler.delete_schedule = AsyncMock()
+    live_by_owner: dict[str, set[str]] = {}
+
+    with patch.object(seed, "get_scheduler_client", return_value=scheduler):
+        assert await seed._delete_live_schedule(
+            "owner-1", "sched-shared", live_by_owner
+        )
+        assert await seed._delete_live_schedule(
+            "owner-1", "sched-shared", live_by_owner
+        )
+
+    scheduler.get_execution_schedules.assert_awaited_once_with(
+        user_id="owner-1", kind="graph"
+    )
+    scheduler.delete_schedule.assert_awaited_once_with(
+        "sched-shared", user_id="owner-1"
+    )
+    assert live_by_owner == {"owner-1": set()}
 
 
 @pytest.mark.asyncio(loop_scope="session")
