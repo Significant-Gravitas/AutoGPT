@@ -94,7 +94,7 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-def AICredentialsField() -> Optional[AICredentials]:
+def AICredentialsField() -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider. Not required for Ollama.",
         discriminator="model",
@@ -428,7 +428,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 "before providing its JSON response."
             ),
         )
-        credentials: Optional[AICredentials] = AICredentialsField()
+        credentials: AICredentials = AICredentialsField()
         sys_prompt: str = SchemaField(
             title="System Prompt",
             default="",
@@ -893,7 +893,7 @@ class AITextGeneratorBlock(AIBlockBase):
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
-        credentials: Optional[AICredentials] = AICredentialsField()
+        credentials: AICredentials = AICredentialsField()
         sys_prompt: str = SchemaField(
             title="System Prompt",
             default="",
@@ -998,7 +998,7 @@ class AITextSummarizerBlock(AIBlockBase):
             default=SummaryStyle.CONCISE,
             description="The style of the summary to generate.",
         )
-        credentials: Optional[AICredentials] = AICredentialsField()
+        credentials: AICredentials = AICredentialsField()
         # TODO: Make this dynamic
         max_tokens: int = SchemaField(
             title="Max Tokens",
@@ -1054,7 +1054,7 @@ class AITextSummarizerBlock(AIBlockBase):
             yield output_name, output_data
 
     async def _run(
-        self, input_data: Input, credentials: APIKeyCredentials
+        self, input_data: Input, credentials: APIKeyCredentials | None
     ) -> BlockOutput:
         chunks = self._split_text(
             input_data.text, input_data.max_tokens, input_data.chunk_overlap
@@ -1093,7 +1093,7 @@ class AITextSummarizerBlock(AIBlockBase):
 
         for i in range(0, len(words), chunk_size):
             if len(chunks) >= MAX_CHUNKS:
-                break  # Limit the number of chunks to prevent excessive memory use
+                break  # Limit the number of chunks to prevent memory exhaustion
             chunk = " ".join(words[i : i + max_tokens])
             chunks.append(chunk)
 
@@ -1110,7 +1110,10 @@ class AITextSummarizerBlock(AIBlockBase):
         return response
 
     async def _summarize_chunk(
-        self, chunk: str, input_data: Input, credentials: APIKeyCredentials
+        self,
+        chunk: str,
+        input_data: Input,
+        credentials: APIKeyCredentials | None,
     ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
@@ -1140,7 +1143,10 @@ class AITextSummarizerBlock(AIBlockBase):
         return summary
 
     async def _combine_summaries(
-        self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials
+        self,
+        summaries: list[str],
+        input_data: Input,
+        credentials: APIKeyCredentials | None,
     ) -> str:
         combined_text = "\n\n".join(summaries)
 
@@ -1205,7 +1211,7 @@ class AIConversationBlock(AIBlockBase):
             default=DEFAULT_LLM_MODEL,
             description="The language model to use for the conversation.",
         )
-        credentials: Optional[AICredentials] = AICredentialsField()
+        credentials: AICredentials = AICredentialsField()
         max_tokens: int | None = SchemaField(
             advanced=True,
             default=None,
@@ -1320,7 +1326,7 @@ class AIListGeneratorBlock(AIBlockBase):
             description="The language model to use for generating the list.",
             advanced=True,
         )
-        credentials: Optional[AICredentials] = AICredentialsField()
+        credentials: AICredentials = AICredentialsField()
         max_retries: int = SchemaField(
             default=3,
             description="Maximum number of retries for generating a valid list.",
@@ -1378,6 +1384,19 @@ class AIListGeneratorBlock(AIBlockBase):
                 "max_retries": 3,
                 "force_json_output": False,
             },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "generated_list",
+                    ["Zylora Prime", "Kharon-9", "Vortexia", "Oceara", "Draknos"],
+                ),
+                ("prompt", list),
+                ("list_item", "Zylora Prime"),
+                ("list_item", "Kharon-9"),
+                ("list_item", "Vortexia"),
+                ("list_item", "Oceara"),
+                ("list_item", "Draknos"),
+            ],
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
