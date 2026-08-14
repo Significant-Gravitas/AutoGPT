@@ -11,10 +11,11 @@ from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.features.experts.models import ExpertSoulUpdate
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
-from backend.data.graph import Graph, Node
+from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.user import get_or_create_user
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import ExpertRunPausedError
+from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 
@@ -317,6 +318,61 @@ async def test_install_workflow_duplicate_returns_existing(
     assert a.id == b.id
     assert a.library_agent_id is not None
     assert a.store_listing_version_id == slv_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_reuses_library_agent_without_resetting_settings(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    library_agent = await experts_db.library_db.add_store_agent_to_library(
+        slv_id, test_user.id
+    )
+    expected_settings = GraphSettings(
+        human_in_the_loop_safe_mode=False,
+        sensitive_action_safe_mode=True,
+        builder_chat_session_id="builder-session",
+    )
+    await prisma.models.LibraryAgent.prisma().update(
+        where={"id": library_agent.id},
+        data={"settings": SafeJson(expected_settings.model_dump())},
+    )
+
+    with patch.object(
+        experts_db.library_db,
+        "add_store_agent_to_library",
+        new_callable=AsyncMock,
+        side_effect=AssertionError("existing library agent must be reused"),
+    ) as mock_add:
+        installed = await experts_db.install_workflow(
+            test_user.id, hired.expert.id, slv_id
+        )
+
+    persisted = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent.id}
+    )
+    assert persisted is not None
+    assert installed.library_agent_id == library_agent.id
+    assert GraphSettings.model_validate(persisted.settings) == expected_settings
+    mock_add.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_rejects_unapproved_store_version(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    await prisma.models.StoreListingVersion.prisma().update(
+        where={"id": slv_id},
+        data={"submissionStatus": prisma.enums.SubmissionStatus.DRAFT},
+    )
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.NotFoundError):
+        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")

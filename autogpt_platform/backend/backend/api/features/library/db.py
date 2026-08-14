@@ -106,17 +106,17 @@ async def _fetch_matching_store_version_ids(
     pairs = {(a.agentGraphId, a.agentGraphVersion) for a in agents}
     if not pairs:
         return {}
+    graph_ids = sorted({graph_id for graph_id, _ in pairs})
     try:
         versions = await prisma.models.StoreListingVersion.prisma().find_many(
             where={
-                "OR": [
-                    {"agentGraphId": graph_id, "agentGraphVersion": graph_version}
-                    for graph_id, graph_version in pairs
-                ],
+                "agentGraphId": {"in": graph_ids},
                 "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
                 "isDeleted": False,
+                "isAvailable": True,
+                "StoreListing": {"is": {"isDeleted": False}},
             },
-            order={"createdAt": "asc"},
+            order=[{"createdAt": "desc"}, {"id": "desc"}],
         )
     except Exception:
         logger.warning(
@@ -124,7 +124,31 @@ async def _fetch_matching_store_version_ids(
             exc_info=True,
         )
         return {}
-    return {(v.agentGraphId, v.agentGraphVersion): v.id for v in versions}
+    matches: dict[tuple[str, int], str] = {}
+    for version in versions:
+        pair = (version.agentGraphId, version.agentGraphVersion)
+        if pair in pairs and pair not in matches:
+            matches[pair] = version.id
+    return matches
+
+
+async def _fetch_marketplace_details(
+    graph_id: str,
+) -> tuple[prisma.models.StoreListing | None, prisma.models.Profile | None]:
+    store_listing = await prisma.models.StoreListing.prisma().find_first(
+        where={
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        },
+        include={"ActiveVersion": True},
+    )
+    profile = None
+    if store_listing and store_listing.ActiveVersion and store_listing.owningUserId:
+        profile = await prisma.models.Profile.prisma().find_first(
+            where={"userId": store_listing.owningUserId}
+        )
+    return store_listing, profile
 
 
 def _parse_iso_datetime(value: str) -> Optional[datetime]:
@@ -437,40 +461,29 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     if not library_agent:
         raise NotFoundError(f"Library agent #{id} not found")
 
-    # Fetch marketplace listing if the agent has been published
-    store_listing = None
-    profile = None
     if library_agent.AgentGraph:
-        store_listing = await prisma.models.StoreListing.prisma().find_first(
-            where={
-                "agentGraphId": library_agent.AgentGraph.id,
-                "isDeleted": False,
-                "hasApprovedVersion": True,
-            },
-            include={
-                "ActiveVersion": True,
-            },
+        (
+            marketplace_details,
+            schedule_info,
+            store_version_ids,
+            sub_graphs,
+        ) = await asyncio.gather(
+            _fetch_marketplace_details(library_agent.AgentGraph.id),
+            _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
+            _fetch_matching_store_version_ids([library_agent]),
+            graph_db.get_sub_graphs(library_agent.AgentGraph),
         )
-        if store_listing and store_listing.ActiveVersion and store_listing.owningUserId:
-            # Fetch Profile separately since User doesn't have a direct Profile relation
-            profile = await prisma.models.Profile.prisma().find_first(
-                where={"userId": store_listing.owningUserId}
-            )
-
-    schedule_info = (
-        await _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id)
-        if library_agent.AgentGraph
-        else {}
-    )
-    store_version_ids = await _fetch_matching_store_version_ids([library_agent])
+        store_listing, profile = marketplace_details
+    else:
+        store_listing = None
+        profile = None
+        schedule_info = {}
+        store_version_ids = await _fetch_matching_store_version_ids([library_agent])
+        sub_graphs = None
 
     return library_model.LibraryAgent.from_db(
         library_agent,
-        sub_graphs=(
-            await graph_db.get_sub_graphs(library_agent.AgentGraph)
-            if library_agent.AgentGraph
-            else None
-        ),
+        sub_graphs=sub_graphs,
         store_listing=store_listing,
         profile=profile,
         schedule_info=schedule_info,

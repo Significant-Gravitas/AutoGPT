@@ -191,6 +191,7 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     update_data = update_call.kwargs["data"]
     assert update_data["isDeleted"] is False
     assert update_data["isArchived"] is False
+    assert "settings" not in update_data
     # Restoring a soft-deleted agent refreshes the marketplace snapshot too
     assert update_data["name"] == "Marketplace Title"
     assert update_data["description"] == "Marketplace description"

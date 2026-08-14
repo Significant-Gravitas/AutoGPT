@@ -141,7 +141,6 @@ async def add_graph_to_library(
             data={
                 "isDeleted": False,
                 "isArchived": False,
-                "settings": settings_json,
                 "name": marketplace["name"],
                 "description": marketplace["description"],
                 "imageUrl": marketplace["imageUrl"],

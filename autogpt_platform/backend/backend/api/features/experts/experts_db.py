@@ -1,5 +1,6 @@
 import logging
 
+import prisma.enums
 import prisma.errors
 import prisma.models
 
@@ -14,6 +15,7 @@ from backend.api.features.experts.models import (
 from backend.api.features.library import db as library_db
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
+from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -330,15 +332,41 @@ async def install_workflow(
     if existing is not None:
         return _to_workflow_ref(existing)
 
-    library_agent = await library_db.add_store_agent_to_library(
-        store_listing_version_id, user_id
+    store_version = await prisma.models.StoreListingVersion.prisma().find_first(
+        where={
+            "id": store_listing_version_id,
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+            "isDeleted": False,
+            "isAvailable": True,
+            "StoreListing": {"is": {"isDeleted": False}},
+        }
     )
+    if store_version is None:
+        raise NotFoundError(
+            f"Store listing version {store_listing_version_id} not found or unavailable"
+        )
+
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={
+            "userId": user_id,
+            "agentGraphId": store_version.agentGraphId,
+            "agentGraphVersion": store_version.agentGraphVersion,
+            "isDeleted": False,
+            "isArchived": False,
+        }
+    )
+    library_agent_id = library_agent.id if library_agent else None
+    if library_agent_id is None:
+        added_agent = await library_db.add_store_agent_to_library(
+            store_listing_version_id, user_id
+        )
+        library_agent_id = added_agent.id
     try:
         row = await prisma.models.ExpertWorkflow.prisma().create(
             data={
                 "expertId": expert_id,
                 "storeListingVersionId": store_listing_version_id,
-                "libraryAgentId": library_agent.id,
+                "libraryAgentId": library_agent_id,
             },
             include=_WORKFLOW_ROW_INCLUDE,
         )
