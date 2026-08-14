@@ -111,22 +111,26 @@ class TestBuildExpertIdentitySuffix:
     async def test_archived_expert_hidden_by_accessor_raises(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=None)
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
-            with pytest.raises(
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            pytest.raises(
                 ExpertSessionUnavailableError,
                 match="no longer exists or is archived",
-            ):
-                await build_expert_identity_suffix("user-1", "exp-1")
+            ),
+        ):
+            await build_expert_identity_suffix("user-1", "exp-1")
 
     @pytest.mark.asyncio
     async def test_lookup_error_raises(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
-            with pytest.raises(
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            pytest.raises(
                 ExpertSessionUnavailableError, match="temporarily unavailable"
-            ):
-                await build_expert_identity_suffix("user-1", "exp-1")
+            ),
+        ):
+            await build_expert_identity_suffix("user-1", "exp-1")
 
     @pytest.mark.asyncio
     async def test_latest_soul_fields_and_protected_rules_are_rendered(self):

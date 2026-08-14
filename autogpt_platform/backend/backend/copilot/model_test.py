@@ -11,8 +11,10 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.models import Expert
 from pytest_mock import MockerFixture
 
+from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError
 
 from .model import (
@@ -167,10 +169,6 @@ async def test_expert_session_scope_round_trips_through_cache_and_db(
     setup_test_user, test_user_id
 ):
     """An expert scope must survive both Redis resume and a DB-only reload."""
-    from prisma.models import Expert
-
-    from backend.data.redis_client import get_redis_async
-
     expert = await Expert.prisma().create(
         data={
             "ownerUserId": test_user_id,

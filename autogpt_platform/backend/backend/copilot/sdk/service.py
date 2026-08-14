@@ -47,6 +47,8 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
@@ -5758,8 +5760,6 @@ async def _fetch_graphiti_context(
     if not (user_id and len(session.messages) <= 1):
         return True, ""
 
-    from ..graphiti.context import fetch_warm_context
-
     ctx = (
         await fetch_warm_context(user_id, message or "", expert_id=session.expert_id)
         or ""
@@ -5774,8 +5774,6 @@ async def _enqueue_graphiti_turn(
     message: str,
     assistant_msg: str,
 ) -> None:
-    from ..graphiti.ingest import enqueue_conversation_turn
-
     await enqueue_conversation_turn(
         user_id,
         session_id,

@@ -6,13 +6,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from graphiti_core.nodes import EpisodeType
 
 from . import ingest
 
 
 @pytest.fixture(autouse=True)
 def _stub_dream_registration(mocker):
-    """_ensure_worker fires ensure_dream_system_scheduled fire-and-forget for
+    """_enqueue_payload fires ensure_dream_system_scheduled fire-and-forget for
     every first-seen user. Unmocked it runs a REAL Prisma timezone lookup on
     this test's function-scoped event loop whenever an earlier test already
     connected Prisma, leaving a pool connection bound to a dead loop that
@@ -21,6 +22,17 @@ def _stub_dream_registration(mocker):
         "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
         AsyncMock(return_value=None),
     )
+
+
+def _enqueue_mock(queue: asyncio.Queue) -> AsyncMock:
+    async def enqueue(_user_id: str, _group_id: str, payload: dict) -> bool:
+        try:
+            queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            return False
+        return True
+
+    return AsyncMock(side_effect=enqueue)
 
 
 # Per-loop state in ingest.py auto-isolates between tests: pytest-asyncio
@@ -268,6 +280,7 @@ class TestEnqueueConversationTurn:
     @pytest.mark.asyncio
     async def test_expert_turn_is_enqueued_in_expert_memory_group(self) -> None:
         queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        enqueue_mock = _enqueue_mock(queue)
         with (
             patch.object(
                 ingest,
@@ -276,10 +289,9 @@ class TestEnqueueConversationTurn:
             ) as derive_mock,
             patch.object(
                 ingest,
-                "_ensure_worker",
-                new_callable=AsyncMock,
-                return_value=queue,
-            ) as worker_mock,
+                "_enqueue_payload",
+                new=enqueue_mock,
+            ),
             patch.object(
                 ingest,
                 "_resolve_user_name",
@@ -295,7 +307,11 @@ class TestEnqueueConversationTurn:
             )
 
         derive_mock.assert_called_once_with("user-1", "expert-1")
-        worker_mock.assert_awaited_once_with("user-1", "expert_private_group")
+        enqueue_mock.assert_awaited_once()
+        assert enqueue_mock.await_args.args[:2] == (
+            "user-1",
+            "expert_private_group",
+        )
         assert queue.get_nowait()["group_id"] == "expert_private_group"
 
 
@@ -304,20 +320,41 @@ class TestMemoryGroupQueueIsolation:
     async def test_same_user_experts_get_distinct_workers(self) -> None:
         first_group = "expert_first"
         second_group = "expert_second"
+        with patch.object(ingest, "_ingestion_worker", new_callable=AsyncMock):
+            await ingest._enqueue_payload(
+                "user-1", first_group, {"group_id": first_group}
+            )
+            await ingest._enqueue_payload(
+                "user-1", second_group, {"group_id": second_group}
+            )
+            state = ingest._get_loop_state()
 
-        first_queue = await ingest._ensure_worker("user-1", first_group)
-        second_queue = await ingest._ensure_worker("user-1", second_group)
-        state = ingest._get_loop_state()
-
-        try:
-            assert first_queue is not second_queue
+            assert (
+                state.group_queues[first_group] is not state.group_queues[second_group]
+            )
             assert set(state.group_queues) == {first_group, second_group}
             assert set(state.group_workers) == {first_group, second_group}
-        finally:
+
             workers = list(state.group_workers.values())
-            for worker in workers:
-                worker.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
+
+    @pytest.mark.asyncio
+    async def test_existing_queue_without_worker_is_restarted(self) -> None:
+        group_id = "expert_stale_worker"
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        state = ingest._get_loop_state()
+        state.group_queues[group_id] = queue
+
+        worker_mock = AsyncMock()
+        with patch.object(ingest, "_ingestion_worker", new=worker_mock):
+            assert await ingest._enqueue_payload(
+                "user-1", group_id, {"group_id": group_id}
+            )
+            worker = state.group_workers[group_id]
+            await worker
+
+        worker_mock.assert_awaited_once_with("user-1", group_id, queue)
+        assert queue.get_nowait()["group_id"] == group_id
 
 
 class TestQueueFullScenario:
@@ -344,11 +381,13 @@ class TestQueueFullScenario:
             ),
         ):
             # Create a tiny queue so it fills instantly.
-            await ingest._ensure_worker(user_id, "user_abc-valid-id")
-            # Replace the queue with one that is already full.
             tiny_q: asyncio.Queue = asyncio.Queue(maxsize=1)
             tiny_q.put_nowait({"dummy": True})
-            ingest._get_loop_state().group_queues["user_abc-valid-id"] = tiny_q
+            state = ingest._get_loop_state()
+            state.group_queues["user_abc-valid-id"] = tiny_q
+            current_task = asyncio.current_task()
+            assert current_task is not None
+            state.group_workers["user_abc-valid-id"] = current_task
 
             # Should not raise even though the queue is full.
             await ingest.enqueue_conversation_turn(
@@ -356,6 +395,8 @@ class TestQueueFullScenario:
                 session_id="sess1",
                 user_msg="hi",
             )
+            state.group_queues.pop("user_abc-valid-id")
+            state.group_workers.pop("user_abc-valid-id")
 
 
 class TestResolveUserName:
@@ -407,15 +448,12 @@ class TestResolveUserName:
 class TestEnqueueEpisode:
     @pytest.mark.asyncio
     async def test_enqueue_episode_returns_true_on_success(self) -> None:
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
+        enqueue_mock = _enqueue_mock(q)
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(
-                ingest, "_ensure_worker", new_callable=AsyncMock
-            ) as mock_worker,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            mock_worker.return_value = q
-
             result = await ingest.enqueue_episode(
                 user_id="abc",
                 session_id="sess1",
@@ -456,15 +494,11 @@ class TestEnqueueEpisode:
         """A body over MAX_EPISODE_BODY_BYTES is rejected (False) before any
         worker or queue is touched — degraded dream writes must not reach
         FalkorDB or the extraction LLM."""
+        enqueue_mock = AsyncMock()
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(
-                ingest, "_ensure_worker", new_callable=AsyncMock
-            ) as mock_worker,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            mock_worker.return_value = q
-
             result = await ingest.enqueue_episode(
                 user_id="abc",
                 session_id="sess1",
@@ -473,20 +507,16 @@ class TestEnqueueEpisode:
                 is_json=True,
             )
             assert result is False
-            mock_worker.assert_not_awaited()
-            assert q.empty()
+            enqueue_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_enqueue_episode_accepts_body_at_exact_size_cap(self) -> None:
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
+        enqueue_mock = _enqueue_mock(q)
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(
-                ingest, "_ensure_worker", new_callable=AsyncMock
-            ) as mock_worker,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            mock_worker.return_value = q
-
             result = await ingest.enqueue_episode(
                 user_id="abc",
                 session_id="sess1",
@@ -500,15 +530,11 @@ class TestEnqueueEpisode:
     async def test_enqueue_episode_size_cap_counts_bytes_not_chars(self) -> None:
         """Multi-byte UTF-8 content is measured in encoded bytes, so a
         char-count under the cap can still be rejected."""
+        enqueue_mock = AsyncMock()
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(
-                ingest, "_ensure_worker", new_callable=AsyncMock
-            ) as mock_worker,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            mock_worker.return_value = q
-
             # "é" encodes to 2 bytes — half the cap in chars, just over in bytes.
             body = "é" * (ingest.MAX_EPISODE_BODY_BYTES // 2 + 1)
             result = await ingest.enqueue_episode(
@@ -518,19 +544,16 @@ class TestEnqueueEpisode:
                 episode_body=body,
             )
             assert result is False
-            assert q.empty()
+            enqueue_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_enqueue_episode_json_mode(self) -> None:
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
+        enqueue_mock = _enqueue_mock(q)
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(
-                ingest, "_ensure_worker", new_callable=AsyncMock
-            ) as mock_worker,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            mock_worker.return_value = q
-
             result = await ingest.enqueue_episode(
                 user_id="abc",
                 session_id="sess1",
@@ -540,8 +563,6 @@ class TestEnqueueEpisode:
             )
             assert result is True
             item = q.get_nowait()
-            from graphiti_core.nodes import EpisodeType
-
             assert item["source"] == EpisodeType.json
 
 
@@ -551,21 +572,18 @@ class TestDerivedFindingLane:
         """A substantive assistant message should enqueue both the user
         episode and a derived-finding episode."""
         long_msg = "The analysis reveals significant growth patterns " + "x" * 200
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
+        enqueue_mock = _enqueue_mock(q)
 
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(
-                ingest, "_ensure_worker", new_callable=AsyncMock
-            ) as mock_worker,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
             patch(
                 "backend.copilot.graphiti.ingest._resolve_user_name",
                 new_callable=AsyncMock,
                 return_value="Alice",
             ),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            mock_worker.return_value = q
-
             await ingest.enqueue_conversation_turn(
                 user_id="abc",
                 session_id="sess1",
@@ -577,20 +595,17 @@ class TestDerivedFindingLane:
 
     @pytest.mark.asyncio
     async def test_short_assistant_msg_skips_finding(self) -> None:
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
+        enqueue_mock = _enqueue_mock(q)
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(
-                ingest, "_ensure_worker", new_callable=AsyncMock
-            ) as mock_worker,
+            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
             patch(
                 "backend.copilot.graphiti.ingest._resolve_user_name",
                 new_callable=AsyncMock,
                 return_value="Alice",
             ),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            mock_worker.return_value = q
-
             await ingest.enqueue_conversation_turn(
                 user_id="abc",
                 session_id="sess1",
@@ -630,8 +645,9 @@ class TestWorkerIdleTimeout:
         state = ingest._get_loop_state()
         group_id = "user_idle-user"
         state.group_queues[group_id] = queue
-        task_sentinel = MagicMock()
-        state.group_workers[group_id] = task_sentinel
+        current_task = asyncio.current_task()
+        assert current_task is not None
+        state.group_workers[group_id] = current_task
 
         original_timeout = ingest._WORKER_IDLE_TIMEOUT
         ingest._WORKER_IDLE_TIMEOUT = 0.05
@@ -643,6 +659,65 @@ class TestWorkerIdleTimeout:
         # After idle timeout the worker should have cleaned up.
         assert group_id not in state.group_queues
         assert group_id not in state.group_workers
+
+    @pytest.mark.asyncio
+    async def test_enqueue_during_idle_retirement_keeps_payload_owned(self) -> None:
+        """An enqueue already waiting on ``workers_lock`` must land before an
+        idle worker can retire, and the worker must resume to process it."""
+        user_id = "race-user"
+        group_id = "user_race-user"
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        state = ingest._get_loop_state()
+        client = MagicMock()
+        processed = asyncio.Event()
+
+        async def add_episode(**_kwargs):
+            processed.set()
+            return MagicMock()
+
+        client.add_episode = AsyncMock(side_effect=add_episode)
+
+        original_timeout = ingest._WORKER_IDLE_TIMEOUT
+        ingest._WORKER_IDLE_TIMEOUT = 0.02
+        await state.workers_lock.acquire()
+        worker = asyncio.create_task(ingest._ingestion_worker(user_id, group_id, queue))
+        state.group_queues[group_id] = queue
+        state.group_workers[group_id] = worker
+        try:
+            enqueue_task = asyncio.create_task(
+                ingest._enqueue_payload(
+                    user_id,
+                    group_id,
+                    {
+                        "name": "racing-episode",
+                        "episode_body": "hello",
+                        "source": EpisodeType.text,
+                        "source_description": "race regression",
+                        "reference_time": datetime.now(timezone.utc),
+                        "group_id": group_id,
+                        "custom_extraction_instructions": "",
+                    },
+                )
+            )
+            await asyncio.sleep(ingest._WORKER_IDLE_TIMEOUT * 2)
+            with patch.object(
+                ingest,
+                "get_graphiti_client",
+                new=AsyncMock(return_value=client),
+            ):
+                state.workers_lock.release()
+                assert await enqueue_task is True
+                await asyncio.wait_for(processed.wait(), timeout=1)
+
+            client.add_episode.assert_awaited_once()
+        finally:
+            if state.workers_lock.locked():
+                state.workers_lock.release()
+            ingest._WORKER_IDLE_TIMEOUT = original_timeout
+            workers = {worker, *state.group_workers.values()}
+            for active_worker in workers:
+                active_worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
 
 
 class TestStampEdgeMetadata:
@@ -782,12 +857,11 @@ class TestStampEdgeMetadata:
 class TestEnqueueEpisodeEdgeMetadata:
     @pytest.mark.asyncio
     async def test_edge_metadata_rides_payload_sidecar(self) -> None:
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
+            patch.object(ingest, "_enqueue_payload", new=_enqueue_mock(q)),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            w.return_value = q
             meta = {"status": "active", "provenance": "dream:p1"}
             await ingest.enqueue_episode(
                 user_id="abc",
@@ -804,12 +878,11 @@ class TestEnqueueEpisodeEdgeMetadata:
     async def test_default_sidecar_is_none_for_non_dream_writes(self) -> None:
         """Conversation turns / memory-store calls pass no edge_metadata →
         sidecar is None → worker skips stamping → no behavior change."""
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
+            patch.object(ingest, "_enqueue_payload", new=_enqueue_mock(q)),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            w.return_value = q
             await ingest.enqueue_episode(
                 user_id="abc", session_id="s", name="ep", episode_body="hi"
             )
@@ -822,12 +895,11 @@ class TestEnqueueEpisodeEdgeMetadata:
     async def test_completion_rides_payload_sidecar(self) -> None:
         """A scoped-drain caller's completion tracker is threaded onto the
         payload so the worker can signal it after processing."""
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
         with (
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
-            patch.object(ingest, "_ensure_worker", new_callable=AsyncMock) as w,
+            patch.object(ingest, "_enqueue_payload", new=_enqueue_mock(q)),
         ):
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            w.return_value = q
             completion = ingest.IngestionCompletion()
             await ingest.enqueue_episode(
                 user_id="abc",

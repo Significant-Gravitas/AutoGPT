@@ -90,7 +90,7 @@ async def test_fetch_graphiti_context_loads_warm_context_on_first_turn():
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.copilot.graphiti.context.fetch_warm_context",
+            "backend.copilot.sdk.service.fetch_warm_context",
             new=fetch_mock,
         ),
     ):
@@ -110,7 +110,7 @@ async def test_fetch_graphiti_context_uses_expert_session_scope():
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.copilot.graphiti.context.fetch_warm_context",
+            "backend.copilot.sdk.service.fetch_warm_context",
             new=fetch_mock,
         ),
     ):
@@ -127,7 +127,7 @@ async def test_enqueue_graphiti_turn_uses_expert_session_scope():
     enqueue_mock = AsyncMock()
 
     with patch(
-        "backend.copilot.graphiti.ingest.enqueue_conversation_turn",
+        "backend.copilot.sdk.service.enqueue_conversation_turn",
         new=enqueue_mock,
     ):
         await _enqueue_graphiti_turn(
@@ -171,15 +171,15 @@ async def test_expert_identity_failure_precedes_memory_read_and_write():
             "backend.copilot.sdk.service._enqueue_graphiti_turn",
             new=enqueue_mock,
         ),
+        pytest.raises(ExpertSessionUnavailableError),
     ):
-        with pytest.raises(ExpertSessionUnavailableError):
-            async for _ in stream_chat_completion_sdk(
-                session_id=session.session_id,
-                message="private prompt",
-                user_id="user-1",
-                session=session,
-            ):
-                pass
+        async for _ in stream_chat_completion_sdk(
+            session_id=session.session_id,
+            message="private prompt",
+            user_id="user-1",
+            session=session,
+        ):
+            pass
 
     identity_mock.assert_awaited_once_with("user-1", "expert-1")
     fetch_mock.assert_not_awaited()
@@ -197,7 +197,7 @@ async def test_fetch_graphiti_context_handles_empty_warm_context():
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.copilot.graphiti.context.fetch_warm_context",
+            "backend.copilot.sdk.service.fetch_warm_context",
             new=AsyncMock(return_value=None),
         ),
     ):
@@ -218,7 +218,7 @@ async def test_fetch_graphiti_context_handles_none_message():
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.copilot.graphiti.context.fetch_warm_context",
+            "backend.copilot.sdk.service.fetch_warm_context",
             new=fetch_mock,
         ),
     ):

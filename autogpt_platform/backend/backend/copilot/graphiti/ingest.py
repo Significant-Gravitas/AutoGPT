@@ -251,7 +251,23 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     queue.get(), timeout=_WORKER_IDLE_TIMEOUT
                 )
             except asyncio.TimeoutError:
-                break  # idle — clean up below
+                # Coordinate retirement with enqueue. Without this shared
+                # lock, an enqueuer can retain this queue just before we
+                # unregister it, then put work onto a queue with no worker.
+                async with state.workers_lock:
+                    registered_queue = state.group_queues.get(group_id)
+                    registered_worker = state.group_workers.get(group_id)
+                    current_worker = asyncio.current_task()
+                    if registered_queue is not queue or (
+                        registered_worker is not None
+                        and registered_worker is not current_worker
+                    ):
+                        return
+                    if not queue.empty():
+                        continue
+                    state.group_queues.pop(group_id, None)
+                    state.group_workers.pop(group_id, None)
+                    return
 
             # Sidecar completion tracker — present only when the enqueuer
             # (dream-pass apply) needs to await this specific episode. Popped
@@ -303,9 +319,16 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
         logger.debug("Ingestion worker cancelled for user %s", user_id[:12])
         raise
     finally:
-        # Clean up so the next message re-creates the worker.
-        state.group_queues.pop(group_id, None)
-        state.group_workers.pop(group_id, None)
+        # Cancellation and unexpected exits also clean up, but only when this
+        # task still owns the registered queue. A replacement worker may have
+        # been installed after normal idle retirement.
+        async with state.workers_lock:
+            if (
+                state.group_queues.get(group_id) is queue
+                and state.group_workers.get(group_id) is asyncio.current_task()
+            ):
+                state.group_queues.pop(group_id, None)
+                state.group_workers.pop(group_id, None)
 
 
 async def enqueue_conversation_turn(
@@ -345,21 +368,20 @@ async def enqueue_conversation_turn(
 
     source_description = f"User message in session {session_id}"
 
-    queue = await _ensure_worker(user_id, group_id)
-
-    try:
-        queue.put_nowait(
-            {
-                "name": episode_name,
-                "episode_body": episode_body_for_graphiti,
-                "source": EpisodeType.message,
-                "source_description": source_description,
-                "reference_time": datetime.now(timezone.utc),
-                "group_id": group_id,
-                "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
-            }
-        )
-    except asyncio.QueueFull:
+    queued = await _enqueue_payload(
+        user_id,
+        group_id,
+        {
+            "name": episode_name,
+            "episode_body": episode_body_for_graphiti,
+            "source": EpisodeType.message,
+            "source_description": source_description,
+            "reference_time": datetime.now(timezone.utc),
+            "group_id": group_id,
+            "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
+        },
+    )
+    if not queued:
         logger.warning(
             "Graphiti ingestion queue full for user %s — dropping episode",
             user_id[:12],
@@ -379,20 +401,19 @@ async def enqueue_conversation_turn(
                 status=MemoryStatus.tentative,
                 provenance=f"session:{session_id}",
             )
-            try:
-                queue.put_nowait(
-                    {
-                        "name": f"finding_{session_id}",
-                        "episode_body": envelope.model_dump_json(),
-                        "source": EpisodeType.json,
-                        "source_description": f"Assistant-derived finding in session {session_id}",
-                        "reference_time": datetime.now(timezone.utc),
-                        "group_id": group_id,
-                        "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
-                    }
-                )
-            except asyncio.QueueFull:
-                pass  # user canonical episode already queued — finding is best-effort
+            await _enqueue_payload(
+                user_id,
+                group_id,
+                {
+                    "name": f"finding_{session_id}",
+                    "episode_body": envelope.model_dump_json(),
+                    "source": EpisodeType.json,
+                    "source_description": f"Assistant-derived finding in session {session_id}",
+                    "reference_time": datetime.now(timezone.utc),
+                    "group_id": group_id,
+                    "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
+                },
+            )
 
 
 async def enqueue_episode(
@@ -452,35 +473,33 @@ async def enqueue_episode(
         )
         return False
 
-    queue = await _ensure_worker(user_id, group_id)
-
     source = EpisodeType.json if is_json else EpisodeType.text
 
-    try:
-        queue.put_nowait(
-            {
-                "name": name,
-                "episode_body": episode_body,
-                "source": source,
-                "source_description": source_description,
-                "reference_time": datetime.now(timezone.utc),
-                "group_id": group_id,
-                "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
-                # Sidecar — popped by the worker before the add_episode
-                # spread; carries dream metadata for post-write stamping.
-                "_edge_metadata": edge_metadata,
-                # Sidecar — the worker calls ``complete_one`` on it after
-                # processing so a scoped-drain caller can await this episode.
-                "_completion": completion,
-            }
-        )
-        return True
-    except asyncio.QueueFull:
+    queued = await _enqueue_payload(
+        user_id,
+        group_id,
+        {
+            "name": name,
+            "episode_body": episode_body,
+            "source": source,
+            "source_description": source_description,
+            "reference_time": datetime.now(timezone.utc),
+            "group_id": group_id,
+            "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
+            # Sidecar — popped by the worker before the add_episode
+            # spread; carries dream metadata for post-write stamping.
+            "_edge_metadata": edge_metadata,
+            # Sidecar — the worker calls ``complete_one`` on it after
+            # processing so a scoped-drain caller can await this episode.
+            "_completion": completion,
+        },
+    )
+    if not queued:
         logger.warning(
             "Graphiti ingestion queue full for user %s — dropping episode",
             user_id[:12],
         )
-        return False
+    return queued
 
 
 async def wait_for_ingestion(
@@ -508,12 +527,12 @@ async def wait_for_ingestion(
     return await completion.wait(timeout_seconds)
 
 
-async def _ensure_worker(user_id: str, group_id: str) -> asyncio.Queue:
-    """Create a queue and worker for *group_id* if one doesn't exist.
+async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
+    """Atomically select a group worker and enqueue one payload.
 
-    Returns the queue directly so callers don't need to look it up from
-    the state dict (which avoids a TOCTOU race if the worker times out
-    and cleans up between this call and the put_nowait).
+    Queue selection, worker creation, and ``put_nowait`` share
+    ``workers_lock`` with idle retirement. A caller can therefore never put
+    work onto a queue after its worker has unregistered it.
 
     Also fires the auto-registration of the user's dream-system
     schedules (community rebuild + dream pass + ratification pass) the
@@ -526,15 +545,22 @@ async def _ensure_worker(user_id: str, group_id: str) -> asyncio.Queue:
     state = _get_loop_state()
     is_new_group_for_this_process = False
     async with state.workers_lock:
-        if group_id not in state.group_queues:
-            q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            state.group_queues[group_id] = q
+        queue = state.group_queues.get(group_id)
+        if queue is None:
+            queue = asyncio.Queue(maxsize=100)
+            state.group_queues[group_id] = queue
+            is_new_group_for_this_process = True
+
+        worker = state.group_workers.get(group_id)
+        if worker is None or worker.done():
             state.group_workers[group_id] = asyncio.create_task(
-                _ingestion_worker(user_id, group_id, q),
+                _ingestion_worker(user_id, group_id, queue),
                 name=f"graphiti-ingest-{group_id[:12]}",
             )
-            is_new_group_for_this_process = True
-        queue = state.group_queues[group_id]
+        try:
+            queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            return False
 
     if is_new_group_for_this_process:
         # Fire-and-forget; per-job Redis SETNX inside the helper
@@ -548,7 +574,7 @@ async def _ensure_worker(user_id: str, group_id: str) -> asyncio.Queue:
             name=f"dream-system-register-{user_id[:12]}",
         )
 
-    return queue
+    return True
 
 
 async def _resolve_user_name(user_id: str) -> str:

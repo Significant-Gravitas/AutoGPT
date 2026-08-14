@@ -104,7 +104,7 @@ def derive_memory_group_id(user_id: str, expert_id: str | None = None) -> str:
             "Only [a-zA-Z0-9_-] are allowed."
         )
 
-    scope_digest = hashlib.sha256(f"{user_id}\0{expert_id}".encode("utf-8")).hexdigest()
+    scope_digest = hashlib.sha256(f"{user_id}\0{expert_id}".encode()).hexdigest()
     return f"expert_{scope_digest}"
 
 
