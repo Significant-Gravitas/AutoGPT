@@ -2,11 +2,12 @@ import {
   getHireExpertMockHandler,
   getListExpertsMockHandler,
   getListExpertTemplatesMockHandler,
+  getListExpertTemplatesMockHandler401,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
@@ -48,6 +49,30 @@ const mariaTemplate: Expert = {
   source_template_id: null,
   is_archived: false,
   workflows: [],
+};
+
+const mariaRichTemplate: Expert = {
+  ...mariaTemplate,
+  bio: "Maria has run brand launches for a decade and loves a tidy funnel.",
+  skills: ["Brand strategy", "SEO"],
+  workflows: [
+    {
+      id: "wf-1",
+      store_listing_version_id: "slv-1",
+      library_agent_id: "lib-1",
+      graph_id: "graph-1",
+      name: "Content Calendar",
+      description: "Plans a month of posts",
+    },
+    {
+      id: "wf-2",
+      store_listing_version_id: "slv-2",
+      library_agent_id: "lib-2",
+      graph_id: "graph-2",
+      name: "SEO Audit",
+      description: null,
+    },
+  ],
 };
 
 const hiredMaria: Expert = {
@@ -111,7 +136,7 @@ describe("Marketplace ExpertsSection", () => {
     expect(templatesRequested).toBe(false);
   });
 
-  test("hired template shows hired state", async () => {
+  test("shows a consistent hired state on the card and in the sheet", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([hiredMaria]),
@@ -120,6 +145,90 @@ describe("Marketplace ExpertsSection", () => {
     renderMarketplace();
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
-    expect(await screen.findByText("Hired")).toBeDefined();
+    // Card badge reads the hired lookup.
+    expect(await screen.findByText("On your team")).toBeDefined();
+
+    await userEvent.click(await screen.findByText("Maria"));
+
+    // Sheet reads the same lookup: hired status + an Open chat action that
+    // targets the hired expert instance, not the template.
+    expect(await screen.findAllByText("On your team")).toHaveLength(2);
+    const chatLink = await screen.findByRole("link", { name: "Open chat" });
+    expect(chatLink.getAttribute("href")).toBe(
+      "/copilot?expertId=expert-maria",
+    );
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
+  });
+
+  test("hides the experts section when the templates query fails", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler401(),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    // Marketplace still renders; only the experts section drops out once the
+    // templates query settles into its error state.
+    expect(await screen.findByText("All AI Workflows")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByText("Meet the AI Experts")).toBeNull(),
+    );
+  });
+
+  test("renders the profile sections from a fully populated template", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaRichTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    await userEvent.click(await screen.findByText("Maria"));
+
+    expect(
+      await screen.findByText("What Maria sets up on day one"),
+    ).toBeDefined();
+    // First workflow (name + description) shows in both the day-one highlight
+    // and the full list.
+    expect(screen.getAllByText("Content Calendar")).toHaveLength(2);
+    expect(screen.getAllByText("Plans a month of posts")).toHaveLength(2);
+    expect(screen.getByText("Workflows Maria brings")).toBeDefined();
+    expect(screen.getByText("SEO Audit")).toBeDefined();
+    // Skill chips show on both the card and the sheet's Skills section.
+    expect(screen.getAllByText("Brand strategy")).toHaveLength(2);
+    expect(screen.getByText("Included with your plan")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Maria is an AI teammate. She'll always tell you before acting outside the platform.",
+      ),
+    ).toBeDefined();
+  });
+
+  test("renders a minimal sheet and skips empty sections", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    await userEvent.click(await screen.findByText("Maria"));
+
+    // Always-on trust copy is present.
+    expect(await screen.findByText("Included with your plan")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Maria is an AI teammate. She'll always tell you before acting outside the platform.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Hire Maria" })).toBeDefined();
+
+    // Optional sections are omitted rather than rendered empty.
+    expect(screen.queryByText("What Maria sets up on day one")).toBeNull();
+    expect(screen.queryByText("Skills")).toBeNull();
+    expect(screen.queryByText("Workflows Maria brings")).toBeNull();
   });
 });

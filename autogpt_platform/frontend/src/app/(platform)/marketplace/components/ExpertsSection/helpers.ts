@@ -1,3 +1,4 @@
+import { Expert } from "@/app/api/__generated__/models/expert";
 import {
   Briefcase01Icon,
   ChartIncreaseIcon,
@@ -52,15 +53,47 @@ const ACCENTS: Record<string, ExpertAccent> = {
   },
 };
 
-const ROLE_ACCENTS: Array<[RegExp, string]> = [
-  [/marketing|growth|brand/i, "violet"],
-  [/sales|revenue/i, "amber"],
-  [/ops|operations|support/i, "sky"],
+interface RoleTheme {
+  accent: string;
+  avatar: string;
+}
+
+/** Role taxonomy for the roster. Each role maps to a colour accent and the
+ *  committed persona avatar under `/public/experts`, so an expert with no
+ *  `avatar_url` still shows a fitting face instead of a marble gradient. */
+const ROLE_THEMES: Array<[RegExp, RoleTheme]> = [
+  [
+    /marketing|growth|brand/i,
+    { accent: "violet", avatar: "/experts/maria.svg" },
+  ],
+  [/sales|revenue/i, { accent: "amber", avatar: "/experts/max.svg" }],
+  [
+    /ops|operations|support/i,
+    { accent: "sky", avatar: "/experts/frankie.svg" },
+  ],
 ];
 
-export function getExpertAccent(role: string): ExpertAccent {
-  for (const [pattern, key] of ROLE_ACCENTS) {
-    if (pattern.test(role)) return ACCENTS[key];
+function matchRoleTheme(role: string): RoleTheme | null {
+  for (const [pattern, theme] of ROLE_THEMES) {
+    if (pattern.test(role)) return theme;
   }
-  return ACCENTS.zinc;
+  return null;
+}
+
+export function getExpertAccent(role: string): ExpertAccent {
+  const theme = matchRoleTheme(role);
+  return theme ? ACCENTS[theme.accent] : ACCENTS.zinc;
+}
+
+/** Prefer the expert's own avatar, then a role-based persona avatar, so the
+ *  marble gradient only appears for experts whose role we can't place. */
+export function getExpertAvatarUrl(
+  expert: Pick<Expert, "avatar_url" | "role">,
+): string | null {
+  if (expert.avatar_url) return expert.avatar_url;
+  return matchRoleTheme(expert.role)?.avatar ?? null;
+}
+
+export function getExpertFirstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
 }

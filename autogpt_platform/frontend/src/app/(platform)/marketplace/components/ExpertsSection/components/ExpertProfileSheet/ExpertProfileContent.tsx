@@ -1,6 +1,7 @@
 "use client";
 
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import {
   Avatar,
   AvatarFallback,
@@ -8,12 +9,17 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
-import { ExpertAccent } from "../../helpers";
+import { ReactNode, useState } from "react";
+import {
+  ExpertAccent,
+  getExpertAvatarUrl,
+  getExpertFirstName,
+} from "../../helpers";
 import {
   ArrowDown01Icon,
   CheckmarkCircle02Icon,
   FlashIcon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -23,6 +29,7 @@ interface Props {
   isHired: boolean;
   isHiring: boolean;
   onHire: () => void;
+  hiredExpertId: string | null;
 }
 
 export function ExpertProfileContent({
@@ -31,7 +38,11 @@ export function ExpertProfileContent({
   isHired,
   isHiring,
   onHire,
+  hiredExpertId,
 }: Props) {
+  const firstName = getExpertFirstName(expert.name);
+  const avatarUrl = getExpertAvatarUrl(expert);
+
   return (
     <div className="relative">
       <div
@@ -41,9 +52,7 @@ export function ExpertProfileContent({
         )}
       >
         <Avatar className="h-24 w-24 bg-white shadow-sm ring-1 ring-black/5">
-          {expert.avatar_url ? (
-            <AvatarImage src={expert.avatar_url} alt={expert.name} />
-          ) : null}
+          {avatarUrl ? <AvatarImage src={avatarUrl} alt={expert.name} /> : null}
           <AvatarFallback>{expert.name}</AvatarFallback>
         </Avatar>
         <div>
@@ -67,16 +76,16 @@ export function ExpertProfileContent({
         </div>
       </div>
 
-      <PersonalitySection
+      <DayOneSection
         key={expert.id}
-        text={expert.bio || expert.identity}
+        firstName={firstName}
+        firstWorkflow={expert.workflows[0] ?? null}
+        bio={expert.bio}
+        accent={accent}
       />
 
       {expert.skills && expert.skills.length > 0 ? (
-        <div className="relative mt-8">
-          <div className="mb-2.5 text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-            Skills
-          </div>
+        <Section title="Skills">
           <div className="flex flex-wrap gap-2">
             {expert.skills.map((skill) => (
               <span
@@ -87,14 +96,11 @@ export function ExpertProfileContent({
               </span>
             ))}
           </div>
-        </div>
+        </Section>
       ) : null}
 
       {expert.workflows.length > 0 ? (
-        <div className="relative mt-8">
-          <div className="mb-2.5 text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-            {expert.is_template ? "Preloaded workflows" : "Workflows"}
-          </div>
+        <Section title={`Workflows ${firstName} brings`}>
           <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-200/80 bg-white">
             {expert.workflows.map((workflow) => (
               <div
@@ -119,14 +125,36 @@ export function ExpertProfileContent({
               </div>
             ))}
           </div>
-        </div>
+        </Section>
       ) : null}
 
-      <div className="relative mt-8">
+      <div className="relative mt-8 flex flex-col gap-2 rounded-xl bg-zinc-50/80 px-4 py-3.5">
+        <div className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+          <Icon icon={SparklesIcon} size={16} className={accent.icon} />
+          Included with your plan
+        </div>
+        <p className="text-[13px] leading-relaxed text-zinc-500">
+          {`${expert.name} is an AI teammate. She'll always tell you before acting outside the platform.`}
+        </p>
+      </div>
+
+      <div className="relative mt-6">
         {isHired ? (
-          <div className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 text-base font-medium text-emerald-700">
-            <Icon icon={CheckmarkCircle02Icon} size={20} />
-            On your team
+          <div className="flex flex-col gap-3">
+            <div className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 text-base font-medium text-emerald-700">
+              <Icon icon={CheckmarkCircle02Icon} size={20} />
+              On your team
+            </div>
+            {hiredExpertId ? (
+              <Button
+                as="NextLink"
+                href={`/copilot?expertId=${hiredExpertId}`}
+                variant="primary"
+                className="h-12 w-full rounded-full text-base"
+              >
+                Open chat
+              </Button>
+            ) : null}
           </div>
         ) : (
           <Button
@@ -143,18 +171,66 @@ export function ExpertProfileContent({
   );
 }
 
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="relative mt-8">
+      <div className="mb-2.5 text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 // Roughly the number of characters that fit in the four-line clamp below.
 const CLAMPED_BIO_LENGTH = 280;
 
-function PersonalitySection({ text }: { text: string }) {
+function DayOneSection({
+  firstName,
+  firstWorkflow,
+  bio,
+  accent,
+}: {
+  firstName: string;
+  firstWorkflow: ExpertWorkflowRef | null;
+  bio: string | null;
+  accent: ExpertAccent;
+}) {
+  const trimmedBio = bio?.trim() || null;
+  if (!firstWorkflow && !trimmedBio) return null;
+
+  return (
+    <Section title={`What ${firstName} sets up on day one`}>
+      {firstWorkflow ? (
+        <div className="mb-3 flex items-start gap-3 rounded-xl border border-zinc-200/80 bg-white px-4 py-3">
+          <Icon
+            icon={FlashIcon}
+            size={18}
+            className={cn("mt-0.5 shrink-0", accent.icon)}
+          />
+          <div className="min-w-0">
+            <div className="text-[15px] font-medium text-zinc-800">
+              {firstWorkflow.name ?? "Unnamed workflow"}
+            </div>
+            {firstWorkflow.description ? (
+              <div className="text-[13px] leading-relaxed text-zinc-500">
+                {firstWorkflow.description}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {trimmedBio ? <BioText text={trimmedBio} /> : null}
+    </Section>
+  );
+}
+
+function BioText({ text }: { text: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const isClampable = text.length > CLAMPED_BIO_LENGTH;
 
   return (
-    <div className="relative mt-8">
-      <div className="mb-2.5 text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-        About
-      </div>
+    <div>
       <p
         className={cn(
           "whitespace-pre-line text-base leading-relaxed text-zinc-600",

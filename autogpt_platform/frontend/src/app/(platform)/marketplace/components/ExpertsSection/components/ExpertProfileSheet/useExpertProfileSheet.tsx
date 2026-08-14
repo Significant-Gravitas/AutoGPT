@@ -19,12 +19,16 @@ export function useExpertProfileSheet(
     query: { select: (x) => x.data as Expert[] },
   });
 
-  const isHired =
-    expert !== null &&
-    (!expert.is_template ||
-      (expertsQuery.data ?? []).some(
-        (hired) => hired.source_template_id === expert.id,
-      ));
+  const hiredExpert =
+    expert === null
+      ? null
+      : expert.is_template
+        ? ((expertsQuery.data ?? []).find(
+            (hired) => hired.source_template_id === expert.id,
+          ) ?? null)
+        : expert;
+
+  const isHired = hiredExpert !== null;
 
   const { mutateAsync: hireExpert, isPending: isHiring } = useHireExpert();
 
@@ -69,5 +73,5 @@ export function useExpertProfileSheet(
     }
   }
 
-  return { isHired, isHiring, hire };
+  return { isHired, isHiring, hire, hiredExpertId: hiredExpert?.id ?? null };
 }

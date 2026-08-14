@@ -53,8 +53,11 @@ export function useTeamPage({ enabled }: Args) {
   return {
     hiredExperts,
     schedulesForExpert,
-    isLoading: enabled && (expertsQuery.isLoading || schedulesQuery.isLoading),
-    isError: expertsQuery.isError || schedulesQuery.isError,
+    // Gate loading/error on the primary experts query only. Schedules just
+    // decorate each card (and default to []), so a slow or failing schedules
+    // fetch must not trap the roster or empty state behind bare skeletons.
+    isLoading: enabled && expertsQuery.isLoading,
+    isError: expertsQuery.isError,
     refetch,
     installWorkflow,
     pickerExpertId,

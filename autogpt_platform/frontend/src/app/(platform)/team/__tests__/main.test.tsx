@@ -5,7 +5,10 @@ import {
   getUpdateExpertSoulMockHandler,
   getUpdateExpertSoulMockHandler422,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
-import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import {
+  getGetV1ListExecutionSchedulesForAUserMockHandler,
+  getGetV1ListExecutionSchedulesForAUserMockHandler401,
+} from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
@@ -434,6 +437,21 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     expect(await screen.findByText("Something went wrong")).toBeDefined();
+  });
+
+  test("keeps the roster visible when only the schedules query fails", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler401(),
+    );
+
+    render(<TeamPage />);
+
+    // The primary experts list must not be trapped behind skeletons or an
+    // error card when the secondary schedules fetch fails.
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+    expect(screen.getByText("No schedules yet")).toBeDefined();
   });
 
   test("calls notFound() when the flag is resolved and disabled", () => {
