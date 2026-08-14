@@ -201,9 +201,20 @@ describe("AppSidebar", () => {
   it("keeps Your AI and Hire visible when the dashboard request fails", async () => {
     useGetFlagMock.mockReturnValue(true);
     server.use(getGetHomeDashboardMockHandler401());
+    const dashboardRequestSettled = new Promise<void>((resolve) => {
+      function onResponse({ request }: { request: Request }) {
+        if (new URL(request.url).pathname !== "/api/proxy/api/home") return;
+        server.events.removeListener("response:mocked", onResponse);
+        resolve();
+      }
+
+      server.events.on("response:mocked", onResponse);
+    });
     renderSidebar();
 
-    const yourAi = await screen.findByRole("link", { name: /your ai/i });
+    await dashboardRequestSettled;
+
+    const yourAi = screen.getByRole("link", { name: /your ai/i });
     expect(yourAi.getAttribute("href")).toBe("/copilot");
     expect(
       screen.getByRole("link", { name: /^hire$/i }).getAttribute("href"),
