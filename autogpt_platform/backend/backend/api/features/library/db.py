@@ -461,25 +461,21 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     if not library_agent:
         raise NotFoundError(f"Library agent #{id} not found")
 
-    if library_agent.AgentGraph:
-        (
-            marketplace_details,
-            schedule_info,
-            store_version_ids,
-            sub_graphs,
-        ) = await asyncio.gather(
-            _fetch_marketplace_details(library_agent.AgentGraph.id),
-            _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
-            _fetch_matching_store_version_ids([library_agent]),
-            graph_db.get_sub_graphs(library_agent.AgentGraph),
-        )
-        store_listing, profile = marketplace_details
-    else:
-        store_listing = None
-        profile = None
-        schedule_info = {}
-        store_version_ids = await _fetch_matching_store_version_ids([library_agent])
-        sub_graphs = None
+    if not library_agent.AgentGraph:
+        raise NotFoundError(f"Agent graph for library agent #{id} not found")
+
+    (
+        marketplace_details,
+        schedule_info,
+        store_version_ids,
+        sub_graphs,
+    ) = await asyncio.gather(
+        _fetch_marketplace_details(library_agent.AgentGraph.id),
+        _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
+        _fetch_matching_store_version_ids([library_agent]),
+        graph_db.get_sub_graphs(library_agent.AgentGraph),
+    )
+    store_listing, profile = marketplace_details
 
     return library_model.LibraryAgent.from_db(
         library_agent,

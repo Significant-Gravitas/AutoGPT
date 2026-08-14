@@ -386,9 +386,7 @@ async def test_add_agent_to_library(mocker):
     mock_graph_model = mocker.Mock()
     mock_graph_model.id = "agent1"
     mock_graph_model.version = 1
-    mock_graph_model.nodes = (
-        []
-    )  # Empty list so _has_human_in_the_loop_blocks returns False
+    mock_graph_model.nodes = []  # Empty list so _has_human_in_the_loop_blocks returns False
     mock_graph_db.get_graph = mocker.AsyncMock(return_value=mock_graph_model)
 
     # Mock the model conversion
@@ -740,6 +738,23 @@ async def test_get_library_agent_exposes_matching_store_version_id(mocker):
 
     assert result is converted
     assert mock_from_db.call_args.kwargs["store_listing_version_id"] == "slv-exact"
+
+
+@pytest.mark.asyncio
+async def test_get_library_agent_rejects_missing_graph(mocker):
+    library_agent = MagicMock(id="library-id", AgentGraph=None)
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(
+        return_value=library_agent
+    )
+    mock_from_db = mocker.patch.object(library_model.LibraryAgent, "from_db")
+
+    with pytest.raises(
+        NotFoundError, match="Agent graph for library agent #library-id not found"
+    ):
+        await db.get_library_agent("library-id", "test-user")
+
+    mock_from_db.assert_not_called()
 
 
 @pytest.mark.asyncio
