@@ -24,6 +24,8 @@ import { useExpertTeamCard } from "./useExpertTeamCard";
 interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
+  schedulesStatus: "loading" | "error" | "loaded";
+  onRetrySchedules: () => void;
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
 }
@@ -31,6 +33,8 @@ interface Props {
 export function ExpertTeamCard({
   expert,
   schedules,
+  schedulesStatus,
+  onRetrySchedules,
   onInstallWorkflow,
   onEditSoul,
 }: Props) {
@@ -48,6 +52,12 @@ export function ExpertTeamCard({
   function handleEditSoulClick(event: MouseEvent) {
     event.stopPropagation();
     onEditSoul(expert.id);
+  }
+
+  function handleRetrySchedulesClick(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    onRetrySchedules();
   }
 
   return (
@@ -92,7 +102,22 @@ export function ExpertTeamCard({
           />
         </div>
         <Text variant="small" className="min-h-5 text-zinc-500">
-          {scheduleLabel ?? "No schedules yet"}
+          {schedulesStatus === "loading" ? (
+            "Loading schedules…"
+          ) : schedulesStatus === "error" ? (
+            <>
+              Schedules unavailable{" "}
+              <button
+                type="button"
+                onClick={handleRetrySchedulesClick}
+                className="underline underline-offset-2 hover:text-zinc-700"
+              >
+                Retry
+              </button>
+            </>
+          ) : (
+            (scheduleLabel ?? "No schedules yet")
+          )}
         </Text>
         <div className="flex min-h-5 items-center gap-2">
           <Text variant="small" className="text-zinc-500">

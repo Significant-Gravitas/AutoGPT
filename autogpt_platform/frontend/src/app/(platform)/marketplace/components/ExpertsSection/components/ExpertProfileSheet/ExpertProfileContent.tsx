@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { ReactNode, useState } from "react";
 import {
   ExpertAccent,
+  getDayOneWorkflow,
   getExpertAvatarUrl,
   getExpertFirstName,
 } from "../../helpers";
@@ -30,6 +31,8 @@ interface Props {
   isHiring: boolean;
   onHire: () => void;
   hiredExpertId: string | null;
+  hiredLookup: "loading" | "error" | "loaded";
+  onRetryHiredLookup: () => void;
 }
 
 export function ExpertProfileContent({
@@ -39,6 +42,8 @@ export function ExpertProfileContent({
   isHiring,
   onHire,
   hiredExpertId,
+  hiredLookup,
+  onRetryHiredLookup,
 }: Props) {
   const firstName = getExpertFirstName(expert.name);
   const avatarUrl = getExpertAvatarUrl(expert);
@@ -79,7 +84,7 @@ export function ExpertProfileContent({
       <DayOneSection
         key={expert.id}
         firstName={firstName}
-        firstWorkflow={expert.workflows[0] ?? null}
+        firstWorkflow={getDayOneWorkflow(expert.workflows)}
         bio={expert.bio}
         accent={accent}
       />
@@ -156,11 +161,25 @@ export function ExpertProfileContent({
               </Button>
             ) : null}
           </div>
+        ) : hiredLookup === "error" ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+            <span className="text-sm text-zinc-600">
+              Team status unavailable right now.
+            </span>
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={onRetryHiredLookup}
+            >
+              Retry
+            </Button>
+          </div>
         ) : (
           <Button
             variant="primary"
             onClick={onHire}
             loading={isHiring}
+            disabled={hiredLookup === "loading"}
             className="h-12 w-full rounded-full text-base"
           >
             {`Hire ${expert.name}`}
@@ -210,7 +229,7 @@ function DayOneSection({
           />
           <div className="min-w-0">
             <div className="text-[15px] font-medium text-zinc-800">
-              {firstWorkflow.name ?? "Unnamed workflow"}
+              {firstWorkflow.name}
             </div>
             {firstWorkflow.description ? (
               <div className="text-[13px] leading-relaxed text-zinc-500">

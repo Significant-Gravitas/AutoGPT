@@ -1,5 +1,7 @@
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { describe, expect, test } from "vitest";
 import {
+  getDayOneWorkflow,
   getExpertAccent,
   getExpertAvatarUrl,
   getExpertFirstName,
@@ -37,6 +39,44 @@ describe("getExpertAvatarUrl", () => {
     expect(getExpertAvatarUrl({ avatar_url: null, role: "Astrologer" })).toBe(
       null,
     );
+  });
+
+  test("treats a whitespace-only avatar_url as absent", () => {
+    expect(getExpertAvatarUrl({ avatar_url: "   ", role: "Marketing" })).toBe(
+      "/experts/maria.svg",
+    );
+    expect(getExpertAvatarUrl({ avatar_url: "   ", role: "Astrologer" })).toBe(
+      null,
+    );
+  });
+});
+
+function makeWorkflow(
+  overrides: Partial<ExpertWorkflowRef>,
+): ExpertWorkflowRef {
+  return {
+    id: "wf-x",
+    store_listing_version_id: null,
+    library_agent_id: null,
+    graph_id: null,
+    name: null,
+    description: null,
+    ...overrides,
+  };
+}
+
+describe("getDayOneWorkflow", () => {
+  test("returns the first workflow with a displayable name", () => {
+    const dangling = makeWorkflow({ id: "wf-1", name: null });
+    const blank = makeWorkflow({ id: "wf-2", name: "   " });
+    const named = makeWorkflow({ id: "wf-3", name: "Content Calendar" });
+    expect(getDayOneWorkflow([dangling, blank, named])).toBe(named);
+  });
+
+  test("returns null when no workflow has a name", () => {
+    expect(getDayOneWorkflow([])).toBe(null);
+    expect(getDayOneWorkflow([makeWorkflow({ name: null })])).toBe(null);
+    expect(getDayOneWorkflow([makeWorkflow({ name: " " })])).toBe(null);
   });
 });
 

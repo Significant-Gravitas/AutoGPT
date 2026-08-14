@@ -1,6 +1,7 @@
 import {
   getHireExpertMockHandler,
   getListExpertsMockHandler,
+  getListExpertsMockHandler401,
   getListExpertTemplatesMockHandler,
   getListExpertTemplatesMockHandler401,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
@@ -230,5 +231,91 @@ describe("Marketplace ExpertsSection", () => {
     expect(screen.queryByText("What Maria sets up on day one")).toBeNull();
     expect(screen.queryByText("Skills")).toBeNull();
     expect(screen.queryByText("Workflows Maria brings")).toBeNull();
+  });
+
+  test("keeps the hire action gated while the team lookup is unresolved", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler(() => new Promise<Expert[]>(() => {})),
+    );
+
+    renderMarketplace();
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    // The card shows a placeholder instead of claiming "Hire" or "On your
+    // team" while the hired lookup is unresolved.
+    expect(screen.queryByText("Hire")).toBeNull();
+    expect(screen.queryByText("On your team")).toBeNull();
+
+    await userEvent.click(await screen.findByText("Maria"));
+
+    const hireButton = await screen.findByRole("button", {
+      name: "Hire Maria",
+    });
+    expect(hireButton.hasAttribute("disabled")).toBe(true);
+  });
+
+  test("offers a retryable team status instead of hiring when the lookup fails", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler401(),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+
+    expect(
+      await screen.findByText("Team status unavailable right now."),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
+
+    server.use(getListExpertsMockHandler([hiredMaria]));
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    // After a successful retry the sheet resolves to the real hired state.
+    expect(
+      await screen.findByRole("link", { name: "Open chat" }),
+    ).toBeDefined();
+  });
+
+  test("day-one highlight skips workflows without displayable names", async () => {
+    const templateWithDanglingRef: Expert = {
+      ...mariaTemplate,
+      workflows: [
+        {
+          id: "wf-dangling",
+          store_listing_version_id: null,
+          library_agent_id: null,
+          graph_id: null,
+          name: null,
+          description: null,
+        },
+        {
+          id: "wf-named",
+          store_listing_version_id: "slv-2",
+          library_agent_id: null,
+          graph_id: null,
+          name: "SEO Audit",
+          description: null,
+        },
+      ],
+    };
+    server.use(
+      getListExpertTemplatesMockHandler([templateWithDanglingRef]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+
+    expect(
+      await screen.findByText("What Maria sets up on day one"),
+    ).toBeDefined();
+    // The named workflow is promised (highlight + list); the dangling ref
+    // only appears in the full list, never as the day-one promise.
+    expect(screen.getAllByText("SEO Audit")).toHaveLength(2);
+    expect(screen.getAllByText("Unnamed workflow")).toHaveLength(1);
   });
 });

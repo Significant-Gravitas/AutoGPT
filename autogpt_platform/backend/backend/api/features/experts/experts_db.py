@@ -19,7 +19,12 @@ from backend.util.timezone_utils import get_user_timezone_or_utc
 logger = logging.getLogger(__name__)
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
-_WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
+_WORKFLOW_INCLUDE = {
+    "Workflows": {
+        "include": _WORKFLOW_ROW_INCLUDE,
+        "order_by": [{"createdAt": "asc"}, {"id": "asc"}],
+    }
+}
 
 
 class ExpertTemplateNotFoundError(Exception):

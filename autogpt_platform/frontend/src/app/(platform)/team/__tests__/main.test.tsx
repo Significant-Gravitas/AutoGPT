@@ -439,7 +439,7 @@ describe("TeamPage", () => {
     expect(await screen.findByText("Something went wrong")).toBeDefined();
   });
 
-  test("keeps the roster visible when only the schedules query fails", async () => {
+  test("keeps the roster visible and offers a retry when only the schedules query fails", async () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getGetV1ListExecutionSchedulesForAUserMockHandler401(),
@@ -448,10 +448,33 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     // The primary experts list must not be trapped behind skeletons or an
-    // error card when the secondary schedules fetch fails.
+    // error card when the secondary schedules fetch fails — and the failure
+    // must not masquerade as "No schedules yet".
     expect(await screen.findByText("Maria")).toBeDefined();
     expect(screen.queryByText("Something went wrong")).toBeNull();
-    expect(screen.getByText("No schedules yet")).toBeDefined();
+    expect(await screen.findByText("Schedules unavailable")).toBeDefined();
+    expect(screen.queryByText("No schedules yet")).toBeNull();
+
+    server.use(getGetV1ListExecutionSchedulesForAUserMockHandler([]));
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("No schedules yet")).toBeDefined();
+    expect(screen.queryByText("Schedules unavailable")).toBeNull();
+  });
+
+  test("shows a schedules loading state instead of claiming no schedules", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler(
+        () => new Promise<GraphExecutionJobInfo[]>(() => {}),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.getByText("Loading schedules…")).toBeDefined();
+    expect(screen.queryByText("No schedules yet")).toBeNull();
   });
 
   test("calls notFound() when the flag is resolved and disabled", () => {

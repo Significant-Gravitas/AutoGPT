@@ -1,4 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import {
   Briefcase01Icon,
   ChartIncreaseIcon,
@@ -90,10 +91,20 @@ export function getExpertAccent(role: string): ExpertAccent {
 export function getExpertAvatarUrl(
   expert: Pick<Expert, "avatar_url" | "role">,
 ): string | null {
-  if (expert.avatar_url) return expert.avatar_url;
+  const customUrl = expert.avatar_url?.trim();
+  if (customUrl) return customUrl;
   return matchRoleTheme(expert.role)?.avatar ?? null;
 }
 
 export function getExpertFirstName(name: string): string {
   return name.trim().split(/\s+/)[0] || name;
+}
+
+/** The workflow promised in the day-one highlight. API ordering is not
+ *  contractual and dangling refs have null names, so pick the first workflow
+ *  with displayable copy instead of trusting index 0. */
+export function getDayOneWorkflow(
+  workflows: ExpertWorkflowRef[],
+): ExpertWorkflowRef | null {
+  return workflows.find((workflow) => workflow.name?.trim()) ?? null;
 }

@@ -11,6 +11,7 @@ export function ExpertsSection() {
   const {
     templates,
     hiredTemplateIds,
+    isHiredLookupPending,
     isLoading,
     isError,
     selectedTemplateId,
@@ -42,7 +43,13 @@ export function ExpertsSection() {
             <ExpertCard
               key={template.id}
               expert={template}
-              isHired={hiredTemplateIds.has(template.id)}
+              hiredState={
+                isHiredLookupPending
+                  ? "unknown"
+                  : hiredTemplateIds.has(template.id)
+                    ? "hired"
+                    : "available"
+              }
               onClick={() => openTemplate(template.id)}
             />
           ))}

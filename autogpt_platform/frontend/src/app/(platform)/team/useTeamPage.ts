@@ -25,6 +25,12 @@ export function useTeamPage({ enabled }: Args) {
     (expert) => !expert.is_template && !expert.is_archived,
   );
 
+  const schedulesStatus = schedulesQuery.isError
+    ? ("error" as const)
+    : schedulesQuery.isSuccess
+      ? ("loaded" as const)
+      : ("loading" as const);
+
   function schedulesForExpert(expert: Expert) {
     return getExpertSchedules(expert, schedulesQuery.data ?? []);
   }
@@ -41,6 +47,10 @@ export function useTeamPage({ enabled }: Args) {
     return Promise.all([expertsQuery.refetch(), schedulesQuery.refetch()]);
   }
 
+  function retrySchedules() {
+    void schedulesQuery.refetch();
+  }
+
   function closeSoul() {
     setSoulExpertId(null);
   }
@@ -53,11 +63,13 @@ export function useTeamPage({ enabled }: Args) {
   return {
     hiredExperts,
     schedulesForExpert,
-    // Gate loading/error on the primary experts query only. Schedules just
-    // decorate each card (and default to []), so a slow or failing schedules
-    // fetch must not trap the roster or empty state behind bare skeletons.
-    isLoading: enabled && expertsQuery.isLoading,
+    // Gate loading/error on the primary experts query only; the schedules
+    // query keeps its own status so cards can distinguish "no schedules"
+    // from "schedules still loading / unavailable" without hiding the roster.
+    isLoading: enabled && expertsQuery.isPending,
     isError: expertsQuery.isError,
+    schedulesStatus,
+    retrySchedules,
     refetch,
     installWorkflow,
     pickerExpertId,

@@ -19,6 +19,17 @@ export function useExpertProfileSheet(
     query: { select: (x) => x.data as Expert[] },
   });
 
+  // For templates the hired state is unknown until the experts query settles;
+  // defaulting to [] would misreport an already-hired expert as hireable.
+  const hiredLookup: "loading" | "error" | "loaded" =
+    expert === null || !expert.is_template
+      ? "loaded"
+      : expertsQuery.isError
+        ? "error"
+        : expertsQuery.isSuccess
+          ? "loaded"
+          : "loading";
+
   const hiredExpert =
     expert === null
       ? null
@@ -28,7 +39,7 @@ export function useExpertProfileSheet(
           ) ?? null)
         : expert;
 
-  const isHired = hiredExpert !== null;
+  const isHired = hiredLookup === "loaded" && hiredExpert !== null;
 
   const { mutateAsync: hireExpert, isPending: isHiring } = useHireExpert();
 
@@ -73,5 +84,16 @@ export function useExpertProfileSheet(
     }
   }
 
-  return { isHired, isHiring, hire, hiredExpertId: hiredExpert?.id ?? null };
+  function retryHiredLookup() {
+    void expertsQuery.refetch();
+  }
+
+  return {
+    isHired,
+    isHiring,
+    hire,
+    hiredExpertId: hiredExpert?.id ?? null,
+    hiredLookup,
+    retryHiredLookup,
+  };
 }

@@ -18,10 +18,14 @@ export function ExpertProfileSheet({
   onClose,
   presentation = "dialog",
 }: Props) {
-  const { isHired, isHiring, hire, hiredExpertId } = useExpertProfileSheet(
-    expert,
-    onClose,
-  );
+  const {
+    isHired,
+    isHiring,
+    hire,
+    hiredExpertId,
+    hiredLookup,
+    retryHiredLookup,
+  } = useExpertProfileSheet(expert, onClose);
   const accent = expert ? getExpertAccent(expert.role) : null;
 
   const content =
@@ -33,6 +37,8 @@ export function ExpertProfileSheet({
         isHiring={isHiring}
         onHire={hire}
         hiredExpertId={hiredExpertId}
+        hiredLookup={hiredLookup}
+        onRetryHiredLookup={retryHiredLookup}
       />
     ) : null;
 

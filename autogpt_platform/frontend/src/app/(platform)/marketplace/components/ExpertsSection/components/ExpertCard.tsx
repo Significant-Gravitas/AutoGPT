@@ -4,6 +4,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import { getExpertAccent, getExpertAvatarUrl } from "../helpers";
 import {
@@ -15,11 +16,11 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   expert: Expert;
-  isHired: boolean;
+  hiredState: "hired" | "available" | "unknown";
   onClick: () => void;
 }
 
-export function ExpertCard({ expert, isHired, onClick }: Props) {
+export function ExpertCard({ expert, hiredState, onClick }: Props) {
   const accent = getExpertAccent(expert.role);
   const avatarUrl = getExpertAvatarUrl(expert);
 
@@ -94,11 +95,13 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
             {expert.workflows.length}{" "}
             {expert.workflows.length === 1 ? "workflow" : "workflows"}
           </span>
-          {isHired ? (
+          {hiredState === "hired" ? (
             <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
               <Icon icon={CheckmarkCircle02Icon} size={18} />
               On your team
             </span>
+          ) : hiredState === "unknown" ? (
+            <Skeleton className="h-5 w-20 rounded-full" />
           ) : (
             <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
               Hire
