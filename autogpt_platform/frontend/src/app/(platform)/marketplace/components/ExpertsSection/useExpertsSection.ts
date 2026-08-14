@@ -24,13 +24,25 @@ export function useExpertsSection() {
       .map((expert) => expert.source_template_id)
       .filter((id): id is string => Boolean(id)),
   );
+  const hasHiredLookupData = expertsQuery.data !== undefined;
+
+  function retryHiredLookup() {
+    void expertsQuery.refetch();
+  }
 
   return {
     templates: templatesQuery.data ?? [],
     hiredTemplateIds,
-    // While the experts query is unresolved the hired state is unknown, not
-    // "not hired" — cards show a placeholder badge instead of a false state.
-    isHiredLookupUnresolved: isLoggedIn && !expertsQuery.isSuccess,
+    isHiredLookupUnresolved:
+      isLoggedIn &&
+      !hasHiredLookupData &&
+      (expertsQuery.isPending || expertsQuery.isFetching),
+    isHiredLookupError:
+      isLoggedIn &&
+      !hasHiredLookupData &&
+      expertsQuery.isError &&
+      !expertsQuery.isFetching,
+    retryHiredLookup,
     isLoading: isLoggedIn && templatesQuery.isLoading,
     isError: templatesQuery.isError,
     selectedTemplateId,

@@ -11,12 +11,13 @@ import {
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
   FlashIcon,
+  Refresh01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   expert: Expert;
-  hiredState: "hired" | "available" | "unknown";
+  hiredState: "hired" | "available" | "unknown" | "error";
   onClick: () => void;
 }
 
@@ -102,6 +103,11 @@ export function ExpertCard({ expert, hiredState, onClick }: Props) {
             </span>
           ) : hiredState === "unknown" ? (
             <Skeleton className="h-5 w-20 rounded-full" />
+          ) : hiredState === "error" ? (
+            <span className="flex items-center gap-1.5 text-base font-medium text-amber-700">
+              <Icon icon={Refresh01Icon} size={16} />
+              Retry team status
+            </span>
           ) : (
             <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
               Hire
