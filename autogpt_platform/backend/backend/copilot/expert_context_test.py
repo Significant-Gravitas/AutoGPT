@@ -123,6 +123,20 @@ class TestBuildExpertIdentitySuffix:
         assert result == ""
 
     @pytest.mark.asyncio
+    async def test_expert_session_without_user_fails_before_lookup(self):
+        db_factory = MagicMock()
+        with (
+            patch(f"{_EC}.experts_db", db_factory),
+            pytest.raises(
+                ExpertSessionUnavailableError,
+                match="authenticated user",
+            ),
+        ):
+            await build_expert_identity_suffix("", "exp-1")
+
+        db_factory.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_archived_expert_hidden_by_accessor_raises(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=None)

@@ -313,7 +313,9 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     # per-edge try/except can catch it without breaking the others.
     original_get_hit_count = ratification_mod._get_hit_count
 
-    async def hit_count_with_poison(user_id: str, edge_uuid: str) -> int:
+    async def hit_count_with_poison(
+        user_id: str, edge_uuid: str, expert_id: str | None = None
+    ) -> int:
         if edge_uuid == "edge-poison":
             raise RuntimeError("simulated redis explosion")
         return await original_get_hit_count(user_id, edge_uuid)

@@ -76,11 +76,14 @@ export function useMemoryVisualizer(expertID?: string) {
   >();
 
   const memoryScopeParams = expertID ? { expert_id: expertID } : undefined;
-  const graphParams = {
+  const autoPilotGraphParams = {
     include_episodes: includeEpisodes,
     include_communities: includeCommunities,
     node_limit: 10000,
     edge_limit: 20000,
+  };
+  const graphParams = {
+    ...autoPilotGraphParams,
     ...(memoryScopeParams ?? {}),
   };
   const overview = useGetV2GetMemoryOverview(USER_ID, memoryScopeParams);
@@ -158,13 +161,10 @@ export function useMemoryVisualizer(expertID?: string) {
           });
         }
         queryClient.invalidateQueries({
-          queryKey: getGetV2GetMemoryOverviewQueryKey(
-            USER_ID,
-            memoryScopeParams,
-          ),
+          queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
         });
         queryClient.invalidateQueries({
-          queryKey: getGetV2GetGraphQueryKey(USER_ID, graphParams),
+          queryKey: getGetV2GetGraphQueryKey(USER_ID, autoPilotGraphParams),
         });
       },
       onError: (error: Error) => {
@@ -230,10 +230,10 @@ export function useMemoryVisualizer(expertID?: string) {
         queryKey: getGetV2GetDreamPassStatusQueryKey(USER_ID, activeDreamJobId),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID, memoryScopeParams),
+        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID, graphParams),
+        queryKey: getGetV2GetGraphQueryKey(USER_ID, autoPilotGraphParams),
       });
     },
     toast,
@@ -253,10 +253,10 @@ export function useMemoryVisualizer(expertID?: string) {
         ),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID, memoryScopeParams),
+        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID, graphParams),
+        queryKey: getGetV2GetGraphQueryKey(USER_ID, autoPilotGraphParams),
       });
     },
     toast,
@@ -276,10 +276,10 @@ export function useMemoryVisualizer(expertID?: string) {
         ),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID, memoryScopeParams),
+        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
       });
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID, graphParams),
+        queryKey: getGetV2GetGraphQueryKey(USER_ID, autoPilotGraphParams),
       });
     },
     toast,

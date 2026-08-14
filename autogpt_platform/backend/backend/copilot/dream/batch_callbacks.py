@@ -62,6 +62,8 @@ if TYPE_CHECKING:
     from backend.executor.batch_executor import PendingEntry
     from backend.util.llm.providers import BatchResultRow
 
+    from .fetch import DreamInput
+
 logger = logging.getLogger(__name__)
 
 
@@ -263,10 +265,7 @@ async def _release_lock(
                 "leaving the lock to its TTL",
                 pass_id,
             )
-    if expert_id is None:
-        await release_dream_lock(user_id, token)
-    else:
-        await release_dream_lock(user_id, token, expert_id)
+    await release_dream_lock(user_id, token, expert_id)
 
 
 # ---------------------------------------------------------------------------
@@ -359,6 +358,7 @@ async def handle_dream_batch_result(
             rows=rows,
             user_id=user_id,
             expert_id=expert_id,
+            input_bundle=input_bundle,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -404,6 +404,7 @@ async def _handle_phase_result(
     rows: list[BatchResultRow],
     user_id: str,
     expert_id: str | None = None,
+    input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -470,6 +471,7 @@ async def _handle_phase_result(
         await _chain_next_phase(
             user_id=user_id,
             expert_id=expert_id,
+            input_bundle=input_bundle,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -481,6 +483,7 @@ async def _handle_phase_result(
     await _finalize_complete(
         user_id=user_id,
         expert_id=expert_id,
+        input_bundle=input_bundle,
         pass_id=pass_id,
         job_id=job_id,
         phase_models=phase_models,
@@ -496,6 +499,7 @@ async def _chain_next_phase(
     *,
     user_id: str,
     expert_id: str | None = None,
+    input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -503,23 +507,11 @@ async def _chain_next_phase(
 ) -> None:
     """Submit the next phase in the chain.
 
-    Reads the persisted ``DreamInput`` + accumulated prior phase
-    outputs from Redis, builds the next phase's prompt, fires another
+    Uses the validated ``DreamInput`` + accumulated prior phase outputs
+    from Redis, builds the next phase's prompt, fires another
     batch submission. On any failure to submit, marks the JobStatus
     errored — silent submission failures are unrecoverable.
     """
-    input_bundle = await read_input_bundle(pass_id)
-    if input_bundle is None:
-        await _fail_pass(
-            user_id=user_id,
-            expert_id=expert_id,
-            pass_id=pass_id,
-            job_id=job_id,
-            phase_models=phase_models,
-            error=f"{next_phase}: DreamInput missing from Redis (TTL expired?)",
-        )
-        return
-
     state = await _read_state(pass_id)
     consolidated_json = _content_for(state, "consolidate")
     recombined_json = _content_for(state, "recombine")
@@ -642,6 +634,7 @@ async def _finalize_complete(
     *,
     user_id: str,
     expert_id: str | None = None,
+    input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -694,21 +687,15 @@ async def _finalize_complete(
 
     # Enforce the same per-pass operation caps the sync path applies
     # before writing — the model can over-emit past the prompt's limits.
-    # The 5%-of-active-facts demotion ceiling needs the original fact
-    # count; the persisted input bundle still exists here (deleted only
-    # after apply below). A missing bundle (-1) falls back to the
-    # absolute demotion cap rather than zeroing all demotions.
-    input_bundle = await read_input_bundle(pass_id)
-    active_fact_count = len(input_bundle.facts) if input_bundle is not None else -1
+    # The 5%-of-active-facts demotion ceiling needs the original fact count.
+    active_fact_count = len(input_bundle.facts)
     # Pass the known-fact allowlist so hallucinated demotion uuids are
     # filtered BEFORE the cap slice — otherwise they consume cap slots
     # and displace valid demotions (cap can floor at 1 on small graphs).
     ops = _clamp_operations(
         ops,
         active_fact_count,
-        known_fact_uuids=(
-            input_bundle.known_fact_uuids if input_bundle is not None else None
-        ),
+        known_fact_uuids=input_bundle.known_fact_uuids,
     )
 
     # Batch results can re-dispatch (executor crash between dispatch and
@@ -754,11 +741,7 @@ async def _finalize_complete(
         str, int | str | IngestionDrainStatus | DreamOperationsSnapshot
     ] = {}
     try:
-        # Thread the demotion allowlist from the bundle already in memory —
-        # letting apply re-read it would do a second Redis GET + full JSON
-        # deserialize and could fail open if the bundle's TTL lapses between
-        # the two reads. None (bundle expired) keeps apply's documented
-        # fail-open fallback.
+        # Thread the demotion allowlist from the already-validated bundle.
         #
         # Skip the ingestion drain on this path: apply runs inside this
         # handler, which BatchExecutor.walk_once awaits serially in its single
@@ -770,9 +753,7 @@ async def _finalize_complete(
             pass_id,
             ops,
             expert_id=expert_id,
-            known_fact_uuids=(
-                input_bundle.known_fact_uuids if input_bundle is not None else None
-            ),
+            known_fact_uuids=input_bundle.known_fact_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
     except Exception as exc:

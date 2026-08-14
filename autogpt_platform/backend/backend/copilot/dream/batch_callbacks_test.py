@@ -182,7 +182,7 @@ class TestPhaseChaining:
             mark_errored.await_args.kwargs["error"]
             == "batch DreamInput missing; memory scope unavailable"
         )
-        release_lock.assert_awaited_once_with("u1", None)
+        release_lock.assert_awaited_once_with("u1", None, None)
 
     @pytest.mark.asyncio
     async def test_autopilot_payload_cannot_apply_expert_dream(
@@ -465,7 +465,7 @@ class TestPhaseChaining:
         # The batch path disowned the dream lock to this callback; the
         # terminal handler must release it with the ownership token the
         # input bundle carried — compare-and-delete, never a blind DEL.
-        release_lock.assert_awaited_once_with("u1", "tok-u1")
+        release_lock.assert_awaited_once_with("u1", "tok-u1", None)
         # One cost-log row per phase (consolidate, recombine, sanitize)
         assert record_cost.await_count == 3
         for call in record_cost.await_args_list:
@@ -664,7 +664,7 @@ class TestPhaseChaining:
         # safe no-op) and clean up state.
         assert release_lock.await_count == 2
         for call in release_lock.await_args_list:
-            assert call.args == ("u1", "tok-u1")
+            assert call.args == ("u1", "tok-u1", None)
 
     @pytest.mark.asyncio
     async def test_apply_gate_redis_outage_fails_pass_not_silent_success(
@@ -894,7 +894,7 @@ class TestErrorPaths:
         mark_errored.assert_awaited_once()
         assert "handler crashed" in mark_errored.call_args.kwargs["error"]
         # Released with the ownership token the input bundle carried.
-        release_lock.assert_awaited_once_with("u1", "tok-u1")
+        release_lock.assert_awaited_once_with("u1", "tok-u1", None)
 
 
 class TestMalformedPayload:
@@ -913,7 +913,7 @@ class TestMalformedPayload:
                 entry,
                 [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)],
             )
-        release.assert_awaited_once_with("u1", None)
+        release.assert_awaited_once_with("u1", None, None)
 
     @pytest.mark.asyncio
     async def test_unknown_phase_label_releases_lock_with_persisted_token(
@@ -940,7 +940,7 @@ class TestMalformedPayload:
         entry.payload["phase"] = "some_fake_phase"
         with patch("backend.copilot.dream.batch_callbacks.release_dream_lock", release):
             await handle_dream_batch_result(entry, [_row(custom_id="x", content="y")])
-        release.assert_awaited_once_with("u1", "tok-u1")
+        release.assert_awaited_once_with("u1", "tok-u1", None)
 
 
 class TestLockTokenWiring:
@@ -1032,7 +1032,7 @@ class TestLockTokenWiring:
         mark_errored.assert_not_awaited()
         # Token read failed → token-less release; release_dream_lock then
         # defers to the lock TTL rather than blind-deleting.
-        release_lock.assert_awaited_once_with("u1", None)
+        release_lock.assert_awaited_once_with("u1", None, None)
 
     @pytest.mark.asyncio
     async def test_cleanup_failure_after_complete_keeps_job_completed(self, fake_redis):

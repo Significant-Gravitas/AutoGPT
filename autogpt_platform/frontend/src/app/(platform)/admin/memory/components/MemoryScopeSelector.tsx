@@ -20,7 +20,7 @@ export function MemoryScopeSelector({
   error,
 }: Props) {
   const options = [
-    { value: AUTOPILOT_MEMORY_SCOPE, label: "AutoPilot (my memory)" },
+    { value: AUTOPILOT_MEMORY_SCOPE, label: "AutoPilot (account memory)" },
     ...experts.map((expert) => ({
       value: expert.id,
       label: expert.name,
@@ -40,12 +40,15 @@ export function MemoryScopeSelector({
           disabled={loading}
         />
       </div>
-      {value !== AUTOPILOT_MEMORY_SCOPE ? (
-        <p className="text-xs text-gray-500">Expert memory is read-only.</p>
-      ) : null}
-      {error ? (
-        <p className="text-xs text-red-700">Failed to load experts.</p>
-      ) : null}
+      <div aria-live="polite" className="flex flex-col gap-1 text-xs">
+        {value !== AUTOPILOT_MEMORY_SCOPE ? (
+          <p className="text-gray-500">Expert memory is read-only.</p>
+        ) : null}
+        {error ? <p className="text-red-700">Failed to load experts.</p> : null}
+        {!loading && !error && experts.length === 0 ? (
+          <p className="text-gray-500">No experts for this account.</p>
+        ) : null}
+      </div>
     </div>
   );
 }

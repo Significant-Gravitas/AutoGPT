@@ -216,16 +216,8 @@ class TestExpertMemoryScope:
         assert resp.json()["group_id"] == expected_group
         open_driver.assert_called_once_with(expected_group)
 
-    @pytest.mark.parametrize(
-        "expert_id",
-        [
-            "cross-user-expert",
-            "unowned-expert",
-            "template-expert",
-            "archived-expert",
-        ],
-    )
-    def test_unowned_expert_is_404_before_driver(self, expert_id: str) -> None:
+    def test_missing_expert_is_404_before_driver(self) -> None:
+        expert_id = "missing-expert"
         with (
             patch(
                 f"{_MOCK_MODULE}.experts_db.get_expert",
@@ -238,6 +230,26 @@ class TestExpertMemoryScope:
         assert resp.status_code == 404
         assert resp.json() == {"detail": "Expert not found"}
         get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+        open_driver.assert_not_called()
+
+    @pytest.mark.parametrize("expert_id", ["", "x" * 129])
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    def test_invalid_expert_id_is_422_before_lookup_or_driver(
+        self, expert_id: str, endpoint: str
+    ) -> None:
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get(
+                f"/admin/memory/abc/{endpoint}", params={"expert_id": expert_id}
+            )
+
+        assert resp.status_code == 422
+        get_expert.assert_not_awaited()
         open_driver.assert_not_called()
 
     def test_raw_group_id_query_cannot_select_memory_scope(self) -> None:
@@ -301,6 +313,24 @@ class TestExpertMemoryScope:
         assert mock_jwt_admin["user_id"] in message
         assert expert_id in message
         assert expected_group in message
+
+    def test_cross_user_autopilot_audit_records_resolved_scope(
+        self, mock_jwt_admin
+    ) -> None:
+        driver = _driver_returning(
+            [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+        )
+        with (
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get("/admin/memory/abc/overview")
+
+        assert resp.status_code == 200
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert "AutoPilot (group user_abc)" in message
 
 
 class TestListEntities:
