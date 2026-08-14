@@ -1,10 +1,5 @@
 # Run AutoGPT in one Docker container (Experimental)
 
-!!! warning
-    This distribution is experimental and may receive breaking operational
-    changes. It is intended for local evaluation and single-host self-hosting,
-    with no high-availability or zero-downtime guarantee.
-
 The image packages the AutoGPT Platform frontend and backend together with
 PostgreSQL, a three-node Valkey cluster, RabbitMQ, nginx, and FalkorDB.
 Only nginx listens on the container's public interface, on port `3000`.
@@ -170,10 +165,9 @@ the container bound to loopback:
 AUTOGPT_PUBLIC_URL=https://agents.example.com
 ```
 
-The reverse proxy must route all paths to `127.0.0.1:3000`, support WebSocket
-upgrades for `/_agpt/ws`, and allow long-lived streaming requests below
-`/_agpt/api`. Do not publish PostgreSQL, Valkey, RabbitMQ, FalkorDB, or
-backend service ports.
+Forward the entire site to `127.0.0.1:3000` and ensure the proxy supports
+WebSockets and long-lived streaming responses. Do not publish PostgreSQL,
+Valkey, RabbitMQ, FalkorDB, or backend service ports.
 
 For LAN access, bind the TLS reverse proxy to the LAN interface and keep the
 container published only on `127.0.0.1:3000`. Set `AUTOGPT_PUBLIC_URL` to the
