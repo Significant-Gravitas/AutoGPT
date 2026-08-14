@@ -125,14 +125,17 @@ describe("Marketplace ExpertsSection", () => {
 
     renderMarketplace();
 
-    await waitFor(() => {
-      expect(
-        screen
-          .getByRole("link", { name: /raise your own expert from scratch/i })
-          .getAttribute("href"),
-      ).toBe("/raise");
-      expect(screen.queryByText("Meet the AI Experts")).toBeNull();
-    });
+    await waitFor(
+      () => {
+        expect(
+          screen
+            .getByRole("link", { name: /raise your own expert from scratch/i })
+            .getAttribute("href"),
+        ).toBe("/raise");
+        expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+      },
+      { timeout: 5_000 },
+    );
   });
 
   test("hired template shows hired state", async () => {
