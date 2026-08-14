@@ -13,10 +13,6 @@ import {
   getGetV2ListLibraryAgentsResponseMock200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
-import {
-  getGetV2GetSpecificAgentMockHandler200,
-  getGetV2GetSpecificAgentResponseMock200,
-} from "@/app/api/__generated__/endpoints/store/store.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -37,8 +33,19 @@ const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
 }));
 
-function libraryResponse(agents: LibraryAgent[]) {
-  return { ...getGetV2ListLibraryAgentsResponseMock200(), agents };
+function libraryResponse(agents: LibraryAgent[], totalItems?: number) {
+  const base = getGetV2ListLibraryAgentsResponseMock200();
+  return {
+    ...base,
+    agents,
+    pagination: {
+      ...base.pagination,
+      total_items: totalItems ?? agents.length,
+      current_page: 1,
+      page_size: 100,
+      total_pages: 1,
+    },
+  };
 }
 
 function makeLibraryAgent(over: Partial<LibraryAgent>): LibraryAgent {
@@ -65,6 +72,7 @@ function makeLibraryAgent(over: Partial<LibraryAgent>): LibraryAgent {
     is_latest_version: true,
     is_favorite: false,
     marketplace_listing: null,
+    store_listing_version_id: null,
     ...over,
   } as unknown as LibraryAgent;
 }
@@ -73,19 +81,14 @@ const adoptableAgent = makeLibraryAgent({
   id: "lib-research",
   graph_id: "graph-research",
   name: "Research Assistant",
-  marketplace_listing: {
-    id: "listing-research",
-    name: "Research Assistant",
-    slug: "research-assistant",
-    creator: { name: "Acme Labs", id: "creator-1", slug: "acme-labs" },
-  },
+  store_listing_version_id: "slv-adopt",
 });
 
 const localOnlyAgent = makeLibraryAgent({
   id: "lib-local",
   graph_id: "graph-local",
   name: "My Private Agent",
-  marketplace_listing: null,
+  store_listing_version_id: null,
 });
 
 beforeEach(() => {
@@ -592,12 +595,7 @@ describe("TeamPage", () => {
       id: "lib-installed",
       graph_id: "graph-1",
       name: "Content Calendar",
-      marketplace_listing: {
-        id: "listing-cc",
-        name: "Content Calendar",
-        slug: "content-calendar",
-        creator: { name: "Acme", id: "c", slug: "acme" },
-      },
+      store_listing_version_id: "slv-1",
     });
     server.use(
       getListExpertsMockHandler([hiredMaria]),
@@ -625,11 +623,6 @@ describe("TeamPage", () => {
       getGetV2ListLibraryAgentsMockHandler200(
         libraryResponse([adoptableAgent]),
       ),
-      getGetV2GetSpecificAgentMockHandler200({
-        ...getGetV2GetSpecificAgentResponseMock200(),
-        store_listing_version_id: "slv-adopt",
-        slug: "research-assistant",
-      }),
       getInstallExpertWorkflowMockHandler(async (info) => {
         installExpertId = info.params.expertId as string;
         installBody = await info.request.json();
@@ -706,10 +699,6 @@ describe("TeamPage", () => {
       getGetV2ListLibraryAgentsMockHandler200(
         libraryResponse([adoptableAgent]),
       ),
-      getGetV2GetSpecificAgentMockHandler200({
-        ...getGetV2GetSpecificAgentResponseMock200(),
-        store_listing_version_id: "slv-adopt",
-      }),
       getInstallExpertWorkflowMockHandler422(),
     );
 
@@ -743,10 +732,6 @@ describe("TeamPage", () => {
       getGetV2ListLibraryAgentsMockHandler200(
         libraryResponse([adoptableAgent]),
       ),
-      getGetV2GetSpecificAgentMockHandler200({
-        ...getGetV2GetSpecificAgentResponseMock200(),
-        store_listing_version_id: "slv-adopt",
-      }),
       getInstallExpertWorkflowMockHandler(async () => {
         installCalls += 1;
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -808,5 +793,69 @@ describe("TeamPage", () => {
 
     const agents = await screen.findByRole("region", { name: "Your agents" });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
+  });
+
+  test("shows filter-specific empty states for Workflows and Scheduled", async () => {
+    const user = userEvent.setup();
+    const emptyMaria: Expert = { ...hiredMaria, workflows: [] };
+    server.use(getListExpertsMockHandler([emptyMaria]));
+
+    render(<TeamPage />);
+
+    await screen.findByRole("region", { name: "What runs" });
+
+    await user.click(screen.getByRole("button", { name: "Workflows" }));
+    expect(screen.getByText("No workflows installed yet.")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Scheduled" }));
+    expect(screen.getByText("No scheduled workflows yet.")).toBeDefined();
+  });
+
+  test("tells an empty library apart from a fully adopted one", async () => {
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    expect(
+      await within(agents).findByText("No agents in your library yet."),
+    ).toBeDefined();
+  });
+
+  test("keeps the truncation note when every loaded agent is installed", async () => {
+    const installedAgent = makeLibraryAgent({
+      id: "lib-installed",
+      graph_id: "graph-1",
+      name: "Content Calendar",
+      store_listing_version_id: "slv-1",
+    });
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([installedAgent], 150),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    const agents = await screen.findByRole("region", { name: "Your agents" });
+    expect(
+      await within(agents).findByText(
+        "All loaded agents are already on your team.",
+      ),
+    ).toBeDefined();
+    expect(
+      within(agents).getByText(/149 more agents in your library aren't shown/),
+    ).toBeDefined();
+  });
+
+  test("shows last-run status as a chip beside the workflow count", async () => {
+    server.use(getListExpertsMockHandler([scheduledMaria]));
+
+    render(<TeamPage />);
+
+    const group = await screen.findByRole("region", { name: "Maria runs" });
+    expect(within(group).getByText("Maria · 2 workflows")).toBeDefined();
+    expect(within(group).getByText(/Last run succeeded/)).toBeDefined();
   });
 });

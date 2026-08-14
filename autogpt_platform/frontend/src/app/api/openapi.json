@@ -19809,6 +19809,11 @@
               { "$ref": "#/components/schemas/MarketplaceListing" },
               { "type": "null" }
             ]
+          },
+          "store_listing_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Store Listing Version Id",
+            "description": "ID of the approved marketplace listing version whose graph snapshot exactly matches this agent's graph_id and graph_version. Install flows can use it directly to install this exact version."
           }
         },
         "type": "object",

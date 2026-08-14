@@ -11,6 +11,11 @@ interface Props {
   experts: Expert[];
 }
 
+const GROUP_EMPTY_MESSAGES: Partial<Record<string, string>> = {
+  workflows: "No workflows installed yet.",
+  scheduled: "No scheduled workflows yet.",
+};
+
 export function WhatRunsZone({ experts }: Props) {
   const {
     filter,
@@ -18,6 +23,7 @@ export function WhatRunsZone({ experts }: Props) {
     groups,
     showAgents,
     unadoptedAgents,
+    totalAgents,
     hiddenAgentCount,
     isLoadingAgents,
     isErrorAgents,
@@ -27,6 +33,8 @@ export function WhatRunsZone({ experts }: Props) {
   } = useWhatRunsZone({ experts, enabled: experts.length > 0 });
 
   if (experts.length === 0) return null;
+
+  const groupEmptyMessage = GROUP_EMPTY_MESSAGES[filter];
 
   return (
     <section aria-label="What runs" className="flex flex-col gap-4">
@@ -45,6 +53,10 @@ export function WhatRunsZone({ experts }: Props) {
             <ExpertWorkflowGroup key={group.expert.id} group={group} />
           ))}
         </div>
+      ) : groupEmptyMessage ? (
+        <Text variant="small" className="text-zinc-500">
+          {groupEmptyMessage}
+        </Text>
       ) : null}
 
       {showAgents ? (
@@ -63,6 +75,7 @@ export function WhatRunsZone({ experts }: Props) {
           <YourAgentsList
             agents={unadoptedAgents}
             experts={experts}
+            totalAgents={totalAgents}
             hiddenAgentCount={hiddenAgentCount}
             pendingAgentIds={pendingAgentIds}
             onAdopt={adopt}

@@ -18,17 +18,21 @@ interface Props {
 export function ExpertWorkflowGroup({ group }: Props) {
   const { expert, workflows } = group;
   const lastRun = getLastRunLabel(expert);
-  const meta =
-    lastRun ??
-    `${workflows.length} ${workflows.length === 1 ? "workflow" : "workflows"}`;
+  const countLabel = `${workflows.length} ${workflows.length === 1 ? "workflow" : "workflows"}`;
   const isPaused = Boolean(expert.schedules_paused_at);
+  const lastRunChipClass =
+    expert.last_run_status === "FAILED"
+      ? "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200"
+      : expert.last_run_status === "COMPLETED"
+        ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200"
+        : "bg-zinc-100 text-zinc-600";
 
   return (
     <section
       aria-label={`${expert.name} runs`}
       className="rounded-2xl border border-zinc-200 bg-white"
     >
-      <div className="flex items-center gap-3 border-b border-zinc-100 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-3">
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url ?? null}
@@ -36,9 +40,16 @@ export function ExpertWorkflowGroup({ group }: Props) {
         />
         <div className="min-w-0 flex-1">
           <Text variant="large-medium" className="truncate">
-            {`${expert.name} · ${meta}`}
+            {`${expert.name} · ${countLabel}`}
           </Text>
         </div>
+        {lastRun ? (
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-xs ${lastRunChipClass}`}
+          >
+            {lastRun}
+          </span>
+        ) : null}
         {isPaused ? (
           <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
             Paused

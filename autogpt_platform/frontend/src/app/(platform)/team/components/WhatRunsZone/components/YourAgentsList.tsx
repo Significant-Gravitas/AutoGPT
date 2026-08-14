@@ -2,12 +2,13 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { getAdoptableListing } from "../helpers";
+import { getAdoptTargetVersionId } from "../helpers";
 import { AdoptAgentButton } from "./AdoptAgentButton";
 
 interface Props {
   agents: LibraryAgent[];
   experts: Expert[];
+  totalAgents: number;
   hiddenAgentCount: number;
   pendingAgentIds: Set<string>;
   onAdopt: (agent: LibraryAgent, expert: Expert) => void;
@@ -16,6 +17,7 @@ interface Props {
 export function YourAgentsList({
   agents,
   experts,
+  totalAgents,
   hiddenAgentCount,
   pendingAgentIds,
   onAdopt,
@@ -27,12 +29,16 @@ export function YourAgentsList({
       </Text>
       {agents.length === 0 ? (
         <Text variant="small" className="text-zinc-500">
-          Every agent is already on your team.
+          {totalAgents === 0
+            ? "No agents in your library yet."
+            : hiddenAgentCount > 0
+              ? "All loaded agents are already on your team."
+              : "Every agent is already on your team."}
         </Text>
       ) : (
         <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white">
           {agents.map((agent) => {
-            const canAdopt = getAdoptableListing(agent) !== null;
+            const canAdopt = getAdoptTargetVersionId(agent) !== null;
             return (
               <div
                 key={agent.id}

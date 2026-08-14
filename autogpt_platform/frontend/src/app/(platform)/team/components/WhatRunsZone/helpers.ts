@@ -1,7 +1,6 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { MarketplaceListing } from "@/app/api/__generated__/models/marketplaceListing";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 
 export type WhatRunsFilter =
@@ -118,13 +117,12 @@ export function getUnadoptedAgents(
   return agents.filter((agent) => !installedGraphIds.has(agent.graph_id));
 }
 
-/** A pure-local library agent has no marketplace listing, so there is no
- *  store_listing_version_id the install endpoint can accept — Adopt is hidden
- *  for these. */
-export function getAdoptableListing(
-  agent: LibraryAgent,
-): MarketplaceListing | null {
-  return agent.marketplace_listing ?? null;
+/** The immutable marketplace version matching this agent's exact graph
+ *  snapshot, resolved server-side. Pure-local agents have none, so Adopt is
+ *  hidden for them — the install endpoint only accepts a
+ *  store_listing_version_id. */
+export function getAdoptTargetVersionId(agent: LibraryAgent): string | null {
+  return agent.store_listing_version_id ?? null;
 }
 
 export function safeHumanizeCron(cron: string): string {

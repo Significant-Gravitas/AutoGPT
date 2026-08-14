@@ -3,7 +3,6 @@ import {
   useInstallExpertWorkflow,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
-import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
@@ -11,7 +10,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
-  getAdoptableListing,
+  getAdoptTargetVersionId,
   getUnadoptedAgents,
   getVisibleGroups,
   WhatRunsFilter,
@@ -43,29 +42,16 @@ export function useWhatRunsZone({ experts, enabled }: Args) {
     agentsQuery.data?.pagination.total_items ?? libraryAgents.length;
   const unadoptedAgents = getUnadoptedAgents(libraryAgents, experts);
   const groups = getVisibleGroups(experts, filter);
-  const showAgents =
-    filter === "agents" ||
-    (filter === "all" && (unadoptedAgents.length > 0 || agentsQuery.isError));
+  const showAgents = filter === "all" || filter === "agents";
 
   async function adopt(agent: LibraryAgent, expert: Expert) {
-    const listing = getAdoptableListing(agent);
-    if (!listing || pendingAgentIds.has(agent.graph_id)) return;
+    const versionId = getAdoptTargetVersionId(agent);
+    if (!versionId || pendingAgentIds.has(agent.graph_id)) return;
     setPendingAgentIds((current) => new Set(current).add(agent.graph_id));
     try {
-      const details = await getV2GetSpecificAgent(
-        listing.creator.slug,
-        listing.slug,
-      );
-      // customMutator throws on non-2xx; this check only narrows the
-      // response union to the success payload.
-      if (details.status !== 200) {
-        throw new Error("Failed to resolve agent listing");
-      }
       await installWorkflow({
         expertId: expert.id,
-        data: {
-          store_listing_version_id: details.data.store_listing_version_id,
-        },
+        data: { store_listing_version_id: versionId },
       });
       await queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
@@ -95,6 +81,7 @@ export function useWhatRunsZone({ experts, enabled }: Args) {
     groups,
     showAgents,
     unadoptedAgents,
+    totalAgents,
     hiddenAgentCount: Math.max(0, totalAgents - libraryAgents.length),
     isLoadingAgents: enabled && agentsQuery.isLoading,
     isErrorAgents: agentsQuery.isError,

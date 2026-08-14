@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional, cast
 
 import fastapi
+import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
@@ -90,6 +91,40 @@ async def _fetch_schedule_info(
     except Exception:
         logger.warning("Failed to fetch schedules for library agents", exc_info=True)
         return {}
+
+
+async def _fetch_matching_store_version_ids(
+    agents: list[prisma.models.LibraryAgent],
+) -> dict[tuple[str, int], str]:
+    """Map (graph_id, graph_version) → approved StoreListingVersion id.
+
+    Only approved, non-deleted versions are returned so the ids are always
+    valid install targets. Matching on the exact graph version keeps installs
+    version-stable: the id refers to the snapshot the library agent holds,
+    not the listing's current active version.
+    """
+    pairs = {(a.agentGraphId, a.agentGraphVersion) for a in agents}
+    if not pairs:
+        return {}
+    try:
+        versions = await prisma.models.StoreListingVersion.prisma().find_many(
+            where={
+                "OR": [
+                    {"agentGraphId": graph_id, "agentGraphVersion": graph_version}
+                    for graph_id, graph_version in pairs
+                ],
+                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                "isDeleted": False,
+            },
+            order={"createdAt": "asc"},
+        )
+    except Exception:
+        logger.warning(
+            "Failed to fetch store listing versions for library agents",
+            exc_info=True,
+        )
+        return {}
+    return {(v.agentGraphId, v.agentGraphVersion): v.id for v in versions}
 
 
 def _parse_iso_datetime(value: str) -> Optional[datetime]:
@@ -247,9 +282,10 @@ async def list_library_agents(
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info = await asyncio.gather(
+    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
+        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -261,6 +297,9 @@ async def list_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
+                store_listing_version_id=store_version_ids.get(
+                    (agent.agentGraphId, agent.agentGraphVersion)
+                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -334,9 +373,10 @@ async def list_favorite_library_agents(
     )
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info = await asyncio.gather(
+    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
+        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -348,6 +388,9 @@ async def list_favorite_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
+                store_listing_version_id=store_version_ids.get(
+                    (agent.agentGraphId, agent.agentGraphVersion)
+                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -419,6 +462,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         if library_agent.AgentGraph
         else {}
     )
+    store_version_ids = await _fetch_matching_store_version_ids([library_agent])
 
     return library_model.LibraryAgent.from_db(
         library_agent,
@@ -430,6 +474,9 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         store_listing=store_listing,
         profile=profile,
         schedule_info=schedule_info,
+        store_listing_version_id=store_version_ids.get(
+            (library_agent.agentGraphId, library_agent.agentGraphVersion)
+        ),
     )
 
 

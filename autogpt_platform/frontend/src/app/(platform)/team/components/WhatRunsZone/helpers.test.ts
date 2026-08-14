@@ -3,7 +3,7 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { describe, expect, it } from "vitest";
 import {
-  getAdoptableListing,
+  getAdoptTargetVersionId,
   getFilterView,
   getUnadoptedAgents,
   getVisibleGroups,
@@ -33,7 +33,7 @@ function makeAgent(over: Partial<LibraryAgent>): LibraryAgent {
     id: "agent",
     graph_id: "graph",
     name: "Agent",
-    marketplace_listing: null,
+    store_listing_version_id: null,
     ...over,
   } as unknown as LibraryAgent;
 }
@@ -127,23 +127,19 @@ describe("getUnadoptedAgents", () => {
   });
 });
 
-describe("getAdoptableListing", () => {
-  it("returns the listing when present", () => {
-    const listing = {
-      id: "l",
-      name: "L",
-      slug: "l",
-      creator: { name: "c", id: "c", slug: "c" },
-    };
+describe("getAdoptTargetVersionId", () => {
+  it("returns the exact-match version id when present", () => {
     expect(
-      getAdoptableListing(makeAgent({ marketplace_listing: listing })),
-    ).toBe(listing);
+      getAdoptTargetVersionId(
+        makeAgent({ store_listing_version_id: "slv-exact" }),
+      ),
+    ).toBe("slv-exact");
   });
 
   it("returns null for a pure-local agent", () => {
-    expect(getAdoptableListing(makeAgent({ marketplace_listing: null }))).toBe(
-      null,
-    );
+    expect(
+      getAdoptTargetVersionId(makeAgent({ store_listing_version_id: null })),
+    ).toBe(null);
   });
 });
 
