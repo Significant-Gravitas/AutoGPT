@@ -1,17 +1,19 @@
 import {
   getHireExpertMockHandler,
   getListExpertsMockHandler,
-  getListExpertsMockHandler401,
   getListExpertTemplatesMockHandler,
   getListExpertTemplatesMockHandler401,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
-import { Expert } from "@/app/api/__generated__/models/expert";
-import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
+import {
+  hiredMaria,
+  mariaRichTemplate,
+  mariaTemplate,
+  renderMarketplace,
+} from "./experts-section.fixtures";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 
@@ -30,67 +32,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
       flag === "hire-experts" ? true : actual.useGetFlag(flag as never),
   };
 });
-
-const mariaTemplate: Expert = {
-  id: "template-maria",
-  name: "Maria",
-  avatar_url: null,
-  role: "Marketing Strategist",
-  bio: null,
-  skills: [],
-  tagline: "Grows your brand while you sleep",
-  identity: "You are Maria, a senior marketing strategist.",
-  voice_preferences: "Warm, concise, and direct.",
-  boundaries: "Never invent customer evidence.",
-  protected_soul_rules: [
-    "The expert discloses that it is AI when acting externally.",
-    "External actions require approval.",
-  ],
-  is_template: true,
-  source_template_id: null,
-  is_archived: false,
-  workflows: [],
-};
-
-const mariaRichTemplate: Expert = {
-  ...mariaTemplate,
-  bio: "Maria has run brand launches for a decade and loves a tidy funnel.",
-  skills: ["Brand strategy", "SEO"],
-  workflows: [
-    {
-      id: "wf-1",
-      store_listing_version_id: "slv-1",
-      library_agent_id: "lib-1",
-      graph_id: "graph-1",
-      name: "Content Calendar",
-      description: "Plans a month of posts",
-    },
-    {
-      id: "wf-2",
-      store_listing_version_id: "slv-2",
-      library_agent_id: "lib-2",
-      graph_id: "graph-2",
-      name: "SEO Audit",
-      description: null,
-    },
-  ],
-};
-
-const hiredMaria: Expert = {
-  ...mariaTemplate,
-  id: "expert-maria",
-  is_template: false,
-  source_template_id: "template-maria",
-};
-
-function renderMarketplace() {
-  return render(
-    <>
-      <MainMarkeplacePage />
-      <Toaster />
-    </>,
-  );
-}
 
 describe("Marketplace ExpertsSection", () => {
   beforeEach(() => {
@@ -254,96 +195,5 @@ describe("Marketplace ExpertsSection", () => {
       ),
     ).toBeDefined();
     expect(screen.queryByText(/She'll always tell you/)).toBeNull();
-  });
-
-  test("keeps the hire action gated while the team lookup is unresolved", async () => {
-    server.use(
-      getListExpertTemplatesMockHandler([mariaTemplate]),
-      getListExpertsMockHandler(() => new Promise<Expert[]>(() => {})),
-    );
-
-    renderMarketplace();
-
-    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
-    // The card shows a placeholder instead of claiming "Hire" or "On your
-    // team" while the hired lookup is unresolved.
-    expect(screen.queryByText("Hire")).toBeNull();
-    expect(screen.queryByText("On your team")).toBeNull();
-
-    await userEvent.click(await screen.findByText("Maria"));
-
-    const hireButton = await screen.findByRole("button", {
-      name: "Hire Maria",
-    });
-    expect(hireButton.hasAttribute("disabled")).toBe(true);
-  });
-
-  test("offers a retryable team status instead of hiring when the lookup fails", async () => {
-    server.use(
-      getListExpertTemplatesMockHandler([mariaTemplate]),
-      getListExpertsMockHandler401(),
-    );
-
-    renderMarketplace();
-
-    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
-    expect(screen.queryByText("Hire")).toBeNull();
-    expect(screen.queryByText("On your team")).toBeNull();
-    expect(await screen.findByText("Team status unavailable")).toBeDefined();
-
-    await userEvent.click(await screen.findByText("Maria"));
-
-    expect(
-      await screen.findByText("Team status unavailable right now."),
-    ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
-
-    server.use(getListExpertsMockHandler([hiredMaria]));
-    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-
-    // After a successful retry the sheet resolves to the real hired state.
-    expect(
-      await screen.findByRole("link", { name: "Open chat" }),
-    ).toBeDefined();
-  });
-
-  test("day-one highlight skips workflows without displayable names", async () => {
-    const templateWithDanglingRef: Expert = {
-      ...mariaTemplate,
-      workflows: [
-        {
-          id: "wf-dangling",
-          store_listing_version_id: null,
-          library_agent_id: null,
-          graph_id: null,
-          name: null,
-          description: null,
-        },
-        {
-          id: "wf-named",
-          store_listing_version_id: "slv-2",
-          library_agent_id: null,
-          graph_id: null,
-          name: "SEO Audit",
-          description: null,
-        },
-      ],
-    };
-    server.use(
-      getListExpertTemplatesMockHandler([templateWithDanglingRef]),
-      getListExpertsMockHandler([]),
-    );
-
-    renderMarketplace();
-
-    await userEvent.click(await screen.findByText("Maria"));
-
-    expect(
-      await screen.findByText("What Maria sets up on day one"),
-    ).toBeDefined();
-    // The named workflow is promised (highlight + list); the dangling ref
-    // only appears in the full list, never as the day-one promise.
-    expect(screen.getAllByText("SEO Audit")).toHaveLength(2);
-    expect(screen.getAllByText("Unnamed workflow")).toHaveLength(1);
   });
 });
