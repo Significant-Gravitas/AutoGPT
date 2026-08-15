@@ -93,7 +93,7 @@ def _build_catalog() -> CatalogPayload:
             # ----- A3M Router -----
             # A3M routes to 80+ providers; these are representative models it handles
             CatalogModel(
-                slug="gpt-4o",
+                slug="a3m/gpt-4o",
                 display_name="GPT-4o (via A3M)",
                 provider="a3m",
                 creator="openai",
@@ -106,7 +106,7 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
-                slug="gpt-4o-mini",
+                slug="a3m/gpt-4o-mini",
                 display_name="GPT-4o Mini (via A3M)",
                 provider="a3m",
                 creator="openai",
@@ -115,7 +115,7 @@ def _build_catalog() -> CatalogPayload:
                 cost=CatalogModelCost(run_credits=1),
             ),
             CatalogModel(
-                slug="claude-3-5-sonnet-latest",
+                slug="a3m/claude-3-5-sonnet-latest",
                 display_name="Claude 3.5 Sonnet (via A3M)",
                 provider="a3m",
                 creator="anthropic",
@@ -128,7 +128,7 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
-                slug="gemini-1.5-pro",
+                slug="a3m/gemini-1.5-pro",
                 display_name="Gemini 1.5 Pro (via A3M)",
                 provider="a3m",
                 creator="google",
