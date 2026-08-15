@@ -15,6 +15,7 @@ from apscheduler.triggers.date import DateTrigger
 
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
+    _MAX_EXPERT_LOOKUP_RETRIES,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -716,16 +717,48 @@ async def test_expert_lookup_retry_preserves_scope_and_is_bounded():
         await _reschedule_one_shot_after_expert_unavailable(args)
 
     kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
-    assert kwargs["cap_retry_count"] == 1
+    assert kwargs["cap_retry_count"] == 0
+    assert kwargs["expert_lookup_retry_count"] == 1
     assert kwargs["expert_id"] == "expert-1"
     assert kwargs["organization_id"] == "org-1"
     assert kwargs["team_id"] == "team-1"
 
-    exhausted = args.model_copy(update={"cap_retry_count": _MAX_CAP_RETRIES})
+    exhausted = args.model_copy(
+        update={"expert_lookup_retry_count": _MAX_EXPERT_LOOKUP_RETRIES}
+    )
     mock_client.reset_mock()
     with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
         await _reschedule_one_shot_after_expert_unavailable(exhausted)
     mock_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_lookup_and_cap_retries_have_independent_budgets():
+    mock_client = AsyncMock()
+    after_expert_retry = _args(
+        cap_retry_count=0,
+        expert_lookup_retry_count=_MAX_EXPERT_LOOKUP_RETRIES,
+        expert_id="expert-1",
+    )
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(after_expert_retry)
+
+    cap_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+    assert cap_kwargs["cap_retry_count"] == 1
+    assert cap_kwargs["expert_lookup_retry_count"] == _MAX_EXPERT_LOOKUP_RETRIES
+
+    mock_client.reset_mock()
+    after_cap_retry = _args(
+        cap_retry_count=_MAX_CAP_RETRIES,
+        expert_lookup_retry_count=0,
+        expert_id="expert-1",
+    )
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_expert_unavailable(after_cap_retry)
+
+    expert_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+    assert expert_kwargs["cap_retry_count"] == _MAX_CAP_RETRIES
+    assert expert_kwargs["expert_lookup_retry_count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -799,6 +832,7 @@ def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
         run_at=datetime.now(tz=timezone.utc),
     )
     assert args.cap_retry_count == 0
+    assert args.expert_lookup_retry_count == 0
     assert args.expert_id is None
 
 
@@ -814,10 +848,14 @@ def test_add_copilot_turn_schedule_persists_expert_scope():
             message="daily brief",
             run_at=run_at,
             user_timezone="UTC",
+            cap_retry_count=1,
+            expert_lookup_retry_count=1,
             expert_id="expert-1",
         )
 
     job_args = persist.call_args.kwargs["job_args"]
+    assert job_args.cap_retry_count == 1
+    assert job_args.expert_lookup_retry_count == 1
     assert job_args.expert_id == "expert-1"
     assert info.expert_id == "expert-1"
 
