@@ -142,6 +142,29 @@ describe("TeamPage", () => {
     ).toBeTruthy();
   });
 
+  test("Create menu exposes accessible hire and build actions", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    const trigger = await screen.findByRole("button", { name: /create/i });
+    // The Radix trigger advertises its menu to assistive tech and keyboard users.
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+
+    await user.click(trigger);
+
+    const hire = await screen.findByRole("menuitem", {
+      name: "Hire an expert",
+    });
+    expect(hire.getAttribute("href")).toBe("/marketplace#experts");
+
+    const build = screen.getByRole("menuitem", {
+      name: "Build an agent from scratch",
+    });
+    expect(build.getAttribute("href")).toBe("/build");
+  });
+
   test("renders hired experts with a workflow count instead of chips", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
