@@ -83,6 +83,7 @@ from backend.util.settings import Settings
 from . import billing, expert_posts
 from .activity_status_generator import generate_activity_status_for_execution
 from .auto_credentials import acquire_auto_credentials
+from .no_auth_credentials import get_no_auth_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
@@ -288,6 +289,21 @@ async def execute_node(
                         "title": _dry_run_creds.title,
                     }
                 extra_exec_kwargs[field_name] = _dry_run_creds
+                continue
+
+            no_auth_credentials = get_no_auth_credentials(
+                credential_fields_info[field_name], input_data
+            )
+            if no_auth_credentials is not None:
+                # Preserve the normal CredentialsMetaInput shape for block input
+                # validation while avoiding any user-saved credential lookup.
+                input_data[field_name] = {
+                    "id": no_auth_credentials.id,
+                    "provider": no_auth_credentials.provider,
+                    "type": no_auth_credentials.type,
+                    "title": no_auth_credentials.title,
+                }
+                extra_exec_kwargs[field_name] = no_auth_credentials
                 continue
 
             field_value = input_data.get(field_name)

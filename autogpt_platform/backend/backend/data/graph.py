@@ -580,6 +580,12 @@ class GraphModel(Graph, GraphMeta):
                         continue
 
                     discriminated_info = field_info.discriminate(discriminator_value)
+                    if not discriminated_info.supported_types:
+                        # Credential-free discriminator variants (currently Ollama)
+                        # must not create a graph-level credential input. The
+                        # executor supplies the provider's internal no-auth runtime
+                        # adapter instead.
+                        continue
                     discriminated_info.discriminator_values.add(discriminator_value)
 
                     node_credential_data.append(

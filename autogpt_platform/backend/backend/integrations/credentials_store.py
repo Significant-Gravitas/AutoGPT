@@ -358,8 +358,8 @@ class IntegrationCredentialsStore:
         """
         all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 
-        # These will always be added
-        all_credentials.append(ollama_credentials)
+        # Ollama is credential-free. Its internal compatibility credential
+        # is injected only at execution time and must not appear in user settings.
 
         # These will only be added if the API key is set
         if settings.secrets.ideogram_api_key:
