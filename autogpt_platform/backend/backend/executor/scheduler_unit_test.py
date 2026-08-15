@@ -34,6 +34,7 @@ from backend.executor.scheduler import (
     _self_delete_copilot_turn_schedule,
     reconcile_stripe_tiers,
 )
+from backend.util.exceptions import ExpertNotFoundError
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
 
@@ -823,6 +824,37 @@ async def test_execute_graph_forwards_expert_id():
         await _execute_graph(**args.model_dump(mode="json"))
 
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_quietly_skips_unavailable_expert(caplog):
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+        expert_id="expert-1",
+    )
+    mock_add = AsyncMock(side_effect=ExpertNotFoundError("expert-1"))
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    mock_db.increment_onboarding_runs.assert_not_awaited()
+    assert "Skipping scheduled expert run" in caplog.text
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
 def test_copilot_turn_args_cap_retry_count_defaults_to_zero():

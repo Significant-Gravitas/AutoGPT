@@ -57,6 +57,7 @@ from backend.util.clients import (
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    ExpertNotFoundError,
     ExpertRunPausedError,
     GraphNotFoundError,
     GraphNotInLibraryError,
@@ -231,6 +232,14 @@ async def _execute_graph(**kwargs):
         # Expected while an expert is paused (budget/archive): skip quietly;
         # the schedule stays registered for one-click resume.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except ExpertNotFoundError:
+        # The schedule can outlive an archived, deleted, or no-longer-private
+        # expert. Keep it registered for recovery without logging an error on
+        # every tick.
+        logger.info(
+            f"Skipping scheduled expert run for graph #{args.graph_id}: "
+            "expert unavailable"
+        )
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
