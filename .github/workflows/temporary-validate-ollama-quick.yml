@@ -33,6 +33,8 @@ jobs:
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
       - name: Install dependencies
         run: poetry install
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
       - name: Run isolated no-auth credential tests
         run: poetry run pytest --confcutdir=backend/executor backend/executor/no_auth_credentials_test.py -q
       - name: Verify block documentation sync
