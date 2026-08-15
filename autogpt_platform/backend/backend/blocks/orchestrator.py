@@ -439,7 +439,7 @@ class OrchestratorBlock(Block):
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
-        credentials: llm.AICredentials | None = llm.AICredentialsField()
+        credentials: llm.AICredentials = llm.AICredentialsField()
         multiple_tool_calls: bool = SchemaField(
             title="Multiple Tool Calls",
             default=False,
