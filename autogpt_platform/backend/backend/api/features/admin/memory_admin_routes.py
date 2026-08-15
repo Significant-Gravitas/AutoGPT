@@ -395,6 +395,7 @@ async def list_entities(
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
 ) -> EntityListResponse:
     target = _resolve_user_id(user_id, caller_id)
     group_id, _ = await _resolve_and_audit_memory_scope(
@@ -402,6 +403,7 @@ async def list_entities(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=expert_id,
     )
 
     driver = _open_driver(group_id)
@@ -446,6 +448,7 @@ async def list_facts(
         Literal["active", "superseded", "contradicted", "any"], Query()
     ] = "any",
     scope: Annotated[str | None, Query()] = None,
+    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
 ) -> FactListResponse:
     target = _resolve_user_id(user_id, caller_id)
     group_id, _ = await _resolve_and_audit_memory_scope(
@@ -453,6 +456,7 @@ async def list_facts(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=expert_id,
     )
 
     # Build optional filters
@@ -520,6 +524,7 @@ async def list_communities(
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
 ) -> CommunityListResponse:
     target = _resolve_user_id(user_id, caller_id)
     group_id, _ = await _resolve_and_audit_memory_scope(
@@ -527,6 +532,7 @@ async def list_communities(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=expert_id,
     )
 
     driver = _open_driver(group_id)

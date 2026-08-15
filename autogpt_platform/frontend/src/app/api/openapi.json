@@ -1249,6 +1249,18 @@
               "default": 500,
               "title": "Limit"
             }
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Expert Id"
+            }
           }
         ],
         "responses": {
@@ -1513,6 +1525,18 @@
               "default": 1000,
               "title": "Limit"
             }
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Expert Id"
+            }
           }
         ],
         "responses": {
@@ -1586,6 +1610,18 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Scope"
+            }
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Expert Id"
             }
           }
         ],
