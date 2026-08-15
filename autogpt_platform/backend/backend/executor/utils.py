@@ -43,6 +43,7 @@ from backend.data.model import (
     NodeExecutionStats,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.executor.no_auth_credentials import get_no_auth_credentials
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -489,11 +490,18 @@ async def _validate_node_input_credentials(
         required_fields = block.input_schema.get_required_fields()
         is_creds_optional = node.credentials_optional
         credentials_fields_info = block.input_schema.get_credentials_fields_info()
+        validation_input = dict(node.input_default)
+        if nodes_input_masks and (node_input_mask := nodes_input_masks.get(node.id)):
+            validation_input.update(node_input_mask)
 
         for field_name, credentials_meta_type in credentials_fields.items():
-            reference_only = credentials_fields_info[
-                field_name
-            ].credential_reference_only
+            field_info = credentials_fields_info[field_name]
+            if get_no_auth_credentials(field_info, validation_input) is not None:
+                # Credential-free discriminator variants are valid at preflight.
+                # The executor injects their internal runtime adapter before the
+                # block input is validated, so no user credential lookup is needed.
+                continue
+            reference_only = field_info.credential_reference_only
             field_is_optional = is_creds_optional or field_name not in required_fields
             try:
                 # Check nodes_input_masks first, then input_default

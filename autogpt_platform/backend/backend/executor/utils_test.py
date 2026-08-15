@@ -775,6 +775,72 @@ async def test_validate_node_input_credentials_required_missing_creds_error(
 
 
 @pytest.mark.asyncio
+async def test_validate_node_input_credentials_allows_credential_free_ollama(
+    mocker: MockerFixture,
+):
+    from backend.blocks.llm import AITextGeneratorBlock, LLMModel
+    from backend.executor.utils import _validate_node_input_credentials
+    from backend.integrations.providers import ProviderName
+
+    ollama_model = next(
+        model for model in LLMModel if model.metadata.provider == ProviderName.OLLAMA
+    )
+    mock_node = mocker.MagicMock()
+    mock_node.id = "ollama-node"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"model": ollama_model.value}
+    mock_node.block = mocker.MagicMock()
+    mock_node.block.input_schema = AITextGeneratorBlock.Input
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+    mock_store = mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store"
+    )
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    assert errors == {}
+    assert nodes_to_skip == set()
+    mock_store.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_keeps_authenticated_provider_required(
+    mocker: MockerFixture,
+):
+    from backend.blocks.llm import AITextGeneratorBlock, LLMModel
+    from backend.executor.utils import _validate_node_input_credentials
+    from backend.integrations.providers import ProviderName
+
+    openai_model = next(
+        model for model in LLMModel if model.metadata.provider == ProviderName.OPENAI
+    )
+    mock_node = mocker.MagicMock()
+    mock_node.id = "openai-node"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"model": openai_model.value}
+    mock_node.block = mocker.MagicMock()
+    mock_node.block.input_schema = AITextGeneratorBlock.Input
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    assert errors[mock_node.id]["credentials"] == CRED_ERR_REQUIRED
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
 async def test_validate_graph_with_credentials_returns_nodes_to_skip(
     mocker: MockerFixture,
 ):
