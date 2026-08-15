@@ -91,7 +91,7 @@ def derive_memory_group_id(user_id: str, expert_id: str | None = None) -> str:
     if not expert_id:
         raise ValueError("expert_id must be non-empty to derive memory group_id")
 
-    safe_expert_id = re.sub(r"[^a-zA-Z0-9_-]", "", expert_id)[:_MAX_GROUP_ID_LEN]
+    safe_expert_id = re.sub(r"[^a-zA-Z0-9_-]", "", expert_id)
     if not safe_expert_id:
         raise ValueError(
             f"expert_id '{expert_id[:32]}...' yields empty group_id after sanitization"

@@ -137,6 +137,19 @@ class TestBuildExpertIdentitySuffix:
             await build_expert_identity_suffix("user-1", "exp-1")
 
     @pytest.mark.asyncio
+    async def test_archived_expert_returned_by_accessor_raises(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert(is_archived=True))
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            pytest.raises(
+                ExpertSessionUnavailableError,
+                match="start a new chat",
+            ),
+        ):
+            await build_expert_identity_suffix("user-1", "exp-1")
+
+    @pytest.mark.asyncio
     async def test_transient_lookup_error_is_retried_once(self):
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(side_effect=[RuntimeError("db down"), _expert()])

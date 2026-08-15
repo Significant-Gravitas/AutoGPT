@@ -84,9 +84,11 @@ def fake_redis(mocker):
     class FakeRedis:
         def __init__(self):
             self.hits: dict[str, int] = {}
+            self.get_calls: list[str] = []
             self.expire_calls: list[tuple[str, int]] = []
 
         async def get(self, key: str):
+            self.get_calls.append(key)
             # Keys are ``mem:hits:{user_id}:{edge_uuid}`` — split off the uuid.
             edge_uuid = key.rsplit(":", 1)[-1]
             value = self.hits.get(edge_uuid, 0)
@@ -291,8 +293,9 @@ async def test_empty_user_with_no_tentative_edges_returns_zero_counts_no_error(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("expert_id", [None, "expert-poison"])
 async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_mark_superseded, expert_id
 ):
     """A poison-pill edge raises mid-pass; the others still get processed,
     and the failure is captured in ``per_edge_errors`` rather than raised."""
@@ -318,13 +321,13 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     ) -> int:
         if edge_uuid == "edge-poison":
             raise RuntimeError("simulated redis explosion")
-        return await original_get_hit_count(user_id, edge_uuid)
+        return await original_get_hit_count(user_id, edge_uuid, expert_id)
 
     mocker.patch.object(
         ratification_mod, "_get_hit_count", side_effect=hit_count_with_poison
     )
 
-    result = await run_ratification_pass("u-mixed")
+    result = await run_ratification_pass("u-mixed", expert_id=expert_id)
 
     assert result.examined_count == 3
     # The hot edge got ratified, the stale edge got superseded, the
@@ -333,6 +336,10 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     assert result.superseded_count == 1
     assert len(result.per_edge_errors) == 1
     assert "edge-poison" in result.per_edge_errors[0]
+    assert fake_redis.get_calls == [
+        hit_key("u-mixed", "edge-good-hot", expert_id),
+        hit_key("u-mixed", "edge-good-stale", expert_id),
+    ]
 
 
 # ---------------------------------------------------------------------------

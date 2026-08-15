@@ -78,6 +78,14 @@ class TestDeriveMemoryGroupId:
             "user-1", "expert-1"
         )
 
+    def test_long_valid_expert_id_is_hashed_without_truncation(self) -> None:
+        expert_id = "expert_" + "a" * 256
+
+        result = derive_memory_group_id("user-1", expert_id)
+
+        assert result.startswith("expert_")
+        assert len(result) == len("expert_") + 64
+
     def test_empty_expert_id_raises(self) -> None:
         with pytest.raises(ValueError, match="expert_id must be non-empty"):
             derive_memory_group_id("user-1", "")
