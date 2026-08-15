@@ -123,6 +123,9 @@ class ResponseType(str, Enum):
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
 
+    # Connected integration credentials (metadata only)
+    CREDENTIAL_LIST = "credential_list"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):

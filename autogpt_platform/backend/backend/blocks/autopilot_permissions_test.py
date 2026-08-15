@@ -43,17 +43,25 @@ def _make_input(**kwargs) -> AutoPilotBlock.Input:
 
 @pytest.mark.asyncio
 class TestBuildAndValidatePermissions:
-    async def test_empty_inputs_returns_empty_permissions(self):
+    async def test_default_denies_credential_inventory(self):
         inp = _make_input()
         result = await _build_and_validate_permissions(inp)
         assert isinstance(result, CopilotPermissions)
-        assert result.is_empty()
+        assert result.tools == ["list_user_credentials"]
+        assert result.tools_exclude is True
+        assert "list_user_credentials" not in result.effective_allowed_tools(
+            all_known_tool_names()
+        )
 
     async def test_valid_tool_names_accepted(self):
         inp = _make_input(tools=["run_block", "web_fetch"], tools_exclude=True)
         result = await _build_and_validate_permissions(inp)
         assert isinstance(result, CopilotPermissions)
-        assert result.tools == ["run_block", "web_fetch"]
+        assert result.tools == [
+            "list_user_credentials",
+            "run_block",
+            "web_fetch",
+        ]
         assert result.tools_exclude is True
 
     async def test_invalid_tool_rejected_by_pydantic(self):
@@ -68,7 +76,18 @@ class TestBuildAndValidatePermissions:
 
         assert inp.tools == ["run_block"]
         assert isinstance(result, CopilotPermissions)
-        assert result.tools == ["run_block"]
+        assert result.tools == ["list_user_credentials", "run_block"]
+
+    async def test_credential_inventory_requires_explicit_allow_list(self):
+        inp = _make_input(tools=["list_user_credentials"], tools_exclude=False)
+        result = await _build_and_validate_permissions(inp)
+
+        assert isinstance(result, CopilotPermissions)
+        assert result.tools == ["list_user_credentials"]
+        assert result.tools_exclude is False
+        assert "list_user_credentials" in result.effective_allowed_tools(
+            all_known_tool_names()
+        )
 
     async def test_valid_block_name_accepted(self):
         mock_block_cls = MagicMock()

@@ -52,6 +52,15 @@ class TestCredentialsSurfacingGuardrails:
         assert "NEVER claim a card has appeared" in result
         assert "call the tool first" in result
 
+    def test_e2b_uses_secret_free_github_discovery(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert 'list_user_credentials(provider="github")' in result
+        assert "gh auth status" not in result
+        assert "trusted structured operation" in result
+        assert "Never assume `bash_exec`, `gh`, or `git` has access" in result
+        assert "reconnect or retry the same shell command" in result
+        assert "gh auth setup-git" not in result
+
 
 class TestToolDiscoveryPriorityAntiPattern:
     """The Tool Discovery Priority section must forbid claiming a capability

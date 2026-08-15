@@ -278,7 +278,7 @@ async def ensure_managed_credential(
 async def ensure_managed_credentials(
     user_id: str,
     store: IntegrationCredentialsStore,
-) -> None:
+) -> bool:
     """Run the credentials sweep for *user_id*.
 
     "Credentials sweep" = iterate every registered
@@ -308,9 +308,15 @@ async def ensure_managed_credentials(
     Transient failures get retried on the next fetch.
 
     Providers are checked concurrently via ``asyncio.gather``.
+
+    Returns ``True`` only when every provider succeeded or was intentionally
+    skipped, and ``False`` when any provider had a transient failure.
     """
     if user_id in _provisioned_users:
-        return
+        return True
+    if not _PROVIDERS:
+        logger.error("Managed credential registry is empty")
+        return False
 
     results = await asyncio.gather(
         *(_ensure_one(user_id, store, n, p) for n, p in _PROVIDERS.items())
@@ -319,8 +325,10 @@ async def ensure_managed_credentials(
     # Only cache the user as provisioned when every provider succeeded or
     # was already present.  A transient failure (network timeout, Redis
     # blip) returns False, so the next page load will retry.
-    if all(results):
+    provisioning_complete = all(results)
+    if provisioning_complete:
         _provisioned_users[user_id] = True
+    return provisioning_complete
 
 
 async def cleanup_managed_credentials(

@@ -172,7 +172,10 @@ class AutoPilotBlock(Block):
             description=(
                 "Tool names to filter. Works with tools_exclude to form an "
                 "allow-list or deny-list. "
-                "Leave empty to apply no tool filter."
+                "Credential inventory (`list_user_credentials`) is sensitive: "
+                "it is always blocked in deny-list mode, including the default "
+                "configuration, and is available only when named explicitly in "
+                "allow-list mode (`tools_exclude=false`)."
             ),
             default=[],
             advanced=True,
@@ -182,7 +185,9 @@ class AutoPilotBlock(Block):
             description=(
                 "Controls how the 'tools' list is interpreted. "
                 "True (default): 'tools' is a deny-list — listed tools are blocked, "
-                "all others are allowed. An empty 'tools' list means allow everything. "
+                "and all non-sensitive tools are allowed. Credential inventory is "
+                "always blocked in this mode. An empty 'tools' list allows every "
+                "non-sensitive tool. "
                 "False: 'tools' is an allow-list — only listed tools are permitted."
             ),
             default=True,
@@ -651,6 +656,9 @@ _inherited_permissions: contextvars.ContextVar["CopilotPermissions | None"] = (
 )
 
 
+_AUTOPILOT_EXPLICIT_OPT_IN_TOOLS = frozenset({"list_user_credentials"})
+
+
 async def _build_and_validate_permissions(
     input_data: "AutoPilotBlock.Input",
 ) -> "CopilotPermissions | str":
@@ -671,8 +679,12 @@ async def _build_and_validate_permissions(
                 "You may also use the first 8 characters of a block UUID."
             )
 
+    tools: list[str] = [str(tool) for tool in input_data.tools]
+    if input_data.tools_exclude:
+        tools = sorted(set(tools) | _AUTOPILOT_EXPLICIT_OPT_IN_TOOLS)
+
     return CopilotPermissions(
-        tools=list(input_data.tools),
+        tools=tools,
         tools_exclude=input_data.tools_exclude,
         blocks=input_data.blocks,
         blocks_exclude=input_data.blocks_exclude,
