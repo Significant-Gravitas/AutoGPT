@@ -211,7 +211,6 @@ def _make_run(**overrides) -> ExpertRun:
         "execution_id": "exec-1",
         "graph_id": "graph-1",
         "agent_name": "SEO Blog Writer",
-        "input_preview": "topic: retrieval augmented generation",
         "library_agent_id": "library-agent-1",
         "status": "completed",
         "output_type": "table",

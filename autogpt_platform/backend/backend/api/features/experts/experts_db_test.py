@@ -1272,27 +1272,21 @@ def _run_execution(**overrides) -> SimpleNamespace:
         "executionStatus": "COMPLETED",
         "startedAt": None,
         "endedAt": None,
-        "inputs": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
 
 
-def _run_workflow(name: str | None = "SEO Blog Writer") -> SimpleNamespace:
+def _run_workflow(name: str = "SEO Blog Writer") -> SimpleNamespace:
     return SimpleNamespace(
         libraryAgentId="library-agent-1",
-        StoreListingVersion=SimpleNamespace(name=name) if name else None,
+        StoreListingVersion=SimpleNamespace(name=name),
     )
 
 
 def test_to_expert_run_uses_workflow_name_and_deep_link():
     run = experts_db._to_expert_run(
-        _run_execution(),
-        _run_workflow(),
-        "table",
-        "result",
-        needs_review=True,
-        fallback=experts_db.RunLabel(name="Library Name"),
+        _run_execution(), _run_workflow(), "table", "result", needs_review=True
     )
     assert run.execution_id == "exec-1"
     assert run.agent_name == "SEO Blog Writer"
@@ -1304,106 +1298,14 @@ def test_to_expert_run_uses_workflow_name_and_deep_link():
     )
 
 
-def test_to_expert_run_prefers_fallback_name_over_placeholder():
-    """A self-built workflow has no store listing; the library/graph name it
-    is known by everywhere else beats the "Agent task" placeholder."""
-    run = experts_db._to_expert_run(
-        _run_execution(),
-        _run_workflow(name=None),
-        "unknown",
-        None,
-        needs_review=False,
-        fallback=experts_db.RunLabel(name="image test worflow"),
-    )
-    assert run.agent_name == "image test worflow"
-
-
-def test_to_expert_run_links_via_fallback_library_agent():
-    """A run of a graph the expert never installed still has a library entry,
-    so the viewer's "run details" link must not be dead."""
-    run = experts_db._to_expert_run(
-        _run_execution(),
-        None,
-        "image",
-        "media",
-        needs_review=False,
-        fallback=experts_db.RunLabel(name="Image Test", library_agent_id="lib-9"),
-    )
-    assert run.library_agent_id == "lib-9"
-    assert run.link == "/library/agents/lib-9?activeTab=runs&activeItem=exec-1"
-
-
 def test_to_expert_run_falls_back_when_workflow_unresolved():
     run = experts_db._to_expert_run(
-        _run_execution(),
-        None,
-        "unknown",
-        None,
-        needs_review=False,
-        fallback=experts_db._EMPTY_RUN_LABEL,
+        _run_execution(), None, "unknown", None, needs_review=False
     )
     assert run.agent_name == "Agent task"
     assert run.library_agent_id is None
     assert run.output_key is None
     assert run.link is None
-
-
-def test_to_expert_run_summarises_scalar_inputs():
-    run = experts_db._to_expert_run(
-        _run_execution(inputs={"query": "design agencies", "limit": 40}),
-        _run_workflow(),
-        "table",
-        "result",
-        needs_review=False,
-        fallback=experts_db._EMPTY_RUN_LABEL,
-    )
-    assert run.input_preview == "query: design agencies · limit: 40"
-
-
-def test_to_expert_run_input_preview_skips_secrets_and_structures():
-    run = experts_db._to_expert_run(
-        _run_execution(
-            inputs={
-                "api_key": "sk-live-123",
-                "auth_token": "t-456",
-                "filters": {"city": "Berlin"},
-                "blank": "   ",
-                "query": "agencies",
-            }
-        ),
-        _run_workflow(),
-        "table",
-        "result",
-        needs_review=False,
-        fallback=experts_db._EMPTY_RUN_LABEL,
-    )
-    assert run.input_preview == "query: agencies"
-
-
-def test_to_expert_run_input_preview_absent_without_scalars():
-    run = experts_db._to_expert_run(
-        _run_execution(inputs={"filters": {"city": "Berlin"}}),
-        _run_workflow(),
-        "table",
-        "result",
-        needs_review=False,
-        fallback=experts_db._EMPTY_RUN_LABEL,
-    )
-    assert run.input_preview is None
-
-
-def test_to_expert_run_input_preview_is_truncated():
-    run = experts_db._to_expert_run(
-        _run_execution(inputs={"query": "x" * 200}),
-        _run_workflow(),
-        "table",
-        "result",
-        needs_review=False,
-        fallback=experts_db._EMPTY_RUN_LABEL,
-    )
-    assert run.input_preview is not None
-    assert len(run.input_preview) == experts_db._INPUT_PREVIEW_MAX_LENGTH
-    assert run.input_preview.endswith("…")
 
 
 def _output_node_exec(
@@ -1514,13 +1416,6 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
                 }
             ),
         ),
-        patch.object(
-            experts_db,
-            "_fallback_run_labels",
-            new=AsyncMock(
-                return_value={"graph-1": experts_db.RunLabel(name="Contact Finder")}
-            ),
-        ),
     ):
         runs = await experts_db.list_expert_runs("owner-1", "expert-1")
 
@@ -1542,65 +1437,6 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
     assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
     assert [run.status for run in runs] == ["completed", "review"]
     assert [run.needs_review for run in runs] == [False, True]
-    # The expert has no workflow rows here, so both runs would otherwise be
-    # the "Agent task" placeholder.
-    assert [run.agent_name for run in runs] == ["Contact Finder", "Contact Finder"]
-
-
-@pytest.mark.asyncio
-async def test_fallback_run_labels_prefers_library_over_graph():
-    graph_client = SimpleNamespace(
-        find_many=AsyncMock(
-            return_value=[SimpleNamespace(id="graph-2", name="Raw Graph Name")]
-        )
-    )
-
-    with (
-        patch.object(
-            experts_db.library_db,
-            "get_library_agent_refs_by_graph_ids",
-            new=AsyncMock(
-                return_value=[
-                    SimpleNamespace(id="lib-1", graph_id="graph-1", name="Email Scout"),
-                    SimpleNamespace(id="lib-2", graph_id="graph-2", name=""),
-                ]
-            ),
-        ),
-        patch.object(prisma.models.AgentGraph, "prisma", return_value=graph_client),
-    ):
-        labels = await experts_db._fallback_run_labels(
-            "owner-1", ["graph-1", "graph-2", "graph-1"]
-        )
-
-    assert labels == {
-        "graph-1": experts_db.RunLabel(name="Email Scout", library_agent_id="lib-1"),
-        "graph-2": experts_db.RunLabel(name="Raw Graph Name", library_agent_id="lib-2"),
-    }
-    assert set(graph_client.find_many.await_args.kwargs["where"]["id"]["in"]) == {
-        "graph-2"
-    }
-
-
-@pytest.mark.asyncio
-async def test_fallback_run_labels_skips_graph_query_when_library_covers_all():
-    with (
-        patch.object(
-            experts_db.library_db,
-            "get_library_agent_refs_by_graph_ids",
-            new=AsyncMock(
-                return_value=[
-                    SimpleNamespace(id="lib-1", graph_id="graph-1", name="Email Scout")
-                ]
-            ),
-        ),
-        patch.object(prisma.models.AgentGraph, "prisma") as graph_prisma,
-    ):
-        labels = await experts_db._fallback_run_labels("owner-1", ["graph-1"])
-
-    assert labels == {
-        "graph-1": experts_db.RunLabel(name="Email Scout", library_agent_id="lib-1")
-    }
-    graph_prisma.assert_not_called()
 
 
 @pytest.mark.asyncio

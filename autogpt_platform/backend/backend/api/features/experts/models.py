@@ -82,9 +82,6 @@ class ExpertRun(BaseModel):
     execution_id: str
     graph_id: str
     agent_name: str
-    # Short scalar summary of the run's inputs — without it, repeated runs of
-    # one workflow are an indistinguishable stack of identical rows.
-    input_preview: str | None
     library_agent_id: str | None
     status: ExpertRunStatus
     output_type: OutputType
@@ -94,13 +91,6 @@ class ExpertRun(BaseModel):
     started_at: datetime | None
     ended_at: datetime | None
     link: str | None
-
-
-class RunLabel(BaseModel):
-    """How to name and link a run whose expert workflow row can't label it."""
-
-    name: str | None = None
-    library_agent_id: str | None = None
 
 
 class ExpertDetachPreview(BaseModel):

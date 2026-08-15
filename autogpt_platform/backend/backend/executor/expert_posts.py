@@ -12,8 +12,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
+from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME
 from backend.data.execution import ExecutionStatus, GraphExecutionEntry
+from backend.data.expert_run_output import (
+    OutputType,
+    classify_run_output,
+    reconstruct_run_outputs,
+)
 from backend.data.model import GraphExecutionStats
 from backend.data.redis_client import get_redis
 
@@ -26,6 +32,10 @@ _POST_NAMESPACE = uuid.UUID("0b7c8a52-3d1e-4f6a-9c0d-7e5b2a91c4d8")
 _DAILY_POST_CAP = 10
 _CAP_KEY_TTL_SECONDS = 2 * 24 * 3600
 _MAX_ERROR_LENGTH = 500
+
+# Discriminator the frontend keys on to render a WorkCard instead of a raw
+# markdown wall. Rides in the message's per-row JSONB metadata bag.
+RUN_METADATA_KIND = "expert_run"
 
 
 def handle_expert_run_post(
@@ -76,14 +86,27 @@ def _post_run_result(
     # message actually lands (failure or retry-dedup), so failed attempts
     # and re-fired completions can't silently eat the day's budget.
     try:
-        agent_name, library_agent_id = _resolve_agent_label(db_client, graph_exec)
+        metadata = db_client.get_graph_metadata(
+            graph_exec.graph_id, graph_exec.graph_version
+        )
+        agent_name = metadata.name if metadata else DEFAULT_AGENT_NAME
+        succeeded = status == ExecutionStatus.COMPLETED
+        library_agent_id = db_client.get_library_agent_id_by_graph_id(
+            graph_exec.user_id, graph_exec.graph_id
+        )
         content = build_expert_run_message(
             agent_name=agent_name,
-            succeeded=status == ExecutionStatus.COMPLETED,
+            succeeded=succeeded,
             summary=exec_stats.activity_status,
             error=str(exec_stats.error) if exec_stats.error else None,
             library_agent_id=library_agent_id,
         )
+        output_type: OutputType
+        output_key: str | None
+        if succeeded:
+            output_type, output_key = _resolve_run_output(db_client, graph_exec)
+        else:
+            output_type, output_key = "unknown", None
         posted_session = db_client.append_expert_run_message(
             user_id=graph_exec.user_id,
             expert_id=expert_id,
@@ -91,36 +114,22 @@ def _post_run_result(
             message_id=str(
                 uuid.uuid5(_POST_NAMESPACE, f"run-post:{graph_exec.graph_exec_id}")
             ),
+            metadata={
+                "kind": RUN_METADATA_KIND,
+                "execution_id": graph_exec.graph_exec_id,
+                "graph_id": graph_exec.graph_id,
+                "library_agent_id": library_agent_id,
+                "graph_name": agent_name,
+                "status": "completed" if succeeded else "failed",
+                "output_type": output_type,
+                "output_key": output_key,
+            },
         )
     except Exception:
         _release_cap_slot(cap_key, expert_id)
         raise
     if posted_session is None:
         _release_cap_slot(cap_key, expert_id)
-
-
-def _resolve_agent_label(
-    db_client: "DatabaseManagerClient", graph_exec: GraphExecutionEntry
-) -> tuple[str, str | None]:
-    """Display name + deep-link target for the post, from one lookup.
-
-    The library name is what the user sees for this agent everywhere else
-    (chat, library, schedules), so it wins over the raw graph name — a post
-    naming the agent differently from the schedule that produced it reads as
-    a different agent entirely.
-    """
-    refs = db_client.get_library_agent_refs_by_graph_ids(
-        graph_exec.user_id, [graph_exec.graph_id]
-    )
-    ref = refs[0] if refs else None
-    if ref and ref.name:
-        return ref.name, ref.id
-    metadata = db_client.get_graph_metadata(
-        graph_exec.graph_id, graph_exec.graph_version
-    )
-    return (metadata.name if metadata and metadata.name else DEFAULT_AGENT_NAME), (
-        ref.id if ref else None
-    )
 
 
 def build_expert_run_message(
@@ -159,6 +168,31 @@ def build_expert_run_message(
         f"I'll try again on the next schedule — if this keeps happening, "
         f"check the workflow's setup in your library.{link}"
     )
+
+
+def _resolve_run_output(
+    db_client: "DatabaseManagerClient", graph_exec: GraphExecutionEntry
+) -> tuple[OutputType, str | None]:
+    """Best-effort output classification; any retrieval failure degrades to
+    ``("unknown", None)`` so a thread post never hinges on fetching run
+    outputs."""
+    try:
+        node_execs = db_client.get_node_executions(
+            graph_exec_id=graph_exec.graph_exec_id,
+            block_ids=list(get_output_block_ids()),
+        )
+        outputs = reconstruct_run_outputs(
+            (node.queue_time, node.add_time, node.input_data)
+            for node in node_execs
+            if node.status != ExecutionStatus.INCOMPLETE
+        )
+        return classify_run_output(outputs)
+    except Exception as e:
+        logger.warning(
+            f"Failed to classify output for run #{graph_exec.graph_exec_id}: "
+            f"{type(e).__name__}: {e}"
+        )
+        return "unknown", None
 
 
 def _quote(text: str) -> str:

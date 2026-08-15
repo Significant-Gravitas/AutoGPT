@@ -17821,10 +17821,6 @@
           "execution_id": { "type": "string", "title": "Execution Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "agent_name": { "type": "string", "title": "Agent Name" },
-          "input_preview": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Input Preview"
-          },
           "library_agent_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id"
@@ -17876,7 +17872,6 @@
           "execution_id",
           "graph_id",
           "agent_name",
-          "input_preview",
           "library_agent_id",
           "status",
           "output_type",

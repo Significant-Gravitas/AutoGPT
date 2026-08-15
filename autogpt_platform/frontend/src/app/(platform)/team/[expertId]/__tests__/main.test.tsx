@@ -120,7 +120,6 @@ const mariaRuns: ExpertRun[] = [
     execution_id: "run-1",
     graph_id: "graph-1",
     agent_name: "Weekly Report",
-    input_preview: "period: last 7 days",
     library_agent_id: "lib-1",
     status: "completed",
     output_type: "table",
@@ -134,7 +133,6 @@ const mariaRuns: ExpertRun[] = [
     execution_id: "run-2",
     graph_id: "graph-2",
     agent_name: "SEO Audit",
-    input_preview: null,
     library_agent_id: "lib-2",
     status: "review",
     output_type: "doc",
@@ -223,8 +221,6 @@ describe("ExpertDetailPage", () => {
     // with a contradictory badge next to it.
     expect(within(workList).getByText("Waiting for review")).toBeDefined();
     expect(within(workList).queryByText("Needs review")).toBeNull();
-    // Repeat runs of one workflow are only distinguishable by their inputs.
-    expect(within(workList).getByText("period: last 7 days")).toBeDefined();
   });
 
   test("filters work to runs that need review", async () => {
