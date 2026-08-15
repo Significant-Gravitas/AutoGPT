@@ -1,5 +1,6 @@
 "use client";
 
+import { Expert } from "@/app/api/__generated__/models/expert";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -10,12 +11,11 @@ import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPic
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { notFound } from "next/navigation";
-import { Expert } from "@/app/api/__generated__/models/expert";
-import { AutopilotCard } from "./components/AutopilotCard";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
+import { TeamRoster } from "./components/TeamRoster/TeamRoster";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
@@ -99,59 +99,12 @@ export default function TeamPage() {
         </Button>
       </div>
 
-      {isLoading ? (
-        <div className={GRID_CLASS}>
-          <AutopilotCard />
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-48 w-full rounded-2xl" />
-          ))}
-        </div>
-      ) : podGroups.length === 0 ? (
-        <div className={GRID_CLASS}>
-          <AutopilotCard />
-          {ungroupedExperts.map(renderCard)}
-        </div>
-      ) : (
-        <div className="space-y-8">
-          <div className={GRID_CLASS}>
-            <AutopilotCard />
-          </div>
-          {podGroups.map((group) => (
-            <section key={group.pod.id} className="space-y-3">
-              <div className="flex items-baseline gap-2">
-                <Text variant="h4">{group.pod.name}</Text>
-                <Text variant="small" className="text-zinc-500">
-                  {group.experts.length}{" "}
-                  {group.experts.length === 1 ? "expert" : "experts"}
-                </Text>
-              </div>
-              {group.experts.length > 0 ? (
-                <div className={GRID_CLASS}>
-                  {group.experts.map(renderCard)}
-                </div>
-              ) : (
-                <Text variant="small" className="text-zinc-500">
-                  No experts in this pod yet.
-                </Text>
-              )}
-            </section>
-          ))}
-          {ungroupedExperts.length > 0 ? (
-            <section className="space-y-3">
-              <div className="flex items-baseline gap-2">
-                <Text variant="h4">No pod</Text>
-                <Text variant="small" className="text-zinc-500">
-                  {ungroupedExperts.length}{" "}
-                  {ungroupedExperts.length === 1 ? "expert" : "experts"}
-                </Text>
-              </div>
-              <div className={GRID_CLASS}>
-                {ungroupedExperts.map(renderCard)}
-              </div>
-            </section>
-          ) : null}
-        </div>
-      )}
+      <TeamRoster
+        isLoading={isLoading}
+        podGroups={podGroups}
+        ungroupedExperts={ungroupedExperts}
+        renderCard={renderCard}
+      />
 
       {isError ? (
         <ErrorCard

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -768,6 +769,32 @@ async def test_list_pods_is_user_scoped(server: SpinTestServer, test_user, other
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_list_pods_uses_creation_order(server: SpinTestServer, test_user):
+    now = datetime.now(timezone.utc)
+    later = await prisma.models.ExpertPod.prisma().create(
+        data={
+            "userId": test_user.id,
+            "name": _pod_name("Later"),
+            "createdAt": now + timedelta(days=1),
+        }
+    )
+    earlier = await prisma.models.ExpertPod.prisma().create(
+        data={
+            "userId": test_user.id,
+            "name": _pod_name("Earlier"),
+            "createdAt": now,
+        }
+    )
+
+    ordered_ids = [
+        pod.id
+        for pod in await experts_db.list_pods(test_user.id)
+        if pod.id in {earlier.id, later.id}
+    ]
+    assert ordered_ids == [earlier.id, later.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_assign_pod_rejects_other_users_pod(
     server: SpinTestServer, test_user, other_user
 ):
@@ -831,6 +858,19 @@ async def test_assign_pod_none_detaches(server: SpinTestServer, test_user):
 
     detached = await experts_db.assign_pod(test_user.id, hired.expert.id, None)
     assert detached.pod_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_moves_between_pods(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    first_pod = await experts_db.create_pod(test_user.id, _pod_name("First"))
+    second_pod = await experts_db.create_pod(test_user.id, _pod_name("Second"))
+    await experts_db.assign_pod(test_user.id, hired.expert.id, first_pod.id)
+
+    moved = await experts_db.assign_pod(test_user.id, hired.expert.id, second_pod.id)
+
+    assert moved.pod_id == second_pod.id
 
 
 @pytest.mark.asyncio(loop_scope="session")

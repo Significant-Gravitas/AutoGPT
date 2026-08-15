@@ -473,9 +473,9 @@ async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert
             data={"podId": pod_id},
         )
     except prisma.errors.ForeignKeyViolationError:
-        # The pod was deleted between the ownership check above and the
-        # update — surface the same not-found the check would have raised.
-        raise ExpertPodNotFoundError(pod_id or "")
+        if pod_id is None:
+            raise
+        raise ExpertPodNotFoundError(pod_id)
     if updated == 0:
         raise ExpertNotFoundError(expert_id)
 

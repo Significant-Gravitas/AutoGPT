@@ -552,6 +552,28 @@ describe("TeamPage", () => {
     expect((nameInput as HTMLInputElement).value).toBe("Growth");
   });
 
+  test("clears the pod name after cancelling and reopening the dialog", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "New pod" }));
+    const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
+    expect(nameInput.getAttribute("maxlength")).toBe("100");
+    await user.type(nameInput, "Draft pod");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "New pod" })).toBeNull(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "New pod" }));
+    const reopenedNameInput = await screen.findByRole("textbox", {
+      name: /pod name/i,
+    });
+    expect((reopenedNameInput as HTMLInputElement).value).toBe("");
+  });
+
   test("moves an expert into a pod from the card menu", async () => {
     const user = userEvent.setup();
     const growthPod: ExpertPod = {
@@ -577,6 +599,78 @@ describe("TeamPage", () => {
     await user.click(await screen.findByRole("menuitem", { name: /Growth/ }));
 
     await waitFor(() => expect(assignedPodId).toBe("pod-growth"));
+    expect(toastMock).toHaveBeenCalledWith({ title: "Moved to Growth" });
+  });
+
+  test("removes an expert from its pod from the card menu", async () => {
+    const user = userEvent.setup();
+    const growthPod: ExpertPod = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    const poddedMaria: Expert = { ...hiredMaria, pod_id: growthPod.id };
+    let assignedPodId: string | null | undefined;
+    server.use(
+      getListExpertsMockHandler([poddedMaria]),
+      getListExpertPodsMockHandler([growthPod]),
+      getAssignExpertPodMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { pod_id: string | null };
+        assignedPodId = body.pod_id;
+        return { ...poddedMaria, pod_id: body.pod_id };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    await user.click(screen.getByRole("button", { name: "Move to pod" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Remove from pod" }),
+    );
+
+    await waitFor(() => expect(assignedPodId).toBeNull());
+    expect(toastMock).toHaveBeenCalledWith({ title: "Removed from pod" });
+  });
+
+  test("shows the assign failure reason and refreshes stale pods", async () => {
+    const user = userEvent.setup();
+    const growthPod: ExpertPod = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    let podRequests = 0;
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler(() => {
+        podRequests += 1;
+        return podRequests === 1 ? [growthPod] : [];
+      }),
+      http.patch("/api/proxy/api/experts/expert-maria/pod", () =>
+        HttpResponse.json(
+          { detail: "Expert or pod not found" },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    await user.click(screen.getByRole("button", { name: "Move to pod" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Growth/ }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({
+        title: "Could not move expert",
+        description: "Expert or pod not found",
+        variant: "destructive",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Move to pod" })).toBeNull(),
+    );
   });
 
   test("keeps the roster in loading state until pods resolve", async () => {

@@ -44,6 +44,7 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
             label="Pod name"
             placeholder="e.g. Growth"
             value={name}
+            maxLength={100}
             onChange={(event) => setName(event.target.value)}
             wrapperClassName="!mb-0"
           />

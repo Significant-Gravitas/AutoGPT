@@ -38,17 +38,25 @@ export function useTeamPage({ enabled }: Args) {
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
     query: { select: (res) => okData(res) ?? [], enabled },
   });
+  const pods = podsQuery.data ?? [];
 
   function invalidateExperts() {
-    queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() });
-    queryClient.invalidateQueries({ queryKey: getListExpertPodsQueryKey() });
+    return queryClient.invalidateQueries({
+      queryKey: getListExpertsQueryKey(),
+    });
+  }
+
+  function invalidatePods() {
+    return queryClient.invalidateQueries({
+      queryKey: getListExpertPodsQueryKey(),
+    });
   }
 
   const { mutate: createPodMutate, isPending: isCreatingPod } =
     useCreateExpertPod({
       mutation: {
         onSuccess: () => {
-          invalidateExperts();
+          void invalidatePods();
           setIsNewPodOpen(false);
         },
         onError: (error) => {
@@ -66,9 +74,27 @@ export function useTeamPage({ enabled }: Args) {
 
   const { mutate: assignPodMutate } = useAssignExpertPod({
     mutation: {
-      onSuccess: invalidateExperts,
-      onError: () => {
-        toast({ title: "Could not move expert", variant: "destructive" });
+      onSuccess: (_response, variables) => {
+        void invalidateExperts();
+        const destination = pods.find(
+          (pod) => pod.id === variables.data.pod_id,
+        );
+        toast({
+          title:
+            variables.data.pod_id === null
+              ? "Removed from pod"
+              : destination
+                ? `Moved to ${destination.name}`
+                : "Expert moved",
+        });
+      },
+      onError: (error) => {
+        void invalidatePods();
+        toast({
+          title: "Could not move expert",
+          description: error instanceof Error ? error.message : undefined,
+          variant: "destructive",
+        });
       },
     },
   });
@@ -76,7 +102,6 @@ export function useTeamPage({ enabled }: Args) {
   const hiredExperts = (expertsQuery.data ?? []).filter(
     (expert) => !expert.is_template && !expert.is_archived,
   );
-  const pods = podsQuery.data ?? [];
   const { groups, ungrouped } = groupExpertsByPods(hiredExperts, pods);
 
   function schedulesForExpert(expert: Expert) {

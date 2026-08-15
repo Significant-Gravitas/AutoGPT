@@ -7,7 +7,9 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
-import { cn } from "@/lib/utils";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Progress } from "@/components/atoms/Progress/Progress";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,18 +17,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import Link from "next/link";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import {
   FolderIcon,
   PencilIcon,
   PlusSignIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
+import Link from "next/link";
 import { MouseEvent } from "react";
-
-import { Progress } from "@/components/atoms/Progress/Progress";
 import {
   getNeedsSetupCount,
   getScheduleCountLabel,

@@ -114,8 +114,8 @@ async def assign_expert_pod(
     except (
         experts_db.ExpertNotFoundError,
         experts_db.ExpertPodNotFoundError,
-    ) as e:
-        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    ):
+        raise fastapi.HTTPException(status_code=404, detail="Expert or pod not found")
 
 
 @router.get(

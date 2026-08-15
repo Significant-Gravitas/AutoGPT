@@ -608,6 +608,7 @@ def test_assign_pod_unknown_expert_returns_404(
     response = client.patch("/experts/nope/pod", json={"pod_id": "pod-1"})
 
     assert response.status_code == 404
+    assert response.json()["detail"] == "Expert or pod not found"
 
 
 def test_assign_pod_unknown_pod_returns_404(
@@ -622,3 +623,4 @@ def test_assign_pod_unknown_pod_returns_404(
     response = client.patch("/experts/expert-1/pod", json={"pod_id": "nope"})
 
     assert response.status_code == 404
+    assert response.json()["detail"] == "Expert or pod not found"

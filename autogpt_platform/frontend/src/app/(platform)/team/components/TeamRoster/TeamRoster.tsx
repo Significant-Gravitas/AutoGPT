@@ -1,0 +1,84 @@
+import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
+import { ReactNode } from "react";
+import { AutopilotCard } from "../AutopilotCard";
+
+const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
+
+type Props = {
+  isLoading: boolean;
+  podGroups: { pod: ExpertPod; experts: Expert[] }[];
+  ungroupedExperts: Expert[];
+  renderCard: (expert: Expert) => ReactNode;
+};
+
+type SectionHeaderProps = {
+  name: string;
+  count: number;
+};
+
+export function TeamRoster({
+  isLoading,
+  podGroups,
+  ungroupedExperts,
+  renderCard,
+}: Props) {
+  if (isLoading) {
+    return (
+      <div className={GRID_CLASS}>
+        <AutopilotCard />
+        {[0, 1, 2].map((index) => (
+          <Skeleton key={index} className="h-48 w-full rounded-2xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (podGroups.length === 0) {
+    return (
+      <div className={GRID_CLASS}>
+        <AutopilotCard />
+        {ungroupedExperts.map(renderCard)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <div className={GRID_CLASS}>
+        <AutopilotCard />
+      </div>
+      {podGroups.map((group) => (
+        <section key={group.pod.id} className="space-y-3">
+          <SectionHeader name={group.pod.name} count={group.experts.length} />
+          {group.experts.length > 0 ? (
+            <div className={GRID_CLASS}>{group.experts.map(renderCard)}</div>
+          ) : (
+            <Text variant="small" className="text-zinc-500">
+              No experts in this pod yet.
+            </Text>
+          )}
+        </section>
+      ))}
+      {ungroupedExperts.length > 0 ? (
+        <section className="space-y-3">
+          <SectionHeader name="No pod" count={ungroupedExperts.length} />
+          <div className={GRID_CLASS}>{ungroupedExperts.map(renderCard)}</div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function SectionHeader({ name, count }: SectionHeaderProps) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <Text variant="h4">{name}</Text>
+      <Text variant="small" className="text-zinc-500">
+        {count} {count === 1 ? "expert" : "experts"}
+      </Text>
+    </div>
+  );
+}
