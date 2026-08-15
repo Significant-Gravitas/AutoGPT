@@ -229,7 +229,7 @@ def _audit_cross_user_access(
     caller_email = jwt_payload.get("email") or jwt_payload.get("user_metadata", {}).get(
         "email", ""
     )
-    memory_scope = f"expert {expert_id}" if expert_id is not None else "AutoPilot"
+    memory_scope = f"expert {expert_id!r}" if expert_id is not None else "AutoPilot"
     if group_id is not None:
         memory_scope = f"{memory_scope} (group {group_id})"
     logger.info(

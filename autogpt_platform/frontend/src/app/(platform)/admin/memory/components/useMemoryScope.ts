@@ -1,20 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
+import {
+  type listExpertsResponse,
+  useListExperts,
+} from "@/app/api/__generated__/endpoints/experts/experts";
+import type { Expert } from "@/app/api/__generated__/models/expert";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export const AUTOPILOT_MEMORY_SCOPE = "autopilot";
+const EMPTY_EXPERTS: Expert[] = [];
+
+function selectExperts(response: listExpertsResponse): Expert[] {
+  return response.status === 200 ? response.data : EMPTY_EXPERTS;
+}
 
 export function useMemoryScope() {
   const { toast } = useToast();
   const [selectedScope, setSelectedScope] = useState(AUTOPILOT_MEMORY_SCOPE);
   const expertsQuery = useListExperts({
     query: {
-      select: (response) => (response.status === 200 ? response.data : []),
+      select: selectExperts,
     },
   });
-  const experts = expertsQuery.data;
+  const experts = expertsQuery.data ?? EMPTY_EXPERTS;
 
   useEffect(() => {
     if (
@@ -46,7 +55,7 @@ export function useMemoryScope() {
     selectedScope,
     setSelectedScope,
     selectedExpertID,
-    experts: experts ?? [],
+    experts,
     expertsLoading: expertsQuery.isLoading,
     expertsError: expertsQuery.error,
   };

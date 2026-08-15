@@ -19,12 +19,24 @@ export function MemoryScopeSelector({
   loading,
   error,
 }: Props) {
+  const labelCounts = experts.reduce<Record<string, number>>(
+    (counts, expert) => {
+      const label = `${expert.name} — ${expert.role.trim() || "Expert"}`;
+      counts[label] = (counts[label] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
   const options = [
     { value: AUTOPILOT_MEMORY_SCOPE, label: "AutoPilot (account memory)" },
-    ...experts.map((expert) => ({
-      value: expert.id,
-      label: `${expert.name} — ${expert.role.trim() || "Expert"} (${expert.id.slice(0, 8)})`,
-    })),
+    ...experts.map((expert) => {
+      const label = `${expert.name} — ${expert.role.trim() || "Expert"}`;
+      return {
+        value: expert.id,
+        label:
+          (labelCounts[label] ?? 0) > 1 ? `${label} (${expert.id})` : label,
+      };
+    }),
   ];
 
   return (
