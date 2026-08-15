@@ -813,6 +813,7 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
         get_briefing_for_date=AsyncMock(return_value=stale_record),
         append_plain_session_message=AsyncMock(),
         mark_briefing_delivered=AsyncMock(),
+        emit_funnel_event=AsyncMock(),
     )
     monkeypatch.setattr(
         generate, "get_database_manager_async_client", lambda **kwargs: client
@@ -846,6 +847,12 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
     assert result == {"status": "skipped", "reason": "nothing_to_say"}
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
     client.append_plain_session_message.assert_not_awaited()
+    client.emit_funnel_event.assert_awaited_once_with(
+        "user-1",
+        "briefing_generated",
+        {"run_count": 0, "decision_count": 0, "has_content": False},
+        "briefing_generated:briefing-1",
+    )
 
 
 @pytest.mark.asyncio
@@ -1156,7 +1163,7 @@ async def test_generate_emits_events_on_delivery(monkeypatch):
         "user-1",
         "briefing_generated",
         {"run_count": 4, "decision_count": 2, "has_content": True},
-        None,
+        "briefing_generated:briefing-1",
     )
     client.emit_funnel_event.assert_any_await(
         "user-1",
@@ -1185,7 +1192,7 @@ async def test_generate_emits_briefing_generated_when_nothing_to_say(monkeypatch
         "user-1",
         "briefing_generated",
         {"run_count": 0, "decision_count": 0, "has_content": False},
-        None,
+        "briefing_generated:empty:2026-08-07",
     )
 
 

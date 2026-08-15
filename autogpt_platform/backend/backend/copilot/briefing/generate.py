@@ -303,6 +303,11 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 user_id,
                 "briefing_generated",
                 {"run_count": 0, "decision_count": 0, "has_content": False},
+                idempotency_key=(
+                    f"briefing_generated:{record.id}"
+                    if record is not None
+                    else f"briefing_generated:empty:{briefing_date.isoformat()}"
+                ),
             )
             return {"status": "skipped", "reason": "nothing_to_say"}
         if record is None:
@@ -324,6 +329,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 "decision_count": content.decision_total,
                 "has_content": True,
             },
+            idempotency_key=f"briefing_generated:{record.id}",
         )
 
     message_id = str(
