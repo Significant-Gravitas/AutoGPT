@@ -110,6 +110,35 @@ afterEach(() => {
 });
 
 describe("CredentialsInput – OAuth flow", () => {
+  it("does not render a credential control for credential-free providers", () => {
+    const ollamaSchema = {
+      credentials_provider: ["ollama"],
+      credentials_types: [],
+      credentials_scopes: [],
+    } as BlockIOCredentialsSubSchema;
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "ollama",
+        providerName: "Ollama",
+        supportsApiKey: false,
+        supportsOAuth2: false,
+        supportsUserPassword: false,
+        supportsHostScoped: false,
+        schema: ollamaSchema,
+      }),
+    );
+
+    const { container } = render(
+      <CredentialsInput
+        schema={ollamaSchema}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+
   it("clears a credential retained from a different transport provider", async () => {
     const onSelectCredentials = vi.fn();
     mockUseCredentials.mockReturnValue(

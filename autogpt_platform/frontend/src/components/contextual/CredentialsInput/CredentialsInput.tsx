@@ -100,6 +100,16 @@ export function CredentialsInput({
     isDeletingCredential,
   } = hookData;
 
+  const hasSupportedCredentialType =
+    supportsApiKey ||
+    supportsOAuth2 ||
+    supportsUserPassword ||
+    supportsHostScoped;
+
+  if (!hasSupportedCredentialType) {
+    return null;
+  }
+
   const displayName = toDisplayName(provider);
   const selectedCredentialIsSystem =
     selectedCredential && isSystemCredential(selectedCredential);

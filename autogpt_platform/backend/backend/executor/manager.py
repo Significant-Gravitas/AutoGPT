@@ -83,9 +83,9 @@ from backend.util.settings import Settings
 from . import billing, expert_posts
 from .activity_status_generator import generate_activity_status_for_execution
 from .auto_credentials import acquire_auto_credentials
-from .no_auth_credentials import get_no_auth_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .no_auth_credentials import get_no_auth_credentials
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
