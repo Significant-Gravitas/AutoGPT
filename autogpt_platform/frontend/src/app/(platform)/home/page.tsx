@@ -5,6 +5,7 @@ import { getGreetingName } from "@/app/(platform)/copilot/components/EmptySessio
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { AgentTeam } from "./components/AgentTeam/AgentTeam";
 import { HomeHeader } from "./components/HomeHeader/HomeHeader";
@@ -24,6 +25,11 @@ export default function HomePage() {
   const { dashboard, isLoading, isError, refetch } = useHomePage({
     enabled: Boolean(enabled) && ready,
   });
+
+  useTrackFunnelViewOnce(
+    "home_viewed",
+    ready && !isLoading && !isError && Boolean(dashboard) && Boolean(enabled),
+  );
 
   if (!ready || isLoading) {
     return <HomeSkeleton />;

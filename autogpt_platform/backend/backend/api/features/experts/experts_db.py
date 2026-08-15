@@ -1,4 +1,5 @@
 import logging
+from typing import NamedTuple
 
 import prisma.errors
 import prisma.models
@@ -12,6 +13,7 @@ from backend.api.features.experts.models import (
     HireResult,
 )
 from backend.api.features.library import db as library_db
+from backend.data.analytics import emit_funnel_event
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -32,6 +34,11 @@ class ExpertNotFoundError(Exception):
     def __init__(self, expert_id: str):
         super().__init__(f"Expert {expert_id} not found")
         self.expert_id = expert_id
+
+
+class _HireOutcome(NamedTuple):
+    result: HireResult
+    activated: bool
 
 
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
@@ -142,6 +149,33 @@ async def get_expert(
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
+    try:
+        outcome = await _hire_expert_impl(user_id, template_id, name)
+    except Exception:
+        await emit_funnel_event(
+            user_id,
+            "hire_failed",
+            {"template_id": template_id, "failed_preloads_count": 0},
+        )
+        raise
+    if outcome.activated:
+        await emit_funnel_event(
+            user_id,
+            "hire_completed",
+            {
+                "template_id": template_id,
+                "failed_preloads_count": len(outcome.result.failed_preloads),
+            },
+        )
+    return outcome.result
+
+
+async def _hire_expert_impl(
+    user_id: str, template_id: str, name: str | None
+) -> _HireOutcome:
+    """Returns the hire result plus whether an inactive→active transition
+    actually happened — idempotent re-hires and lost races report False so
+    the funnel counts each hire exactly once."""
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
         include=_WORKFLOW_INCLUDE,
@@ -190,10 +224,13 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     )
     if hydrated is None:
         raise ExpertNotFoundError(expert.id)
-    return HireResult(expert=_to_model(hydrated), failed_preloads=failed)
+    return _HireOutcome(
+        result=HireResult(expert=_to_model(hydrated), failed_preloads=failed),
+        activated=True,
+    )
 
 
-async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
+async def _existing_hire_result(row: prisma.models.Expert) -> _HireOutcome:
     """Idempotent-hire result for an already-existing hired copy.
 
     Re-hiring an archived expert revives it — the unique
@@ -201,15 +238,15 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
     created, and returning the archived row as-is would hand back a
     "successful" hire that stays invisible to list_experts/get_expert.
     """
+    activated = False
     if row.isArchived:
-        revived = await prisma.models.Expert.prisma().update(
-            where={"id": row.id},
-            data={"isArchived": False},
-            include=_WORKFLOW_INCLUDE,
+        activated = bool(
+            await prisma.models.Expert.prisma().update_many(
+                where={"id": row.id, "isArchived": True},
+                data={"isArchived": False},
+            )
         )
-        if revived is not None:
-            row = revived
-        if row.ownerUserId:
+        if activated and row.ownerUserId:
             await scheduling.resume_expert_schedules(row.ownerUserId, row.id)
             try:
                 await scheduling.reattach_expert_triggers(row.ownerUserId, row.id)
@@ -217,17 +254,26 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
                 logger.exception(
                     f"Failed to reattach triggers while reviving expert #{row.id}"
                 )
-            # Resume/reattach mutated pause state and workflow scheduleIds
-            # after `row` was read — reload so the result isn't stale.
-            refreshed = await prisma.models.Expert.prisma().find_unique(
-                where={"id": row.id}, include=_WORKFLOW_INCLUDE
-            )
-            if refreshed is not None:
-                row = refreshed
-    return HireResult(expert=_to_model(row), failed_preloads=[])
+        refreshed = await prisma.models.Expert.prisma().find_unique(
+            where={"id": row.id}, include=_WORKFLOW_INCLUDE
+        )
+        if refreshed is not None:
+            row = refreshed
+    return _HireOutcome(
+        result=HireResult(expert=_to_model(row), failed_preloads=[]),
+        activated=activated,
+    )
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
+    before = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+    )
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -248,6 +294,14 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
+    if (
+        before is not None
+        and not (before.voicePreferences or "").strip()
+        and bool(soul.voice_preferences.strip())
+    ):
+        await emit_funnel_event(
+            user_id, "writing_style_added", {"expert_id": expert_id}
+        )
     return expert
 
 
@@ -354,6 +408,14 @@ async def install_workflow(
         if raced is None:
             raise
         return _to_workflow_ref(raced)
+    await emit_funnel_event(
+        user_id,
+        "workflow_installed_on_expert",
+        {
+            "expert_id": expert_id,
+            "store_listing_version_id": store_listing_version_id,
+        },
+    )
     return _to_workflow_ref(row)
 
 
@@ -391,11 +453,25 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
 
 async def archive_expert(user_id: str, expert_id: str) -> None:
     updated = await prisma.models.Expert.prisma().update_many(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
         data={"isArchived": True},
     )
     if updated == 0:
-        raise ExpertNotFoundError(expert_id)
+        already_archived = await prisma.models.Expert.prisma().find_first(
+            where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        )
+        if already_archived is None:
+            raise ExpertNotFoundError(expert_id)
+        # Re-archiving is an idempotent no-op: schedules were paused and
+        # triggers detached on the first call, and the funnel must count
+        # each firing once.
+        return
+    await emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
     await scheduling.pause_expert_schedules(
         user_id, expert_id, reason="Expert archived"
     )

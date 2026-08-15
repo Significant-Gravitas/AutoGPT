@@ -49,16 +49,8 @@ def _post_run_result(
     status: ExecutionStatus,
     exec_stats: GraphExecutionStats,
 ) -> None:
-    context = graph_exec.execution_context
-    expert_id = context.expert_id if context else None
-    if not expert_id or (context and context.dry_run):
-        return
-    # Sub-graph executions (AgentExecutorBlock) inherit expert_id from the
-    # parent context; only the top-level run may post, or one logical run
-    # would produce a message (and burn a cap slot) per nested sub-agent.
-    if context and context.parent_execution_id is not None:
-        return
-    if status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
+    expert_id = completed_expert_id(graph_exec, status)
+    if expert_id is None:
         return
     # The key is captured once at admission and reused for release — a UTC
     # midnight rollover between the two must not decrement the new day's
@@ -100,6 +92,20 @@ def _post_run_result(
         raise
     if posted_session is None:
         _release_cap_slot(cap_key, expert_id)
+
+
+def completed_expert_id(
+    graph_exec: GraphExecutionEntry, status: ExecutionStatus
+) -> str | None:
+    context = graph_exec.execution_context
+    expert_id = context.expert_id if context else None
+    if not expert_id or (context and context.dry_run):
+        return None
+    if context and context.parent_execution_id is not None:
+        return None
+    if status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
+        return None
+    return expert_id
 
 
 def build_expert_run_message(

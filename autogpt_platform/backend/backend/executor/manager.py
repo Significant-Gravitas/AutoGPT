@@ -616,6 +616,71 @@ async def _enqueue_next_nodes(
     ]
 
 
+def _expert_run_completed_event(
+    graph_exec: GraphExecutionEntry, status: ExecutionStatus
+) -> Optional[dict]:
+    """Funnel payload for a finished top-level expert run, else None.
+
+    Mirrors the gating in ``expert_posts._post_run_result`` so the funnel
+    counts exactly the runs that can post: an expert-attributed, non-dry-run,
+    top-level execution that reached a terminal status. Execution origin
+    (schedule vs manual vs webhook) is not persisted anywhere, so the event
+    covers every such run rather than pretending to know the trigger.
+    """
+    expert_id = expert_posts.completed_expert_id(graph_exec, status)
+    if expert_id is None:
+        return None
+    return {
+        "expert_id": expert_id,
+        "status": status.value,
+        "graph_exec_id": graph_exec.graph_exec_id,
+    }
+
+
+def _observe_funnel_emission(future: Future) -> None:
+    """The RPC write already left the surrounding try/except when this runs —
+    transport failures would otherwise vanish with the discarded future."""
+    try:
+        future.result()
+    except Exception:
+        logger.exception("Expert run funnel emission failed after submission")
+
+
+def _persist_graph_completion_and_emit_funnel(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    status: ExecutionStatus,
+    stats: GraphExecutionStats,
+    event_loop: asyncio.AbstractEventLoop,
+) -> None:
+    update_graph_execution_state(
+        db_client=db_client,
+        graph_exec_id=graph_exec.graph_exec_id,
+        status=status,
+        stats=stats,
+    )
+
+    run_event = _expert_run_completed_event(graph_exec, status)
+    if run_event is None:
+        return
+    try:
+        future = asyncio.run_coroutine_threadsafe(
+            get_db_async_client().emit_funnel_event(
+                graph_exec.user_id,
+                "expert_run_completed",
+                run_event,
+                f"expert_run_completed:{graph_exec.graph_exec_id}",
+            ),
+            event_loop,
+        )
+        future.add_done_callback(_observe_funnel_emission)
+    except Exception:
+        logger.exception(
+            "Failed to emit expert run completion for run "
+            f"#{graph_exec.graph_exec_id}"
+        )
+
+
 class ExecutionProcessor:
     """
     This class contains event handlers for the process pool executor events.
@@ -997,11 +1062,12 @@ class ExecutionProcessor:
                 db_client, graph_exec, exec_meta.status, exec_stats
             )
 
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=exec_meta.status,
-                stats=exec_stats,
+            _persist_graph_completion_and_emit_funnel(
+                db_client,
+                graph_exec,
+                exec_meta.status,
+                exec_stats,
+                self.node_execution_loop,
             )
 
     async def charge_node_usage(

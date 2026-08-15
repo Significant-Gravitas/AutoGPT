@@ -8,6 +8,7 @@ import {
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { formatBriefingWindowStart } from "../../helpers";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
@@ -29,6 +30,11 @@ export function MorningBriefing({ dashboard, className }: Props) {
     selectFilter,
     visibleOutcomes,
   } = useMorningBriefing({ outcomes: briefing.outcomes });
+
+  useTrackFunnelViewOnce(
+    "briefing_opened",
+    Boolean(briefing.narrative) || briefing.outcomes.length > 0,
+  );
 
   return (
     <HomeTile

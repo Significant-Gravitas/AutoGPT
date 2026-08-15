@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -55,6 +56,52 @@ async def log_raw_analytics(
         )
     )
     return details
+
+
+# Strong references to in-flight funnel writes: a bare create_task result can
+# be garbage-collected mid-write.
+_pending_funnel_writes: set[asyncio.Task] = set()
+
+
+async def _write_funnel_event(
+    user_id: str, event: str, data: dict, data_index: str | None
+) -> None:
+    try:
+        effective_data_index = event if data_index is None else data_index
+        if data_index is not None:
+            # An explicit index is an idempotency key: retries and requeues
+            # pass the same one, so an existing row means this exact event
+            # already landed. Best-effort read-then-write — a lost race
+            # duplicates one analytics row, which beats a schema migration
+            # for instrumentation.
+            existing = await prisma.models.AnalyticsDetails.prisma().find_first(
+                where={
+                    "userId": user_id,
+                    "type": event,
+                    "dataIndex": effective_data_index,
+                }
+            )
+            if existing is not None:
+                return
+        await log_raw_analytics(user_id, event, data, effective_data_index)
+    except Exception:
+        logger.exception("Failed to log funnel event %s for user %s", event, user_id)
+
+
+async def emit_funnel_event(
+    user_id: str, event: str, data: dict, data_index: str | None = None
+) -> None:
+    """Record a funnel event without blocking or raising into the caller.
+
+    The write runs as a background task on the current loop: instrumentation
+    must never break — or slow — the action it measures. All failures are
+    consumed inside the task. The event name doubles as the index unless
+    `data_index` is given, which also makes the emission idempotent under
+    retries.
+    """
+    task = asyncio.create_task(_write_funnel_event(user_id, event, data, data_index))
+    _pending_funnel_writes.add(task)
+    task.add_done_callback(_pending_funnel_writes.discard)
 
 
 async def log_raw_metric(

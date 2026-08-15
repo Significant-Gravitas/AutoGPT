@@ -5,6 +5,7 @@ import pytest
 
 from backend.copilot.briefing import generate as generate_module
 from backend.copilot.briefing.generate import AgentInfo, compose_briefing
+from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.feature_flag import Flag
@@ -286,7 +287,9 @@ async def test_generate_skips_when_already_delivered(monkeypatch):
     )
     delivered_record = MagicMock(delivered_at=datetime(2026, 8, 7, 9, 5))
     client = MagicMock(get_briefing_for_date=AsyncMock(return_value=delivered_record))
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     result = await generate.generate_and_deliver_briefing("user-1")
     assert result == {"status": "skipped", "reason": "already_delivered"}
@@ -321,7 +324,9 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     expert = make_expert()
     execution = make_exec()
@@ -397,8 +402,6 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
 def _patch_generate_env(monkeypatch, generate, client):
     """Shared plumbing for the delivery-retry tests: fixed clock, flag on,
     UTC user, and the given database-manager client."""
-    from unittest.mock import AsyncMock, MagicMock
-
     fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = fixed_now
@@ -411,7 +414,9 @@ def _patch_generate_env(monkeypatch, generate, client):
         "user_db",
         lambda: MagicMock(get_user_by_id=AsyncMock(return_value=user)),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
 
 @pytest.mark.asyncio
@@ -440,6 +445,7 @@ async def test_generate_retries_undelivered_briefing_without_recomposing(monkeyp
         create_briefing=AsyncMock(),
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
+        emit_funnel_event=AsyncMock(),
     )
     _patch_generate_env(monkeypatch, generate, client)
     gather_mock = MagicMock(list_experts=AsyncMock(return_value=[]))
@@ -457,6 +463,12 @@ async def test_generate_retries_undelivered_briefing_without_recomposing(monkeyp
     append_call = client.append_plain_session_message.await_args
     assert append_call.kwargs["content"] == render_briefing_markdown(stored)
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
+    client.emit_funnel_event.assert_awaited_once_with(
+        "user-1",
+        "briefing_delivered",
+        {"briefing_id": "briefing-1"},
+        "briefing_delivered:briefing-1",
+    )
 
 
 @pytest.mark.asyncio
@@ -536,7 +548,9 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     # The workflow shares "g-1" with the library agent below but carries no
     # library_agent_id of its own — the merge must not clobber the
@@ -735,7 +749,9 @@ async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     monkeypatch.setattr(
         generate,
@@ -797,8 +813,11 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
         get_briefing_for_date=AsyncMock(return_value=stale_record),
         append_plain_session_message=AsyncMock(),
         mark_briefing_delivered=AsyncMock(),
+        emit_funnel_event=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     monkeypatch.setattr(
         generate,
@@ -828,6 +847,12 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
     assert result == {"status": "skipped", "reason": "nothing_to_say"}
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
     client.append_plain_session_message.assert_not_awaited()
+    client.emit_funnel_event.assert_awaited_once_with(
+        "user-1",
+        "briefing_generated",
+        {"run_count": 0, "decision_count": 0, "has_content": False},
+        "briefing_generated:briefing-1",
+    )
 
 
 @pytest.mark.asyncio
@@ -856,7 +881,9 @@ async def test_generate_bounds_the_execution_query(monkeypatch):
         append_plain_session_message=AsyncMock(return_value="session-1"),
         mark_briefing_delivered=AsyncMock(),
     )
-    monkeypatch.setattr(generate, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(
+        generate, "get_database_manager_async_client", lambda **kwargs: client
+    )
 
     get_graph_executions = AsyncMock(return_value=[make_exec()])
     monkeypatch.setattr(
@@ -1097,3 +1124,95 @@ def test_narrative_cannot_forge_briefing_structure(narrative):
     ).splitlines()[2]
 
     assert line.startswith("\\")
+
+
+@pytest.mark.asyncio
+async def test_generate_emits_events_on_delivery(monkeypatch):
+    """A delivered briefing fires briefing_generated (with real counts) and
+    briefing_delivered through the DB-manager RPC client."""
+    briefing_record = MagicMock(id="briefing-1")
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=briefing_record),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+        emit_funnel_event=AsyncMock(),
+    )
+    _patch_generate_env(monkeypatch, generate_module, client)
+
+    content = BriefingContent(
+        generated_at=datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc),
+        timezone="UTC",
+        zero_expert_fallback=False,
+        run_items=[],
+        decision_items=[],
+        decision_total=2,
+        completed_total=3,
+        failed_total=1,
+    )
+    monkeypatch.setattr(
+        generate_module,
+        "_compose_fresh_briefing",
+        AsyncMock(return_value=content),
+    )
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    client.emit_funnel_event.assert_any_await(
+        "user-1",
+        "briefing_generated",
+        {"run_count": 4, "decision_count": 2, "has_content": True},
+        "briefing_generated:briefing-1",
+    )
+    client.emit_funnel_event.assert_any_await(
+        "user-1",
+        "briefing_delivered",
+        {"briefing_id": "briefing-1"},
+        "briefing_delivered:briefing-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_emits_briefing_generated_when_nothing_to_say(monkeypatch):
+    """An empty briefing still fires briefing_generated with has_content False."""
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        emit_funnel_event=AsyncMock(),
+    )
+    _patch_generate_env(monkeypatch, generate_module, client)
+    monkeypatch.setattr(
+        generate_module, "_compose_fresh_briefing", AsyncMock(return_value=None)
+    )
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result == {"status": "skipped", "reason": "nothing_to_say"}
+    client.emit_funnel_event.assert_awaited_once_with(
+        "user-1",
+        "briefing_generated",
+        {"run_count": 0, "decision_count": 0, "has_content": False},
+        "briefing_generated:empty:2026-08-07",
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_still_delivers_when_funnel_rpc_fails(monkeypatch):
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+        emit_funnel_event=AsyncMock(side_effect=RuntimeError("analytics down")),
+    )
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result == {
+        "status": "delivered",
+        "briefing_id": "briefing-1",
+        "session_id": "session-1",
+    }
+    client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
+    assert client.emit_funnel_event.await_count == 2

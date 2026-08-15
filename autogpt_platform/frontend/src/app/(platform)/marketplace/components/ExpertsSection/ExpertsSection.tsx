@@ -2,6 +2,7 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
@@ -17,6 +18,11 @@ export function ExpertsSection() {
     openTemplate,
     closeSheet,
   } = useExpertsSection();
+
+  useTrackFunnelViewOnce(
+    "experts_section_viewed",
+    !isLoading && !isError && templates.length > 0,
+  );
 
   if (isError || (!isLoading && templates.length === 0)) {
     return null;

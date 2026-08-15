@@ -1,6 +1,7 @@
+import asyncio
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.enums
 import prisma.models
@@ -709,3 +710,283 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
+
+
+# =============================================================================
+# Funnel analytics emissions
+# =============================================================================
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_expert_emits_hire_completed(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_awaited_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_expert_emits_hire_failed_on_unknown_template(
+    server: SpinTestServer, test_user
+):
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        with pytest.raises(experts_db.ExpertTemplateNotFoundError):
+            await experts_db.hire_expert(test_user.id, "missing-template-id", None)
+    emit.assert_awaited_once_with(
+        test_user.id,
+        "hire_failed",
+        {"template_id": "missing-template-id", "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_completed_reports_failed_preloads_count(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    with patch.object(
+        experts_db.library_db,
+        "add_store_agent_to_library",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("install exploded"),
+    ):
+        with patch.object(
+            experts_db, "emit_funnel_event", new_callable=AsyncMock
+        ) as emit:
+            await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_awaited_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 1},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_idempotent_rehire_does_not_reemit_hire_completed(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reviving_archived_expert_emits_hire_completed(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_awaited_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_revival_emits_hire_completed_once(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        first, second = await asyncio.gather(
+            experts_db.hire_expert(test_user.id, template.id, None),
+            experts_db.hire_expert(test_user.id, template.id, None),
+        )
+
+    assert first.expert.id == hired.expert.id
+    assert second.expert.id == hired.expert.id
+    assert not first.expert.is_archived
+    assert not second.expert.is_archived
+    emit.assert_awaited_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_archive_expert_emits_expert_fired(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.archive_expert(test_user.id, hired.expert.id)
+    emit.assert_awaited_once_with(
+        test_user.id, "expert_fired", {"expert_id": hired.expert.id}
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rearchive_does_not_reemit_expert_fired(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.archive_expert(test_user.id, hired.expert.id)
+    emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_archive_unknown_expert_still_raises(server: SpinTestServer, test_user):
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.archive_expert(test_user.id, "missing-expert-id")
+    emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_emits_workflow_installed(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    emit.assert_awaited_once_with(
+        test_user.id,
+        "workflow_installed_on_expert",
+        {"expert_id": hired.expert.id, "store_listing_version_id": slv_id},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_race_returns_winner_without_emitting(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    winner = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    winner_row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={"id": winner.id}, include=experts_db._WORKFLOW_ROW_INCLUDE
+    )
+    assert winner_row is not None
+    workflow_client = MagicMock(
+        find_first=AsyncMock(side_effect=[None, winner_row]),
+        create=AsyncMock(side_effect=prisma.errors.UniqueViolationError({})),
+    )
+
+    with (
+        patch.object(
+            prisma.models.ExpertWorkflow,
+            "prisma",
+            return_value=workflow_client,
+        ),
+        patch.object(
+            experts_db.library_db,
+            "add_store_agent_to_library",
+            new_callable=AsyncMock,
+            return_value=SimpleNamespace(id=winner.library_agent_id),
+        ),
+        patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit,
+    ):
+        raced = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+
+    assert raced.id == winner.id
+    emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_emits_writing_style_when_voice_is_first_added(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.update_soul(
+            test_user.id,
+            hired.expert.id,
+            ExpertSoulUpdate(
+                name="Mara",
+                identity="You are Mara, a thoughtful strategist.",
+                voice_preferences="Warm, concise, and direct.",
+                boundaries="Never invent customer evidence.",
+            ),
+        )
+    emit.assert_awaited_once_with(
+        test_user.id, "writing_style_added", {"expert_id": hired.expert.id}
+    )
+
+
+@pytest.mark.parametrize(
+    "next_voice",
+    ["", "Deliberate, detailed, and formal."],
+    ids=["removed", "replaced"],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_skips_writing_style_when_existing_voice_changes(
+    server: SpinTestServer, test_user, next_voice: str
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.update_soul(
+        test_user.id,
+        hired.expert.id,
+        ExpertSoulUpdate(
+            name="Mara",
+            identity="You are Mara, a thoughtful strategist.",
+            voice_preferences="Warm, concise, and direct.",
+            boundaries="Never invent customer evidence.",
+        ),
+    )
+
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.update_soul(
+            test_user.id,
+            hired.expert.id,
+            ExpertSoulUpdate(
+                name="Mara",
+                identity="You are Mara, a thoughtful strategist.",
+                voice_preferences=next_voice,
+                boundaries="Never invent customer evidence.",
+            ),
+        )
+
+    emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_skips_writing_style_when_voice_unchanged(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    voice = "Warm, concise, and direct."
+    await experts_db.update_soul(
+        test_user.id,
+        hired.expert.id,
+        ExpertSoulUpdate(
+            name="Mara",
+            identity="You are Mara, a thoughtful strategist.",
+            voice_preferences=voice,
+            boundaries="Never invent customer evidence.",
+        ),
+    )
+    with patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit:
+        await experts_db.update_soul(
+            test_user.id,
+            hired.expert.id,
+            ExpertSoulUpdate(
+                name="Mara Two",
+                identity="You are Mara, refreshed.",
+                voice_preferences=voice,
+                boundaries="Never invent customer evidence.",
+            ),
+        )
+    emit.assert_not_awaited()
