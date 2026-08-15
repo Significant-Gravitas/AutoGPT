@@ -153,18 +153,19 @@ def build_expert_run_message(
     )
     if succeeded:
         body = (
-            f"\n\nThe run's generated summary:\n\n{_quote(summary)}"
+            f"\n\nHere's the summary it generated:\n\n{_quote(summary)}"
             if summary
-            else " It completed successfully."
+            else " It finished without any problems."
         )
-        return f"I just finished a run of **{agent_name}**.{body}{link}"
+        return f"I ran **{agent_name}** in the background.{body}{link}"
     detail = (
         f"\n\nThe reported error:\n\n{_quote(_truncate(error, _MAX_ERROR_LENGTH))}"
         if error
         else ""
     )
     return (
-        f"My run of **{agent_name}** didn't finish.{detail}\n\n"
+        f"I ran **{agent_name}** in the background, but it didn't finish."
+        f"{detail}\n\n"
         f"I'll try again on the next schedule — if this keeps happening, "
         f"check the workflow's setup in your library.{link}"
     )
