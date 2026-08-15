@@ -77,11 +77,11 @@ async def chat_message_has_assistant_reply(
     message_id: str,
     session_id: str,
 ) -> bool | None:
-    """Return kickoff delivery state for a persisted user message.
+    """Whether a persisted user message already has an assistant reply after it.
 
-    ``None`` means the message does not exist, ``False`` means it is orphaned
-    without a later assistant row, and ``True`` means an assistant reply was
-    persisted after it in the same session.
+    ``None`` means the message does not exist, ``False`` means no assistant row
+    follows it, and ``True`` means an assistant reply was persisted after it in
+    the same session.
     """
     messages = PrismaChatMessage.prisma()
     existing = await messages.find_first(
