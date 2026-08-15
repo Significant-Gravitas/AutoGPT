@@ -723,7 +723,7 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
     server: SpinTestServer, test_user
 ):
     """Archiving must leave no orphaned firing: presets deactivate, schedules
-    delete, and the pause is logged. Re-hiring reverses all of it."""
+    pause, and the pause is logged. Re-hiring reverses all of it."""
     slv_id = await _seed_store_listing(server)
     template = await _seed_template(
         name="Frankie",
@@ -732,7 +732,8 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
     )
     sched = AsyncMock()
     sched.add_execution_schedule = AsyncMock(return_value=SimpleNamespace(id="sched-1"))
-    sched.delete_schedule = AsyncMock()
+    sched.pause_schedule = AsyncMock()
+    sched.resume_schedule = AsyncMock()
 
     with patch.object(scheduling, "get_scheduler_client", return_value=sched):
         hired = await experts_db.hire_expert(test_user.id, template.id, None)
@@ -776,7 +777,7 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
     # Keyword args matter: passed positionally, user_id binds to graph_id
     # and the filter silently matches nothing.
     sched.get_execution_schedules.assert_awaited_with(
-        user_id=test_user.id, kind="graph"
+        user_id=test_user.id, kind="graph", include_paused=False
     )
     preset_row = await prisma.models.AgentPreset.prisma().find_unique(
         where={"id": preset.id}
@@ -796,15 +797,23 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         where={"expertId": expert_id}
     )
     assert any(e.clearedAt is None for e in events)
-    sched.delete_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    sched.pause_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    # Paused, not deleted: the pointer survives so the same job is resumed
+    # rather than a second one being created alongside it.
     wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
         where={"expertId": expert_id}
     )
-    assert wf_row is not None and wf_row.scheduleId is None
+    assert wf_row is not None and wf_row.scheduleId == "sched-1"
 
     with patch.object(scheduling, "get_scheduler_client", return_value=sched):
         revived = await experts_db.hire_expert(test_user.id, template.id, None)
 
+    sched.resume_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    # Resume has to look through the paused jobs; the default read hides them.
+    sched.get_execution_schedules.assert_awaited_with(
+        user_id=test_user.id, kind="graph", include_paused=True
+    )
+    sched.add_execution_schedule.assert_awaited_once()
     assert revived.expert.schedules_paused_at is None
     preset_row = await prisma.models.AgentPreset.prisma().find_unique(
         where={"id": preset.id}
@@ -823,12 +832,12 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_detach_keeps_pointer_when_schedule_delete_fails(
+async def test_detach_survives_a_schedule_that_cannot_pause(
     server: SpinTestServer, test_user
 ):
-    """A schedule that can't be deleted keeps its scheduleId pointer:
-    wiping it would make re-hire create a second schedule while the
-    orphaned original keeps firing."""
+    """A schedule the scheduler refuses to pause must not abort the archive:
+    the remaining schedules still pause and the run-time gate stops the
+    survivor from actually executing."""
     slv_id = await _seed_store_listing(server)
     template = await _seed_template(
         name="Frankie",
@@ -837,7 +846,7 @@ async def test_detach_keeps_pointer_when_schedule_delete_fails(
     )
     sched = AsyncMock()
     sched.add_execution_schedule = AsyncMock(return_value=SimpleNamespace(id="sched-1"))
-    sched.delete_schedule = AsyncMock(side_effect=RuntimeError("scheduler down"))
+    sched.pause_schedule = AsyncMock(side_effect=[RuntimeError("scheduler down"), None])
 
     with patch.object(scheduling, "get_scheduler_client", return_value=sched):
         hired = await experts_db.hire_expert(test_user.id, template.id, None)
@@ -845,16 +854,66 @@ async def test_detach_keeps_pointer_when_schedule_delete_fails(
         sched.get_execution_schedules = AsyncMock(
             return_value=[
                 SimpleNamespace(
+                    kind="graph", id="sched-stuck", name="n", expert_id=expert_id
+                ),
+                SimpleNamespace(
                     kind="graph", id="sched-1", name="n", expert_id=expert_id
-                )
+                ),
             ]
         )
         await scheduling.detach_expert_triggers(test_user.id, expert_id)
 
+    assert [c.args[0] for c in sched.pause_schedule.await_args_list] == [
+        "sched-stuck",
+        "sched-1",
+    ]
     wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
         where={"expertId": expert_id}
     )
     assert wf_row is not None and wf_row.scheduleId == "sched-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_user_created_schedule_survives_fire_and_rehire(
+    server: SpinTestServer, test_user
+):
+    """The schedule a user set up themselves has no ExpertWorkflow cadence
+    backing it, so it is unrecoverable if archiving deletes it. Firing must
+    pause it by expert attribution alone and re-hiring must bring back that
+    same job — inputs and all — not a reconstruction."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Frankie", preload_listings=[slv_id])
+    sched = AsyncMock()
+    sched.pause_schedule = AsyncMock()
+    sched.resume_schedule = AsyncMock()
+
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+        expert_id = hired.expert.id
+        # No preload cron, so nothing was scheduled at hire time and no
+        # ExpertWorkflow row carries a cadence to rebuild from.
+        sched.add_execution_schedule.assert_not_awaited()
+        wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
+            where={"expertId": expert_id}
+        )
+        assert wf_row is not None and wf_row.scheduleCron is None
+
+        # The user then creates their own schedule through the scheduling
+        # UI or chat; it carries expert attribution but nothing else.
+        user_schedule = SimpleNamespace(
+            kind="graph", id="user-sched", name="Weekly report", expert_id=expert_id
+        )
+        sched.get_execution_schedules = AsyncMock(return_value=[user_schedule])
+
+        await experts_db.archive_expert(test_user.id, expert_id)
+        revived = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    sched.pause_schedule.assert_awaited_once_with("user-sched", user_id=test_user.id)
+    sched.resume_schedule.assert_awaited_once_with("user-sched", user_id=test_user.id)
+    # Restored by resuming the original job, never by creating a new one.
+    sched.add_execution_schedule.assert_not_awaited()
+    assert revived.expert.is_archived is False
+    assert revived.expert.schedules_paused_at is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -1872,32 +1872,73 @@ class Scheduler(AppService):
         ``SchedulerClient.delete_schedule`` and accepts both graph and
         copilot-turn schedules.
         """
-        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
-        if not job:
-            raise NotFoundError(f"Job #{schedule_id} not found.")
-
-        info = _job_to_info(job)
-        if info is None:
-            # kwargs parse as neither graph nor copilot-turn — we have no
-            # `user_id` field to authorize against, so refuse the delete.
-            # Removing without an ownership check would let any caller who
-            # can guess a schedule_id wipe corrupted rows. Surface 404 so
-            # the caller can't probe for shape via timing either.
-            logger.warning(
-                f"Refusing delete for job {schedule_id} with unrecognized "
-                f"kwargs shape (no parseable user_id to authorize against)"
-            )
-            raise NotFoundError(f"Job #{schedule_id} has invalid schedule data.")
-
-        if info.user_id != user_id:
-            raise NotAuthorizedError("User ID does not match the job's user ID")
-
+        job, info = self._authorized_job(schedule_id, user_id, action="delete")
         logger.info(f"Deleting job {schedule_id} (kind={info.kind})")
         job.remove()
         # Invalidate the read cache so the deletion shows up immediately
         # on the next ``get_execution_schedules`` call.
         self._invalidate_jobs_cache()
         return info
+
+    def _authorized_job(
+        self, schedule_id: str, user_id: str, *, action: str
+    ) -> tuple[JobObj, Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
+        """Load a schedule and check *user_id* owns it.
+
+        Shared by delete/pause/resume so all three authorize identically:
+        kwargs that parse as neither kind carry no `user_id` field to
+        authorize against, so acting on them would let any caller who can
+        guess a schedule_id mutate corrupted rows. Surface 404 rather than
+        a distinct error so the shape can't be probed by timing either.
+        """
+        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        if not job:
+            raise NotFoundError(f"Job #{schedule_id} not found.")
+        info = _job_to_info(job)
+        if info is None:
+            logger.warning(
+                f"Refusing {action} for job {schedule_id} with unrecognized "
+                f"kwargs shape (no parseable user_id to authorize against)"
+            )
+            raise NotFoundError(f"Job #{schedule_id} has invalid schedule data.")
+        if info.user_id != user_id:
+            raise NotAuthorizedError("User ID does not match the job's user ID")
+        return job, info
+
+    @expose
+    def pause_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+        """Suspend a schedule without discarding it.
+
+        APScheduler persists a pause as ``next_run_time = NULL``, which
+        ``get_execution_schedules`` already skips — so a paused schedule
+        disappears from every read path while keeping its trigger, inputs
+        and credentials intact for ``resume_execution_schedule``. Returns
+        False when it was already paused, so callers don't double-log.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="pause")
+        if job.next_run_time is None:
+            return False
+        logger.info(f"Pausing job {schedule_id} (kind={info.kind})")
+        self.scheduler.pause_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        self._invalidate_jobs_cache()
+        return True
+
+    @expose
+    def resume_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+        """Reverse of ``pause_execution_schedule``.
+
+        APScheduler recomputes ``next_run_time`` from the trigger, so fires
+        missed while paused are NOT backfilled — a re-hired expert picks up
+        at her next cadence instead of replaying the whole archived window.
+        Returns False when the schedule was not paused.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="resume")
+        if job.next_run_time is not None:
+            return False
+        logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
+        self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        self._invalidate_jobs_cache()
+        return True
 
     @expose
     def get_graph_execution_schedules(
@@ -1986,6 +2027,7 @@ class Scheduler(AppService):
         kind: str | None = None,
         organization_id: str | None = None,
         team_ids: list[str] | None = None,
+        include_paused: bool = False,
     ) -> list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
         """Return schedules of both kinds, filtered by the given fields.
 
@@ -1997,11 +2039,20 @@ class Scheduler(AppService):
         the org/team visibility rules apply instead of strict ownership:
         own schedules + org-home schedules + schedules of teams in
         *team_ids* (resolved by the caller, who has async DB access).
+
+        Paused jobs (``next_run_time is None``) are hidden by default, which
+        is what keeps a fired expert's suspended schedules out of every user
+        -facing listing. *include_paused* is for the lifecycle callers that
+        have to find them again to resume them. Fired one-shot jobs share
+        the same null marker, so they resurface too — filter by kind/id if
+        that matters to the caller.
         """
         jobs: list[JobObj] = self._get_jobs_cached()
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
         for job in jobs:
-            info = _job_to_info(job) if job.next_run_time is not None else None
+            if job.next_run_time is None and not include_paused:
+                continue
+            info = _job_to_info(job)
             if info is None:
                 continue
             if kind is not None and info.kind != kind:
@@ -2425,6 +2476,8 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
     add_copilot_turn_schedule = endpoint_to_async(Scheduler.add_copilot_turn_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
+    pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
+    resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
     get_graph_execution_schedules = endpoint_to_async(
         Scheduler.get_graph_execution_schedules
