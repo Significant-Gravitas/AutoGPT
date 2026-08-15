@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { BlockUIType } from "../components/types";
 import { OutputHandler } from "../components/FlowEditor/nodes/OutputHandler";
@@ -51,8 +51,12 @@ describe("OutputHandler", () => {
     );
 
     expect(screen.getByText("dynamic")).toBeDefined();
-    expect(screen.getByText("field")).toBeDefined();
     expect(screen.getByText("Static leaf")).toBeDefined();
+
+    const expandButtons = screen.getAllByRole("button", { name: "Expand" });
+    expect(expandButtons).toHaveLength(1);
+    fireEvent.click(expandButtons[0]);
+    expect(screen.getByText("field")).toBeDefined();
 
     const handleIds = screen
       .getAllByTestId("output-node-handle")
@@ -66,6 +70,5 @@ describe("OutputHandler", () => {
 
     expect(screen.queryByText("child")).toBeNull();
     expect(handleIds).not.toContain("staticLeaf_#_child");
-    expect(screen.queryByRole("button", { name: "Expand" })).toBeNull();
   });
 });
