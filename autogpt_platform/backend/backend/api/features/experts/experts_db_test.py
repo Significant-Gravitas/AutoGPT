@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from test import load_store_agents as store_assets
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -13,6 +14,7 @@ from backend.api.features.experts import experts_db, scheduling, seed
 from backend.api.features.experts.models import (
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
+    HireResult,
     VoiceSample,
     encode_voice_preferences,
 )
@@ -21,11 +23,30 @@ from backend.api.features.library import model as library_model
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
+from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, Node
+from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import ExpertRunPausedError
 from backend.util.test import SpinTestServer
+
+EXPECTED_ROSTER_PRELOAD_SLUGS = {
+    "ai-webpage-copy-improver",
+    "automated-blog-writer",
+    "automated-support-ai",
+    "business-ownerceo-finder",
+    "email-address-finder",
+    "lead-finder-local-businesses",
+    "linkedin-post-generator",
+    "personalized-morning-coffee-newsletter",
+    "smart-meeting-brief",
+}
+EXPECTED_ROSTER_SCHEDULE = (
+    "Frankie",
+    "personalized-morning-coffee-newsletter",
+    "40 7 * * *",
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -114,6 +135,74 @@ async def _seed_store_listing(server: SpinTestServer) -> str:
         user_id=admin.id,
     )
     return slv_id
+
+
+async def _load_roster_store_assets() -> dict[str, str]:
+    """Load the checked-in production store assets (StoreAgent_rows.csv plus
+    the matching graph JSONs) for every ROSTER preload slug into the test DB,
+    published under the official creator — the exact data ``load-store-agents``
+    deploys. Idempotent: the loaders skip rows that already exist.
+
+    Returns slug -> the CSV's StoreListingVersion id, the version a hire is
+    expected to install. A ROSTER slug with no checked-in asset fails here
+    instead of being silently substituted by a synthetic listing.
+    """
+    await store_assets.create_user_and_profile(db_client)
+    metadata = await store_assets.load_csv_metadata()
+    by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
+    expected: dict[str, str] = {}
+    for slug in EXPECTED_ROSTER_PRELOAD_SLUGS:
+        assert slug in by_slug, f"Expected roster slug '{slug}' has no store asset"
+        meta = by_slug[slug]
+        version_id = meta["store_listing_version_id"]
+        agent_json = await store_assets.load_agent_json(
+            store_assets.AGENTS_DIR / f"agent_{version_id}.json"
+        )
+        graph_id, graph_version = await store_assets.create_agent_graph(
+            db_client, agent_json, set()
+        )
+        await store_assets.create_store_listing(
+            db_client, graph_id, graph_version, meta
+        )
+        expected[slug] = version_id
+    return expected
+
+
+async def _hire_roster_and_assert_preloads(
+    hire_user: User,
+    templates: dict[str, prisma.models.Expert],
+    expected: dict[str, str],
+) -> dict[str, HireResult]:
+    scheduler = AsyncMock()
+    scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-1")
+    )
+    results: dict[str, HireResult] = {}
+    with patch.object(scheduling, "get_scheduler_client", return_value=scheduler):
+        for entry in seed.ROSTER:
+            result = await experts_db.hire_expert(
+                hire_user.id, templates[entry["name"]].id, None
+            )
+            assert result.failed_preloads == []
+            assert {w.store_listing_version_id for w in result.expert.workflows} == {
+                expected[p["slug"]] for p in entry["preloads"]
+            }
+            results[entry["name"]] = result
+    return results
+
+
+async def _transfer_listing_to_official_creator(slv_id: str) -> None:
+    """Re-own an ad-hoc test listing to the official creator so seed slug
+    resolution (creator-scoped) can see it."""
+    await store_assets.create_user_and_profile(db_client)
+    listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": slv_id}
+    )
+    assert listing is not None
+    await prisma.models.StoreListing.prisma().update(
+        where={"id": listing.id},
+        data={"owningUserId": store_assets.AUTOGPT_USER_ID},
+    )
 
 
 async def _seed_template(
@@ -688,6 +777,7 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_round_trip(server: SpinTestServer):
+    await _load_roster_store_assets()
     first_ids = await seed.seed_roster()
     assert len(first_ids) == 3
 
@@ -706,6 +796,403 @@ async def test_seed_roster_round_trip(server: SpinTestServer):
     templates_after = await experts_db.list_templates()
     seeded_after = [t for t in templates_after if t.id in second_ids]
     assert len(seeded_after) == 3
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    resolve = AsyncMock(return_value=None)
+    upsert = AsyncMock()
+    monkeypatch.setattr(seed, "_resolve_active_version_id", resolve)
+    monkeypatch.setattr(seed, "_upsert_template", upsert)
+
+    with pytest.raises(RuntimeError, match="Load marketplace store assets"):
+        await seed.seed_roster()
+
+    assert resolve.await_count == len(EXPECTED_ROSTER_PRELOAD_SLUGS)
+    upsert.assert_not_awaited()
+
+
+def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
+    """Launch invariant, checked without a DB: every persona ships 2-4
+    preloads, and exactly one scheduled cadence exists across the whole
+    roster (Frankie's daily ops digest), so schedule attribution has a
+    single unambiguous real case."""
+    for entry in seed.ROSTER:
+        assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
+
+    assert {
+        preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
+    } == EXPECTED_ROSTER_PRELOAD_SLUGS
+    scheduled = [
+        (entry["name"], preload["slug"], preload["cron"])
+        for entry in seed.ROSTER
+        for preload in entry["preloads"]
+        if preload["cron"] is not None
+    ]
+    assert scheduled == [EXPECTED_ROSTER_SCHEDULE]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_roster_preloads_resolve_and_hire_installs_cleanly(
+    server: SpinTestServer,
+):
+    """Launch acceptance gate against the real checked-in store assets: every
+    ROSTER preload slug resolves to the exact StoreListingVersion the CSV
+    ships, each persona's template carries exactly its preloads, and hiring
+    installs all of them with zero failed preloads. A fictional or renamed
+    ROSTER slug fails the asset lookup instead of being papered over by a
+    synthetic listing."""
+    expected = await _load_roster_store_assets()
+
+    for slug, version_id in expected.items():
+        assert await seed._resolve_active_version_id(slug) == version_id, slug
+
+    template_ids = await seed.seed_roster()
+    templates = {
+        t.name: t for t in await experts_db.list_templates() if t.id in template_ids
+    }
+    for entry in seed.ROSTER:
+        expected_versions = {expected[p["slug"]] for p in entry["preloads"]}
+        assert len(expected_versions) == len(entry["preloads"])
+        assert {
+            w.store_listing_version_id for w in templates[entry["name"]].workflows
+        } == expected_versions
+
+    # A fresh user per run: a reused fixture user would make hire_expert
+    # short-circuit to a previous run's copy and skip _install_preloads.
+    hire_user = await _create_seed_user()
+    results = await _hire_roster_and_assert_preloads(hire_user, templates, expected)
+
+    frankie_crons = [
+        w.schedule_cron for w in results["Frankie"].expert.workflows if w.schedule_cron
+    ]
+    assert frankie_crons == ["40 7 * * *"]
+    for name in ("Maria", "Max"):
+        assert all(w.schedule_cron is None for w in results[name].expert.workflows)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_roster_slug_resolution_rejects_impostor_creator(
+    server: SpinTestServer,
+):
+    expected = await _load_roster_store_assets()
+    slug = "automated-blog-writer"
+    impostor_version_id = await _seed_store_listing(server)
+    impostor_listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": impostor_version_id}
+    )
+    assert impostor_listing is not None
+    await prisma.models.StoreListing.prisma().update(
+        where={"id": impostor_listing.id}, data={"slug": slug}
+    )
+
+    resolved = await seed._resolve_active_version_id(slug)
+
+    assert resolved == expected[slug]
+    assert resolved != impostor_version_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_clears_removed_cadences_on_hired_copies(server: SpinTestServer):
+    """Hires made before the single-cadence decision still carry the removed
+    template cadences with live scheduler jobs; the seed's migration must
+    delete the job (owner-scoped) and clear the row, while a user-customized
+    cadence on the same listing is left alone."""
+    expected = await _load_roster_store_assets()
+    removed_slug, removed_cron = seed.REMOVED_TEMPLATE_CADENCES[0]
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(owner.id, template.id, None)
+    legacy = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": expected[removed_slug],
+            "scheduleCron": removed_cron,
+            "scheduleId": "sched-legacy",
+        }
+    )
+    custom = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": expected["lead-finder-local-businesses"],
+            "scheduleCron": "0 12 * * 1",
+            "scheduleId": "sched-custom",
+        }
+    )
+    sched = AsyncMock()
+    sched.get_execution_schedules = AsyncMock(
+        return_value=[
+            SimpleNamespace(id="sched-legacy"),
+            SimpleNamespace(id="sched-custom"),
+        ]
+    )
+    sched.delete_schedule = AsyncMock()
+    with patch.object(seed, "get_scheduler_client", return_value=sched):
+        assert await seed._clear_removed_cadences() >= 1
+
+    sched.delete_schedule.assert_any_await("sched-legacy", user_id=owner.id)
+    deleted_ids = [c.args[0] for c in sched.delete_schedule.await_args_list]
+    assert "sched-custom" not in deleted_ids
+    legacy_after = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": legacy.id}
+    )
+    assert legacy_after is not None
+    assert legacy_after.scheduleId is None
+    assert legacy_after.scheduleCron is None
+    custom_after = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": custom.id}
+    )
+    assert custom_after is not None
+    assert custom_after.scheduleId == "sched-custom"
+    assert custom_after.scheduleCron == "0 12 * * 1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_clears_removed_cadences_without_live_jobs(server: SpinTestServer):
+    expected = await _load_roster_store_assets()
+    removed_slug, removed_cron = seed.REMOVED_TEMPLATE_CADENCES[0]
+    template = await _seed_template(name="Maria", preload_listings=[])
+    owner_without_id = await _create_seed_user()
+    owner_with_missing_job = await _create_seed_user()
+    hired_without_id = await experts_db.hire_expert(
+        owner_without_id.id, template.id, None
+    )
+    hired_with_missing_job = await experts_db.hire_expert(
+        owner_with_missing_job.id, template.id, None
+    )
+    without_id = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired_without_id.expert.id,
+            "storeListingVersionId": expected[removed_slug],
+            "scheduleCron": removed_cron,
+        }
+    )
+    with_missing_job = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired_with_missing_job.expert.id,
+            "storeListingVersionId": expected[removed_slug],
+            "scheduleCron": removed_cron,
+            "scheduleId": "already-gone",
+        }
+    )
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+    scheduler.delete_schedule = AsyncMock()
+
+    with patch.object(seed, "get_scheduler_client", return_value=scheduler):
+        assert await seed._clear_removed_cadences() >= 2
+
+    scheduler.get_execution_schedules.assert_awaited_once_with(
+        user_id=owner_with_missing_job.id, kind="graph"
+    )
+    scheduler.delete_schedule.assert_not_awaited()
+    for workflow_id in (without_id.id, with_missing_job.id):
+        row = await prisma.models.ExpertWorkflow.prisma().find_unique(
+            where={"id": workflow_id}
+        )
+        assert row is not None
+        assert row.scheduleId is None
+        assert row.scheduleCron is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_clears_removed_cadence_after_listing_version_rotation(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    previous_version_id = await _seed_store_listing(server)
+    await _transfer_listing_to_official_creator(previous_version_id)
+    listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": previous_version_id}
+    )
+    previous = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": previous_version_id}
+    )
+    assert listing is not None
+    assert previous is not None
+
+    current = await prisma.models.StoreListingVersion.prisma().create(
+        data={
+            "version": previous.version + 1,
+            "agentGraphId": previous.agentGraphId,
+            "agentGraphVersion": previous.agentGraphVersion,
+            "name": previous.name,
+            "subHeading": previous.subHeading,
+            "imageUrls": previous.imageUrls,
+            "description": previous.description,
+            "categories": previous.categories,
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+            "storeListingId": listing.id,
+        }
+    )
+    await prisma.models.StoreListing.prisma().update(
+        where={"id": listing.id}, data={"activeVersionId": current.id}
+    )
+
+    removed_cron = "0 9 * * 1"
+    monkeypatch.setattr(
+        seed, "REMOVED_TEMPLATE_CADENCES", [(listing.slug, removed_cron)]
+    )
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(owner.id, template.id, None)
+    legacy = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": previous_version_id,
+            "scheduleCron": removed_cron,
+            "scheduleId": "sched-previous-version",
+        }
+    )
+    sched = AsyncMock()
+    sched.get_execution_schedules = AsyncMock(
+        return_value=[SimpleNamespace(id="sched-previous-version")]
+    )
+    sched.delete_schedule = AsyncMock()
+
+    with patch.object(seed, "get_scheduler_client", return_value=sched):
+        assert await seed._clear_removed_cadences() == 1
+
+    sched.delete_schedule.assert_awaited_once_with(
+        "sched-previous-version", user_id=owner.id
+    )
+    legacy_after = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": legacy.id}
+    )
+    assert legacy_after is not None
+    assert legacy_after.scheduleId is None
+    assert legacy_after.scheduleCron is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_clears_removed_cadence_on_soft_deleted_listing(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    """Soft-deleting the listing must not strand the schedule: the hired copy
+    still fires the removed cron, so the migration has to reach it even though
+    the listing is gone from the marketplace."""
+    version_id = await _seed_store_listing(server)
+    await _transfer_listing_to_official_creator(version_id)
+    listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": version_id}
+    )
+    assert listing is not None
+    await prisma.models.StoreListing.prisma().update(
+        where={"id": listing.id}, data={"isDeleted": True}
+    )
+
+    removed_cron = "0 9 * * 1"
+    monkeypatch.setattr(
+        seed, "REMOVED_TEMPLATE_CADENCES", [(listing.slug, removed_cron)]
+    )
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(owner.id, template.id, None)
+    legacy = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": version_id,
+            "scheduleCron": removed_cron,
+            "scheduleId": "sched-soft-deleted-listing",
+        }
+    )
+    sched = AsyncMock()
+    sched.get_execution_schedules = AsyncMock(
+        return_value=[SimpleNamespace(id="sched-soft-deleted-listing")]
+    )
+    sched.delete_schedule = AsyncMock()
+
+    with patch.object(seed, "get_scheduler_client", return_value=sched):
+        assert await seed._clear_removed_cadences() == 1
+
+    sched.delete_schedule.assert_awaited_once_with(
+        "sched-soft-deleted-listing", user_id=owner.id
+    )
+    legacy_after = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": legacy.id}
+    )
+    assert legacy_after is not None
+    assert legacy_after.scheduleId is None
+    assert legacy_after.scheduleCron is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_live_schedule_updates_owner_cache():
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(
+        return_value=[SimpleNamespace(id="sched-shared")]
+    )
+    scheduler.delete_schedule = AsyncMock()
+    live_by_owner: dict[str, set[str]] = {}
+
+    with patch.object(seed, "get_scheduler_client", return_value=scheduler):
+        assert await seed._delete_live_schedule(
+            "owner-1", "sched-shared", live_by_owner
+        )
+        assert await seed._delete_live_schedule(
+            "owner-1", "sched-shared", live_by_owner
+        )
+
+    scheduler.get_execution_schedules.assert_awaited_once_with(
+        user_id="owner-1", kind="graph"
+    )
+    scheduler.delete_schedule.assert_awaited_once_with(
+        "sched-shared", user_id="owner-1"
+    )
+    assert live_by_owner == {"owner-1": set()}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_preserves_cadence_when_schedule_delete_fails(
+    server: SpinTestServer,
+):
+    """A scheduler failure must keep scheduleId/scheduleCron on the hired row
+    so the next seed run retries — clearing first would leave the live job
+    firing with nothing pointing at it. The retry then clears the row."""
+    expected = await _load_roster_store_assets()
+    removed_slug, removed_cron = seed.REMOVED_TEMPLATE_CADENCES[0]
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Frankie", preload_listings=[])
+    hired = await experts_db.hire_expert(owner.id, template.id, None)
+    row = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": expected[removed_slug],
+            "scheduleCron": removed_cron,
+            "scheduleId": "sched-stuck",
+        }
+    )
+    broken = AsyncMock()
+    broken.get_execution_schedules = AsyncMock(
+        return_value=[SimpleNamespace(id="sched-stuck")]
+    )
+    broken.delete_schedule = AsyncMock(side_effect=RuntimeError("scheduler down"))
+    with patch.object(seed, "get_scheduler_client", return_value=broken):
+        await seed._clear_removed_cadences()
+
+    stuck = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": row.id}
+    )
+    assert stuck is not None
+    assert stuck.scheduleId == "sched-stuck"
+    assert stuck.scheduleCron == removed_cron
+
+    healed = AsyncMock()
+    healed.get_execution_schedules = AsyncMock(
+        return_value=[SimpleNamespace(id="sched-stuck")]
+    )
+    healed.delete_schedule = AsyncMock()
+    with patch.object(seed, "get_scheduler_client", return_value=healed):
+        await seed._clear_removed_cadences()
+
+    healed.delete_schedule.assert_any_await("sched-stuck", user_id=owner.id)
+    cleared = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": row.id}
+    )
+    assert cleared is not None
+    assert cleared.scheduleId is None
+    assert cleared.scheduleCron is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -746,6 +1233,9 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
     """Re-seeding must propagate roster cadence changes onto existing
     template preload rows — the old sync was create-only."""
     slv_id = await _seed_store_listing(server)
+    # Resolution is creator-scoped, so the ad-hoc listing must belong to the
+    # official creator for _sync_preloads to see it.
+    await _transfer_listing_to_official_creator(slv_id)
     listing = await prisma.models.StoreListing.prisma().find_first(
         where={"activeVersionId": slv_id}
     )
@@ -811,6 +1301,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert refreshed is not None
     assert refreshed.avatar_url == "/experts/maria.svg"
+    assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
