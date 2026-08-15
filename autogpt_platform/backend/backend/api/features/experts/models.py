@@ -1,6 +1,7 @@
+import json
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
@@ -20,6 +21,14 @@ def _strip_required_soul_field(value: str) -> str:
 
 def _strip_optional_soul_field(value: str) -> str:
     return value.strip()
+
+
+class VoiceSample(BaseModel):
+    """A short writing sample in a persona's own voice, offered as a pick in
+    the hire flow. The first sample is choice "a", the second choice "b"."""
+
+    label: str
+    text: str
 
 
 class ExpertWorkflowRef(BaseModel):
@@ -46,6 +55,10 @@ class Expert(BaseModel):
     skills: list[str]
     identity: str
     voice_preferences: str
+    # Populated only on roster templates so the hire flow can offer a voice
+    # pick; always empty on hired copies, which persist the user's plain-text
+    # choice in voice_preferences instead.
+    voice_samples: list[VoiceSample] = []
     boundaries: str
     protected_soul_rules: list[str]
     is_template: bool
@@ -121,3 +134,50 @@ class ExpertSoulFieldsPatch(BaseModel):
     @classmethod
     def strip_optional_fields(cls, value: str | None) -> str | None:
         return None if value is None else _strip_optional_soul_field(value)
+
+
+def encode_voice_preferences(description: str, samples: list[VoiceSample]) -> str:
+    """Serialize a roster template's voice into the voicePreferences column: a
+    plain-text description plus the writing samples the hire flow offers.
+
+    Only template rows carry this JSON envelope. Hired copies persist the
+    user's plain-text pick (or the template's description on skip), so the
+    prompt builder never renders raw JSON into ``<voice_preferences>``.
+    """
+    return json.dumps(
+        {
+            "description": description,
+            "samples": [sample.model_dump() for sample in samples],
+        }
+    )
+
+
+def decode_voice_preferences(raw: str) -> tuple[str, list[VoiceSample]]:
+    """Inverse of ``encode_voice_preferences``.
+
+    Templates carry the JSON envelope; hired copies carry a plain string,
+    which round-trips back unchanged with no samples. Once a value identifies
+    itself as the template envelope, malformed fields degrade to safe empty
+    values so serialized JSON can never leak into an expert's prompt.
+    """
+    if not raw:
+        return "", []
+    try:
+        envelope = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw, []
+    if not isinstance(envelope, dict) or "samples" not in envelope:
+        return raw, []
+    description = envelope.get("description")
+    envelope_samples = envelope.get("samples")
+    if not isinstance(description, str) or not isinstance(envelope_samples, list):
+        return "", []
+    samples: list[VoiceSample] = []
+    for item in envelope_samples:
+        if not isinstance(item, dict):
+            continue
+        try:
+            samples.append(VoiceSample.model_validate(item))
+        except ValidationError:
+            continue
+    return description, samples
