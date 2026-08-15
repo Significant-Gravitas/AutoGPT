@@ -1,0 +1,72 @@
+name: Temporary Ollama patch normalizer
+
+on:
+  push:
+    branches: [fix-ollama-credentials]
+    paths:
+      - .github/workflows/temporary-format-ollama-review.yml
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-ollama-credentials
+          fetch-depth: 0
+      - name: Normalize patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Missing expected text in {path}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace(
+              "autogpt_platform/backend/backend/data/block_cost_config.py",
+              "    ollama_credentials,\n",
+              "",
+          )
+          replace(
+              "autogpt_platform/backend/backend/blocks/llm.py",
+              '''    async def _summarize_chunk(\n        self,\n        chunk: str,\n        input_data: Input,\n        credentials: APIKeyCredentials,\n    ) -> str:\n''',
+              '''    async def _summarize_chunk(\n        self, chunk: str, input_data: Input, credentials: APIKeyCredentials\n    ) -> str:\n''',
+          )
+          replace(
+              "autogpt_platform/backend/backend/blocks/llm.py",
+              '''    async def _combine_summaries(\n        self,\n        summaries: list[str],\n        input_data: Input,\n        credentials: APIKeyCredentials,\n    ) -> str:\n''',
+              '''    async def _combine_summaries(\n        self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials\n    ) -> str:\n''',
+          )
+          replace(
+              "autogpt_platform/backend/backend/executor/no_auth_credentials.py",
+              '''    if provider is not None and provider_matches(str(provider), ollama_credentials.provider):\n        return ollama_credentials\n''',
+              '''    if provider is not None and provider_matches(\n        str(provider), ollama_credentials.provider\n    ):\n        return ollama_credentials\n''',
+          )
+          replace(
+              "autogpt_platform/backend/backend/executor/no_auth_credentials_test.py",
+              '''    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()["credentials"]\n''',
+              '''    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()[\n        "credentials"\n    ]\n''',
+          )
+          replace(
+              "autogpt_platform/backend/backend/executor/no_auth_credentials_test.py",
+              '''    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()["credentials"]\n''',
+              '''    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()[\n        "credentials"\n    ]\n''',
+          )
+
+          Path(".github/workflows/temporary-format-ollama-review.yml").unlink()
+          PY
+      - name: Commit normalization
+        run: |
+          git config user.name "Iitian001"
+          git config user.email "160615932+Iitian001@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "chore(platform/llm): normalize Ollama credential patch"
+          git push origin HEAD:fix-ollama-credentials
