@@ -216,8 +216,11 @@ class TestExpertMemoryScope:
         assert resp.json()["group_id"] == expected_group
         open_driver.assert_called_once_with(expected_group)
 
-    def test_missing_expert_is_404_before_driver(self) -> None:
-        expert_id = "missing-expert"
+    @pytest.mark.parametrize(
+        "endpoint", ["overview", "graph", "entities", "facts", "communities"]
+    )
+    def test_unowned_expert_is_404_before_driver(self, endpoint: str) -> None:
+        expert_id = "expert-owned-by-another-user"
         with (
             patch(
                 f"{_MOCK_MODULE}.experts_db.get_expert",
@@ -225,15 +228,55 @@ class TestExpertMemoryScope:
             ) as get_expert,
             patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
         ):
-            resp = client.get(f"/admin/memory/abc/overview?expert_id={expert_id}")
+            resp = client.get(
+                f"/admin/memory/abc/{endpoint}", params={"expert_id": expert_id}
+            )
 
         assert resp.status_code == 404
         assert resp.json() == {"detail": "Expert not found"}
         get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
         open_driver.assert_not_called()
 
+    @pytest.mark.parametrize("endpoint", ["entities", "facts", "communities"])
+    def test_owned_expert_list_uses_server_derived_group(self, endpoint: str) -> None:
+        expert_id = "expert-owned"
+        expected_group = derive_memory_group_id("abc", expert_id)
+        driver = _driver_returning([])
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(
+                f"/admin/memory/abc/{endpoint}", params={"expert_id": expert_id}
+            )
+
+        assert resp.status_code == 200
+        get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+        open_driver.assert_called_once_with(expected_group)
+
+    @pytest.mark.parametrize("endpoint", ["entities", "facts", "communities"])
+    def test_list_without_expert_id_remains_autopilot(self, endpoint: str) -> None:
+        driver = _driver_returning([])
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/{endpoint}")
+
+        assert resp.status_code == 200
+        get_expert.assert_not_awaited()
+        open_driver.assert_called_once_with("user_abc")
+
     @pytest.mark.parametrize("expert_id", ["", "x" * 129])
-    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    @pytest.mark.parametrize(
+        "endpoint", ["overview", "graph", "entities", "facts", "communities"]
+    )
     def test_invalid_expert_id_is_422_before_lookup_or_driver(
         self, expert_id: str, endpoint: str
     ) -> None:
@@ -349,7 +392,9 @@ class TestExpertMemoryScope:
         assert "scope AutoPilot" in message
         assert "group None" not in message
 
-    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    @pytest.mark.parametrize(
+        "endpoint", ["overview", "graph", "entities", "facts", "communities"]
+    )
     def test_non_admin_expert_request_never_reaches_lookup_or_driver(
         self, mock_jwt_user, endpoint: str
     ) -> None:
