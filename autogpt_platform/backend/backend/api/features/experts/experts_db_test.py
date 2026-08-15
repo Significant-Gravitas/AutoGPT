@@ -441,6 +441,7 @@ async def test_hire_from_template_with_samples_stores_plain_voice(
 async def test_seed_roster_exposes_two_voice_samples_per_template(
     server: SpinTestServer,
 ):
+    await _load_roster_store_assets()
     ids = await seed.seed_roster()
     seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
     for entry in seed.ROSTER:
