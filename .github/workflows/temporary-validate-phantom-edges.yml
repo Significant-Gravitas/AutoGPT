@@ -33,6 +33,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Run frontend lint
         run: pnpm lint
+      - name: Generate API client
+        run: pnpm generate:api
       - name: Run focused regression test
         run: pnpm exec vitest run 'src/app/(platform)/build/__tests__/OutputHandler.test.tsx'
       - name: Remove temporary workflow and push cleanup
