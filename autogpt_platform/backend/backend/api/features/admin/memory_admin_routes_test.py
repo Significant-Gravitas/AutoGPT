@@ -370,8 +370,30 @@ class TestExpertMemoryScope:
         audit_log.assert_called_once()
         message = audit_log.call_args.args[0]
         assert mock_jwt_admin["user_id"] in message
-        assert f"scope expert {expert_id}" in message
+        assert f"scope expert {expert_id!r}" in message
         assert "group None" not in message
+
+    def test_failed_expert_scope_escapes_control_chars_in_audit(
+        self, mock_jwt_admin
+    ) -> None:
+        expert_id = "missing\nforged-record"
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get(
+                "/admin/memory/abc/overview", params={"expert_id": expert_id}
+            )
+
+        assert resp.status_code == 404
+        open_driver.assert_not_called()
+        message = audit_log.call_args.args[0]
+        assert "missing\\nforged-record" in message
+        assert "\n" not in message
 
     def test_failed_cross_user_autopilot_scope_is_audited(self, mock_jwt_admin) -> None:
         with (

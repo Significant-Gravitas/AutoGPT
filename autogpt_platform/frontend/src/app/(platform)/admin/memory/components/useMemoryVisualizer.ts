@@ -44,18 +44,28 @@ function isTerminal(state: JobStateValue | undefined): state is TerminalState {
   return state === "complete" || state === "errored";
 }
 
-function invalidateAutoPilotGraphQueries(queryClient: QueryClient) {
+function isAutoPilotMemoryQuery({
+  queryKey,
+}: {
+  queryKey: readonly unknown[];
+}) {
+  const params = queryKey[1];
+  return !(
+    typeof params === "object" &&
+    params !== null &&
+    "expert_id" in params &&
+    params.expert_id !== undefined
+  );
+}
+
+function invalidateAutoPilotMemoryQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({
+    queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+    predicate: isAutoPilotMemoryQuery,
+  });
   queryClient.invalidateQueries({
     queryKey: getGetV2GetGraphQueryKey(USER_ID),
-    predicate: ({ queryKey }) => {
-      const params = queryKey[1];
-      return !(
-        typeof params === "object" &&
-        params !== null &&
-        "expert_id" in params &&
-        params.expert_id !== undefined
-      );
-    },
+    predicate: isAutoPilotMemoryQuery,
   });
 }
 
@@ -80,14 +90,14 @@ export function useMemoryVisualizer(expertID?: string) {
   >();
 
   const memoryScopeParams = expertID ? { expert_id: expertID } : undefined;
-  const autoPilotGraphParams = {
+  const baseGraphParams = {
     include_episodes: includeEpisodes,
     include_communities: includeCommunities,
     node_limit: 10000,
     edge_limit: 20000,
   };
   const graphParams = {
-    ...autoPilotGraphParams,
+    ...baseGraphParams,
     ...(memoryScopeParams ?? {}),
   };
   const overview = useGetV2GetMemoryOverview(USER_ID, memoryScopeParams);
@@ -164,10 +174,7 @@ export function useMemoryVisualizer(expertID?: string) {
               `superseded=${result.superseded_count}`,
           });
         }
-        queryClient.invalidateQueries({
-          queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-        });
-        invalidateAutoPilotGraphQueries(queryClient);
+        invalidateAutoPilotMemoryQueries(queryClient);
       },
       onError: (error: Error) => {
         toast({
@@ -231,10 +238,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetDreamPassStatusQueryKey(USER_ID, activeDreamJobId),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-      });
-      invalidateAutoPilotGraphQueries(queryClient);
+      invalidateAutoPilotMemoryQueries(queryClient);
     },
     toast,
   );
@@ -252,10 +256,7 @@ export function useMemoryVisualizer(expertID?: string) {
           activeNightlyJobId,
         ),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-      });
-      invalidateAutoPilotGraphQueries(queryClient);
+      invalidateAutoPilotMemoryQueries(queryClient);
     },
     toast,
   );
@@ -273,10 +274,7 @@ export function useMemoryVisualizer(expertID?: string) {
           activeRebuildJobId,
         ),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-      });
-      invalidateAutoPilotGraphQueries(queryClient);
+      invalidateAutoPilotMemoryQueries(queryClient);
     },
     toast,
   );

@@ -11,7 +11,10 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import { getGetV2GetGraphQueryKey } from "@/app/api/__generated__/endpoints/admin/admin";
+import {
+  getGetV2GetGraphQueryKey,
+  getGetV2GetMemoryOverviewQueryKey,
+} from "@/app/api/__generated__/endpoints/admin/admin";
 import {
   getGetV2GetCommunityRebuildStatusMockHandler200,
   getGetV2GetCommunityRebuildStatusResponseMock200,
@@ -140,11 +143,14 @@ function MemoryVisualizerWithPersistentGraphCache() {
   const queryClient = useQueryClient();
   const [ready, setReady] = useState(false);
   const [expertCacheInvalidated, setExpertCacheInvalidated] = useState<
-    boolean | undefined
+    string | undefined
   >();
 
   function loadVisualizer() {
     queryClient.setQueryDefaults(getGetV2GetGraphQueryKey("me"), {
+      staleTime: Infinity,
+    });
+    queryClient.setQueryDefaults(getGetV2GetMemoryOverviewQueryKey("me"), {
       staleTime: Infinity,
     });
     setReady(true);
@@ -152,12 +158,19 @@ function MemoryVisualizerWithPersistentGraphCache() {
 
   function inspectExpertCache() {
     setExpertCacheInvalidated(
-      queryClient.getQueryState(
-        getGetV2GetGraphQueryKey("me", {
-          ...PERSISTENT_GRAPH_PARAMS,
-          expert_id: "expert-ada",
-        }),
-      )?.isInvalidated,
+      [
+        queryClient.getQueryState(
+          getGetV2GetMemoryOverviewQueryKey("me", {
+            expert_id: "expert-ada",
+          }),
+        )?.isInvalidated,
+        queryClient.getQueryState(
+          getGetV2GetGraphQueryKey("me", {
+            ...PERSISTENT_GRAPH_PARAMS,
+            expert_id: "expert-ada",
+          }),
+        )?.isInvalidated,
+      ].join(","),
     );
   }
 
@@ -455,10 +468,11 @@ describe("MemoryVisualizer — memory scope", () => {
     await screen.findByText("No experts for this account.");
   });
 
-  test("disambiguates experts that share a display name", async () => {
+  test("only appends IDs when expert name and role labels collide", async () => {
     setupBaseHandlers([
       makeExpert("ada-one-1234", "Ada", "Researcher"),
       makeExpert("ada-two-5678", "Ada", "Writer"),
+      makeExpert("ada-three-9012", "Ada", "Researcher"),
     ]);
 
     render(<MemoryVisualizer />);
@@ -473,12 +487,13 @@ describe("MemoryVisualizer — memory scope", () => {
 
     expect(
       await screen.findByRole("option", {
-        name: "Ada — Researcher (ada-one-)",
+        name: "Ada — Researcher (ada-one-1234)",
       }),
     ).toBeDefined();
     expect(
-      screen.getByRole("option", { name: "Ada — Writer (ada-two-)" }),
+      screen.getByRole("option", { name: "Ada — Researcher (ada-three-9012)" }),
     ).toBeDefined();
+    expect(screen.getByRole("option", { name: "Ada — Writer" })).toBeDefined();
   });
 });
 
@@ -549,7 +564,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     });
   });
 
-  test("job completion refreshes every AutoPilot graph filter cache without invalidating expert memory", async () => {
+  test("job completion refreshes every AutoPilot cache without invalidating expert memory", async () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     const graphRequests = new Map<string, number>();
     server.use(
@@ -622,7 +637,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
       screen.getByRole("button", { name: "Inspect expert cache" }),
     );
     expect(screen.getByTestId("expert-cache-invalidated").textContent).toBe(
-      "false",
+      "false,false",
     );
 
     await userEvent.click(episodes);
