@@ -14,6 +14,10 @@ from backend.api.features.experts.models import (
     HireResult,
 )
 from backend.api.features.library import db as library_db
+from backend.data.db import prisma as db_client
+from backend.data.expert_attribution import (
+    resolve_attributable_expert as resolve_attributable_expert_row,
+)
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -494,6 +498,21 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
     if len(expert_ids) != 1:
         return None
     return expert_ids.pop()
+
+
+async def resolve_attributable_expert(
+    user_id: str, expert_id: str | None
+) -> str | None:
+    """Read-only expert-attribution lookup.
+
+    Durable writes use the same shared guard with a row lock inside their own
+    transaction; this lookup is for discovery and compatibility only.
+    """
+    return await resolve_attributable_expert_row(
+        db_client,
+        user_id,
+        expert_id,
+    )
 
 
 async def archive_expert(user_id: str, expert_id: str) -> None:

@@ -19,6 +19,7 @@ from backend.api.features.library.exceptions import (
 )
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
+from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
@@ -1983,9 +1984,9 @@ async def create_preset(
         webhook_id: Internal-only; not part of the public request model. Only
             trusted callers (the setup-trigger flow, legacy migration) pass a
             webhook they provisioned for the caller.
-        expert_id: Expert attribution, resolved by the route layer (this
-            module cannot import experts_db without a cycle). Runs fired by
-            the preset inherit it.
+        expert_id: Requested expert attribution. Active ownership is validated
+            atomically with preset persistence. Runs fired by the preset
+            inherit the validated value.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -2039,12 +2040,34 @@ async def create_preset(
         create_input["organizationId"] = graph.organization_id
     if graph.team_id:
         create_input["teamId"] = graph.team_id
-    if expert_id:
-        create_input["expertId"] = expert_id
-    new_preset = await prisma.models.AgentPreset.prisma().create(
-        data=create_input,
-        include=AGENT_PRESET_INCLUDE,
-    )
+    requested_expert_id = expert_id
+    if requested_expert_id:
+        async with transaction() as tx:
+            expert_id = await resolve_attributable_expert(
+                tx,
+                user_id,
+                requested_expert_id,
+                lock_for_update=True,
+            )
+            if expert_id:
+                create_input["expertId"] = expert_id
+            new_preset = await prisma.models.AgentPreset.prisma(tx).create(
+                data=create_input,
+                include=AGENT_PRESET_INCLUDE,
+            )
+        if expert_id is None:
+            logger.warning(
+                "Ignoring inactive/unowned expert %s while creating preset "
+                "%s for user %s",
+                requested_expert_id,
+                preset.name,
+                user_id,
+            )
+    else:
+        new_preset = await prisma.models.AgentPreset.prisma().create(
+            data=create_input,
+            include=AGENT_PRESET_INCLUDE,
+        )
     return library_model.LibraryAgentPreset.from_db(new_preset)
 
 

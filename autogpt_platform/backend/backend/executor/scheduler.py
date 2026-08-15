@@ -264,7 +264,14 @@ async def _execute_copilot_turn(**kwargs):
                 dry_run=False,
                 organization_id=args.organization_id,
                 team_id=args.team_id,
+                expert_id=args.expert_id,
             )
+            if args.expert_id and new_session.expert_id is None:
+                logger.warning(
+                    f"Copilot turn schedule {args.schedule_id}: expert "
+                    f"{args.expert_id} is no longer active/owned — "
+                    f"created a plain (non-expert) session instead"
+                )
             target_session_id = new_session.session_id
             target_session = new_session
             logger.info(
@@ -371,6 +378,9 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             # turn to the user's default org after a cap retry.
             organization_id=args.organization_id,
             team_id=args.team_id,
+            # And for expert attribution — dropping it would fire the retried
+            # turn into a plain session, escaping the expert's thread/budget.
+            expert_id=args.expert_id,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -1257,6 +1267,11 @@ class CopilotTurnJobArgs(BaseModel):
     # Optional for backward compat with rows persisted before org tagging.
     organization_id: str | None = None
     team_id: str | None = None
+    # Expert captured at schedule time so a fresh session minted at fire time
+    # is scoped to the same expert as the chat that scheduled the follow-up —
+    # its runs then count toward the expert's budget and surface on her thread.
+    # None for plain (non-expert) chats. Optional for backward compat.
+    expert_id: str | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -1802,6 +1817,7 @@ class Scheduler(AppService):
         cap_retry_count: int = 0,
         organization_id: str | None = None,
         team_id: str | None = None,
+        expert_id: str | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -1826,6 +1842,7 @@ class Scheduler(AppService):
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"
