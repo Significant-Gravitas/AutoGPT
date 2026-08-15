@@ -25,6 +25,17 @@ from backend.util.json import SafeJson
 logger = logging.getLogger(__name__)
 
 
+def _require_graph(
+    store_listing_version: prisma.models.StoreListingVersion,
+) -> prisma.models.AgentGraph:
+    graph = store_listing_version.AgentGraph
+    if not graph:
+        raise NotFoundError(
+            f"Store listing version {store_listing_version.id} has no graph"
+        )
+    return graph
+
+
 async def resolve_store_version_for_library(
     store_listing_version_id: str,
     *,
@@ -43,10 +54,11 @@ async def resolve_store_version_for_library(
             },
             include={"AgentGraph": True},
         )
-    if not slv or not slv.AgentGraph:
+    if not slv:
         raise NotFoundError(
             f"Store listing version {store_listing_version_id} not found or invalid"
         )
+    _require_graph(slv)
     return slv
 
 
@@ -57,11 +69,7 @@ async def resolve_graph_model_for_library(
     admin: bool,
 ) -> GraphModel:
     """Resolve the graph for an already-validated marketplace version."""
-    ag = store_listing_version.AgentGraph
-    if not ag:
-        raise NotFoundError(
-            f"Store listing version {store_listing_version.id} has no graph"
-        )
+    ag = _require_graph(store_listing_version)
 
     graph_model = (
         await graph_db.get_graph_as_admin(
@@ -121,11 +129,7 @@ async def restore_existing_library_agent(
     user_id: str,
 ) -> library_model.LibraryAgent | None:
     """Restore and return an existing library entry without loading its graph."""
-    ag = store_listing_version.AgentGraph
-    if not ag:
-        raise NotFoundError(
-            f"Store listing version {store_listing_version.id} has no graph"
-        )
+    ag = _require_graph(store_listing_version)
 
     client = prisma.models.LibraryAgent.prisma()
     where = {

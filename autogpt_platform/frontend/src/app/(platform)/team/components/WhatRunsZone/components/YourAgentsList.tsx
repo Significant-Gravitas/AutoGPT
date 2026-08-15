@@ -47,7 +47,7 @@ export function YourAgentsList({
         !hasMoreAgents ? (
           <Text variant="small" className="text-zinc-500">
             {libraryAgentCount === 0
-              ? "No agents in your library yet."
+              ? "No available agents to adopt."
               : "Every agent is already on your team."}
           </Text>
         ) : null

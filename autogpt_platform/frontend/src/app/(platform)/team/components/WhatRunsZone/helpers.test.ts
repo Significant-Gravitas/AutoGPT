@@ -3,7 +3,11 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { describe, expect, it } from "vitest";
-import { getWorkflowSchedules, workflowNeedsSetup } from "../../helpers";
+import {
+  getGraphWorkflowCounts,
+  getWorkflowSchedules,
+  workflowNeedsSetup,
+} from "../../helpers";
 import {
   getAdoptableExperts,
   getAdoptTargetKey,
@@ -191,12 +195,13 @@ describe("getVisibleGroups", () => {
     ];
     const schedule = makeSchedule({ id: "manual", graph_id: "shared-graph" });
 
-    expect(getWorkflowSchedules(workflows[0], [schedule], workflows)).toEqual(
-      [],
-    );
-    expect(getWorkflowSchedules(workflows[1], [schedule], workflows)).toEqual(
-      [],
-    );
+    const graphWorkflowCounts = getGraphWorkflowCounts(workflows);
+    expect(
+      getWorkflowSchedules(workflows[0], [schedule], graphWorkflowCounts),
+    ).toEqual([]);
+    expect(
+      getWorkflowSchedules(workflows[1], [schedule], graphWorkflowCounts),
+    ).toEqual([]);
   });
 });
 
@@ -338,7 +343,7 @@ describe("workflow schedule helpers", () => {
         getWorkflowSchedules(
           workflow,
           [makeSchedule({ id: "active" })],
-          [workflow],
+          getGraphWorkflowCounts([workflow]),
         ),
       ),
     ).toBe(false);

@@ -8,9 +8,8 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   getAdoptTargetKey,
   getAdoptTargetVersionId,
@@ -21,6 +20,15 @@ import {
 } from "./helpers";
 
 const AGENTS_PAGE_SIZE = 100;
+
+function hasStatus(error: unknown, status: number) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    error.status === status
+  );
+}
 
 interface Args {
   experts: Expert[];
@@ -50,18 +58,15 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
 
   const { mutateAsync: installWorkflow } = useInstallExpertWorkflow();
 
-  const libraryAgents = useMemo(
-    () => (agentsQuery.data ? unpaginate(agentsQuery.data, "agents") : []),
-    [agentsQuery.data],
+  const libraryAgents = agentsQuery.data
+    ? unpaginate(agentsQuery.data, "agents")
+    : [];
+  const unadoptedAgents = getUnadoptedAgents(
+    libraryAgents,
+    experts,
+    adoptedTargetKeys,
   );
-  const unadoptedAgents = useMemo(
-    () => getUnadoptedAgents(libraryAgents, experts, adoptedTargetKeys),
-    [adoptedTargetKeys, experts, libraryAgents],
-  );
-  const groups = useMemo(
-    () => getVisibleGroups(experts, schedules, filter),
-    [experts, filter, schedules],
-  );
+  const groups = getVisibleGroups(experts, schedules, filter);
   const showAgents = filter === "all" || filter === "agents";
 
   async function adopt(agent: LibraryAgent, expert: Expert) {
@@ -89,8 +94,7 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
         variant: "success",
       });
     } catch (error) {
-      const versionUnavailable =
-        error instanceof ApiError && error.status === 404;
+      const versionUnavailable = hasStatus(error, 404);
       toast({
         title: `Couldn't adopt ${agent.name}`,
         description: versionUnavailable

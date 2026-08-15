@@ -22,17 +22,23 @@ export function getWeeklySpend(expert: Expert) {
 export function getWorkflowSchedules(
   workflow: ExpertWorkflowRef,
   schedules: GraphExecutionJobInfo[],
-  peerWorkflows: ExpertWorkflowRef[],
+  graphWorkflowCounts: ReadonlyMap<ExpertWorkflowRef["graph_id"], number>,
 ) {
-  // Only use the legacy graph-id fallback when one snapshot can own the job.
-  const sameGraphWorkflowCount = peerWorkflows.filter(
-    (peer) => peer.graph_id === workflow.graph_id,
-  ).length;
+  const sameGraphWorkflowCount =
+    graphWorkflowCounts.get(workflow.graph_id) ?? 0;
   return schedules.filter(
     (schedule) =>
       schedule.id === workflow.schedule_id ||
       (sameGraphWorkflowCount === 1 && schedule.graph_id === workflow.graph_id),
   );
+}
+
+export function getGraphWorkflowCounts(workflows: ExpertWorkflowRef[]) {
+  const counts = new Map<ExpertWorkflowRef["graph_id"], number>();
+  for (const workflow of workflows) {
+    counts.set(workflow.graph_id, (counts.get(workflow.graph_id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 export function workflowNeedsSetup(
@@ -49,9 +55,10 @@ export function getNeedsSetupCount(
   expert: Expert,
   schedules?: GraphExecutionJobInfo[],
 ) {
+  const graphWorkflowCounts = getGraphWorkflowCounts(expert.workflows);
   return expert.workflows.filter((workflow) => {
     const workflowSchedules = schedules
-      ? getWorkflowSchedules(workflow, schedules, expert.workflows)
+      ? getWorkflowSchedules(workflow, schedules, graphWorkflowCounts)
       : undefined;
     return workflowNeedsSetup(workflow, workflowSchedules);
   }).length;

@@ -243,7 +243,7 @@ async def test_list_library_agents_exposes_matching_store_version_id(mocker):
 
     assert result.agents[0].store_listing_version_id == "slv-exact"
     where = mock_slv_find_many.call_args.kwargs["where"]
-    assert where["agentGraphId"] == {"in": ["agent2"]}
+    assert where["OR"] == [{"agentGraphId": "agent2", "agentGraphVersion": 3}]
     assert where["submissionStatus"] == prisma.enums.SubmissionStatus.APPROVED
     assert where["isDeleted"] is False
     assert where["isAvailable"] is True

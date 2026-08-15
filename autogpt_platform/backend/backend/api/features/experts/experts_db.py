@@ -1,6 +1,5 @@
 import logging
 
-import prisma.enums
 import prisma.errors
 import prisma.models
 

@@ -884,6 +884,28 @@ describe("TeamPage", () => {
     ).toBe("/library/agents/lib-1");
   });
 
+  test("does not mark the card as needing setup when a stale id has a live job", async () => {
+    const staleButLiveMaria: Expert = {
+      ...hiredMaria,
+      workflows: [
+        {
+          ...hiredMaria.workflows[0],
+          schedule_cron: "40 7 * * *",
+          schedule_id: "deleted-schedule",
+        },
+      ],
+    };
+    server.use(
+      getListExpertsMockHandler([staleButLiveMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([makeSchedule()]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(within(card).queryByText(/needs setup/i)).toBeNull();
+  });
+
   test("shows feedback and re-enables Adopt when adoption fails", async () => {
     const user = userEvent.setup();
     server.use(
@@ -1028,7 +1050,7 @@ describe("TeamPage", () => {
 
     const agents = await screen.findByRole("region", { name: "Your agents" });
     expect(
-      await within(agents).findByText("No agents in your library yet."),
+      await within(agents).findByText("No available agents to adopt."),
     ).toBeDefined();
   });
 

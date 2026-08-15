@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Literal, Optional, cast
 
 import fastapi
-import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
@@ -109,11 +108,14 @@ async def _fetch_matching_store_version_ids(
     pairs = {(a.agentGraphId, a.agentGraphVersion) for a in agents}
     if not pairs:
         return {}
-    graph_ids = sorted({graph_id for graph_id, _ in pairs})
+    pair_filters = [
+        {"agentGraphId": graph_id, "agentGraphVersion": graph_version}
+        for graph_id, graph_version in sorted(pairs)
+    ]
     try:
         versions = await prisma.models.StoreListingVersion.prisma().find_many(
             where={
-                "agentGraphId": {"in": graph_ids},
+                "OR": pair_filters,
                 **installable_store_version_where(),
             },
             distinct=["agentGraphId", "agentGraphVersion"],
@@ -452,7 +454,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         The requested LibraryAgent.
 
     Raises:
-        NotFoundError: If the specified agent does not exist.
+        NotFoundError: If the specified agent or its graph relation does not exist.
         DatabaseError: If there's an error during retrieval.
     """
     library_agent = await prisma.models.LibraryAgent.prisma().find_first(

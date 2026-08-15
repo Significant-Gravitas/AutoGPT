@@ -2,7 +2,11 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { getExpertSchedules, getWorkflowSchedules } from "../../helpers";
+import {
+  getExpertSchedules,
+  getGraphWorkflowCounts,
+  getWorkflowSchedules,
+} from "../../helpers";
 
 export type WhatRunsFilter =
   | "all"
@@ -85,12 +89,13 @@ export function getVisibleGroups(
   const groups: ExpertWorkflowGroupData[] = [];
   for (const expert of experts) {
     const expertSchedules = getExpertSchedules(expert, schedules);
+    const graphWorkflowCounts = getGraphWorkflowCounts(expert.workflows);
     const workflows = expert.workflows.map((workflow) => ({
       workflow,
       schedules: getWorkflowSchedules(
         workflow,
         expertSchedules,
-        expert.workflows,
+        graphWorkflowCounts,
       ),
     }));
     const visibleWorkflows = view.scheduledOnly
