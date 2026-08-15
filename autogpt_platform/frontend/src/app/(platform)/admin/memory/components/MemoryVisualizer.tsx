@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { CommunityRebuildJobStatus } from "@/app/api/__generated__/models/communityRebuildJobStatus";
-import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStatus";
-import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
 import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
@@ -11,14 +8,7 @@ import { DreamUsageSummary } from "./DreamUsageSummary/DreamUsageSummary";
 import { MemoryScopeSelector } from "./MemoryScopeSelector";
 import { MaintenanceControls } from "./MaintenanceControls";
 import { useMemoryScope } from "./useMemoryScope";
-
-// Polling envelope shared across all three job kinds — see the matching
-// alias in useMemoryVisualizer.ts. Narrowed to a specific kind at the
-// view layer that reads ``status.result``.
-type AnyJobStatus =
-  | DreamJobStatus
-  | NightlyJobStatus
-  | CommunityRebuildJobStatus;
+import type { AnyJobStatus } from "./memoryJobStatus";
 
 export function MemoryVisualizer() {
   const {

@@ -1,15 +1,8 @@
 "use client";
 
-import type { CommunityRebuildJobStatus } from "@/app/api/__generated__/models/communityRebuildJobStatus";
-import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStatus";
-import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
+import type { AnyJobStatus } from "./memoryJobStatus";
 
-type AnyJobStatus =
-  | DreamJobStatus
-  | NightlyJobStatus
-  | CommunityRebuildJobStatus;
-
-type Props = {
+interface Props {
   onRebuild: () => void;
   rebuildActive: boolean;
   rebuildStatus: AnyJobStatus | undefined;
@@ -23,7 +16,7 @@ type Props = {
   onNightly: () => void;
   nightlyActive: boolean;
   nightlyStatus: AnyJobStatus | undefined;
-};
+}
 
 export function MaintenanceControls({
   onRebuild,
