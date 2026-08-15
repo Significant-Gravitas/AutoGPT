@@ -1,0 +1,76 @@
+name: Temporary Ollama review finisher
+
+on:
+  push:
+    branches: [fix-ollama-credentials]
+    paths:
+      - .github/workflows/temporary-finish-ollama-review.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-ollama-credentials
+          fetch-depth: 0
+      - name: Apply final review fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected text not found in {path}: {old[:160]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          manager = "autogpt_platform/backend/backend/executor/manager.py"
+          replace_once(
+              manager,
+              '''from .auto_credentials import acquire_auto_credentials\nfrom .no_auth_credentials import get_no_auth_credentials\nfrom .automod.manager import automod_manager\nfrom .cluster_lock import ClusterLock\n''',
+              '''from .auto_credentials import acquire_auto_credentials\nfrom .automod.manager import automod_manager\nfrom .cluster_lock import ClusterLock\nfrom .no_auth_credentials import get_no_auth_credentials\n''',
+          )
+
+          test_file = Path(
+              "autogpt_platform/backend/backend/executor/no_auth_credentials_test.py"
+          )
+          test_file.write_text('''from backend.blocks.llm import AITextGeneratorBlock, LLMModel\nfrom backend.executor.no_auth_credentials import get_no_auth_credentials\nfrom backend.integrations.credentials_store import ollama_credentials\nfrom backend.integrations.providers import ProviderName\n\n\ndef _model_for(provider: ProviderName) -> LLMModel:\n    return next(model for model in LLMModel if model.metadata.provider == provider)\n\n\ndef test_ollama_credentials_are_discriminated_as_no_auth() -> None:\n    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()["credentials"]\n    ollama_model = _model_for(ProviderName.OLLAMA)\n\n    discriminated = field_info.discriminate(ollama_model.value)\n\n    assert not discriminated.supported_types\n    assert "credentials" in AITextGeneratorBlock.Input.get_required_fields()\n    assert (\n        get_no_auth_credentials(field_info, {"model": ollama_model.value})\n        is ollama_credentials\n    )\n\n\ndef test_authenticated_llm_provider_stays_required() -> None:\n    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()["credentials"]\n    openai_model = _model_for(ProviderName.OPENAI)\n\n    discriminated = field_info.discriminate(openai_model.value)\n\n    assert discriminated.supported_types == frozenset({"api_key"})\n    assert "credentials" in AITextGeneratorBlock.Input.get_required_fields()\n    assert get_no_auth_credentials(field_info, {"model": openai_model.value}) is None\n''')
+
+          credentials_input = (
+              "autogpt_platform/frontend/src/components/contextual/"
+              "CredentialsInput/CredentialsInput.tsx"
+          )
+          replace_once(
+              credentials_input,
+              '''  const displayName = toDisplayName(provider);\n''',
+              '''  const hasSupportedCredentialType =\n    supportsApiKey ||\n    supportsOAuth2 ||\n    supportsUserPassword ||\n    supportsHostScoped;\n\n  if (!hasSupportedCredentialType) {\n    return null;\n  }\n\n  const displayName = toDisplayName(provider);\n''',
+          )
+
+          credentials_test = (
+              "autogpt_platform/frontend/src/components/contextual/"
+              "CredentialsInput/__tests__/CredentialsInput.test.tsx"
+          )
+          replace_once(
+              credentials_test,
+              '''describe("CredentialsInput – OAuth flow", () => {\n''',
+              '''describe("CredentialsInput – OAuth flow", () => {\n  it("does not render a credential control for credential-free providers", () => {\n    const ollamaSchema = {\n      credentials_provider: ["ollama"],\n      credentials_types: [],\n      credentials_scopes: [],\n    } as BlockIOCredentialsSubSchema;\n    mockUseCredentials.mockReturnValue(\n      makeCredentialsReturn({\n        provider: "ollama",\n        providerName: "Ollama",\n        supportsApiKey: false,\n        supportsOAuth2: false,\n        supportsUserPassword: false,\n        supportsHostScoped: false,\n        schema: ollamaSchema,\n      }),\n    );\n\n    const { container } = render(\n      <CredentialsInput\n        schema={ollamaSchema}\n        onSelectCredentials={vi.fn()}\n        showTitle={false}\n      />,\n    );\n\n    expect(container.firstChild).toBeNull();\n  });\n\n''',
+          )
+
+          Path(".github/workflows/temporary-validate-ollama-review.yml").unlink(
+              missing_ok=True
+          )
+          Path(".github/workflows/temporary-finish-ollama-review.yml").unlink()
+          PY
+      - name: Commit final review fixes
+        run: |
+          git config user.name "Iitian001"
+          git config user.email "160615932+Iitian001@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(platform/llm): finish Ollama credential review fixes"
+          git push origin HEAD:fix-ollama-credentials
