@@ -1,0 +1,84 @@
+name: Temporary final Ollama validation
+
+on:
+  push:
+    branches: [fix-ollama-credentials]
+    paths:
+      - .github/workflows/temporary-validate-ollama-final.yml
+
+permissions:
+  contents: write
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-ollama-credentials
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+      - name: Install dependencies
+        run: poetry install
+      - name: Run full backend lint and typecheck
+        run: poetry run lint
+      - name: Run focused no-auth credential tests
+        run: poetry run pytest backend/executor/no_auth_credentials_test.py -q
+      - name: Verify block documentation sync
+        run: poetry run python scripts/generate_block_docs.py --check
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-ollama-credentials
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run frontend lint
+        run: pnpm lint
+      - name: Generate API client
+        run: pnpm generate:api
+      - name: Run credential UI regression tests
+        run: pnpm exec vitest run 'src/components/contextual/CredentialsInput/__tests__/CredentialsInput.test.tsx'
+
+  cleanup:
+    if: ${{ always() && needs.backend.result == 'success' && needs.frontend.result == 'success' }}
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-ollama-credentials
+      - name: Remove temporary workflow and push cleanup
+        run: |
+          rm .github/workflows/temporary-validate-ollama-final.yml
+          git config user.name "Iitian001"
+          git config user.email "160615932+Iitian001@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: remove temporary Ollama validation workflow"
+          git push origin HEAD:fix-ollama-credentials
