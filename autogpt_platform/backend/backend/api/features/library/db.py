@@ -1,7 +1,6 @@
 import asyncio
 import itertools
 import logging
-from datetime import datetime, timezone
 from typing import Literal, Optional, cast
 
 import fastapi
@@ -41,6 +40,13 @@ from backend.util.models import Pagination
 from backend.util.settings import Config
 
 from . import model as library_model
+from ._add_to_library import (
+    add_graph_to_library,
+    resolve_graph_model_for_library,
+    resolve_store_version_for_library,
+    restore_existing_library_agent,
+)
+from ._schedule_info import _fetch_schedule_info
 from .embeddings import schedule_library_agent_embedding
 
 logger = logging.getLogger(__name__)
@@ -65,34 +71,6 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
         row["agentGraphId"]: int((row.get("_count") or {}).get("_all") or 0)
         for row in rows
     }
-
-
-async def _fetch_schedule_info(
-    user_id: str, graph_id: Optional[str] = None
-) -> dict[str, str]:
-    """Fetch a map of graph_id → earliest next_run_time ISO string.
-
-    When `graph_id` is provided, the scheduler query is narrowed to that graph,
-    which is cheaper for single-agent lookups (detail page, post-update, etc.).
-    """
-    try:
-        scheduler_client = get_scheduler_client()
-        schedules = await scheduler_client.get_graph_execution_schedules(
-            graph_id=graph_id,
-            user_id=user_id,
-        )
-        earliest: dict[str, tuple[datetime, str]] = {}
-        for s in schedules:
-            parsed = _parse_iso_datetime(s.next_run_time)
-            if parsed is None:
-                continue
-            current = earliest.get(s.graph_id)
-            if current is None or parsed < current[0]:
-                earliest[s.graph_id] = (parsed, s.next_run_time)
-        return {graph_id: iso for graph_id, (_, iso) in earliest.items()}
-    except Exception:
-        logger.warning("Failed to fetch schedules for library agents", exc_info=True)
-        return {}
 
 
 async def _fetch_matching_store_version_ids(
@@ -157,18 +135,6 @@ async def _fetch_marketplace_details(
             where={"userId": store_listing.owningUserId}
         )
     return store_listing, profile
-
-
-def _parse_iso_datetime(value: str) -> Optional[datetime]:
-    """Parse an ISO 8601 datetime, tolerating `Z` and naive forms (assumed UTC)."""
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        logger.warning("Failed to parse schedule next_run_time: %s", value)
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
 
 
 async def list_library_agents(
@@ -1260,16 +1226,10 @@ async def add_store_agent_to_library(
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    from ._add_to_library import (
-        add_graph_to_library,
-        resolve_graph_model_for_library,
-        resolve_store_version_for_library,
-        restore_existing_library_agent,
-    )
-
     logger.debug(
-        f"Adding agent from store listing version #{store_listing_version_id} "
-        f"to library for user #{user_id}"
+        "Adding agent from store listing version #%s to library for user #%s",
+        store_listing_version_id,
+        user_id,
     )
     store_listing_version = await resolve_store_version_for_library(
         store_listing_version_id, admin=False
@@ -1288,13 +1248,6 @@ async def add_store_agent_to_library_as_admin(
 ) -> library_model.LibraryAgent:
     """Admin variant that uses `get_graph_as_admin` to bypass marketplace
     APPROVED-only checks, allowing admins to add pending agents for review."""
-    from ._add_to_library import (
-        add_graph_to_library,
-        resolve_graph_model_for_library,
-        resolve_store_version_for_library,
-        restore_existing_library_agent,
-    )
-
     logger.warning(
         f"ADMIN adding agent from store listing version "
         f"#{store_listing_version_id} to library for user #{user_id}"

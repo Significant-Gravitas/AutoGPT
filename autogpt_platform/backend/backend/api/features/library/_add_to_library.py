@@ -12,7 +12,6 @@ import prisma.models
 
 import backend.api.features.library.model as library_model
 import backend.data.graph as graph_db
-from backend.api.features.library.db import _fetch_schedule_info
 from backend.api.features.orgs.db import resolve_default_tenancy
 from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
@@ -21,6 +20,8 @@ from backend.data.graph import GraphModel, GraphSettings
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
+
+from ._schedule_info import _fetch_schedule_info
 
 logger = logging.getLogger(__name__)
 
