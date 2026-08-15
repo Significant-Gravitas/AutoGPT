@@ -495,6 +495,43 @@ describe("TeamPage", () => {
     );
   });
 
+  test("ignores escape while the fire request is in flight", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetExpertDetachPreviewMockHandler({
+        schedule_names: [],
+        trigger_names: [],
+      }),
+      http.delete("*/api/experts/expert-maria", async () => {
+        await delay(80);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+      button: 0,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Fire Maria/ }),
+    );
+    const confirm = await screen.findByTestId("fire-expert-confirm");
+    await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(confirm);
+
+    // "Keep Maria" is disabled during the request, so ESC must not be an
+    // escape hatch that drops the user out before the outcome is known.
+    const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
+    fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Fire Maria?" })).toBeDefined();
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Fire Maria?" })).toBeNull(),
+    );
+  });
+
   test("blocks firing until the detach preview resolves", async () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
