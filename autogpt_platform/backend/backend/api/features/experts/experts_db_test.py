@@ -1019,6 +1019,58 @@ async def test_seed_clears_removed_cadence_after_listing_version_rotation(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_seed_clears_removed_cadence_on_soft_deleted_listing(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    """Soft-deleting the listing must not strand the schedule: the hired copy
+    still fires the removed cron, so the migration has to reach it even though
+    the listing is gone from the marketplace."""
+    version_id = await _seed_store_listing(server)
+    await _transfer_listing_to_official_creator(version_id)
+    listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": version_id}
+    )
+    assert listing is not None
+    await prisma.models.StoreListing.prisma().update(
+        where={"id": listing.id}, data={"isDeleted": True}
+    )
+
+    removed_cron = "0 9 * * 1"
+    monkeypatch.setattr(
+        seed, "REMOVED_TEMPLATE_CADENCES", [(listing.slug, removed_cron)]
+    )
+    owner = await _create_seed_user()
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(owner.id, template.id, None)
+    legacy = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": version_id,
+            "scheduleCron": removed_cron,
+            "scheduleId": "sched-soft-deleted-listing",
+        }
+    )
+    sched = AsyncMock()
+    sched.get_execution_schedules = AsyncMock(
+        return_value=[SimpleNamespace(id="sched-soft-deleted-listing")]
+    )
+    sched.delete_schedule = AsyncMock()
+
+    with patch.object(seed, "get_scheduler_client", return_value=sched):
+        assert await seed._clear_removed_cadences() == 1
+
+    sched.delete_schedule.assert_awaited_once_with(
+        "sched-soft-deleted-listing", user_id=owner.id
+    )
+    legacy_after = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": legacy.id}
+    )
+    assert legacy_after is not None
+    assert legacy_after.scheduleId is None
+    assert legacy_after.scheduleCron is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_delete_live_schedule_updates_owner_cache():
     scheduler = AsyncMock()
     scheduler.get_execution_schedules = AsyncMock(

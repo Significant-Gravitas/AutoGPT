@@ -182,7 +182,9 @@ async def _clear_removed_cadences() -> int:
                         "StoreListing": {
                             "is": {
                                 "slug": slug,
-                                "isDeleted": False,
+                                # No isDeleted filter: soft-deleting the listing
+                                # does not stop the hired copy's schedule, so
+                                # the migration must still reach those rows.
                                 "CreatorProfile": {
                                     "is": {
                                         "username": OFFICIAL_CREATOR_USERNAME,
