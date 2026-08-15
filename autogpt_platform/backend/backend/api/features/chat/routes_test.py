@@ -349,7 +349,7 @@ def test_stream_chat_allows_an_active_expert_session(
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = "expert-active"
     active_check = mocker.patch(
-        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -371,7 +371,7 @@ def test_stream_chat_rejects_an_archived_expert_session(
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = "expert-archived"
     active_check = mocker.patch(
-        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -394,7 +394,7 @@ def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = None
     active_check = mocker.patch(
-        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -1663,7 +1663,7 @@ def test_queue_pending_message_allows_an_active_expert_session(
     assert mock_session is not None
     mock_session.expert_id = "expert-active"
     active_check = mocker.patch(
-        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -1686,7 +1686,7 @@ def test_queue_pending_message_rejects_an_archived_expert_session(
     assert mock_session is not None
     mock_session.expert_id = "expert-archived"
     active_check = mocker.patch(
-        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -1707,7 +1707,7 @@ def test_queue_pending_message_skips_the_expert_gate_for_a_non_expert_session(
     assert mock_session is not None
     mock_session.expert_id = None
     active_check = mocker.patch(
-        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
         new_callable=AsyncMock,
         return_value=True,
     )

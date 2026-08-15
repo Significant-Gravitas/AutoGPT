@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
-_WEEKLY_SPEND_READ_CONCURRENCY = 10
 
 
 class ExpertTemplateNotFoundError(Exception):
@@ -125,7 +124,18 @@ async def list_templates() -> list[Expert]:
     return [_to_model(row) for row in rows]
 
 
+# Ceiling on in-flight Redis reads inside ``_weekly_spends``. The roster is
+# user-controlled and unbounded, so an uncapped ``gather`` would ask the shared
+# Redis pool for one connection per hired expert on every team-page load.
+_WEEKLY_SPEND_READ_CONCURRENCY = 10
+
+
 async def _weekly_spends(expert_ids: list[str]) -> dict[str, int]:
+    """Weekly spend per expert, one Redis read each, run concurrently.
+
+    A read that fails degrades that expert to 0 rather than failing the whole
+    roster: the team page still renders, just without that spend figure.
+    """
     semaphore = asyncio.Semaphore(_WEEKLY_SPEND_READ_CONCURRENCY)
 
     async def read(expert_id: str) -> tuple[str, int]:
@@ -183,7 +193,13 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     )
 
 
-async def is_expert_active(user_id: str, expert_id: str) -> bool:
+async def owns_active_expert(user_id: str, expert_id: str) -> bool:
+    """True iff *user_id* owns *expert_id* and that expert is still hireable.
+
+    The ownership half is the point: callers use this to authorise writes, so
+    a fired (archived), template, or someone else's expert must all answer
+    False here rather than being distinguished by the caller.
+    """
     return (
         await prisma.models.Expert.prisma().count(
             where={

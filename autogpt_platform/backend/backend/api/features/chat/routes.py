@@ -156,13 +156,20 @@ async def _validate_and_get_session(
     return session
 
 
-async def _validate_expert_session_is_writable(
+async def _validate_session_expert_writable_by_user(
     session: ChatSessionInfo,
     user_id: str,
 ) -> None:
+    """Reject writes to an expert session *user_id* may no longer write to.
+
+    A plain (non-expert) session is always writable and returns early. For an
+    expert session the expert has to still be owned by *user_id* and still be
+    hired — fired, template, deleted, and other people's experts all fail, and
+    all fail as the same non-enumerable 404.
+    """
     if session.expert_id is None:
         return
-    if not await experts_db.is_expert_active(user_id, session.expert_id):
+    if not await experts_db.owns_active_expert(user_id, session.expert_id):
         raise HTTPException(status_code=404, detail="Expert not found")
 
 
@@ -171,7 +178,7 @@ async def _validate_and_get_writable_session(
     user_id: str,
 ) -> ChatSessionInfo:
     session = await _validate_and_get_session(session_id, user_id)
-    await _validate_expert_session_is_writable(session, user_id)
+    await _validate_session_expert_writable_by_user(session, user_id)
     return session
 
 
