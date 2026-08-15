@@ -530,7 +530,7 @@ export function ChatMessagesContainer({
             <span className="text-sm font-medium text-zinc-800">
               {expertIdentity.name}
             </span>
-            {!readOnly && (
+            {!readOnly && !expertIdentity.isArchived && (
               <ExpertSchedulesButton
                 expertId={expertIdentity.id}
                 expertName={expertIdentity.name}

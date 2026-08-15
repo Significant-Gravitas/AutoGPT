@@ -698,6 +698,37 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(await screen.findByTestId("schedule-row")).toBeDefined();
   });
 
+  it("does not read the fired expert's detail record for the schedules button", async () => {
+    let expertDetailRequests = 0;
+    server.use(
+      http.get("*/api/experts/expert-maria", () => {
+        expertDetailRequests += 1;
+        return HttpResponse.json(
+          { detail: "Expert not found" },
+          { status: 404 },
+        );
+      }),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{
+          ...mariaIdentity,
+          isArchived: true,
+          readOnlyReason: "fired",
+        }}
+      />,
+    );
+
+    expect(await screen.findByTestId("expert-thread-header")).toBeDefined();
+    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
+    expect(expertDetailRequests).toBe(0);
+  });
+
   it("renders no expert header or identity for plain sessions", () => {
     render(
       <ChatMessagesContainer
