@@ -19,38 +19,38 @@ describe("getExpertAccent", () => {
 });
 
 describe("getExpertAvatarUrl", () => {
-  test("prefers the expert's own avatar_url", () => {
+  test("accepts secure remote and site-relative avatar URLs", () => {
     expect(
       getExpertAvatarUrl({
         avatar_url: "/uploads/custom.png",
-        name: "Anybody",
       }),
     ).toBe("/uploads/custom.png");
+    expect(
+      getExpertAvatarUrl({
+        avatar_url: "https://cdn.example.com/avatar.png",
+      }),
+    ).toBe("https://cdn.example.com/avatar.png");
   });
 
-  test("falls back to known seed persona avatars when avatar_url is null", () => {
-    expect(getExpertAvatarUrl({ avatar_url: null, name: "Maria" })).toBe(
-      "/experts/maria.svg",
-    );
-    expect(getExpertAvatarUrl({ avatar_url: null, name: "Max" })).toBe(
-      "/experts/max.svg",
-    );
-    expect(getExpertAvatarUrl({ avatar_url: null, name: "Frankie" })).toBe(
-      "/experts/frankie.svg",
-    );
-  });
-
-  test("does not assign a persona face to an unrelated expert", () => {
-    expect(getExpertAvatarUrl({ avatar_url: null, name: "Other Maria" })).toBe(
+  test("rejects unsafe avatar URLs", () => {
+    expect(getExpertAvatarUrl({ avatar_url: "javascript:alert('xss')" })).toBe(
       null,
     );
+    expect(
+      getExpertAvatarUrl({ avatar_url: "data:image/svg+xml,<svg />" }),
+    ).toBe(null);
+    expect(
+      getExpertAvatarUrl({ avatar_url: "http://cdn.example.com/avatar.png" }),
+    ).toBe(null);
+    expect(
+      getExpertAvatarUrl({ avatar_url: "//cdn.example.com/avatar.png" }),
+    ).toBe(null);
+    expect(getExpertAvatarUrl({ avatar_url: "avatar.png" })).toBe(null);
   });
 
-  test("treats a whitespace-only avatar_url as absent", () => {
-    expect(getExpertAvatarUrl({ avatar_url: "   ", name: "Maria" })).toBe(
-      "/experts/maria.svg",
-    );
-    expect(getExpertAvatarUrl({ avatar_url: "   ", name: "Other" })).toBe(null);
+  test("uses initials when the API has no avatar URL", () => {
+    expect(getExpertAvatarUrl({ avatar_url: null })).toBe(null);
+    expect(getExpertAvatarUrl({ avatar_url: "   " })).toBe(null);
   });
 });
 
@@ -58,6 +58,7 @@ describe("getHiredExpertsLookup", () => {
   test("indexes hired experts by source template", () => {
     const hired = { id: "hired-1", source_template_id: "template-1" };
     const lookup = getHiredExpertsLookup([hired], {
+      enabled: true,
       isError: false,
       isFetching: false,
     });
@@ -69,6 +70,7 @@ describe("getHiredExpertsLookup", () => {
   test("keeps cached lookup data usable during a refetch error", () => {
     const hired = { id: "hired-1", source_template_id: "template-1" };
     const lookup = getHiredExpertsLookup([hired], {
+      enabled: true,
       isError: true,
       isFetching: false,
     });
@@ -80,16 +82,28 @@ describe("getHiredExpertsLookup", () => {
   test("distinguishes unresolved and terminal lookup failures", () => {
     expect(
       getHiredExpertsLookup(undefined, {
+        enabled: true,
         isError: false,
         isFetching: true,
       }).state,
     ).toBe("loading");
     expect(
       getHiredExpertsLookup(undefined, {
+        enabled: true,
         isError: true,
         isFetching: false,
       }).state,
     ).toBe("error");
+  });
+
+  test("settles when the lookup is disabled", () => {
+    expect(
+      getHiredExpertsLookup(undefined, {
+        enabled: false,
+        isError: false,
+        isFetching: false,
+      }).state,
+    ).toBe("loaded");
   });
 });
 
@@ -146,5 +160,10 @@ describe("getExpertFirstName", () => {
     expect(getExpertFirstName("Maria Lopez")).toBe("Maria");
     expect(getExpertFirstName("Max")).toBe("Max");
     expect(getExpertFirstName("  Frankie  ")).toBe("Frankie");
+  });
+
+  test("falls back for an empty name", () => {
+    expect(getExpertFirstName("")).toBe("Expert");
+    expect(getExpertFirstName("   ")).toBe("Expert");
   });
 });

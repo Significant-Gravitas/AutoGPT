@@ -940,7 +940,7 @@ model ExpertWorkflow {
 
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
-  @@index([expertId])
+  @@index([expertId, createdAt, id])
 }
 
 // Audit log for expert schedule pauses (budget breach, archive). "All

@@ -39,7 +39,16 @@ export function ExpertProfileActions({
             >
               Open chat
             </Button>
-          ) : null}
+          ) : (
+            <Button
+              as="NextLink"
+              href="/team"
+              variant="primary"
+              className="h-12 w-full rounded-full text-base"
+            >
+              View team
+            </Button>
+          )}
         </div>
       ) : hiredLookup === "error" ? (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">

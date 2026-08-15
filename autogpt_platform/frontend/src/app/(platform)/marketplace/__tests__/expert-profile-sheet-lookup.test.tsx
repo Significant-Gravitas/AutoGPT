@@ -5,9 +5,10 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
-import { screen } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { ExpertProfileActions } from "../components/ExpertsSection/components/ExpertProfileSheet/components/ExpertProfileActions/ExpertProfileActions";
 import {
   hiredMaria,
   mariaTemplate,
@@ -51,6 +52,7 @@ describe("Expert profile sheet lookup states", () => {
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(screen.queryByText("Hire")).toBeNull();
     expect(screen.queryByText("On your team")).toBeNull();
+    expect(await screen.findByLabelText("Loading team status")).toBeDefined();
 
     await userEvent.click(await screen.findByText("Maria"));
 
@@ -124,5 +126,23 @@ describe("Expert profile sheet lookup states", () => {
     ).toBeDefined();
     expect(screen.getAllByText("SEO Audit")).toHaveLength(2);
     expect(screen.getAllByText("Unnamed workflow")).toHaveLength(1);
+  });
+
+  test("links to the team when a hired expert ID is unavailable", () => {
+    render(
+      <ExpertProfileActions
+        expertName="Maria"
+        isHired
+        isHiring={false}
+        onHire={vi.fn()}
+        hiredExpertId={null}
+        hiredLookup="loaded"
+        onRetryHiredLookup={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "View team" }).getAttribute("href"),
+    ).toBe("/team");
   });
 });

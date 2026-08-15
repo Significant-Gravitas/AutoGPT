@@ -6,7 +6,11 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
-import { getExpertAccent, getExpertAvatarUrl } from "../helpers";
+import {
+  type ExpertCardHiredState,
+  getExpertAccent,
+  getExpertAvatarUrl,
+} from "../helpers";
 import {
   Alert01Icon,
   ArrowRight02Icon,
@@ -17,7 +21,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   expert: Expert;
-  hiredState: "hired" | "available" | "unknown" | "error";
+  hiredState: ExpertCardHiredState;
   onClick: () => void;
 }
 
@@ -102,7 +106,11 @@ export function ExpertCard({ expert, hiredState, onClick }: Props) {
               On your team
             </span>
           ) : hiredState === "unknown" ? (
-            <Skeleton className="h-5 w-20 rounded-full" />
+            <Skeleton
+              aria-busy="true"
+              aria-label="Loading team status"
+              className="h-5 w-20 rounded-full"
+            />
           ) : hiredState === "error" ? (
             <span className="flex items-center gap-1.5 text-base font-medium text-amber-700">
               <Icon icon={Alert01Icon} size={16} />

@@ -20,7 +20,11 @@ export function useExpertsSection() {
     query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
   });
 
-  const hiredLookup = getHiredExpertsLookup(expertsQuery.data, expertsQuery);
+  const hiredLookup = getHiredExpertsLookup(expertsQuery.data, {
+    enabled: isLoggedIn,
+    isError: expertsQuery.isError,
+    isFetching: expertsQuery.isFetching,
+  });
 
   return {
     templates: templatesQuery.data ?? [],

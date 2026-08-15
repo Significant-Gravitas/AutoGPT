@@ -55,49 +55,44 @@ const ACCENTS: Record<string, ExpertAccent> = {
   },
 };
 
-interface RoleTheme {
-  accent: string;
-}
-
-/** Role taxonomy for the roster's colour and icon treatment. */
-const ROLE_THEMES: Array<[RegExp, RoleTheme]> = [
-  [/marketing|growth|brand/i, { accent: "violet" }],
-  [/sales|revenue/i, { accent: "amber" }],
-  [/ops|operations|support/i, { accent: "sky" }],
+const ROLE_ACCENTS: Array<[RegExp, ExpertAccent]> = [
+  [/marketing|growth|brand/i, ACCENTS.violet],
+  [/sales|revenue/i, ACCENTS.amber],
+  [/ops|operations|support/i, ACCENTS.sky],
 ];
 
-const PERSONA_AVATARS = new Map([
-  ["maria", "/experts/maria.svg"],
-  ["max", "/experts/max.svg"],
-  ["frankie", "/experts/frankie.svg"],
-]);
-
-function matchRoleTheme(role: string): RoleTheme | null {
-  for (const [pattern, theme] of ROLE_THEMES) {
-    if (pattern.test(role)) return theme;
+function matchRoleAccent(role: string): ExpertAccent | null {
+  for (const [pattern, accent] of ROLE_ACCENTS) {
+    if (pattern.test(role)) return accent;
   }
   return null;
 }
 
 export function getExpertAccent(role: string): ExpertAccent {
-  const theme = matchRoleTheme(role);
-  return theme ? ACCENTS[theme.accent] : ACCENTS.zinc;
+  return matchRoleAccent(role) ?? ACCENTS.zinc;
 }
 
-/** Prefer the expert's own avatar, then a known seed persona's committed
- *  avatar. Role alone cannot select a face: unrelated experts can share a
- *  role without sharing an identity. */
 export function getExpertAvatarUrl(
-  expert: Pick<Expert, "avatar_url" | "name">,
+  expert: Pick<Expert, "avatar_url">,
 ): string | null {
-  const customUrl = expert.avatar_url?.trim();
-  if (customUrl) return customUrl;
-  return PERSONA_AVATARS.get(expert.name.trim().toLowerCase()) ?? null;
+  const avatarUrl = expert.avatar_url?.trim();
+  if (!avatarUrl) return null;
+  if (avatarUrl.startsWith("/") && !avatarUrl.startsWith("//")) {
+    return avatarUrl;
+  }
+  try {
+    return new URL(avatarUrl).protocol === "https:" ? avatarUrl : null;
+  } catch {
+    return null;
+  }
 }
 
 export function getHiredExpertsLookup<
   T extends Pick<Expert, "id" | "source_template_id">,
->(experts: T[] | undefined, query: { isError: boolean; isFetching: boolean }) {
+>(
+  experts: T[] | undefined,
+  query: { enabled: boolean; isError: boolean; isFetching: boolean },
+) {
   const byTemplateId = new Map<string, T>();
   for (const expert of experts ?? []) {
     if (expert.source_template_id) {
@@ -107,17 +102,21 @@ export function getHiredExpertsLookup<
   const state =
     experts !== undefined
       ? ("loaded" as const)
-      : query.isError && !query.isFetching
-        ? ("error" as const)
-        : ("loading" as const);
+      : !query.enabled
+        ? ("loaded" as const)
+        : query.isError && !query.isFetching
+          ? ("error" as const)
+          : ("loading" as const);
   return { byTemplateId, state };
 }
+
+export type ExpertCardHiredState = "hired" | "available" | "unknown" | "error";
 
 export function getExpertCardHiredState(
   templateId: string,
   hiredTemplateIds: Set<string>,
   lookupState: AsyncStatus,
-) {
+): ExpertCardHiredState {
   if (lookupState === "loading") return "unknown" as const;
   if (lookupState === "error") return "error" as const;
   return hiredTemplateIds.has(templateId)
@@ -126,7 +125,7 @@ export function getExpertCardHiredState(
 }
 
 export function getExpertFirstName(name: string): string {
-  return name.trim().split(/\s+/)[0] || name;
+  return name.trim().split(/\s+/)[0] || "Expert";
 }
 
 /** The workflow promised in the day-one highlight. API ordering is not

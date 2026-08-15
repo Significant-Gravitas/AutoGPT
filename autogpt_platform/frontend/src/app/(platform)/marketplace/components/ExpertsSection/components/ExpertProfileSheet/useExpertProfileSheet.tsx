@@ -20,10 +20,11 @@ export function useExpertProfileSheet(
     query: { select: (x) => x.data as Expert[] },
   });
 
-  const hiredExpertsLookup = getHiredExpertsLookup(
-    expertsQuery.data,
-    expertsQuery,
-  );
+  const hiredExpertsLookup = getHiredExpertsLookup(expertsQuery.data, {
+    enabled: true,
+    isError: expertsQuery.isError,
+    isFetching: expertsQuery.isFetching,
+  });
   const hiredLookup =
     expert === null || !expert.is_template
       ? ("loaded" as const)
