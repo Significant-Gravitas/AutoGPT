@@ -51,6 +51,11 @@ async def hire_expert(
         raise fastapi.HTTPException(status_code=404, detail=str(e))
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found") from e
+    except experts_db.ExpertHireUnavailableError as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Your expert is temporarily unavailable. Try again shortly.",
+        ) from e
     except experts_db.ExpertPrivateTenancyNotFoundError as e:
         raise fastapi.HTTPException(
             status_code=503,

@@ -383,9 +383,11 @@ async def test_rehire_reattach_failure_restores_archived_state():
             scheduling, "detach_expert_triggers", new_callable=AsyncMock
         ) as detach,
     ):
-        with pytest.raises(RuntimeError, match="scheduler unavailable"):
+        with pytest.raises(experts_db.ExpertHireUnavailableError) as exc_info:
             await experts_db._existing_hire_result(row)
 
+    assert exc_info.value.expert_id == "expert-1"
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
     assert expert_client.update.await_count == 2
     assert expert_client.update.await_args_list[0].kwargs["data"] == {
         "isArchived": False

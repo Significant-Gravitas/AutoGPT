@@ -34,6 +34,12 @@ class ExpertTemplateNotFoundError(Exception):
         self.template_id = template_id
 
 
+class ExpertHireUnavailableError(Exception):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
     listing = row.StoreListingVersion
     library_agent = row.LibraryAgent
@@ -256,7 +262,7 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
         try:
             await scheduling.resume_expert_schedules(owner_user_id, row.id)
             await scheduling.reattach_expert_triggers(owner_user_id, row.id)
-        except Exception:
+        except Exception as e:
             logger.exception(
                 f"Failed to reattach triggers while reviving expert #{row.id}"
             )
@@ -275,7 +281,7 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
                 logger.exception(
                     f"Failed to restore archived state for expert #{row.id}"
                 )
-            raise
+            raise ExpertHireUnavailableError(row.id) from e
         # Resume/reattach mutated pause state and workflow scheduleIds after
         # `row` was read — reload so the result isn't stale.
         refreshed = await prisma.models.Expert.prisma().find_unique(
