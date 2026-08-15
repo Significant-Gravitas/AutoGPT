@@ -1,10 +1,20 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
+
+
+class VoiceSample(BaseModel):
+    """A short writing sample in a persona's own voice, offered as a pick in
+    the hire or raise flow. The first sample is choice "a", the second choice
+    "b"."""
+
+    label: str
+    text: str
 
 
 class ExpertWorkflowRef(BaseModel):
@@ -31,6 +41,10 @@ class Expert(BaseModel):
     skills: list[str]
     identity: str
     voice_preferences: str
+    # Populated only on roster templates so the hire flow can offer a voice
+    # pick; always empty on hired copies, which persist the user's plain-text
+    # choice in voice_preferences instead.
+    voice_samples: list[VoiceSample] = []
     boundaries: str
     protected_soul_rules: list[str]
     is_template: bool
@@ -58,6 +72,18 @@ class ExpertDetachPreview(BaseModel):
 class HireResult(BaseModel):
     expert: Expert
     failed_preloads: list[str]
+
+
+class RaiseResult(BaseModel):
+    """Result of raising a blank expert. ``first_job_installed`` is only
+    True when a first job was requested and its install succeeded, so the
+    client can surface partial success instead of a silent no-op. The stable
+    failure reason distinguishes a listing withdrawn mid-flow from an install
+    failure."""
+
+    expert: Expert
+    first_job_installed: bool
+    first_job_failure_reason: Literal["unavailable", "installation_failed"] | None
 
 
 class ExpertSoulUpdate(BaseModel):

@@ -426,6 +426,9 @@ describe("TeamPage", () => {
       name: "Browse the marketplace",
     });
     expect(link.getAttribute("href")).toBe("/marketplace");
+    expect(
+      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
+    ).toBe("/raise");
   });
 
   test("shows an error card when loading experts fails", async () => {

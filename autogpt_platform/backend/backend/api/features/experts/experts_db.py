@@ -1,7 +1,9 @@
 import logging
+from typing import Literal
 
 import prisma.errors
 import prisma.models
+import prisma.types
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
@@ -10,13 +12,27 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseResult,
 )
 from backend.api.features.library import db as library_db
+from backend.data.db import transaction
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
+
+
+def _raised_identity(name: str) -> str:
+    # f-string, not str.format on a template: user names may contain { or },
+    # which str.format would choke on.
+    return f"I'm {name}, raised by you. I learn how you work and grow with you."
+
+
+# The active cap bounds team-list fan-out. The lifetime raised-expert cap also
+# bounds durable rows when users repeatedly raise and archive experts.
+ACTIVE_EXPERT_LIMIT = 20
+LIFETIME_RAISED_EXPERT_LIMIT = 100
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
@@ -32,6 +48,27 @@ class ExpertNotFoundError(Exception):
     def __init__(self, expert_id: str):
         super().__init__(f"Expert {expert_id} not found")
         self.expert_id = expert_id
+
+
+class ExpertLimitExceededError(Exception):
+    def __init__(self, limit: int):
+        super().__init__(f"Active expert limit of {limit} reached")
+        self.limit = limit
+
+
+class RaisedExpertLifetimeLimitExceededError(Exception):
+    def __init__(self, limit: int):
+        super().__init__(f"Raised expert lifetime limit of {limit} reached")
+        self.limit = limit
+
+
+class FirstJobUnavailableError(Exception):
+    def __init__(self, store_listing_version_id: str):
+        super().__init__(
+            f"Store listing version {store_listing_version_id} "
+            "not found or unavailable"
+        )
+        self.store_listing_version_id = store_listing_version_id
 
 
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
@@ -149,14 +186,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     if template is None:
         raise ExpertTemplateNotFoundError(template_id)
 
-    existing = await prisma.models.Expert.prisma().find_first(
-        where={"ownerUserId": user_id, "sourceTemplateId": template_id},
-        include=_WORKFLOW_INCLUDE,
-    )
-    if existing is not None:
-        return await _existing_hire_result(existing)
-
-    create_data: dict = {
+    create_data: prisma.types.ExpertCreateInput = {
         "ownerUserId": user_id,
         "name": name or template.name,
         "avatarUrl": template.avatarUrl,
@@ -171,17 +201,20 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     }
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
+
     try:
-        expert = await prisma.models.Expert.prisma().create(data=create_data)
+        expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
     except prisma.errors.UniqueViolationError:
-        # Lost a concurrent hire race; the winner's row satisfies idempotency.
-        raced = await prisma.models.Expert.prisma().find_first(
-            where={"ownerUserId": user_id, "sourceTemplateId": template_id},
-            include=_WORKFLOW_INCLUDE,
-        )
-        if raced is None:
-            raise
-        return await _existing_hire_result(raced)
+        # A caller running older code may not participate in the advisory lock.
+        # Retry after the failed transaction so its winning row is handled by
+        # the same capacity-aware path.
+        expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
+
+    if state == "existing":
+        return HireResult(expert=_to_model(expert), failed_preloads=[])
+    if state == "revived":
+        expert = await _resume_revived_hire(expert)
+        return HireResult(expert=_to_model(expert), failed_preloads=[])
 
     failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
 
@@ -193,38 +226,216 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     return HireResult(expert=_to_model(hydrated), failed_preloads=failed)
 
 
-async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
-    """Idempotent-hire result for an already-existing hired copy.
+async def _reserve_hired_expert(
+    user_id: str,
+    template_id: str,
+    create_data: prisma.types.ExpertCreateInput,
+) -> tuple[prisma.models.Expert, Literal["existing", "revived", "created"]]:
+    """Atomically get, revive, or create one hired expert.
 
-    Re-hiring an archived expert revives it — the unique
-    (ownerUserId, sourceTemplateId) constraint means a fresh row cannot be
-    created, and returning the archived row as-is would hand back a
-    "successful" hire that stays invisible to list_experts/get_expert.
+    Hires share the same per-user lock and active-team capacity check as
+    raised experts. An idempotent retry of an already-active hire does not
+    consume capacity, while reviving an archived hire does.
     """
-    if row.isArchived:
-        revived = await prisma.models.Expert.prisma().update(
-            where={"id": row.id},
-            data={"isArchived": False},
+    async with transaction() as tx:
+        await _lock_expert_creation(tx, user_id)
+        existing = await tx.expert.find_first(
+            where={"ownerUserId": user_id, "sourceTemplateId": template_id},
             include=_WORKFLOW_INCLUDE,
         )
-        if revived is not None:
-            row = revived
-        if row.ownerUserId:
-            await scheduling.resume_expert_schedules(row.ownerUserId, row.id)
-            try:
-                await scheduling.reattach_expert_triggers(row.ownerUserId, row.id)
-            except Exception:
-                logger.exception(
-                    f"Failed to reattach triggers while reviving expert #{row.id}"
-                )
-            # Resume/reattach mutated pause state and workflow scheduleIds
-            # after `row` was read — reload so the result isn't stale.
-            refreshed = await prisma.models.Expert.prisma().find_unique(
-                where={"id": row.id}, include=_WORKFLOW_INCLUDE
+        if existing is not None:
+            if not existing.isArchived:
+                return existing, "existing"
+            await _ensure_active_expert_capacity(tx, user_id)
+            revived = await tx.expert.update(
+                where={"id": existing.id},
+                data={"isArchived": False},
+                include=_WORKFLOW_INCLUDE,
             )
-            if refreshed is not None:
-                row = refreshed
-    return HireResult(expert=_to_model(row), failed_preloads=[])
+            if revived is None:
+                raise ExpertNotFoundError(existing.id)
+            return revived, "revived"
+
+        await _ensure_active_expert_capacity(tx, user_id)
+        created = await tx.expert.create(
+            data=create_data,
+            include=_WORKFLOW_INCLUDE,
+        )
+        return created, "created"
+
+
+async def _resume_revived_hire(row: prisma.models.Expert) -> prisma.models.Expert:
+    if row.ownerUserId is None:
+        return row
+
+    await scheduling.resume_expert_schedules(row.ownerUserId, row.id)
+    try:
+        await scheduling.reattach_expert_triggers(row.ownerUserId, row.id)
+    except Exception:
+        logger.exception(f"Failed to reattach triggers while reviving expert #{row.id}")
+
+    # Resume/reattach mutated pause state and workflow scheduleIds after `row`
+    # was read — reload so the result isn't stale.
+    refreshed = await prisma.models.Expert.prisma().find_unique(
+        where={"id": row.id}, include=_WORKFLOW_INCLUDE
+    )
+    return refreshed or row
+
+
+async def _lock_expert_creation(tx: prisma.Prisma, user_id: str) -> None:
+    # execute_raw, not query_raw: pg_advisory_xact_lock returns void,
+    # which Prisma cannot deserialize as a result column.
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", user_id
+    )
+
+
+async def _ensure_active_expert_capacity(tx: prisma.Prisma, user_id: str) -> None:
+    active_count = await tx.expert.count(
+        where={
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    if active_count >= ACTIVE_EXPERT_LIMIT:
+        raise ExpertLimitExceededError(ACTIVE_EXPERT_LIMIT)
+
+
+async def create_raised_expert(
+    user_id: str,
+    name: str,
+    role: str | None,
+    voice_preferences: str | None,
+    first_job_store_listing_version_id: str | None,
+) -> RaiseResult:
+    """Raise a blank expert owned by *user_id*.
+
+    A raised expert has no source template, so ``sourceTemplateId`` stays
+    NULL. Capacity checks and creation share a per-user advisory lock. A
+    requested first job is validated before creation, then its exact listing
+    rows are locked and revalidated through workflow association. Installation
+    failure remains non-fatal and is reported in the result.
+    """
+    if first_job_store_listing_version_id is not None:
+        await _validate_first_job_listing(first_job_store_listing_version_id)
+
+    expert = await _create_raised_expert_row(user_id, name, role, voice_preferences)
+    first_job_installed = False
+    failure_reason: Literal["unavailable", "installation_failed"] | None = None
+    if first_job_store_listing_version_id is not None:
+        try:
+            await _install_first_job(
+                user_id, expert.id, first_job_store_listing_version_id
+            )
+            first_job_installed = True
+        except FirstJobUnavailableError:
+            failure_reason = "unavailable"
+            logger.warning(
+                f"First job {first_job_store_listing_version_id} became "
+                f"unavailable while raising expert #{expert.id} for user #{user_id}"
+            )
+        except Exception:
+            failure_reason = "installation_failed"
+            logger.exception(
+                f"Failed to install first job "
+                f"{first_job_store_listing_version_id} on raised "
+                f"expert #{expert.id} for user #{user_id}"
+            )
+
+    if first_job_installed:
+        hydrated = await get_expert(user_id, expert.id)
+        if hydrated is None:
+            raise ExpertNotFoundError(expert.id)
+    else:
+        hydrated = _to_model(expert)
+    return RaiseResult(
+        expert=hydrated,
+        first_job_installed=first_job_installed,
+        first_job_failure_reason=failure_reason,
+    )
+
+
+async def _create_raised_expert_row(
+    user_id: str,
+    name: str,
+    role: str | None,
+    voice_preferences: str | None,
+) -> prisma.models.Expert:
+    async with transaction() as tx:
+        await _lock_expert_creation(tx, user_id)
+        await _ensure_active_expert_capacity(tx, user_id)
+        lifetime_raised_count = await tx.expert.count(
+            where={
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "sourceTemplateId": None,
+            }
+        )
+        if lifetime_raised_count >= LIFETIME_RAISED_EXPERT_LIMIT:
+            raise RaisedExpertLifetimeLimitExceededError(LIFETIME_RAISED_EXPERT_LIMIT)
+        return await tx.expert.create(
+            data={
+                "ownerUserId": user_id,
+                "name": name,
+                "role": role or "",
+                "identity": _raised_identity(name),
+                "voicePreferences": voice_preferences or "",
+            },
+            include=_WORKFLOW_INCLUDE,
+        )
+
+
+async def _install_first_job(
+    user_id: str,
+    expert_id: str,
+    store_listing_version_id: str,
+) -> None:
+    async with transaction() as tx:
+        is_installable = (
+            await library_db.is_store_listing_version_available_for_install(
+                store_listing_version_id,
+                tx=tx,
+                lock_rows=True,
+            )
+        )
+        if not is_installable:
+            raise FirstJobUnavailableError(store_listing_version_id)
+
+        expert = await tx.expert.find_first(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        if expert is None:
+            raise ExpertNotFoundError(expert_id)
+
+        library_agent = await library_db.add_store_agent_to_library_in_transaction(
+            store_listing_version_id, user_id, tx
+        )
+        await tx.expertworkflow.create(
+            data={
+                "expertId": expert_id,
+                "storeListingVersionId": store_listing_version_id,
+                "libraryAgentId": library_agent.id,
+            }
+        )
+
+
+async def _validate_first_job_listing(store_listing_version_id: str) -> None:
+    """Require the submitted listing-version row itself to be live.
+
+    The shared library install path authorizes by graph, which would let a
+    pending or deleted version UUID pointing at an approved graph slip
+    through and link the expert to an unapproved row."""
+    is_installable = await library_db.is_store_listing_version_available_for_install(
+        store_listing_version_id
+    )
+    if not is_installable:
+        raise FirstJobUnavailableError(store_listing_version_id)
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
