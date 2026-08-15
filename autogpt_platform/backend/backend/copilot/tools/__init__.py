@@ -57,11 +57,18 @@ from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
 from .web_search import WebSearchTool
+from .workspace_file_transfer import CopyWorkspaceFileTool, MoveWorkspaceFileTool
 from .workspace_files import (
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
     ReadWorkspaceFileTool,
     WriteWorkspaceFileTool,
+)
+from .workspace_folders import (
+    CreateWorkspaceFolderTool,
+    DeleteWorkspaceFolderTool,
+    ListWorkspaceFoldersTool,
+    MoveWorkspaceFilesToFolderTool,
 )
 
 if TYPE_CHECKING:
@@ -151,6 +158,13 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
+    "move_workspace_file": MoveWorkspaceFileTool(),
+    "copy_workspace_file": CopyWorkspaceFileTool(),
+    # Workspace folder tools (file organisation; distinct from library folders)
+    "create_workspace_folder": CreateWorkspaceFolderTool(),
+    "delete_workspace_folder": DeleteWorkspaceFolderTool(),
+    "list_workspace_folders": ListWorkspaceFoldersTool(),
+    "move_workspace_files_to_folder": MoveWorkspaceFilesToFolderTool(),
 }
 
 # Export individual tool instances for backwards compatibility

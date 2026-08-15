@@ -8,6 +8,7 @@ for Google Cloud Storage (cloud deployments) and local filesystem (self-hosted d
 import asyncio
 import hashlib
 import logging
+import shutil
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
@@ -81,6 +82,28 @@ class WorkspaceStorageBackend(ABC):
 
         Returns:
             At most ``max_bytes`` of file content as bytes
+        """
+        pass
+
+    @abstractmethod
+    async def copy(
+        self,
+        source_storage_path: str,
+        workspace_id: str,
+        file_id: str,
+        filename: str,
+    ) -> str:
+        """
+        Duplicate a stored file without streaming its bytes through this process.
+
+        Args:
+            source_storage_path: The storage path of the file to duplicate
+            workspace_id: The workspace ID for the destination
+            file_id: Unique file ID for the destination
+            filename: Filename for the destination
+
+        Returns:
+            Storage path string of the new copy
         """
         pass
 
@@ -195,6 +218,39 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         """Retrieve the first ``max_bytes`` of a GCS file via a Range request."""
         bucket_name, blob_name = parse_gcs_path(storage_path)
         return await download_range(bucket_name, blob_name, max_bytes)
+
+    async def copy(
+        self,
+        source_storage_path: str,
+        workspace_id: str,
+        file_id: str,
+        filename: str,
+    ) -> str:
+        """Duplicate a blob using GCS server-side copy.
+
+        The object bytes are copied inside GCS and never transit this process,
+        so copying a large file costs a single API call rather than a full
+        download + re-upload.
+        """
+        source_bucket, source_blob = parse_gcs_path(source_storage_path)
+        client = await self._get_async_client()
+        dest_blob = self._build_blob_name(workspace_id, file_id, filename)
+
+        await client.copy(
+            source_bucket,
+            source_blob,
+            self.bucket_name,
+            new_name=dest_blob,
+            metadata={
+                "metadata": {
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                    "workspace_id": workspace_id,
+                    "file_id": file_id,
+                }
+            },
+        )
+
+        return f"gcs://{self.bucket_name}/{dest_blob}"
 
     async def delete(self, storage_path: str) -> None:
         """Delete file from GCS."""
@@ -332,6 +388,28 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
                 return await f.read(max_bytes)
         except FileNotFoundError as e:
             raise FileNotFoundError(f"File not found: {storage_path}") from e
+
+    async def copy(
+        self,
+        source_storage_path: str,
+        workspace_id: str,
+        file_id: str,
+        filename: str,
+    ) -> str:
+        """Duplicate a local file with a filesystem-level copy."""
+        source_path = self._parse_storage_path(source_storage_path)
+        if not source_path.exists():
+            raise FileNotFoundError(f"File not found: {source_storage_path}")
+
+        dest_path = self._build_file_path(workspace_id, file_id, filename)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # shutil.copyfile is blocking; run it off the event loop so a large
+        # copy doesn't stall every other coroutine on this worker.
+        await asyncio.to_thread(shutil.copyfile, source_path, dest_path)
+
+        relative_path = dest_path.relative_to(self.base_dir)
+        return f"local://{relative_path}"
 
     async def delete(self, storage_path: str) -> None:
         """Delete file from local storage."""

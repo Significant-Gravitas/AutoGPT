@@ -14,15 +14,9 @@ from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from backend.data import workspace_folder as workspace_folder_db
 from backend.data.workspace import WorkspaceFile, get_or_create_workspace
-from backend.data.workspace_folder import (
-    WorkspaceFolder,
-    bulk_move_files_to_folder,
-    create_folder,
-    delete_folder,
-    list_folders,
-    update_folder,
-)
+from backend.data.workspace_folder import WorkspaceFolder
 
 router = fastapi.APIRouter(
     dependencies=[fastapi.Security(requires_user)],
@@ -59,7 +53,7 @@ async def list_workspace_folders(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
 ) -> WorkspaceFolderListResponse:
     workspace = await get_or_create_workspace(user_id)
-    folders = await list_folders(workspace.id)
+    folders = await workspace_folder_db.list_workspace_folders(workspace.id)
     return WorkspaceFolderListResponse(folders=folders)
 
 
@@ -75,7 +69,7 @@ async def create_workspace_folder(
     payload: WorkspaceFolderCreateRequest,
 ) -> WorkspaceFolder:
     workspace = await get_or_create_workspace(user_id)
-    return await create_folder(
+    return await workspace_folder_db.create_workspace_folder(
         workspace_id=workspace.id,
         name=payload.name,
         icon=payload.icon,
@@ -97,7 +91,7 @@ async def update_workspace_folder(
     payload: WorkspaceFolderUpdateRequest,
 ) -> WorkspaceFolder:
     workspace = await get_or_create_workspace(user_id)
-    return await update_folder(
+    return await workspace_folder_db.update_workspace_folder(
         folder_id=folder_id,
         workspace_id=workspace.id,
         name=payload.name,
@@ -117,7 +111,9 @@ async def delete_workspace_folder(
     folder_id: str,
 ) -> Response:
     workspace = await get_or_create_workspace(user_id)
-    await delete_folder(folder_id=folder_id, workspace_id=workspace.id)
+    await workspace_folder_db.delete_workspace_folder(
+        folder_id=folder_id, workspace_id=workspace.id
+    )
     return Response(status_code=fastapi.status.HTTP_204_NO_CONTENT)
 
 
@@ -131,7 +127,7 @@ async def bulk_move_workspace_files(
     payload: BulkMoveFilesRequest,
 ) -> list[WorkspaceFile]:
     workspace = await get_or_create_workspace(user_id)
-    return await bulk_move_files_to_folder(
+    return await workspace_folder_db.bulk_move_files_to_folder(
         workspace_id=workspace.id,
         file_ids=payload.file_ids,
         folder_id=payload.folder_id,

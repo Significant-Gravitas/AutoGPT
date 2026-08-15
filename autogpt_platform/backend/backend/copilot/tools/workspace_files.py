@@ -842,10 +842,14 @@ class WriteWorkspaceFileTool(BaseTool):
             # file as `content`, the SDK silently truncated the tool call
             # arguments to `{}`, and we receive nothing.  Return an
             # actionable error instead of a generic "filename required".
-            has_any_content = any(
-                kwargs.get(k) for k in ("content", "content_base64", "source_path")
+            # Read the bound parameters, not **kwargs: these three are named
+            # parameters, so they are never present in kwargs and checking
+            # there made every missing-filename call look like a truncation.
+            has_any_argument = any(
+                v is not None
+                for v in (content, content_base64, source_path, path, mime_type)
             )
-            if not has_any_content:
+            if not has_any_argument:
                 return ErrorResponse(
                     message=(
                         "Tool call appears truncated (no arguments received). "
@@ -860,7 +864,12 @@ class WriteWorkspaceFileTool(BaseTool):
                     session_id=session_id,
                 )
             return ErrorResponse(
-                message="Please provide a filename", session_id=session_id
+                message=(
+                    "Please provide a filename (e.g. filename='report.md'). "
+                    "It is required alongside content / content_base64 / "
+                    "source_path, and sets the name the file is saved under."
+                ),
+                session_id=session_id,
             )
 
         # Block writes to the skills registry folder — they would bypass

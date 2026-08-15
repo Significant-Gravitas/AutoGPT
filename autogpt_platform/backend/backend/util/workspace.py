@@ -16,6 +16,7 @@ from prisma.errors import UniqueViolationError
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import workspace_db
 from backend.data.workspace import WorkspaceFile
+from backend.util import workspace_transfer
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
@@ -440,6 +441,38 @@ class WorkspaceManager:
                 logger.warning(f"Failed to delete file embedding for {file_id}: {e}")
 
         return result is not None
+
+    async def move_file(
+        self,
+        file_id: str,
+        new_path: str,
+        folder_id: Optional[str] = None,
+        overwrite: bool = False,
+    ) -> WorkspaceFile:
+        """
+        Move a file to a new virtual path without transferring its bytes.
+
+        See :func:`backend.util.workspace_transfer.move_file`.
+        """
+        return await workspace_transfer.move_file(
+            self, file_id, new_path, folder_id=folder_id, overwrite=overwrite
+        )
+
+    async def copy_file(
+        self,
+        file_id: str,
+        new_path: str,
+        folder_id: Optional[str] = None,
+        overwrite: bool = False,
+    ) -> WorkspaceFile:
+        """
+        Duplicate a file to a new virtual path via a server-side byte copy.
+
+        See :func:`backend.util.workspace_transfer.copy_file`.
+        """
+        return await workspace_transfer.copy_file(
+            self, file_id, new_path, folder_id=folder_id, overwrite=overwrite
+        )
 
     async def get_download_url(self, file_id: str, expires_in: int = 3600) -> str:
         """
