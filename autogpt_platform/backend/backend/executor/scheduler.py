@@ -420,6 +420,7 @@ def _session_id_label(args: "CopilotTurnJobArgs") -> str:
 # is time-sensitive — a multi-hour delay defeats the purpose.
 _CONCURRENCY_RETRY_DELAY_SECONDS = 300
 _MAX_CAP_RETRIES = 1
+_MAX_EXPERT_LOOKUP_RETRIES = 1
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
@@ -427,6 +428,7 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
         args,
         reason="concurrency cap",
         name_suffix="cap-retry",
+        retry_kind="cap",
     )
 
 
@@ -437,6 +439,7 @@ async def _reschedule_one_shot_after_expert_unavailable(
         args,
         reason="transient expert lookup failure",
         name_suffix="expert-lookup-retry",
+        retry_kind="expert_lookup",
     )
 
 
@@ -445,18 +448,30 @@ async def _reschedule_one_shot(
     *,
     reason: str,
     name_suffix: str,
+    retry_kind: Literal["cap", "expert_lookup"],
 ) -> None:
     """Re-create a one-shot copilot-turn schedule after a transient failure.
 
     Best-effort: failures are logged. Schedules that have already been
-    retried ``_MAX_CAP_RETRIES`` times are dropped to avoid loops. The
-    retry depth is tracked in ``CopilotTurnJobArgs.cap_retry_count``
-    (which round-trips through APScheduler's persisted kwargs).
+    retried the limit for this failure kind are dropped to avoid loops. Retry
+    depths round-trip independently through APScheduler's persisted kwargs so
+    a transient expert lookup does not consume the concurrency-cap budget.
     """
-    if args.cap_retry_count >= _MAX_CAP_RETRIES:
+    if retry_kind == "cap":
+        retry_count = args.cap_retry_count
+        max_retries = _MAX_CAP_RETRIES
+        next_cap_retry_count = retry_count + 1
+        next_expert_lookup_retry_count = args.expert_lookup_retry_count
+    else:
+        retry_count = args.expert_lookup_retry_count
+        max_retries = _MAX_EXPERT_LOOKUP_RETRIES
+        next_cap_retry_count = args.cap_retry_count
+        next_expert_lookup_retry_count = retry_count + 1
+
+    if retry_count >= max_retries:
         logger.error(
             f"Dropping one-shot copilot turn for session "
-            f"{_session_id_label(args)} — exhausted {_MAX_CAP_RETRIES} "
+            f"{_session_id_label(args)} — exhausted {max_retries} "
             f"retry/retries after {reason}"
         )
         return
@@ -470,7 +485,8 @@ async def _reschedule_one_shot(
             message=args.message,
             run_at=new_run_at,
             name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
-            cap_retry_count=args.cap_retry_count + 1,
+            cap_retry_count=next_cap_retry_count,
+            expert_lookup_retry_count=next_expert_lookup_retry_count,
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
@@ -483,8 +499,7 @@ async def _reschedule_one_shot(
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
             f"{_session_id_label(args)} to {new_run_at.isoformat()} after "
-            f"{reason} (retry {args.cap_retry_count + 1}/"
-            f"{_MAX_CAP_RETRIES})"
+            f"{reason} (retry {retry_count + 1}/{max_retries})"
         )
     except Exception:
         logger.warning(
@@ -1352,10 +1367,11 @@ class CopilotTurnJobArgs(BaseModel):
     message: str
     cron: str | None = None
     run_at: datetime | None = None
-    # Set by ``_reschedule_one_shot_after_cap`` when re-creating a one-shot
-    # schedule after a concurrency-cap miss. Bounds the retry depth so a
-    # persistently-capped user can't loop forever.
+    # Independent persisted retry depths for transient failures. Keeping these
+    # separate prevents an expert-lookup retry from consuming the later
+    # concurrency-cap retry (or vice versa).
     cap_retry_count: int = 0
+    expert_lookup_retry_count: int = 0
     # Persisted so ``_reschedule_one_shot_after_cap`` can preserve the user's
     # timezone when re-creating a one-shot job after a concurrency-cap miss —
     # otherwise the rescheduled job's trigger defaults to UTC and the timezone
@@ -1914,6 +1930,7 @@ class Scheduler(AppService):
         name: Optional[str] = None,
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
+        expert_lookup_retry_count: int = 0,
         organization_id: str | None = None,
         team_id: str | None = None,
         expert_id: str | None = None,
@@ -1925,9 +1942,9 @@ class Scheduler(AppService):
         the turn into it. Otherwise the turn resumes the named (existing)
         session with its full history, after re-validating that scope.
 
-        *cap_retry_count* is set internally by
-        ``_reschedule_one_shot_after_cap`` to bound the retry depth on
-        concurrency-cap misses; normal callers should leave it at 0.
+        *cap_retry_count* and *expert_lookup_retry_count* are set internally
+        to bound their respective transient retry paths; normal callers should
+        leave both at 0.
         """
         user_timezone = _resolve_timezone(user_timezone, user_id)
         trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
@@ -1939,6 +1956,7 @@ class Scheduler(AppService):
             cron=cron,
             run_at=run_at,
             cap_retry_count=cap_retry_count,
+            expert_lookup_retry_count=expert_lookup_retry_count,
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,

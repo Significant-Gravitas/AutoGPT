@@ -16136,6 +16136,11 @@
             "title": "Cap Retry Count",
             "default": 0
           },
+          "expert_lookup_retry_count": {
+            "type": "integer",
+            "title": "Expert Lookup Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
