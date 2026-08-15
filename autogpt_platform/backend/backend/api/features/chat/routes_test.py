@@ -1,6 +1,7 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
 from datetime import UTC, datetime, timedelta
+from typing import get_args
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -13,6 +14,7 @@ from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import (
     CodexAuthBundleV1,
@@ -47,6 +49,10 @@ VALID_CODEX_PROVIDER_STATE = encode_provider_state(
         codex_runtime_version="0.144.4",
     )
 )
+
+
+def test_tool_response_union_exports_expert_soul_response() -> None:
+    assert ExpertSoulUpdatedResponse in get_args(chat_routes.ToolResponseUnion)
 
 
 @pytest.fixture(autouse=True)
