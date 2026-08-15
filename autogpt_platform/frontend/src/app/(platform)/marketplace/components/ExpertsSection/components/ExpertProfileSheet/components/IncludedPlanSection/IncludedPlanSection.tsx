@@ -2,10 +2,10 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { SparklesIcon } from "@hugeicons/core-free-icons";
 import { ExpertAccent } from "../../../../helpers";
 
-type Props = {
+interface Props {
   expertName: string;
   accent: ExpertAccent;
-};
+}
 
 export function IncludedPlanSection({ expertName, accent }: Props) {
   return (

@@ -57,7 +57,7 @@ describe("Expert profile sheet lookup states", () => {
     await userEvent.click(await screen.findByText("Maria"));
 
     const hireButton = await screen.findByRole("button", {
-      name: "Hire Maria",
+      name: "Checking your team…",
     });
     expect(hireButton.hasAttribute("disabled")).toBe(true);
   });
@@ -74,13 +74,15 @@ describe("Expert profile sheet lookup states", () => {
     expect(screen.queryByText("Hire")).toBeNull();
     expect(screen.queryByText("On your team")).toBeNull();
     expect(await screen.findByText("Team status unavailable")).toBeDefined();
+    expect(screen.getAllByText("Team status unavailable")).toHaveLength(1);
+    expect(screen.getByText("View details")).toBeDefined();
 
     await userEvent.click(await screen.findByText("Maria"));
 
     expect(
       await screen.findByText("Team status unavailable right now."),
     ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Hire Maria" })).toBeDefined();
 
     server.use(getListExpertsMockHandler([hiredMaria]));
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));

@@ -1,8 +1,8 @@
 import { ProfileSection } from "../ProfileSection/ProfileSection";
 
-type Props = {
+interface Props {
   skills: string[] | null;
-};
+}
 
 export function SkillsSection({ skills }: Props) {
   if (!skills?.length) return null;

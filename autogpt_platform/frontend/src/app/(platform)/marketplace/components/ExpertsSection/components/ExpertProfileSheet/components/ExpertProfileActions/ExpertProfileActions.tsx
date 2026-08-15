@@ -3,7 +3,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import type { AsyncStatus } from "@/types/async-status";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
-type Props = {
+interface Props {
   expertName: string;
   isHired: boolean;
   isHiring: boolean;
@@ -11,7 +11,7 @@ type Props = {
   hiredExpertId: string | null;
   hiredLookup: AsyncStatus;
   onRetryHiredLookup: () => void;
-};
+}
 
 export function ExpertProfileActions({
   expertName,
@@ -51,12 +51,26 @@ export function ExpertProfileActions({
           )}
         </div>
       ) : hiredLookup === "error" ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-          <span className="text-sm text-zinc-600">
-            Team status unavailable right now.
-          </span>
-          <Button variant="secondary" size="small" onClick={onRetryHiredLookup}>
-            Retry
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+            <span className="text-sm text-zinc-600">
+              Team status unavailable right now.
+            </span>
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={onRetryHiredLookup}
+            >
+              Retry
+            </Button>
+          </div>
+          <Button
+            variant="primary"
+            onClick={onHire}
+            loading={isHiring}
+            className="h-12 w-full rounded-full text-base"
+          >
+            {`Hire ${expertName}`}
           </Button>
         </div>
       ) : (
@@ -65,9 +79,12 @@ export function ExpertProfileActions({
           onClick={onHire}
           loading={isHiring}
           disabled={hiredLookup === "loading"}
+          aria-busy={hiredLookup === "loading"}
           className="h-12 w-full rounded-full text-base"
         >
-          {`Hire ${expertName}`}
+          {hiredLookup === "loading"
+            ? "Checking your team…"
+            : `Hire ${expertName}`}
         </Button>
       )}
     </div>

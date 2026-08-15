@@ -1,9 +1,9 @@
 import { ReactNode } from "react";
 
-type Props = {
+interface Props {
   title: string;
   children: ReactNode;
-};
+}
 
 export function ProfileSection({ title, children }: Props) {
   return (

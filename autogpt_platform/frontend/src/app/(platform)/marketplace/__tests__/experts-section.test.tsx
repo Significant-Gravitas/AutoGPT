@@ -174,6 +174,60 @@ describe("Marketplace ExpertsSection", () => {
     expect(screen.queryByText("Workflows Maria brings")).toBeNull();
   });
 
+  test("expands and collapses a long expert bio", async () => {
+    const longBio = "Long-form expertise. ".repeat(20);
+    server.use(
+      getListExpertTemplatesMockHandler([{ ...mariaTemplate, bio: longBio }]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+    const bio = await screen.findByText(longBio.trim());
+    expect(bio.className).toContain("line-clamp-4");
+
+    await userEvent.click(screen.getByRole("button", { name: "Read more" }));
+    expect(screen.getByRole("button", { name: "Show less" })).toBeDefined();
+    expect(bio.className).not.toContain("line-clamp-4");
+
+    await userEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(screen.getByRole("button", { name: "Read more" })).toBeDefined();
+    expect(bio.className).toContain("line-clamp-4");
+  });
+
+  test("renders a bio-only day-one section", async () => {
+    const bio = "Builds a practical plan from the company context.";
+    server.use(
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          bio,
+          workflows: [
+            {
+              id: "wf-unnamed",
+              store_listing_version_id: null,
+              library_agent_id: null,
+              graph_id: null,
+              name: null,
+              description: null,
+            },
+          ],
+        },
+      ]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    await userEvent.click(await screen.findByText("Maria"));
+    expect(
+      await screen.findByText("What Maria sets up on day one"),
+    ).toBeDefined();
+    expect(screen.getByText(bio)).toBeDefined();
+    expect(screen.getAllByText("Unnamed workflow")).toHaveLength(1);
+  });
+
   test("uses gender-neutral disclosure copy for every expert", async () => {
     const maxTemplate = {
       ...mariaTemplate,

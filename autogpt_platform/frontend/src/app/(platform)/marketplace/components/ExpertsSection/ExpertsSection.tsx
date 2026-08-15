@@ -32,6 +32,19 @@ export function ExpertsSection() {
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
         action={{ label: "View your team", href: "/team" }}
       />
+      {!isLoading && hiredLookupState === "error" ? (
+        <div
+          role="status"
+          className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+        >
+          <p className="text-sm font-medium text-amber-800">
+            Team status unavailable
+          </p>
+          <p className="text-sm text-amber-700">
+            You can still open an expert to retry or continue hiring.
+          </p>
+        </div>
+      ) : null}
       {isLoading ? (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (

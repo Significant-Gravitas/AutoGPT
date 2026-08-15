@@ -10,12 +10,12 @@ import { ProfileSection } from "../ProfileSection/ProfileSection";
 
 const CLAMPED_BIO_LENGTH = 280;
 
-type Props = {
+interface Props {
   firstName: string;
   firstWorkflow: ExpertWorkflowRef | null;
   bio: string | null;
   accent: ExpertAccent;
-};
+}
 
 export function DayOneSection({
   firstName,

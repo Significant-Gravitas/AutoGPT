@@ -1,6 +1,6 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
-import type { AsyncStatus } from "@/types/async-status";
+import { type AsyncStatus, queryToAsyncStatus } from "@/types/async-status";
 import {
   Briefcase01Icon,
   ChartIncreaseIcon,
@@ -99,14 +99,10 @@ export function getHiredExpertsLookup<
       byTemplateId.set(expert.source_template_id, expert);
     }
   }
-  const state =
-    experts !== undefined
-      ? ("loaded" as const)
-      : !query.enabled
-        ? ("loaded" as const)
-        : query.isError && !query.isFetching
-          ? ("error" as const)
-          : ("loading" as const);
+  const state = queryToAsyncStatus(
+    { data: experts, ...query },
+    { keepCachedData: true },
+  );
   return { byTemplateId, state };
 }
 

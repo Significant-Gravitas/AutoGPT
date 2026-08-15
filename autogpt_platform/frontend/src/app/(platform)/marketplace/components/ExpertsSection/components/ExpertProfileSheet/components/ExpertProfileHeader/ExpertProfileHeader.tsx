@@ -8,10 +8,10 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { ExpertAccent, getExpertAvatarUrl } from "../../../../helpers";
 
-type Props = {
+interface Props {
   expert: Expert;
   accent: ExpertAccent;
-};
+}
 
 export function ExpertProfileHeader({ expert, accent }: Props) {
   const avatarUrl = getExpertAvatarUrl(expert);

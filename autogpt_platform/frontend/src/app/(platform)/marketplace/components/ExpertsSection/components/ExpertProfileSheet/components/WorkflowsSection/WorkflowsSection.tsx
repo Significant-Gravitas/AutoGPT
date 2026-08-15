@@ -5,11 +5,11 @@ import { FlashIcon } from "@hugeicons/core-free-icons";
 import { ExpertAccent } from "../../../../helpers";
 import { ProfileSection } from "../ProfileSection/ProfileSection";
 
-type Props = {
+interface Props {
   firstName: string;
   workflows: ExpertWorkflowRef[];
   accent: ExpertAccent;
-};
+}
 
 export function WorkflowsSection({ firstName, workflows, accent }: Props) {
   if (!workflows.length) return null;

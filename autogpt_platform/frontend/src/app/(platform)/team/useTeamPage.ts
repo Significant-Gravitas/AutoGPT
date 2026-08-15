@@ -2,6 +2,7 @@ import { useListExperts } from "@/app/api/__generated__/endpoints/experts/expert
 import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { okData } from "@/app/api/helpers";
+import { queryToAsyncStatus } from "@/types/async-status";
 import { useState } from "react";
 import { getExpertSchedules } from "./helpers";
 
@@ -25,13 +26,15 @@ export function useTeamPage({ enabled }: Args) {
     (expert) => !expert.is_template && !expert.is_archived,
   );
 
-  const schedulesStatus = schedulesQuery.isFetching
-    ? ("loading" as const)
-    : schedulesQuery.isError
-      ? ("error" as const)
-      : schedulesQuery.isSuccess
-        ? ("loaded" as const)
-        : ("loading" as const);
+  const schedulesStatus = queryToAsyncStatus(
+    {
+      data: schedulesQuery.data,
+      enabled,
+      isError: schedulesQuery.isError,
+      isFetching: schedulesQuery.isFetching,
+    },
+    { keepCachedData: false },
+  );
 
   function schedulesForExpert(expert: Expert) {
     return getExpertSchedules(expert, schedulesQuery.data ?? []);
