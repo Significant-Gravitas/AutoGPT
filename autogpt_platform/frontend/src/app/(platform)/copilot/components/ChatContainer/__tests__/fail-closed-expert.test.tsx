@@ -84,12 +84,10 @@ const maria: Expert = {
 function ExpertThreadHarness({ activeExpertId }: { activeExpertId: string }) {
   const queryClient = useQueryClient();
   const { expertsById, hasExpertsSettled, hasExpertsErrored } = useExpertMap();
-  const expertIdentity = resolveExpertIdentity(
-    activeExpertId,
-    expertsById,
-    hasExpertsSettled,
-    hasExpertsErrored,
-  );
+  const expertIdentity = resolveExpertIdentity(activeExpertId, expertsById, {
+    settled: hasExpertsSettled,
+    errored: hasExpertsErrored,
+  });
   return (
     <>
       <button
@@ -147,15 +145,18 @@ describe("Copilot expert thread — fail-closed identity", () => {
     expect(screen.queryByTestId("composer")).toBeNull();
   });
 
-  it("fails closed to read-only when the expert is gone from a loaded roster", async () => {
+  it("fails closed with neutral copy when the expert is gone from a loaded roster", async () => {
     server.use(getListExpertIdentitiesMockHandler([]));
 
     render(<ExpertThreadHarness activeExpertId="expert-ghost" />);
 
     const notice = await screen.findByTestId("archived-expert-notice");
+    // An id missing from a settled roster may have been deleted or never have
+    // been ours — claiming it was "fired" would state something we can't know.
     expect(notice.textContent).toContain(
-      "was fired — this thread is read-only",
+      "is no longer available — this thread is read-only",
     );
+    expect(notice.textContent).not.toContain("was fired");
     expect(screen.queryByTestId("composer")).toBeNull();
   });
 

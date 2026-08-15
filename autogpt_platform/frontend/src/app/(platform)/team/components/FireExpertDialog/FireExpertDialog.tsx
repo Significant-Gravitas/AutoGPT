@@ -40,8 +40,11 @@ export function FireExpertDialog({
   });
   const summary = getFireSummary(preview);
 
+  // Match the disabled "Keep" button: while the archive request is in flight
+  // ESC and overlay clicks must not dismiss either, or the user loses the
+  // pending/success/failure feedback for a destructive action.
   function handleOpenChange(nextOpen: boolean) {
-    if (!nextOpen) onClose();
+    if (!nextOpen && !isFiring) onClose();
   }
 
   return (

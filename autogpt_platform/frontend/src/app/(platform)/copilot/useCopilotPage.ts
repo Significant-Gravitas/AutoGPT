@@ -83,12 +83,10 @@ export function useCopilotPage() {
   const activeExpertId = sessionId ? sessionExpertId : expertId;
   const expertIdentity = useMemo(
     () =>
-      resolveExpertIdentity(
-        activeExpertId,
-        expertsById,
-        hasExpertsSettled,
-        hasExpertsErrored,
-      ),
+      resolveExpertIdentity(activeExpertId, expertsById, {
+        settled: hasExpertsSettled,
+        errored: hasExpertsErrored,
+      }),
     [activeExpertId, expertsById, hasExpertsErrored, hasExpertsSettled],
   );
   const isResolvingExpertIdentity = Boolean(

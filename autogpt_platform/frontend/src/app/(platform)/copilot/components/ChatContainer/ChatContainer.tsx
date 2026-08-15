@@ -76,6 +76,9 @@ export interface ChatContainerProps {
    * lost to that navigation. */
   isAdoptingExpertSession?: boolean;
 }
+
+const NO_OP_SEND = () => undefined;
+
 export const ChatContainer = ({
   messages,
   status,
@@ -139,7 +142,10 @@ export const ChatContainer = ({
     : null;
   const isExpertArchived = archivedExpertIdentity !== null;
   const isSendLocked = isExpertArchived || !!isResolvingExpertIdentity;
-  const guardedOnSend = isSendLocked ? () => undefined : onSend;
+  // NO_OP is module-level so a locked composer keeps a stable function identity
+  // across renders — otherwise every consumer of `guardedOnSend` (the actions
+  // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
+  const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
   const inputLayoutId = "copilot-2-chat-input";
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
@@ -206,7 +212,7 @@ export const ChatContainer = ({
               {archivedExpertIdentity ? (
                 <ArchivedExpertNotice
                   expertName={archivedExpertIdentity.name}
-                  isUnavailable={archivedExpertIdentity.isUnavailable}
+                  reason={archivedExpertIdentity.readOnlyReason ?? "fired"}
                 />
               ) : (
                 <motion.div

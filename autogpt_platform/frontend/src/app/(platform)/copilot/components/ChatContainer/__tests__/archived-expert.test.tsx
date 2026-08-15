@@ -107,7 +107,7 @@ const mariaIdentity = {
   avatarUrl: null,
   role: "Marketing Strategist",
   isArchived: false,
-  isUnavailable: false,
+  readOnlyReason: null,
 };
 
 describe("ChatContainer — archived expert", () => {

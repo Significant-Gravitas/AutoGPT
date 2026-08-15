@@ -1,5 +1,7 @@
 import asyncio
+import re
 import uuid
+from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -315,6 +317,47 @@ async def test_list_experts_reads_weekly_spend_for_each_expert(
         experts = await experts_db.list_experts(test_user.id)
 
     assert {e.id: e.weekly_spend for e in experts if e.id in spends} == spends
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_experts_defaults_a_missing_spend_entry_to_zero(
+    server: SpinTestServer, test_user
+):
+    """A spend read that degraded to a missing key must not break the roster."""
+    hired = [
+        await experts_db.hire_expert(
+            test_user.id,
+            (await _seed_template(name=f"Gap{i}", preload_listings=[])).id,
+            None,
+        )
+        for i in range(2)
+    ]
+    present, missing = hired[0].expert.id, hired[1].expert.id
+
+    with patch.object(
+        experts_db,
+        "_weekly_spends",
+        new=AsyncMock(return_value={present: 700}),
+    ):
+        experts = await experts_db.list_experts(test_user.id)
+
+    by_id = {e.id: e.weekly_spend for e in experts}
+    assert by_id[present] == 700
+    assert by_id[missing] == 0
+
+
+def test_expert_identity_projection_columns_exist_in_schema():
+    """Guard the hand-written projection in ``list_expert_identities``.
+
+    The raw SQL aliases physical column names, so a ``schema.prisma`` rename
+    would otherwise only surface as a runtime query error.
+    """
+    schema = (Path(__file__).parents[4] / "schema.prisma").read_text()
+    model = re.search(r"^model Expert \{(.*?)^\}", schema, re.S | re.M)
+    assert model is not None, "Expert model not found in schema.prisma"
+    fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
+    assert {"id", "name", "avatarUrl", "role", "isArchived"} <= fields
+    assert {"ownerUserId", "isTemplate"} <= fields
 
 
 @pytest.mark.asyncio

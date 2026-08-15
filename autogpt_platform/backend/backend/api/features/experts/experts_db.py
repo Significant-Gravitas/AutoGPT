@@ -146,7 +146,16 @@ async def list_experts(user_id: str) -> list[Expert]:
 
 
 async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
-    """Return the lifetime roster without hydrating team-page details."""
+    """Return the lifetime roster without hydrating team-page details.
+
+    Raw SQL rather than a Prisma projection: ``find_many`` has no partial
+    ``select`` in prisma-client-py, so the ORM path would hydrate every Expert
+    column (including the Soul text this endpoint exists to avoid) on every
+    copilot mount. Only ``{schema_prefix}`` is interpolated — a server-side
+    constant from settings, never request data — and ``user_id`` is bound as
+    ``$1``. ``experts_db_test.py`` asserts the selected columns so a
+    ``schema.prisma`` rename fails in CI instead of at runtime.
+    """
     return await query_raw_with_schema(
         """
         SELECT "id", "name", "avatarUrl" AS "avatar_url", "role",

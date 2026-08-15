@@ -10,7 +10,12 @@ const AUTOPILOT_RECIPIENT: RecipientOption = {
 };
 
 export function useRecipientPicker() {
-  const { activeExperts, isLoadingExperts, hasExpertsSettled } = useExpertMap();
+  const {
+    activeExperts,
+    activeExpertIds,
+    isLoadingExperts,
+    hasExpertsSettled,
+  } = useExpertMap();
   const [expertIdParam, setExpertIdParam] = useQueryState(
     "expertId",
     parseAsString,
@@ -23,10 +28,10 @@ export function useRecipientPicker() {
   useEffect(
     function clearUnknownExpertParam() {
       if (!hasExpertsSettled || !expertIdParam) return;
-      if (activeExperts.some((expert) => expert.id === expertIdParam)) return;
+      if (activeExpertIds.has(expertIdParam)) return;
       void setExpertIdParam(null);
     },
-    [activeExperts, hasExpertsSettled, expertIdParam, setExpertIdParam],
+    [activeExpertIds, hasExpertsSettled, expertIdParam, setExpertIdParam],
   );
 
   const options: RecipientOption[] = [

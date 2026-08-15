@@ -2,19 +2,27 @@ import { useListExpertIdentities } from "@/app/api/__generated__/endpoints/exper
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useMemo } from "react";
 
+/**
+ * Why a thread is read-only. `fired` is the only reason we can state as fact;
+ * `unavailable` is a transient roster-read failure and `unknown` covers an id
+ * that is simply absent from a settled roster (deleted, wrong, or never ours).
+ */
+export type ExpertReadOnlyReason = "fired" | "unavailable" | "unknown";
+
 export interface ExpertIdentity {
   id: string;
   name: string;
   avatarUrl: string | null;
   role: string | null;
   isArchived: boolean;
-  isUnavailable: boolean;
+  readOnlyReason: ExpertReadOnlyReason | null;
 }
 
 export type ExpertIdentityMap = Map<string, ExpertIdentity>;
 
 const EMPTY_MAP: ExpertIdentityMap = new Map();
 const EMPTY_EXPERTS: ExpertIdentity[] = [];
+const EMPTY_IDS: ReadonlySet<string> = new Set();
 
 const FALLBACK_ARCHIVED_NAME = "This expert";
 
@@ -32,24 +40,23 @@ const FALLBACK_ARCHIVED_NAME = "This expert";
 export function resolveExpertIdentity(
   activeExpertId: string | null,
   expertsById: ExpertIdentityMap,
-  hasExpertsSettled: boolean,
-  hasExpertsErrored: boolean,
+  { settled, errored }: { settled: boolean; errored: boolean },
 ): ExpertIdentity | null {
   if (!activeExpertId) return null;
   const found = expertsById.get(activeExpertId);
   if (found) {
-    return hasExpertsErrored
-      ? { ...found, isArchived: true, isUnavailable: true }
+    return errored
+      ? { ...found, isArchived: true, readOnlyReason: "unavailable" }
       : found;
   }
-  if (!hasExpertsSettled) return null;
+  if (!settled) return null;
   return {
     id: activeExpertId,
     name: FALLBACK_ARCHIVED_NAME,
     avatarUrl: null,
     role: null,
     isArchived: true,
-    isUnavailable: hasExpertsErrored,
+    readOnlyReason: errored ? "unavailable" : "unknown",
   };
 }
 
@@ -78,18 +85,24 @@ export function useExpertMap() {
   const expertCollections = useMemo(() => {
     const experts = expertsQuery.data;
     if (!experts)
-      return { expertsById: EMPTY_MAP, activeExperts: EMPTY_EXPERTS };
+      return {
+        expertsById: EMPTY_MAP,
+        activeExperts: EMPTY_EXPERTS,
+        activeExpertIds: EMPTY_IDS,
+      };
     const identities = experts.map((expert) => ({
       id: expert.id,
       name: expert.name,
       avatarUrl: expert.avatar_url ?? null,
       role: expert.role,
       isArchived: expert.is_archived,
-      isUnavailable: false,
+      readOnlyReason: expert.is_archived ? ("fired" as const) : null,
     }));
+    const activeExperts = identities.filter((expert) => !expert.isArchived);
     return {
       expertsById: new Map(identities.map((expert) => [expert.id, expert])),
-      activeExperts: identities.filter((expert) => !expert.isArchived),
+      activeExperts,
+      activeExpertIds: new Set(activeExperts.map((expert) => expert.id)),
     };
   }, [expertsQuery.data]);
 
@@ -100,6 +113,11 @@ export function useExpertMap() {
     activeExperts: canAddressExperts
       ? expertCollections.activeExperts
       : EMPTY_EXPERTS,
+    // Same membership as `activeExperts`, as a set, so callers testing "can the
+    // user still address this id?" do a constant-time lookup instead of a scan.
+    activeExpertIds: canAddressExperts
+      ? expertCollections.activeExpertIds
+      : EMPTY_IDS,
     // A disabled query reports `isPending` forever, so all flags stay gated
     // on the feature flag to remain honest when experts are off.
     isLoadingExperts: isExpertsEnabled && expertsQuery.isFetching,

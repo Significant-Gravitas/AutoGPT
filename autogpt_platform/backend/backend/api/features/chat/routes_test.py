@@ -387,6 +387,25 @@ def test_stream_chat_rejects_an_archived_expert_session(
     mocks.paywall.assert_not_awaited()
 
 
+def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Plain Autopilot turns must not pay for the write-gate's extra query."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = None
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    active_check.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
+
+
 # ─── Duplicate message dedup ──────────────────────────────────────────
 
 
@@ -1679,6 +1698,27 @@ def test_queue_pending_message_rejects_an_archived_expert_session(
 
     assert response.status_code == 404
     active_check.assert_awaited_once_with(test_user_id, "expert-archived")
+
+
+def test_queue_pending_message_skips_the_expert_gate_for_a_non_expert_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_session = _mock_stream_queue_internals(mocker)
+    assert mock_session is not None
+    mock_session.expert_id = None
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.is_expert_active",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up"},
+    )
+
+    assert response.status_code == 200
+    active_check.assert_not_awaited()
 
 
 def test_queue_pending_message_without_active_turn_returns_409(
