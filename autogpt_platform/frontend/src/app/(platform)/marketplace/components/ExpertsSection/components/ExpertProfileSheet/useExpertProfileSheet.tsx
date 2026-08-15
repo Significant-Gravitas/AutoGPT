@@ -31,7 +31,7 @@ export function useExpertProfileSheet(
 
   async function hire() {
     if (!expert || !expert.is_template) return;
-    trackFunnel("hire_started");
+    trackFunnel("hire_started", { template_id: expert.id });
     try {
       const response = await hireExpert({ data: { template_id: expert.id } });
       const result = response.data as HireResult;

@@ -1,10 +1,5 @@
 import { useEffect, useRef } from "react";
-import { trackFunnel } from "./experts-analytics";
-
-type FunnelViewEvent =
-  | "experts_section_viewed"
-  | "home_viewed"
-  | "briefing_opened";
+import { trackFunnel, type FunnelViewEvent } from "./experts-analytics";
 
 export function useTrackFunnelViewOnce(event: FunnelViewEvent, enabled = true) {
   const trackedRef = useRef(false);

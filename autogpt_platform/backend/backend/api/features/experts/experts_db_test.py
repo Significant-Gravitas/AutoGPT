@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.enums
 import prisma.models
@@ -863,6 +863,43 @@ async def test_install_workflow_emits_workflow_installed(
         "workflow_installed_on_expert",
         {"expert_id": hired.expert.id, "store_listing_version_id": slv_id},
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_race_returns_winner_without_emitting(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    winner = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    winner_row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={"id": winner.id}, include=experts_db._WORKFLOW_ROW_INCLUDE
+    )
+    assert winner_row is not None
+    workflow_client = MagicMock(
+        find_first=AsyncMock(side_effect=[None, winner_row]),
+        create=AsyncMock(side_effect=prisma.errors.UniqueViolationError({})),
+    )
+
+    with (
+        patch.object(
+            prisma.models.ExpertWorkflow,
+            "prisma",
+            return_value=workflow_client,
+        ),
+        patch.object(
+            experts_db.library_db,
+            "add_store_agent_to_library",
+            new_callable=AsyncMock,
+            return_value=SimpleNamespace(id=winner.library_agent_id),
+        ),
+        patch.object(experts_db, "emit_funnel_event", new_callable=AsyncMock) as emit,
+    ):
+        raced = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+
+    assert raced.id == winner.id
+    emit.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")

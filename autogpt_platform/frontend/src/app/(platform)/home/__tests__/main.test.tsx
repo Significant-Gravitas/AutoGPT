@@ -300,6 +300,58 @@ test("approving an item one-tap sends the review decision", async () => {
   );
 });
 
+test("declining an item records the confirmed decline", async () => {
+  const user = userEvent.setup();
+  const reviewRequests: unknown[] = [];
+  const funnelBodies: { type: string; data: Record<string, unknown> }[] = [];
+  mockDashboard({ ...dashboard, attention: [approvalItem] });
+  server.use(
+    http.post("/api/proxy/api/review/action", async ({ request }) => {
+      reviewRequests.push(await request.json());
+      return HttpResponse.json({ failed_count: 0, processed_count: 1 });
+    }),
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      funnelBodies.push(
+        (await request.json()) as {
+          type: string;
+          data: Record<string, unknown>;
+        },
+      );
+      return HttpResponse.json({ status: "ok" });
+    }),
+  );
+
+  render(<HomePage />);
+
+  await user.click(
+    await screen.findByRole("button", {
+      name: "Decline: Approve the camera shortlist",
+    }),
+  );
+  await user.click(
+    screen.getByRole("button", {
+      name: "Confirm decline: Approve the camera shortlist",
+    }),
+  );
+
+  await waitFor(() => expect(reviewRequests).toHaveLength(1));
+  expect(reviewRequests[0]).toEqual({
+    reviews: [
+      {
+        node_exec_id: "node-exec-1",
+        approved: false,
+        auto_approve_future: false,
+      },
+    ],
+  });
+  await waitFor(() =>
+    expect(
+      funnelBodies.find((body) => body.type === "home_attention_actioned")
+        ?.data,
+    ).toEqual({ kind: "approval", action: "decline" }),
+  );
+});
+
 test("does not count a failed attention decision as actioned", async () => {
   const user = userEvent.setup();
   const funnelEvents: string[] = [];
@@ -344,6 +396,7 @@ test("keeps a Review deep link alongside the approval shortcuts", async () => {
 });
 
 test("shows calm, useful empty states without hiding the page structure", async () => {
+  const funnelEvents: string[] = [];
   mockDashboard({
     ...dashboard,
     attention: [],
@@ -359,6 +412,13 @@ test("shows calm, useful empty states without hiding the page structure", async 
     team: { total: 0, ready: 0, working: 0, needs_attention: 0 },
     agents: [],
   });
+  server.use(
+    http.post(/log_raw_analytics/, async ({ request }) => {
+      const body = (await request.json()) as { type: string };
+      funnelEvents.push(body.type);
+      return HttpResponse.json({ status: "ok" });
+    }),
+  );
 
   render(<HomePage />);
 
@@ -366,6 +426,8 @@ test("shows calm, useful empty states without hiding the page structure", async 
   expect(screen.getByText("No new outcomes yet")).toBeDefined();
   expect(screen.getByText(/Nothing is scheduled/)).toBeDefined();
   expect(screen.getByRole("link", { name: "Browse experts" })).toBeDefined();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(funnelEvents).not.toContain("briefing_opened");
 });
 
 test("filters briefing outcomes by their real status", async () => {

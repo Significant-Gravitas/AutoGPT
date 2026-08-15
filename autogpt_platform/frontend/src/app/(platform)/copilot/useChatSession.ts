@@ -295,7 +295,7 @@ export function useChatSession({
         .bindPendingFirstSendToSession(response.data.id);
       setSessionId(response.data.id);
       if (expertId) {
-        trackFunnel("expert_thread_created");
+        trackFunnel("expert_thread_created", { expert_id: expertId });
       }
       queryClient.invalidateQueries({
         queryKey: SESSION_LIST_QUERY_KEY,

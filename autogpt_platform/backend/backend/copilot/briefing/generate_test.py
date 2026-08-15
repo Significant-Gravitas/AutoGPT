@@ -463,9 +463,12 @@ async def test_generate_retries_undelivered_briefing_without_recomposing(monkeyp
     append_call = client.append_plain_session_message.await_args
     assert append_call.kwargs["content"] == render_briefing_markdown(stored)
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
-    assert [call.args[1] for call in client.emit_funnel_event.await_args_list] == [
-        "briefing_delivered"
-    ]
+    client.emit_funnel_event.assert_awaited_once_with(
+        "user-1",
+        "briefing_delivered",
+        {"briefing_id": "briefing-1"},
+        "briefing_delivered:briefing-1",
+    )
 
 
 @pytest.mark.asyncio

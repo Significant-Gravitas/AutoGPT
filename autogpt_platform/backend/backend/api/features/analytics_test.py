@@ -412,9 +412,10 @@ async def test_emit_funnel_event_skips_duplicate_idempotency_key(
         "backend.data.analytics.log_raw_analytics",
         new_callable=AsyncMock,
     )
+    analytics_client = Mock(find_first=AsyncMock(return_value=Mock()))
     mocker.patch(
         "prisma.models.AnalyticsDetails.prisma",
-        return_value=Mock(find_first=AsyncMock(return_value=Mock())),
+        return_value=analytics_client,
     )
 
     await backend.data.analytics.emit_funnel_event(
@@ -423,6 +424,13 @@ async def test_emit_funnel_event_skips_duplicate_idempotency_key(
     await _drain_funnel_writes()
 
     mock_log.assert_not_awaited()
+    analytics_client.find_first.assert_awaited_once_with(
+        where={
+            "userId": "user-1",
+            "type": "briefing_delivered",
+            "dataIndex": "briefing_delivered:b-1",
+        }
+    )
 
 
 async def test_emit_funnel_event_writes_unseen_idempotency_key(

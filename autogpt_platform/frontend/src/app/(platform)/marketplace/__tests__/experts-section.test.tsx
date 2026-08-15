@@ -159,5 +159,8 @@ describe("Marketplace ExpertsSection", () => {
     await waitFor(() =>
       expect(funnelBodies.map((b) => b.type)).toContain("hire_started"),
     );
+    expect(funnelBodies.find((b) => b.type === "hire_started")?.data).toEqual({
+      template_id: mariaTemplate.id,
+    });
   });
 });

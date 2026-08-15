@@ -31,7 +31,10 @@ export function MorningBriefing({ dashboard, className }: Props) {
     visibleOutcomes,
   } = useMorningBriefing({ outcomes: briefing.outcomes });
 
-  useTrackFunnelViewOnce("briefing_opened");
+  useTrackFunnelViewOnce(
+    "briefing_opened",
+    Boolean(briefing.narrative) || briefing.outcomes.length > 0,
+  );
 
   return (
     <HomeTile

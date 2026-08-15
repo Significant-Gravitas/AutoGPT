@@ -248,7 +248,7 @@ describe("useChatSession — expert sessions", () => {
   it("creates a session with expert_id when visiting /copilot?expertId=expert-maria", async () => {
     let createBody: unknown = null;
     let transportInventoryLoaded = false;
-    const funnelEvents: string[] = [];
+    const funnelEvents: { type: string; data: Record<string, unknown> }[] = [];
     server.use(
       http.post("*/api/chat/sessions", async ({ request }) => {
         createBody = await request.json();
@@ -284,8 +284,12 @@ describe("useChatSession — expert sessions", () => {
       }),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
       http.post(/log_raw_analytics/, async ({ request }) => {
-        const body = (await request.json()) as { type: string };
-        funnelEvents.push(body.type);
+        funnelEvents.push(
+          (await request.json()) as {
+            type: string;
+            data: Record<string, unknown>;
+          },
+        );
         return HttpResponse.json({ status: "ok" });
       }),
     );
@@ -307,7 +311,10 @@ describe("useChatSession — expert sessions", () => {
       });
     });
     await waitFor(() =>
-      expect(funnelEvents).toContain("expert_thread_created"),
+      expect(
+        funnelEvents.find((event) => event.type === "expert_thread_created")
+          ?.data,
+      ).toEqual({ expert_id: "expert-maria" }),
     );
   });
 
