@@ -158,21 +158,19 @@ the scheme and any non-default port. Docker cannot discover the host-side port
 mapping from inside the container. A mismatch breaks authentication actions,
 callbacks, cookies, and generated links.
 
-For a remote host, terminate TLS in a reverse proxy on the Docker host and keep
-the container bound to loopback:
+For LAN or remote access, keep AutoGPT bound to loopback and place it behind a
+TLS reverse proxy running outside the AutoGPT container. The proxy provides
+HTTPS and forwards requests to port `3000`; AutoGPT handles application routing
+internally.
+
+Set `AUTOGPT_PUBLIC_URL` to the browser-visible HTTPS origin, for example:
 
 ```dotenv
 AUTOGPT_PUBLIC_URL=https://agents.example.com
 ```
 
-Configure the reverse proxy to forward the HTTPS origin to
-`http://127.0.0.1:3000` with WebSocket and streaming support.
-
-For LAN access, bind the TLS reverse proxy to the LAN interface and keep the
-container published only on `127.0.0.1:3000`. Set `AUTOGPT_PUBLIC_URL` to the
-matching HTTPS origin, for example `https://agents.lan.example`; do not expose
-the container's plaintext port directly or leave the URL at the localhost
-default.
+Do not expose the container's plaintext port directly or leave the URL at the
+localhost default.
 
 ## Account policy
 
