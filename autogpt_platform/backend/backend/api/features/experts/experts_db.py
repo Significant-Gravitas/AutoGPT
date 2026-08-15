@@ -14,6 +14,7 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    decode_voice_preferences,
 )
 from backend.api.features.library import db as library_db
 from backend.data.db import prisma as db_client
@@ -64,6 +65,19 @@ def _to_model(
     latest_run: prisma.models.AgentGraphExecution | None = None,
     weekly_spend: int = 0,
 ) -> Expert:
+    """Translate the overloaded ``voicePreferences`` column safely.
+
+    Template rows store an internal ``{description, samples}`` JSON envelope
+    so the hire flow can present choices. Hired rows must store only the final
+    plain-text preference that is safe to render in prompts. Keep this branch
+    on ``isTemplate`` until those representations have separate columns.
+    """
+    if row.isTemplate:
+        voice_preferences, voice_samples = decode_voice_preferences(
+            row.voicePreferences
+        )
+    else:
+        voice_preferences, voice_samples = row.voicePreferences, []
     return Expert(
         id=row.id,
         name=row.name,
@@ -73,7 +87,8 @@ def _to_model(
         bio=row.bio,
         skills=row.skills or [],
         identity=row.identity,
-        voice_preferences=row.voicePreferences,
+        voice_preferences=voice_preferences,
+        voice_samples=voice_samples,
         boundaries=row.boundaries,
         protected_soul_rules=list(PROTECTED_SOUL_RULES),
         is_template=row.isTemplate,
@@ -222,6 +237,10 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     if existing is not None:
         return await _existing_hire_result(existing)
 
+    # Copy the plain description, never the template's sample envelope: a hire
+    # that skips the voice pick must not leave raw JSON in the prompt, and the
+    # pick (when made) overwrites this via the soul PATCH anyway.
+    template_voice, _ = decode_voice_preferences(template.voicePreferences)
     create_data: dict = {
         "ownerUserId": user_id,
         "name": name or template.name,
@@ -231,7 +250,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "bio": template.bio,
         "skills": template.skills or [],
         "identity": template.identity,
-        "voicePreferences": template.voicePreferences,
+        "voicePreferences": template_voice,
         "boundaries": template.boundaries,
         "sourceTemplateId": template.id,
     }
