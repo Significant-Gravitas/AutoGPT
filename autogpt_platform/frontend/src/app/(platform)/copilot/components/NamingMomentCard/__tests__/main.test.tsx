@@ -1,10 +1,13 @@
+import { getGetV2ListSessionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import { getGetV2ListSessionsMockHandler } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getListExpertsQueryKey } from "@/app/api/__generated__/endpoints/experts/experts";
 import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { ListSessionsResponse } from "@/app/api/__generated__/models/listSessionsResponse";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { useQueryClient } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { NamingMomentCard } from "../NamingMomentCard";
@@ -88,7 +91,7 @@ test("shows accurate copy for an existing user with one session and no experts",
   expect(
     await screen.findByRole("button", { name: "Give me a name" }),
   ).toBeTruthy();
-  expect(screen.getByText(/We've worked together before/)).toBeTruthy();
+  expect(screen.getByText(/We've started working together/)).toBeTruthy();
 });
 
 test("does not show when the user already has an expert", async () => {
@@ -173,29 +176,33 @@ test("an account change resets dismissal state for the current user", async () =
   ).toBeTruthy();
 });
 
-test("a dismissed user fires no experts or sessions requests on mount", async () => {
+test("a dismissed user leaves experts and sessions queries disabled", async () => {
   window.localStorage.setItem("autogpt:naming-moment-dismissed:user-1", "true");
-  let expertsRequests = 0;
-  let sessionsRequests = 0;
-  server.use(
-    getListExpertsMockHandler(() => {
-      expertsRequests += 1;
-      return [];
-    }),
-    getGetV2ListSessionsMockHandler(() => {
-      sessionsRequests += 1;
-      return { sessions: [aSession], total: 3 };
-    }),
-  );
 
-  render(<NamingMomentCard />);
+  function QueryClientProbe() {
+    const queryClient = useQueryClient();
+    const expertsState = queryClient.getQueryState(getListExpertsQueryKey());
+    const sessionsState = queryClient.getQueryState(
+      getGetV2ListSessionsQueryKey({ limit: 1 }),
+    );
+    return (
+      <div data-testid="query-states">
+        {`${expertsState?.status}:${expertsState?.fetchStatus}|${sessionsState?.status}:${sessionsState?.fetchStatus}`}
+      </div>
+    );
+  }
+
+  render(
+    <>
+      <NamingMomentCard />
+      <QueryClientProbe />
+    </>,
+  );
 
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Give me a name" })).toBeNull(),
   );
-  // The card unrenders synchronously either way; give a wrongly-enabled query
-  // enough event-loop turns to reach the mock server before asserting silence.
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  expect(expertsRequests).toBe(0);
-  expect(sessionsRequests).toBe(0);
+  expect(screen.getByTestId("query-states").textContent).toBe(
+    "pending:idle|pending:idle",
+  );
 });

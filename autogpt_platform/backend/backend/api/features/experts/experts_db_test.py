@@ -255,7 +255,10 @@ async def test_raise_expert_creates_blank_owned_expert(server: SpinTestServer):
     assert not raised.expert.is_template
     assert raised.expert.source_template_id is None
     assert raised.expert.name == "Otto"
-    assert "Otto" in raised.expert.identity
+    assert (
+        raised.expert.identity
+        == "I'm Otto, raised by you. I learn how you work and grow with you."
+    )
     assert raised.expert.workflows == []
     assert raised.first_job_installed is False
     assert raised.first_job_failure_reason is None

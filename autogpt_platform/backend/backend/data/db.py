@@ -2,7 +2,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import TypeVar, overload
+from typing import LiteralString, TypeVar, overload
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -120,6 +120,7 @@ async def _raw_with_schema(
     execute: bool = False,
     client: Prisma | None = None,
     model: type[RawQueryModelT] | None = None,
+    trailing_clause: LiteralString = "",
 ) -> list[dict] | list[RawQueryModelT] | int:
     """Internal: Execute raw SQL with proper schema handling.
 
@@ -138,7 +139,8 @@ async def _raw_with_schema(
         query_template: SQL query with {schema_prefix} and/or {schema} placeholders
         *args: Query parameters
         execute: If False, executes SELECT query. If True, executes INSERT/UPDATE/DELETE.
-        client: Optional Prisma client for transactions (only used when execute=True).
+        client: Optional Prisma client for transactions.
+        trailing_clause: Optional static SQL appended after schema formatting.
 
     Returns:
         - list[dict] if execute=False (query results)
@@ -157,6 +159,8 @@ async def _raw_with_schema(
         schema_prefix=schema_prefix,
         schema=schema,
     )
+    if trailing_clause:
+        formatted_query = f"{formatted_query.rstrip()}\n{trailing_clause}"
 
     import prisma as prisma_module
 
@@ -171,7 +175,12 @@ async def _raw_with_schema(
 
 
 @overload
-async def query_raw_with_schema(query_template: str, *args) -> list[dict]: ...
+async def query_raw_with_schema(
+    query_template: str,
+    *args,
+    client: Prisma | None = None,
+    trailing_clause: LiteralString = "",
+) -> list[dict]: ...
 
 
 @overload
@@ -179,6 +188,8 @@ async def query_raw_with_schema(
     query_template: str,
     *args,
     model: type[RawQueryModelT],
+    client: Prisma | None = None,
+    trailing_clause: LiteralString = "",
 ) -> list[RawQueryModelT]: ...
 
 
@@ -186,12 +197,16 @@ async def query_raw_with_schema(
     query_template: str,
     *args,
     model: type[RawQueryModelT] | None = None,
+    client: Prisma | None = None,
+    trailing_clause: LiteralString = "",
 ) -> list[dict] | list[RawQueryModelT]:
     """Execute raw SQL SELECT query with proper schema handling.
 
     Args:
         query_template: SQL query with {schema_prefix} and/or {schema} placeholders
         *args: Query parameters
+        client: Optional Prisma client for transactions
+        trailing_clause: Optional static SQL appended after schema formatting
 
     Returns:
         List of result rows as dictionaries
@@ -206,7 +221,9 @@ async def query_raw_with_schema(
         query_template,
         *args,
         execute=False,
+        client=client,
         model=model,
+        trailing_clause=trailing_clause,
     )  # type: ignore
 
 

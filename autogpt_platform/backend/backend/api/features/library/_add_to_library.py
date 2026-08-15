@@ -9,6 +9,7 @@ import logging
 
 import prisma.errors
 import prisma.models
+import prisma.types
 
 import backend.api.features.library.model as library_model
 import backend.data.graph as graph_db
@@ -131,9 +132,12 @@ async def _library_agent_payloads(
     user_id: str,
     settings_json: SafeJson,
     marketplace: dict[str, str | None],
-) -> tuple[dict, dict]:
+) -> tuple[
+    prisma.types.LibraryAgentCreateInput,
+    prisma.types.LibraryAgentUpdateInput,
+]:
     organization_id, team_id = await resolve_default_tenancy(user_id)
-    create_data = {
+    create_data: prisma.types.LibraryAgentCreateInput = {
         "User": {"connect": {"id": user_id}},
         "AgentGraph": {
             "connect": {
@@ -152,7 +156,7 @@ async def _library_agent_payloads(
         **({"organizationId": organization_id} if organization_id else {}),
         **({"Team": {"connect": {"id": team_id}}} if team_id else {}),
     }
-    update_data = {
+    update_data: prisma.types.LibraryAgentUpdateInput = {
         "isDeleted": False,
         "isArchived": False,
         "settings": settings_json,
@@ -177,8 +181,8 @@ async def _upsert_library_agent(
     tx: prisma.Prisma,
     graph_model: GraphModel,
     user_id: str,
-    create_data: dict,
-    update_data: dict,
+    create_data: prisma.types.LibraryAgentCreateInput,
+    update_data: prisma.types.LibraryAgentUpdateInput,
     include: dict,
 ) -> prisma.models.LibraryAgent:
     return await prisma.models.LibraryAgent.prisma(tx).upsert(
@@ -191,8 +195,8 @@ async def _upsert_library_agent(
 async def _create_or_restore_library_agent(
     graph_model: GraphModel,
     user_id: str,
-    create_data: dict,
-    update_data: dict,
+    create_data: prisma.types.LibraryAgentCreateInput,
+    update_data: prisma.types.LibraryAgentUpdateInput,
     include: dict,
 ) -> prisma.models.LibraryAgent:
     try:

@@ -3,20 +3,20 @@ import {
   useCreateRaisedExpert,
   type listExpertsResponse,
 } from "@/app/api/__generated__/endpoints/experts/experts";
-import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import type { VoicePickResult } from "@/components/organisms/VoicePicker/helpers";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import {
   buildTranscript,
   clearDraft,
-  getExpertLimitCode,
+  EMPTY_DRAFT,
+  getFirstJobFailureToast,
+  getRaiseErrorToast,
   loadDraft,
-  normalizeDraftForNaming,
   previousStep,
+  reconcileCreatedExpert,
   resolveVoicePreferences,
   saveDraft,
   voiceSummaryLabel,
@@ -32,7 +32,7 @@ export function useRaisePage() {
   const { mutateAsync: createRaisedExpert, isPending } =
     useCreateRaisedExpert();
   const [draft, setDraft] = useState<RaiseDraft>(() =>
-    isNaming ? normalizeDraftForNaming(loadDraft()) : loadDraft(),
+    isNaming ? EMPTY_DRAFT : loadDraft(),
   );
   const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
   const afterVoiceStep = isNaming ? "review" : "firstJob";
@@ -99,63 +99,23 @@ export function useRaisePage() {
           first_job_store_listing_version_id: draft.firstJob?.id ?? null,
         },
       });
-      const result = response.data as RaiseResult;
-      clearDraft();
-      if (draft.firstJob && !result.first_job_installed) {
-        if (result.first_job_failure_reason === "unavailable") {
-          toast({
-            title: `${draft.firstJob.name} is no longer available`,
-            description: `${result.expert.name} is ready. You can choose another first job from their page.`,
-            variant: "default",
-          });
-        } else {
-          toast({
-            title: `Couldn't set up ${result.expert.name}'s first job`,
-            description: `You can install "${draft.firstJob.name}" from their page anytime.`,
-            variant: "default",
-          });
-        }
+      if (response.status !== 200) {
+        throw new Error(`Unexpected raise response: ${response.status}`);
       }
+      const result = response.data;
+      clearDraft();
+      const firstJobToast = getFirstJobFailureToast(result, draft.firstJob);
+      if (firstJobToast) toast(firstJobToast);
       queryClient.setQueryData<listExpertsResponse>(
         getListExpertsQueryKey(),
-        (cached) =>
-          cached?.status === 200 &&
-          !cached.data.some(
-            (cachedExpert) => cachedExpert.id === result.expert.id,
-          )
-            ? { ...cached, data: [...cached.data, result.expert] }
-            : cached,
+        (cached) => reconcileCreatedExpert(cached, result.expert),
       );
       const kickoff = result.expert.workflows.length > 0 ? "&kickoff=1" : "";
       router.push(`/copilot?expertId=${result.expert.id}${kickoff}`);
     } catch (error) {
       submitLatch.current = false;
       setIsSubmissionLocked(false);
-      if (error instanceof ApiError && error.status === 409) {
-        if (
-          getExpertLimitCode(error.response) === "raised_expert_lifetime_limit"
-        ) {
-          toast({
-            title: "Expert creation limit reached",
-            description:
-              "This account has reached its lifetime raised-expert limit. Contact support if you need more capacity.",
-            variant: "destructive",
-          });
-          return;
-        }
-        toast({
-          title: "Your team is full",
-          description:
-            "You've reached the limit of active experts. Archive one from your team page to raise another.",
-          variant: "destructive",
-        });
-        return;
-      }
-      toast({
-        title: `Couldn't raise ${draft.name || "your expert"}`,
-        description: "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
+      toast(getRaiseErrorToast(error, draft.name));
     }
   }
 

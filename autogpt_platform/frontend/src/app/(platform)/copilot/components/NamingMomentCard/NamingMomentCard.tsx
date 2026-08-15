@@ -29,7 +29,7 @@ export function NamingMomentCard({ className }: Props) {
           <Icon icon={SparklesIcon} size={18} />
         </span>
         <Text variant="body-medium" className="text-foreground">
-          We&apos;ve worked together before. I think it&apos;s time I had a
+          We&apos;ve started working together. I think it&apos;s time I had a
           name.
         </Text>
       </div>

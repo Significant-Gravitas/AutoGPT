@@ -1,8 +1,13 @@
+import type { listExpertsResponse } from "@/app/api/__generated__/endpoints/experts/experts";
+import type { Expert } from "@/app/api/__generated__/models/expert";
+import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
+import type { ToastProps } from "@/components/molecules/Toast/use-toast";
 import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export type RaiseStep = "name" | "voice" | "firstJob" | "review";
 
@@ -99,17 +104,6 @@ export function previousStep(step: RaiseStep, isNaming = false): RaiseStep {
   return order[Math.max(index - 1, 0)];
 }
 
-// A draft abandoned mid-way through the regular flow can sit at the firstJob
-// step or carry a picked job; naming mode has no first-job step, so both are
-// dropped before the draft is reused.
-export function normalizeDraftForNaming(draft: RaiseDraft): RaiseDraft {
-  return {
-    ...draft,
-    firstJob: null,
-    step: draft.step === "firstJob" ? "review" : draft.step,
-  };
-}
-
 // The transcript is derived from the draft rather than accumulated, so
 // back transitions and refresh restores always rebuild it consistently.
 export function buildTranscript(
@@ -202,4 +196,63 @@ export function getExpertLimitCode(response: unknown): string | null {
     return null;
   }
   return typeof detail.code === "string" ? detail.code : null;
+}
+
+export function getFirstJobFailureToast(
+  result: RaiseResult,
+  firstJob: RaiseDraft["firstJob"],
+): ToastProps | null {
+  if (!firstJob || result.first_job_installed) return null;
+  if (result.first_job_failure_reason === "unavailable") {
+    return {
+      title: `${firstJob.name} is no longer available`,
+      description: `${result.expert.name} is ready. You can choose another first job from their page.`,
+      variant: "default",
+    };
+  }
+  return {
+    title: `Couldn't set up ${result.expert.name}'s first job`,
+    description: `You can install "${firstJob.name}" from their page anytime.`,
+    variant: "default",
+  };
+}
+
+export function reconcileCreatedExpert(
+  cached: listExpertsResponse | undefined,
+  expert: Expert,
+): listExpertsResponse | undefined {
+  if (
+    cached?.status !== 200 ||
+    cached.data.some((cachedExpert) => cachedExpert.id === expert.id)
+  ) {
+    return cached;
+  }
+  return { ...cached, data: [...cached.data, expert] };
+}
+
+export function getRaiseErrorToast(
+  error: unknown,
+  expertName: string,
+): ToastProps {
+  if (error instanceof ApiError && error.status === 409) {
+    if (getExpertLimitCode(error.response) === "raised_expert_lifetime_limit") {
+      return {
+        title: "Expert creation limit reached",
+        description:
+          "This account has reached its lifetime raised-expert limit. Contact support if you need more capacity.",
+        variant: "destructive",
+      };
+    }
+    return {
+      title: "Your team is full",
+      description:
+        "You've reached the limit of active experts. Archive one from your team page to raise another.",
+      variant: "destructive",
+    };
+  }
+  return {
+    title: `Couldn't raise ${expertName || "your expert"}`,
+    description: "Something went wrong. Please try again.",
+    variant: "destructive",
+  };
 }

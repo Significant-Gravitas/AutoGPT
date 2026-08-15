@@ -9,12 +9,76 @@ import prisma.fields
 import prisma.models
 import pytest
 
+import backend.data.db as data_db
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
 
 from . import db
 from . import model as library_model
+
+
+@pytest.mark.asyncio
+async def test_query_raw_with_schema_supports_transaction_and_static_trailer(mocker):
+    client = MagicMock()
+    client.query_raw = AsyncMock(return_value=[{"id": "version-1"}])
+    mocker.patch.object(data_db, "get_database_schema", return_value="platform")
+
+    result = await data_db.query_raw_with_schema(
+        'SELECT id FROM {schema_prefix}"StoreListingVersion" WHERE id = $1',
+        "version-1",
+        client=client,
+        trailing_clause="FOR SHARE",
+    )
+
+    assert result == [{"id": "version-1"}]
+    client.query_raw.assert_awaited_once_with(
+        'SELECT id FROM "platform"."StoreListingVersion" WHERE id = $1\nFOR SHARE',
+        "version-1",
+        model=None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("lock_rows", "expected_clause"),
+    [(False, ""), (True, "FOR SHARE OF slv, sl")],
+)
+async def test_store_listing_version_install_availability_uses_shared_query_helper(
+    mocker,
+    lock_rows: bool,
+    expected_clause: str,
+):
+    query_raw = mocker.patch.object(
+        db,
+        "query_raw_with_schema",
+        new_callable=AsyncMock,
+        return_value=[{"id": "version-1"}],
+    )
+    tx = MagicMock() if lock_rows else None
+
+    result = await db.is_store_listing_version_available_for_install(
+        "version-1",
+        tx=tx,
+        lock_rows=lock_rows,
+    )
+
+    assert result is True
+    query_raw.assert_awaited_once_with(
+        db.STORE_LISTING_VERSION_INSTALL_AVAILABILITY_QUERY,
+        "version-1",
+        client=tx,
+        trailing_clause=expected_clause,
+    )
+
+
+@pytest.mark.asyncio
+async def test_store_listing_version_install_lock_requires_transaction():
+    with pytest.raises(ValueError, match="requires a transaction"):
+        await db.is_store_listing_version_available_for_install(
+            "version-1",
+            lock_rows=True,
+        )
 
 
 @pytest.mark.asyncio

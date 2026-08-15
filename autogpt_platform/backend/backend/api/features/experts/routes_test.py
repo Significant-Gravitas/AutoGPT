@@ -244,6 +244,26 @@ def test_create_raised_expert_returns_expert(
     )
 
 
+def test_create_raised_expert_trims_name_before_forwarding(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-1", name="Otto"),
+            first_job_installed=False,
+            first_job_failure_reason=None,
+        ),
+    )
+
+    response = client.post("/experts/raise", json={"name": "  Otto  "})
+
+    assert response.status_code == 200
+    mock_create.assert_awaited_once_with(test_user_id, "Otto", None, None, None)
+
+
 def test_create_raised_expert_passes_role_voice_and_first_job(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,

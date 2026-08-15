@@ -577,6 +577,30 @@ test("surfaces a selected job detail failure", async () => {
   expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();
 });
 
+test("from=naming starts blank instead of restoring a regular raise draft", async () => {
+  window.sessionStorage.setItem(
+    "raise-expert-draft",
+    JSON.stringify({
+      step: "review",
+      name: "Nova",
+      voicePreferences: "Warm and detailed.",
+      voiceLabel: "Warm and detailed",
+      firstJob: { id: "listing-version-42", name: "SEO Blog Writer" },
+    }),
+  );
+  searchParamsMock.current = new URLSearchParams("from=naming");
+
+  renderRaise();
+
+  expect(await screen.findByText("Let's make it official.")).toBeTruthy();
+  const nameInput = (await screen.findByPlaceholderText(
+    "Type a name…",
+  )) as HTMLInputElement;
+  expect(nameInput.value).toBe("");
+  expect(screen.queryByText("Warm and detailed")).toBeNull();
+  expect(screen.queryByText("SEO Blog Writer")).toBeNull();
+});
+
 test("from=naming shows the naming opener and skips the first job step", async () => {
   searchParamsMock.current = new URLSearchParams("from=naming");
   let captured: unknown = null;

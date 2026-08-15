@@ -17,7 +17,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.data.db import get_database_schema, transaction
+from backend.data.db import query_raw_with_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.graph import GraphSettings
 from backend.data.includes import (
@@ -1188,6 +1188,19 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
     )
 
 
+STORE_LISTING_VERSION_INSTALL_AVAILABILITY_QUERY = """
+SELECT slv.id
+FROM {schema_prefix}"StoreListingVersion" AS slv
+JOIN {schema_prefix}"StoreListing" AS sl
+  ON sl.id = slv."storeListingId"
+WHERE slv.id = $1
+  AND slv."isDeleted" = false
+  AND slv."isAvailable" = true
+  AND slv."submissionStatus" = 'APPROVED'
+  AND sl."isDeleted" = false
+"""
+
+
 async def is_store_listing_version_available_for_install(
     store_listing_version_id: str,
     *,
@@ -1203,28 +1216,13 @@ async def is_store_listing_version_available_for_install(
     if lock_rows and tx is None:
         raise ValueError("lock_rows requires a transaction client")
 
-    schema = get_database_schema()
-    schema_prefix = f'"{schema}".' if schema != "public" else ""
-    lock_clause = "FOR SHARE OF slv, sl" if lock_rows else ""
-    query = cast(
-        LiteralString,
-        """
-        SELECT slv.id
-        FROM {schema_prefix}"StoreListingVersion" AS slv
-        JOIN {schema_prefix}"StoreListing" AS sl
-          ON sl.id = slv."storeListingId"
-        WHERE slv.id = $1
-          AND slv."isDeleted" = false
-          AND slv."isAvailable" = true
-          AND slv."submissionStatus" = 'APPROVED'
-          AND sl."isDeleted" = false
-        {lock_clause}
-        """.format(
-            schema_prefix=schema_prefix, lock_clause=lock_clause
-        ),
+    lock_clause: LiteralString = "FOR SHARE OF slv, sl" if lock_rows else ""
+    rows = await query_raw_with_schema(
+        STORE_LISTING_VERSION_INSTALL_AVAILABILITY_QUERY,
+        store_listing_version_id,
+        client=tx,
+        trailing_clause=lock_clause,
     )
-    client = tx if tx is not None else prisma.get_client()
-    rows = await client.query_raw(query, store_listing_version_id)
     return bool(rows)
 
 

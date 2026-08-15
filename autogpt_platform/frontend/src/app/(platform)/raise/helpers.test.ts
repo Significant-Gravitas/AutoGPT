@@ -1,10 +1,14 @@
+import type { Expert } from "@/app/api/__generated__/models/expert";
+import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { describe, expect, test } from "vitest";
 import {
   buildTranscript,
   EMPTY_DRAFT,
   getExpertLimitCode,
-  normalizeDraftForNaming,
+  getFirstJobFailureToast,
+  getRaiseErrorToast,
   previousStep,
   RAISE_PROMPTS,
   raisedIdentity,
@@ -18,6 +22,24 @@ const samples: VoiceSample[] = [
   { label: "Direct", text: "Do this next." },
   { label: "Warm", text: "Let's work through this together." },
 ];
+
+const raisedExpert: Expert = {
+  id: "raised-1",
+  name: "Otto",
+  avatar_url: null,
+  role: "",
+  tagline: null,
+  bio: null,
+  skills: [],
+  identity: "I'm Otto, raised by you. I learn how you work and grow with you.",
+  voice_preferences: "",
+  boundaries: "",
+  protected_soul_rules: [],
+  is_template: false,
+  source_template_id: null,
+  is_archived: false,
+  workflows: [],
+};
 
 describe("raise helpers", () => {
   test("labels preset and custom voice choices", () => {
@@ -55,6 +77,47 @@ describe("raise helpers", () => {
     expect(getExpertLimitCode({ detail: "legacy error" })).toBeNull();
     expect(getExpertLimitCode(null)).toBeNull();
   });
+
+  test("describes an unavailable first job as partial success", () => {
+    const result: RaiseResult = {
+      expert: raisedExpert,
+      first_job_installed: false,
+      first_job_failure_reason: "unavailable",
+    };
+
+    expect(
+      getFirstJobFailureToast(result, {
+        id: "listing-1",
+        name: "SEO Blog Writer",
+      }),
+    ).toMatchObject({
+      title: "SEO Blog Writer is no longer available",
+      description:
+        "Otto is ready. You can choose another first job from their page.",
+    });
+  });
+
+  test("maps lifetime, active-team, and generic submission errors", () => {
+    expect(
+      getRaiseErrorToast(
+        new ApiError("conflict", 409, {
+          detail: { code: "raised_expert_lifetime_limit" },
+        }),
+        "Otto",
+      ).title,
+    ).toBe("Expert creation limit reached");
+    expect(
+      getRaiseErrorToast(
+        new ApiError("conflict", 409, {
+          detail: { code: "active_expert_limit" },
+        }),
+        "Otto",
+      ).title,
+    ).toBe("Your team is full");
+    expect(getRaiseErrorToast(new Error("offline"), "Otto").title).toBe(
+      "Couldn't raise Otto",
+    );
+  });
 });
 
 const namingDraft: RaiseDraft = {
@@ -63,39 +126,6 @@ const namingDraft: RaiseDraft = {
   voiceLabel: "Concise and direct",
   step: "review",
 };
-
-describe("normalizeDraftForNaming", () => {
-  test("drops a leftover first job from an abandoned regular draft", () => {
-    const normalized = normalizeDraftForNaming({
-      ...EMPTY_DRAFT,
-      name: "Otto",
-      firstJob: { id: "listing-1", name: "SEO Blog Writer" },
-      step: "review",
-    });
-
-    expect(normalized.firstJob).toBeNull();
-    expect(normalized.step).toBe("review");
-  });
-
-  test("rewrites the firstJob step to review since naming has no job step", () => {
-    const normalized = normalizeDraftForNaming({
-      ...EMPTY_DRAFT,
-      name: "Otto",
-      step: "firstJob",
-    });
-
-    expect(normalized.step).toBe("review");
-  });
-
-  test("leaves earlier steps where they are", () => {
-    expect(normalizeDraftForNaming({ ...EMPTY_DRAFT, step: "name" }).step).toBe(
-      "name",
-    );
-    expect(
-      normalizeDraftForNaming({ ...EMPTY_DRAFT, step: "voice" }).step,
-    ).toBe("voice");
-  });
-});
 
 describe("buildTranscript in naming mode", () => {
   test("opens with the naming opener instead of the introduction", () => {
