@@ -2,6 +2,12 @@
 
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipPortal,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import {
   SidebarMenuSub,
@@ -73,7 +79,8 @@ interface Props {
 }
 
 function TeamMemberRow({ member }: Props) {
-  const { expert, status } = member;
+  const { expert, status, detail } = member;
+  const label = getPresenceLabel(status);
 
   return (
     <SidebarMenuSubItem>
@@ -85,14 +92,25 @@ function TeamMemberRow({ member }: Props) {
             size={20}
           />
           <span className="truncate">{expert.name}</span>
-          <span
-            role="img"
-            aria-label={getPresenceLabel(status)}
-            className={cn(
-              "ml-auto size-2 shrink-0 rounded-full",
-              getPresenceColor(status),
-            )}
-          />
+          <Tooltip>
+            {/* asChild keeps the trigger a span: a button inside the row's
+                anchor would be invalid markup and swallow the row's click. */}
+            <TooltipTrigger asChild>
+              <span
+                role="img"
+                aria-label={label}
+                className={cn(
+                  "ml-auto size-2 shrink-0 rounded-full",
+                  getPresenceColor(status),
+                )}
+              />
+            </TooltipTrigger>
+            {/* Portalled: the sub-button is overflow-hidden and would
+                otherwise clip the tooltip down to a sliver. */}
+            <TooltipPortal>
+              <TooltipContent side="right">{detail || label}</TooltipContent>
+            </TooltipPortal>
+          </Tooltip>
         </Link>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
