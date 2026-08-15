@@ -18,6 +18,7 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RunLabel,
 )
 from backend.api.features.library import db as library_db
 from backend.blocks import get_output_block_ids
@@ -42,6 +43,10 @@ logger = logging.getLogger(__name__)
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
 _MAX_EXPERT_RUNS = 20
+_INPUT_PREVIEW_FIELDS = 2
+_INPUT_PREVIEW_MAX_LENGTH = 120
+_SENSITIVE_INPUT_MARKERS = ("key", "token", "secret", "password", "credential")
+_EMPTY_RUN_LABEL = RunLabel()
 
 
 class ExpertTemplateNotFoundError(Exception):
@@ -212,6 +217,9 @@ async def list_expert_runs(
     )
     reviewing = {review.graphExecId for review in waiting_reviews}
     classified = await _classify_run_outputs(execution_ids)
+    fallbacks = await _fallback_run_labels(
+        user_id, [execution.agentGraphId for execution in executions]
+    )
 
     return [
         _to_expert_run(
@@ -219,9 +227,47 @@ async def list_expert_runs(
             workflow_by_graph.get(execution.agentGraphId),
             *classified.get(execution.id, ("unknown", None)),
             needs_review=execution.id in reviewing,
+            fallback=fallbacks.get(execution.agentGraphId, _EMPTY_RUN_LABEL),
         )
         for execution in executions
     ]
+
+
+async def _fallback_run_labels(
+    user_id: str, graph_ids: list[str]
+) -> dict[str, RunLabel]:
+    """Name + deep-link target for runs the expert's workflow rows can't label.
+
+    Only marketplace-installed workflows carry a ``StoreListingVersion``, and
+    a run of a graph the expert never "installed" resolves to no workflow row
+    at all — both would otherwise render as the ``DEFAULT_AGENT_NAME``
+    placeholder with a dead link. The library entry the user already sees in
+    chat and schedules is the right label; the graph name is the last resort.
+    """
+    unique_ids = list(set(graph_ids))
+    labels = {
+        ref.graph_id: RunLabel(name=ref.name or None, library_agent_id=ref.id)
+        for ref in await library_db.get_library_agent_refs_by_graph_ids(
+            user_id, unique_ids
+        )
+    }
+    missing = [
+        graph_id
+        for graph_id in unique_ids
+        if labels.get(graph_id, _EMPTY_RUN_LABEL).name is None
+    ]
+    if not missing:
+        return labels
+    graphs = await prisma.models.AgentGraph.prisma().find_many(
+        where={"id": {"in": missing}},
+        order={"version": "asc"},
+    )
+    # Newest version wins: the ascending order means later rows overwrite.
+    for graph in graphs:
+        if graph.name:
+            existing = labels.get(graph.id, _EMPTY_RUN_LABEL)
+            labels[graph.id] = existing.model_copy(update={"name": graph.name})
+    return labels
 
 
 async def _classify_run_outputs(
@@ -289,13 +335,19 @@ def _to_expert_run(
     output_key: str | None,
     *,
     needs_review: bool,
+    fallback: RunLabel,
 ) -> ExpertRun:
     listing = workflow.StoreListingVersion if workflow else None
-    library_agent_id = workflow.libraryAgentId if workflow else None
+    library_agent_id = (
+        workflow.libraryAgentId if workflow else None
+    ) or fallback.library_agent_id
     return ExpertRun(
         execution_id=execution.id,
         graph_id=execution.agentGraphId,
-        agent_name=listing.name if listing else DEFAULT_AGENT_NAME,
+        agent_name=(listing.name if listing else None)
+        or fallback.name
+        or DEFAULT_AGENT_NAME,
+        input_preview=_input_preview(execution.inputs),
         library_agent_id=library_agent_id,
         status=cast(ExpertRunStatus, str(execution.executionStatus).lower()),
         output_type=output_type,
@@ -304,6 +356,33 @@ def _to_expert_run(
         started_at=execution.startedAt,
         ended_at=execution.endedAt,
         link=run_link(library_agent_id, execution.id),
+    )
+
+
+def _input_preview(inputs: JsonValue) -> str | None:
+    """One line of "what was this run about", for rows that would otherwise
+    be indistinguishable repeats of the same workflow name.
+
+    Scalars only — a nested object reads as noise at this size — and keys
+    that look credential-bearing are skipped so a hand-typed token in a
+    graph input never lands on the Work surface.
+    """
+    if not isinstance(inputs, dict):
+        return None
+    parts = [
+        f"{key}: {value}"
+        for key, value in inputs.items()
+        if isinstance(value, (str, int, float, bool))
+        and str(value).strip()
+        and not any(marker in key.lower() for marker in _SENSITIVE_INPUT_MARKERS)
+    ][:_INPUT_PREVIEW_FIELDS]
+    if not parts:
+        return None
+    preview = " · ".join(parts)
+    return (
+        f"{preview[: _INPUT_PREVIEW_MAX_LENGTH - 1]}…"
+        if len(preview) > _INPUT_PREVIEW_MAX_LENGTH
+        else preview
     )
 
 

@@ -110,6 +110,11 @@ function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
         <p className="truncate text-sm font-medium text-zinc-900">
           {run.agent_name}
         </p>
+        {run.input_preview ? (
+          <p className="mt-0.5 truncate text-xs text-zinc-500">
+            {run.input_preview}
+          </p>
+        ) : null}
         <div className="mt-1 flex items-center gap-2">
           <RunStatusBadge status={run.status} />
           {run.needs_review && run.status.toUpperCase() !== "REVIEW" ? (
