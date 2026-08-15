@@ -34,7 +34,10 @@ from backend.executor.scheduler import (
     _self_delete_copilot_turn_schedule,
     reconcile_stripe_tiers,
 )
-from backend.util.exceptions import ExpertNotFoundError
+from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
+)
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
 
@@ -326,6 +329,36 @@ async def test_fresh_expert_one_shot_retries_when_lookup_is_unavailable():
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     mock_create_session.assert_not_awaited()
+    mock_reschedule.assert_awaited_once_with(args)
+
+
+@pytest.mark.asyncio
+async def test_fresh_expert_one_shot_retries_when_workspace_is_unavailable():
+    args = _args(session_id=None, expert_id="expert-1")
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock(
+        side_effect=ExpertPrivateTenancyNotFoundError("expert-1")
+    )
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=mock_schedule_turn),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="active"),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session",
+            new=mock_create_session,
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
     mock_reschedule.assert_awaited_once_with(args)
 
 
@@ -854,6 +887,37 @@ async def test_execute_graph_quietly_skips_unavailable_expert(caplog):
 
     mock_db.increment_onboarding_runs.assert_not_awaited()
     assert "Skipping scheduled expert run" in caplog.text
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_retries_missing_workspace_on_next_tick(caplog):
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+        expert_id="expert-1",
+    )
+    mock_add = AsyncMock(side_effect=ExpertPrivateTenancyNotFoundError("expert-1"))
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+        caplog.at_level(logging.WARNING, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    mock_db.increment_onboarding_runs.assert_not_awaited()
+    assert "next schedule tick will retry" in caplog.text
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 

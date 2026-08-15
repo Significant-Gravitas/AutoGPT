@@ -58,6 +58,7 @@ from backend.util.clients import (
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
     ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
     ExpertRunPausedError,
     GraphNotFoundError,
     GraphNotInLibraryError,
@@ -232,6 +233,12 @@ async def _execute_graph(**kwargs):
         # Expected while an expert is paused (budget/archive): skip quietly;
         # the schedule stays registered for one-click resume.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except ExpertPrivateTenancyNotFoundError:
+        # Graph schedules are recurring, so the next cron tick is the retry.
+        logger.warning(
+            f"Skipping scheduled expert run for graph #{args.graph_id}: "
+            "expert workspace unavailable; next schedule tick will retry"
+        )
     except ExpertNotFoundError:
         # The schedule can outlive an archived, deleted, or no-longer-private
         # expert. Keep it registered for recovery without logging an error on
@@ -398,6 +405,13 @@ async def _execute_copilot_turn(**kwargs):
             f"Dispatched scheduled copilot turn for session "
             f"{target_session_id[:12]} (took {elapsed:.2f}s)"
         )
+    except ExpertPrivateTenancyNotFoundError:
+        logger.warning(
+            f"Scheduled copilot turn for session {_session_id_label(args)} "
+            "skipped because the expert workspace is unavailable"
+        )
+        if args.run_at is not None:
+            await _reschedule_one_shot_after_expert_unavailable(args)
     except ConcurrentTurnLimitError as e:
         # User is at their per-user concurrency cap. For cron schedules the
         # next tick retries automatically; for one-shot (run_at) schedules
