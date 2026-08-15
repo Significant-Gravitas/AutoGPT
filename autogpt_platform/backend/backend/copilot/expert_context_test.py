@@ -164,7 +164,9 @@ class TestBuildExpertIdentitySuffix:
                 match="start a new chat",
             ),
         ):
-            await build_expert_identity_suffix("user-1", "exp-1")
+            await build_expert_identity_suffix(
+                "user-1", "exp-1", organization_id="personal-org", team_id=None
+            )
 
     @pytest.mark.asyncio
     async def test_transient_lookup_error_is_retried_once(self):
