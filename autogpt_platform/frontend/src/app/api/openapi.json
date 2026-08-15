@@ -3353,7 +3353,8 @@
                     {
                       "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
                     },
-                    { "$ref": "#/components/schemas/TodoWriteResponse" }
+                    { "$ref": "#/components/schemas/TodoWriteResponse" },
+                    { "$ref": "#/components/schemas/ExpertSoulUpdatedResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -17797,6 +17798,37 @@
         "required": ["name", "identity", "voice_preferences", "boundaries"],
         "title": "ExpertSoulUpdate"
       },
+      "ExpertSoulUpdatedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "expert_soul_updated"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "applied": {
+            "type": "boolean",
+            "title": "Applied",
+            "default": false
+          },
+          "changes": {
+            "items": { "$ref": "#/components/schemas/SoulFieldChange" },
+            "type": "array",
+            "title": "Changes"
+          },
+          "confirmation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Confirmation Id"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ExpertSoulUpdatedResponse",
+        "description": "Response for the two-step Soul edit tools.\n\nCarries the diff so the model must surface exactly what changed. ``applied``\nis False for the update_expert_soul preview (nothing written yet; the\none-time ``confirmation_id`` references the stored proposal) and True once\nconfirm_expert_soul_update saves the edit."
+      },
       "ExpertWorkflowRef": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -22847,7 +22879,8 @@
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
-          "skill_list"
+          "skill_list",
+          "expert_soul_updated"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -23749,6 +23782,21 @@
         "required": ["id", "name", "pinned_version"],
         "title": "SkippedWebhookPreset",
         "description": "A webhook preset that was left pinned to its old version because the\nnewly activated version swaps or reconfigures the trigger block. The user\nneeds to reconfigure the trigger on the new version for it to fire."
+      },
+      "SoulFieldChange": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": ["identity", "voice_preferences", "boundaries"],
+            "title": "Field"
+          },
+          "before": { "type": "string", "title": "Before" },
+          "after": { "type": "string", "title": "After" }
+        },
+        "type": "object",
+        "required": ["field", "before", "after"],
+        "title": "SoulFieldChange",
+        "description": "One field's before/after values for an expert soul edit."
       },
       "Stats": {
         "properties": {
