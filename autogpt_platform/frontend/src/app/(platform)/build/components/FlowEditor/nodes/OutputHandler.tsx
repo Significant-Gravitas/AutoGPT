@@ -22,7 +22,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-const RESERVED_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+const RESERVED_PATH_SEGMENTS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 
 export const OutputHandler = ({
   outputSchema,
