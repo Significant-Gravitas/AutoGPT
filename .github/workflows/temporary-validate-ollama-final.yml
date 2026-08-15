@@ -44,7 +44,7 @@ jobs:
           poetry run pyright --pythonversion 3.12
           poetry run pyright --pythonversion 3.13
       - name: Run focused no-auth credential tests
-        run: poetry run pytest backend/executor/no_auth_credentials_test.py -q
+        run: poetry run pytest --confcutdir=backend/executor backend/executor/no_auth_credentials_test.py -q
       - name: Verify block documentation sync
         run: poetry run python scripts/generate_block_docs.py --check
 
