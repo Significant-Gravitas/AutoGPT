@@ -45,8 +45,7 @@ export const OutputHandler = ({
     const phantomHandles = edges
       .filter(
         (edge) =>
-          edge.source === nodeId &&
-          edge.sourceHandle?.includes("_#_") === true,
+          edge.source === nodeId && edge.sourceHandle?.includes("_#_") === true,
       )
       .map((edge) => edge.sourceHandle!);
 
@@ -68,7 +67,10 @@ export const OutputHandler = ({
 
         if (i < parts.length - 1) {
           if (
-            !Object.prototype.hasOwnProperty.call(current[part], "properties") ||
+            !Object.prototype.hasOwnProperty.call(
+              current[part],
+              "properties",
+            ) ||
             !current[part].properties
           ) {
             current[part].properties = {};
