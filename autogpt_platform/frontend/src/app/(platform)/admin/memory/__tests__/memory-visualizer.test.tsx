@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { useState } from "react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -45,12 +45,12 @@ vi.mock("react-force-graph-2d", () => ({
 import { MemoryVisualizer } from "../components/MemoryVisualizer";
 import { useMemoryVisualizer } from "../components/useMemoryVisualizer";
 
-function makeExpert(id: string, name: string): Expert {
+function makeExpert(id: string, name: string, role = "Researcher"): Expert {
   return {
     id,
     name,
     avatar_url: null,
-    role: "Researcher",
+    role,
     tagline: null,
     bio: null,
     skills: [],
@@ -249,7 +249,9 @@ describe("MemoryVisualizer — memory scope", () => {
       expect((selector as HTMLButtonElement).disabled).toBe(false);
     });
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Ada — Researcher/ }),
+    );
 
     expect(
       await screen.findByText("Expert memory is read-only."),
@@ -302,7 +304,9 @@ describe("MemoryVisualizer — memory scope", () => {
 
     const selector = screen.getByRole("combobox", { name: "Memory scope" });
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Ada — Researcher/ }),
+    );
     await screen.findByText("Expert memory is read-only.");
 
     fireEvent.click(selector);
@@ -367,7 +371,9 @@ describe("MemoryVisualizer — memory scope", () => {
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Ada — Researcher/ }),
+    );
     await screen.findByText("Expert memory is read-only.");
 
     experts = [];
@@ -402,7 +408,9 @@ describe("MemoryVisualizer — memory scope", () => {
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Ada — Researcher/ }),
+    );
     await screen.findByText("Expert memory is read-only.");
     toastMock.mockClear();
 
@@ -430,6 +438,47 @@ describe("MemoryVisualizer — memory scope", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
+  });
+
+  test("announces expert loading separately from an empty roster", async () => {
+    setupBaseHandlers();
+    server.use(
+      http.get("*/api/experts", async () => {
+        await delay(100);
+        return HttpResponse.json([]);
+      }),
+    );
+
+    render(<MemoryVisualizer />);
+
+    expect(screen.getByText("Loading experts…")).toBeDefined();
+    await screen.findByText("No experts for this account.");
+  });
+
+  test("disambiguates experts that share a display name", async () => {
+    setupBaseHandlers([
+      makeExpert("ada-one-1234", "Ada", "Researcher"),
+      makeExpert("ada-two-5678", "Ada", "Writer"),
+    ]);
+
+    render(<MemoryVisualizer />);
+
+    const selector = await screen.findByRole("combobox", {
+      name: "Memory scope",
+    });
+    await waitFor(() =>
+      expect((selector as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(selector);
+
+    expect(
+      await screen.findByRole("option", {
+        name: "Ada — Researcher (ada-one-)",
+      }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("option", { name: "Ada — Writer (ada-two-)" }),
+    ).toBeDefined();
   });
 });
 
@@ -552,7 +601,9 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Ada — Researcher/ }),
+    );
     await waitFor(() =>
       expect(graphRequests.get("expert-ada:true:true")).toBe(1),
     );

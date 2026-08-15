@@ -34,7 +34,7 @@ from backend.copilot.dream.job_status import (
 from backend.copilot.dream.nightly_batch import NightlyBatchResult
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
-from backend.copilot.graphiti.client import derive_group_id, derive_memory_group_id
+from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.util.clients import get_scheduler_client
@@ -229,16 +229,46 @@ def _audit_cross_user_access(
     caller_email = jwt_payload.get("email") or jwt_payload.get("user_metadata", {}).get(
         "email", ""
     )
-    memory_scope = (
-        f"expert {expert_id} (group {group_id})"
-        if expert_id is not None
-        else f"AutoPilot (group {group_id})"
-    )
+    memory_scope = f"expert {expert_id}" if expert_id is not None else "AutoPilot"
+    if group_id is not None:
+        memory_scope = f"{memory_scope} (group {group_id})"
     logger.info(
         f"Admin memory access: {caller_id} ({caller_email}) "
         f"acting on user {target_id}, scope {memory_scope}, "
         f"for {request.method} {request.url}"
     )
+
+
+async def _resolve_and_audit_memory_scope(
+    *,
+    request: Request,
+    caller_id: str,
+    target_id: str,
+    jwt_payload: dict,
+    expert_id: str | None = None,
+) -> tuple[str, str | None]:
+    """Resolve an authorized scope while auditing successful and failed attempts."""
+    try:
+        group_id, resolved_expert_id = await _resolve_memory_scope(target_id, expert_id)
+    except Exception:
+        _audit_cross_user_access(
+            request=request,
+            caller_id=caller_id,
+            target_id=target_id,
+            jwt_payload=jwt_payload,
+            expert_id=expert_id,
+        )
+        raise
+
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target_id,
+        jwt_payload=jwt_payload,
+        expert_id=resolved_expert_id,
+        group_id=group_id,
+    )
+    return group_id, resolved_expert_id
 
 
 async def _mark_schedule_failed(kind: JobKind, job_id: str, exc: Exception) -> None:
@@ -324,14 +354,12 @@ async def get_memory_overview(
     expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
 ) -> MemoryOverview:
     target = _resolve_user_id(user_id, caller_id)
-    group_id, resolved_expert_id = await _resolve_memory_scope(target, expert_id)
-    _audit_cross_user_access(
+    group_id, resolved_expert_id = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
-        expert_id=resolved_expert_id,
-        group_id=group_id,
+        expert_id=expert_id,
     )
 
     driver = _open_driver(group_id)
@@ -369,16 +397,12 @@ async def list_entities(
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
 ) -> EntityListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    group_id, _ = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     driver = _open_driver(group_id)
     try:
@@ -424,16 +448,12 @@ async def list_facts(
     scope: Annotated[str | None, Query()] = None,
 ) -> FactListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    group_id, _ = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     # Build optional filters
     where_clauses = ["e.group_id = $g"]
@@ -502,16 +522,12 @@ async def list_communities(
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
 ) -> CommunityListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    group_id, _ = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     driver = _open_driver(group_id)
     try:
@@ -575,14 +591,12 @@ async def get_graph(
     typical inspector view.
     """
     target = _resolve_user_id(user_id, caller_id)
-    group_id, resolved_expert_id = await _resolve_memory_scope(target, expert_id)
-    _audit_cross_user_access(
+    group_id, resolved_expert_id = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
-        expert_id=resolved_expert_id,
-        group_id=group_id,
+        expert_id=expert_id,
     )
 
     # Build the labels-of-interest list for the node queries — one
@@ -770,16 +784,12 @@ async def trigger_dream_pass(
     nightly fan-out use ``POST /{user_id}/nightly``.
     """
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        derive_group_id(target)  # validate before kicking off
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     job_id = str(_uuid.uuid4())
     status = await write_initial_status(
@@ -855,16 +865,12 @@ async def trigger_ratification_pass(
     without the full nightly fan-out.
     """
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     try:
         result = await get_scheduler_client().execute_ratification_pass_now(
@@ -902,16 +908,12 @@ async def trigger_nightly_batch(
     for cost-log attribution.
     """
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     job_id = str(_uuid.uuid4())
     status = await write_initial_status(kind="nightly", job_id=job_id, user_id=target)
@@ -1000,16 +1002,12 @@ async def rebuild_communities(
     """
     _ = force  # not yet plumbed through the with_status wrapper
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
     )
-    try:
-        derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     job_id = str(_uuid.uuid4())
     status = await write_initial_status(kind="rebuild", job_id=job_id, user_id=target)

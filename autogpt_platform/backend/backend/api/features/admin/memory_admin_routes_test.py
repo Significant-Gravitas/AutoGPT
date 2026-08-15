@@ -252,9 +252,14 @@ class TestExpertMemoryScope:
         get_expert.assert_not_awaited()
         open_driver.assert_not_called()
 
-    def test_raw_group_id_query_cannot_select_memory_scope(self) -> None:
-        driver = _driver_returning(
-            [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    def test_raw_group_id_query_cannot_select_memory_scope(self, endpoint: str) -> None:
+        driver = (
+            _driver_returning(
+                [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+            )
+            if endpoint == "overview"
+            else _driver_returning([], [], [])
         )
         with (
             patch(
@@ -264,7 +269,8 @@ class TestExpertMemoryScope:
             patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
         ):
             resp = client.get(
-                "/admin/memory/abc/overview?group_id=expert_attacker_controlled"
+                f"/admin/memory/abc/{endpoint}",
+                params={"group_id": "expert_attacker_controlled"},
             )
 
         assert resp.status_code == 200
@@ -272,6 +278,76 @@ class TestExpertMemoryScope:
         assert resp.json()["group_id"] == "user_abc"
         get_expert.assert_not_awaited()
         open_driver.assert_called_once_with("user_abc")
+
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    def test_max_length_expert_id_reaches_owned_scope_lookup(
+        self, endpoint: str
+    ) -> None:
+        expert_id = "x" * 128
+        driver = (
+            _driver_returning(
+                [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+            )
+            if endpoint == "overview"
+            else _driver_returning([], [], [])
+        )
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+        ):
+            resp = client.get(
+                f"/admin/memory/abc/{endpoint}", params={"expert_id": expert_id}
+            )
+
+        assert resp.status_code == 200
+        get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    def test_failed_cross_user_expert_scope_is_audited(
+        self, mock_jwt_admin, endpoint: str
+    ) -> None:
+        expert_id = "missing-expert"
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get(
+                f"/admin/memory/abc/{endpoint}", params={"expert_id": expert_id}
+            )
+
+        assert resp.status_code == 404
+        open_driver.assert_not_called()
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert f"scope expert {expert_id}" in message
+        assert "group None" not in message
+
+    def test_failed_cross_user_autopilot_scope_is_audited(self, mock_jwt_admin) -> None:
+        with (
+            patch(
+                f"{_MOCK_MODULE}.derive_memory_group_id",
+                side_effect=ValueError("invalid memory owner"),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get("/admin/memory/abc/overview")
+
+        assert resp.status_code == 400
+        open_driver.assert_not_called()
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert "scope AutoPilot" in message
+        assert "group None" not in message
 
     @pytest.mark.parametrize("endpoint", ["overview", "graph"])
     def test_non_admin_expert_request_never_reaches_lookup_or_driver(
@@ -348,6 +424,21 @@ class TestListEntities:
         assert len(items) == 2
         assert items[0]["name"] == "Alice"
         assert items[1]["summary"] is None
+
+    def test_cross_user_audit_includes_autopilot_group(self, mock_jwt_admin) -> None:
+        driver = _driver_returning([])
+        with (
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get("/admin/memory/abc/entities")
+
+        assert resp.status_code == 200
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert "AutoPilot (group user_abc)" in message
+        assert "group None" not in message
 
     def test_limit_above_cap_rejected_with_422(self) -> None:
         """The entities route caps ``limit`` at 10000 via FastAPI Query

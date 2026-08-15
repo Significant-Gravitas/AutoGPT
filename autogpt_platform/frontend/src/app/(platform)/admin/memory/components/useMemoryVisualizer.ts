@@ -18,24 +18,13 @@ import {
   usePostV2TriggerNightlyBatch,
   usePostV2TriggerRatificationPass,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import type { CommunityRebuildJobStatus } from "@/app/api/__generated__/models/communityRebuildJobStatus";
-import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStatus";
 import type { DreamJobStatusState } from "@/app/api/__generated__/models/dreamJobStatusState";
 import type { GraphResponse } from "@/app/api/__generated__/models/graphResponse";
 import type { JobTriggerResponse } from "@/app/api/__generated__/models/jobTriggerResponse";
 import type { MemoryOverview } from "@/app/api/__generated__/models/memoryOverview";
-import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
 import type { RatificationResult } from "@/app/api/__generated__/models/ratificationResult";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-
-// Polling envelope shared across all three job kinds — they're
-// structurally identical except for the typed ``result`` payload, so
-// the polling hook walks them as a union. Narrowing to a specific
-// kind happens at the view layer that reads ``status.result``.
-type AnyJobStatus =
-  | DreamJobStatus
-  | NightlyJobStatus
-  | CommunityRebuildJobStatus;
+import type { AnyJobStatus } from "./memoryJobStatus";
 
 // The state enum is identical across all three concrete envelopes
 // (same underlying Pydantic Literal). Pick the dream variant as the

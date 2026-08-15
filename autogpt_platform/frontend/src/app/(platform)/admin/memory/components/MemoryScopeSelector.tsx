@@ -23,7 +23,7 @@ export function MemoryScopeSelector({
     { value: AUTOPILOT_MEMORY_SCOPE, label: "AutoPilot (account memory)" },
     ...experts.map((expert) => ({
       value: expert.id,
-      label: expert.name,
+      label: `${expert.name} — ${expert.role.trim() || "Expert"} (${expert.id.slice(0, 8)})`,
     })),
   ];
 
@@ -41,6 +41,7 @@ export function MemoryScopeSelector({
         />
       </div>
       <div aria-live="polite" className="flex flex-col gap-1 text-xs">
+        {loading ? <p className="text-gray-500">Loading experts…</p> : null}
         {value !== AUTOPILOT_MEMORY_SCOPE ? (
           <p className="text-gray-500">Expert memory is read-only.</p>
         ) : null}
