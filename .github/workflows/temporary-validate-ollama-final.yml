@@ -17,6 +17,9 @@ jobs:
       run:
         shell: bash
         working-directory: autogpt_platform/backend
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,8 +34,15 @@ jobs:
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
       - name: Install dependencies
         run: poetry install
-      - name: Run full backend lint and typecheck
-        run: poetry run lint
+      - name: Run upstream lint gate
+        run: poetry run lint --skip-pyright
+      - name: Generate Prisma Client and type stub
+        run: poetry run prisma generate && poetry run gen-prisma-stub
+      - name: Run Pyright for supported Python versions
+        run: |
+          poetry run pyright --pythonversion 3.11
+          poetry run pyright --pythonversion 3.12
+          poetry run pyright --pythonversion 3.13
       - name: Run focused no-auth credential tests
         run: poetry run pytest backend/executor/no_auth_credentials_test.py -q
       - name: Verify block documentation sync
