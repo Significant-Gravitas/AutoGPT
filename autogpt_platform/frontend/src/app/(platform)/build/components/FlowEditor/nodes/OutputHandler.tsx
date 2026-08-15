@@ -56,16 +56,22 @@ export const OutputHandler = ({
       let current = props;
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
+        const isLeaf = i === parts.length - 1;
 
         if (!Object.prototype.hasOwnProperty.call(current, part)) {
           current[part] = {
             title: part,
-            type: i === parts.length - 1 ? "string" : "object",
+            type: isLeaf ? "string" : "object",
             description: "AutoPilot-injected sub-property",
           };
+        } else if (!isLeaf && current[part]?.type !== "object") {
+          // A dynamic path must not mutate a static scalar/leaf into an object.
+          // Reject the complete phantom path instead of adding `properties` to
+          // a field whose declared output type says it is not expandable.
+          return;
         }
 
-        if (i < parts.length - 1) {
+        if (!isLeaf) {
           if (
             !Object.prototype.hasOwnProperty.call(
               current[part],
@@ -105,7 +111,7 @@ export const OutputHandler = ({
         const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
         if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
           return true;
-        if (fieldSchema?.properties)
+        if (fieldSchema?.type === "object" && fieldSchema?.properties)
           return hasConnectedOrBrokenDescendant(
             fieldSchema.properties,
             fullKey,
@@ -128,7 +134,8 @@ export const OutputHandler = ({
 
         const isConnected = isOutputConnected(nodeId, fullKey);
         const isBroken = brokenOutputs.has(fullKey);
-        const hasNestedProperties = !!fieldSchema?.properties;
+        const hasNestedProperties =
+          fieldSchema?.type === "object" && !!fieldSchema?.properties;
         const selfIsRelevant = isConnected || isBroken;
         const descendantIsRelevant =
           hasNestedProperties &&
