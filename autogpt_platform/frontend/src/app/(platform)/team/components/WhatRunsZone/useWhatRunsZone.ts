@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   getAdoptTargetKey,
-  getAdoptTargetVersionId,
+  getAdoptTargetVersionID,
   getUnadoptedAgents,
   getVisibleGroups,
   pruneAdoptedTargetKeys,
@@ -39,7 +39,7 @@ interface Args {
 export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<WhatRunsFilter>("all");
-  const [pendingLibraryAgentIds, setPendingLibraryAgentIds] = useState<
+  const [pendingLibraryAgentIDs, setPendingLibraryAgentIDs] = useState<
     Set<string>
   >(new Set());
   const [adoptedTargetKeys, setAdoptedTargetKeys] = useState<Set<string>>(
@@ -70,14 +70,14 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   const showAgents = filter === "all" || filter === "agents";
 
   async function adopt(agent: LibraryAgent, expert: Expert) {
-    const versionId = getAdoptTargetVersionId(agent);
-    if (!versionId || pendingLibraryAgentIds.has(agent.id)) return;
+    const versionID = getAdoptTargetVersionID(agent);
+    if (!versionID || pendingLibraryAgentIDs.has(agent.id)) return;
     const targetKey = getAdoptTargetKey(agent, expert);
-    setPendingLibraryAgentIds((current) => new Set(current).add(agent.id));
+    setPendingLibraryAgentIDs((current) => new Set(current).add(agent.id));
     try {
       await installWorkflow({
         expertId: expert.id,
-        data: { store_listing_version_id: versionId },
+        data: { store_listing_version_id: versionID },
       });
       setAdoptedTargetKeys((current) => {
         const next = new Set(
@@ -103,7 +103,7 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
         variant: "destructive",
       });
     } finally {
-      setPendingLibraryAgentIds((current) => {
+      setPendingLibraryAgentIDs((current) => {
         const next = new Set(current);
         next.delete(agent.id);
         return next;
@@ -126,7 +126,7 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     retryAgents: () => void agentsQuery.refetch(),
     loadMoreAgents: () => void agentsQuery.fetchNextPage(),
     adopt,
-    pendingLibraryAgentIds,
+    pendingLibraryAgentIDs,
     adoptedTargetKeys,
   };
 }

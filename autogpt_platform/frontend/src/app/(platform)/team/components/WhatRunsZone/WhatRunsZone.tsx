@@ -35,7 +35,7 @@ export function WhatRunsZone({ experts, schedules }: Props) {
     retryAgents,
     loadMoreAgents,
     adopt,
-    pendingLibraryAgentIds,
+    pendingLibraryAgentIDs,
     adoptedTargetKeys,
   } = useWhatRunsZone({
     experts,
@@ -87,7 +87,7 @@ export function WhatRunsZone({ experts, schedules }: Props) {
             agents={unadoptedAgents}
             experts={experts}
             libraryAgentCount={libraryAgentCount}
-            pendingLibraryAgentIds={pendingLibraryAgentIds}
+            pendingLibraryAgentIDs={pendingLibraryAgentIDs}
             adoptedTargetKeys={adoptedTargetKeys}
             hasMoreAgents={hasMoreAgents}
             isLoadingMoreAgents={isLoadingMoreAgents}

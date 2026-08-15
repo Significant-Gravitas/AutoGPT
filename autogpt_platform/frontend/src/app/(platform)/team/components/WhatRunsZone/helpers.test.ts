@@ -11,7 +11,7 @@ import {
 import {
   getAdoptableExperts,
   getAdoptTargetKey,
-  getAdoptTargetVersionId,
+  getAdoptTargetVersionID,
   getFilterView,
   getUnadoptedAgents,
   getVisibleGroups,
@@ -273,10 +273,10 @@ describe("getUnadoptedAgents", () => {
   });
 });
 
-describe("getAdoptTargetVersionId", () => {
+describe("getAdoptTargetVersionID", () => {
   it("returns the exact-match version id when present", () => {
     expect(
-      getAdoptTargetVersionId(
+      getAdoptTargetVersionID(
         makeAgent({ store_listing_version_id: "slv-exact" }),
       ),
     ).toBe("slv-exact");
@@ -284,7 +284,7 @@ describe("getAdoptTargetVersionId", () => {
 
   it("returns null for a pure-local agent", () => {
     expect(
-      getAdoptTargetVersionId(makeAgent({ store_listing_version_id: null })),
+      getAdoptTargetVersionID(makeAgent({ store_listing_version_id: null })),
     ).toBe(null);
   });
 });

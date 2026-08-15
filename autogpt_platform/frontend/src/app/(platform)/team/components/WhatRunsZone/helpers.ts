@@ -118,7 +118,7 @@ export function getUnadoptedAgents(
 ): LibraryAgent[] {
   return agents.filter(
     (agent) =>
-      !getAdoptTargetVersionId(agent) ||
+      !getAdoptTargetVersionID(agent) ||
       getAdoptableExperts(agent, experts, adoptedTargetKeys).length > 0,
   );
 }
@@ -128,12 +128,12 @@ export function getAdoptableExperts(
   experts: Expert[],
   adoptedTargetKeys?: ReadonlySet<string>,
 ): Expert[] {
-  const versionId = getAdoptTargetVersionId(agent);
-  if (!versionId) return experts;
+  const versionID = getAdoptTargetVersionID(agent);
+  if (!versionID) return experts;
   return experts.filter(
     (expert) =>
       !expert.workflows.some(
-        (workflow) => workflow.store_listing_version_id === versionId,
+        (workflow) => workflow.store_listing_version_id === versionID,
       ) && !adoptedTargetKeys?.has(getAdoptTargetKey(agent, expert)),
   );
 }
@@ -146,8 +146,8 @@ function parseAdoptTargetKey(key: string) {
   const separator = key.lastIndexOf(":");
   if (separator < 1 || separator === key.length - 1) return null;
   return {
-    agentId: key.slice(0, separator),
-    expertId: key.slice(separator + 1),
+    agentID: key.slice(0, separator),
+    expertID: key.slice(separator + 1),
   };
 }
 
@@ -158,19 +158,19 @@ export function pruneAdoptedTargetKeys(
 ) {
   if (adoptedTargetKeys.size === 0) return adoptedTargetKeys;
 
-  const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
-  const expertsById = new Map(experts.map((expert) => [expert.id, expert]));
+  const agentsByID = new Map(agents.map((agent) => [agent.id, agent]));
+  const expertsByID = new Map(experts.map((expert) => [expert.id, expert]));
   const next = new Set<string>();
   for (const key of adoptedTargetKeys) {
     const target = parseAdoptTargetKey(key);
     if (!target) continue;
-    const agent = agentsById.get(target.agentId);
-    const expert = expertsById.get(target.expertId);
+    const agent = agentsByID.get(target.agentID);
+    const expert = expertsByID.get(target.expertID);
     if (!agent || !expert) continue;
-    const versionId = getAdoptTargetVersionId(agent);
-    if (!versionId) continue;
+    const versionID = getAdoptTargetVersionID(agent);
+    if (!versionID) continue;
     const isConfirmed = expert.workflows.some(
-      (workflow) => workflow.store_listing_version_id === versionId,
+      (workflow) => workflow.store_listing_version_id === versionID,
     );
     if (!isConfirmed) next.add(key);
   }
@@ -182,6 +182,6 @@ export function pruneAdoptedTargetKeys(
  *  snapshot, resolved server-side. Pure-local agents have none, so Adopt is
  *  hidden for them — the install endpoint only accepts a
  *  store_listing_version_id. */
-export function getAdoptTargetVersionId(agent: LibraryAgent) {
+export function getAdoptTargetVersionID(agent: LibraryAgent) {
   return agent.store_listing_version_id;
 }

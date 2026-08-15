@@ -10,14 +10,14 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { STATUS_BADGE_CLASS } from "../constants";
-import { getAdoptableExperts, getAdoptTargetVersionId } from "../helpers";
+import { getAdoptableExperts, getAdoptTargetVersionID } from "../helpers";
 import { AdoptAgentButton } from "./AdoptAgentButton";
 
 type Props = {
   agents: LibraryAgent[];
   experts: Expert[];
   libraryAgentCount: number;
-  pendingLibraryAgentIds: Set<string>;
+  pendingLibraryAgentIDs: Set<string>;
   adoptedTargetKeys: Set<string>;
   hasMoreAgents: boolean;
   isLoadingMoreAgents: boolean;
@@ -30,7 +30,7 @@ export function YourAgentsList({
   agents,
   experts,
   libraryAgentCount,
-  pendingLibraryAgentIds,
+  pendingLibraryAgentIDs,
   adoptedTargetKeys,
   hasMoreAgents,
   isLoadingMoreAgents,
@@ -54,7 +54,7 @@ export function YourAgentsList({
       ) : (
         <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white">
           {agents.map((agent) => {
-            const canAdopt = Boolean(getAdoptTargetVersionId(agent));
+            const canAdopt = Boolean(getAdoptTargetVersionID(agent));
             const adoptableExperts = getAdoptableExperts(
               agent,
               experts,
@@ -83,7 +83,7 @@ export function YourAgentsList({
                   <AdoptAgentButton
                     agent={agent}
                     experts={adoptableExperts}
-                    isPending={pendingLibraryAgentIds.has(agent.id)}
+                    isPending={pendingLibraryAgentIDs.has(agent.id)}
                     onAdopt={onAdopt}
                   />
                 ) : (
