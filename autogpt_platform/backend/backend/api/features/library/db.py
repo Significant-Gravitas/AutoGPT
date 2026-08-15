@@ -19,6 +19,7 @@ from backend.api.features.library.exceptions import (
 )
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
+from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
@@ -2011,9 +2012,10 @@ async def create_preset(
         webhook_id: Internal-only; not part of the public request model. Only
             trusted callers (the setup-trigger flow, legacy migration) pass a
             webhook they provisioned for the caller.
-        expert_id: Expert attribution resolved by a trusted caller. The
-            active owned expert is revalidated here and forces personal
-            tenancy; runs fired by the preset inherit it.
+        expert_id: Expert attribution resolved by a trusted caller. The active
+            owned expert is revalidated here — atomically with preset
+            persistence — and forces personal tenancy; runs fired by the preset
+            inherit it.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -2083,11 +2085,29 @@ async def create_preset(
     if team_id:
         create_input["teamId"] = team_id
     if expert_id:
-        create_input["expertId"] = expert_id
-    new_preset = await prisma.models.AgentPreset.prisma().create(
-        data=create_input,
-        include=AGENT_PRESET_INCLUDE,
-    )
+        # Re-resolve under a row lock so an archive or ownership change landing
+        # between the tenancy check above and this write can't be persisted.
+        # Experts are private and owner-only here, so a failed re-check is a
+        # not-found rather than a silently dropped attribution.
+        async with transaction() as tx:
+            attributed_expert_id = await resolve_attributable_expert(
+                tx,
+                user_id,
+                expert_id,
+                lock_for_update=True,
+            )
+            if attributed_expert_id is None:
+                raise NotFoundError(f"Expert #{expert_id} not found")
+            create_input["expertId"] = attributed_expert_id
+            new_preset = await prisma.models.AgentPreset.prisma(tx).create(
+                data=create_input,
+                include=AGENT_PRESET_INCLUDE,
+            )
+    else:
+        new_preset = await prisma.models.AgentPreset.prisma().create(
+            data=create_input,
+            include=AGENT_PRESET_INCLUDE,
+        )
     return library_model.LibraryAgentPreset.from_db(new_preset)
 
 

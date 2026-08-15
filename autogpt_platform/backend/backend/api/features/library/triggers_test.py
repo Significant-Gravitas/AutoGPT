@@ -30,9 +30,10 @@ def _graph():
     return graph
 
 
-def _patches(*, graph, webhook=..., feedback=None, preset=None):
+def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=None):
     """Patch triggers.py's collaborators. ``webhook=...`` defaults to a stub
-    webhook; pass ``webhook=None`` + ``feedback`` to exercise the rejection."""
+    webhook; pass ``webhook=None`` + ``feedback`` to exercise the rejection.
+    ``graph_expert`` is the expert the graph-match fallback resolves to."""
     new_webhook = MagicMock(id="wh-1") if webhook is ... else webhook
     return (
         patch(f"{_PATH}.get_graph", new=AsyncMock(return_value=graph)),
@@ -44,7 +45,7 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None):
         patch(f"{_PATH}.db.create_preset", new=AsyncMock(return_value=preset)),
         patch(
             f"{_PATH}.experts_db.resolve_expert_for_graph",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=graph_expert),
         ),
     )
 
@@ -162,6 +163,80 @@ async def test_expert_trigger_maps_missing_personal_tenancy_to_unavailable():
 
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_setup_prefers_session_expert_over_graph_match():
+    """A trigger created inside an expert chat requests that expert directly,
+    short-circuiting the graph-match fallback."""
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset, graph_expert="expert-graph"
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_expert as expert_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        await _setup(expert_id="expert-session")
+    assert create_mock.call_args.kwargs["expert_id"] == "expert-session"
+    expert_mock.assert_not_awaited()  # short-circuited by the session expert
+
+
+@pytest.mark.asyncio
+async def test_setup_supplied_session_expert_never_graph_reattributes():
+    """A supplied session expert goes straight to the private-tenancy guard.
+    Even when it has become invalid, this layer must not silently replace
+    Expert A with a graph match for Expert B — it fails closed instead."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), graph_expert="expert-graph"
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_expert as expert_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(
+                side_effect=experts_db.ExpertNotFoundError("expert-archived")
+            ),
+        ),
+    ):
+        with pytest.raises(NotFoundError, match="Expert #expert-archived not found"):
+            await _setup(expert_id="expert-archived")
+    create_mock.assert_not_awaited()
+    expert_mock.assert_not_awaited()  # no graph-match re-attribution
+
+
+@pytest.mark.asyncio
+async def test_setup_falls_back_to_graph_expert_without_session_expert():
+    """A plain chat / route caller passes no expert: attribution falls back to
+    the graph's unique expert match — unchanged behaviour."""
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset, graph_expert="expert-graph"
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_expert,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        await _setup()
+    assert create_mock.call_args.kwargs["expert_id"] == "expert-graph"
 
 
 @pytest.mark.asyncio

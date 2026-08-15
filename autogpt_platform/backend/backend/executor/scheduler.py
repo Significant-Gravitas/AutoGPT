@@ -321,21 +321,26 @@ async def _execute_copilot_turn(**kwargs):
                     elif args.run_at is not None:
                         await _reschedule_one_shot_after_expert_unavailable(args)
                     return
-            if args.expert_id is None:
-                new_session = await create_chat_session(
-                    args.user_id,
-                    dry_run=False,
-                    organization_id=args.organization_id,
-                    team_id=args.team_id,
+            new_session = await create_chat_session(
+                args.user_id,
+                dry_run=False,
+                organization_id=args.organization_id,
+                team_id=args.team_id,
+                expert_id=args.expert_id,
+            )
+            if args.expert_id and new_session.expert_id is None:
+                # The scope check above passed, so the expert was archived or
+                # deleted in the window before creation. `create_chat_session`
+                # drops the attribution rather than failing, which would run an
+                # expert's follow-up in AutoPilot memory scope — fail closed
+                # instead, matching the "missing" branch above.
+                logger.warning(
+                    f"Copilot turn schedule {args.schedule_id} skipped — expert "
+                    f"{args.expert_id[:12]} stopped being active/owned while the "
+                    f"session was being created; removing schedule"
                 )
-            else:
-                new_session = await create_chat_session(
-                    args.user_id,
-                    dry_run=False,
-                    organization_id=args.organization_id,
-                    team_id=args.team_id,
-                    expert_id=args.expert_id,
-                )
+                await _self_delete_copilot_turn_schedule(args)
+                return
             target_session_id = new_session.session_id
             target_session = new_session
             logger.info(
@@ -517,6 +522,9 @@ async def _reschedule_one_shot(
             # turn to the user's default org after a cap retry.
             organization_id=args.organization_id,
             team_id=args.team_id,
+            # And for expert attribution — dropping it would fire the retried
+            # turn into a plain session, escaping the expert's thread/budget
+            # and its isolated memory scope.
             expert_id=args.expert_id,
         )
         logger.info(
@@ -1407,8 +1415,12 @@ class CopilotTurnJobArgs(BaseModel):
     # Optional for backward compat with rows persisted before org tagging.
     organization_id: str | None = None
     team_id: str | None = None
-    # Persona memory scope captured from the scheduling session. None keeps
-    # legacy schedules and Autopilot follow-ups in the user's account scope.
+    # Expert captured at schedule time so a fresh session minted at fire time
+    # is scoped to the same expert as the chat that scheduled the follow-up —
+    # its runs then count toward the expert's budget, surface on her thread,
+    # and read/write her isolated memory scope. None keeps legacy schedules
+    # and AutoPilot follow-ups in the user's account scope. Optional for
+    # backward compat with rows persisted before this field was added.
     expert_id: str | None = None
 
 

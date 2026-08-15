@@ -78,6 +78,14 @@ async def setup_triggered_preset(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
 
+    # A supplied session expert wins and deliberately suppresses graph-match
+    # re-attribution. create_preset validates it under the same transaction as
+    # the durable write, falling back to an unattributed preset if archival
+    # wins the race. With no supplied expert, preserve the existing unique
+    # graph-match behaviour; create_preset atomically re-validates that result.
+    if expert_id is None:
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph.id)
+
     trigger_config_with_credentials = {
         **trigger_config,
         **(
