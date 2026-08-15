@@ -9,7 +9,9 @@ def _model_for(provider: ProviderName) -> LLMModel:
 
 
 def test_ollama_credentials_are_discriminated_as_no_auth() -> None:
-    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()["credentials"]
+    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()[
+        "credentials"
+    ]
     ollama_model = _model_for(ProviderName.OLLAMA)
 
     discriminated = field_info.discriminate(ollama_model.value)
@@ -22,7 +24,9 @@ def test_ollama_credentials_are_discriminated_as_no_auth() -> None:
 
 
 def test_authenticated_llm_provider_stays_required() -> None:
-    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()["credentials"]
+    field_info = AITextGeneratorBlock.Input.get_credentials_fields_info()[
+        "credentials"
+    ]
     openai_model = _model_for(ProviderName.OPENAI)
 
     discriminated = field_info.discriminate(openai_model.value)

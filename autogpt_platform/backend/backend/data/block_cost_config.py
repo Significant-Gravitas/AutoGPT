@@ -89,7 +89,6 @@ from backend.integrations.credentials_store import (
     llama_api_credentials,
     mem0_credentials,
     nvidia_credentials,
-    ollama_credentials,
     open_router_credentials,
     openai_credentials,
     replicate_credentials,

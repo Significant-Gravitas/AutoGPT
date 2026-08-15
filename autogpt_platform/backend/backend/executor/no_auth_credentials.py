@@ -26,7 +26,9 @@ def get_no_auth_credentials(
         return None
 
     provider = next(iter(discriminated_info.provider), None)
-    if provider is not None and provider_matches(str(provider), ollama_credentials.provider):
+    if provider is not None and provider_matches(
+        str(provider), ollama_credentials.provider
+    ):
         return ollama_credentials
 
     raise ValueError(

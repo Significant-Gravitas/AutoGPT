@@ -1109,10 +1109,7 @@ class AITextSummarizerBlock(AIBlockBase):
         return response
 
     async def _summarize_chunk(
-        self,
-        chunk: str,
-        input_data: Input,
-        credentials: APIKeyCredentials,
+        self, chunk: str, input_data: Input, credentials: APIKeyCredentials
     ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
@@ -1142,10 +1139,7 @@ class AITextSummarizerBlock(AIBlockBase):
         return summary
 
     async def _combine_summaries(
-        self,
-        summaries: list[str],
-        input_data: Input,
-        credentials: APIKeyCredentials,
+        self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials
     ) -> str:
         combined_text = "\n\n".join(summaries)
 
