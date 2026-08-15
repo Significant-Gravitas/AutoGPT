@@ -7,7 +7,6 @@ import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export type RaiseStep = "name" | "voice" | "firstJob" | "review";
 
@@ -198,6 +197,22 @@ export function getExpertLimitCode(response: unknown): string | null {
   return typeof detail.code === "string" ? detail.code : null;
 }
 
+function getErrorResponse(error: unknown): unknown {
+  if (!error || typeof error !== "object" || !("response" in error)) {
+    return null;
+  }
+  return error.response;
+}
+
+function hasErrorStatus(error: unknown, status: number): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "status" in error &&
+    error.status === status
+  );
+}
+
 export function getFirstJobFailureToast(
   result: RaiseResult,
   firstJob: RaiseDraft["firstJob"],
@@ -234,8 +249,11 @@ export function getRaiseErrorToast(
   error: unknown,
   expertName: string,
 ): ToastProps {
-  if (error instanceof ApiError && error.status === 409) {
-    if (getExpertLimitCode(error.response) === "raised_expert_lifetime_limit") {
+  if (hasErrorStatus(error, 409)) {
+    if (
+      getExpertLimitCode(getErrorResponse(error)) ===
+      "raised_expert_lifetime_limit"
+    ) {
       return {
         title: "Expert creation limit reached",
         description:

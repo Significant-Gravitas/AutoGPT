@@ -1,7 +1,6 @@
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { describe, expect, test } from "vitest";
 import {
   buildTranscript,
@@ -100,17 +99,19 @@ describe("raise helpers", () => {
   test("maps lifetime, active-team, and generic submission errors", () => {
     expect(
       getRaiseErrorToast(
-        new ApiError("conflict", 409, {
-          detail: { code: "raised_expert_lifetime_limit" },
-        }),
+        {
+          status: 409,
+          response: { detail: { code: "raised_expert_lifetime_limit" } },
+        },
         "Otto",
       ).title,
     ).toBe("Expert creation limit reached");
     expect(
       getRaiseErrorToast(
-        new ApiError("conflict", 409, {
-          detail: { code: "active_expert_limit" },
-        }),
+        {
+          status: 409,
+          response: { detail: { code: "active_expert_limit" } },
+        },
         "Otto",
       ).title,
     ).toBe("Your team is full");

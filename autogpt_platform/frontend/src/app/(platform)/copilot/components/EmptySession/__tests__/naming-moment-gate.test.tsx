@@ -68,6 +68,10 @@ const props = {
   inputLayoutId: "test-layout",
   isCreatingSession: false,
   onCreateSession: vi.fn(),
+  isUploadingFiles: false,
+  droppedFiles: [],
+  onDroppedFilesConsumed: vi.fn(),
+  isAdoptingExpertSession: false,
   onSend: vi.fn(),
 };
 
