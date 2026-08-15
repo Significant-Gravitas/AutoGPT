@@ -1,11 +1,12 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { BlockUIType } from "../components/types";
 import { OutputHandler } from "../components/FlowEditor/nodes/OutputHandler";
 
 const mockEdges = vi.hoisted(() => [
   { source: "test-node", sourceHandle: "dynamic_#_field" },
   { source: "test-node", sourceHandle: "nested_#___proto___#_polluted" },
+  { source: "test-node", sourceHandle: "staticLeaf_#_child" },
 ]);
 
 vi.mock("@/app/(platform)/build/stores/edgeStore", () => ({
@@ -32,14 +33,18 @@ vi.mock(
 );
 
 describe("OutputHandler", () => {
-  beforeEach(() => {
-    cleanup();
-  });
-
-  it("materializes dynamic output handles and rejects reserved paths", () => {
+  it("materializes dynamic output handles and rejects invalid phantom paths", () => {
     render(
       <OutputHandler
-        outputSchema={{ type: "object", properties: {} }}
+        outputSchema={{
+          type: "object",
+          properties: {
+            staticLeaf: {
+              title: "Static leaf",
+              type: "string",
+            },
+          },
+        }}
         nodeId="test-node"
         uiType={BlockUIType.STANDARD}
       />,
@@ -47,6 +52,7 @@ describe("OutputHandler", () => {
 
     expect(screen.getByText("dynamic")).toBeDefined();
     expect(screen.getByText("field")).toBeDefined();
+    expect(screen.getByText("Static leaf")).toBeDefined();
 
     const handleIds = screen
       .getAllByTestId("output-node-handle")
@@ -57,5 +63,9 @@ describe("OutputHandler", () => {
     expect(screen.queryByText("__proto__")).toBeNull();
     expect(screen.queryByText("polluted")).toBeNull();
     expect(handleIds).not.toContain("nested_#___proto___#_polluted");
+
+    expect(screen.queryByText("child")).toBeNull();
+    expect(handleIds).not.toContain("staticLeaf_#_child");
+    expect(screen.queryByRole("button", { name: "Expand" })).toBeNull();
   });
 });
