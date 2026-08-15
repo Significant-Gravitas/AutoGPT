@@ -34,7 +34,11 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
+from backend.api.features.orgs.db import (
+    get_session_tenancy_membership,
+    get_user_default_team,
+    resolve_default_tenancy,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     get_embedding_stats,
@@ -457,6 +461,10 @@ class DatabaseManager(AppService):
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
+    # Exposed so Prisma-less processes (copilot-executor) can re-verify a
+    # chat session's persisted org/team tenancy — see
+    # backend/copilot/session_tenancy.py.
+    get_session_tenancy_membership = _(get_session_tenancy_membership)
     resolve_default_tenancy = _(resolve_default_tenancy)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
@@ -785,6 +793,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
+    get_session_tenancy_membership = d.get_session_tenancy_membership
     resolve_default_tenancy = d.resolve_default_tenancy
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link

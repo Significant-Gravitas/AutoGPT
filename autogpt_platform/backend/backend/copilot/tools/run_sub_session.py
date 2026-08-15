@@ -183,6 +183,8 @@ class RunSubSessionTool(BaseTool):
             user_id=user_id,
             message=effective_prompt,
             timeout=cap,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
             permissions=get_current_permissions(),
             tool_call_id=(f"sub:{session.session_id}" if session.session_id else "sub"),
             tool_name="run_sub_session",

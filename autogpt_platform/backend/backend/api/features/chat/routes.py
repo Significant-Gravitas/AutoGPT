@@ -76,6 +76,10 @@ from backend.copilot.response_model import (
     StreamStartStep,
 )
 from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.session_tenancy import (
+    SessionOrgMembershipRevoked,
+    resolve_session_tenancy,
+)
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
     PresetDeletedResponse,
@@ -137,6 +141,14 @@ logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 credentials_manager = IntegrationCredentialsManager()
+
+# 403 detail shared by every turn-dispatch choke point that re-verifies a
+# session's persisted tenancy (see backend/copilot/session_tenancy.py).
+SESSION_ORG_REVOKED_DETAIL = "You are no longer a member of this session's organization"
+SESSION_TEAM_REVOKED_PENDING_DETAIL = (
+    "Workspace access for this active turn cannot be verified. Pending follow-ups "
+    "are unavailable; finish the turn, then start a new organization chat."
+)
 
 
 async def _validate_and_get_session(
@@ -1318,15 +1330,16 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
     "/sessions/{session_id}/stream",
     responses={
         402: {"description": "Subscription required (NO_TIER user, paywall on)"},
+        403: {"description": "No longer a member of the session's organization"},
         404: {"description": "Session not found or access denied"},
+        409: {"description": "Workspace access changed during an active turn"},
         429: {
             "description": "Cost rate-limit, call-frequency cap, or "
             "per-user concurrent-turn limit exceeded"
         },
         503: {
-            "description": "Chat service degraded (Redis unavailable for rate "
-            "limit or stream registry); client should honour the Retry-After "
-            "header before retrying."
+            "description": "Chat authorization or runtime state temporarily "
+            "unavailable; client should honour Retry-After before retrying."
         },
     },
 )
@@ -1397,6 +1410,27 @@ async def stream_chat_post(
     turn_org_id = session.organization_id or ctx.org_id
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
+    # Per-turn tenancy re-check — policy lives in
+    # ``backend/copilot/session_tenancy.py``'s module docstring.
+    if session.organization_id is not None:
+        try:
+            turn_team_id = await resolve_session_tenancy(
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+        except SessionOrgMembershipRevoked as exc:
+            raise HTTPException(
+                status_code=403,
+                detail=SESSION_ORG_REVOKED_DETAIL,
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Organization access check unavailable, retry shortly",
+                headers={"Retry-After": "30"},
+            ) from exc
+
     try:
         turn_in_flight = (
             request.is_user_message
@@ -1413,6 +1447,15 @@ async def stream_chat_post(
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+
+    if turn_in_flight and (
+        session.organization_id is None
+        or (session.team_id is not None and turn_team_id is None)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=SESSION_TEAM_REVOKED_PENDING_DETAIL,
+        )
 
     if turn_in_flight:
         try:
@@ -1532,6 +1575,8 @@ async def stream_chat_post(
                 file_ids=sanitized_file_ids,
                 mode=request.mode,
                 model=request.model,
+                organization_id=turn_org_id,
+                team_id=turn_team_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 permissions=(
@@ -1702,12 +1747,14 @@ async def stream_chat_post(
     "/sessions/{session_id}/messages/pending",
     response_model=QueuePendingMessageResponse,
     responses={
+        402: {"description": "Codex subscription required"},
+        403: {"description": "No longer a member of the session's organization"},
         404: {"description": "Session not found or access denied"},
-        409: {"description": "Session has no active turn to receive pending messages"},
+        409: {"description": "No active turn or workspace access changed"},
         429: {"description": "Call-frequency cap exceeded"},
         503: {
-            "description": "Chat service degraded (Redis unavailable); "
-            "client should honour the Retry-After header before retrying."
+            "description": "Chat authorization or runtime state temporarily "
+            "unavailable; client should honour Retry-After before retrying."
         },
     },
 )
@@ -1718,6 +1765,31 @@ async def queue_pending_message(
 ):
     """Queue a follow-up message while the session has an active turn."""
     session = await _validate_and_get_session(session_id, user_id)
+    pending_team_id = session.team_id
+
+    # Per-turn tenancy re-check — policy lives in
+    # ``backend/copilot/session_tenancy.py``'s module docstring.  Pending
+    # messages drain straight into the running turn loop (and can auto-continue
+    # as new model/tool work), so this endpoint is a dispatch choke point too:
+    # without the gate a revoked member keeps driving the session's stale org.
+    if session.organization_id is not None:
+        try:
+            pending_team_id = await resolve_session_tenancy(
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+        except SessionOrgMembershipRevoked as exc:
+            raise HTTPException(
+                status_code=403,
+                detail=SESSION_ORG_REVOKED_DETAIL,
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Organization access check unavailable, retry shortly",
+                headers={"Retry-After": "30"},
+            ) from exc
     if session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
     try:
@@ -1732,6 +1804,13 @@ async def queue_pending_message(
         raise HTTPException(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
+        )
+    if session.organization_id is None or (
+        session.team_id is not None and pending_team_id is None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=SESSION_TEAM_REVOKED_PENDING_DETAIL,
         )
     return await queue_pending_for_http(
         session_id=session_id,

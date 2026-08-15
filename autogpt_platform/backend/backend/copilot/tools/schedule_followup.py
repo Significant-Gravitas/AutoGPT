@@ -176,9 +176,10 @@ class ScheduleFollowupTool(BaseTool):
         # both "not found" and "not yours", which collapse into the same
         # error from the model's perspective).
         target_session_id: str | None = kwargs.get("session_id")
+        target_session = session if target_session_id == current_session_id else None
         if target_session_id and target_session_id != current_session_id:
-            target = await get_chat_session(target_session_id, user_id)
-            if target is None:
+            target_session = await get_chat_session(target_session_id, user_id)
+            if target_session is None:
                 return ErrorResponse(
                     message=(
                         f"Session {target_session_id} not found or not "
@@ -247,10 +248,18 @@ class ScheduleFollowupTool(BaseTool):
                 run_at=run_at,
                 name=name,
                 user_timezone=user_timezone,
-                # Capture the scheduling chat's tenant so a fresh session
-                # minted at fire time lands in the same org/team.
-                organization_id=session.organization_id if session else None,
-                team_id=session.team_id if session else None,
+                # An explicit target session is authoritative. For the fresh-chat
+                # sentinel, preserve the scheduling chat's tenant.
+                organization_id=(
+                    target_session.organization_id
+                    if target_session is not None
+                    else session.organization_id
+                ),
+                team_id=(
+                    target_session.team_id
+                    if target_session is not None
+                    else session.team_id
+                ),
             )
         except ValueError as e:
             return ErrorResponse(

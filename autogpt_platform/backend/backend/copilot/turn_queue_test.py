@@ -7,6 +7,7 @@ RPC into ``DatabaseManager``. Patching the accessor avoids reaching
 for Prisma directly while still exercising the queue's branching.
 """
 
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ import pytest
 
 from backend.copilot import turn_queue
 from backend.copilot.model import ChatMessage as PydanticChatMessage
+from backend.copilot.session_tenancy import SessionOrgMembershipRevoked
 
 
 class _NoopAsyncCM:
@@ -41,14 +43,25 @@ def _pyd_message(**overrides) -> PydanticChatMessage:
     return PydanticChatMessage(**base)
 
 
-def _mock_session(session_id: str = "s1", title: str | None = "T") -> MagicMock:
+def _mock_session(
+    session_id: str = "s1",
+    title: str | None = "T",
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> MagicMock:
     """Build a ChatSessionInfo-ish mock for list_chat_sessions_by_status
     return values (the function returns app-model rows, not raw Prisma,
-    so the RPC serializer can pass them through)."""
+    so the RPC serializer can pass them through).
+
+    ``organization_id``/``team_id`` default to None (an untagged legacy
+    session) so the per-turn membership re-check is skipped unless a test
+    opts in by tagging the session."""
     s = MagicMock()
     s.session_id = session_id
     s.title = title
     s.updated_at = datetime.now(timezone.utc)
+    s.organization_id = organization_id
+    s.team_id = team_id
     return s
 
 
@@ -79,6 +92,8 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
             file_ids=["f1", "f2"],
             mode="extended_thinking",
             model="advanced",
+            organization_id="org-request",
+            team_id="team-request",
             permissions={"tool_filter": "allow"},
             request_arrival_at=123.45,
         )
@@ -90,6 +105,8 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
     assert metadata["file_ids"] == ["f1", "f2"]
     assert metadata["mode"] == "extended_thinking"
     assert metadata["model"] == "advanced"
+    assert metadata["organization_id"] == "org-request"
+    assert metadata["team_id"] == "team-request"
     assert metadata["llm_auth_provider"] == "platform"
     assert metadata["permissions"] == {"tool_filter": "allow"}
     assert metadata["request_arrival_at"] == 123.45
@@ -187,6 +204,28 @@ def _patch_queued_list(rows):
     return patch.object(
         turn_queue, "list_queued_sessions", new=AsyncMock(return_value=rows)
     )
+
+
+def _patch_dispatch_preflight():
+    """Neutralise the user-level pre-start gates (paywall + cost rate limit)
+    so a test can focus on the tenancy branch that follows them."""
+    stack = ExitStack()
+    stack.enter_context(
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=AsyncMock(return_value=False),
+        )
+    )
+    stack.enter_context(
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=AsyncMock(return_value=(100, 1000, None)),
+        )
+    )
+    stack.enter_context(
+        patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock())
+    )
+    return stack
 
 
 @pytest.mark.asyncio
@@ -441,3 +480,300 @@ async def test_dispatch_rolls_claim_back_on_dispatch_failure() -> None:
     db.update_chat_session_status.assert_any_await(
         session_id="s1", expect_status="running", status="queued"
     )
+
+
+# ── dispatch_next_for_user: per-turn membership re-check (SECRT-2489) ───
+
+
+@pytest.mark.asyncio
+async def test_dispatch_drops_queued_turn_when_org_membership_revoked() -> None:
+    """A turn queued while the user was a member, promoted after the user was
+    removed/suspended from the session's org, must NOT run under that org.
+    Drop it out of the queue (queued → idle) so it neither runs nor blocks
+    promotion of the user's other queued sessions."""
+    head = _mock_session(session_id="s1", organization_id="org-1")
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock()
+    dispatch_turn_mock = AsyncMock()
+    invalidate = AsyncMock()
+    tenancy = AsyncMock(side_effect=SessionOrgMembershipRevoked("org-1"))
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        _patch_dispatch_preflight(),
+        patch("backend.copilot.turn_queue.resolve_session_tenancy", new=tenancy),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=invalidate),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    dispatch_turn_mock.assert_not_awaited()
+    # Pin the dispatcher → helper wiring: the session's own tenancy must be
+    # what gets re-verified, not the session id or the request context.
+    tenancy.assert_awaited_once_with(
+        user_id="u1", organization_id="org-1", team_id=None
+    )
+    # Dropped queued → idle (not claimed to running); cache invalidated.
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="queued", status="idle"
+    )
+    invalidate.assert_awaited_once_with("s1")
+
+
+@pytest.mark.asyncio
+async def test_dispatch_promotes_next_queued_session_after_revoked_head() -> None:
+    """Dropping a revoked head must not waste the freed running slot.
+
+    ``dispatch_next_for_user`` only runs on turn completion, so returning
+    early here would stall the rest of the user's queue until an unrelated
+    turn ends.  The next still-valid queued session is promoted in the same
+    tick instead."""
+    revoked = _mock_session(session_id="s1", organization_id="org-1")
+    valid = _mock_session(session_id="s2", organization_id="org-2")
+    pending = _pyd_message(metadata={})
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+
+    async def _tenancy(*, user_id, organization_id, team_id):
+        if organization_id == "org-1":
+            raise SessionOrgMembershipRevoked(organization_id)
+        return team_id
+
+    with (
+        _patch_queued_list([revoked, valid]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        _patch_dispatch_preflight(),
+        patch(
+            "backend.copilot.turn_queue.resolve_session_tenancy",
+            new=AsyncMock(side_effect=_tenancy),
+        ),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    dispatch_turn_mock.assert_awaited_once()
+    kwargs = dispatch_turn_mock.await_args.kwargs
+    assert kwargs["session_id"] == "s2"
+    assert kwargs["organization_id"] == "org-2"
+    # The revoked head was still dropped out of the queue on the way past.
+    db.update_chat_session_status.assert_any_await(
+        session_id="s1", expect_status="queued", status="idle"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_checks_codex_access_after_skipping_revoked_platform_head() -> (
+    None
+):
+    """The selected session's provider owns preflight after revoked heads drop."""
+    revoked = _mock_session(session_id="s1", organization_id="org-1")
+    revoked.metadata.llm_auth_provider = "platform"
+    valid = _mock_session(session_id="s2", organization_id="org-2")
+    valid.metadata.llm_auth_provider = "codex"
+    valid.metadata.llm_credential_id = "cred-2"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    dispatch_turn_mock = AsyncMock()
+    codex_access = AsyncMock(return_value=False)
+    platform_paywall = AsyncMock(
+        side_effect=AssertionError("platform billing checked for Codex session")
+    )
+
+    async def _tenancy(*, user_id, organization_id, team_id):
+        if organization_id == "org-1":
+            raise SessionOrgMembershipRevoked(organization_id)
+        return team_id
+
+    with (
+        _patch_queued_list([revoked, valid]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch(
+            "backend.copilot.turn_queue.resolve_session_tenancy",
+            new=AsyncMock(side_effect=_tenancy),
+        ),
+        patch.object(turn_queue, "has_codex_access", new=codex_access),
+        patch.object(turn_queue, "is_user_paywalled", new=platform_paywall),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    codex_access.assert_awaited_once_with("u1")
+    platform_paywall.assert_not_awaited()
+    dispatch_turn_mock.assert_not_awaited()
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="queued", status="idle"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_checks_platform_billing_after_skipping_revoked_codex_head() -> (
+    None
+):
+    """A revoked Codex head cannot exempt the next platform turn from billing."""
+    revoked = _mock_session(session_id="s1", organization_id="org-1")
+    revoked.metadata.llm_auth_provider = "codex"
+    valid = _mock_session(session_id="s2", organization_id="org-2")
+    valid.metadata.llm_auth_provider = "platform"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    dispatch_turn_mock = AsyncMock()
+    codex_access = AsyncMock(
+        side_effect=AssertionError("Codex access checked for platform session")
+    )
+    platform_paywall = AsyncMock(return_value=True)
+
+    async def _tenancy(*, user_id, organization_id, team_id):
+        if organization_id == "org-1":
+            raise SessionOrgMembershipRevoked(organization_id)
+        return team_id
+
+    with (
+        _patch_queued_list([revoked, valid]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch(
+            "backend.copilot.turn_queue.resolve_session_tenancy",
+            new=AsyncMock(side_effect=_tenancy),
+        ),
+        patch.object(turn_queue, "has_codex_access", new=codex_access),
+        patch.object(turn_queue, "is_user_paywalled", new=platform_paywall),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    codex_access.assert_not_awaited()
+    platform_paywall.assert_awaited_once_with("u1")
+    dispatch_turn_mock.assert_not_awaited()
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="queued", status="idle"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_drop_tolerates_lost_cas_race() -> None:
+    """A concurrent cancel can move the session between the queued listing and
+    the drop, making the CAS return False.  The revoked session must still not
+    dispatch, and the tick must end cleanly rather than raise."""
+    head = _mock_session(session_id="s1", organization_id="org-1")
+    db = MagicMock()
+    # CAS loses: another actor already moved this session out of ``queued``.
+    db.update_chat_session_status = AsyncMock(return_value=False)
+    db.get_latest_user_message_in_session = AsyncMock()
+    dispatch_turn_mock = AsyncMock()
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        _patch_dispatch_preflight(),
+        patch(
+            "backend.copilot.turn_queue.resolve_session_tenancy",
+            new=AsyncMock(side_effect=SessionOrgMembershipRevoked("org-1")),
+        ),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    dispatch_turn_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_promotes_with_stale_team_stripped_to_org_home() -> None:
+    """Org membership still ACTIVE but the team membership went stale while the
+    turn waited: promote under the org with the team stripped to org-home."""
+    head = _mock_session(session_id="s1", organization_id="org-1", team_id="team-1")
+    pending = _pyd_message(metadata={"mode": "extended_thinking"})
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+    # Org ACTIVE, team stale → helper returns the stripped team (None).
+    tenancy = AsyncMock(return_value=None)
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        _patch_dispatch_preflight(),
+        patch("backend.copilot.turn_queue.resolve_session_tenancy", new=tenancy),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    # The session's persisted tenancy is what gets re-verified — a regression
+    # passing the request context (or the session id) would be caught here.
+    tenancy.assert_awaited_once_with(
+        user_id="u1", organization_id="org-1", team_id="team-1"
+    )
+    dispatch_turn_mock.assert_awaited_once()
+    kwargs = dispatch_turn_mock.await_args.kwargs
+    assert kwargs["organization_id"] == "org-1"
+    assert kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_dispatch_preserves_validated_tenancy_for_legacy_untagged_session() -> (
+    None
+):
+    """A queued legacy session carries its validated request context onward."""
+    head = _mock_session(session_id="s1", organization_id=None, team_id=None)
+    pending = _pyd_message(
+        metadata={
+            "organization_id": "org-request",
+            "team_id": "team-request",
+        }
+    )
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+    tenancy = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        _patch_dispatch_preflight(),
+        patch("backend.copilot.turn_queue.resolve_session_tenancy", new=tenancy),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    tenancy.assert_not_awaited()
+    kwargs = dispatch_turn_mock.await_args.kwargs
+    assert kwargs["organization_id"] == "org-request"
+    assert kwargs["team_id"] == "team-request"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_leaves_session_queued_when_tenancy_lookup_fails() -> None:
+    head = _mock_session(session_id="s1", organization_id="org-1")
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock()
+    dispatch_turn_mock = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch(
+            "backend.copilot.turn_queue.resolve_session_tenancy",
+            new=AsyncMock(side_effect=RuntimeError("membership unavailable")),
+        ),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    db.update_chat_session_status.assert_not_awaited()
+    dispatch_turn_mock.assert_not_awaited()

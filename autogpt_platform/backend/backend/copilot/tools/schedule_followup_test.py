@@ -162,7 +162,8 @@ async def test_session_id_override_targets_a_different_owned_session(tool, sessi
     mock_user = MagicMock(timezone="UTC")
     mock_user_db().get_user_by_id = AsyncMock(return_value=mock_user)
 
-    mock_get_session = AsyncMock(return_value=MagicMock())  # session exists + owned
+    target_session = MagicMock(organization_id="org-target", team_id="team-target")
+    mock_get_session = AsyncMock(return_value=target_session)
     mock_client = AsyncMock()
     mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
 
@@ -183,6 +184,8 @@ async def test_session_id_override_targets_a_different_owned_session(tool, sessi
     mock_get_session.assert_awaited_once_with(other_session_id, _USER)
     call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
     assert call_kwargs["session_id"] == other_session_id
+    assert call_kwargs["organization_id"] == "org-target"
+    assert call_kwargs["team_id"] == "team-target"
 
 
 @pytest.mark.asyncio

@@ -38,6 +38,8 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
+from backend.copilot.session_tenancy import resolve_session_tenancy
+from backend.data.db_accessors import chat_db
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
@@ -251,37 +253,67 @@ async def _execute_copilot_turn(**kwargs):
     args = CopilotTurnJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
     try:
-        # Resolve the target session.  ``session_id=None`` means "fire into
-        # a fresh chat" — create one now so the user has somewhere visible
-        # for the scheduled message to land.  For an explicit session_id
-        # we still verify it exists (the user may have deleted the chat
-        # between scheduling and now) and self-clean the dead schedule
-        # otherwise — orphan turns into a missing session would never
-        # surface in any UI.
-        if args.session_id is None:
-            new_session = await create_chat_session(
-                args.user_id,
-                dry_run=False,
-                organization_id=args.organization_id,
-                team_id=args.team_id,
-            )
-            target_session_id = new_session.session_id
-            target_session = new_session
-            logger.info(
-                f"Copilot turn schedule {args.schedule_id} creating fresh "
-                f"session {target_session_id[:12]} (sentinel session_id=None)"
-            )
-        else:
-            session = await get_chat_session(args.session_id, args.user_id)
-            if session is None:
+        # Existing sessions are the tenancy authority. Job args are only the
+        # fallback for legacy untagged sessions and fresh-session schedules.
+        target_session = None
+        if args.session_id is not None:
+            target_session = await get_chat_session(args.session_id, args.user_id)
+            if target_session is None:
                 logger.info(
                     f"Copilot turn schedule {args.schedule_id} skipped — session "
                     f"{args.session_id[:12]} no longer exists; removing schedule"
                 )
                 await _self_delete_copilot_turn_schedule(args)
                 return
-            target_session_id = args.session_id
-            target_session = session
+
+        if target_session is not None:
+            persisted_session = await chat_db().get_chat_session_metadata(
+                target_session.session_id
+            )
+            if persisted_session is None or persisted_session.user_id != args.user_id:
+                logger.info(
+                    f"Copilot turn schedule {args.schedule_id} skipped — session "
+                    f"{_session_id_label(args)} no longer exists; removing schedule"
+                )
+                await _self_delete_copilot_turn_schedule(args)
+                return
+            if persisted_session.organization_id is not None:
+                organization_id = persisted_session.organization_id
+                team_id = persisted_session.team_id
+            else:
+                organization_id = args.organization_id
+                team_id = args.team_id
+        else:
+            organization_id = args.organization_id
+            team_id = args.team_id
+
+        # A schedule can outlive the membership that authorized its creation.
+        # Resolve before creating a fresh session or dispatching any work. The
+        # shared policy hard-denies stale org membership and soft-strips a stale
+        # team to org-home; lookup failures propagate to the outer fail-closed
+        # handler below.
+        if organization_id is not None:
+            team_id = await resolve_session_tenancy(
+                user_id=args.user_id,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
+        else:
+            team_id = None
+
+        if target_session is None:
+            target_session = await create_chat_session(
+                args.user_id,
+                dry_run=False,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
+            logger.info(
+                f"Copilot turn schedule {args.schedule_id} creating fresh "
+                f"session {target_session.session_id[:12]} (sentinel session_id=None)"
+            )
+
+        target_session_id = target_session.session_id
 
         # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
         # point: it acquires a per-user concurrency slot AND registers the
@@ -295,8 +327,8 @@ async def _execute_copilot_turn(**kwargs):
             message=args.message,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
-            organization_id=args.organization_id,
-            team_id=args.team_id,
+            organization_id=organization_id,
+            team_id=team_id,
             llm_auth_provider=target_session.metadata.llm_auth_provider,
             llm_credential_id=target_session.metadata.llm_credential_id,
         )

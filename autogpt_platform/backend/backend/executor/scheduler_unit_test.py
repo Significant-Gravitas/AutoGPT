@@ -13,6 +13,7 @@ import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
+from backend.copilot.session_tenancy import SessionOrgMembershipRevoked
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     CopilotTurnJobArgs,
@@ -33,6 +34,16 @@ from backend.executor.scheduler import (
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
+
+
+@pytest.fixture(autouse=True)
+def authoritative_chat_db(monkeypatch):
+    db = MagicMock()
+    db.get_chat_session_metadata = AsyncMock(
+        return_value=MagicMock(user_id="user-1", organization_id=None, team_id=None)
+    )
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}.chat_db", lambda: db)
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +182,23 @@ def _args(**overrides) -> CopilotTurnJobArgs:
     return CopilotTurnJobArgs(**base)
 
 
+def _chat_session(
+    *,
+    session_id: str = "session-1",
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: str = "platform",
+    llm_credential_id: str | None = None,
+) -> MagicMock:
+    session = MagicMock()
+    session.session_id = session_id
+    session.organization_id = organization_id
+    session.team_id = team_id
+    session.metadata.llm_auth_provider = llm_auth_provider
+    session.metadata.llm_credential_id = llm_credential_id
+    return session
+
+
 @pytest.mark.asyncio
 async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
     args = _args()
@@ -209,14 +237,19 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
     mock_schedule_turn = AsyncMock()
     mock_get_session = AsyncMock()  # should NOT be called
-    new_session = MagicMock(session_id="new-session-uuid")
+    new_session = _chat_session(session_id="new-session-uuid")
     mock_create_session = AsyncMock(return_value=new_session)
+    mock_resolve_tenancy = AsyncMock(return_value="team-sched")
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
         patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
         patch(
             "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(
+            "backend.executor.scheduler.resolve_session_tenancy",
+            new=mock_resolve_tenancy,
         ),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
@@ -228,6 +261,11 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
         team_id="team-sched",
     )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
+    mock_resolve_tenancy.assert_awaited_once_with(
+        user_id="user-1",
+        organization_id="org-sched",
+        team_id="team-sched",
+    )
     mock_schedule_turn.assert_awaited_once()
     call_kwargs = mock_schedule_turn.call_args.kwargs
     assert call_kwargs["session_id"] == "new-session-uuid"
@@ -240,7 +278,7 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
 async def test_execute_copilot_turn_dispatches_when_session_exists():
     args = _args()
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock())
+    mock_get_session = AsyncMock(return_value=_chat_session())
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -256,6 +294,221 @@ async def test_execute_copilot_turn_dispatches_when_session_exists():
 
 
 @pytest.mark.asyncio
+async def test_execute_copilot_turn_uses_existing_session_tenancy_over_job_args(
+    authoritative_chat_db,
+):
+    args = _args(organization_id="org-job", team_id="team-job")
+    session = _chat_session(
+        organization_id="org-session",
+        team_id="team-session",
+    )
+    authoritative_chat_db.get_chat_session_metadata.return_value = MagicMock(
+        user_id="user-1",
+        organization_id="org-session",
+        team_id="team-session",
+    )
+    mock_schedule_turn = AsyncMock()
+    mock_resolve_tenancy = AsyncMock(return_value=None)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.executor.scheduler.resolve_session_tenancy",
+            new=mock_resolve_tenancy,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_resolve_tenancy.assert_awaited_once_with(
+        user_id="user-1",
+        organization_id="org-session",
+        team_id="team-session",
+    )
+    call_kwargs = mock_schedule_turn.await_args.kwargs
+    assert call_kwargs["organization_id"] == "org-session"
+    assert call_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recurring", [False, True])
+async def test_execute_copilot_turn_blocks_revoked_existing_session_tenancy(
+    authoritative_chat_db, recurring: bool
+):
+    args = (
+        _args(run_at=None, cron="* * * * *", organization_id=None, team_id=None)
+        if recurring
+        else _args(organization_id=None, team_id=None)
+    )
+    session = _chat_session(organization_id="cached-org", team_id="cached-team")
+    authoritative_chat_db.get_chat_session_metadata.return_value = MagicMock(
+        user_id="user-1",
+        organization_id="org-session",
+        team_id="team-session",
+    )
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock()
+    mock_reschedule = AsyncMock()
+    mock_self_delete = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(
+            "backend.executor.scheduler.resolve_session_tenancy",
+            new=AsyncMock(side_effect=SessionOrgMembershipRevoked("org-session")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_cap",
+            new=mock_reschedule,
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_schedule_turn.assert_not_awaited()
+    mock_reschedule.assert_not_awaited()
+    mock_self_delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_blocks_revoked_fresh_session_before_creation():
+    args = _args(
+        session_id=None,
+        organization_id="org-scheduled",
+        team_id="team-scheduled",
+    )
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(
+            "backend.executor.scheduler.resolve_session_tenancy",
+            new=AsyncMock(side_effect=SessionOrgMembershipRevoked("org-scheduled")),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_schedule_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_strips_stale_team_before_fresh_session_creation():
+    args = _args(
+        session_id=None,
+        organization_id="org-scheduled",
+        team_id="team-stale",
+    )
+    new_session = _chat_session(session_id="new-session")
+    mock_create_session = AsyncMock(return_value=new_session)
+    mock_schedule_turn = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(
+            "backend.executor.scheduler.resolve_session_tenancy",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_awaited_once_with(
+        "user-1",
+        dry_run=False,
+        organization_id="org-scheduled",
+        team_id=None,
+    )
+    call_kwargs = mock_schedule_turn.await_args.kwargs
+    assert call_kwargs["organization_id"] == "org-scheduled"
+    assert call_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_keeps_legacy_null_tenancy_without_lookup():
+    args = _args(organization_id=None, team_id=None)
+    session = _chat_session(organization_id=None, team_id=None)
+    mock_resolve_tenancy = AsyncMock()
+    mock_schedule_turn = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.executor.scheduler.resolve_session_tenancy",
+            new=mock_resolve_tenancy,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_resolve_tenancy.assert_not_awaited()
+    call_kwargs = mock_schedule_turn.await_args.kwargs
+    assert call_kwargs["organization_id"] is None
+    assert call_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recurring", [False, True])
+async def test_execute_copilot_turn_fails_closed_on_tenancy_lookup_error(
+    recurring: bool,
+):
+    args = (
+        _args(run_at=None, cron="* * * * *", organization_id="org-scheduled")
+        if recurring
+        else _args(organization_id="org-scheduled")
+    )
+    session = _chat_session(organization_id=None)
+    mock_schedule_turn = AsyncMock()
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.executor.scheduler.resolve_session_tenancy",
+            new=AsyncMock(side_effect=RuntimeError("membership service unavailable")),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_cap",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
+    # Cron naturally retries at its next tick. DateTrigger one-shots are
+    # consumed after this fail-closed callback; we intentionally do not reuse
+    # the concurrency-cap retry path for an authorization dependency outage.
+    mock_reschedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
     """When schedule_turn raises ConcurrentTurnLimitError on a one-shot
     schedule, the dispatcher reschedules instead of silently dropping."""
@@ -263,7 +516,7 @@ async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
 
     args = _args()  # run_at set → one-shot
     mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
-    mock_get_session = AsyncMock(return_value=MagicMock())
+    mock_get_session = AsyncMock(return_value=_chat_session())
     mock_reschedule = AsyncMock()
 
     with (
@@ -284,7 +537,7 @@ async def test_execute_copilot_turn_concurrency_cap_does_not_reschedule_cron():
 
     args = _args(run_at=None, cron="* * * * *")  # recurring
     mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
-    mock_get_session = AsyncMock(return_value=MagicMock())
+    mock_get_session = AsyncMock(return_value=_chat_session())
     mock_reschedule = AsyncMock()
 
     with (
@@ -302,7 +555,7 @@ async def test_execute_copilot_turn_swallows_generic_exceptions():
     """Non-concurrency errors should be logged but not crash the scheduler."""
     args = _args()
     mock_schedule_turn = AsyncMock(side_effect=RuntimeError("transient queue error"))
-    mock_get_session = AsyncMock(return_value=MagicMock())
+    mock_get_session = AsyncMock(return_value=_chat_session())
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),

@@ -19,7 +19,12 @@ from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.session_tenancy import (
+    SessionOrgMembershipRevoked,
+    resolve_session_tenancy,
+)
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.data.db_accessors import chat_db
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.util.decorator import error_logged
@@ -534,6 +539,50 @@ class CoPilotProcessor:
             ):
                 raise RuntimeError("codex_session_route_mismatch")
 
+            # Final authorization boundary before either execution engine starts.
+            # Read metadata from Postgres via DatabaseManager instead of trusting the
+            # Redis-cached full session, where legacy in-memory backfills may be sticky.
+            try:
+                persisted_session = await chat_db().get_chat_session_metadata(
+                    entry.session_id
+                )
+            except Exception as exc:
+                raise RuntimeError("session_tenancy_unavailable") from exc
+            if (
+                persisted_session is None
+                or persisted_session.user_id != session.user_id
+            ):
+                raise RuntimeError("copilot_session_not_found")
+
+            if persisted_session.organization_id is not None:
+                execution_organization_id = persisted_session.organization_id
+                execution_team_id = persisted_session.team_id
+            else:
+                # Legacy untagged sessions inherit the server-produced turn entry.
+                execution_organization_id = entry.organization_id
+                execution_team_id = entry.team_id
+
+            if execution_organization_id is not None:
+                try:
+                    execution_team_id = await resolve_session_tenancy(
+                        user_id=session.user_id,
+                        organization_id=execution_organization_id,
+                        team_id=execution_team_id,
+                    )
+                except SessionOrgMembershipRevoked as exc:
+                    raise RuntimeError("session_organization_access_revoked") from exc
+                except Exception as exc:
+                    raise RuntimeError("session_tenancy_unavailable") from exc
+            else:
+                execution_team_id = None
+
+            session = session.model_copy(
+                update={
+                    "organization_id": execution_organization_id,
+                    "team_id": execution_team_id,
+                }
+            )
+
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
                 from backend.integrations.codex.credential_codec import (
@@ -647,8 +696,8 @@ class CoPilotProcessor:
                 model=entry.model,
                 permissions=entry.permissions,
                 request_arrival_at=entry.request_arrival_at,
-                organization_id=entry.organization_id,
-                team_id=entry.team_id,
+                organization_id=execution_organization_id,
+                team_id=execution_team_id,
                 credential_lease=credential_lease,
                 session=session,
             )

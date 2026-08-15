@@ -71,6 +71,10 @@ class SubAgentRecursionError(BlockExecutionError):
         )
 
 
+class _TerminalTurnError(RuntimeError):
+    """A denied or completed turn state that must never be republished."""
+
+
 class ToolCallEntry(TypedDict):
     """A single tool invocation record from an autopilot execution."""
 
@@ -350,6 +354,8 @@ class AutoPilotBlock(Block):
         session_id: str,
         max_recursion_depth: int,
         user_id: str,
+        organization_id: str | None = None,
+        team_id: str | None = None,
         permissions: "CopilotPermissions | None" = None,
     ) -> tuple[str, list[ToolCallEntry], str, str, TokenUsage]:
         """Invoke the copilot on the copilot_executor queue and aggregate the
@@ -396,6 +402,8 @@ class AutoPilotBlock(Block):
                 # SDK enforces its own idle-based timeout inside the
                 # stream_registry pipeline.
                 timeout=_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS,
+                organization_id=organization_id,
+                team_id=team_id,
                 permissions=effective_permissions,
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
@@ -405,13 +413,13 @@ class AutoPilotBlock(Block):
                 # cap rejected before ``create_session`` ran. Surface a
                 # message that points at the actionable cause rather
                 # than the empty transcript.
-                raise RuntimeError(running_turn_limit_message())
+                raise _TerminalTurnError(running_turn_limit_message())
             if outcome == "failed":
-                raise RuntimeError(
+                raise _TerminalTurnError(
                     "AutoPilot turn failed — see the session's transcript"
                 )
             if outcome == "running":
-                raise RuntimeError(
+                raise _TerminalTurnError(
                     "AutoPilot turn did not complete within "
                     f"{_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS}s — session "
                     f"{session_id}"
@@ -531,6 +539,8 @@ class AutoPilotBlock(Block):
                 yield "error", "codex_session_route_mismatch"
                 return
 
+        from backend.copilot.sdk.session_waiter import SessionAdmissionError
+
         # NOTE: No asyncio.timeout() here — the SDK manages its own
         # heartbeat-based timeouts internally.  Wrapping with asyncio.timeout
         # would cancel the task mid-flight, corrupting the SDK's internal
@@ -542,6 +552,8 @@ class AutoPilotBlock(Block):
                 session_id=sid,
                 max_recursion_depth=input_data.max_recursion_depth,
                 user_id=execution_context.user_id,
+                organization_id=execution_context.organization_id,
+                team_id=execution_context.team_id,
                 permissions=permissions,
             )
 
@@ -554,9 +566,11 @@ class AutoPilotBlock(Block):
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
             raise
-        except SubAgentRecursionError as exc:
-            # Deliberate block — re-enqueueing would immediately hit the limit
-            # again, so skip recovery and just surface the error.
+        except (
+            SessionAdmissionError,
+            SubAgentRecursionError,
+            _TerminalTurnError,
+        ) as exc:
             yield "session_id", sid
             yield "error", str(exc)
         except Exception as exc:
@@ -571,12 +585,22 @@ class AutoPilotBlock(Block):
                     f"[System Context: {input_data.system_context}]\n\n"
                     f"{input_data.prompt}"
                 )
+            recovery_permissions, recovery_token = _merge_inherited_permissions(
+                permissions
+            )
             try:
                 await _enqueue_for_recovery(
                     sid,
                     execution_context.user_id,
                     effective_prompt,
                     input_data.dry_run or execution_context.dry_run,
+                    organization_id=execution_context.organization_id,
+                    team_id=(
+                        execution_context.team_id
+                        if execution_context.organization_id is not None
+                        else None
+                    ),
+                    permissions=recovery_permissions,
                 )
             except asyncio.CancelledError:
                 # Task cancelled during recovery — still yield the error
@@ -589,6 +613,9 @@ class AutoPilotBlock(Block):
                     sid[:12],
                     exc_info=True,
                 )
+            finally:
+                if recovery_token is not None:
+                    _inherited_permissions.reset(recovery_token)
             yield "error", str(exc)
 
 
@@ -725,6 +752,10 @@ async def _enqueue_for_recovery(
     user_id: str,
     message: str,
     dry_run: bool,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    permissions: CopilotPermissions | None,
 ) -> None:
     """Re-enqueue an orphaned sub-agent session so a fresh executor picks it up.
 
@@ -760,6 +791,9 @@ async def _enqueue_for_recovery(
                 user_id=user_id,
                 message=message,
                 turn_id=str(uuid.uuid4()),
+                organization_id=organization_id,
+                team_id=team_id if organization_id is not None else None,
+                permissions=permissions,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
             ),

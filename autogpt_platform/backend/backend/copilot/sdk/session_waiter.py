@@ -32,6 +32,11 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
+from backend.copilot.session_tenancy import (
+    SessionOrgMembershipRevoked,
+    resolve_session_tenancy,
+)
+from backend.data.db_accessors import chat_db
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -48,6 +53,10 @@ SessionOutcome = Literal[
     "queued",
     "rejected_concurrent_turn_cap",
 ]
+
+
+class SessionAdmissionError(RuntimeError):
+    """Terminal failure while authorizing a session dispatch or injection."""
 
 
 @dataclass
@@ -135,6 +144,8 @@ async def run_copilot_turn_via_queue(
     message: str,
     timeout: float,
     permissions: "CopilotPermissions | None" = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     tool_call_id: str,
     tool_name: str,
 ) -> tuple[SessionOutcome, SessionResult]:
@@ -175,16 +186,48 @@ async def run_copilot_turn_via_queue(
     """
     session = await get_chat_session(session_id, user_id)
     if session is None:
-        raise RuntimeError("copilot_session_not_found")
+        raise SessionAdmissionError("copilot_session_not_found")
 
+    try:
+        persisted_session = await chat_db().get_chat_session_metadata(session_id)
+    except Exception as exc:
+        raise SessionAdmissionError("session_tenancy_unavailable") from exc
+    if persisted_session is None or persisted_session.user_id != user_id:
+        raise SessionAdmissionError("copilot_session_not_found")
     if await is_turn_in_flight(session_id):
+
+        if persisted_session.organization_id is None:
+            raise SessionAdmissionError("session_tenancy_unverifiable")
+        try:
+            pending_team_id = await resolve_session_tenancy(
+                user_id=user_id,
+                organization_id=persisted_session.organization_id,
+                team_id=persisted_session.team_id,
+            )
+        except SessionOrgMembershipRevoked as exc:
+            raise SessionAdmissionError("session_organization_access_revoked") from exc
+        except Exception as exc:
+            raise SessionAdmissionError("session_tenancy_unavailable") from exc
+
+        # The already-running engine may still hold team-scoped capabilities.
+        # Without a per-turn tenancy snapshot, re-homing an injected message is
+        # unsafe, so reject it until the caller starts a fresh turn.
+        if persisted_session.team_id is not None and pending_team_id is None:
+            raise SessionAdmissionError("session_team_access_changed")
+
         logger.info(
             "[queue] session=%s has a turn in flight; queueing message "
             "(tool=%s) into pending buffer instead of starting a new turn",
             session_id[:12],
             tool_name,
         )
-        state = await queue_user_message(session_id=session_id, message=message)
+        state = await queue_user_message(
+            session_id=session_id,
+            message=message,
+            require_turn_in_flight=True,
+        )
+        if not state.turn_in_flight:
+            raise SessionAdmissionError("copilot_session_not_running")
         if timeout <= 0:
             # Fire-and-forget: caller explicitly asked not to wait.
             return "queued", SessionResult(
@@ -207,6 +250,13 @@ async def run_copilot_turn_via_queue(
         observed.pending_buffer_length = state.buffer_length
         return outcome, observed
 
+    # A legacy row has no persisted tenant anchor. Its server-produced caller
+    # context is required so the processor can revalidate it before execution.
+    if persisted_session.organization_id is None and organization_id is None:
+        raise SessionAdmissionError("session_tenancy_unverifiable")
+    if organization_id is None:
+        team_id = None
+
     # Same per-user concurrent-turn cap as the HTTP chat route via the
     # shared ``schedule_turn`` helper — without this a graph spawning N
     # AutoPilotBlocks or a tool-loop firing run_sub_session could fan
@@ -221,6 +271,8 @@ async def run_copilot_turn_via_queue(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             llm_auth_provider=session.metadata.llm_auth_provider,
+            organization_id=organization_id,
+            team_id=team_id,
             llm_credential_id=session.metadata.llm_credential_id,
             permissions=permissions,
         )

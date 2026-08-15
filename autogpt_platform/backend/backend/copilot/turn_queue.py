@@ -39,6 +39,7 @@ from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
     ChatMessage,
+    ChatSessionInfo,
     _get_session_lock,
     invalidate_session_cache,
 )
@@ -48,6 +49,10 @@ from backend.copilot.rate_limit import (
     check_rate_limit,
     get_global_rate_limits,
     is_user_paywalled,
+)
+from backend.copilot.session_tenancy import (
+    SessionOrgMembershipRevoked,
+    resolve_session_tenancy,
 )
 from backend.data.db_accessors import chat_db
 from backend.integrations.codex.access import has_codex_access
@@ -102,6 +107,8 @@ async def try_enqueue_turn(
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
@@ -127,6 +134,8 @@ async def try_enqueue_turn(
         file_ids=file_ids,
         mode=mode,
         model=model,
+        organization_id=organization_id,
+        team_id=team_id,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
         permissions=permissions,
@@ -145,6 +154,8 @@ async def enqueue_turn(
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
@@ -168,6 +179,9 @@ async def enqueue_turn(
         metadata["mode"] = mode
     if model is not None:
         metadata["model"] = model
+    if organization_id is not None:
+        metadata["organization_id"] = organization_id
+        metadata["team_id"] = team_id
     metadata["llm_auth_provider"] = llm_auth_provider
     if llm_credential_id is not None:
         metadata["llm_credential_id"] = llm_credential_id
@@ -259,7 +273,13 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     queued = await list_queued_sessions(user_id)
     if not queued:
         return False
-    head = queued[0]
+    # Resolve the first still-authorized session before applying provider-specific
+    # eligibility checks. A revoked head may be followed by a session using a
+    # different auth provider, whose entitlement/billing policy must govern it.
+    promotable = await _resolve_promotable_head(user_id, queued)
+    if promotable is None:
+        return False
+    head, promoted_team_id = promotable
 
     if head.metadata.llm_auth_provider == "codex":
         if not await has_codex_access(user_id):
@@ -357,9 +377,15 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             # Session-anchored tenancy: promoted turns attribute to the
             # session's org/team, same as directly-dispatched turns —
             # without this, capped users' queued turns would lose their
-            # org context on promotion.
-            organization_id=head.organization_id,
-            team_id=head.team_id,
+            # org context on promotion.  ``promoted_team_id`` is the session
+            # team stripped to org-home if the user's team membership went
+            # stale while the turn waited (org membership re-verified above).
+            organization_id=(head.organization_id or metadata.get("organization_id")),
+            team_id=(
+                promoted_team_id
+                if head.organization_id is not None
+                else metadata.get("team_id")
+            ),
             mode=metadata.get("mode"),
             model=metadata.get("model"),
             llm_auth_provider=head.metadata.llm_auth_provider,
@@ -395,3 +421,55 @@ async def dispatch_next_for_user(user_id: str) -> bool:
 
     await invalidate_session_cache(head.session_id)
     return True
+
+
+async def _resolve_promotable_head(
+    user_id: str, queued: list[ChatSessionInfo]
+) -> tuple[ChatSessionInfo, str | None] | None:
+    """First queued session the user may still run, with its resolved team.
+
+    Walks *queued* in FIFO order and re-verifies each session's persisted
+    tenancy (see ``backend/copilot/session_tenancy.py``).  Sessions whose org
+    membership was revoked are dropped out of the queue (queued → idle) and
+    skipped, so the freed running slot goes to the next still-valid session
+    instead of being wasted for this tick — ``dispatch_next_for_user`` only
+    runs on turn completion, so a wasted tick can stall the rest of the
+    user's queue until an unrelated turn ends.
+
+    Returns ``None`` when nothing in the queue is promotable.  Dropped
+    sessions keep their persisted user message; a re-send from a valid
+    context re-dispatches it.
+    """
+    for session in queued:
+        if session.organization_id is None:
+            # Untagged legacy session: tenancy comes from the request context,
+            # which ``get_request_context`` already validated.
+            return session, session.team_id
+        try:
+            return session, await resolve_session_tenancy(
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+        except SessionOrgMembershipRevoked:
+            logger.warning(
+                "dispatch_next_for_user: user=%s no longer an active member of "
+                "session org=%s; dropping session=%s from the queue",
+                user_id,
+                session.organization_id,
+                session.session_id,
+            )
+            await chat_db().update_chat_session_status(
+                session_id=session.session_id,
+                expect_status=CHAT_STATUS_QUEUED,
+                status=CHAT_STATUS_IDLE,
+            )
+            await invalidate_session_cache(session.session_id)
+        except Exception:
+            logger.exception(
+                "dispatch_next_for_user: tenancy check unavailable for "
+                "session=%s; leaving it queued",
+                session.session_id,
+            )
+            return None
+    return None
