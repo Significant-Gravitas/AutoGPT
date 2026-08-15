@@ -1,14 +1,16 @@
+import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import prisma.enums
 import prisma.models
+import pydantic
 import pytest
 
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, scheduling, seed
-from backend.api.features.experts.models import ExpertSoulUpdate
+from backend.api.features.experts.models import ExpertSoulFieldsPatch, ExpertSoulUpdate
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.model import CreateGraph
@@ -763,3 +765,144 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_patches_subset_only(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    updated = await experts_db.update_soul_fields(
+        test_user.id,
+        hired.expert.id,
+        voice_preferences="Warm and concise.",
+    )
+
+    assert updated.voice_preferences == "Warm and concise."
+    # Untouched fields (including the name) are preserved.
+    assert updated.identity == hired.expert.identity
+    assert updated.name == hired.expert.name
+    assert updated.boundaries == hired.expert.boundaries
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_scopes_by_owner(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_soul_fields(
+            other_user.id, hired.expert.id, identity="Hijacked identity."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_concurrent_disjoint_edits_both_persist(
+    server: SpinTestServer, test_user
+):
+    """Each call writes only its own column, so neither edit is clobbered."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    await asyncio.gather(
+        experts_db.update_soul_fields(
+            test_user.id, hired.expert.id, voice_preferences="Warm and concise."
+        ),
+        experts_db.update_soul_fields(
+            test_user.id, hired.expert.id, boundaries="Never email externally."
+        ),
+    )
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert fetched is not None
+    assert fetched.voice_preferences == "Warm and concise."
+    assert fetched.boundaries == "Never email externally."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_rejects_empty_patch():
+    with pytest.raises(ValueError, match="At least one Soul field"):
+        await experts_db.update_soul_fields("user-1", "expert-1")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_if_current_requires_expected_value():
+    with pytest.raises(ValueError, match="Expected value required"):
+        await experts_db.update_soul_fields_if_current(
+            "user-1", "expert-1", identity="New identity."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_if_current_is_atomic(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    before = hired.expert.voice_preferences
+
+    applied = await experts_db.update_soul_fields_if_current(
+        test_user.id,
+        hired.expert.id,
+        voice_preferences="Warm and concise.",
+        expected_voice_preferences=before,
+    )
+    stale_apply = await experts_db.update_soul_fields_if_current(
+        test_user.id,
+        hired.expert.id,
+        voice_preferences="Stale overwrite.",
+        expected_voice_preferences=before,
+    )
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert applied is True
+    assert stale_apply is False
+    assert fetched is not None
+    assert fetched.voice_preferences == "Warm and concise."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_fields_if_current_scopes_by_owner(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    applied = await experts_db.update_soul_fields_if_current(
+        other_user.id,
+        hired.expert.id,
+        identity="Hijacked identity.",
+        expected_identity=hired.expert.identity,
+    )
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert applied is False
+    assert fetched is not None
+    assert fetched.identity == hired.expert.identity
+
+
+def test_expert_soul_fields_patch_rejects_blank_identity():
+    with pytest.raises(pydantic.ValidationError):
+        ExpertSoulFieldsPatch(identity="   ")
+
+
+def test_expert_soul_fields_patch_enforces_length_caps():
+    with pytest.raises(pydantic.ValidationError):
+        ExpertSoulFieldsPatch(identity="x" * 10_001)
+    with pytest.raises(pydantic.ValidationError):
+        ExpertSoulFieldsPatch(voice_preferences="x" * 4_001)
+    with pytest.raises(pydantic.ValidationError):
+        ExpertSoulFieldsPatch(boundaries="x" * 4_001)
+
+
+def test_expert_soul_fields_patch_strips_and_preserves_none():
+    patch = ExpertSoulFieldsPatch(
+        voice_preferences="   ", boundaries="  Keep it short.  "
+    )
+    assert patch.voice_preferences == ""
+    assert patch.boundaries == "Keep it short."
+    assert patch.identity is None

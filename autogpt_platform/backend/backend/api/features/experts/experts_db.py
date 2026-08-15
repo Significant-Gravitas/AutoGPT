@@ -2,11 +2,13 @@ import logging
 
 import prisma.errors
 import prisma.models
+import prisma.types
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -253,6 +255,111 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     if expert is None:
         raise ExpertNotFoundError(expert_id)
     return expert
+
+
+def _soul_field_update_data(
+    *,
+    identity: str | None,
+    voice_preferences: str | None,
+    boundaries: str | None,
+) -> prisma.types.ExpertUpdateManyMutationInput:
+    patch = ExpertSoulFieldsPatch(
+        identity=identity,
+        voice_preferences=voice_preferences,
+        boundaries=boundaries,
+    )
+    data: prisma.types.ExpertUpdateManyMutationInput = {}
+    if patch.identity is not None:
+        data["identity"] = patch.identity
+    if patch.voice_preferences is not None:
+        data["voicePreferences"] = patch.voice_preferences
+    if patch.boundaries is not None:
+        data["boundaries"] = patch.boundaries
+    if not data:
+        raise ValueError("At least one Soul field must be provided")
+    return data
+
+
+async def update_soul_fields(
+    user_id: str,
+    expert_id: str,
+    *,
+    identity: str | None = None,
+    voice_preferences: str | None = None,
+    boundaries: str | None = None,
+) -> Expert:
+    """Patch only the supplied Soul fields in one scoped write.
+
+    Backs the copilot Soul-edit tools, which edit identity / voice /
+    boundaries but never rename the expert. A single ``update_many`` writes
+    only the supplied columns, so concurrent edits to disjoint fields cannot
+    clobber each other; per-field validation mirrors ``update_soul`` via
+    ``ExpertSoulFieldsPatch``.
+    """
+    data = _soul_field_update_data(
+        identity=identity,
+        voice_preferences=voice_preferences,
+        boundaries=boundaries,
+    )
+
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        data=data,
+    )
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
+
+
+async def update_soul_fields_if_current(
+    user_id: str,
+    expert_id: str,
+    *,
+    identity: str | None = None,
+    voice_preferences: str | None = None,
+    boundaries: str | None = None,
+    expected_identity: str | None = None,
+    expected_voice_preferences: str | None = None,
+    expected_boundaries: str | None = None,
+) -> bool:
+    """Atomically patch Soul fields only when their previewed values still match."""
+    data = _soul_field_update_data(
+        identity=identity,
+        voice_preferences=voice_preferences,
+        boundaries=boundaries,
+    )
+    comparisons: dict[str, str] = {}
+    for field, value, expected in (
+        ("identity", identity, expected_identity),
+        ("voicePreferences", voice_preferences, expected_voice_preferences),
+        ("boundaries", boundaries, expected_boundaries),
+    ):
+        if value is None:
+            continue
+        if expected is None:
+            raise ValueError(f"Expected value required for {field}")
+        comparisons[field] = expected
+
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            **comparisons,
+        },
+        data=data,
+    )
+    return updated == 1
 
 
 async def _install_preloads(
