@@ -495,12 +495,38 @@ async def _validate_node_input_credentials(
             validation_input.update(node_input_mask)
 
         for field_name, credentials_meta_type in credentials_fields.items():
-            field_info = credentials_fields_info[field_name]
-            if get_no_auth_credentials(field_info, validation_input) is not None:
-                # Credential-free discriminator variants are valid at preflight.
-                # The executor injects their internal runtime adapter before the
-                # block input is validated, so no user credential lookup is needed.
-                continue
+    field_info = credentials_fields_info[field_name]
+    no_auth_credentials = get_no_auth_credentials(field_info, validation_input)
+
+    configured_field_value = None
+    if (
+        nodes_input_masks
+        and (node_input_mask := nodes_input_masks.get(node.id))
+        and field_name in node_input_mask
+    ):
+        configured_field_value = node_input_mask[field_name]
+    elif field_name in node.input_default:
+        configured_field_value = node.input_default[field_name]
+
+    field_has_configured_credentials = not (
+        configured_field_value is None
+        or (
+            isinstance(configured_field_value, dict)
+            and not configured_field_value.get("id")
+        )
+    )
+    discriminator_is_resolved = (
+        field_info.discriminator is None
+        or field_info.discriminator in validation_input
+    )
+    if no_auth_credentials is not None and (
+        discriminator_is_resolved or not field_has_configured_credentials
+    ):
+        # A concrete credential-free variant can skip lookup entirely. If
+        # the discriminator is unresolved, only defer when no credential was
+        # configured; configured credentials must still be validated now.
+        continue
+
             reference_only = field_info.credential_reference_only
             field_is_optional = is_creds_optional or field_name not in required_fields
             try:

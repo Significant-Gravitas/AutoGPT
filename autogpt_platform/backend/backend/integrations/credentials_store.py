@@ -420,10 +420,14 @@ class IntegrationCredentialsStore:
         return all_credentials
 
     async def get_creds_by_id(
-        self, user_id: str, credentials_id: str
-    ) -> Credentials | None:
-        all_credentials = await self.get_all_creds(user_id)
-        return next((c for c in all_credentials if c.id == credentials_id), None)
+    self, user_id: str, credentials_id: str
+) -> Credentials | None:
+    # Keep legacy Ollama graph references resolvable without exposing the
+    # internal compatibility credential in the user's credentials list.
+    if credentials_id == ollama_credentials.id:
+        return ollama_credentials
+    all_credentials = await self.get_all_creds(user_id)
+    return next((c for c in all_credentials if c.id == credentials_id), None)
 
     async def get_creds_by_provider(
         self, user_id: str, provider: str
