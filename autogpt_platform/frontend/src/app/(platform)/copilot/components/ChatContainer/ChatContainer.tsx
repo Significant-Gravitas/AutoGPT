@@ -22,6 +22,12 @@ import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
+import {
+  getKickoffAttemptToken,
+  getKickoffExpertId,
+  stripLegacyKickoffMarker,
+  type ExpertKickoffMetadata,
+} from "../../expertKickoff";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -49,6 +55,7 @@ export interface ChatContainerProps {
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
+    metadata?: ExpertKickoffMetadata,
   ) => void | Promise<void>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
@@ -75,6 +82,8 @@ export interface ChatContainerProps {
    * expert's latest thread — the composer stays locked so a draft can't be
    * lost to that navigation. */
   isAdoptingExpertSession?: boolean;
+  /** True until a newly hired expert's first kickoff has been handed off. */
+  isKickoffStarting?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -108,6 +117,7 @@ export const ChatContainer = ({
   expertIdentity,
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
+  isKickoffStarting,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -134,7 +144,10 @@ export const ChatContainer = ({
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
   const isInputDisabled =
-    isSessionUnavailable || isLimitReached || !!isResolvingExpertIdentity;
+    isSessionUnavailable ||
+    isLimitReached ||
+    !!isResolvingExpertIdentity ||
+    !!isKickoffStarting;
   // A fired (archived) expert's threads stay as read-only history — the
   // composer is replaced by a quiet notice so no new turns can be sent.
   const archivedExpertIdentity = expertIdentity?.isArchived
@@ -180,7 +193,26 @@ export const ChatContainer = ({
       .map((p) => p.text)
       .join("");
     if (lastText) {
-      guardedOnSend(lastText);
+      const kickoffExpertId = lastUserMsg
+        ? getKickoffExpertId(lastUserMsg)
+        : null;
+      const kickoffAttemptToken = lastUserMsg
+        ? getKickoffAttemptToken(lastUserMsg)
+        : null;
+      guardedOnSend(
+        kickoffExpertId ? stripLegacyKickoffMarker(lastText) : lastText,
+        undefined,
+        undefined,
+        kickoffExpertId
+          ? {
+              kind: "expert_kickoff",
+              expertId: kickoffExpertId,
+              ...(kickoffAttemptToken
+                ? { attemptToken: kickoffAttemptToken }
+                : {}),
+            }
+          : undefined,
+      );
     }
   }, [guardedOnSend, messages]);
 
@@ -284,6 +316,8 @@ export const ChatContainer = ({
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
               isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
+              isKickoffStarting={isKickoffStarting}
+              expertName={expertIdentity?.name}
             />
           )}
         </div>

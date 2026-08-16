@@ -17,6 +17,13 @@ import {
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
+  clearKickoffPending,
+  getKickoffAttemptTokenFromMetadata,
+  getKickoffExpertId,
+  getKickoffExpertIdFromMetadata,
+  withKickoffLock,
+} from "./expertKickoff";
+import {
   deduplicateMessages,
   extractSendMessageText,
   getLatestAssistantStatusMessage,
@@ -60,6 +67,7 @@ const FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH = 8;
 const STREAM_RENDER_THROTTLE_MS = 30;
 
 interface UseCopilotStreamArgs {
+  userId?: string | null;
   sessionId: string | null;
   hydratedMessages: UIMessage[] | undefined;
   hasActiveStream: boolean;
@@ -71,6 +79,7 @@ interface UseCopilotStreamArgs {
 }
 
 export function useCopilotStream({
+  userId = null,
   sessionId,
   hydratedMessages,
   hasActiveStream,
@@ -192,6 +201,15 @@ export function useCopilotStream({
 
     function handleError(error: Error) {
       if (!sessionId) return;
+      const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+      const kickoffExpertId = coord.lastSubmittedKickoffExpertId;
+      const kickoffAttemptToken = coord.lastSubmittedKickoffAttemptToken;
+      function releaseKickoffPending() {
+        if (!userId || !kickoffExpertId || !kickoffAttemptToken) return;
+        void withKickoffLock(userId, kickoffExpertId, async () => {
+          clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
+        }).catch(() => undefined);
+      }
       handleStreamError({
         error,
         onRateLimit: (message) => {
@@ -199,29 +217,45 @@ export function useCopilotStream({
           // optimistic user bubble added by useChat is a lie. Restore the text
           // into the composer (via the same store slot URL pre-fills use) and
           // drop the unsent bubble so the user can edit/resend after reset.
-          const unsentText =
-            useCopilotStreamStore.getState().getCoord(sessionId)
-              .lastSubmittedMessageText ?? null;
+          const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+          const unsentText = coord.lastSubmittedMessageText;
           if (unsentText) {
-            // The 429 callback fires async — by the time it lands, the user
-            // may have started typing a new draft. Only restore + clear the
-            // recovery slot when the composer is empty; otherwise leave the
-            // unsent text in the per-session store so a reload / resume can
-            // surface it later instead of silently dropping it.
-            const composer = document.getElementById(
-              "chat-input",
-            ) as HTMLTextAreaElement | null;
-            const composerEmpty = !composer || composer.value.length === 0;
-            if (composerEmpty) {
-              setInitialPrompt(unsentText);
-              useCopilotStreamStore
-                .getState()
-                .updateCoord(sessionId, { lastSubmittedMessageText: null });
+            // The expert-kickoff control prompt must never surface in the
+            // user's composer — drop the recovery slot instead of restoring
+            // it. Its bubble below is dropped too; the once-per-expert
+            // pending latch expires so a later visit can retry the kickoff.
+            if (kickoffExpertId) {
+              useCopilotStreamStore.getState().updateCoord(sessionId, {
+                lastSubmittedMessageText: null,
+                lastSubmittedKickoffExpertId: null,
+                lastSubmittedKickoffAttemptToken: null,
+              });
+            } else {
+              // The 429 callback fires async — by the time it lands, the user
+              // may have started typing a new draft. Only restore + clear the
+              // recovery slot when the composer is empty; otherwise leave the
+              // unsent text in the per-session store so a reload / resume can
+              // surface it later instead of silently dropping it.
+              const composer = document.getElementById(
+                "chat-input",
+              ) as HTMLTextAreaElement | null;
+              const composerEmpty = !composer || composer.value.length === 0;
+              if (composerEmpty) {
+                setInitialPrompt(unsentText);
+                useCopilotStreamStore.getState().updateCoord(sessionId, {
+                  lastSubmittedMessageText: null,
+                  lastSubmittedKickoffExpertId: null,
+                  lastSubmittedKickoffAttemptToken: null,
+                });
+              }
             }
             setMessages((prev) => {
               const last = prev[prev.length - 1];
-              if (last?.role === "user") return prev.slice(0, -1);
-              return prev;
+              const next = last?.role === "user" ? prev.slice(0, -1) : prev;
+              useCopilotStreamStore
+                .getState()
+                .setMessageSnapshot(sessionId, next);
+              return next;
             });
           }
           setRateLimitMessage(message);
@@ -229,6 +263,20 @@ export function useCopilotStream({
         onReconnect: () => handleReconnectRef.current(),
         isUserStoppingRef,
       });
+      if (kickoffExpertId) {
+        releaseKickoffPending();
+        useCopilotStreamStore.getState().updateCoord(sessionId, {
+          lastSubmittedMessageText: null,
+          lastSubmittedKickoffExpertId: null,
+          lastSubmittedKickoffAttemptToken: null,
+        });
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          const next = last?.role === "user" ? prev.slice(0, -1) : prev;
+          useCopilotStreamStore.getState().setMessageSnapshot(sessionId, next);
+          return next;
+        });
+      }
     }
 
     function handleData(dataPart: { type: string; data?: unknown }) {
@@ -259,7 +307,14 @@ export function useCopilotStream({
         chatRuntime.onError = undefined;
       }
     };
-  }, [chatRuntime, sessionId, refetchSession]);
+  }, [
+    chatRuntime,
+    sessionId,
+    refetchSession,
+    setInitialPrompt,
+    setMessages,
+    userId,
+  ]);
 
   // Flipped to ``true`` the first time the user actually hits Send on this
   // mount. Lets the ``hasConnectedThisMountRef`` latch below distinguish
@@ -337,6 +392,12 @@ export function useCopilotStream({
     ...args: Parameters<typeof sdkSendMessage>
   ): ReturnType<typeof sdkSendMessage> {
     const text = extractSendMessageText(args[0]);
+    const metadata =
+      args[0] && typeof args[0] === "object" && "metadata" in args[0]
+        ? args[0].metadata
+        : undefined;
+    const kickoffExpertId = getKickoffExpertIdFromMetadata(metadata);
+    const kickoffAttemptToken = getKickoffAttemptTokenFromMetadata(metadata);
     const sid = sessionId;
     const coord = sid ? useCopilotStreamStore.getState().getCoord(sid) : null;
 
@@ -362,9 +423,11 @@ export function useCopilotStream({
 
     if (sid) {
       markCopilotChatRuntimeHealthy(sid);
-      useCopilotStreamStore
-        .getState()
-        .updateCoord(sid, { lastSubmittedMessageText: text });
+      useCopilotStreamStore.getState().updateCoord(sid, {
+        lastSubmittedMessageText: text,
+        lastSubmittedKickoffExpertId: kickoffExpertId,
+        lastSubmittedKickoffAttemptToken: kickoffAttemptToken,
+      });
     }
     hasSentThisMountRef.current = true;
     if (isUserStoppingRef.current) {
@@ -384,6 +447,25 @@ export function useCopilotStream({
     if (messages.length === 0) return;
     useCopilotStreamStore.getState().setMessageSnapshot(sessionId, messages);
   }, [sessionId, messages]);
+
+  useEffect(() => {
+    if (!sessionId || !hydratedMessages) return;
+    const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+    const kickoffExpertId = coord.lastSubmittedKickoffExpertId;
+    if (!kickoffExpertId) return;
+    if (
+      !hydratedMessages.some(
+        (message) => getKickoffExpertId(message) === kickoffExpertId,
+      )
+    ) {
+      return;
+    }
+    useCopilotStreamStore.getState().updateCoord(sessionId, {
+      lastSubmittedMessageText: null,
+      lastSubmittedKickoffExpertId: null,
+      lastSubmittedKickoffAttemptToken: null,
+    });
+  }, [hydratedMessages, sessionId]);
 
   // Cheap signal that changes on any stream activity — drives the stall
   // watchdog. Counts messages, the last message's parts, and the total

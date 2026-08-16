@@ -120,6 +120,9 @@ vi.mock("../useSessionTitlePoll", () => ({
 vi.mock("../useWorkflowImportAutoSubmit", () => ({
   useWorkflowImportAutoSubmit: () => undefined,
 }));
+vi.mock("../useExpertKickoff", () => ({
+  useExpertKickoff: () => ({ isKickoffStarting: false }),
+}));
 vi.mock("../helpers/queueFollowUpMessage", () => ({ queueFollowUpMessage }));
 
 import { useCopilotPage } from "../useCopilotPage";

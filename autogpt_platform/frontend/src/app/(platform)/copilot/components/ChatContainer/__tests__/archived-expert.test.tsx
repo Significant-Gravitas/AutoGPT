@@ -211,7 +211,13 @@ describe("ChatContainer — archived expert", () => {
 
     fireEvent.click(screen.getByTestId("error-retry"));
 
-    expect(onSend).toHaveBeenCalledWith("Plan my week");
+    // Non-kickoff retries carry no attachments and no kickoff metadata.
+    expect(onSend).toHaveBeenCalledWith(
+      "Plan my week",
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it("keeps historical tool-card sends available on an active thread", () => {
