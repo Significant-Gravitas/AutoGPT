@@ -639,8 +639,10 @@ async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert
         )
     except prisma.errors.ForeignKeyViolationError:
         # Clearing the FK cannot violate it, so pod_id is set here: the pod was
-        # deleted between the ownership check above and this write.
-        assert pod_id is not None
+        # deleted between the ownership check above and this write. The None
+        # branch is unreachable; re-raise rather than name a pod that isn't.
+        if pod_id is None:
+            raise
         raise ExpertPodNotFoundError(pod_id)
     if updated == 0:
         raise ExpertNotFoundError(expert_id)

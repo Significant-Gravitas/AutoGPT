@@ -25,6 +25,7 @@ export default function TeamPage() {
   const {
     hiredExperts,
     pods,
+    podForExpert,
     podGroups,
     ungroupedExperts,
     schedulesForExpert,
@@ -69,6 +70,7 @@ export default function TeamPage() {
         expert={expert}
         schedules={schedulesForExpert(expert)}
         pods={pods}
+        currentPod={podForExpert(expert)}
         onInstallWorkflow={installWorkflow}
         onEditSoul={openSoul}
         onAssignPod={assignPod}

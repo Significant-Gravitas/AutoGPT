@@ -65,7 +65,7 @@ export function TeamRoster({
       ))}
       {ungroupedExperts.length > 0 ? (
         <section className="space-y-3">
-          <SectionHeader name="No pod" count={ungroupedExperts.length} />
+          <SectionHeader name="Ungrouped" count={ungroupedExperts.length} />
           <div className={TEAM_GRID_CLASS}>
             {ungroupedExperts.map(renderCard)}
           </div>

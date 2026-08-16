@@ -19,10 +19,10 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
 import {
-  FolderIcon,
   PencilIcon,
   PlusSignIcon,
   Tick02Icon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { MouseEvent } from "react";
@@ -37,6 +37,7 @@ interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
   pods: ExpertPod[];
+  currentPod: ExpertPod | undefined;
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
   onAssignPod: (expertId: string, podId: string | null) => void;
@@ -46,11 +47,11 @@ export function ExpertTeamCard({
   expert,
   schedules,
   pods,
+  currentPod,
   onInstallWorkflow,
   onEditSoul,
   onAssignPod,
 }: Props) {
-  const currentPod = pods.find((pod) => pod.id === expert.pod_id);
   const workflowCount = expert.workflows.length;
   const needsSetupCount = getNeedsSetupCount(expert);
   const scheduleLabel = getScheduleCountLabel(schedules);
@@ -168,7 +169,7 @@ export function ExpertTeamCard({
               <Button
                 variant="ghost"
                 size="small"
-                leftIcon={<Icon icon={FolderIcon} size={16} />}
+                leftIcon={<Icon icon={UserGroupIcon} size={16} />}
                 aria-label={
                   currentPod
                     ? `Move to pod (currently ${currentPod.name})`
@@ -178,7 +179,10 @@ export function ExpertTeamCard({
                 {currentPod ? currentPod.name : "Move to pod"}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuContent
+              align="end"
+              className="max-h-72 w-52 overflow-y-auto"
+            >
               {pods.map((pod) => (
                 <DropdownMenuItem
                   key={pod.id}

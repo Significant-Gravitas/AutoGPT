@@ -78,9 +78,10 @@ class Expert(BaseModel):
     pod_id: str | None = None
 
 
+# Membership is deliberately not embedded: clients already hold the expert
+# list and each Expert carries `pod_id`, so the roster groups client-side.
 class ExpertPod(BaseModel):
-    """Membership is not embedded: clients already hold the expert list and
-    each Expert carries `pod_id`, so the roster groups client-side."""
+    """A named group of hired experts, scoped to the owner."""
 
     id: str
     name: str

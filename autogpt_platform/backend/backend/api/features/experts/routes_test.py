@@ -572,6 +572,29 @@ def test_list_pods_returns_user_pods(
     )
 
 
+def test_pods_route_is_not_shadowed_by_expert_detail(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """ "/pods" must win over "/{expert_id}", which only holds while the pod
+    routes stay declared first. Fails loudly if they are ever reordered."""
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_pods",
+        new_callable=AsyncMock,
+        return_value=[_make_pod()],
+    )
+    mock_get = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+
+    response = client.get("/experts/pods")
+
+    assert response.status_code == 200
+    mock_list.assert_awaited_once()
+    mock_get.assert_not_awaited()
+
+
 def test_assign_pod_returns_updated_expert(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,

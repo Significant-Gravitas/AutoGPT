@@ -17946,7 +17946,7 @@
         "type": "object",
         "required": ["id", "name", "created_at"],
         "title": "ExpertPod",
-        "description": "Membership is not embedded: clients already hold the expert list and\neach Expert carries `pod_id`, so the roster groups client-side."
+        "description": "A named group of hired experts, scoped to the owner."
       },
       "ExpertSoulUpdate": {
         "properties": {

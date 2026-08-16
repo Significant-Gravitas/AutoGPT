@@ -32,7 +32,7 @@ export function useTeamPage({ enabled }: Args) {
   const [isNewPodOpen, setIsNewPodOpen] = useState(false);
 
   const expertsQuery = useListExperts({
-    query: { select: (x) => x.data as Expert[], enabled },
+    query: { select: (res) => (okData(res) ?? []) as Expert[], enabled },
   });
   const podsQuery = useListExpertPods({
     query: {
@@ -44,6 +44,13 @@ export function useTeamPage({ enabled }: Args) {
     query: { select: (res) => okData(res) ?? [], enabled },
   });
   const pods = podsQuery.data ?? [];
+  // Built once per render so each card resolves its pod in O(1) instead of
+  // scanning the full list.
+  const podsById = new Map(pods.map((pod) => [pod.id, pod]));
+
+  function podForExpert(expert: Expert) {
+    return expert.pod_id ? podsById.get(expert.pod_id) : undefined;
+  }
 
   function invalidateExperts() {
     return queryClient.invalidateQueries({
@@ -173,6 +180,7 @@ export function useTeamPage({ enabled }: Args) {
   return {
     hiredExperts,
     pods,
+    podForExpert,
     podGroups: groups,
     ungroupedExperts: ungrouped,
     schedulesForExpert,

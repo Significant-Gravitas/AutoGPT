@@ -540,8 +540,8 @@ describe("TeamPage", () => {
     const podHeader = await screen.findByRole("heading", { name: "Growth" });
     const maria = await screen.findByText("Maria");
     const leeNode = await screen.findByText("Lee");
-    // Maria sits under the pod header; Lee is ungrouped under "No pod".
-    const noPodHeader = screen.getByRole("heading", { name: "No pod" });
+    // Maria sits under the pod header; Lee is ungrouped below.
+    const noPodHeader = screen.getByRole("heading", { name: "Ungrouped" });
     expect(
       podHeader.compareDocumentPosition(maria) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -556,6 +556,29 @@ describe("TeamPage", () => {
     ).toBeTruthy();
     // Archived experts never render, even with a pod_id.
     expect(screen.queryByText("Sam")).toBeNull();
+  });
+
+  test("shows a pod with no members instead of hiding it", async () => {
+    const emptyPod: ExpertPod = {
+      id: "pod-empty",
+      name: "Support",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler([emptyPod]),
+    );
+
+    render(<TeamPage />);
+
+    const podHeader = await screen.findByRole("heading", { name: "Support" });
+    const emptyCopy = await screen.findByText("No experts in this pod yet.");
+    expect(
+      podHeader.compareDocumentPosition(emptyCopy) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The unpodded expert still renders under its own section.
+    expect(await screen.findByText("Maria")).toBeDefined();
   });
 
   test("creates a pod from the New pod dialog", async () => {
