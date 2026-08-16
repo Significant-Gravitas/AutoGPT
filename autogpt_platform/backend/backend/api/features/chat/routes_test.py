@@ -3350,6 +3350,35 @@ def test_get_session_returns_backward_paginated(
     assert "newest_sequence" not in data
 
 
+def test_get_session_serves_history_for_an_archived_expert_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Firing an expert must not take the thread's history with it.
+
+    The write gate lives on the two POST routes only. Reading a session
+    whose expert is fired stays a 200 and must not even consult the gate,
+    otherwise the read-only archive UX has nothing left to render.
+    """
+    page, _ = _make_paginated_messages(mocker)
+    page.session.expert_id = "expert-archived"
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+    owns_active_expert = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    assert response.json()["messages"][0]["content"] == "hello"
+    owns_active_expert.assert_not_awaited()
+
+
 def test_get_session_releases_orphan_when_redis_empty_and_db_running(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
