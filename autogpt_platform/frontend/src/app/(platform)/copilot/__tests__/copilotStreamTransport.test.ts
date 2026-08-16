@@ -33,6 +33,40 @@ function lastMessage(text: string) {
 }
 
 describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
+  it("reaches fetch when crypto.randomUUID is unavailable on a LAN HTTP origin", async () => {
+    const originalCrypto = globalThis.crypto;
+    const fetchReached = new Error("fetch reached");
+    const fetchMock = vi.fn().mockRejectedValue(fetchReached);
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const transport = createCopilotTransport({
+        sessionId: "sess-lan-http",
+        ...makeRefs(),
+      });
+
+      await expect(
+        transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "sess-lan-http",
+          messageId: undefined,
+          messages: lastMessage("hello from a phone"),
+          abortSignal: undefined,
+        }),
+      ).rejects.toBe(fetchReached);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://test.local/api/chat/sessions/sess-lan-http/stream",
+        expect.objectContaining({ method: "POST" }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("attaches a freshly generated UUIDv4 as message_id on every body", async () => {
     const transport = createCopilotTransport({
       sessionId: "sess-1",

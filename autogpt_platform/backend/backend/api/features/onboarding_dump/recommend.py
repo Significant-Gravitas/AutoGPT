@@ -11,17 +11,20 @@ import asyncio
 import logging
 import os
 
-from backend.api.features.integrations.models import (
-    get_all_provider_names,
-    get_provider_description,
-)
 from backend.api.features.onboarding_dump.models import RecommendedProvider
 from backend.api.features.onboarding_dump.parsing import parse_response_json
+from backend.api.features.onboarding_dump.providers import (
+    known_providers,
+    provider_lines,
+)
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
 
-_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-sonnet-5")
+# Picking six ids off a list is a matching task, not a writing one, and
+# the onboarding loading screen holds the user until it answers — so this
+# runs on the fast model rather than the one that writes the greeting.
+_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-4-5")
 _TIMEOUT_SECONDS = 30
 
 MAX_RECOMMENDATIONS = 6
@@ -66,13 +69,10 @@ async def generate_recommendations(transcript: str) -> list[RecommendedProvider]
         logger.warning("Brain dump recommendations: no LLM client configured")
         return []
 
-    known = _known_providers()
+    known = known_providers()
     prompt = _PROMPT.format(
         max_recommendations=MAX_RECOMMENDATIONS,
-        providers="\n".join(
-            f"- {name}: {description}" if description else f"- {name}"
-            for name, description in known.items()
-        ),
+        providers=provider_lines(known),
         transcript=text,
     )
     try:
@@ -91,21 +91,6 @@ async def generate_recommendations(transcript: str) -> list[RecommendedProvider]
 
     data = parse_response_json(response.choices[0].message.content or "")
     return _parse_recommendations(data, set(known))
-
-
-def _known_providers() -> dict[str, str | None]:
-    """The live provider registry as ``{id: description}``.
-
-    Mirrors the ``/providers`` endpoint: block modules must be imported
-    before AutoRegistry knows about SDK-registered providers.
-    """
-    try:
-        from backend.blocks import load_all_blocks
-
-        load_all_blocks()
-    except Exception as e:  # static providers still work
-        logger.warning("Brain dump recommendations: block load failed: %s", e)
-    return {name: get_provider_description(name) for name in get_all_provider_names()}
 
 
 def _parse_recommendations(data: object, known: set[str]) -> list[RecommendedProvider]:

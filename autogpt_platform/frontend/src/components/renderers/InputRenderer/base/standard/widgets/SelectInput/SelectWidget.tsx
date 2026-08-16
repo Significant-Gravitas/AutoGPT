@@ -1,8 +1,8 @@
 import {
   enumOptionsIndexForValue,
   enumOptionsValueForIndex,
-  WidgetProps,
 } from "@rjsf/utils";
+import type { EnumOptionsType, WidgetProps } from "@rjsf/utils";
 import {
   InputType,
   mapJsonSchemaTypeToInputType,
@@ -28,7 +28,18 @@ export function SelectWidget(props: WidgetProps) {
     id,
     formContext,
   } = props;
-  const enumOptions = options.enumOptions || [];
+  const rawEnumOptions: EnumOptionsType[] = options.enumOptions || [];
+  const enumOptions = rawEnumOptions.filter((option) => option.value !== "");
+  const droppedEmptyOptionCount = rawEnumOptions.length - enumOptions.length;
+  if (process.env.NODE_ENV === "development" && droppedEmptyOptionCount > 0) {
+    console.warn(
+      "[SelectWidget] Dropped enum option(s) with empty-string value. Radix Select.Item disallows empty values.",
+      {
+        schema: props.schema,
+        dropped: droppedEmptyOptionCount,
+      },
+    );
+  }
   const type = mapJsonSchemaTypeToInputType(props.schema);
   const { size = "small" } = formContext || {};
   const selectedIndexes = enumOptionsIndexForValue(

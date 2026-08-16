@@ -157,7 +157,7 @@ export function useSendMessage({
     if (!sessionId) return;
     const { send, parts } = useCopilotStreamStore
       .getState()
-      .takePendingFirstSend();
+      .takePendingFirstSend(sessionId);
     if (!send) return;
     void dispatchRef.current(sessionId, send.text, send.files, parts);
   }, [sessionId]);

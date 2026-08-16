@@ -220,6 +220,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: Record<string, CredentialsProviderName>;
+  discriminator_type_mapping?: Record<string, CredentialsType[]>;
   discriminator_values?: any[];
   secret?: boolean;
 };
@@ -898,7 +899,11 @@ export type OnboardingStep =
   | "BUILDER_OPEN"
   | "BUILDER_RUN_AGENT"
   // Copilot home first-run: capability-cards modal completed or skipped
-  | "CAPABILITY_CARDS";
+  | "CAPABILITY_CARDS"
+  // First-visit intro card for a tab, dismissed however the user chose
+  | "AGENTS_TAB_INTRO"
+  | "MARKETPLACE_TAB_INTRO"
+  | "BUILD_TAB_INTRO";
 
 export interface UserOnboarding {
   // Plain string[] so legacy step names from existing rows pass through.

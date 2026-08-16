@@ -22,6 +22,8 @@ import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
+import { GreetingLoader } from "./components/GreetingLoader";
+import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
 
@@ -129,24 +131,33 @@ export function EmptySession({
               onSelectPrompt={onSend}
               disabled={isComposerDisabled}
             />
+          ) : intro.isAwaitingGreeting ? (
+            // Behind the welcome modal's blur and for as long as the
+            // pipeline is still writing. The orb it renders is the same
+            // element the card above puts in its heading, so the swap
+            // moves it there rather than replacing it.
+            <GreetingLoader />
           ) : (
-            // The regular hero also renders behind the welcome modal's
-            // blur and while the greeting is still generating — it swaps
-            // to the greeting the moment the real one arrives. Through
-            // that whole flow it wears the greeting page's own layout so
-            // the heading never moves when the swap happens.
-            <EmptyHero
-              name={greetingName}
-              isAwaitingGreeting={intro.isAwaitingGreeting}
-              isGreetingFlow={intro.anchorTop}
-            />
+            <EmptyHero name={greetingName} />
           )}
 
-          {isAgentBriefingEnabled &&
-            !intro.isVisible &&
-            !intro.isAwaitingGreeting && (
-              <PulseChips chips={pulseChips} onChipClick={onSend} />
-            )}
+          {!intro.isVisible &&
+            !intro.isAwaitingGreeting &&
+            (isExpertsEnabled ? (
+              // The briefing home takes the chips' slot and falls back to
+              // them — still on their own flag — when there's no briefing.
+              <CopilotHome
+                fallback={
+                  isAgentBriefingEnabled ? (
+                    <PulseChips chips={pulseChips} onChipClick={onSend} />
+                  ) : null
+                }
+              />
+            ) : (
+              isAgentBriefingEnabled && (
+                <PulseChips chips={pulseChips} onChipClick={onSend} />
+              )
+            ))}
 
           {/* Held back while the greeting is on its way — it enters with
               the greeting page instead of sitting under a bare hero. */}

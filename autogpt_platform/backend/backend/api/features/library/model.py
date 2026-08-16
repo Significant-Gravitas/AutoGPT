@@ -132,6 +132,19 @@ class MarketplaceListing(pydantic.BaseModel):
     creator: MarketplaceListingCreator
 
 
+class LibraryAgentRef(pydantic.BaseModel):
+    """Just enough of a library agent to label and deep-link a run.
+
+    Deliberately cheap: no relation includes, no schedule info, unlike
+    :class:`LibraryAgent`. Used where a caller only needs to turn a set of
+    graph ids into display names and links.
+    """
+
+    id: str
+    graph_id: str
+    name: str
+
+
 class RecentExecution(pydantic.BaseModel):
     """Summary of a recent execution for quality assessment.
 

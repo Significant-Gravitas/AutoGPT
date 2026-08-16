@@ -455,3 +455,15 @@ export function getApprovedMarketplaceUrl(args: {
   }
   return `/marketplace/agent/${encodeURIComponent(args.creatorUsername)}/${encodeURIComponent(args.slug)}`;
 }
+
+/**
+ * True when `pathname` is `base` itself or one of its sub-routes. Tolerates the
+ * `null` that `usePathname()` is typed to return.
+ */
+export function matchesRoute(
+  pathname: string | null | undefined,
+  base: string,
+): boolean {
+  if (!pathname) return false;
+  return pathname === base || pathname.startsWith(`${base}/`);
+}

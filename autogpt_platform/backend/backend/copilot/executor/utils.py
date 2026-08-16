@@ -16,7 +16,7 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.config import CopilotLLMModel, CopilotMode
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel, CopilotMode
 from backend.copilot.permissions import CopilotPermissions
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -211,6 +211,12 @@ class CoPilotExecutionEntry(BaseModel):
     model: CopilotLLMModel | None = None
     """Per-request model tier: 'standard' or 'advanced'. None = server default."""
 
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    """Session-selected model authentication and execution route."""
+
+    llm_credential_id: str | None = None
+    """Opaque user-owned credential identifier for a Codex route."""
+
     permissions: CopilotPermissions | None = None
     """Capability filter inherited from a parent run (e.g. ``run_sub_session``
     forwards its parent's permissions so the sub can't escalate). ``None``
@@ -248,6 +254,8 @@ async def enqueue_copilot_turn(
     team_id: str | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
 ) -> None:
@@ -280,6 +288,8 @@ async def enqueue_copilot_turn(
         team_id=team_id,
         mode=mode,
         model=model,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
     )
@@ -307,6 +317,8 @@ async def schedule_turn(
     team_id: str | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
 ) -> None:
@@ -371,6 +383,8 @@ async def schedule_turn(
             team_id=team_id,
             mode=mode,
             model=model,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
         )
@@ -392,6 +406,8 @@ async def dispatch_turn(
     team_id: str | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
 ) -> None:
@@ -443,6 +459,8 @@ async def dispatch_turn(
             team_id=team_id,
             mode=mode,
             model=model,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
         )
@@ -474,6 +492,8 @@ async def schedule_chat_turn(
     team_id: str | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
 ) -> str | None:
@@ -538,6 +558,8 @@ async def schedule_chat_turn(
             team_id=team_id,
             mode=mode,
             model=model,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
         )

@@ -110,6 +110,84 @@ afterEach(() => {
 });
 
 describe("CredentialsInput – OAuth flow", () => {
+  it("clears a credential retained from a different transport provider", async () => {
+    const onSelectCredentials = vi.fn();
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "Codex",
+        savedCredentials: [],
+      }),
+    );
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={{
+          id: "openai-key",
+          provider: "openai",
+          type: "api_key",
+          title: "OpenAI key",
+        }}
+        onSelectCredentials={onSelectCredentials}
+        showTitle={false}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(onSelectCredentials).toHaveBeenCalledWith(undefined),
+    );
+  });
+
+  it("shows OpenAI branding while routing ChatGPT sign-in through Codex", async () => {
+    const oAuthLoginMock = vi.fn().mockResolvedValue({
+      login_url: "https://auth.openai.com/codex/device",
+      state_token: "state-codex",
+    });
+    mockUseBackendAPI.mockReturnValue(
+      makeBackendAPI({ oAuthLogin: oAuthLoginMock }),
+    );
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "OpenAI",
+        schema: {
+          ...baseSchema,
+          credentials_provider: ["codex"],
+          credentials_scopes: [],
+        },
+      }),
+    );
+    mockOpenOAuthPopup.mockReturnValue({
+      promise: Promise.resolve({ code: "login-id", state: "state-codex" }),
+      cleanup: { abort: vi.fn() },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+
+    render(
+      <CredentialsInput
+        schema={{
+          ...baseSchema,
+          credentials_provider: ["codex"],
+          credentials_scopes: [],
+        }}
+        onSelectCredentials={vi.fn()}
+        showTitle
+      />,
+    );
+
+    expect(await screen.findByText("OpenAI credentials")).toBeDefined();
+    const signInButton = screen.getByRole("button", {
+      name: "Sign in with ChatGPT",
+    });
+    fireEvent.click(signInButton);
+
+    await waitFor(() => {
+      expect(oAuthLoginMock).toHaveBeenCalledWith("codex", [], undefined);
+    });
+  });
+
   it("clicking the Add account button calls oAuthLogin without a credentialID", async () => {
     const oAuthLoginMock = vi.fn().mockResolvedValue({
       login_url: "https://accounts.google.com/o/oauth2/auth",

@@ -480,6 +480,38 @@ async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str |
     return agent.id if agent else None
 
 
+async def get_library_agent_refs_by_graph_ids(
+    user_id: str, graph_ids: list[str]
+) -> list[library_model.LibraryAgentRef]:
+    """Resolve display name + id for the given graphs in one query.
+
+    Batched counterpart to :func:`get_library_agent_id_by_graph_id`, for
+    callers (e.g. the morning briefing) that need to label a known handful
+    of runs and would otherwise page through the whole library.
+
+    ``@@unique([userId, agentGraphId, agentGraphVersion])`` allows several
+    rows per graph, so exactly one ref per graph is returned — the newest
+    version — instead of whichever row the DB happened to return last.
+    """
+    if not graph_ids:
+        return []
+    agents = await prisma.models.LibraryAgent.prisma().find_many(
+        where={
+            "userId": user_id,
+            "agentGraphId": {"in": graph_ids},
+            "isDeleted": False,
+        },
+        order=[{"agentGraphVersion": "asc"}],
+    )
+    newest_by_graph = {
+        agent.agentGraphId: library_model.LibraryAgentRef(
+            id=agent.id, graph_id=agent.agentGraphId, name=agent.name or ""
+        )
+        for agent in agents
+    }
+    return list(newest_by_graph.values())
+
+
 async def get_library_agent_by_graph_id(
     user_id: str,
     graph_id: str,

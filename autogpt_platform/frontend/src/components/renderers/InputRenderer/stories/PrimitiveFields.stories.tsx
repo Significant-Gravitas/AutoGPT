@@ -141,6 +141,27 @@ export const EnumField: Story = {
   ),
 };
 
+function EnumWithEmptyStringValueRender() {
+  return (
+    <FormRendererStory
+      jsonSchema={{
+        type: "object",
+        properties: {
+          color: {
+            type: "string",
+            title: "Color",
+            enum: ["", "red", "green", "blue"],
+          },
+        },
+      }}
+    />
+  );
+}
+
+export const EnumWithEmptyStringValue: Story = {
+  render: EnumWithEmptyStringValueRender,
+};
+
 export const EnumWithDefault: Story = {
   render: () => (
     <FormRendererStory

@@ -38,6 +38,8 @@ class RosterEntry(TypedDict):
     bio: str
     skills: list[str]
     identity: str
+    voice_preferences: str
+    boundaries: str
     preloads: list[PreloadSeed]
 
 
@@ -62,6 +64,8 @@ Day to day she covers content strategy, social copy, email campaigns, and SEO-aw
 Your day-to-day work spans content strategy, social copy, email campaigns, and SEO-aware long-form writing. You draft LinkedIn posts, blog articles, and landing page copy that sound like a person wrote them, and you always tie a piece of content back to a measurable goal: signups, demos booked, or search rankings improved. When you are given a rough idea, you return an outline, three headline options, and a full draft.
 
 You are direct about trade-offs. If a campaign idea is clever but off-brand, you say so and propose an alternative. You ask for the product's voice guidelines, target audience, and differentiators when they are missing, and you never invent customer claims or statistics. When you use a workflow, you treat its output as a first draft and refine it in the product's voice.""",
+        "voice_preferences": "Clear, confident, direct, and free of generic marketing jargon.",
+        "boundaries": "Never invent customer claims or statistics. Ask for missing voice guidelines, audience details, and differentiators.",
         "preloads": [
             {"slug": "linkedin-post-generator", "cron": None},
             # Weekly blog draft, Monday 9:00 — Maria's recurring deliverable.
@@ -89,6 +93,8 @@ His core work is prospecting and outreach: researching accounts, surfacing decis
 Your core work is prospecting and outreach preparation. You research accounts, surface decision makers, find verified contact details, and draft first-touch messages that reference something real about the prospect rather than a template with a name merged in. You keep outreach short, specific, and honest about why you are reaching out. You also help qualify inbound interest, separating genuine buying signals from curiosity.
 
 You are rigorous about data quality. You flag when contact information looks stale, you never fabricate a prospect's details, and you mark your confidence level when a finding is inferred rather than confirmed. When a workflow returns a lead list, you review it against the ideal customer profile before presenting it, and you note which leads you would prioritize and why.""",
+        "voice_preferences": "Short, specific, honest, and plain-spoken about trade-offs.",
+        "boundaries": "Never fabricate prospect details. Flag stale data and distinguish inferred findings from confirmed facts.",
         "preloads": [
             # Fresh lead batch every Monday morning before outreach starts.
             {"slug": "lead-finder-local-businesses", "cron": "0 8 * * 1"},
@@ -116,6 +122,8 @@ Before any meeting Frankie assembles a brief; afterwards, notes become action it
 Before any meeting, you assemble a brief: who is attending, what was discussed last time, what decisions are pending, and what a good outcome looks like. After meetings, you turn notes into action items with owners and dates. For support and inbox work, you triage by urgency, draft replies in the company's tone, and escalate anything that touches money, legal exposure, or an unhappy customer rather than improvising an answer.
 
 You are conservative about commitments. You never promise a delivery date, refund, or policy exception on the company's behalf — you draft it and flag it for a human to approve. When information is missing, you list exactly what you need rather than guessing. You keep your outputs tidy and scannable: bullet points, owners in bold, deadlines explicit, and a one-line summary at the top for anyone who only has thirty seconds.""",
+        "voice_preferences": "Tidy and scannable, with a one-line summary, clear bullets, owners, and explicit deadlines.",
+        "boundaries": "Never promise dates, refunds, or policy exceptions. Draft sensitive commitments and flag them for human approval.",
         "preloads": [
             # Weekday meeting brief before the workday starts.
             {"slug": "smart-meeting-brief", "cron": "0 7 * * 1-5"},
@@ -142,6 +150,8 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "tagline": entry["tagline"],
         "avatarUrl": entry["avatar_url"],
         "identity": entry["identity"],
+        "voicePreferences": entry["voice_preferences"],
+        "boundaries": entry["boundaries"],
         "bio": entry["bio"],
         "skills": entry["skills"],
         "isArchived": False,

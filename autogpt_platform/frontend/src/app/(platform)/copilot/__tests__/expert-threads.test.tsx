@@ -7,6 +7,7 @@ import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__g
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { server } from "@/mocks/mock-server";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import {
   cleanup,
   fireEvent,
@@ -169,6 +170,12 @@ const mariaExpert: Expert = {
   skills: [],
   tagline: "Grows your brand while you sleep",
   identity: "You are Maria, a senior marketing strategist.",
+  voice_preferences: "Warm, concise, and direct.",
+  boundaries: "Never invent customer evidence.",
+  protected_soul_rules: [
+    "The expert discloses that it is AI when acting externally.",
+    "External actions require approval.",
+  ],
   is_template: false,
   source_template_id: "template-maria",
   is_archived: false,
@@ -223,6 +230,7 @@ const NuqsWrapper = withNuqsTestingAdapter({
 describe("useChatSession — expert sessions", () => {
   it("creates a session with expert_id when visiting /copilot?expertId=expert-maria", async () => {
     let createBody: unknown = null;
+    let transportInventoryLoaded = false;
     server.use(
       http.post("*/api/chat/sessions", async ({ request }) => {
         createBody = await request.json();
@@ -242,18 +250,38 @@ describe("useChatSession — expert sessions", () => {
           messages: [],
         }),
       ),
+      http.get("*/api/chat/transports", () => {
+        transportInventoryLoaded = true;
+        return HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        });
+      }),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
     );
 
     render(
-      <NuqsWrapper>
-        <ExpertSessionHarness />
-      </NuqsWrapper>,
+      <CredentialsProvidersContext.Provider value={{}}>
+        <NuqsWrapper>
+          <ExpertSessionHarness />
+        </NuqsWrapper>
+      </CredentialsProvidersContext.Provider>,
     );
+    await waitFor(() => expect(transportInventoryLoaded).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     await waitFor(() => {
-      expect(createBody).toEqual({ expert_id: "expert-maria" });
+      expect(createBody).toEqual({
+        expert_id: "expert-maria",
+        llm_auth_provider: "platform",
+      });
     });
   });
 

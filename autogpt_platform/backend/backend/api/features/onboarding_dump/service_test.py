@@ -48,6 +48,7 @@ class DumpStore:
         self.row: OnboardingBrainDump | None = None
         self.statuses: list[BrainDumpStatus] = []
         self.transcripts: list[str | None] = []
+        self.greeting_seen_writes = 0
 
     async def get_dump(self, user_id: str) -> OnboardingBrainDump | None:
         return self.row
@@ -141,6 +142,11 @@ class DumpStore:
             errorCode=error_code,
         )
 
+    async def mark_greeting_seen(self, user_id: str) -> None:
+        if self.row is not None:
+            self.row.greetingSeen = True
+        self.greeting_seen_writes += 1
+
 
 @pytest.fixture(autouse=True)
 def dumps(mocker: MockerFixture) -> DumpStore:
@@ -152,6 +158,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.update_dump", new=store.update_dump)
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
+    mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
     return store
 
 
@@ -815,6 +822,119 @@ async def test_intro_card_takes_path_a_with_the_stored_greeting(dumps: DumpStore
 
 
 @pytest.mark.asyncio
+async def test_intro_card_is_withheld_from_a_user_who_already_has_a_session(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    has_session.return_value = True
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+    # Recorded server-side so the count is only paid once.
+    assert dumps.greeting_seen_writes == 1
+
+
+@pytest.mark.asyncio
+async def test_intro_card_is_withheld_from_a_chatting_user_without_a_dump_row(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    has_session.return_value = True
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+    assert dumps.greeting_seen_writes == 1
+
+
+@pytest.mark.asyncio
+async def test_intro_card_is_still_withheld_when_the_seen_flag_cannot_be_written(
+    has_session: AsyncMock, mocker: MockerFixture
+):
+    # The session lookup is the verdict; the flag only saves paying for it
+    # again. A failed write must not 500 the card it was retiring.
+    has_session.return_value = True
+    mocker.patch(
+        "backend.api.features.onboarding_dump.db.mark_greeting_seen",
+        new=AsyncMock(side_effect=RuntimeError("database down")),
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+
+
+@pytest.mark.asyncio
+async def test_intro_card_still_greets_when_the_session_lookup_fails(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    has_session.side_effect = RuntimeError("database down")
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is False
+    assert card.greeting == "You mentioned the weekly order emails."
+
+
+@pytest.mark.asyncio
+async def test_intro_card_reports_pending_while_the_greeting_is_generating(
+    dumps: DumpStore,
+):
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.extracting,
+        transcript=TRANSCRIPT,
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_pending is True
+    assert card.greeting == ""
+    assert card.greeting_done is False
+
+
+@pytest.mark.asyncio
+async def test_intro_card_skips_the_session_lookup_while_the_greeting_is_pending(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    # The client polls this endpoint every 1.5s while pending, and a
+    # mid-pipeline dump belongs to someone who just recorded it — asking
+    # the sessions table on every cycle would buy nothing.
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.extracting,
+        transcript=TRANSCRIPT,
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_pending is True
+    has_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_intro_card_takes_path_b_when_the_user_skipped(dumps: DumpStore):
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.skipped)
     await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.completed)
@@ -1021,3 +1141,66 @@ async def test_intro_generation_degrades_instead_of_raising(mocker: MockerFixtur
 
     assert greeting == intro.fallback_intro(TRANSCRIPT)[0]
     assert suggested == intro.fallback_prompts()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_extraction_does_not_cost_the_greeting(
+    dumps: DumpStore, extraction: dict[str, AsyncMock], mocker: MockerFixture
+):
+    # Extraction and the greeting run gathered, so a raise on either side
+    # would abandon the other's result. Each is supposed to answer with a
+    # fallback instead — this holds the extraction half to that.
+    extraction["extract_business_understanding"].side_effect = RuntimeError("llm down")
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro",
+        new=AsyncMock(return_value=("You mentioned the order emails.", [])),
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == "You mentioned the order emails."
+    # The transcript still reaches the understanding without the fields.
+    extraction["upsert_business_understanding"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_understanding_does_not_cost_the_greeting(
+    dumps: DumpStore, extraction: dict[str, AsyncMock], mocker: MockerFixture
+):
+    # The same contract one call earlier: reading the existing
+    # understanding is a database round trip that can fail on its own.
+    extraction["get_business_understanding"].side_effect = RuntimeError("database down")
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro",
+        new=AsyncMock(return_value=("You mentioned the order emails.", [])),
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == "You mentioned the order emails."
+
+
+@pytest.mark.asyncio
+async def test_a_failed_greeting_does_not_cost_the_extraction(
+    dumps: DumpStore, extraction: dict[str, AsyncMock], mocker: MockerFixture
+):
+    # The greeting half of the same contract: a broken LLM call resolves
+    # to the template, and the extraction alongside it still lands.
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.get_openai_client",
+        return_value=None,
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == intro.fallback_intro(TRANSCRIPT)[0]
+    extraction["upsert_business_understanding"].assert_awaited_once()

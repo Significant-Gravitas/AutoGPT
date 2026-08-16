@@ -243,7 +243,7 @@ describe("introRevealTimings", () => {
     const short = introRevealTimings("Hello there", 0);
     const long = introRevealTimings("Hello there, this is a longer line", 0);
 
-    expect(short.promptsStart).toBeCloseTo(0.35 + 2 * 0.08 + 0.3, 5);
+    expect(short.promptsStart).toBeCloseTo(0.5 + 2 * 0.08 + 0.3, 5);
     expect(long.promptsStart).toBeGreaterThan(short.promptsStart);
     expect(long.footerStart).toBeGreaterThan(short.footerStart);
     expect(long.composerStart).toBeGreaterThan(short.composerStart);
@@ -271,7 +271,7 @@ describe("introRevealTimings", () => {
       0,
     );
 
-    expect(promptsStart).toBeCloseTo(0.65, 5);
+    expect(promptsStart).toBeCloseTo(0.8, 5);
     expect(footerStart).toBeGreaterThan(promptsStart);
     expect(composerStart).toBeGreaterThan(footerStart);
   });
