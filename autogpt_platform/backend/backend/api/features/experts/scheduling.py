@@ -246,12 +246,17 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
 
 async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> bool:
     """Pause the expert's scheduled/triggered runs (chat is untouched) and
-    log the pause. Returns False when already paused (no double events)."""
+    log the pause. Returns False when already paused (no double events).
+
+    Refuses archived experts so a pause can't silently mutate a row the rest
+    of the API reports as not-found; the archive flow itself pauses BEFORE
+    flipping ``isArchived`` (see ``experts_db.archive_expert``)."""
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
             "ownerUserId": user_id,
             "isTemplate": False,
+            "isArchived": False,
             "visibility": ResourceVisibility.PRIVATE,
             "schedulesPausedAt": None,
         },
@@ -273,12 +278,18 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     would re-pause her and Resume would be a no-op until the ISO week rolls
     over. Resuming is the user explicitly accepting more spend this week —
     the durable billing ledger is untouched, only the guardrail's counter
-    restarts."""
+    restarts.
+
+    Refuses archived experts: resuming one would un-pause schedules for an
+    expert every other surface 404s on (the route would then report 404
+    anyway, AFTER the mutation already landed). Revival goes through the
+    re-hire flow, which clears ``isArchived`` before resuming."""
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
             "ownerUserId": user_id,
             "isTemplate": False,
+            "isArchived": False,
             "visibility": ResourceVisibility.PRIVATE,
         },
         data={"schedulesPausedAt": None},

@@ -89,6 +89,9 @@ async def test_pause_only_mutates_private_expert(mocker) -> None:
     where = expert_client.update_many.call_args.kwargs["where"]
     assert where["ownerUserId"] == "owner"
     assert where["visibility"] == ResourceVisibility.PRIVATE
+    # Archived rows are refused: the rest of the API 404s them, so a pause
+    # must not silently mutate one (archive_expert pauses BEFORE archiving).
+    assert where["isArchived"] is False
     pause_event_client.create.assert_not_awaited()
 
 
@@ -104,6 +107,9 @@ async def test_resume_only_mutates_private_expert(mocker) -> None:
     where = expert_client.update_many.call_args.kwargs["where"]
     assert where["ownerUserId"] == "owner"
     assert where["visibility"] == ResourceVisibility.PRIVATE
+    # An archived expert must not be resumable: without this filter the
+    # resume route would un-pause its schedules and THEN report 404.
+    assert where["isArchived"] is False
     reset_spend.assert_not_awaited()
 
 

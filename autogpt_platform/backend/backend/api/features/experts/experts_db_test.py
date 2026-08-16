@@ -28,7 +28,7 @@ from backend.data.graph import Graph, Node
 from backend.data.model import User
 from backend.data.user import get_or_create_user
 from backend.usecases.sample import create_test_user
-from backend.util.exceptions import ExpertRunPausedError
+from backend.util.exceptions import ExpertRunPausedError, NotFoundError
 from backend.util.test import SpinTestServer
 
 EXPECTED_ROSTER_PRELOAD_SLUGS = {
@@ -769,6 +769,42 @@ async def test_resolve_expert_for_graph_ambiguous_returns_none(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_resolve_expert_for_graph_fails_closed_on_non_private_expert(
+    server: SpinTestServer, test_user
+):
+    """A graph mapped to a TEAM/ORG expert must error (mirroring the 404 the
+    explicit-id path gives) instead of silently detaching attribution — an
+    unattributed run would bypass the expert budget guard entirely."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    graph_id = hired.expert.workflows[0].graph_id
+    assert graph_id is not None
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id},
+        data={"visibility": prisma.enums.ResourceVisibility.ORG},
+    )
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.resolve_expert_for_graph(test_user.id, graph_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_row_exists_is_lenient_about_archive_state(
+    server: SpinTestServer, test_user, other_user
+):
+    """The scheduler's recovery check must see archived rows (so schedules
+    survive) but not other users' rows or vanished ids."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    assert await experts_db.expert_row_exists(test_user.id, hired.expert.id) is True
+    assert await experts_db.expert_row_exists(other_user.id, hired.expert.id) is False
+    assert await experts_db.expert_row_exists(test_user.id, "no-such-expert") is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_hire_creates_schedule_from_template_cadence(
     server: SpinTestServer, test_user
 ):
@@ -823,14 +859,15 @@ async def test_hire_schedule_failure_marks_needs_setup(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_attributed_writes_fall_back_when_archived_after_validation(
+async def test_attributed_writes_fail_closed_when_archived_after_validation(
     server: SpinTestServer,
 ):
     """An archive between an earlier lookup and either durable write wins.
 
-    ChatSession and AgentPreset must both persist without the stale expert id;
-    otherwise their work would be permanently rejected by the archived-expert
-    run-budget gate.
+    Both ChatSession and AgentPreset creation refuse the stale expert id
+    (fail closed) rather than silently persisting detached/attributed work —
+    the caller gets a not-found it can surface, not a session or preset in an
+    unexpected memory scope.
     """
     slv_id = await _seed_store_listing(server)
     owner = await _create_seed_user()
@@ -851,26 +888,26 @@ async def test_attributed_writes_fall_back_when_archived_after_validation(
         where={"id": expert_id}, data={"isArchived": True}
     )
 
-    session = await create_chat_session(
-        owner.id,
-        dry_run=False,
-        expert_id=expert_id,
-    )
-    assert session.expert_id is None
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await create_chat_session(
+            owner.id,
+            dry_run=False,
+            expert_id=expert_id,
+        )
 
-    preset = await library_db.create_preset(
-        owner.id,
-        library_model.LibraryAgentPresetCreatable(
-            graph_id=library_agent.agentGraphId,
-            graph_version=library_agent.agentGraphVersion,
-            inputs={},
-            credentials={},
-            name="Atomic attribution fallback",
-            description="",
-        ),
-        expert_id=expert_id,
-    )
-    assert preset.expert_id is None
+    with pytest.raises(NotFoundError):
+        await library_db.create_preset(
+            owner.id,
+            library_model.LibraryAgentPresetCreatable(
+                graph_id=library_agent.agentGraphId,
+                graph_version=library_agent.agentGraphVersion,
+                inputs={},
+                credentials={},
+                name="Atomic attribution fallback",
+                description="",
+            ),
+            expert_id=expert_id,
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")

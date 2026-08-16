@@ -170,6 +170,25 @@ async def get_expert(
     return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
 
 
+async def expert_row_exists(user_id: str, expert_id: str) -> bool:
+    """Lenient existence check for a hired expert row owned by *user_id*.
+
+    Unlike :func:`get_expert` this ignores visibility and archive state, so
+    callers can tell "row exists but is not currently accessible" (archived /
+    no-longer-private) apart from "row truly gone". The copilot-turn
+    scheduler uses it to keep schedules registered for recovery instead of
+    irreversibly self-deleting them.
+    """
+    count = await prisma.models.Expert.prisma().count(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+        }
+    )
+    return count > 0
+
+
 async def resolve_private_expert_tenancy(
     user_id: str, expert_id: str
 ) -> tuple[str, str | None]:
@@ -292,14 +311,16 @@ async def _existing_hire_result(row: prisma.models.Expert) -> HireResult:
                 f"Failed to reattach triggers while reviving expert #{row.id}"
             )
             try:
-                await prisma.models.Expert.prisma().update(
-                    where={"id": row.id},
-                    data={"isArchived": True},
-                )
+                # Pause before re-archiving — pause_expert_schedules refuses
+                # archived rows (same ordering as archive_expert).
                 await scheduling.pause_expert_schedules(
                     owner_user_id,
                     row.id,
                     reason="Expert re-hire did not complete",
+                )
+                await prisma.models.Expert.prisma().update(
+                    where={"id": row.id},
+                    data={"isArchived": True},
                 )
                 await scheduling.detach_expert_triggers(owner_user_id, row.id)
             except Exception:
@@ -561,6 +582,15 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
     installed as a workflow. Two experts can install the same listing and
     share one LibraryAgent, which makes the join ambiguous — on anything
     but a unique match this declines (returns ``None``) rather than guess.
+
+    Fails closed on visibility: a graph mapped to a TEAM/ORG expert raises
+    ``ExpertNotFoundError`` (mirroring the 404 an explicit non-private
+    ``expert_id`` gets) instead of returning ``None`` — silently detaching
+    attribution would create an UNATTRIBUTED run that the expert budget
+    guard never sees.
+
+    Raises:
+        ExpertNotFoundError: if any matching expert is not PRIVATE.
     """
     rows = await prisma.models.ExpertWorkflow.prisma().find_many(
         where={
@@ -569,7 +599,6 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
                     "ownerUserId": user_id,
                     "isTemplate": False,
                     "isArchived": False,
-                    "visibility": ResourceVisibility.PRIVATE,
                 }
             },
             "LibraryAgent": {
@@ -579,8 +608,12 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
                     "isDeleted": False,
                 }
             },
-        }
+        },
+        include={"Expert": True},
     )
+    for row in rows:
+        if row.Expert and row.Expert.visibility != ResourceVisibility.PRIVATE:
+            raise ExpertNotFoundError(row.expertId)
     expert_ids = {row.expertId for row in rows}
     if len(expert_ids) != 1:
         return None
@@ -603,6 +636,13 @@ async def resolve_attributable_expert(
 
 
 async def archive_expert(user_id: str, expert_id: str) -> None:
+    # Pause BEFORE flipping isArchived: pause_expert_schedules refuses
+    # archived rows, and pausing first still records the pause event + stamp
+    # for the archive. A nonexistent/foreign expert makes the pause a no-op
+    # and the archive update below raises the 404.
+    await scheduling.pause_expert_schedules(
+        user_id, expert_id, reason="Expert archived"
+    )
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -614,9 +654,6 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
     )
     if updated == 0:
         raise ExpertNotFoundError(expert_id)
-    await scheduling.pause_expert_schedules(
-        user_id, expert_id, reason="Expert archived"
-    )
     try:
         await scheduling.detach_expert_triggers(user_id, expert_id)
     except Exception:
