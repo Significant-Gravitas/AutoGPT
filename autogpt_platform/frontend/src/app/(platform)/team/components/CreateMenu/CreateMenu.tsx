@@ -17,9 +17,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 
-type Props = {
+interface Props {
   onNewPod: () => void;
-};
+}
 
 export function CreateMenu({ onNewPod }: Props) {
   return (

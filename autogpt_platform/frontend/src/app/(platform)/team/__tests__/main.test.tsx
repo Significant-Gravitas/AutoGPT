@@ -647,8 +647,12 @@ describe("TeamPage", () => {
       created_at: new Date("2026-08-14T00:00:00Z"),
     };
     let assignedPodId: string | null | undefined;
+    let expertRequests = 0;
     server.use(
-      getListExpertsMockHandler([hiredMaria]),
+      getListExpertsMockHandler(() => {
+        expertRequests += 1;
+        return [hiredMaria];
+      }),
       getListExpertPodsMockHandler([growthPod]),
       getAssignExpertPodMockHandler(async ({ request }) => {
         const body = (await request.json()) as { pod_id: string | null };
@@ -660,11 +664,20 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
+    await waitFor(() => expect(expertRequests).toBe(1));
     await user.click(screen.getByRole("button", { name: "Move to pod" }));
     await user.click(await screen.findByRole("menuitem", { name: /Growth/ }));
 
     await waitFor(() => expect(assignedPodId).toBe("pod-growth"));
     expect(toastMock).toHaveBeenCalledWith({ title: "Moved to Growth" });
+    // The PATCH response is written into the cache, so the heavy roster query
+    // is never refetched and the card reflects the move immediately.
+    expect(
+      await screen.findByRole("button", {
+        name: "Move to pod (currently Growth)",
+      }),
+    ).toBeDefined();
+    expect(expertRequests).toBe(1);
   });
 
   test("removes an expert from its pod from the card menu", async () => {
@@ -689,7 +702,12 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    await user.click(screen.getByRole("button", { name: "Move to pod" }));
+    // The trigger names the pod the expert is already in.
+    const trigger = screen.getByRole("button", {
+      name: "Move to pod (currently Growth)",
+    });
+    expect(trigger.textContent).toContain("Growth");
+    await user.click(trigger);
     await user.click(
       await screen.findByRole("menuitem", { name: "Remove from pod" }),
     );

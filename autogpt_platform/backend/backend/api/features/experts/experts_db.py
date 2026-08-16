@@ -54,6 +54,12 @@ class ExpertPodNameTakenError(Exception):
         self.name = name
 
 
+class ExpertPodLimitReachedError(Exception):
+    def __init__(self, limit: int):
+        super().__init__(f"You can have at most {limit} pods")
+        self.limit = limit
+
+
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
     listing = row.StoreListingVersion
     library_agent = row.LibraryAgent
@@ -571,12 +577,20 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
 
 # ─── Pods (owner-scoped named groups) ──────────────────────────────────
 
+# Pods are a personal organisation aid, not a modelling primitive: a roster
+# large enough to need more groups than this is not a roster any more. The cap
+# also bounds what a scripted client can create.
+MAX_PODS_PER_USER = 100
+
 
 def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
     return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)
 
 
 async def create_pod(user_id: str, name: str) -> ExpertPod:
+    existing = await prisma.models.ExpertPod.prisma().count(where={"userId": user_id})
+    if existing >= MAX_PODS_PER_USER:
+        raise ExpertPodLimitReachedError(MAX_PODS_PER_USER)
     try:
         row = await prisma.models.ExpertPod.prisma().create(
             data={"userId": user_id, "name": name}
@@ -618,8 +632,9 @@ async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert
             data={"podId": pod_id},
         )
     except prisma.errors.ForeignKeyViolationError:
-        if pod_id is None:
-            raise
+        # Clearing the FK cannot violate it, so pod_id is set here: the pod was
+        # deleted between the ownership check above and this write.
+        assert pod_id is not None
         raise ExpertPodNotFoundError(pod_id)
     if updated == 0:
         raise ExpertNotFoundError(expert_id)

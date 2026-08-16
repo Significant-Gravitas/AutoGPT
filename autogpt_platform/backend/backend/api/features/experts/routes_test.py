@@ -503,6 +503,36 @@ def test_create_pod_rejects_blank_name(
         )
 
 
+def test_create_pod_rejects_name_over_max_length(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.post("/experts/pods", json={"name": "x" * 101})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_create_pod_at_limit_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPodLimitReachedError(experts_db.MAX_PODS_PER_USER),
+    )
+
+    response = client.post("/experts/pods", json={"name": "Growth"})
+
+    assert response.status_code == 409
+    assert str(experts_db.MAX_PODS_PER_USER) in response.json()["detail"]
+
+
 def test_create_pod_duplicate_name_returns_409(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

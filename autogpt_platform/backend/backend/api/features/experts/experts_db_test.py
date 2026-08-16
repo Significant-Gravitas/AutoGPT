@@ -1347,6 +1347,21 @@ async def test_create_pod_duplicate_name_raises(server: SpinTestServer, test_use
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_create_pod_rejects_past_the_per_user_cap(
+    server: SpinTestServer, test_user, monkeypatch: pytest.MonkeyPatch
+):
+    """The cap counts only the caller's own pods, so it is user-scoped."""
+    # The fixed test user's pods persist across tests, so pin the cap one above
+    # whatever is already there rather than assuming an empty slate.
+    existing = len(await experts_db.list_pods(test_user.id))
+    monkeypatch.setattr(experts_db, "MAX_PODS_PER_USER", existing + 1)
+
+    await experts_db.create_pod(test_user.id, _pod_name("Capped"))
+    with pytest.raises(experts_db.ExpertPodLimitReachedError):
+        await experts_db.create_pod(test_user.id, _pod_name("Overflow"))
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_pod_names_unique_per_user_not_globally(
     server: SpinTestServer, test_user, other_user
 ):

@@ -1,6 +1,7 @@
 import {
   getListExpertPodsQueryKey,
   getListExpertsQueryKey,
+  listExperts,
   useAssignExpertPod,
   useCreateExpertPod,
   useListExpertPods,
@@ -13,7 +14,11 @@ import { okData } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { getExpertSchedules, groupExpertsByPods } from "./helpers";
+import {
+  getAssignToastTitle,
+  getExpertSchedules,
+  groupExpertsByPods,
+} from "./helpers";
 
 interface Args {
   enabled: boolean;
@@ -52,6 +57,19 @@ export function useTeamPage({ enabled }: Args) {
     });
   }
 
+  function writeExpertToCache(updated: Expert) {
+    const key = getListExpertsQueryKey();
+    const cached =
+      queryClient.getQueryData<Awaited<ReturnType<typeof listExperts>>>(key);
+    if (cached?.status !== 200) return invalidateExperts();
+    queryClient.setQueryData(key, {
+      ...cached,
+      data: cached.data.map((expert) =>
+        expert.id === updated.id ? updated : expert,
+      ),
+    });
+  }
+
   const { mutate: createPodMutate, isPending: isCreatingPod } =
     useCreateExpertPod({
       mutation: {
@@ -74,18 +92,21 @@ export function useTeamPage({ enabled }: Args) {
 
   const { mutate: assignPodMutate } = useAssignExpertPod({
     mutation: {
-      onSuccess: (_response, variables) => {
-        void invalidateExperts();
-        const destination = pods.find(
-          (pod) => pod.id === variables.data.pod_id,
-        );
+      onSuccess: (response, variables) => {
+        // The PATCH returns the updated expert, so patch it into the cached
+        // roster instead of refetching the heavy list_experts join.
+        if (response.status === 200) writeExpertToCache(response.data);
+        else void invalidateExperts();
+
+        const podId = variables.data.pod_id;
+        const destination = pods.find((pod) => pod.id === podId);
+        // A pod we don't know about means the cached pod list is stale.
+        if (podId !== null && !destination) void invalidatePods();
         toast({
-          title:
-            variables.data.pod_id === null
-              ? "Removed from pod"
-              : destination
-                ? `Moved to ${destination.name}`
-                : "Expert moved",
+          title: getAssignToastTitle({
+            podId,
+            destinationName: destination?.name,
+          }),
         });
       },
       onError: (error) => {

@@ -80,7 +80,7 @@ async def list_experts(
 @router.post(
     "/pods",
     operation_id="create_expert_pod",
-    responses={409: {"description": "A pod with this name already exists"}},
+    responses={409: {"description": "Duplicate pod name, or the pod limit is reached"}},
 )
 async def create_expert_pod(
     request: CreatePodRequest,
@@ -88,7 +88,13 @@ async def create_expert_pod(
 ) -> ExpertPod:
     try:
         return await experts_db.create_pod(user_id, request.name)
-    except experts_db.ExpertPodNameTakenError as e:
+    except (
+        experts_db.ExpertPodNameTakenError,
+        experts_db.ExpertPodLimitReachedError,
+    ) as e:
+        # 409 rather than 422: the request is well-formed, it conflicts with
+        # the caller's existing pods. Keeping 422 for schema validation alone
+        # preserves the generated HTTPValidationError shape on this route.
         raise fastapi.HTTPException(status_code=409, detail=str(e))
 
 

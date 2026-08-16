@@ -14,11 +14,11 @@ import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
+import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
   "container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12";
-const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
 
 export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
@@ -49,7 +49,7 @@ export default function TeamPage() {
   if (!ready) {
     return (
       <main className={MAIN_CLASS}>
-        <div className={GRID_CLASS}>
+        <div className={TEAM_GRID_CLASS}>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-48 w-full rounded-2xl" />
           ))}

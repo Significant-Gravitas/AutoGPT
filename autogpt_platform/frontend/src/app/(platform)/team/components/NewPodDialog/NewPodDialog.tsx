@@ -4,13 +4,14 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { FormEvent, useEffect, useState } from "react";
+import { POD_NAME_MAX_LENGTH } from "../../helpers";
 
-type Props = {
+interface Props {
   open: boolean;
   onClose: () => void;
   onCreate: (name: string) => void;
   isCreating: boolean;
-};
+}
 
 export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
   const [name, setName] = useState("");
@@ -44,7 +45,7 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
             label="Pod name"
             placeholder="e.g. Growth"
             value={name}
-            maxLength={100}
+            maxLength={POD_NAME_MAX_LENGTH}
             onChange={(event) => setName(event.target.value)}
             wrapperClassName="!mb-0"
           />

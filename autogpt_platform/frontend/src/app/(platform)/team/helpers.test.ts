@@ -1,7 +1,7 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { describe, expect, test } from "vitest";
-import { groupExpertsByPods } from "./helpers";
+import { getAssignToastTitle, groupExpertsByPods } from "./helpers";
 
 function makeExpert(id: string, podId: string | null = null): Expert {
   return {
@@ -72,5 +72,21 @@ describe("groupExpertsByPods", () => {
     );
     expect(groups).toEqual([]);
     expect(ungrouped).toHaveLength(2);
+  });
+});
+
+describe("getAssignToastTitle", () => {
+  test("names the destination pod when it is known", () => {
+    expect(
+      getAssignToastTitle({ podId: "pod-growth", destinationName: "Growth" }),
+    ).toBe("Moved to Growth");
+  });
+
+  test("falls back to a generic title when the pod list is stale", () => {
+    expect(getAssignToastTitle({ podId: "pod-growth" })).toBe("Expert moved");
+  });
+
+  test("reports a detach regardless of the destination name", () => {
+    expect(getAssignToastTitle({ podId: null })).toBe("Removed from pod");
   });
 });

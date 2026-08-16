@@ -33,14 +33,14 @@ import {
 } from "../../helpers";
 import { useExpertTeamCard } from "./useExpertTeamCard";
 
-type Props = {
+interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
   pods: ExpertPod[];
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
   onAssignPod: (expertId: string, podId: string | null) => void;
-};
+}
 
 export function ExpertTeamCard({
   expert,
@@ -50,6 +50,7 @@ export function ExpertTeamCard({
   onEditSoul,
   onAssignPod,
 }: Props) {
+  const currentPod = pods.find((pod) => pod.id === expert.pod_id);
   const workflowCount = expert.workflows.length;
   const needsSetupCount = getNeedsSetupCount(expert);
   const scheduleLabel = getScheduleCountLabel(schedules);
@@ -168,8 +169,13 @@ export function ExpertTeamCard({
                 variant="ghost"
                 size="small"
                 leftIcon={<Icon icon={FolderIcon} size={16} />}
+                aria-label={
+                  currentPod
+                    ? `Move to pod (currently ${currentPod.name})`
+                    : "Move to pod"
+                }
               >
-                Move to pod
+                {currentPod ? currentPod.name : "Move to pod"}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">

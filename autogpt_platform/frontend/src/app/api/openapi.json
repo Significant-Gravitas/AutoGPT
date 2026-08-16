@@ -5574,7 +5574,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "409": { "description": "A pod with this name already exists" },
+          "409": {
+            "description": "Duplicate pod name, or the pod limit is reached"
+          },
           "422": {
             "description": "Validation Error",
             "content": {

@@ -9,6 +9,27 @@ interface PodGroup {
   experts: Expert[];
 }
 
+export const TEAM_GRID_CLASS =
+  "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
+
+/** Mirrors `CreatePodRequest.name`'s `max_length` on the backend. */
+export const POD_NAME_MAX_LENGTH = 100;
+
+interface AssignToastArgs {
+  podId: string | null;
+  destinationName?: string;
+}
+
+/** `destinationName` is absent when the target pod is missing from the locally
+ *  cached pod list, which the caller repairs by refetching pods. */
+export function getAssignToastTitle({
+  podId,
+  destinationName,
+}: AssignToastArgs) {
+  if (podId === null) return "Removed from pod";
+  return destinationName ? `Moved to ${destinationName}` : "Expert moved";
+}
+
 /** Split hired experts into their named pods (creation order, all pods kept
  *  so a just-created empty pod still shows) plus the ungrouped remainder. An
  *  expert whose `pod_id` points at a missing pod falls back to ungrouped. */

@@ -3,21 +3,20 @@ import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode } from "react";
+import { TEAM_GRID_CLASS } from "../../helpers";
 import { AutopilotCard } from "../AutopilotCard";
 
-const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
-
-type Props = {
+interface Props {
   isLoading: boolean;
   podGroups: { pod: ExpertPod; experts: Expert[] }[];
   ungroupedExperts: Expert[];
   renderCard: (expert: Expert) => ReactNode;
-};
+}
 
-type SectionHeaderProps = {
+interface SectionHeaderProps {
   name: string;
   count: number;
-};
+}
 
 export function TeamRoster({
   isLoading,
@@ -27,7 +26,7 @@ export function TeamRoster({
 }: Props) {
   if (isLoading) {
     return (
-      <div className={GRID_CLASS}>
+      <div className={TEAM_GRID_CLASS}>
         <AutopilotCard />
         {[0, 1, 2].map((index) => (
           <Skeleton key={index} className="h-48 w-full rounded-2xl" />
@@ -38,7 +37,7 @@ export function TeamRoster({
 
   if (podGroups.length === 0) {
     return (
-      <div className={GRID_CLASS}>
+      <div className={TEAM_GRID_CLASS}>
         <AutopilotCard />
         {ungroupedExperts.map(renderCard)}
       </div>
@@ -47,14 +46,16 @@ export function TeamRoster({
 
   return (
     <div className="space-y-8">
-      <div className={GRID_CLASS}>
+      <div className={TEAM_GRID_CLASS}>
         <AutopilotCard />
       </div>
       {podGroups.map((group) => (
         <section key={group.pod.id} className="space-y-3">
           <SectionHeader name={group.pod.name} count={group.experts.length} />
           {group.experts.length > 0 ? (
-            <div className={GRID_CLASS}>{group.experts.map(renderCard)}</div>
+            <div className={TEAM_GRID_CLASS}>
+              {group.experts.map(renderCard)}
+            </div>
           ) : (
             <Text variant="small" className="text-zinc-500">
               No experts in this pod yet.
@@ -65,7 +66,9 @@ export function TeamRoster({
       {ungroupedExperts.length > 0 ? (
         <section className="space-y-3">
           <SectionHeader name="No pod" count={ungroupedExperts.length} />
-          <div className={GRID_CLASS}>{ungroupedExperts.map(renderCard)}</div>
+          <div className={TEAM_GRID_CLASS}>
+            {ungroupedExperts.map(renderCard)}
+          </div>
         </section>
       ) : null}
     </div>
