@@ -21,6 +21,12 @@ import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
+import {
+  getKickoffAttemptToken,
+  getKickoffExpertId,
+  stripLegacyKickoffMarker,
+  type ExpertKickoffMetadata,
+} from "../../expertKickoff";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -48,6 +54,7 @@ export interface ChatContainerProps {
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
+    metadata?: ExpertKickoffMetadata,
   ) => void | Promise<void>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
@@ -71,6 +78,8 @@ export interface ChatContainerProps {
    * expert's latest thread — the composer stays locked so a draft can't be
    * lost to that navigation. */
   isAdoptingExpertSession?: boolean;
+  /** True until a newly hired expert's first kickoff has been handed off. */
+  isKickoffStarting?: boolean;
 }
 export const ChatContainer = ({
   messages,
@@ -100,6 +109,7 @@ export const ChatContainer = ({
   turnStats,
   expertIdentity,
   isAdoptingExpertSession,
+  isKickoffStarting,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -125,7 +135,8 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
-  const isInputDisabled = isSessionUnavailable || isLimitReached;
+  const isInputDisabled =
+    isSessionUnavailable || isLimitReached || !!isKickoffStarting;
   const inputLayoutId = "copilot-2-chat-input";
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
@@ -160,7 +171,26 @@ export const ChatContainer = ({
       .map((p) => p.text)
       .join("");
     if (lastText) {
-      onSend(lastText);
+      const kickoffExpertId = lastUserMsg
+        ? getKickoffExpertId(lastUserMsg)
+        : null;
+      const kickoffAttemptToken = lastUserMsg
+        ? getKickoffAttemptToken(lastUserMsg)
+        : null;
+      onSend(
+        kickoffExpertId ? stripLegacyKickoffMarker(lastText) : lastText,
+        undefined,
+        undefined,
+        kickoffExpertId
+          ? {
+              kind: "expert_kickoff",
+              expertId: kickoffExpertId,
+              ...(kickoffAttemptToken
+                ? { attemptToken: kickoffAttemptToken }
+                : {}),
+            }
+          : undefined,
+      );
     }
   }, [messages, onSend]);
 
@@ -257,6 +287,8 @@ export const ChatContainer = ({
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
               isAdoptingExpertSession={isAdoptingExpertSession}
+              isKickoffStarting={isKickoffStarting}
+              expertName={expertIdentity?.name}
             />
           )}
         </div>
