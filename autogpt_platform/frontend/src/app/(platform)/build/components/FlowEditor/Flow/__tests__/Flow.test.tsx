@@ -207,5 +207,17 @@ describe("Flow canvas re-render stability", () => {
     // node-position update.
     expect(secondProps.deleteKeyCode).toBe(firstProps.deleteKeyCode);
     expect(secondProps.onNodeContextMenu).toBe(firstProps.onNodeContextMenu);
+
+    // Reference stability alone doesn't guard the feature: also assert the
+    // value/behaviour so a stable-but-broken handler or key list is caught.
+    expect(firstProps.deleteKeyCode).toEqual(["Backspace", "Delete"]);
+
+    const preventDefault = vi.fn();
+    (
+      firstProps.onNodeContextMenu as (event: {
+        preventDefault: () => void;
+      }) => void
+    )({ preventDefault });
+    expect(preventDefault).toHaveBeenCalled();
   });
 });
