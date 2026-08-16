@@ -21,6 +21,7 @@ from prisma.types import (
 from pydantic import BaseModel
 
 from backend.data import db
+from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.json import SafeJson, sanitize_string
 
 from .model import (
@@ -71,6 +72,32 @@ async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
         where={"id": session_id},
     )
     return ChatSessionInfo.from_db(session) if session else None
+
+
+async def chat_message_has_assistant_reply(
+    message_id: str,
+    session_id: str,
+) -> bool | None:
+    """Whether a persisted user message already has an assistant reply after it.
+
+    ``None`` means the message does not exist, ``False`` means no assistant row
+    follows it, and ``True`` means an assistant reply was persisted after it in
+    the same session.
+    """
+    messages = PrismaChatMessage.prisma()
+    existing = await messages.find_first(
+        where={"id": message_id, "sessionId": session_id},
+    )
+    if existing is None:
+        return None
+    assistant_reply = await messages.find_first(
+        where={
+            "sessionId": session_id,
+            "role": "assistant",
+            "sequence": {"gt": existing.sequence},
+        },
+    )
+    return assistant_reply is not None
 
 
 def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
@@ -276,7 +303,58 @@ async def create_chat_session(
     metadata: ChatSessionMetadata | None = None,
     expert_id: str | None = None,
 ) -> ChatSessionInfo:
-    """Create a new chat session in the database."""
+    """Create a chat session, atomically validating expert attribution."""
+    requested_expert_id = expert_id
+    if requested_expert_id:
+        async with db.transaction() as tx:
+            expert_id = await resolve_attributable_expert(
+                tx,
+                user_id,
+                requested_expert_id,
+                lock_for_update=True,
+            )
+            prisma_session = await PrismaChatSession.prisma(tx).create(
+                data=_chat_session_create_input(
+                    session_id=session_id,
+                    user_id=user_id,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                    metadata=metadata,
+                    expert_id=expert_id,
+                )
+            )
+        if expert_id is None:
+            logger.warning(
+                "Ignoring inactive/unowned expert %s while creating chat "
+                "session %s for user %s",
+                requested_expert_id,
+                session_id,
+                user_id,
+            )
+        return ChatSessionInfo.from_db(prisma_session)
+
+    prisma_session = await PrismaChatSession.prisma().create(
+        data=_chat_session_create_input(
+            session_id=session_id,
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            metadata=metadata,
+            expert_id=None,
+        )
+    )
+    return ChatSessionInfo.from_db(prisma_session)
+
+
+def _chat_session_create_input(
+    *,
+    session_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    metadata: ChatSessionMetadata | None,
+    expert_id: str | None,
+) -> ChatSessionCreateInput:
     data = ChatSessionCreateInput(
         id=session_id,
         userId=user_id,
@@ -289,8 +367,7 @@ async def create_chat_session(
         **({"expertId": expert_id} if expert_id else {}),
         metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
-    prisma_session = await PrismaChatSession.prisma().create(data=data)
-    return ChatSessionInfo.from_db(prisma_session)
+    return data
 
 
 async def update_chat_session(
@@ -619,6 +696,7 @@ async def get_user_chat_sessions(
     organization_id: str | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
+    pinned_first: bool = True,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
@@ -633,6 +711,8 @@ async def get_user_chat_sessions(
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``pinned_first=False`` provides strict recency ordering for internal
+    adoption flows; the user-facing sidebar keeps pinned sessions first.
     """
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
@@ -648,10 +728,13 @@ async def get_user_chat_sessions(
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
     params.extend((limit, offset))
+    ordering = (
+        '"isPinned" DESC, "updatedAt" DESC' if pinned_first else '"updatedAt" DESC'
+    )
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
         + " AND ".join(conditions)
-        + ' ORDER BY "isPinned" DESC, "updatedAt" DESC '
+        + f" ORDER BY {ordering} "
         + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
     )
     sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)

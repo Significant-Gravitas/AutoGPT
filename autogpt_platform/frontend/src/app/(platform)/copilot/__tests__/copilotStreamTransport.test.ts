@@ -11,6 +11,7 @@ vi.mock("../helpers", () => ({
 }));
 
 import { createCopilotTransport } from "../copilotStreamTransport";
+import { buildKickoffMessage } from "../expertKickoff";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -22,12 +23,13 @@ function makeRefs() {
   };
 }
 
-function lastMessage(text: string) {
+function lastMessage(text: string, metadata?: unknown) {
   return [
     {
       id: "ai-sdk-generated-id",
       role: "user" as const,
       parts: [{ type: "text" as const, text }],
+      metadata,
     },
   ];
 }
@@ -134,4 +136,59 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
       expect(out.body.message_id).not.toBe("ai-sdk-generated-id");
     },
   );
+});
+
+describe("copilotStreamTransport — expert kickoff routing", () => {
+  const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+
+  function prep(transport: ReturnType<typeof createCopilotTransport>) {
+    return (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: {
+          messages: Array<{
+            id: string;
+            role: "user" | "assistant";
+            parts: Array<{ type: "text"; text: string }>;
+            metadata?: unknown;
+          }>;
+        }) => Promise<{
+          body: { message_id?: string; expert_kickoff?: boolean };
+        }>;
+      }
+    ).prepareSendMessagesRequest;
+  }
+
+  it("marks kickoff requests while leaving the canonical id to the server", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-1",
+      ...makeRefs(),
+    });
+    const kickoff = buildKickoffMessage(EXPERT_ID);
+
+    const tabA = await prep(transport)({
+      messages: lastMessage(kickoff.text, kickoff.metadata),
+    });
+    const tabB = await prep(transport)({
+      messages: lastMessage(kickoff.text, kickoff.metadata),
+    });
+
+    expect(tabA.body.expert_kickoff).toBe(true);
+    expect(tabA.body.message_id).toMatch(UUID_RE);
+    expect(tabB.body.message_id).toMatch(UUID_RE);
+    expect(tabB.body.message_id).not.toBe(tabA.body.message_id);
+  });
+
+  it("keeps random UUIDs for ordinary messages", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-1",
+      ...makeRefs(),
+    });
+
+    const out = await prep(transport)({
+      messages: lastMessage("You were just hired."),
+    });
+
+    expect(out.body.message_id).toMatch(UUID_RE);
+    expect(out.body.expert_kickoff).toBe(false);
+  });
 });

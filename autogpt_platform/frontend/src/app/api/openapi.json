@@ -3353,7 +3353,8 @@
                     {
                       "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
                     },
-                    { "$ref": "#/components/schemas/TodoWriteResponse" }
+                    { "$ref": "#/components/schemas/TodoWriteResponse" },
+                    { "$ref": "#/components/schemas/ExpertSoulUpdatedResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -3367,7 +3368,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n    pinned_first: Whether pinned sessions precede strict recency ordering.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3405,6 +3406,18 @@
               ],
               "title": "Expert Id"
             }
+          },
+          {
+            "name": "pinned_first",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Keep pinned sessions before recent sessions. Set false for strict recency when adopting the latest expert thread.",
+              "default": true,
+              "title": "Pinned First"
+            },
+            "description": "Keep pinned sessions before recent sessions. Set false for strict recency when adopting the latest expert thread."
           }
         ],
         "responses": {
@@ -3434,7 +3447,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
+        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n- Expert kickoff: atomically create or adopt the canonical first session\n  for ``(user_id, expert_id)``.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -16148,6 +16161,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -16457,12 +16474,17 @@
               { "type": "null" }
             ],
             "title": "Expert Id"
+          },
+          "expert_kickoff": {
+            "type": "boolean",
+            "title": "Expert Kickoff",
+            "default": false
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -17685,6 +17707,12 @@
             "type": "string",
             "title": "Voice Preferences"
           },
+          "voice_samples": {
+            "items": { "$ref": "#/components/schemas/VoiceSample" },
+            "type": "array",
+            "title": "Voice Samples",
+            "default": []
+          },
           "boundaries": { "type": "string", "title": "Boundaries" },
           "protected_soul_rules": {
             "items": { "type": "string" },
@@ -17796,6 +17824,37 @@
         "type": "object",
         "required": ["name", "identity", "voice_preferences", "boundaries"],
         "title": "ExpertSoulUpdate"
+      },
+      "ExpertSoulUpdatedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "expert_soul_updated"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "applied": {
+            "type": "boolean",
+            "title": "Applied",
+            "default": false
+          },
+          "changes": {
+            "items": { "$ref": "#/components/schemas/SoulFieldChange" },
+            "type": "array",
+            "title": "Changes"
+          },
+          "confirmation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Confirmation Id"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ExpertSoulUpdatedResponse",
+        "description": "Response for the two-step Soul edit tools.\n\nCarries the diff so the model must surface exactly what changed. ``applied``\nis False for the update_expert_soul preview (nothing written yet; the\none-time ``confirmation_id`` references the stored proposal) and True once\nconfirm_expert_soul_update saves the edit."
       },
       "ExpertWorkflowRef": {
         "properties": {
@@ -22847,7 +22906,8 @@
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
-          "skill_list"
+          "skill_list",
+          "expert_soul_updated"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -23750,6 +23810,21 @@
         "title": "SkippedWebhookPreset",
         "description": "A webhook preset that was left pinned to its old version because the\nnewly activated version swaps or reconfigures the trigger block. The user\nneeds to reconfigure the trigger on the new version for it to fire."
       },
+      "SoulFieldChange": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": ["identity", "voice_preferences", "boundaries"],
+            "title": "Field"
+          },
+          "before": { "type": "string", "title": "Before" },
+          "after": { "type": "string", "title": "After" }
+        },
+        "type": "object",
+        "required": ["field", "before", "after"],
+        "title": "SoulFieldChange",
+        "description": "One field's before/after values for an expert soul edit."
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -24486,7 +24561,13 @@
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-click UUID generated by the frontend.  Becomes the persisted ``ChatMessage.id`` (PK).  Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the id, so the Postgres unique-constraint on the PK is the atomic dedup primitive: a duplicate INSERT returns a subscribe-only response without creating a parallel turn.  Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
+            "description": "Optional per-click UUID generated by the frontend. The server scopes it to the authenticated user and session before using the result as ``ChatMessage.id``. Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the key, so the Postgres unique-constraint on the resulting PK is the atomic dedup primitive. A duplicate INSERT returns a subscribe-only response without creating a parallel turn. Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
+          },
+          "expert_kickoff": {
+            "type": "boolean",
+            "title": "Expert Kickoff",
+            "description": "Marks the hidden, once-per-expert day-one kickoff. The server derives its owner-scoped message ID and persistence metadata.",
+            "default": false
           }
         },
         "type": "object",
@@ -27198,6 +27279,16 @@
         "type": "object",
         "required": ["public_key"],
         "title": "VapidPublicKeyResponse"
+      },
+      "VoiceSample": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "text": { "type": "string", "title": "Text" }
+        },
+        "type": "object",
+        "required": ["label", "text"],
+        "title": "VoiceSample",
+        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire flow. The first sample is choice \"a\", the second choice \"b\"."
       },
       "Webhook": {
         "properties": {

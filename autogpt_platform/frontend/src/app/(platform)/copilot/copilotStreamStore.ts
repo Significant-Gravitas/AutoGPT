@@ -1,6 +1,7 @@
 import type { FileUIPart, UIMessage } from "ai";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { ExpertKickoffMetadata } from "./expertKickoff";
 
 /**
  * Per-session state. Zustand (not React refs) so it can survive events we
@@ -24,10 +25,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
  */
 export interface SessionCoord {
   lastSubmittedMessageText: string | null;
+  lastSubmittedKickoffExpertId: string | null;
+  lastSubmittedKickoffAttemptToken: string | null;
 }
 
 const defaultCoord: SessionCoord = {
   lastSubmittedMessageText: null,
+  lastSubmittedKickoffExpertId: null,
+  lastSubmittedKickoffAttemptToken: null,
 };
 
 /**
@@ -49,11 +54,12 @@ const defaultCoord: SessionCoord = {
 export interface PendingFirstSend {
   text: string;
   files: File[];
+  metadata?: ExpertKickoffMetadata;
 }
 
 interface PersistedCopilotStreamState {
   sessions: Record<string, SessionCoord>;
-  pendingFirstSend: Pick<PendingFirstSend, "text"> | null;
+  pendingFirstSend: Pick<PendingFirstSend, "text" | "metadata"> | null;
   pendingFirstSendSessionId: string | null;
   pendingFileParts: FileUIPart[];
 }
@@ -103,7 +109,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       isStreaming: false,
 
       getCoord(sessionId) {
-        return get().sessions[sessionId] ?? defaultCoord;
+        return { ...defaultCoord, ...get().sessions[sessionId] };
       },
       updateCoord(sessionId, patch) {
         set((state) => ({
@@ -212,7 +218,10 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
         return {
           sessions: state.sessions,
           pendingFirstSend: canRestorePending
-            ? { text: state.pendingFirstSend!.text }
+            ? {
+                text: state.pendingFirstSend!.text,
+                metadata: state.pendingFirstSend!.metadata,
+              }
             : null,
           pendingFirstSendSessionId: canRestorePending
             ? state.pendingFirstSendSessionId
@@ -227,7 +236,11 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           persisted.pendingFirstSend &&
           typeof persisted.pendingFirstSendSessionId === "string"
             ? {
-                send: { text: persisted.pendingFirstSend.text, files: [] },
+                send: {
+                  text: persisted.pendingFirstSend.text,
+                  files: [],
+                  metadata: persisted.pendingFirstSend.metadata,
+                },
                 sessionId: persisted.pendingFirstSendSessionId,
                 parts: persisted.pendingFileParts ?? [],
               }
