@@ -129,7 +129,12 @@ async def test_auto_webhook_does_not_reuse_mismatched_tenant(monkeypatch) -> Non
 
 
 @pytest.mark.asyncio
-async def test_manual_webhook_does_not_update_mismatched_tenant(monkeypatch) -> None:
+async def test_manual_webhook_rehomes_mismatched_tenant_keeping_url(
+    monkeypatch,
+) -> None:
+    """A manual webhook whose tenancy lags its preset must be rehomed in
+    place — never replaced — so its ingress URL keeps working for the
+    external system that already POSTs to it."""
     monkeypatch.setattr(
         webhooks_base.app_config, "platform_base_url", "https://example.com"
     )
@@ -138,21 +143,17 @@ async def test_manual_webhook_does_not_update_mismatched_tenant(monkeypatch) -> 
         provider=ProviderName.GITHUB,
         webhook_type=manager.WebhookType.REPO,
         resource="",
-        events=["issues"],
+        events=["push"],
         organization_id="other-org",
         team_id="other-team",
     )
-    replacement = mismatched.model_copy(
-        update={
-            "id": "webhook-2",
-            "events": ["push"],
-            "organization_id": "org-1",
-            "team_id": "team-1",
-        }
+    rehomed = mismatched.model_copy(
+        update={"organization_id": "org-1", "team_id": "team-1"}
     )
     find_webhook = AsyncMock(return_value=mismatched)
+    set_tenancy = AsyncMock(return_value=rehomed)
     update_webhook = AsyncMock()
-    create_webhook = AsyncMock(return_value=replacement)
+    create_webhook = AsyncMock()
 
     with (
         patch.object(
@@ -160,6 +161,7 @@ async def test_manual_webhook_does_not_update_mismatched_tenant(monkeypatch) -> 
             "find_webhook_by_graph_and_props",
             find_webhook,
         ),
+        patch.object(integrations, "set_webhook_tenancy", set_tenancy),
         patch.object(integrations, "update_webhook", update_webhook),
         patch.object(manager, "_create_webhook", create_webhook),
     ):
@@ -172,18 +174,68 @@ async def test_manual_webhook_does_not_update_mismatched_tenant(monkeypatch) -> 
             team_id="team-1",
         )
 
-    assert result == replacement
+    assert result == rehomed
+    assert result.id == mismatched.id
+    assert result.url == mismatched.url
     find_webhook.assert_awaited_once_with(
         user_id="user-1",
         provider=ProviderName.GITHUB.value,
         webhook_type=manager.WebhookType.REPO,
-        organization_id="org-1",
-        team_id="team-1",
         graph_id=None,
         preset_id="preset-1",
     )
+    set_tenancy.assert_awaited_once_with(
+        mismatched.id, organization_id="org-1", team_id="team-1"
+    )
     update_webhook.assert_not_awaited()
-    create_webhook.assert_awaited_once()
+    create_webhook.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_manual_webhook_same_tenant_updates_events_without_rehome(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        webhooks_base.app_config, "platform_base_url", "https://example.com"
+    )
+    manager = GithubWebhooksManager()
+    existing = _webhook(
+        provider=ProviderName.GITHUB,
+        webhook_type=manager.WebhookType.REPO,
+        resource="",
+        events=["issues"],
+        organization_id="org-1",
+        team_id="team-1",
+    )
+    updated = existing.model_copy(update={"events": ["push"]})
+    find_webhook = AsyncMock(return_value=existing)
+    set_tenancy = AsyncMock()
+    update_webhook = AsyncMock(return_value=updated)
+    create_webhook = AsyncMock()
+
+    with (
+        patch.object(
+            integrations,
+            "find_webhook_by_graph_and_props",
+            find_webhook,
+        ),
+        patch.object(integrations, "set_webhook_tenancy", set_tenancy),
+        patch.object(integrations, "update_webhook", update_webhook),
+        patch.object(manager, "_create_webhook", create_webhook),
+    ):
+        result = await manager.get_manual_webhook(
+            user_id="user-1",
+            webhook_type=manager.WebhookType.REPO,
+            events=["push"],
+            preset_id="preset-1",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    assert result == updated
+    set_tenancy.assert_not_awaited()
+    update_webhook.assert_awaited_once_with(existing.id, events=["push"])
+    create_webhook.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -553,7 +605,9 @@ async def test_telegram_fails_closed_when_lock_acquisition_fails(
                 events=["message.text"],
             )
 
-    mutex.release.assert_not_awaited()
+    # A failed/cancelled acquire may still have taken the Redis lock, so the
+    # best-effort release must run (it no-ops when the lock isn't owned).
+    mutex.release.assert_awaited_once()
     locked_setup.assert_not_awaited()
 
 
@@ -701,7 +755,10 @@ async def test_cross_tenant_conflict_lookup_does_not_filter_tenant() -> None:
 
 
 @pytest.mark.asyncio
-async def test_manual_webhook_lookup_filters_exact_tenant() -> None:
+async def test_manual_webhook_lookup_is_tenancy_tolerant() -> None:
+    """The graph/preset lookup must NOT filter on tenancy: a legacy row
+    carrying the graph's org (or NULL) must still be found so
+    ``get_manual_webhook`` can rehome it instead of minting a new URL."""
     client = SimpleNamespace(find_first=AsyncMock(return_value=None))
 
     with patch.object(integrations.IntegrationWebhook, "prisma", return_value=client):
@@ -709,8 +766,6 @@ async def test_manual_webhook_lookup_filters_exact_tenant() -> None:
             user_id="user-1",
             provider=ProviderName.GITHUB.value,
             webhook_type="repo",
-            organization_id="org-1",
-            team_id="team-1",
             preset_id="preset-1",
         )
 
@@ -720,8 +775,6 @@ async def test_manual_webhook_lookup_filters_exact_tenant() -> None:
             "userId": "user-1",
             "provider": ProviderName.GITHUB.value,
             "webhookType": "repo",
-            "organizationId": "org-1",
-            "teamId": "team-1",
             "AgentPresets": {"some": {"id": "preset-1"}},
         }
     )

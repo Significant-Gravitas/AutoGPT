@@ -232,18 +232,20 @@ async def find_webhook_by_graph_and_props(
     user_id: str,
     provider: str,
     webhook_type: str,
-    organization_id: str | None,
-    team_id: str | None,
     graph_id: Optional[str] = None,
     preset_id: Optional[str] = None,
 ) -> Webhook | None:
-    """Either `graph_id` or `preset_id` must be provided."""
+    """Either `graph_id` or `preset_id` must be provided.
+
+    Deliberately does NOT filter by tenancy: the only caller
+    (`get_manual_webhook`) must find a manual webhook whose org/team lag the
+    graph/preset's current tenancy (e.g. after an expert rehome) so it can
+    move the row along instead of minting a new ingress URL.
+    """
     where_clause: IntegrationWebhookWhereInput = {
         "userId": user_id,
         "provider": provider,
         "webhookType": webhook_type,
-        "organizationId": organization_id,
-        "teamId": team_id,
     }
 
     if preset_id:
@@ -257,6 +259,27 @@ async def find_webhook_by_graph_and_props(
         where=where_clause,
     )
     return Webhook.from_db(webhook) if webhook else None
+
+
+async def set_webhook_tenancy(
+    webhook_id: str,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+) -> Webhook:
+    """Move a webhook to the tenant of the graph/preset it triggers.
+
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+    Both fields are always overwritten (resource-follows-parent), so passing
+    ``None`` clears the corresponding column.
+    """
+    updated_webhook = await IntegrationWebhook.prisma().update(
+        where={"id": webhook_id},
+        data={"organizationId": organization_id, "teamId": team_id},
+    )
+    if updated_webhook is None:
+        raise NotFoundError(f"Webhook #{webhook_id} not found")
+    return Webhook.from_db(updated_webhook)
 
 
 async def update_webhook(

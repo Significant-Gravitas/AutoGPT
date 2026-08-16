@@ -85,24 +85,34 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         If an existing webhook is found, we check if the events match and update them
         if necessary. We do this rather than creating a new webhook
         to avoid changing the webhook URL for existing manual webhooks.
+
+        The lookup is tenancy-tolerant on purpose: the webhook's org/team must
+        follow the graph/preset it triggers, so when the parent's tenancy moved
+        (e.g. an expert preset rehomed to the owner's personal org) the row is
+        rehomed to `organization_id`/`team_id` in place. Minting a replacement
+        instead would change the ingress URL and silently break the external
+        system that keeps POSTing to the old one.
         """
         if (graph_id or preset_id) and (
             current_webhook := await integrations.find_webhook_by_graph_and_props(
                 user_id=user_id,
                 provider=self.PROVIDER_NAME.value,
                 webhook_type=webhook_type,
-                organization_id=organization_id,
-                team_id=team_id,
                 graph_id=graph_id,
                 preset_id=preset_id,
             )
         ):
-            if self._matches_tenancy(current_webhook, organization_id, team_id):
-                if set(current_webhook.events) != set(events):
-                    current_webhook = await integrations.update_webhook(
-                        current_webhook.id, events=events
-                    )
-                return current_webhook
+            if not self._matches_tenancy(current_webhook, organization_id, team_id):
+                current_webhook = await integrations.set_webhook_tenancy(
+                    current_webhook.id,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+            if set(current_webhook.events) != set(events):
+                current_webhook = await integrations.update_webhook(
+                    current_webhook.id, events=events
+                )
+            return current_webhook
 
         return await self._create_webhook(
             user_id=user_id,

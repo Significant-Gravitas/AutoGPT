@@ -76,16 +76,26 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         )
         try:
             mutex = AsyncRedisKeyedMutex(await get_redis_async())
-            await asyncio.wait_for(
-                mutex.acquire(lock_key),
-                timeout=_SETUP_LOCK_ACQUIRE_TIMEOUT_SECONDS,
-            )
         except Exception as exc:
             raise WebhookRegistrationError(
                 "Could not safely lock Telegram webhook setup"
             ) from exc
 
+        # The acquire attempt must be INSIDE the release-guarded block: a
+        # wait_for timeout cancels the acquire task, which can land after the
+        # Redis lock was actually taken — without the finally, that lock would
+        # leak until its TTL. ``mutex.release`` checks ownership, so releasing
+        # after a failed/never-completed acquire is a safe no-op.
         try:
+            try:
+                await asyncio.wait_for(
+                    mutex.acquire(lock_key),
+                    timeout=_SETUP_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:
+                raise WebhookRegistrationError(
+                    "Could not safely lock Telegram webhook setup"
+                ) from exc
             return await self._get_suitable_auto_webhook_locked(
                 user_id=user_id,
                 credentials=credentials,
