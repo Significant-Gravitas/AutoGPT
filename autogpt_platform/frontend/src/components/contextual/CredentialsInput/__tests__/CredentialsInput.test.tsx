@@ -49,10 +49,12 @@ const mockPreOpenOAuthPopup = preOpenOAuthPopup as unknown as ReturnType<
 const mockToast = toast as unknown as ReturnType<typeof vi.fn>;
 
 const baseSchema: BlockIOCredentialsSubSchema = {
+  type: "object",
+  properties: {},
   credentials_provider: ["google"],
   credentials_types: ["oauth2"],
   credentials_scopes: ["drive.file", "drive.metadata"],
-} as BlockIOCredentialsSubSchema;
+};
 
 type CredentialsReturn = ReturnType<typeof useCredentials>;
 type BackendAPI = ReturnType<typeof useBackendAPI>;
@@ -111,11 +113,13 @@ afterEach(() => {
 
 describe("CredentialsInput – OAuth flow", () => {
   it("does not render a credential control for credential-free providers", () => {
-    const ollamaSchema = {
+    const ollamaSchema: BlockIOCredentialsSubSchema = {
+      type: "object",
+      properties: {},
       credentials_provider: ["ollama"],
       credentials_types: [],
       credentials_scopes: [],
-    } as BlockIOCredentialsSubSchema;
+    };
     mockUseCredentials.mockReturnValue(
       makeCredentialsReturn({
         provider: "ollama",
