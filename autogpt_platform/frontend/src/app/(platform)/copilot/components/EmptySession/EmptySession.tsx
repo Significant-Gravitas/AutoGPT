@@ -23,6 +23,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
 import { GreetingLoader } from "./components/GreetingLoader";
+import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
@@ -40,6 +41,8 @@ interface Props {
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
   isAdoptingExpertSession?: boolean;
+  isKickoffStarting?: boolean;
+  expertName?: string;
 }
 
 export function EmptySession({
@@ -50,6 +53,8 @@ export function EmptySession({
   droppedFiles,
   onDroppedFilesConsumed,
   isAdoptingExpertSession,
+  isKickoffStarting,
+  expertName,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -90,6 +95,10 @@ export function EmptySession({
       mql2.removeEventListener("change", handleResize);
     };
   }, []);
+
+  if (isKickoffStarting) {
+    return <ExpertKickoffLoader expertName={expertName} />;
+  }
 
   return (
     <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">

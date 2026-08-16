@@ -48,6 +48,17 @@ export const mariaRichTemplate: Expert = {
   ],
 };
 
+export const mariaWithSamples: Expert = {
+  ...mariaTemplate,
+  voice_samples: [
+    { label: "Punchy and bold", text: "Stop guessing what your buyers want." },
+    {
+      label: "Warm and story-led",
+      text: "Every campaign starts with a person, not a product.",
+    },
+  ],
+};
+
 export const hiredMaria: Expert = {
   ...mariaTemplate,
   id: "expert-maria",
