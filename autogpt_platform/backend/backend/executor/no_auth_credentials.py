@@ -13,9 +13,7 @@ def _can_defer_unresolved_discriminator(field_info: CredentialsFieldInfo) -> boo
     Authenticated variants are still checked normally once their discriminator value
     is known.
     """
-    if not (
-        field_info.discriminator_mapping and field_info.discriminator_type_mapping
-    ):
+    if not (field_info.discriminator_mapping and field_info.discriminator_type_mapping):
         return False
 
     credential_free_providers = {
