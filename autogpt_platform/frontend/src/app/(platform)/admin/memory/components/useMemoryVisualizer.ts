@@ -10,6 +10,8 @@ import {
   getGetV2GetNightlyBatchStatusQueryKey,
   useGetV2GetCommunityRebuildStatus,
   useGetV2GetDreamPassStatus,
+  useGetV2GetExpertGraph,
+  useGetV2GetExpertMemoryOverview,
   useGetV2GetGraph,
   useGetV2GetMemoryOverview,
   useGetV2GetNightlyBatchStatus,
@@ -44,28 +46,15 @@ function isTerminal(state: JobStateValue | undefined): state is TerminalState {
   return state === "complete" || state === "errored";
 }
 
-function isAutoPilotMemoryQuery({
-  queryKey,
-}: {
-  queryKey: readonly unknown[];
-}) {
-  const params = queryKey[1];
-  return !(
-    typeof params === "object" &&
-    params !== null &&
-    "expert_id" in params &&
-    params.expert_id !== undefined
-  );
-}
-
 function invalidateAutoPilotMemoryQueries(queryClient: QueryClient) {
+  // Account and expert scopes are separate endpoints (and therefore
+  // separate query-key URLs), so a prefix invalidation of the account
+  // keys can never touch an expert cache.
   queryClient.invalidateQueries({
     queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-    predicate: isAutoPilotMemoryQuery,
   });
   queryClient.invalidateQueries({
     queryKey: getGetV2GetGraphQueryKey(USER_ID),
-    predicate: isAutoPilotMemoryQuery,
   });
 }
 
@@ -75,7 +64,10 @@ export function useMemoryVisualizer(expertID?: string) {
   const [force, setForce] = useState(false);
   const [includeEpisodes, setIncludeEpisodes] = useState(false);
   const [includeCommunities, setIncludeCommunities] = useState(true);
-  const readOnly = expertID !== undefined;
+  // Normalize "" to undefined so read-only state and the fetch scope
+  // can never disagree about whether an expert is selected.
+  const scopedExpertID = expertID || undefined;
+  const readOnly = scopedExpertID !== undefined;
 
   // Track the in-flight job per kind so the polling hooks know what
   // to watch. ``undefined`` means no job in flight for that kind.
@@ -89,19 +81,35 @@ export function useMemoryVisualizer(expertID?: string) {
     string | undefined
   >();
 
-  const memoryScopeParams = expertID ? { expert_id: expertID } : undefined;
   const baseGraphParams = {
     include_episodes: includeEpisodes,
     include_communities: includeCommunities,
     node_limit: 10000,
     edge_limit: 20000,
   };
-  const graphParams = {
-    ...baseGraphParams,
-    ...(memoryScopeParams ?? {}),
-  };
-  const overview = useGetV2GetMemoryOverview(USER_ID, memoryScopeParams);
-  const graph = useGetV2GetGraph(USER_ID, graphParams);
+
+  // Account and expert scopes are separate (path-scoped) endpoints.
+  // Hooks can't be mounted conditionally, so both pairs are always
+  // called and exactly one pair is enabled for the current scope.
+  const accountOverview = useGetV2GetMemoryOverview(USER_ID, {
+    query: { enabled: !readOnly },
+  });
+  const accountGraph = useGetV2GetGraph(USER_ID, baseGraphParams, {
+    query: { enabled: !readOnly },
+  });
+  const expertOverview = useGetV2GetExpertMemoryOverview(
+    USER_ID,
+    scopedExpertID ?? "",
+    { query: { enabled: readOnly } },
+  );
+  const expertGraph = useGetV2GetExpertGraph(
+    USER_ID,
+    scopedExpertID ?? "",
+    baseGraphParams,
+    { query: { enabled: readOnly } },
+  );
+  const overview = readOnly ? expertOverview : accountOverview;
+  const graph = readOnly ? expertGraph : accountGraph;
 
   // --- Triggers (POST → 202 + job_id) ---------------------------------------
 
@@ -301,8 +309,53 @@ export function useMemoryVisualizer(expertID?: string) {
     nightly.mutate({ userId: USER_ID });
   }
 
-  const overviewData = overview.data?.data as MemoryOverview | undefined;
-  const graphData = graph.data?.data as GraphResponse | undefined;
+  // --- Scope tripwire -----------------------------------------------------
+  //
+  // Overview + graph responses echo the expert_id they were computed
+  // for (null/absent = account scope). If the echo ever disagrees with
+  // the scope we requested, never render that payload as the requested
+  // scope — surface it as an error instead.
+
+  function matchesRequestedScope(
+    payload: { expert_id?: string | null } | undefined,
+  ): boolean {
+    return (
+      payload === undefined ||
+      (payload.expert_id ?? undefined) === scopedExpertID
+    );
+  }
+
+  const rawOverviewData = overview.data?.data as MemoryOverview | undefined;
+  const rawGraphData = graph.data?.data as GraphResponse | undefined;
+  const overviewData = matchesRequestedScope(rawOverviewData)
+    ? rawOverviewData
+    : undefined;
+  const graphData = matchesRequestedScope(rawGraphData)
+    ? rawGraphData
+    : undefined;
+  const scopeMismatch =
+    overviewData !== rawOverviewData || graphData !== rawGraphData;
+  const scopeMismatchError = scopeMismatch
+    ? new Error(
+        "Memory scope mismatch: the server returned memory for a " +
+          "different scope than requested",
+      )
+    : undefined;
+
+  useEffect(() => {
+    if (!scopeMismatch) return;
+    toast({
+      title: "Memory scope mismatch",
+      description:
+        "The server returned memory for a different scope than " +
+        "requested. The mismatched data was not rendered.",
+      variant: "destructive",
+    });
+    // ``toast`` changes identity every render; the mismatch flag is the
+    // signal we react to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeMismatch]);
+
   const dreamStatusData = dreamStatus.data?.data as AnyJobStatus | undefined;
   const nightlyStatusData = nightlyStatus.data?.data as
     | AnyJobStatus
@@ -331,6 +384,7 @@ export function useMemoryVisualizer(expertID?: string) {
     setIncludeCommunities,
     overviewData,
     graphData,
+    scopeMismatchError,
     // Polling status + active flags consumed by MemoryVisualizer to
     // render phase-aware button text.
     dreamStatusData,

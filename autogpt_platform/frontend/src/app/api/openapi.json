@@ -1224,6 +1224,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Communities",
+        "description": "Communities in the user's account (AutoPilot) memory graph.",
         "operationId": "getV2ListCommunities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1248,18 +1249,6 @@
               "minimum": 1,
               "default": 500,
               "title": "Limit"
-            }
-          },
-          {
-            "name": "expert_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "minLength": 1, "maxLength": 128 },
-                { "type": "null" }
-              ],
-              "title": "Expert Id"
             }
           }
         ],
@@ -1500,6 +1489,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Entities",
+        "description": "Entities in the user's account (AutoPilot) memory graph.",
         "operationId": "getV2ListEntities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1524,18 +1514,6 @@
               "minimum": 1,
               "default": 1000,
               "title": "Limit"
-            }
-          },
-          {
-            "name": "expert_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "minLength": 1, "maxLength": 128 },
-                { "type": "null" }
-              ],
-              "title": "Expert Id"
             }
           }
         ],
@@ -1562,10 +1540,393 @@
         }
       }
     },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/communities": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Expert Communities",
+        "description": "Communities in one expert's isolated memory graph.",
+        "operationId": "getV2ListExpertCommunities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/entities": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Expert Entities",
+        "description": "Entities in one expert's isolated memory graph.",
+        "operationId": "getV2ListExpertEntities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EntityListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/facts": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Expert Facts",
+        "description": "Facts (RELATES_TO edges) in one expert's isolated memory graph.",
+        "operationId": "getV2ListExpertFacts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["active", "superseded", "contradicted", "any"],
+              "type": "string",
+              "default": "any",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FactListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/graph": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Expert Graph",
+        "description": "Visualizer graph payload for one expert's isolated memory graph.",
+        "operationId": "getV2GetExpertGraph",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          },
+          {
+            "name": "node_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20000,
+              "minimum": 1,
+              "default": 5000,
+              "title": "Node Limit"
+            }
+          },
+          {
+            "name": "edge_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50000,
+              "minimum": 1,
+              "default": 10000,
+              "title": "Edge Limit"
+            }
+          },
+          {
+            "name": "include_episodes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Episodes"
+            }
+          },
+          {
+            "name": "include_communities",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Communities"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GraphResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/overview": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Expert Memory Overview",
+        "description": "Count summary of one expert's isolated memory graph.",
+        "operationId": "getV2GetExpertMemoryOverview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/memory/{user_id}/facts": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Facts",
+        "description": "Facts (RELATES_TO edges) in the user's account (AutoPilot) memory graph.",
         "operationId": "getV2ListFacts",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1611,18 +1972,6 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Scope"
             }
-          },
-          {
-            "name": "expert_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "minLength": 1, "maxLength": 128 },
-                { "type": "null" }
-              ],
-              "title": "Expert Id"
-            }
           }
         ],
         "responses": {
@@ -1652,7 +2001,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Graph",
-        "description": "Single-shot graph payload for the visualizer canvas.\n\nReturns nodes + edges in one round-trip so the frontend can hand\nthe whole thing to a force-directed layout without N+1 fetches.\n\nDefaults to entities + communities (the \"what does my memory know\nabout\" view). ``include_episodes=True`` adds the temporal\n:Episodic nodes — useful for debugging extraction but noisy for the\ntypical inspector view.",
+        "description": "Single-shot graph payload for the visualizer canvas (account scope).\n\nReturns nodes + edges in one round-trip so the frontend can hand\nthe whole thing to a force-directed layout without N+1 fetches.\n\nDefaults to entities + communities (the \"what does my memory know\nabout\" view). ``include_episodes=True`` adds the temporal\n:Episodic nodes — useful for debugging extraction but noisy for the\ntypical inspector view.",
         "operationId": "getV2GetGraph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1666,18 +2015,6 @@
               "title": "User Id"
             },
             "description": "User id or 'me'"
-          },
-          {
-            "name": "expert_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "minLength": 1, "maxLength": 128 },
-                { "type": "null" }
-              ],
-              "title": "Expert Id"
-            }
           },
           {
             "name": "node_limit",
@@ -1848,6 +2185,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Memory Overview",
+        "description": "Count summary of the user's account (AutoPilot) memory graph.",
         "operationId": "getV2GetMemoryOverview",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1861,18 +2199,6 @@
               "title": "User Id"
             },
             "description": "User id or 'me'"
-          },
-          {
-            "name": "expert_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "minLength": 1, "maxLength": 128 },
-                { "type": "null" }
-              ],
-              "title": "Expert Id"
-            }
           }
         ],
         "responses": {

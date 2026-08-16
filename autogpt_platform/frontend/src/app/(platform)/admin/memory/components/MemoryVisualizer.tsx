@@ -44,6 +44,7 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
     overviewData,
     graph,
     graphData,
+    scopeMismatchError,
     triggerRebuild,
     triggerDream,
     ratification,
@@ -119,7 +120,7 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
     <div className="space-y-4">
       <OverviewStrip
         loading={overview.isLoading}
-        error={overview.error}
+        error={overview.error ?? scopeMismatchError}
         data={overviewData}
       />
 
@@ -163,9 +164,9 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
             <div className="flex h-[70vh] items-center justify-center text-sm text-gray-500">
               Loading graph…
             </div>
-          ) : graph.error ? (
+          ) : graph.error || scopeMismatchError ? (
             <div className="p-6 text-sm text-red-700">
-              Failed to load graph: {String(graph.error)}
+              Failed to load graph: {String(graph.error ?? scopeMismatchError)}
             </div>
           ) : nodes.length === 0 ? (
             <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-gray-500">
@@ -345,15 +346,15 @@ function ControlBar({
             truncated
           </span>
         )}
-        {rebuildActive && rebuildStatus && (
+        {!readOnly && rebuildActive && rebuildStatus && (
           <span className="ml-2">
             rebuild: {jobStateSummary(rebuildStatus)}
           </span>
         )}
-        {dreamActive && dreamStatus && (
+        {!readOnly && dreamActive && dreamStatus && (
           <span className="ml-2">dream: {jobStateSummary(dreamStatus)}</span>
         )}
-        {nightlyActive && nightlyStatus && (
+        {!readOnly && nightlyActive && nightlyStatus && (
           <span className="ml-2">
             nightly: {jobStateSummary(nightlyStatus)}
           </span>

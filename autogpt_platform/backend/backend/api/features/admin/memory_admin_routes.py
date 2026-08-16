@@ -234,7 +234,7 @@ def _audit_cross_user_access(
         memory_scope = f"{memory_scope} (group {group_id})"
     logger.info(
         f"Admin memory access: {caller_id} ({caller_email}) "
-        f"acting on user {target_id}, scope {memory_scope}, "
+        f"acting on user {target_id!r}, scope {memory_scope}, "
         f"for {request.method} {request.url}"
     )
 
@@ -343,15 +343,28 @@ async def _count(driver, query: str) -> int:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+#
+# Memory scope is structural: account (AutoPilot) reads live at
+# ``/{user_id}/...`` and expert reads at
+# ``/{user_id}/experts/{expert_id}/...``. Each pair shares one ``_impl``
+# so the route bodies aren't duplicated. Maintenance POSTs exist only
+# under the account paths — there is deliberately no expert-scoped
+# maintenance route, so a maintenance job can never be aimed at an
+# expert graph by construction.
+
+_USER_ID_PATH = Path(description="User id or 'me'")
+_EXPERT_ID_PATH = Path(
+    min_length=1, max_length=128, description="Expert id owned by the user"
+)
 
 
-@router.get("/{user_id}/overview", response_model=MemoryOverview)
-async def get_memory_overview(
+async def _get_memory_overview_impl(
+    *,
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
-    caller_id: Annotated[str, Depends(get_user_id)],
-    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
-    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
 ) -> MemoryOverview:
     target = _resolve_user_id(user_id, caller_id)
     group_id, resolved_expert_id = await _resolve_and_audit_memory_scope(
@@ -388,14 +401,52 @@ async def get_memory_overview(
     )
 
 
-@router.get("/{user_id}/entities", response_model=EntityListResponse)
-async def list_entities(
+@router.get("/{user_id}/overview", response_model=MemoryOverview)
+async def get_memory_overview(
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
+    user_id: Annotated[str, _USER_ID_PATH],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
-    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
-    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
+) -> MemoryOverview:
+    """Count summary of the user's account (AutoPilot) memory graph."""
+    return await _get_memory_overview_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/overview",
+    response_model=MemoryOverview,
+)
+async def get_expert_memory_overview(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+) -> MemoryOverview:
+    """Count summary of one expert's isolated memory graph."""
+    return await _get_memory_overview_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+    )
+
+
+async def _list_entities_impl(
+    *,
+    request: Request,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+    limit: int,
 ) -> EntityListResponse:
     target = _resolve_user_id(user_id, caller_id)
     group_id, _ = await _resolve_and_audit_memory_scope(
@@ -437,18 +488,58 @@ async def list_entities(
     return EntityListResponse(user_id=target, items=items)
 
 
-@router.get("/{user_id}/facts", response_model=FactListResponse)
-async def list_facts(
+@router.get("/{user_id}/entities", response_model=EntityListResponse)
+async def list_entities(
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
+    user_id: Annotated[str, _USER_ID_PATH],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
-    status: Annotated[
-        Literal["active", "superseded", "contradicted", "any"], Query()
-    ] = "any",
-    scope: Annotated[str | None, Query()] = None,
-    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
+) -> EntityListResponse:
+    """Entities in the user's account (AutoPilot) memory graph."""
+    return await _list_entities_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/entities",
+    response_model=EntityListResponse,
+)
+async def list_expert_entities(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+) -> EntityListResponse:
+    """Entities in one expert's isolated memory graph."""
+    return await _list_entities_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+        limit=limit,
+    )
+
+
+async def _list_facts_impl(
+    *,
+    request: Request,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+    limit: int,
+    status: str,
+    scope: str | None,
 ) -> FactListResponse:
     target = _resolve_user_id(user_id, caller_id)
     group_id, _ = await _resolve_and_audit_memory_scope(
@@ -517,14 +608,69 @@ async def list_facts(
     return FactListResponse(user_id=target, items=items)
 
 
-@router.get("/{user_id}/communities", response_model=CommunityListResponse)
-async def list_communities(
+_FACT_STATUS_QUERY = Annotated[
+    Literal["active", "superseded", "contradicted", "any"], Query()
+]
+
+
+@router.get("/{user_id}/facts", response_model=FactListResponse)
+async def list_facts(
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
+    user_id: Annotated[str, _USER_ID_PATH],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
-    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
-    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    status: _FACT_STATUS_QUERY = "any",
+    scope: Annotated[str | None, Query()] = None,
+) -> FactListResponse:
+    """Facts (RELATES_TO edges) in the user's account (AutoPilot) memory graph."""
+    return await _list_facts_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+        limit=limit,
+        status=status,
+        scope=scope,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/facts",
+    response_model=FactListResponse,
+)
+async def list_expert_facts(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    status: _FACT_STATUS_QUERY = "any",
+    scope: Annotated[str | None, Query()] = None,
+) -> FactListResponse:
+    """Facts (RELATES_TO edges) in one expert's isolated memory graph."""
+    return await _list_facts_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+        limit=limit,
+        status=status,
+        scope=scope,
+    )
+
+
+async def _list_communities_impl(
+    *,
+    request: Request,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+    limit: int,
 ) -> CommunityListResponse:
     target = _resolve_user_id(user_id, caller_id)
     group_id, _ = await _resolve_and_audit_memory_scope(
@@ -574,28 +720,60 @@ async def list_communities(
     return CommunityListResponse(user_id=target, items=items)
 
 
-@router.get("/{user_id}/graph", response_model=GraphResponse)
-async def get_graph(
+@router.get("/{user_id}/communities", response_model=CommunityListResponse)
+async def list_communities(
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
+    user_id: Annotated[str, _USER_ID_PATH],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
-    expert_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
-    node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
-    edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
-    include_episodes: Annotated[bool, Query()] = False,
-    include_communities: Annotated[bool, Query()] = True,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+) -> CommunityListResponse:
+    """Communities in the user's account (AutoPilot) memory graph."""
+    return await _list_communities_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/communities",
+    response_model=CommunityListResponse,
+)
+async def list_expert_communities(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+) -> CommunityListResponse:
+    """Communities in one expert's isolated memory graph."""
+    return await _list_communities_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+        limit=limit,
+    )
+
+
+async def _get_graph_impl(
+    *,
+    request: Request,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+    node_limit: int,
+    edge_limit: int,
+    include_episodes: bool,
+    include_communities: bool,
 ) -> GraphResponse:
-    """Single-shot graph payload for the visualizer canvas.
-
-    Returns nodes + edges in one round-trip so the frontend can hand
-    the whole thing to a force-directed layout without N+1 fetches.
-
-    Defaults to entities + communities (the "what does my memory know
-    about" view). ``include_episodes=True`` adds the temporal
-    :Episodic nodes — useful for debugging extraction but noisy for the
-    typical inspector view.
-    """
     target = _resolve_user_id(user_id, caller_id)
     group_id, resolved_expert_id = await _resolve_and_audit_memory_scope(
         request=request,
@@ -732,6 +910,69 @@ async def get_graph(
         nodes=nodes,
         edges=edges,
         truncated=truncated,
+    )
+
+
+@router.get("/{user_id}/graph", response_model=GraphResponse)
+async def get_graph(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
+    edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
+    include_episodes: Annotated[bool, Query()] = False,
+    include_communities: Annotated[bool, Query()] = True,
+) -> GraphResponse:
+    """Single-shot graph payload for the visualizer canvas (account scope).
+
+    Returns nodes + edges in one round-trip so the frontend can hand
+    the whole thing to a force-directed layout without N+1 fetches.
+
+    Defaults to entities + communities (the "what does my memory know
+    about" view). ``include_episodes=True`` adds the temporal
+    :Episodic nodes — useful for debugging extraction but noisy for the
+    typical inspector view.
+    """
+    return await _get_graph_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+        node_limit=node_limit,
+        edge_limit=edge_limit,
+        include_episodes=include_episodes,
+        include_communities=include_communities,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/graph",
+    response_model=GraphResponse,
+)
+async def get_expert_graph(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
+    edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
+    include_episodes: Annotated[bool, Query()] = False,
+    include_communities: Annotated[bool, Query()] = True,
+) -> GraphResponse:
+    """Visualizer graph payload for one expert's isolated memory graph."""
+    return await _get_graph_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+        node_limit=node_limit,
+        edge_limit=edge_limit,
+        include_episodes=include_episodes,
+        include_communities=include_communities,
     )
 
 
