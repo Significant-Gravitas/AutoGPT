@@ -2,15 +2,13 @@
 
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
-import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { notFound } from "next/navigation";
+import { CreateMenu } from "./components/CreateMenu/CreateMenu";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
@@ -90,13 +88,7 @@ export default function TeamPage() {
             Autopilot and your hired experts, ready to work.
           </Text>
         </div>
-        <Button
-          size="small"
-          leftIcon={<Icon icon={PlusSignIcon} size={16} />}
-          onClick={openNewPod}
-        >
-          New pod
-        </Button>
+        <CreateMenu onNewPod={openNewPod} />
       </div>
 
       <TeamRoster

@@ -83,6 +83,11 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
+async function openNewPodDialog(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: /create/i }));
+  await user.click(await screen.findByRole("menuitem", { name: "New pod" }));
+}
+
 const hiredMaria: Expert = {
   id: "expert-maria",
   name: "Maria",
@@ -149,6 +154,31 @@ describe("TeamPage", () => {
       autopilot.compareDocumentPosition(maria) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  test("Create menu exposes accessible hire and build actions", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    const trigger = await screen.findByRole("button", { name: /create/i });
+    // The Radix trigger advertises its menu to assistive tech and keyboard users.
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+
+    await user.click(trigger);
+
+    const hire = await screen.findByRole("menuitem", {
+      name: "Hire an expert",
+    });
+    expect(hire.getAttribute("href")).toBe("/marketplace#experts");
+
+    const build = screen.getByRole("menuitem", {
+      name: "Build an agent from scratch",
+    });
+    expect(build.getAttribute("href")).toBe("/build");
+
+    expect(screen.getByRole("menuitem", { name: "New pod" })).toBeDefined();
   });
 
   test("renders hired experts with a workflow count instead of chips", async () => {
@@ -396,6 +426,41 @@ describe("TeamPage", () => {
     );
   });
 
+  test("round-trips a hire-flow voice pick through the Soul editor without clobbering it", async () => {
+    const user = userEvent.setup();
+    const pickedVoice =
+      "Preferred writing style: Punchy and bold.\n\nExample to match:\n\nStop guessing what your buyers want.";
+    let requestBody: unknown;
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, voice_preferences: pickedVoice },
+      ]),
+      getUpdateExpertSoulMockHandler(async ({ request }) => {
+        requestBody = await request.json();
+        return { ...hiredMaria, voice_preferences: pickedVoice };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
+    const voiceInput = screen.getByRole("textbox", {
+      name: "Voice",
+    }) as HTMLTextAreaElement;
+    expect(voiceInput.value).toBe(pickedVoice);
+
+    const nameInput = screen.getByRole("textbox", { name: "Name" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "Mara");
+    await user.click(screen.getByRole("button", { name: "Save Soul" }));
+
+    // An unrelated Soul edit must carry the chosen voice through untouched.
+    await waitFor(() => expect(requestBody).toBeDefined());
+    expect(requestBody).toEqual(
+      expect.objectContaining({ name: "Mara", voice_preferences: pickedVoice }),
+    );
+  });
+
   test("preserves Soul edits and shows feedback when saving fails", async () => {
     const user = userEvent.setup();
     server.use(
@@ -511,7 +576,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    await user.click(await screen.findByRole("button", { name: "New pod" }));
+    await openNewPodDialog(user);
     const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
     await user.type(nameInput, "Growth");
     await user.click(screen.getByRole("button", { name: "Create pod" }));
@@ -533,7 +598,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    await user.click(await screen.findByRole("button", { name: "New pod" }));
+    await openNewPodDialog(user);
     const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
     await user.type(nameInput, "Growth");
     await user.click(screen.getByRole("button", { name: "Create pod" }));
@@ -558,7 +623,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    await user.click(await screen.findByRole("button", { name: "New pod" }));
+    await openNewPodDialog(user);
     const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
     expect(nameInput.getAttribute("maxlength")).toBe("100");
     await user.type(nameInput, "Draft pod");
@@ -567,7 +632,7 @@ describe("TeamPage", () => {
       expect(screen.queryByRole("dialog", { name: "New pod" })).toBeNull(),
     );
 
-    await user.click(screen.getByRole("button", { name: "New pod" }));
+    await openNewPodDialog(user);
     const reopenedNameInput = await screen.findByRole("textbox", {
       name: /pod name/i,
     });
