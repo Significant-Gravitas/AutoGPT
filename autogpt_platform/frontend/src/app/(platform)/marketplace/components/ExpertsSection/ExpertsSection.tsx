@@ -28,14 +28,14 @@ export function ExpertsSection() {
     // Raising an expert needs no roster templates, so the second door
     // stays open even when the template list is empty or failed to load.
     return (
-      <section id="experts" className="mb-20">
+      <section id="experts" className="mb-20 scroll-mt-24">
         <RaiseLink standalone />
       </section>
     );
   }
 
   return (
-    <section id="experts" className="mb-20">
+    <section id="experts" className="mb-20 scroll-mt-24">
       <SectionHeader
         titleIcon={<AITeamIcon size={30} />}
         title="Meet the AI Experts"

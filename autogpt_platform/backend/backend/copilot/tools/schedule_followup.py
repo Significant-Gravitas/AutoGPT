@@ -248,9 +248,11 @@ class ScheduleFollowupTool(BaseTool):
                 name=name,
                 user_timezone=user_timezone,
                 # Capture the scheduling chat's tenant so a fresh session
-                # minted at fire time lands in the same org/team.
+                # minted at fire time lands in the same org/team, and its
+                # expert so those follow-up runs stay attributed to her.
                 organization_id=session.organization_id if session else None,
                 team_id=session.team_id if session else None,
+                expert_id=session.expert_id if session else None,
             )
         except ValueError as e:
             return ErrorResponse(

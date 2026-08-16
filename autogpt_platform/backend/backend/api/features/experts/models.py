@@ -1,11 +1,27 @@
+import json
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
+
+_EXPERT_NAME_MAX_LENGTH = 100
+_EXPERT_IDENTITY_MAX_LENGTH = 10_000
+_EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
+
+
+def _strip_required_soul_field(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("Field must not be blank")
+    return stripped
+
+
+def _strip_optional_soul_field(value: str) -> str:
+    return value.strip()
 
 
 class VoiceSample(BaseModel):
@@ -87,22 +103,95 @@ class RaiseResult(BaseModel):
 
 
 class ExpertSoulUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    identity: str = Field(min_length=1, max_length=10_000)
-    voice_preferences: str = Field(max_length=4_000)
-    boundaries: str = Field(max_length=4_000)
+    name: str = Field(min_length=1, max_length=_EXPERT_NAME_MAX_LENGTH)
+    identity: str = Field(min_length=1, max_length=_EXPERT_IDENTITY_MAX_LENGTH)
+    voice_preferences: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
+    boundaries: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
 
     @field_validator("name", "identity")
     @classmethod
     def strip_required_fields(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("Field must not be blank")
-        return stripped
+        return _strip_required_soul_field(value)
 
     @field_validator("voice_preferences", "boundaries")
     @classmethod
     def strip_optional_fields(cls, value: str) -> str:
-        # Whitespace-only input must collapse to "" so prompt rendering falls
-        # back to "Not specified." instead of emitting a blank section.
-        return value.strip()
+        return _strip_optional_soul_field(value)
+
+
+class ExpertSoulFieldsPatch(BaseModel):
+    """Partial Soul edit: only supplied fields are validated and written.
+
+    Mirrors ``ExpertSoulUpdate``'s per-field rules (lengths, blank handling)
+    but leaves ``None`` fields untouched so disjoint concurrent edits cannot
+    clobber each other.
+    """
+
+    identity: str | None = Field(
+        default=None, min_length=1, max_length=_EXPERT_IDENTITY_MAX_LENGTH
+    )
+    voice_preferences: str | None = Field(
+        default=None, max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH
+    )
+    boundaries: str | None = Field(
+        default=None, max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH
+    )
+
+    @field_validator("identity")
+    @classmethod
+    def strip_required_fields(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _strip_required_soul_field(value)
+
+    @field_validator("voice_preferences", "boundaries")
+    @classmethod
+    def strip_optional_fields(cls, value: str | None) -> str | None:
+        return None if value is None else _strip_optional_soul_field(value)
+
+
+def encode_voice_preferences(description: str, samples: list[VoiceSample]) -> str:
+    """Serialize a roster template's voice into the voicePreferences column: a
+    plain-text description plus the writing samples the hire flow offers.
+
+    Only template rows carry this JSON envelope. Hired copies persist the
+    user's plain-text pick (or the template's description on skip), so the
+    prompt builder never renders raw JSON into ``<voice_preferences>``.
+    """
+    return json.dumps(
+        {
+            "description": description,
+            "samples": [sample.model_dump() for sample in samples],
+        }
+    )
+
+
+def decode_voice_preferences(raw: str) -> tuple[str, list[VoiceSample]]:
+    """Inverse of ``encode_voice_preferences``.
+
+    Templates carry the JSON envelope; hired copies carry a plain string,
+    which round-trips back unchanged with no samples. Once a value identifies
+    itself as the template envelope, malformed fields degrade to safe empty
+    values so serialized JSON can never leak into an expert's prompt.
+    """
+    if not raw:
+        return "", []
+    try:
+        envelope = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw, []
+    if not isinstance(envelope, dict) or "samples" not in envelope:
+        return raw, []
+    description = envelope.get("description")
+    envelope_samples = envelope.get("samples")
+    if not isinstance(description, str) or not isinstance(envelope_samples, list):
+        return "", []
+    samples: list[VoiceSample] = []
+    for item in envelope_samples:
+        if not isinstance(item, dict):
+            continue
+        try:
+            samples.append(VoiceSample.model_validate(item))
+        except ValidationError:
+            continue
+    return description, samples
