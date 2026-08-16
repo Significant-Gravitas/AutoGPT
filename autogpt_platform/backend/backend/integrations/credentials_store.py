@@ -428,6 +428,7 @@ class IntegrationCredentialsStore:
             return ollama_credentials
         all_credentials = await self.get_all_creds(user_id)
         return next((c for c in all_credentials if c.id == credentials_id), None)
+
     async def get_creds_by_provider(
         self, user_id: str, provider: str
     ) -> list[Credentials]:
