@@ -71,3 +71,51 @@ async def test_preflight_allows_model_supplied_by_upstream_link(
     assert errors == {}
     assert nodes_to_skip == set()
     mock_store.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_preflight_validates_configured_credentials_with_linked_model(
+    mocker: MockerFixture,
+) -> None:
+    from backend.executor.utils import (
+        CRED_ERR_UNKNOWN_PREFIX,
+        _validate_node_input_credentials,
+    )
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "linked-model-node"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "credentials": {
+            "id": "missing-credential",
+            "provider": "openai",
+            "type": "api_key",
+            "title": "Missing key",
+        }
+    }
+    mock_node.input_links = [mocker.Mock(sink_name="model")]
+    mock_node.block = mocker.MagicMock()
+    mock_node.block.input_schema = AITextGeneratorBlock.Input
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+    mock_store = mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store"
+    )
+    mock_store.return_value.get_creds_by_id = mocker.AsyncMock(return_value=None)
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    assert errors == {
+        "linked-model-node": {
+            "credentials": f"{CRED_ERR_UNKNOWN_PREFIX}missing-credential"
+        }
+    }
+    assert nodes_to_skip == set()
+    mock_store.return_value.get_creds_by_id.assert_awaited_once_with(
+        "test-user-id", "missing-credential"
+    )
