@@ -498,7 +498,15 @@ class TestUploadWorkspaceFile:
     async def test_writes_into_session_scoped_manager(self):
         write = AsyncMock(return_value=MagicMock(id="file-1"))
         p1, p2, p3 = self._patches(write)
-        with p1, p2, p3 as mock_wm:
+        with (
+            p1,
+            p2,
+            p3 as mock_wm,
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=MagicMock(expert_id=None)),
+            ),
+        ):
             await upload_workspace_file(self._req(session_id="sess-1"))
         # Session-scoped manager (like the web upload) plus a flat filename —
         # write_file defaults the path to /sessions/<id>/<name> where AutoPilot
@@ -551,6 +559,61 @@ class TestUploadWorkspaceFile:
         with p1, p2, p3:
             with pytest.raises(NotFoundError):
                 await upload_workspace_file(self._req())
+
+    @pytest.mark.asyncio
+    async def test_shared_server_upload_rejects_expert_session(self):
+        """Same guard as ensure_chat_session / start_chat_turn: a shared-server
+        upload must never land files inside an expert-scoped session folder."""
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        db = MagicMock()
+        db.find_server_link_owner = AsyncMock(return_value="owner-1")
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+            ),
+        ):
+            with pytest.raises(NotFoundError):
+                await upload_workspace_file(
+                    self._req(platform_server_id="server-1", session_id="sess-exp")
+                )
+        write.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_upload_rejects_unowned_or_missing_session(self):
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with (
+            p1,
+            p2,
+            p3,
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            with pytest.raises(NotFoundError):
+                await upload_workspace_file(self._req(session_id="sess-foreign"))
+        write.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dm_upload_into_expert_session_is_allowed(self):
+        """DM context (no server id) may upload into the owner's expert
+        session — only the shared-server path is fenced."""
+        write = AsyncMock(return_value=MagicMock(id="file-1"))
+        p1, p2, p3 = self._patches(write)
+        with (
+            p1,
+            p2,
+            p3,
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+            ),
+        ):
+            result = await upload_workspace_file(self._req(session_id="sess-exp"))
+        assert result.file_id == "file-1"
 
 
 class TestEnsureChatSession:

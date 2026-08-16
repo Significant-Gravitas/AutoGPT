@@ -184,6 +184,15 @@ async def upload_workspace_file(
         request.platform_server_id,
         request.platform_user_id,
     )
+    if request.session_id:
+        # Same guard as ensure_chat_session / start_chat_turn: the session
+        # must exist and belong to the owner, and a shared-server upload must
+        # never land inside an expert-scoped session's folder.
+        session = await get_chat_session(request.session_id, owner_user_id)
+        if session is None or (
+            request.platform_server_id is not None and session.expert_id is not None
+        ):
+            raise NotFoundError("The session for the uploaded files no longer exists.")
     # Reduce the filename to its basename so a (possibly hostile) client can't
     # traverse the workspace path or leak ".."/separators into the storage
     # backend. Workspace paths are POSIX, so split on "/" (after normalising
