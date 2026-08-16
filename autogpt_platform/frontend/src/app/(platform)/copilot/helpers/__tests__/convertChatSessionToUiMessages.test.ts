@@ -97,6 +97,21 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     expect(result.messages[0].role).toBe("user");
   });
 
+  it("preserves persisted kickoff metadata on the hydrated UI message", () => {
+    const metadata = {
+      hidden: true,
+      kind: "expert_kickoff",
+      expert_id: "3f8b0f7e-9f30-4a3b-a6a1-000000000001",
+    };
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "kickoff", sequence: 0, metadata }],
+      { isComplete: true },
+    );
+
+    expect(result.messages[0].metadata).toEqual(metadata);
+  });
+
   it("attaches a reasoning row between user/assistant to the surrounding assistant bubble", () => {
     const result = convertChatSessionMessagesToUiMessages(
       SESSION_ID,

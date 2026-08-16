@@ -14,6 +14,7 @@ import {
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 function celebrate(result: HireResult) {
@@ -24,20 +25,9 @@ function celebrate(result: HireResult) {
       : undefined,
     variant: "success",
     action: (
-      <div className="flex gap-2">
-        <Button
-          as="NextLink"
-          href={`/copilot?expertId=${result.expert.id}`}
-          variant="secondary"
-          size="small"
-          unmask={false}
-        >
-          {`Chat with ${result.expert.name}`}
-        </Button>
-        <Button as="NextLink" href="/team" variant="ghost" size="small">
-          View team
-        </Button>
-      </div>
+      <Button as="NextLink" href="/team" variant="ghost" size="small">
+        View team
+      </Button>
     ),
   });
 }
@@ -47,6 +37,7 @@ export function useExpertProfileSheet(
   onClose: () => void,
 ) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   // Set once a hire succeeds for a persona that ships writing samples: it
   // swaps the sheet to the voice pick before the hire is celebrated.
   const [hireResult, setHireResult] = useState<HireResult | null>(null);
@@ -71,7 +62,12 @@ export function useExpertProfileSheet(
     const completedHire = pendingCelebrationRef.current;
     pendingCelebrationRef.current = null;
     setHireResult(null);
-    if (completedHire) celebrate(completedHire);
+    if (completedHire) {
+      celebrate(completedHire);
+      // Hiring isn't installing: hand the user straight to the expert's thread
+      // with kickoff=1 so it introduces itself and starts its day-one job.
+      router.push(`/copilot?expertId=${completedHire.expert.id}&kickoff=1`);
+    }
     onClose();
   }
 
@@ -83,14 +79,13 @@ export function useExpertProfileSheet(
       await queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
       });
+      pendingCelebrationRef.current = result;
       // Offer the voice pick when the persona ships writing samples; otherwise
       // finish with the classic celebration toast.
       if ((expert.voice_samples ?? []).length > 0) {
-        pendingCelebrationRef.current = result;
         setHireResult(result);
         return;
       }
-      celebrate(result);
       handleClose();
     } catch {
       toast({

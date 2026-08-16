@@ -26,6 +26,14 @@ interface SessionChatMessage {
   metadata: Record<string, unknown> | null;
 }
 
+function getRunMetadata(metadata: unknown): Record<string, unknown> | null {
+  return metadata &&
+    typeof metadata === "object" &&
+    (metadata as Record<string, unknown>).kind === "expert_run"
+    ? (metadata as Record<string, unknown>)
+    : null;
+}
+
 function coerceSessionChatMessages(
   rawMessages: unknown[],
 ): SessionChatMessage[] {
@@ -461,15 +469,14 @@ export function convertChatSessionMessagesToUiMessages(
     // A run-post carries structured ``metadata`` the thread renders as a
     // WorkCard. Keep it as its own bubble — never fold it into a neighbouring
     // assistant turn (either direction), or the card loses its identity.
-    const runMetadata =
-      msg.metadata && msg.metadata.kind === "expert_run" ? msg.metadata : null;
+    const runMetadata = getRunMetadata(msg.metadata);
 
     const prevUI = uiMessages[uiMessages.length - 1];
     if (
       uiRole === "assistant" &&
       prevUI &&
       prevUI.role === "assistant" &&
-      !prevUI.metadata &&
+      !getRunMetadata(prevUI.metadata) &&
       !runMetadata
     ) {
       prevUI.parts.push(...parts);
@@ -512,7 +519,7 @@ export function convertChatSessionMessagesToUiMessages(
       id: msgId,
       role: uiRole,
       parts,
-      ...(runMetadata ? { metadata: runMetadata } : {}),
+      ...(msg.metadata ? { metadata: msg.metadata } : {}),
     });
 
     const patch: Partial<TurnStats> = {};

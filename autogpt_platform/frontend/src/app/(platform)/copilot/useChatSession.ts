@@ -23,6 +23,7 @@ import {
   resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
 import { useCopilotStreamStore } from "./copilotStreamStore";
+import { latestExpertSessionParams } from "./expertSessionQuery";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -118,7 +119,7 @@ export function useChatSession({
     !adoptedExpertThreads.has(expertId);
 
   const latestExpertSessionQuery = useGetV2ListSessions(
-    { expert_id: expertId ?? undefined, limit: 1 },
+    latestExpertSessionParams(expertId),
     {
       query: {
         enabled: canAdoptExpertSession,
@@ -207,7 +208,7 @@ export function useChatSession({
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
     usePostV2CreateSession();
 
-  async function createSession() {
+  async function createSession(options?: { expertKickoff?: boolean }) {
     if (sessionId) return sessionId;
     // Latched for the life of this mount, including on failure: once the user
     // has asked for a new thread, auto-navigating them into an old one is
@@ -272,6 +273,7 @@ export function useChatSession({
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
+      if (options?.expertKickoff) sessionData.expert_kickoff = true;
       const body =
         Object.keys(sessionData).length > 0
           ? { data: sessionData }

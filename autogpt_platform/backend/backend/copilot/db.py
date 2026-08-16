@@ -74,6 +74,32 @@ async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
     return ChatSessionInfo.from_db(session) if session else None
 
 
+async def chat_message_has_assistant_reply(
+    message_id: str,
+    session_id: str,
+) -> bool | None:
+    """Whether a persisted user message already has an assistant reply after it.
+
+    ``None`` means the message does not exist, ``False`` means no assistant row
+    follows it, and ``True`` means an assistant reply was persisted after it in
+    the same session.
+    """
+    messages = PrismaChatMessage.prisma()
+    existing = await messages.find_first(
+        where={"id": message_id, "sessionId": session_id},
+    )
+    if existing is None:
+        return None
+    assistant_reply = await messages.find_first(
+        where={
+            "sessionId": session_id,
+            "role": "assistant",
+            "sequence": {"gt": existing.sequence},
+        },
+    )
+    return assistant_reply is not None
+
+
 def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     """AND-clause scoping a user's own sessions to the active org.
 
@@ -670,6 +696,7 @@ async def get_user_chat_sessions(
     organization_id: str | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
+    pinned_first: bool = True,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
@@ -684,6 +711,8 @@ async def get_user_chat_sessions(
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``pinned_first=False`` provides strict recency ordering for internal
+    adoption flows; the user-facing sidebar keeps pinned sessions first.
     """
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
@@ -699,10 +728,13 @@ async def get_user_chat_sessions(
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
     params.extend((limit, offset))
+    ordering = (
+        '"isPinned" DESC, "updatedAt" DESC' if pinned_first else '"updatedAt" DESC'
+    )
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
         + " AND ".join(conditions)
-        + ' ORDER BY "isPinned" DESC, "updatedAt" DESC '
+        + f" ORDER BY {ordering} "
         + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
     )
     sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
