@@ -1181,8 +1181,9 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
-        expert_id: Hired expert this session is scoped to. Ownership and
-            archived state must be validated by the caller.
+        expert_id: Requested hired-expert scope. The database validates active
+            ownership atomically with session persistence and falls back to a
+            plain session if the expert is no longer attributable.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1203,7 +1204,7 @@ async def create_chat_session(
 
     # Create in database first - fail fast if this fails
     try:
-        await chat_db().create_chat_session(
+        persisted = await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
             organization_id=organization_id,
@@ -1211,6 +1212,7 @@ async def create_chat_session(
             metadata=session.metadata,
             expert_id=expert_id,
         )
+        session.expert_id = persisted.expert_id
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")
         raise DatabaseError(

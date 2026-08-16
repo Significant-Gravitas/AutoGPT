@@ -33,7 +33,10 @@ from backend.copilot.dream.llm import (
     DreamLLMError,
     structured_completion,
 )
-from backend.copilot.expert_context import escape_prompt_xml_tags
+from backend.copilot.expert_context import (
+    escape_prompt_xml_tags,
+    fence_voice_preferences,
+)
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
 
@@ -201,7 +204,9 @@ def _system_prompt(expert: Expert | None) -> str:
     than agent-authored, but it is escaped on the same terms as everything
     else: it is describing a voice, never issuing instructions. It is also
     capped: the columns hold up to 14k characters between them, and the lede
-    needs a sample of the voice, not the whole Soul.
+    needs a sample of the voice, not the whole Soul. Voice additionally gets
+    the untrusted-data fence: the hire flow's paste-your-own path can carry
+    externally sourced text into it, and this persona runs at system priority.
     """
     if expert is None:
         persona = _NEUTRAL_VOICE
@@ -209,7 +214,9 @@ def _system_prompt(expert: Expert | None) -> str:
         name = _clean(expert.name)
         role = _clean(expert.role)
         identity = _clean(expert.identity, _MAX_PERSONA_CHARS) or "Not specified."
-        voice = _clean(expert.voice_preferences, _MAX_PERSONA_CHARS) or "Not specified."
+        voice = fence_voice_preferences(
+            _clean(expert.voice_preferences, _MAX_PERSONA_CHARS)
+        )
         persona = (
             f"You are {name} — {role}, a hired expert on the user's team.\n"
             f"<identity>\n{identity}\n</identity>\n"
