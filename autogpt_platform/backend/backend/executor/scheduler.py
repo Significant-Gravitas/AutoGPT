@@ -435,7 +435,11 @@ async def _execute_copilot_turn(**kwargs):
             f"Dispatched scheduled copilot turn for session "
             f"{target_session_id[:12]} (took {elapsed:.2f}s)"
         )
-    except ExpertPrivateTenancyNotFoundError:
+    except (ExpertPrivateTenancyNotFoundError, ExpertNotFoundError):
+        # ExpertNotFoundError covers the race where the expert is archived,
+        # deleted, or loses PRIVATE visibility between the scope pre-check
+        # and create_chat_session's own tenancy resolution — same reversible
+        # skip as the pre-check: never delete the schedule from this window.
         logger.warning(
             f"Scheduled copilot turn for session {_session_id_label(args)} "
             "skipped because the expert workspace is unavailable"
