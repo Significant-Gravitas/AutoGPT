@@ -83,10 +83,24 @@ def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     (``api/features/library/db.py``); exact ``organizationId`` equality would
     silently hide them. Always paired with a ``userId`` filter, so it only
     ever widens to the caller's own rows.
+
+    Expert-scoped sessions (``expertId`` set) are exempt from org scoping:
+    they are pinned to the owner's personal organization by design (see
+    ``copilot/model.py::create_chat_session``), so filtering them by the
+    caller's *active* org would make them invisible and undeletable whenever
+    a shared org is active — while streaming into them still works.
     """
     if organization_id is None:
         return []
-    return [{"OR": [{"organizationId": organization_id}, {"organizationId": None}]}]
+    return [
+        {
+            "OR": [
+                {"organizationId": organization_id},
+                {"organizationId": None},
+                {"expertId": {"not": None}},
+            ]
+        }
+    ]
 
 
 async def get_chat_messages_paginated(
@@ -704,8 +718,11 @@ async def get_user_chat_sessions(
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
     if organization_id is not None:
         params.append(organization_id)
+        # Same carve-out as _own_org_scope: the owner's expert sessions are
+        # personal-org resources and stay visible under any active org.
         conditions.append(
-            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
+            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL'
+            ' OR "expertId" IS NOT NULL)'
         )
     if title_contains:
         params.append(f"%{_escape_like(title_contains)}%")
@@ -747,8 +764,11 @@ async def get_user_session_count(
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
     if organization_id is not None:
         params.append(organization_id)
+        # Keep in lockstep with get_user_chat_sessions so pagination totals
+        # always match the visible list (expert sessions included).
         conditions.append(
-            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
+            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL'
+            ' OR "expertId" IS NOT NULL)'
         )
     if expert_id is not None:
         params.append(expert_id)
