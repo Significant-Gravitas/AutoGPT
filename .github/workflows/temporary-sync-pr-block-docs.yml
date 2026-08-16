@@ -38,6 +38,8 @@ jobs:
 
       - name: Generate docs against current upstream dev
         run: |
+          git config user.name "Iitian001"
+          git config user.email "160615932+Iitian001@users.noreply.github.com"
           git remote add upstream https://github.com/Significant-Gravitas/AutoGPT.git
           git fetch upstream dev
           git merge --no-commit --no-ff upstream/dev
@@ -51,8 +53,6 @@ jobs:
       - name: Commit generated docs and remove temporary workflow
         run: |
           rm .github/workflows/temporary-sync-pr-block-docs.yml
-          git config user.name "Iitian001"
-          git config user.email "160615932+Iitian001@users.noreply.github.com"
           git add docs/integrations/block-integrations/misc.md .github/workflows/temporary-sync-pr-block-docs.yml
           git diff --cached --check
           git commit -m "docs(platform): sync generated block docs with dev"
