@@ -61,6 +61,15 @@ test("renders greeting and composer", async () => {
   expect(await screen.findByPlaceholderText(/./)).toBeDefined();
 });
 
+test("shows a named kickoff status and withholds the empty composer", () => {
+  render(<EmptySession {...baseProps} isKickoffStarting expertName="Maria" />);
+
+  expect(screen.getByRole("status").textContent).toContain(
+    "Opening Maria's workspace",
+  );
+  expect(screen.queryByPlaceholderText(/./)).toBeNull();
+});
+
 test("falls back to pulse strip when there is no briefing", async () => {
   mockPulseStripAgent();
   server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
