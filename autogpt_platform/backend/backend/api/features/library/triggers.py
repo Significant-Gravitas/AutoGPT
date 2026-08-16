@@ -78,14 +78,14 @@ async def setup_triggered_preset(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
 
-    # A supplied session expert wins and deliberately suppresses graph-match
-    # re-attribution. create_preset validates it under the same transaction as
-    # the durable write, falling back to an unattributed preset if archival
-    # wins the race. With no supplied expert, preserve the existing unique
-    # graph-match behaviour; create_preset atomically re-validates that result.
-    if expert_id is None:
-        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph.id)
-
+    # ``expert_id`` is the calling context's authoritative scope: a session
+    # expert for expert-scoped copilot sessions, ``None`` for AutoPilot
+    # sessions AND for the HTTP route (which resolves graph-match attribution
+    # itself before calling in). No graph-match fallback here — re-attributing
+    # an AutoPilot session's preset to an expert would make it invisible to
+    # that session's list/update/delete/run scope filters while its webhook
+    # stays live. create_preset re-validates the expert under the same
+    # transaction as the durable write.
     trigger_config_with_credentials = {
         **trigger_config,
         **(
@@ -96,16 +96,11 @@ async def setup_triggered_preset(
         ),
     }
 
-    effective_expert_id = expert_id
-    if effective_expert_id is None:
-        effective_expert_id = await experts_db.resolve_expert_for_graph(
-            user_id, graph.id
-        )
-    if effective_expert_id:
+    if expert_id:
         organization_id, team_id = await _resolve_private_expert_tenancy(
             user_id,
-            effective_expert_id,
-            not_found_message=f"Expert #{effective_expert_id} not found",
+            expert_id,
+            not_found_message=f"Expert #{expert_id} not found",
         )
     else:
         organization_id, team_id = graph.organization_id, graph.team_id
@@ -132,7 +127,7 @@ async def setup_triggered_preset(
             is_active=True,
         ),
         webhook_id=new_webhook.id,
-        expert_id=effective_expert_id,
+        expert_id=expert_id,
     )
 
 

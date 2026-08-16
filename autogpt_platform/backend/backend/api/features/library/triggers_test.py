@@ -33,7 +33,8 @@ def _graph():
 def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=None):
     """Patch triggers.py's collaborators. ``webhook=...`` defaults to a stub
     webhook; pass ``webhook=None`` + ``feedback`` to exercise the rejection.
-    ``graph_expert`` is the expert the graph-match fallback resolves to."""
+    ``graph_expert`` is what ``resolve_expert_for_graph`` would return — the
+    setup path must never call it (asserted via the returned mock)."""
     new_webhook = MagicMock(id="wh-1") if webhook is ... else webhook
     return (
         patch(f"{_PATH}.get_graph", new=AsyncMock(return_value=graph)),
@@ -217,9 +218,11 @@ async def test_setup_supplied_session_expert_never_graph_reattributes():
 
 
 @pytest.mark.asyncio
-async def test_setup_falls_back_to_graph_expert_without_session_expert():
-    """A plain chat / route caller passes no expert: attribution falls back to
-    the graph's unique expert match — unchanged behaviour."""
+async def test_setup_without_expert_creates_unattributed_preset():
+    """``expert_id=None`` means exactly that: an AutoPilot copilot session
+    must get an unattributed preset it can manage from its own scope, so this
+    layer never infers an expert from the graph. Callers that want graph-match
+    attribution (the HTTP route) resolve it themselves before calling in."""
     preset = MagicMock(id="preset-1")
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
         graph=_graph(), preset=preset, graph_expert="expert-graph"
@@ -228,15 +231,12 @@ async def test_setup_falls_back_to_graph_expert_without_session_expert():
         p_graph,
         p_creds,
         p_webhook,
-        p_expert,
+        p_expert as expert_mock,
         p_create as create_mock,
-        patch(
-            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
-            new=AsyncMock(return_value=("personal-org", "personal-team")),
-        ),
     ):
         await _setup()
-    assert create_mock.call_args.kwargs["expert_id"] == "expert-graph"
+    assert create_mock.call_args.kwargs["expert_id"] is None
+    expert_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
