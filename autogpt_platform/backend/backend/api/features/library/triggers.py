@@ -36,6 +36,7 @@ async def setup_triggered_preset(
     description: str,
     trigger_config: dict[str, Any],
     agent_credentials: dict[str, CredentialsMetaInput],
+    expert_id: str | None = None,
 ) -> models.LibraryAgentPreset:
     """Create a webhook-triggered ``LibraryAgentPreset`` for the given graph.
 
@@ -60,6 +61,14 @@ async def setup_triggered_preset(
         raise InvalidInputError(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
+
+    # A supplied session expert wins and deliberately suppresses graph-match
+    # re-attribution. create_preset validates it under the same transaction as
+    # the durable write, falling back to an unattributed preset if archival
+    # wins the race. With no supplied expert, preserve the existing unique
+    # graph-match behaviour; create_preset atomically re-validates that result.
+    if expert_id is None:
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph.id)
 
     trigger_config_with_credentials = {
         **trigger_config,
@@ -95,9 +104,7 @@ async def setup_triggered_preset(
             is_active=True,
         ),
         webhook_id=new_webhook.id,
-        # A trigger on an expert-installed workflow fires as the expert's
-        # work: unique (user, graph) → expert matches keep the attribution.
-        expert_id=await experts_db.resolve_expert_for_graph(user_id, graph.id),
+        expert_id=expert_id,
     )
 
 
