@@ -123,6 +123,9 @@ class ResponseType(str, Enum):
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
 
+    # Experts (soul edits)
+    EXPERT_SOUL_UPDATED = "expert_soul_updated"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -484,6 +487,32 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
     updated_fields: list[str] = Field(default_factory=list)
     current_understanding: dict[str, Any] = Field(default_factory=dict)
+
+
+SoulFieldName = Literal["identity", "voice_preferences", "boundaries"]
+
+
+class SoulFieldChange(BaseModel):
+    """One field's before/after values for an expert soul edit."""
+
+    field: SoulFieldName
+    before: str
+    after: str
+
+
+class ExpertSoulUpdatedResponse(ToolResponseBase):
+    """Response for the two-step Soul edit tools.
+
+    Carries the diff so the model must surface exactly what changed. ``applied``
+    is False for the update_expert_soul preview (nothing written yet; the
+    one-time ``confirmation_id`` references the stored proposal) and True once
+    confirm_expert_soul_update saves the edit.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_SOUL_UPDATED
+    applied: bool = False
+    changes: list[SoulFieldChange] = Field(default_factory=list)
+    confirmation_id: str | None = None
 
 
 # Agent generation models

@@ -101,7 +101,9 @@ vi.mock("framer-motion", () => {
 });
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
-  ChatInput: () => <div data-testid="chat-input" />,
+  ChatInput: ({ disabled }: { disabled?: boolean }) => (
+    <input data-testid="chat-input" disabled={disabled} />
+  ),
 }));
 
 vi.mock("@/components/atoms/Tooltip/BaseTooltip", () => ({
@@ -127,13 +129,19 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
   ChatMessagesContainer: ({
     bottomContentPadding,
+    onRetry,
   }: {
     bottomContentPadding?: number;
+    onRetry?: () => void;
   }) => (
     <div
       data-testid="chat-messages-container"
       data-bottom-padding={bottomContentPadding ?? 0}
-    />
+    >
+      <button type="button" onClick={onRetry}>
+        Retry message
+      </button>
+    </div>
   ),
 }));
 
@@ -231,6 +239,43 @@ describe("ChatContainer", () => {
 
     expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the session composer disabled while expert kickoff is starting", () => {
+    render(<ChatContainer {...baseProps} isKickoffStarting />);
+
+    expect(
+      (screen.getByTestId("chat-input") as HTMLInputElement).disabled,
+    ).toBe(true);
+  });
+
+  it("preserves expert kickoff metadata when retrying its hidden prompt", () => {
+    const onSend = vi.fn();
+    const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+    const attemptToken = "attempt-1";
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "kickoff",
+            role: "user",
+            parts: [{ type: "text", text: "private kickoff prompt" }],
+            metadata: { kind: "expert_kickoff", expertId, attemptToken },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "private kickoff prompt",
+      undefined,
+      undefined,
+      { kind: "expert_kickoff", expertId, attemptToken },
+    );
   });
 
   it("does not render the shared-chat notice for unshared chats", async () => {

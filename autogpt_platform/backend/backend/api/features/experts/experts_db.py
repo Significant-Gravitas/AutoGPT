@@ -2,16 +2,23 @@ import logging
 
 import prisma.errors
 import prisma.models
+import prisma.types
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    decode_voice_preferences,
 )
 from backend.api.features.library import db as library_db
+from backend.data.db import prisma as db_client
+from backend.data.expert_attribution import (
+    resolve_attributable_expert as resolve_attributable_expert_row,
+)
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -54,6 +61,19 @@ def _to_model(
     latest_run: prisma.models.AgentGraphExecution | None = None,
     weekly_spend: int = 0,
 ) -> Expert:
+    """Translate the overloaded ``voicePreferences`` column safely.
+
+    Template rows store an internal ``{description, samples}`` JSON envelope
+    so the hire flow can present choices. Hired rows must store only the final
+    plain-text preference that is safe to render in prompts. Keep this branch
+    on ``isTemplate`` until those representations have separate columns.
+    """
+    if row.isTemplate:
+        voice_preferences, voice_samples = decode_voice_preferences(
+            row.voicePreferences
+        )
+    else:
+        voice_preferences, voice_samples = row.voicePreferences, []
     return Expert(
         id=row.id,
         name=row.name,
@@ -63,7 +83,8 @@ def _to_model(
         bio=row.bio,
         skills=row.skills or [],
         identity=row.identity,
-        voice_preferences=row.voicePreferences,
+        voice_preferences=voice_preferences,
+        voice_samples=voice_samples,
         boundaries=row.boundaries,
         protected_soul_rules=list(PROTECTED_SOUL_RULES),
         is_template=row.isTemplate,
@@ -156,6 +177,10 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     if existing is not None:
         return await _existing_hire_result(existing)
 
+    # Copy the plain description, never the template's sample envelope: a hire
+    # that skips the voice pick must not leave raw JSON in the prompt, and the
+    # pick (when made) overwrites this via the soul PATCH anyway.
+    template_voice, _ = decode_voice_preferences(template.voicePreferences)
     create_data: dict = {
         "ownerUserId": user_id,
         "name": name or template.name,
@@ -165,7 +190,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "bio": template.bio,
         "skills": template.skills or [],
         "identity": template.identity,
-        "voicePreferences": template.voicePreferences,
+        "voicePreferences": template_voice,
         "boundaries": template.boundaries,
         "sourceTemplateId": template.id,
     }
@@ -249,6 +274,111 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     if expert is None:
         raise ExpertNotFoundError(expert_id)
     return expert
+
+
+def _soul_field_update_data(
+    *,
+    identity: str | None,
+    voice_preferences: str | None,
+    boundaries: str | None,
+) -> prisma.types.ExpertUpdateManyMutationInput:
+    patch = ExpertSoulFieldsPatch(
+        identity=identity,
+        voice_preferences=voice_preferences,
+        boundaries=boundaries,
+    )
+    data: prisma.types.ExpertUpdateManyMutationInput = {}
+    if patch.identity is not None:
+        data["identity"] = patch.identity
+    if patch.voice_preferences is not None:
+        data["voicePreferences"] = patch.voice_preferences
+    if patch.boundaries is not None:
+        data["boundaries"] = patch.boundaries
+    if not data:
+        raise ValueError("At least one Soul field must be provided")
+    return data
+
+
+async def update_soul_fields(
+    user_id: str,
+    expert_id: str,
+    *,
+    identity: str | None = None,
+    voice_preferences: str | None = None,
+    boundaries: str | None = None,
+) -> Expert:
+    """Patch only the supplied Soul fields in one scoped write.
+
+    Backs the copilot Soul-edit tools, which edit identity / voice /
+    boundaries but never rename the expert. A single ``update_many`` writes
+    only the supplied columns, so concurrent edits to disjoint fields cannot
+    clobber each other; per-field validation mirrors ``update_soul`` via
+    ``ExpertSoulFieldsPatch``.
+    """
+    data = _soul_field_update_data(
+        identity=identity,
+        voice_preferences=voice_preferences,
+        boundaries=boundaries,
+    )
+
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        data=data,
+    )
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
+
+
+async def update_soul_fields_if_current(
+    user_id: str,
+    expert_id: str,
+    *,
+    identity: str | None = None,
+    voice_preferences: str | None = None,
+    boundaries: str | None = None,
+    expected_identity: str | None = None,
+    expected_voice_preferences: str | None = None,
+    expected_boundaries: str | None = None,
+) -> bool:
+    """Atomically patch Soul fields only when their previewed values still match."""
+    data = _soul_field_update_data(
+        identity=identity,
+        voice_preferences=voice_preferences,
+        boundaries=boundaries,
+    )
+    comparisons: dict[str, str] = {}
+    for field, value, expected in (
+        ("identity", identity, expected_identity),
+        ("voicePreferences", voice_preferences, expected_voice_preferences),
+        ("boundaries", boundaries, expected_boundaries),
+    ):
+        if value is None:
+            continue
+        if expected is None:
+            raise ValueError(f"Expected value required for {field}")
+        comparisons[field] = expected
+
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            **comparisons,
+        },
+        data=data,
+    )
+    return updated == 1
 
 
 async def _install_preloads(
@@ -387,6 +517,21 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
     if len(expert_ids) != 1:
         return None
     return expert_ids.pop()
+
+
+async def resolve_attributable_expert(
+    user_id: str, expert_id: str | None
+) -> str | None:
+    """Read-only expert-attribution lookup.
+
+    Durable writes use the same shared guard with a row lock inside their own
+    transaction; this lookup is for discovery and compatibility only.
+    """
+    return await resolve_attributable_expert_row(
+        db_client,
+        user_id,
+        expert_id,
+    )
 
 
 async def archive_expert(user_id: str, expert_id: str) -> None:

@@ -1,5 +1,11 @@
 """Tests for CoPilot executor utils (queue config, message models, logging)."""
 
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
     COPILOT_EXECUTION_EXCHANGE,
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -9,6 +15,57 @@ from backend.copilot.executor.utils import (
     CoPilotLogMetadata,
     create_copilot_queue_config,
 )
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_redispatches_admitted_persisted_message() -> None:
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        turn_id = await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="kickoff",
+            message_already_persisted=True,
+        )
+
+    assert turn_id is not None
+    append.assert_not_awaited()
+    dispatch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_skips_concurrent_persisted_redispatch() -> None:
+    slot = MagicMock(admitted=False)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        turn_id = await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="kickoff",
+            message_already_persisted=True,
+        )
+
+    assert turn_id is None
+    dispatch.assert_not_awaited()
 
 
 class TestCoPilotExecutionEntry:
