@@ -13,6 +13,7 @@ import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -39,17 +40,18 @@ export function useExpertProfileSheet(
 ) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const { isLoggedIn } = useAuth();
   // Set once a hire succeeds for a persona that ships writing samples: it
   // swaps the sheet to the voice pick before the hire is celebrated.
   const [hireResult, setHireResult] = useState<HireResult | null>(null);
   const pendingCelebrationRef = useRef<HireResult | null>(null);
 
   const expertsQuery = useListExperts({
-    query: { select: (x) => x.data as Expert[] },
+    query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
   });
 
   const hiredExpertsLookup = getHiredExpertsLookup(expertsQuery.data, {
-    enabled: true,
+    enabled: isLoggedIn,
     isError: expertsQuery.isError,
     isFetching: expertsQuery.isFetching,
   });
