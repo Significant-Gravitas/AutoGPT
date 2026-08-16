@@ -257,6 +257,7 @@ class TestBuildExpertIdentitySuffix:
         expert = _expert().model_copy(update={"voice_preferences": payload})
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=expert)
+        mock_db.resolve_private_expert_tenancy = AsyncMock(return_value=(None, None))
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_identity_suffix("user-1", "exp-1")
 
@@ -272,6 +273,7 @@ class TestBuildExpertIdentitySuffix:
         expert = _expert().model_copy(update={"voice_preferences": ""})
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=expert)
+        mock_db.resolve_private_expert_tenancy = AsyncMock(return_value=(None, None))
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_identity_suffix("user-1", "exp-1")
 

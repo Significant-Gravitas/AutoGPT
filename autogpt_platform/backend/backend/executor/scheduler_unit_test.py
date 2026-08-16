@@ -171,6 +171,10 @@ def test_job_to_info_unparseable_returns_none():
 def _patched_experts_db(get_expert: AsyncMock):
     accessor = MagicMock()
     accessor.return_value.get_expert = get_expert
+    # The scope gate consults the visibility-blind existence probe before
+    # ruling "missing"; default it to False so get_expert=None means the
+    # row is truly gone.
+    accessor.return_value.expert_row_exists = AsyncMock(return_value=False)
     return patch(f"{_SCHEDULER_PATH}.experts_db", new=accessor)
 
 
@@ -1096,7 +1100,9 @@ async def test_execute_graph_retries_missing_workspace_on_next_tick(caplog):
 @pytest.mark.asyncio
 async def test_expert_scope_status_active_for_accessible_expert():
     store = MagicMock()
-    store.get_expert = AsyncMock(return_value=MagicMock(is_archived=False))
+    store.get_expert = AsyncMock(
+        return_value=MagicMock(is_archived=False, schedules_paused_at=None)
+    )
     store.expert_row_exists = AsyncMock()
 
     with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
