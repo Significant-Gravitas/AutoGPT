@@ -2390,6 +2390,69 @@ async def test_expert_requeue_admin_bypass_still_validates_personal_tenancy(
 
 
 @pytest.mark.asyncio
+async def test_expert_requeue_admin_bypass_recovers_when_expert_is_gone(
+    mocker: MockerFixture,
+):
+    """Admin recovery (bypass_paywall=True) must still be able to requeue a
+    stuck expert execution whose expert was archived/deleted mid-run: tenancy
+    resolution fails, so the execution's persisted tenancy is used instead."""
+    from backend.api.features.experts.experts_db import ExpertNotFoundError
+
+    _, execution_store, queue, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(
+        mocker, error=ExpertNotFoundError("expert-1")
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+    )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "owner", "expert-1"
+    )
+    enforce_budget.assert_not_called()
+    context = captured["execution_context"]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+    queue.publish_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_without_bypass_still_fails_when_expert_is_gone(
+    mocker: MockerFixture,
+):
+    """The tenancy fallback is admin-only: a non-admin requeue of an
+    execution whose expert vanished keeps the strict 404 behavior."""
+    from backend.api.features.experts.experts_db import ExpertNotFoundError
+
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    _mock_expert_personal_tenancy(mocker, error=ExpertNotFoundError("expert-1"))
+
+    with pytest.raises(ExpertNotFoundError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+        )
+
+    queue.publish_message.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_expert_requeue_uses_current_tenancy_after_conversion(
     mocker: MockerFixture,
 ):

@@ -51,6 +51,8 @@ from backend.util.clients import (
     get_integration_credentials_store,
 )
 from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
     NotFoundError,
@@ -1296,11 +1298,23 @@ async def add_graph_execution(
         # A resumed expert execution respects the pause/budget gate too;
         # bypass_paywall marks admin recovery, which stays exempt.
         if expert_id:
-            organization_id, team_id = await _resolve_expert_execution_tenancy(
-                user_id, expert_id
-            )
-            graph_exec.organization_id = organization_id
-            graph_exec.team_id = team_id
+            try:
+                organization_id, team_id = await _resolve_expert_execution_tenancy(
+                    user_id, expert_id
+                )
+                graph_exec.organization_id = organization_id
+                graph_exec.team_id = team_id
+            except (ExpertNotFoundError, ExpertPrivateTenancyNotFoundError):
+                # Admin recovery must be able to requeue a stuck run even
+                # after its expert was archived/deleted mid-flight — fall
+                # back to the execution's persisted tenancy instead of
+                # 404ing. User-initiated requeues keep the strict check.
+                # The locals must be set explicitly: the expert branch of the
+                # ExecutionContext builder below trusts them verbatim.
+                if not bypass_paywall:
+                    raise
+                organization_id = graph_exec.organization_id
+                team_id = graph_exec.team_id
             if not bypass_paywall:
                 await _enforce_expert_run_budget(user_id, expert_id)
 
