@@ -3401,7 +3401,7 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "string", "maxLength": 128 },
+                { "type": "string", "minLength": 1, "maxLength": 128 },
                 { "type": "null" }
               ],
               "title": "Expert Id"

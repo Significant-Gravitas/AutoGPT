@@ -250,17 +250,20 @@ def execute_copilot_turn(**kwargs):
 
 async def _expert_scope_status(
     user_id: str, expert_id: str
-) -> Literal["active", "missing", "unavailable"]:
-    """Resolve an expert schedule's owner/archive state without guessing.
+) -> Literal["active", "archived", "paused", "missing", "unavailable"]:
+    """Resolve an expert schedule's owner/lifecycle state without guessing.
 
-    ``missing`` covers deleted, archived, and wrong-owner IDs because the
-    experts accessor intentionally exposes all three as not found.
-    ``unavailable`` is kept distinct so a transient DB/RPC failure skips the
-    turn without permanently deleting a valid recurring schedule.
+    Mirrors ``enforce_expert_run_budget``'s gate: ``archived`` and ``paused``
+    (``schedulesPausedAt`` — set by a manual pause or a budget breach) both
+    block the firing, but reversibly, so the schedule must survive them.
+    ``missing`` is reserved for IDs that don't exist for this owner at all —
+    the only state that deletes the schedule. ``unavailable`` is kept
+    distinct so a transient DB/RPC failure skips the turn without
+    permanently deleting a valid recurring schedule.
     """
     try:
         expert = await experts_db().get_expert(
-            user_id, expert_id, include_workflows=False
+            user_id, expert_id, include_workflows=False, include_archived=True
         )
     except Exception:
         logger.warning(
@@ -269,7 +272,36 @@ async def _expert_scope_status(
             exc_info=True,
         )
         return "unavailable"
-    return "active" if expert is not None and not expert.is_archived else "missing"
+    if expert is None:
+        return "missing"
+    if expert.is_archived:
+        return "archived"
+    if expert.schedules_paused_at is not None:
+        return "paused"
+    return "active"
+
+
+async def _skip_inactive_expert_scope(
+    args: "CopilotTurnJobArgs",
+    status: Literal["archived", "paused", "missing", "unavailable"],
+) -> None:
+    """Shared skip path for a firing whose expert scope is not active.
+
+    Only ``missing`` deletes the schedule: archive and pause are reversible,
+    and copilot-turn schedules have no persisted cadence to revive from, so
+    they must outlive both. A transient lookup failure re-schedules a
+    one-shot because APScheduler drops it after the fire regardless.
+    """
+    logger.warning(
+        "Copilot turn schedule %s skipped — expert scope %s is %s",
+        args.schedule_id,
+        (args.expert_id or "?")[:12],
+        status,
+    )
+    if status == "missing":
+        await _self_delete_copilot_turn_schedule(args)
+    elif status == "unavailable" and args.run_at is not None:
+        await _reschedule_one_shot_after_expert_unavailable(args)
 
 
 async def _execute_copilot_turn(**kwargs):
@@ -294,16 +326,7 @@ async def _execute_copilot_turn(**kwargs):
             if args.expert_id is not None:
                 expert_status = await _expert_scope_status(args.user_id, args.expert_id)
                 if expert_status != "active":
-                    logger.warning(
-                        "Copilot turn schedule %s skipped — expert scope %s is %s",
-                        args.schedule_id,
-                        args.expert_id[:12],
-                        expert_status,
-                    )
-                    if expert_status == "missing":
-                        await _self_delete_copilot_turn_schedule(args)
-                    elif args.run_at is not None:
-                        await _reschedule_one_shot_after_expert_unavailable(args)
+                    await _skip_inactive_expert_scope(args, expert_status)
                     return
             new_session = await create_chat_session(
                 args.user_id,
@@ -317,13 +340,15 @@ async def _execute_copilot_turn(**kwargs):
                 # deleted in the window before creation. `create_chat_session`
                 # drops the attribution rather than failing, which would run an
                 # expert's follow-up in AutoPilot memory scope — fail closed
-                # instead, matching the "missing" branch above.
+                # instead. Skip without deleting: archive is reversible, and
+                # this window can't tell it apart from deletion. The next
+                # firing's scope check routes authoritatively (missing →
+                # delete, archived/paused → keep skipping).
                 logger.warning(
                     f"Copilot turn schedule {args.schedule_id} skipped — expert "
                     f"{args.expert_id[:12]} stopped being active/owned while the "
-                    f"session was being created; removing schedule"
+                    f"session was being created"
                 )
-                await _self_delete_copilot_turn_schedule(args)
                 return
             target_session_id = new_session.session_id
             target_session = new_session
@@ -357,16 +382,7 @@ async def _execute_copilot_turn(**kwargs):
             if args.expert_id is not None:
                 expert_status = await _expert_scope_status(args.user_id, args.expert_id)
                 if expert_status != "active":
-                    logger.warning(
-                        "Copilot turn schedule %s skipped — expert scope %s is %s",
-                        args.schedule_id,
-                        args.expert_id[:12],
-                        expert_status,
-                    )
-                    if expert_status == "missing":
-                        await _self_delete_copilot_turn_schedule(args)
-                    elif args.run_at is not None:
-                        await _reschedule_one_shot_after_expert_unavailable(args)
+                    await _skip_inactive_expert_scope(args, expert_status)
                     return
             target_session_id = args.session_id
             target_session = session
