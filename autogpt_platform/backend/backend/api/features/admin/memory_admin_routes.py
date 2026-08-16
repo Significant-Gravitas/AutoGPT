@@ -235,7 +235,10 @@ def _audit_cross_user_access(
     logger.info(
         f"Admin memory access: {caller_id} ({caller_email}) "
         f"acting on user {target_id!r}, scope {memory_scope}, "
-        f"for {request.method} {request.url}"
+        # The URL is repr-escaped too: with path-scoped expert routes the
+        # expert_id is a path segment, so control characters would
+        # otherwise ride into the log line through the URL itself.
+        f"for {request.method} {str(request.url)!r}"
     )
 
 
