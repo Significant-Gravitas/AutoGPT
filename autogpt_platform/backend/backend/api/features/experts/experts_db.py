@@ -583,11 +583,17 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
 MAX_PODS_PER_USER = 100
 
 
-def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
-    return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)
-
-
 async def create_pod(user_id: str, name: str) -> ExpertPod:
+    """Create a pod owned by *user_id*.
+
+    The count is deliberately not serialized against the insert. This cap is a
+    guardrail on a self-scoped resource, not a billed quota, so a burst of
+    concurrent creates may overshoot by the burst width before the next call is
+    rejected — the bound that matters (a scripted client cannot grow the table
+    without limit) still holds. Making it exact would mean an advisory lock or
+    row lock on every create, which is the treatment ``credit.py`` reserves for
+    balances and is not warranted here.
+    """
     existing = await prisma.models.ExpertPod.prisma().count(where={"userId": user_id})
     if existing >= MAX_PODS_PER_USER:
         raise ExpertPodLimitReachedError(MAX_PODS_PER_USER)
@@ -643,3 +649,7 @@ async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert
     if expert is None:
         raise ExpertNotFoundError(expert_id)
     return expert
+
+
+def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
+    return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)
