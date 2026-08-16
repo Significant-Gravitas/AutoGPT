@@ -13,6 +13,7 @@ from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
     PaginatedMessages,
+    chat_message_has_assistant_reply,
     get_chat_messages_paginated,
     get_user_chat_sessions,
     set_turn_duration,
@@ -77,6 +78,47 @@ def _make_session(
         Messages=messages or [],
     )
     return session
+
+
+@pytest.mark.asyncio
+async def test_chat_message_has_assistant_reply_distinguishes_delivery_state():
+    kickoff = _make_msg(3, role="user", content="kickoff")
+    assistant = _make_msg(4, role="assistant", content="ready")
+    find_first = AsyncMock(side_effect=[kickoff, assistant])
+
+    with patch.object(
+        PrismaChatMessage,
+        "prisma",
+        return_value=AsyncMock(find_first=find_first),
+    ):
+        result = await chat_message_has_assistant_reply("msg-3", "sess-1")
+
+    assert result is True
+    assert find_first.await_args_list[1].kwargs["where"] == {
+        "sessionId": "sess-1",
+        "role": "assistant",
+        "sequence": {"gt": 3},
+    }
+
+
+@pytest.mark.asyncio
+async def test_chat_message_has_assistant_reply_reports_missing_and_orphaned():
+    missing = AsyncMock(return_value=None)
+    with patch.object(
+        PrismaChatMessage,
+        "prisma",
+        return_value=AsyncMock(find_first=missing),
+    ):
+        assert await chat_message_has_assistant_reply("missing", "sess-1") is None
+
+    kickoff = _make_msg(3, role="user", content="kickoff")
+    orphaned = AsyncMock(side_effect=[kickoff, None])
+    with patch.object(
+        PrismaChatMessage,
+        "prisma",
+        return_value=AsyncMock(find_first=orphaned),
+    ):
+        assert await chat_message_has_assistant_reply("msg-3", "sess-1") is False
 
 
 SESSION_ID = "sess-1"
@@ -758,6 +800,21 @@ async def test_session_count_org_scope_matches_list_carveout():
 
     query = raw.call_args.args[0]
     assert _EXPERT_CARVEOUT_SQL in query
+
+
+@pytest.mark.asyncio
+async def test_get_user_chat_sessions_can_order_by_strict_recency():
+    raw = AsyncMock(return_value=[])
+    with patch("backend.copilot.db.db.query_raw_with_schema", raw):
+        await get_user_chat_sessions(
+            "user-abc",
+            limit=1,
+            pinned_first=False,
+        )
+
+    query = raw.call_args.args[0]
+    assert 'ORDER BY "updatedAt" DESC' in query
+    assert 'ORDER BY "isPinned"' not in query
 
 
 # NOTE: previously this file had a separate suite for ``db.get_chat_session``

@@ -1,6 +1,7 @@
 """Tests for Graphiti ingestion queue and worker logic."""
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -42,7 +43,9 @@ def _enqueue_mock(queue: asyncio.Queue) -> AsyncMock:
 
 class TestIngestionWorkerExceptionHandling:
     @pytest.mark.asyncio
-    async def test_worker_drops_payload_for_a_different_memory_group(self) -> None:
+    async def test_worker_drops_payload_for_a_different_memory_group(
+        self, caplog
+    ) -> None:
         queue: asyncio.Queue = asyncio.Queue(maxsize=10)
         queue.put_nowait(
             {
@@ -60,13 +63,27 @@ class TestIngestionWorkerExceptionHandling:
             original_timeout = ingest._WORKER_IDLE_TIMEOUT
             ingest._WORKER_IDLE_TIMEOUT = 0.05
             try:
-                await ingest._ingestion_worker("test-user", "expert_expected", queue)
+                with caplog.at_level(logging.ERROR, logger=ingest.logger.name):
+                    await ingest._ingestion_worker(
+                        "test-user", "expert_expected", queue
+                    )
             finally:
                 ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
         get_client.assert_not_awaited()
         assert queue.empty()
         await asyncio.wait_for(queue.join(), timeout=0.1)
+        # The sole isolation check in the worker must be loud and grep-able,
+        # not folded into the generic "ingestion failed" warning.
+        violations = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.ERROR
+            and "MEMORY ISOLATION VIOLATION" in r.getMessage()
+        ]
+        assert len(violations) == 1
+        assert "expert_other" in violations[0].getMessage()
+        assert "expert_expected" in violations[0].getMessage()
 
     @pytest.mark.asyncio
     async def test_worker_continues_after_client_error(self) -> None:

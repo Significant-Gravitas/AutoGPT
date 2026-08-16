@@ -209,7 +209,7 @@ async def _process_edge(
     if now - created_at <= RATIFICATION_GRACE_PERIOD:
         return
 
-    succeeded, _failed = await mark_edges_superseded(
+    succeeded, failed = await mark_edges_superseded(
         driver,
         [edge_uuid],
         reason="unratified",
@@ -219,6 +219,11 @@ async def _process_edge(
     )
     if succeeded:
         result.superseded_count += 1
+    # Surface non-matches too: an edge without a group_id property (legacy
+    # write) matches nothing under the group-scoped predicate and would
+    # otherwise be silently re-examined by every future sweep.
+    for failed_uuid in failed:
+        result.per_edge_errors.append(f"{failed_uuid}: supersede_failed")
 
 
 async def _list_tentative_edges(

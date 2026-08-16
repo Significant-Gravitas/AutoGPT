@@ -155,6 +155,11 @@ async def submit_phase(
     job_id, and the per-phase model map so each phase is submitted —
     and later priced — with its own model.
     """
+    # Each phase batch gets its own 24h provider SLA window, so a
+    # multi-phase chain can legitimately outlive a TTL stamped once at the
+    # first submit. Re-arm the bundle TTL at every submit so it stays alive
+    # exactly as long as some phase batch may still call back.
+    await refresh_input_bundle_ttl(pass_id)
     model = phase_models[phase]
     messages = _build_phase_messages(
         phase=phase,
@@ -336,6 +341,32 @@ async def persist_input_bundle(
     await redis.set(
         input_bundle_key(pass_id), json.dumps(payload), ex=INPUT_TTL_SECONDS
     )
+
+
+async def refresh_input_bundle_ttl(pass_id: str) -> None:
+    """Reset the persisted input bundle's TTL to the full window.
+
+    Best-effort: on the first phase submit the bundle was just persisted
+    with a fresh TTL, and a genuinely lost bundle stays the callback's
+    hard-fail guard's responsibility — so a missing key or a Redis blip
+    here only logs.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        refreshed = await redis.expire(input_bundle_key(pass_id), INPUT_TTL_SECONDS)
+    except Exception:
+        logger.warning(
+            "Failed to refresh DreamInput TTL for pass=%s", pass_id, exc_info=True
+        )
+        return
+    if not refreshed:
+        logger.warning(
+            "DreamInput missing at TTL refresh for pass=%s — the phase "
+            "callback will fail closed if it stays gone",
+            pass_id,
+        )
 
 
 async def read_lock_token(pass_id: str) -> str | None:

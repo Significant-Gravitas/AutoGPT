@@ -12,6 +12,8 @@ import {
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
+  getGetV2GetExpertGraphQueryKey,
+  getGetV2GetExpertMemoryOverviewQueryKey,
   getGetV2GetGraphQueryKey,
   getGetV2GetMemoryOverviewQueryKey,
 } from "@/app/api/__generated__/endpoints/admin/admin";
@@ -20,9 +22,7 @@ import {
   getGetV2GetCommunityRebuildStatusResponseMock200,
   getGetV2GetDreamPassStatusMockHandler200,
   getGetV2GetDreamPassStatusResponseMock200,
-  getGetV2GetGraphMockHandler200,
   getGetV2GetGraphResponseMock200,
-  getGetV2GetMemoryOverviewMockHandler200,
   getGetV2GetMemoryOverviewResponseMock200,
   getPostV2RebuildCommunitiesMockHandler202,
   getPostV2RebuildCommunitiesResponseMock202,
@@ -68,27 +68,65 @@ function makeExpert(id: string, name: string, role = "Researcher"): Expert {
   };
 }
 
+// Account and expert scopes are separate (path-scoped) endpoints. The
+// generated response mocks randomize ``expert_id`` and the hook's scope
+// tripwire refuses payloads whose echoed expert_id disagrees with the
+// requested scope, so each handler pins the echo for its own scope.
 function setupBaseHandlers(experts: Expert[] = []) {
   server.use(
     getListExpertsMockHandler200(experts),
-    getGetV2GetMemoryOverviewMockHandler200({
-      ...getGetV2GetMemoryOverviewResponseMock200(),
-      user_id: "u-1",
-      group_id: "g-1",
-      entities: 12,
-      episodes: 30,
-      relates_to_edges: 25,
-      mentions_edges: 30,
-      communities: 0,
-    }),
-    getGetV2GetGraphMockHandler200({
-      ...getGetV2GetGraphResponseMock200(),
-      user_id: "u-1",
-      group_id: "g-1",
-      nodes: [],
-      edges: [],
-      truncated: false,
-    }),
+    http.get("*/api/admin/memory/:userId/overview", () =>
+      HttpResponse.json({
+        ...getGetV2GetMemoryOverviewResponseMock200(),
+        expert_id: null,
+        user_id: "u-1",
+        group_id: "g-1",
+        entities: 12,
+        episodes: 30,
+        relates_to_edges: 25,
+        mentions_edges: 30,
+        communities: 0,
+      }),
+    ),
+    http.get("*/api/admin/memory/:userId/graph", () =>
+      HttpResponse.json({
+        ...getGetV2GetGraphResponseMock200(),
+        expert_id: null,
+        user_id: "u-1",
+        group_id: "g-1",
+        nodes: [],
+        edges: [],
+        truncated: false,
+      }),
+    ),
+    http.get(
+      "*/api/admin/memory/:userId/experts/:expertId/overview",
+      ({ params }) =>
+        HttpResponse.json({
+          ...getGetV2GetMemoryOverviewResponseMock200(),
+          expert_id: String(params.expertId),
+          user_id: "u-1",
+          group_id: "g-expert",
+          entities: 3,
+          episodes: 4,
+          relates_to_edges: 2,
+          mentions_edges: 1,
+          communities: 0,
+        }),
+    ),
+    http.get(
+      "*/api/admin/memory/:userId/experts/:expertId/graph",
+      ({ params }) =>
+        HttpResponse.json({
+          ...getGetV2GetGraphResponseMock200(),
+          expert_id: String(params.expertId),
+          user_id: "u-1",
+          group_id: "g-expert",
+          nodes: [],
+          edges: [],
+          truncated: false,
+        }),
+    ),
   );
 }
 
@@ -153,6 +191,14 @@ function MemoryVisualizerWithPersistentGraphCache() {
     queryClient.setQueryDefaults(getGetV2GetMemoryOverviewQueryKey("me"), {
       staleTime: Infinity,
     });
+    queryClient.setQueryDefaults(
+      getGetV2GetExpertGraphQueryKey("me", "expert-ada"),
+      { staleTime: Infinity },
+    );
+    queryClient.setQueryDefaults(
+      getGetV2GetExpertMemoryOverviewQueryKey("me", "expert-ada"),
+      { staleTime: Infinity },
+    );
     setReady(true);
   }
 
@@ -160,15 +206,14 @@ function MemoryVisualizerWithPersistentGraphCache() {
     setExpertCacheInvalidated(
       [
         queryClient.getQueryState(
-          getGetV2GetMemoryOverviewQueryKey("me", {
-            expert_id: "expert-ada",
-          }),
+          getGetV2GetExpertMemoryOverviewQueryKey("me", "expert-ada"),
         )?.isInvalidated,
         queryClient.getQueryState(
-          getGetV2GetGraphQueryKey("me", {
-            ...PERSISTENT_GRAPH_PARAMS,
-            expert_id: "expert-ada",
-          }),
+          getGetV2GetExpertGraphQueryKey(
+            "me",
+            "expert-ada",
+            PERSISTENT_GRAPH_PARAMS,
+          ),
         )?.isInvalidated,
       ].join(","),
     );
@@ -196,27 +241,52 @@ function MemoryVisualizerWithPersistentGraphCache() {
 }
 
 describe("MemoryVisualizer — memory scope", () => {
-  test("uses AutoPilot memory by default without sending expert_id", async () => {
+  test("uses the account memory endpoints by default", async () => {
     setupBaseHandlers();
     const overviewScopes: Array<string | null> = [];
     const graphScopes: Array<string | null> = [];
     server.use(
-      http.get("*/api/admin/memory/:userId/overview", ({ request }) => {
-        overviewScopes.push(new URL(request.url).searchParams.get("expert_id"));
+      http.get("*/api/admin/memory/:userId/overview", () => {
+        overviewScopes.push(null);
         return HttpResponse.json({
           ...getGetV2GetMemoryOverviewResponseMock200(),
+          expert_id: null,
           entities: 12,
         });
       }),
-      http.get("*/api/admin/memory/:userId/graph", ({ request }) => {
-        graphScopes.push(new URL(request.url).searchParams.get("expert_id"));
+      http.get("*/api/admin/memory/:userId/graph", () => {
+        graphScopes.push(null);
         return HttpResponse.json({
           ...getGetV2GetGraphResponseMock200(),
+          expert_id: null,
           nodes: [],
           edges: [],
           truncated: false,
         });
       }),
+      http.get(
+        "*/api/admin/memory/:userId/experts/:expertId/overview",
+        ({ params }) => {
+          overviewScopes.push(String(params.expertId));
+          return HttpResponse.json({
+            ...getGetV2GetMemoryOverviewResponseMock200(),
+            expert_id: String(params.expertId),
+          });
+        },
+      ),
+      http.get(
+        "*/api/admin/memory/:userId/experts/:expertId/graph",
+        ({ params }) => {
+          graphScopes.push(String(params.expertId));
+          return HttpResponse.json({
+            ...getGetV2GetGraphResponseMock200(),
+            expert_id: String(params.expertId),
+            nodes: [],
+            edges: [],
+            truncated: false,
+          });
+        },
+      ),
     );
 
     render(<MemoryVisualizer />);
@@ -238,19 +308,29 @@ describe("MemoryVisualizer — memory scope", () => {
     const overviewScopes: Array<string | null> = [];
     const graphScopes: Array<string | null> = [];
     server.use(
-      http.get("*/api/admin/memory/:userId/overview", ({ request }) => {
-        overviewScopes.push(new URL(request.url).searchParams.get("expert_id"));
-        return HttpResponse.json(getGetV2GetMemoryOverviewResponseMock200());
-      }),
-      http.get("*/api/admin/memory/:userId/graph", ({ request }) => {
-        graphScopes.push(new URL(request.url).searchParams.get("expert_id"));
-        return HttpResponse.json({
-          ...getGetV2GetGraphResponseMock200(),
-          nodes: [],
-          edges: [],
-          truncated: false,
-        });
-      }),
+      http.get(
+        "*/api/admin/memory/:userId/experts/:expertId/overview",
+        ({ params }) => {
+          overviewScopes.push(String(params.expertId));
+          return HttpResponse.json({
+            ...getGetV2GetMemoryOverviewResponseMock200(),
+            expert_id: String(params.expertId),
+          });
+        },
+      ),
+      http.get(
+        "*/api/admin/memory/:userId/experts/:expertId/graph",
+        ({ params }) => {
+          graphScopes.push(String(params.expertId));
+          return HttpResponse.json({
+            ...getGetV2GetGraphResponseMock200(),
+            expert_id: String(params.expertId),
+            nodes: [],
+            edges: [],
+            truncated: false,
+          });
+        },
+      ),
     );
 
     render(<MemoryVisualizer />);
@@ -495,6 +575,173 @@ describe("MemoryVisualizer — memory scope", () => {
     ).toBeDefined();
     expect(screen.getByRole("option", { name: "Ada — Writer" })).toBeDefined();
   });
+
+  test("switching scope swaps the rendered graph content, not just the request", async () => {
+    setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
+    server.use(
+      http.get("*/api/admin/memory/:userId/graph", () =>
+        HttpResponse.json({
+          ...getGetV2GetGraphResponseMock200(),
+          expert_id: null,
+          nodes: [
+            {
+              uuid: "n-auto-1",
+              label: "Entity",
+              type: "AutoPilotFact",
+              name: "Account node",
+            },
+          ],
+          edges: [],
+          truncated: false,
+        }),
+      ),
+      http.get(
+        "*/api/admin/memory/:userId/experts/:expertId/graph",
+        ({ params }) =>
+          HttpResponse.json({
+            ...getGetV2GetGraphResponseMock200(),
+            expert_id: String(params.expertId),
+            nodes: [
+              {
+                uuid: "n-expert-1",
+                label: "Entity",
+                type: "ExpertInsight",
+                name: "Expert node",
+              },
+            ],
+            edges: [],
+            truncated: false,
+          }),
+      ),
+    );
+
+    render(<MemoryVisualizer />);
+
+    // Account scope renders the account graph's node-type pill.
+    await screen.findByRole("button", { name: "AutoPilotFact (1)" });
+
+    const selector = screen.getByRole("combobox", { name: "Memory scope" });
+    await waitFor(() =>
+      expect((selector as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(selector);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Ada — Researcher/ }),
+    );
+
+    // Expert scope renders the expert graph's pill and drops the
+    // account one — proves the displayed data actually swapped.
+    await screen.findByRole("button", { name: "ExpertInsight (1)" });
+    expect(
+      screen.queryByRole("button", { name: "AutoPilotFact (1)" }),
+    ).toBeNull();
+
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+
+    await screen.findByRole("button", { name: "AutoPilotFact (1)" });
+    expect(
+      screen.queryByRole("button", { name: "ExpertInsight (1)" }),
+    ).toBeNull();
+  });
+
+  test("account job status text hides while an expert scope is selected", async () => {
+    setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
+    server.use(
+      getPostV2TriggerDreamPassMockHandler202({
+        ...getPostV2TriggerDreamPassResponseMock202(),
+        job_id: "job-dream-hidden",
+        state: "queued",
+      }),
+      getGetV2GetDreamPassStatusMockHandler200({
+        ...getGetV2GetDreamPassStatusResponseMock200(),
+        job_id: "job-dream-hidden",
+        kind: "dream_pass",
+        state: "running",
+        current_phase: "consolidate",
+      }),
+    );
+    render(<MemoryVisualizer />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dream pass/i }),
+    );
+    await screen.findByText("dream: running (consolidate)");
+
+    const selector = screen.getByRole("combobox", { name: "Memory scope" });
+    fireEvent.click(selector);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Ada — Researcher/ }),
+    );
+    await screen.findByText("Expert memory is read-only.");
+
+    // The account job keeps polling, but its status must not bleed
+    // into the expert-scoped (read-only) control bar.
+    expect(screen.queryByText("dream: running (consolidate)")).toBeNull();
+
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+
+    await screen.findByText("dream: running (consolidate)");
+  });
+
+  test("responses scoped to a different expert are rejected, not rendered", async () => {
+    setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
+    toastMock.mockClear();
+    server.use(
+      // Malfunctioning server: the expert endpoints return account-
+      // scoped payloads (expert_id echo of null) instead of the
+      // requested expert's data.
+      http.get("*/api/admin/memory/:userId/experts/:expertId/overview", () =>
+        HttpResponse.json({
+          ...getGetV2GetMemoryOverviewResponseMock200(),
+          expert_id: null,
+          entities: 999,
+          episodes: 1,
+          relates_to_edges: 1,
+          mentions_edges: 1,
+          communities: 1,
+        }),
+      ),
+      http.get("*/api/admin/memory/:userId/experts/:expertId/graph", () =>
+        HttpResponse.json({
+          ...getGetV2GetGraphResponseMock200(),
+          expert_id: null,
+          nodes: [],
+          edges: [],
+          truncated: false,
+        }),
+      ),
+    );
+
+    render(<MemoryVisualizer />);
+
+    // Account scope renders normally from the base handlers.
+    await screen.findByText("12");
+
+    const selector = screen.getByRole("combobox", { name: "Memory scope" });
+    await waitFor(() =>
+      expect((selector as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(selector);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Ada — Researcher/ }),
+    );
+
+    // Expert scope now receives account-scoped payloads → tripwire.
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Memory scope mismatch",
+          variant: "destructive",
+        }),
+      );
+    });
+    expect(screen.queryByText("999")).toBeNull();
+    expect(screen.getAllByText(/Memory scope mismatch/).length).toBeGreaterThan(
+      0,
+    );
+  });
 });
 
 describe("MemoryVisualizer — 202 + polling contract", () => {
@@ -571,18 +818,41 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
       http.get("*/api/admin/memory/:userId/graph", ({ request }) => {
         const url = new URL(request.url);
         const requestKey = [
-          url.searchParams.get("expert_id") ?? "autopilot",
+          "autopilot",
           url.searchParams.get("include_episodes"),
           url.searchParams.get("include_communities"),
         ].join(":");
         graphRequests.set(requestKey, (graphRequests.get(requestKey) ?? 0) + 1);
         return HttpResponse.json({
           ...getGetV2GetGraphResponseMock200(),
+          expert_id: null,
           nodes: [],
           edges: [],
           truncated: false,
         });
       }),
+      http.get(
+        "*/api/admin/memory/:userId/experts/:expertId/graph",
+        ({ request, params }) => {
+          const url = new URL(request.url);
+          const requestKey = [
+            String(params.expertId),
+            url.searchParams.get("include_episodes"),
+            url.searchParams.get("include_communities"),
+          ].join(":");
+          graphRequests.set(
+            requestKey,
+            (graphRequests.get(requestKey) ?? 0) + 1,
+          );
+          return HttpResponse.json({
+            ...getGetV2GetGraphResponseMock200(),
+            expert_id: String(params.expertId),
+            nodes: [],
+            edges: [],
+            truncated: false,
+          });
+        },
+      ),
       getPostV2TriggerDreamPassMockHandler202({
         ...getPostV2TriggerDreamPassResponseMock202(),
         job_id: "job-dream-cache",

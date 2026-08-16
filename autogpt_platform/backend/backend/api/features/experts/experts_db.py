@@ -145,7 +145,11 @@ async def list_experts(user_id: str) -> list[Expert]:
 
 
 async def get_expert(
-    user_id: str, expert_id: str, *, include_workflows: bool = True
+    user_id: str,
+    expert_id: str,
+    *,
+    include_workflows: bool = True,
+    include_archived: bool = False,
 ) -> Expert | None:
     """Fetch a hired expert owned by *user_id*.
 
@@ -153,15 +157,23 @@ async def get_expert(
     + StoreListingVersion joins when the caller only needs the expert's own
     columns. The returned model then always carries an empty ``workflows``
     list — never use that flag to decide whether workflows are installed.
+
+    Archived experts are hidden by default so product surfaces treat them as
+    gone. Set ``include_archived=True`` when the caller must distinguish
+    "archived" (reversible — re-hire revives) from "deleted": the scheduler's
+    scope gate uses this to skip firings without destroying schedules that
+    an un-archive should bring back.
     """
+    where: prisma.types.ExpertWhereInput = {
+        "id": expert_id,
+        "ownerUserId": user_id,
+        "isTemplate": False,
+        "visibility": ResourceVisibility.PRIVATE,
+    }
+    if not include_archived:
+        where["isArchived"] = False
     row = await prisma.models.Expert.prisma().find_first(
-        where={
-            "id": expert_id,
-            "ownerUserId": user_id,
-            "isTemplate": False,
-            "isArchived": False,
-            "visibility": ResourceVisibility.PRIVATE,
-        },
+        where=where,
         include=_WORKFLOW_INCLUDE if include_workflows else None,
     )
     if row is None:
