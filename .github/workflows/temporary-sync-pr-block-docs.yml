@@ -47,7 +47,8 @@ jobs:
           poetry run python scripts/generate_block_docs.py
           cd ../..
           cp docs/integrations/block-integrations/misc.md /tmp/misc.md
-          git merge --abort
+          git reset --hard ORIG_HEAD
+          git clean -fd
           cp /tmp/misc.md docs/integrations/block-integrations/misc.md
 
       - name: Commit generated docs and remove temporary workflow
