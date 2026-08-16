@@ -1,0 +1,59 @@
+name: Temporary sync PR block docs
+
+on:
+  push:
+    branches: [fix-ollama-credentials]
+    paths:
+      - .github/workflows/temporary-sync-pr-block-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix-ollama-credentials
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        working-directory: autogpt_platform/backend
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install backend dependencies
+        working-directory: autogpt_platform/backend
+        run: |
+          poetry install --only main
+          poetry run prisma generate
+
+      - name: Generate docs against current upstream dev
+        run: |
+          git remote add upstream https://github.com/Significant-Gravitas/AutoGPT.git
+          git fetch upstream dev
+          git merge --no-commit --no-ff upstream/dev
+          cd autogpt_platform/backend
+          poetry run python scripts/generate_block_docs.py
+          cd ../..
+          cp docs/integrations/block-integrations/misc.md /tmp/misc.md
+          git merge --abort
+          cp /tmp/misc.md docs/integrations/block-integrations/misc.md
+
+      - name: Commit generated docs and remove temporary workflow
+        run: |
+          rm .github/workflows/temporary-sync-pr-block-docs.yml
+          git config user.name "Iitian001"
+          git config user.email "160615932+Iitian001@users.noreply.github.com"
+          git add docs/integrations/block-integrations/misc.md .github/workflows/temporary-sync-pr-block-docs.yml
+          git diff --cached --check
+          git commit -m "docs(platform): sync generated block docs with dev"
+          git push origin HEAD:fix-ollama-credentials
