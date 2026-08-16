@@ -52,6 +52,15 @@ def _get_loop_state() -> _LoopIngestState:
 _WORKER_IDLE_TIMEOUT = 60
 
 
+class MemoryScopeViolationError(ValueError):
+    """An ingestion payload targeted a different memory group than its worker.
+
+    This is the worker's only isolation check — every payload that would
+    cross an AutoPilot/expert memory boundary funnels through it — so it is
+    raised (and logged) distinctly from transient ingestion failures.
+    """
+
+
 class IngestionCompletion:
     """Tracks completion of a specific set of enqueued episodes.
 
@@ -276,7 +285,9 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
             completion: IngestionCompletion | None = payload.pop("_completion", None)
             try:
                 if payload.get("group_id") != group_id:
-                    raise ValueError("Ingestion payload memory group mismatch")
+                    raise MemoryScopeViolationError(
+                        "Ingestion payload memory group mismatch"
+                    )
                 client = await get_graphiti_client(group_id)
                 # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) —
                 # pop it before the **payload spread. Present only for dream
@@ -302,6 +313,15 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     await _stamp_edge_metadata(
                         client, group_id, result, edge_metadata, user_id
                     )
+            except MemoryScopeViolationError:
+                logger.error(
+                    "MEMORY ISOLATION VIOLATION: ingestion payload for user %s "
+                    "targeted group %r but the worker owns group %r — "
+                    "episode dropped",
+                    user_id[:12],
+                    payload.get("group_id"),
+                    group_id,
+                )
             except Exception:
                 logger.warning(
                     "Graphiti ingestion failed for user %s",

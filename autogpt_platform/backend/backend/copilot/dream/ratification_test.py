@@ -175,6 +175,33 @@ async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratifie
 
 
 @pytest.mark.asyncio
+async def test_supersede_failure_is_reported_not_silently_dropped(mocker, fake_redis):
+    """An edge the group-scoped supersede can't match (legacy write without a
+    group_id property, or a query error) must land in per_edge_errors —
+    otherwise it is silently re-examined by every future sweep forever."""
+    edge = {
+        "uuid": "edge-legacy",
+        "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
+    }
+    driver = _make_driver(records_for_list=[edge])
+    mocker.patch.object(
+        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
+    )
+    mocker.patch.object(
+        ratification_mod,
+        "mark_edges_superseded",
+        AsyncMock(side_effect=lambda driver, uuids, **kw: ([], list(uuids))),
+    )
+
+    result = await run_ratification_pass("u-legacy")
+
+    assert result.superseded_count == 0
+    assert len(result.per_edge_errors) == 1
+    assert "edge-legacy" in result.per_edge_errors[0]
+    assert "supersede_failed" in result.per_edge_errors[0]
+
+
+@pytest.mark.asyncio
 async def test_tentative_edge_within_grace_without_hits_is_untouched(
     mocker, fake_redis, stub_mark_superseded
 ):
