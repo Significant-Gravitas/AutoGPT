@@ -269,15 +269,26 @@ async def _expert_scope_status(
 ) -> Literal["active", "missing", "unavailable"]:
     """Resolve an expert schedule's owner/archive state without guessing.
 
-    ``missing`` covers deleted, archived, and wrong-owner IDs because the
-    experts accessor intentionally exposes all three as not found.
-    ``unavailable`` is kept distinct so a transient DB/RPC failure skips the
-    turn without permanently deleting a valid recurring schedule.
+    ``missing`` means the row is truly gone (deleted, or a wrong-owner probe):
+    the strict lookup misses AND a lenient existence check (which ignores
+    visibility/archive state) misses too. An expert that still exists but is
+    not currently accessible — archived, or no longer PRIVATE — maps to
+    ``unavailable`` so the schedule survives for recovery instead of
+    self-deleting; only ``missing`` is allowed to trigger deletion.
+    ``unavailable`` also covers a transient DB/RPC failure for the same
+    reason.
     """
     try:
         expert = await experts_db().get_expert(
             user_id, expert_id, include_workflows=False
         )
+        if expert is not None and not expert.is_archived:
+            return "active"
+        if expert is not None or await experts_db().expert_row_exists(
+            user_id, expert_id
+        ):
+            return "unavailable"
+        return "missing"
     except Exception:
         logger.warning(
             "Could not validate expert scope %s for scheduled copilot turn",
@@ -285,7 +296,6 @@ async def _expert_scope_status(
             exc_info=True,
         )
         return "unavailable"
-    return "active" if expert is not None and not expert.is_archived else "missing"
 
 
 async def _execute_copilot_turn(**kwargs):
@@ -1986,6 +1996,15 @@ class Scheduler(AppService):
         to bound their respective transient retry paths; normal callers should
         leave both at 0.
         """
+        # Mirror add_graph_execution_schedule: validate the expert scope at
+        # creation (active, owned, PRIVATE) and pin the schedule to the
+        # owner's personal tenancy, instead of persisting a job that can only
+        # ever skip at fire time.
+        if expert_id is not None:
+            organization_id, team_id = run_async(
+                experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+            )
+
         user_timezone = _resolve_timezone(user_timezone, user_id)
         trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
         job_args = CopilotTurnJobArgs(

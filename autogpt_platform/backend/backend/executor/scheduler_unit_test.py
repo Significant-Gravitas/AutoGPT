@@ -27,6 +27,7 @@ from backend.executor.scheduler import (
     _cleanup_old_schedules_without_id,
     _execute_copilot_turn,
     _execute_graph,
+    _expert_scope_status,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
@@ -958,6 +959,57 @@ async def test_execute_graph_retries_missing_workspace_on_next_tick(caplog):
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
+# ---------------------------------------------------------------------------
+# _expert_scope_status
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_active_for_accessible_expert():
+    store = MagicMock()
+    store.get_expert = AsyncMock(return_value=MagicMock(is_archived=False))
+    store.expert_row_exists = AsyncMock()
+
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        assert await _expert_scope_status("user-1", "expert-1") == "active"
+
+    store.expert_row_exists.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_existing_but_inaccessible_is_unavailable():
+    """An expert that still EXISTS but is archived or no longer PRIVATE must
+    map to the non-deleting skip path — only a truly-gone row may trigger the
+    irreversible schedule self-delete."""
+    store = MagicMock()
+    store.get_expert = AsyncMock(return_value=None)
+    store.expert_row_exists = AsyncMock(return_value=True)
+
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        assert await _expert_scope_status("user-1", "expert-1") == "unavailable"
+
+    store.expert_row_exists.assert_awaited_once_with("user-1", "expert-1")
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_missing_only_when_row_is_gone():
+    store = MagicMock()
+    store.get_expert = AsyncMock(return_value=None)
+    store.expert_row_exists = AsyncMock(return_value=False)
+
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        assert await _expert_scope_status("user-1", "expert-1") == "missing"
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_lookup_failure_is_unavailable():
+    store = MagicMock()
+    store.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
+
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        assert await _expert_scope_status("user-1", "expert-1") == "unavailable"
+
+
 def test_copilot_turn_args_expert_id_defaults_to_none():
     """Legacy persisted copilot-turn kwargs predate expert attribution; they
     must deserialize with ``expert_id=None``."""
@@ -986,8 +1038,19 @@ def test_add_copilot_turn_schedule_persists_expert_scope():
     scheduler = Scheduler(register_system_tasks=False)
     job = _mock_job({})
     run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
 
-    with patch.object(scheduler, "_persist_schedule", return_value=job) as persist:
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(
+            f"{_SCHEDULER_PATH}.run_async",
+            side_effect=lambda coro, *a, **k: asyncio.run(coro),
+        ),
+        patch.object(scheduler, "_persist_schedule", return_value=job) as persist,
+    ):
         info = scheduler.add_copilot_turn_schedule(
             user_id="user-1",
             session_id=None,
@@ -996,14 +1059,80 @@ def test_add_copilot_turn_schedule_persists_expert_scope():
             user_timezone="UTC",
             cap_retry_count=1,
             expert_lookup_retry_count=1,
+            organization_id="shared-org",
+            team_id="shared-team",
             expert_id="expert-1",
         )
 
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "user-1", "expert-1"
+    )
     job_args = persist.call_args.kwargs["job_args"]
     assert job_args.cap_retry_count == 1
     assert job_args.expert_lookup_retry_count == 1
     assert job_args.expert_id == "expert-1"
+    # Expert validation at creation also pins the job to personal tenancy,
+    # mirroring add_graph_execution_schedule.
+    assert job_args.organization_id == "personal-org"
+    assert job_args.team_id == "personal-team"
     assert info.expert_id == "expert-1"
+
+
+def test_add_copilot_turn_schedule_rejects_invalid_expert_before_persisting():
+    scheduler = Scheduler(register_system_tasks=False)
+    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        side_effect=ValueError("not found")
+    )
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(
+            f"{_SCHEDULER_PATH}.run_async",
+            side_effect=lambda coro, *a, **k: asyncio.run(coro),
+        ),
+        patch.object(scheduler, "_persist_schedule") as persist,
+        pytest.raises(ValueError, match="not found"),
+    ):
+        scheduler.add_copilot_turn_schedule(
+            user_id="attacker",
+            session_id=None,
+            message="daily brief",
+            run_at=run_at,
+            user_timezone="UTC",
+            expert_id="victim-expert",
+        )
+
+    persist.assert_not_called()
+
+
+def test_add_copilot_turn_schedule_skips_expert_lookup_for_autopilot():
+    scheduler = Scheduler(register_system_tasks=False)
+    job = _mock_job({})
+    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch.object(scheduler, "_persist_schedule", return_value=job) as persist,
+    ):
+        scheduler.add_copilot_turn_schedule(
+            user_id="user-1",
+            session_id=None,
+            message="daily brief",
+            run_at=run_at,
+            user_timezone="UTC",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    expert_store.resolve_private_expert_tenancy.assert_not_awaited()
+    job_args = persist.call_args.kwargs["job_args"]
+    assert job_args.expert_id is None
+    assert job_args.organization_id == "org-1"
+    assert job_args.team_id == "team-1"
 
 
 def test_add_graph_schedule_pins_expert_to_personal_tenancy():
