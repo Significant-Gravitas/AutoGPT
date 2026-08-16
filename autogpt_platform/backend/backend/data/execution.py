@@ -1131,6 +1131,11 @@ async def update_graph_execution_stats(
 ) -> GraphExecution | None:
     """Update a graph_exec's status and/or stats.
 
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+    Callers are internal executor/scheduler paths (directly or via the
+    DatabaseManager RPC) operating on a `graph_exec_id` they obtained from
+    an ownership-checked fetch.
+
     When `status` transitions the row into a terminal state and
     `cascade_running_children` is True (default), all of its child node
     executions still in `RUNNING` are batch-updated to `FAILED`. This
