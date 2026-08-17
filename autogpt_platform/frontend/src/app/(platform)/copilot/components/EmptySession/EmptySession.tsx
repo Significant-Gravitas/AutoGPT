@@ -23,6 +23,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
 import { GreetingLoader } from "./components/GreetingLoader";
+import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
@@ -39,7 +40,9 @@ interface Props {
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
-  isAdoptingExpertSession?: boolean;
+  isInteractionLocked?: boolean;
+  isKickoffStarting?: boolean;
+  expertName?: string;
 }
 
 export function EmptySession({
@@ -49,7 +52,9 @@ export function EmptySession({
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
-  isAdoptingExpertSession,
+  isInteractionLocked,
+  isKickoffStarting,
+  expertName,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -60,7 +65,7 @@ export function EmptySession({
   const pulseChips = usePulseChips();
   const { options, recipient, isLoadingRecipient, selectRecipient } =
     useRecipientPicker();
-  const isComposerDisabled = isCreatingSession || !!isAdoptingExpertSession;
+  const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -90,6 +95,10 @@ export function EmptySession({
       mql2.removeEventListener("change", handleResize);
     };
   }, []);
+
+  if (isKickoffStarting) {
+    return <ExpertKickoffLoader expertName={expertName} />;
+  }
 
   return (
     <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
