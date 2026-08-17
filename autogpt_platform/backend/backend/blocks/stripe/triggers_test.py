@@ -102,6 +102,78 @@ async def test_missing_unit_amount_falls_back_to_zero():
     assert outputs["amount_cents"] == 0
 
 
+@pytest.mark.parametrize(
+    "events, expected",
+    [
+        (
+            {"created": True, "updated": True, "deleted": False},
+            ["customer.subscription.created", "customer.subscription.updated"],
+        ),
+        (
+            {"created": False, "updated": False, "deleted": True},
+            ["customer.subscription.deleted"],
+        ),
+        (
+            {"created": True, "updated": True, "deleted": True},
+            [
+                "customer.subscription.created",
+                "customer.subscription.updated",
+                "customer.subscription.deleted",
+            ],
+        ),
+    ],
+)
+def test_event_filter_maps_to_stripe_event_names(events, expected):
+    """The toggles must expand to the exact names registered with Stripe.
+
+    A typo in `event_format`, or a toggle that stops reaching the filter, would
+    silently register the wrong events — the webhook would then be live but
+    never deliver.
+    """
+    config = StripeSubscriptionTriggerBlock().webhook_config
+    assert config is not None
+    derived = [
+        config.event_format.format(event=name)
+        for name, enabled in events.items()
+        if enabled
+    ]
+    assert derived == expected
+
+
+@pytest.mark.parametrize(
+    "event_type, enabled",
+    [
+        ("customer.subscription.created", True),
+        ("customer.subscription.deleted", False),
+        ("customer.subscription.trial_will_end", False),
+    ],
+)
+def test_block_only_triggers_on_enabled_events(event_type, enabled):
+    """The same mapping is used on the way back in, to route a delivery."""
+    block = StripeSubscriptionTriggerBlock()
+    trigger_config = {"events": {"created": True, "updated": True, "deleted": False}}
+    assert block.is_triggered_by_event_type(trigger_config, event_type) is enabled
+
+
+@pytest.mark.asyncio
+async def test_updated_event_exposes_previous_attributes():
+    """`updated` fires on any mutation; this is what separates an upgrade."""
+    payload = copy.deepcopy(load_example_payload("customer.subscription.updated"))
+    payload["data"]["previous_attributes"] = {"items": {"data": [{"price": "old"}]}}
+
+    outputs = await run_block(payload)
+
+    assert outputs["previous_attributes"] == {"items": {"data": [{"price": "old"}]}}
+
+
+@pytest.mark.asyncio
+async def test_previous_attributes_defaults_to_empty_mapping():
+    """Absent on created/deleted — must be {} rather than None for a dict output."""
+    outputs = await run_block(load_example_payload("customer.subscription.created"))
+
+    assert outputs["previous_attributes"] == {}
+
+
 @pytest.mark.asyncio
 async def test_malformed_payload_emits_no_partial_output():
     """Yielding "error" aborts the block, so nothing may be emitted before it."""

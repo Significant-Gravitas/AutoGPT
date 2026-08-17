@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -24,7 +25,7 @@ from ._auth import (
 _PAYLOAD_DIR = Path(__file__).parent / "example_payloads"
 
 
-def load_example_payload(event_type: str) -> dict:
+def load_example_payload(event_type: str) -> dict[str, Any]:
     """Load a bundled example event payload, e.g. `customer.subscription.created`."""
     return json.loads((_PAYLOAD_DIR / f"{event_type}.json").read_text(encoding="utf-8"))
 
@@ -57,7 +58,11 @@ class StripeSubscriptionTriggerBlock(Block):
         events: EventsFilter = SchemaField(
             title="Events",
             description="Subscription lifecycle events to subscribe to. "
-            "Cancellation and churn workflows need `deleted`, which is off by default.",
+            "Cancellation and churn workflows need `deleted`, which is off by "
+            "default. Note that `updated` is high-volume — Stripe sends it for "
+            "any change to the subscription, including renewals, payment-method "
+            "changes and metadata edits, not just upgrades. Use "
+            "`previous_attributes` to tell an upgrade from routine churn.",
             default_factory=EventsFilter,
             advanced=False,
         )
@@ -84,18 +89,28 @@ class StripeSubscriptionTriggerBlock(Block):
             description="Unix timestamp of when the subscription was canceled, "
             "or 0 if it has not been canceled"
         )
+        previous_attributes: dict = SchemaField(
+            description="On `updated` events, the changed fields' prior values, as "
+            "sent by Stripe. Empty for other events. Compare against the "
+            "subscription in `payload` to tell an upgrade from a renewal — e.g. a "
+            "key of `items` or `plan` means the plan itself changed."
+        )
         plan_name: str = SchemaField(
             description=(
                 "Nickname of the subscription's first item price. Prices without "
-                "a nickname fall back to the raw price ID (price_...)."
+                "a nickname fall back to the raw price ID (price_...). Only the "
+                "first item is read; see `payload` for multi-item subscriptions."
             )
         )
         plan_interval: str = SchemaField(
-            description="Billing interval: day, week, month or year"
+            description="Billing interval of the first subscription item: "
+            "day, week, month or year"
         )
         amount_cents: int = SchemaField(
-            description="Plan unit amount in the smallest currency unit — cents for "
-            "USD, but whole units for zero-decimal currencies like JPY and KRW"
+            description="Unit amount of the first subscription item, in the smallest "
+            "currency unit — cents for USD, but whole units for zero-decimal "
+            "currencies like JPY and KRW. This is not the subscription total when "
+            "there is more than one item."
         )
         currency: str = SchemaField(description="Three-letter ISO currency code")
         livemode: bool = SchemaField(
@@ -141,6 +156,7 @@ class StripeSubscriptionTriggerBlock(Block):
                 ("status", "active"),
                 ("cancel_at_period_end", False),
                 ("canceled_at", 0),
+                ("previous_attributes", {}),
                 ("plan_name", "Pro Monthly"),
                 ("plan_interval", "month"),
                 ("amount_cents", 2000),
@@ -181,6 +197,9 @@ class StripeSubscriptionTriggerBlock(Block):
         yield "status", subscription.get("status", "")
         yield "cancel_at_period_end", bool(subscription.get("cancel_at_period_end"))
         yield "canceled_at", subscription.get("canceled_at") or 0
+        yield "previous_attributes", payload.get("data", {}).get(
+            "previous_attributes"
+        ) or {}
         yield "plan_name", plan_name
         yield "plan_interval", plan_interval
         yield "amount_cents", amount_cents

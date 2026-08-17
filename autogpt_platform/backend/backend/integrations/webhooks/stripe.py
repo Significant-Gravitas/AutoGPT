@@ -81,19 +81,22 @@ class StripeWebhooksManager(BaseWebhooksManager):
         v1_sigs: list[str] = []
         for part in sig_header.split(","):
             key, _, value = part.partition("=")
-            if key.strip() == "t":
+            key = key.strip()
+            if key == "t":
                 timestamp = value.strip()
-            elif key.strip() == "v1":
+            elif key == "v1":
                 v1_sigs.append(value.strip())
         if not timestamp or not v1_sigs:
             raise HTTPException(
                 status_code=403, detail="Invalid Stripe-Signature format"
             )
 
-        # Reject stale timestamps
+        # Reject stale timestamps. `int()` parses arbitrarily large values, so
+        # subtracting one from a float raises OverflowError rather than
+        # ValueError — both are just a malformed header, not a server fault.
         try:
             age = abs(time.time() - int(timestamp))
-        except ValueError:
+        except (ValueError, OverflowError):
             raise HTTPException(
                 status_code=403, detail="Invalid Stripe-Signature timestamp"
             )
@@ -168,7 +171,12 @@ class StripeWebhooksManager(BaseWebhooksManager):
             )
 
         data = response.json()
-        # Store Stripe's signing secret in config — it's only returned on creation
+        # Store Stripe's signing secret in config — it's only returned on creation,
+        # so a 200 without it leaves a webhook that can never verify a delivery.
+        if not data.get("id") or not data.get("secret"):
+            raise ValueError(
+                "Stripe webhook registration returned no endpoint ID or signing secret"
+            )
         return data["id"], {SIGNING_SECRET_KEY: data["secret"]}
 
     async def _deregister_webhook(

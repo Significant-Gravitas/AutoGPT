@@ -12,6 +12,7 @@ from backend.data import integrations
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.stripe import (
+    STRIPE_TIMESTAMP_TOLERANCE,
     StripeWebhooksManager,
     StripeWebhookType,
 )
@@ -55,6 +56,16 @@ def sign(timestamp: int, body: bytes = PAYLOAD, secret: str = SIGNING_SECRET) ->
         digestmod=hashlib.sha256,
     ).hexdigest()
     return f"t={timestamp},v1={signature}"
+
+
+def oauth2_credentials() -> OAuth2Credentials:
+    return OAuth2Credentials(
+        id="creds_123",
+        provider="stripe",
+        title="Stripe OAuth",
+        access_token=SecretStr("token"),
+        scopes=[],
+    )
 
 
 def api_key_credentials() -> APIKeyCredentials:
@@ -158,6 +169,33 @@ async def test_verify_signature_tolerates_whitespace_around_values() -> None:
     signature = sign(now).split(",", 1)[1].removeprefix("v1=")
     request = make_request({"Stripe-Signature": f"t= {now} , v1= {signature} "})
     await StripeWebhooksManager.verify_signature(make_webhook(), request)
+
+
+@pytest.mark.asyncio
+async def test_verify_signature_rejects_absurd_timestamp() -> None:
+    """`int()` parses unbounded values, so the float subtraction overflows —
+    a malformed header must still be a 403, not an unhandled 500."""
+    request = make_request({"Stripe-Signature": f"t={'9' * 400},v1=abc"})
+    with pytest.raises(HTTPException) as exc_info:
+        await StripeWebhooksManager.verify_signature(make_webhook(), request)
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_verify_signature_accepts_edge_of_tolerance_window() -> None:
+    """Just inside the 5-minute window is still a valid delivery."""
+    recent = int(time.time()) - (STRIPE_TIMESTAMP_TOLERANCE - 5)
+    request = make_request({"Stripe-Signature": sign(recent)})
+    await StripeWebhooksManager.verify_signature(make_webhook(), request)
+
+
+@pytest.mark.asyncio
+async def test_verify_signature_rejects_just_outside_tolerance_window() -> None:
+    stale = int(time.time()) - (STRIPE_TIMESTAMP_TOLERANCE + 5)
+    request = make_request({"Stripe-Signature": sign(stale)})
+    with pytest.raises(HTTPException) as exc_info:
+        await StripeWebhooksManager.verify_signature(make_webhook(), request)
+    assert exc_info.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -268,13 +306,7 @@ async def test_register_webhook_error_falls_back_when_body_is_not_json() -> None
 
 @pytest.mark.asyncio
 async def test_register_webhook_requires_api_key_credentials() -> None:
-    oauth_credentials = OAuth2Credentials(
-        id="creds_123",
-        provider="stripe",
-        title="Stripe OAuth",
-        access_token=SecretStr("token"),
-        scopes=[],
-    )
+    oauth_credentials = oauth2_credentials()
     with pytest.raises(ValueError):
         await StripeWebhooksManager()._register_webhook(
             credentials=oauth_credentials,
@@ -323,13 +355,7 @@ async def test_deregister_webhook_warns_on_delete_failure(caplog) -> None:
 
 @pytest.mark.asyncio
 async def test_deregister_webhook_skips_non_api_key_credentials() -> None:
-    oauth_credentials = OAuth2Credentials(
-        id="creds_123",
-        provider="stripe",
-        title="Stripe OAuth",
-        access_token=SecretStr("token"),
-        scopes=[],
-    )
+    oauth_credentials = oauth2_credentials()
     with patch(
         "backend.integrations.webhooks.stripe.Requests.delete",
         new=AsyncMock(),
@@ -355,3 +381,25 @@ async def test_deregister_webhook_without_endpoint_id_makes_no_request() -> None
         )
 
     mock_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_register_webhook_rejects_success_body_without_secret() -> None:
+    """A 200 with no signing secret would leave a webhook that can never verify."""
+    response = AsyncMock()
+    response.ok = True
+    response.json = lambda: {"id": "we_new"}
+
+    with patch(
+        "backend.integrations.webhooks.stripe.Requests.post",
+        new=AsyncMock(return_value=response),
+    ):
+        with pytest.raises(ValueError, match="no endpoint ID or signing secret"):
+            await StripeWebhooksManager()._register_webhook(
+                credentials=api_key_credentials(),
+                webhook_type=StripeWebhookType.ACCOUNT,
+                resource="",
+                events=["customer.subscription.created"],
+                ingress_url="https://example.com/ingress",
+                secret="unused",
+            )

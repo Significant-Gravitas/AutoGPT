@@ -38,7 +38,7 @@ triggers.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| events | Subscription lifecycle events to subscribe to. Cancellation and churn workflows need `deleted`, which is off by default. | Events | No |
+| events | Subscription lifecycle events to subscribe to. Cancellation and churn workflows need `deleted`, which is off by default. Note that `updated` is high-volume — Stripe sends it for any change to the subscription, including renewals, payment-method changes and metadata edits, not just upgrades. Use `previous_attributes` to tell an upgrade from routine churn. | Events | No |
 
 ### Outputs
 
@@ -52,9 +52,10 @@ triggers.
 | status | Subscription status: active, trialing, past_due, canceled, etc. | str |
 | cancel_at_period_end | True if the subscription is scheduled to end when the current billing period does, rather than having ended already | bool |
 | canceled_at | Unix timestamp of when the subscription was canceled, or 0 if it has not been canceled | int |
-| plan_name | Nickname of the subscription's first item price. Prices without a nickname fall back to the raw price ID (price_...). | str |
-| plan_interval | Billing interval: day, week, month or year | str |
-| amount_cents | Plan unit amount in the smallest currency unit — cents for USD, but whole units for zero-decimal currencies like JPY and KRW | int |
+| previous_attributes | On `updated` events, the changed fields' prior values, as sent by Stripe. Empty for other events. Compare against the subscription in `payload` to tell an upgrade from a renewal — e.g. a key of `items` or `plan` means the plan itself changed. | Dict[str, Any] |
+| plan_name | Nickname of the subscription's first item price. Prices without a nickname fall back to the raw price ID (price_...). Only the first item is read; see `payload` for multi-item subscriptions. | str |
+| plan_interval | Billing interval of the first subscription item: day, week, month or year | str |
+| amount_cents | Unit amount of the first subscription item, in the smallest currency unit — cents for USD, but whole units for zero-decimal currencies like JPY and KRW. This is not the subscription total when there is more than one item. | int |
 | currency | Three-letter ISO currency code | str |
 | livemode | True for live Stripe data, False for test mode | bool |
 
