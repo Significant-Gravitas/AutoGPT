@@ -113,3 +113,23 @@ async def test_results_without_value_are_excluded_from_values():
 
     assert outputs["values"] == ["Google"]
     assert len(outputs["results"]) == 2
+
+
+def test_filter_type_enum_matches_api_accepted_values():
+    """The /typeahead `type` enum is a closed server-side set; sending a value
+    outside it is a 422, not an empty result. Verified against the live API on
+    2026-08-17 — `industry` was in this enum and is NOT accepted upstream, so
+    pin the set rather than trusting the dropdown to stay plausible."""
+    assert {t.value for t in TypeaheadType} == {
+        "company",
+        "people_industry",
+        "company_industry",
+        "category",
+        "location",
+        "city",
+        "region",
+        "school",
+        "title",
+        "skill",
+        "investor",
+    }

@@ -113,13 +113,20 @@ class TypeaheadType(str, Enum):
     endpoint. Using an enum (rather than free text) prevents silent
     no-result typos and renders as a dropdown in the builder."""
 
+    # Mirrors the `type` enum accepted by GET /typeahead. Industry is split
+    # per-side upstream — people and company industries are separate
+    # taxonomies with differently-cased values — and there is no bare
+    # "industry" type; sending one is a 422.
     COMPANY = "company"
-    INDUSTRY = "industry"
+    PEOPLE_INDUSTRY = "people_industry"
+    COMPANY_INDUSTRY = "company_industry"
     TITLE = "title"
     SKILL = "skill"
     SCHOOL = "school"
     INVESTOR = "investor"
     LOCATION = "location"
+    CITY = "city"
+    REGION = "region"
     CATEGORY = "category"
 
 

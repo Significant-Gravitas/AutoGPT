@@ -26,7 +26,7 @@ class SearchFilterTypeaheadBlock(Block):
     class Input(BlockSchemaInput):
         filter_type: TypeaheadType = SchemaField(
             title="Filter Type",
-            description="Filter type to resolve (company, industry, title, skill, school, investor, location, category)",
+            description="Filter type to resolve. Industry is split per-side: use people_industry for People Search and company_industry for Company Search",
             advanced=False,
         )
         q: str = SchemaField(description="Free-text query to resolve", advanced=False)
