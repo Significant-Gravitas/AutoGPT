@@ -15,7 +15,10 @@ from backend.integrations.webhooks.telegram import (
     TelegramWebhooksManager,
     TelegramWebhookType,
 )
-from backend.util.exceptions import WebhookRegistrationError
+from backend.util.exceptions import (
+    WebhookRegistrationError,
+    WebhookSetupUnavailableError,
+)
 
 
 class _ImmediateMutex:
@@ -566,7 +569,7 @@ async def test_telegram_fails_closed_when_redis_is_unavailable(monkeypatch) -> N
     )
 
     with patch.object(manager, "_get_suitable_auto_webhook_locked", locked_setup):
-        with pytest.raises(WebhookRegistrationError, match="safely lock"):
+        with pytest.raises(WebhookSetupUnavailableError, match="safely lock"):
             await manager.get_suitable_auto_webhook(
                 user_id="user-1",
                 credentials=_credentials(ProviderName.TELEGRAM),
@@ -596,7 +599,7 @@ async def test_telegram_fails_closed_when_lock_acquisition_fails(
     monkeypatch.setattr(telegram, "AsyncRedisKeyedMutex", lambda _redis: mutex)
 
     with patch.object(manager, "_get_suitable_auto_webhook_locked", locked_setup):
-        with pytest.raises(WebhookRegistrationError, match="safely lock"):
+        with pytest.raises(WebhookSetupUnavailableError, match="safely lock"):
             await manager.get_suitable_auto_webhook(
                 user_id="user-1",
                 credentials=_credentials(ProviderName.TELEGRAM),

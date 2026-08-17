@@ -236,7 +236,11 @@ class DeleteScheduleTool(BaseTool):
             )
 
         scheduler = get_scheduler_client()
-        jobs = await scheduler.get_execution_schedules(user_id=user_id)
+        # include_paused: a paused expert schedule or fired one-shot must
+        # still be deletable — the default listing hides them.
+        jobs = await scheduler.get_execution_schedules(
+            user_id=user_id, include_paused=True
+        )
         current = next(
             (
                 job

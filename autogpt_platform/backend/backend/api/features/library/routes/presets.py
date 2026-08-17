@@ -14,6 +14,7 @@ from backend.util.exceptions import (
     MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
+    WebhookSetupUnavailableError,
 )
 
 from .. import db
@@ -185,6 +186,13 @@ async def setup_trigger(
             expert_id=await experts_db.resolve_expert_for_graph(
                 user_id, params.graph_id
             ),
+        )
+    except WebhookSetupUnavailableError as e:
+        # Server-side availability problem (e.g. Redis lock), not a bad
+        # request — retryable, mirroring create_preset's MissingConfigError.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Trigger setup is temporarily unavailable: {e}",
         )
     except WebhookRegistrationError as e:
         raise HTTPException(

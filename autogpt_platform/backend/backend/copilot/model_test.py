@@ -1107,7 +1107,9 @@ async def test_create_expert_session_forces_personal_tenancy(
         return_value=("personal-org", "personal-team")
     )
     mock_chat_db = mocker.MagicMock()
-    mock_chat_db.create_chat_session = mocker.AsyncMock()
+    mock_chat_db.create_chat_session = mocker.AsyncMock(
+        return_value=mocker.MagicMock(expert_id="expert-1")
+    )
     mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
     mocker.patch("backend.copilot.model.chat_db", return_value=mock_chat_db)
     mocker.patch(
@@ -1127,6 +1129,7 @@ async def test_create_expert_session_forces_personal_tenancy(
     )
     assert session.organization_id == "personal-org"
     assert session.team_id == "personal-team"
+    assert session.expert_id == "expert-1"
     assert mock_chat_db.create_chat_session.await_args.kwargs["organization_id"] == (
         "personal-org"
     )

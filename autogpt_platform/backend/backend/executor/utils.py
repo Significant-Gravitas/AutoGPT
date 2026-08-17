@@ -1485,12 +1485,17 @@ async def add_graph_execution(
 
         # Update execution status to QUEUED BEFORE publishing to prevent race condition
         # where two concurrent requests could both publish the same execution
+        # A stuck run persisted without tenancy (nullable organizationId)
+        # must still be recoverable: update_graph_execution_stats raises
+        # when update_tenancy=True with no organization_id, which would
+        # fail the whole requeue — the exact case the admin fallback serves.
+        persist_tenancy = expert_id is not None and organization_id is not None
         updated_exec = await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=ExecutionStatus.QUEUED,
-            update_tenancy=expert_id is not None,
-            organization_id=organization_id if expert_id else None,
-            team_id=team_id if expert_id else None,
+            update_tenancy=persist_tenancy,
+            organization_id=organization_id if persist_tenancy else None,
+            team_id=team_id if persist_tenancy else None,
         )
 
         # Verify the status update succeeded (prevents duplicate queueing in race conditions)

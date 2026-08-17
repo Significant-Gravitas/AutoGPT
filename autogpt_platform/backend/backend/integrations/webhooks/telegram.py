@@ -16,7 +16,11 @@ from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.data.redis_client import get_redis_async
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
+from backend.util.exceptions import (
+    MissingConfigError,
+    WebhookRegistrationError,
+    WebhookSetupUnavailableError,
+)
 from backend.util.request import Requests
 from backend.util.settings import Config
 
@@ -77,7 +81,7 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         try:
             mutex = AsyncRedisKeyedMutex(await get_redis_async())
         except Exception as exc:
-            raise WebhookRegistrationError(
+            raise WebhookSetupUnavailableError(
                 "Could not safely lock Telegram webhook setup"
             ) from exc
 
@@ -93,7 +97,7 @@ class TelegramWebhooksManager(BaseWebhooksManager):
                     timeout=_SETUP_LOCK_ACQUIRE_TIMEOUT_SECONDS,
                 )
             except Exception as exc:
-                raise WebhookRegistrationError(
+                raise WebhookSetupUnavailableError(
                     "Could not safely lock Telegram webhook setup"
                 ) from exc
             return await self._get_suitable_auto_webhook_locked(

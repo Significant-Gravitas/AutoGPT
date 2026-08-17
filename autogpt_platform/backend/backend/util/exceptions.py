@@ -200,6 +200,12 @@ class WebhookRegistrationError(Exception):
     """Registering a webhook with an external service failed."""
 
 
+class WebhookSetupUnavailableError(Exception):
+    """Webhook setup infrastructure (e.g. the Redis setup lock) is
+    temporarily unavailable. Retryable server-side condition — not a
+    configuration problem, so don't map it to a 4xx."""
+
+
 class ExpertRunPausedError(ValueError):
     """An expert-attributed scheduled/triggered run was refused because the
     expert's schedules are paused (weekly credit budget reached or archive).

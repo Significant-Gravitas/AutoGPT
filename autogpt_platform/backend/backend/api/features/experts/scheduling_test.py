@@ -28,6 +28,12 @@ async def test_reattach_rehomes_presets_to_current_personal_tenancy(mocker) -> N
         "prisma",
         return_value=workflow_client,
     )
+    scheduler_client = mocker.MagicMock()
+    scheduler_client.get_execution_schedules = AsyncMock(return_value=[])
+    scheduler_client.resume_schedule = AsyncMock()
+    mocker.patch.object(
+        scheduling, "get_scheduler_client", return_value=scheduler_client
+    )
 
     await scheduling.reattach_expert_triggers("owner", "expert-1")
 

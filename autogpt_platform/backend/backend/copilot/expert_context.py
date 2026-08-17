@@ -25,6 +25,7 @@ import logging
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.data.db_accessors import experts_db
+from backend.util.exceptions import ExpertNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +79,14 @@ async def build_expert_identity_suffix(
         personal_org_id, personal_team_id = await db.resolve_private_expert_tenancy(
             user_id, expert_id
         )
+    except ExpertNotFoundError as e:
+        # Permanent: archived, deleted, or no longer PRIVATE — retrying
+        # can never succeed, so don't tell the user to try again.
+        logger.warning(f"Expert session tenancy owner check failed: {e}")
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
     except Exception as e:
         logger.warning(f"Failed to validate expert session tenancy: {e}")
-        raise ExpertSessionUnavailableError(
-            "The expert for this session is temporarily unavailable."
-        ) from e
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
     if (organization_id, team_id) != (personal_org_id, personal_team_id):
         raise ExpertSessionUnavailableError(
             "This private expert session must be reopened in its personal workspace."
