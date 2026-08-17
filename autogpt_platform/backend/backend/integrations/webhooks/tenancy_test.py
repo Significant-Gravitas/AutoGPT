@@ -98,6 +98,7 @@ async def test_auto_webhook_does_not_reuse_mismatched_tenant(monkeypatch) -> Non
         }
     )
     find_webhook = AsyncMock(return_value=mismatched)
+    find_webhook_any = AsyncMock(return_value=mismatched)
     create_webhook = AsyncMock(return_value=replacement)
 
     with (
@@ -105,6 +106,11 @@ async def test_auto_webhook_does_not_reuse_mismatched_tenant(monkeypatch) -> Non
             integrations,
             "find_webhook_by_credentials_and_props",
             find_webhook,
+        ),
+        patch.object(
+            integrations,
+            "find_webhook_by_credentials_and_props_any_tenant",
+            find_webhook_any,
         ),
         patch.object(manager, "_create_webhook", create_webhook),
     ):
@@ -119,6 +125,58 @@ async def test_auto_webhook_does_not_reuse_mismatched_tenant(monkeypatch) -> Non
         )
 
     assert result == replacement
+
+
+@pytest.mark.asyncio
+async def test_auto_webhook_rehomes_legacy_null_tenancy_row(monkeypatch) -> None:
+    """A pre-tenancy row (NULL org/team) is rehomed to the requested tenancy
+    instead of duplicating the provider-side webhook."""
+    monkeypatch.setattr(
+        webhooks_base.app_config, "platform_base_url", "https://example.com"
+    )
+    manager = GithubWebhooksManager()
+    legacy = _webhook(
+        provider=ProviderName.GITHUB,
+        webhook_type=manager.WebhookType.REPO,
+        resource="owner/repo",
+        organization_id=None,
+        team_id=None,
+    )
+    rehomed = legacy.model_copy(
+        update={"organization_id": "org-1", "team_id": "team-1"}
+    )
+    set_tenancy = AsyncMock(return_value=rehomed)
+    create_webhook = AsyncMock()
+
+    with (
+        patch.object(
+            integrations,
+            "find_webhook_by_credentials_and_props",
+            AsyncMock(return_value=None),
+        ),
+        patch.object(
+            integrations,
+            "find_webhook_by_credentials_and_props_any_tenant",
+            AsyncMock(return_value=legacy),
+        ),
+        patch.object(integrations, "set_webhook_tenancy", set_tenancy),
+        patch.object(manager, "_create_webhook", create_webhook),
+    ):
+        result = await manager.get_suitable_auto_webhook(
+            user_id="user-1",
+            credentials=_credentials(ProviderName.GITHUB),
+            webhook_type=manager.WebhookType.REPO,
+            resource="owner/repo",
+            events=["push"],
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    assert result == rehomed
+    set_tenancy.assert_awaited_once_with(
+        legacy.id, organization_id="org-1", team_id="team-1"
+    )
+    create_webhook.assert_not_awaited()
     find_webhook.assert_awaited_once_with(
         user_id="user-1",
         credentials_id="cred-1",
@@ -568,15 +626,17 @@ async def test_telegram_fails_closed_when_redis_is_unavailable(monkeypatch) -> N
         AsyncMock(side_effect=RuntimeError("redis unavailable")),
     )
 
-    with patch.object(manager, "_get_suitable_auto_webhook_locked", locked_setup):
-        with pytest.raises(WebhookSetupUnavailableError, match="safely lock"):
-            await manager.get_suitable_auto_webhook(
-                user_id="user-1",
-                credentials=_credentials(ProviderName.TELEGRAM),
-                webhook_type=TelegramWebhookType.BOT,
-                resource="",
-                events=["message.text"],
-            )
+    with (
+        patch.object(manager, "_get_suitable_auto_webhook_locked", locked_setup),
+        pytest.raises(WebhookSetupUnavailableError, match="safely lock"),
+    ):
+        await manager.get_suitable_auto_webhook(
+            user_id="user-1",
+            credentials=_credentials(ProviderName.TELEGRAM),
+            webhook_type=TelegramWebhookType.BOT,
+            resource="",
+            events=["message.text"],
+        )
 
     locked_setup.assert_not_awaited()
 
@@ -598,15 +658,17 @@ async def test_telegram_fails_closed_when_lock_acquisition_fails(
     )
     monkeypatch.setattr(telegram, "AsyncRedisKeyedMutex", lambda _redis: mutex)
 
-    with patch.object(manager, "_get_suitable_auto_webhook_locked", locked_setup):
-        with pytest.raises(WebhookSetupUnavailableError, match="safely lock"):
-            await manager.get_suitable_auto_webhook(
-                user_id="user-1",
-                credentials=_credentials(ProviderName.TELEGRAM),
-                webhook_type=TelegramWebhookType.BOT,
-                resource="",
-                events=["message.text"],
-            )
+    with (
+        patch.object(manager, "_get_suitable_auto_webhook_locked", locked_setup),
+        pytest.raises(WebhookSetupUnavailableError, match="safely lock"),
+    ):
+        await manager.get_suitable_auto_webhook(
+            user_id="user-1",
+            credentials=_credentials(ProviderName.TELEGRAM),
+            webhook_type=TelegramWebhookType.BOT,
+            resource="",
+            events=["message.text"],
+        )
 
     # A failed/cancelled acquire may still have taken the Redis lock, so the
     # best-effort release must run (it no-ops when the lock isn't owned).

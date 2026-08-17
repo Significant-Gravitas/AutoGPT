@@ -70,6 +70,11 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             legacy is not None
             and legacy.organization_id is None
             and legacy.team_id is None
+            # Adoption must be event-compatible: the tenancy-scoped lookup
+            # above enforces has_every on events, so mirror it here — a
+            # legacy row subscribed to a different set must not be claimed
+            # (its provider registration wouldn't fire the requested events).
+            and set(events).issubset(set(legacy.events))
         ):
             if organization_id is None and team_id is None:
                 return legacy
