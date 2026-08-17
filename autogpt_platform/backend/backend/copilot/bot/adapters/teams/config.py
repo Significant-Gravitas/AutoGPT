@@ -4,12 +4,18 @@ One bot registration serves every tenant conversation. Unlike Slack there is
 no per-workspace install token: Teams routes everything through the Bot
 Connector, and the bot authenticates itself with an Entra app credential.
 
-Three secrets are required, not two. New bot registrations must be
-**single-tenant** (Microsoft stopped issuing multi-tenant registrations after
-2025-07-31), and a single-tenant bot mints its outbound token against its own
-tenant authority — ``https://login.microsoftonline.com/{TENANT_ID}/...`` —
-so the tenant ID is part of the credential, not an optional extra. Omitting
-it is the single most common cause of 401s from the Connector.
+Three secrets are required, not two. This adapter mints its outbound token
+with a client-credentials grant against a *tenant* authority —
+``https://login.microsoftonline.com/{TENANT_ID}/...`` — so the tenant ID is
+part of the credential rather than an optional extra, and omitting it is the
+single most common cause of 401s from the Connector.
+
+That requirement is about the Azure **Bot** resource, which since 2025-07-31
+must be created as Single Tenant or with a user-assigned managed identity.
+The Entra **app registration** behind it has its own, separate audience
+setting: this adapter does not require that to be single-tenant, so do not
+narrow an existing registration on account of this note — doing so would cut
+off any other integration that relies on it serving external tenants.
 
 Registration checklist (once per environment — dev and prod need separate
 registrations because a bot has exactly ONE messaging endpoint):

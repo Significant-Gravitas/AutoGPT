@@ -1,5 +1,6 @@
 """Tests for the Teams adapter: inbound auth, activity mapping, and sends."""
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -881,18 +882,17 @@ def test_rejection_bodies_do_not_echo_the_reason(app_id):
     assert "not json" not in malformed.text
 
 
-def _wait_until(predicate, timeout: float = 2.0) -> bool:
-    """Give the adapter's fire-and-forget dispatch time to land.
+async def _drain(adapter: TeamsAdapter) -> None:
+    """Await the adapter's fire-and-forget dispatch tasks.
 
     ``_handle_messages_request`` answers 200 and dispatches in a background
     task, so asserting on the handler's side effects immediately is a race.
+    Polling from the test thread does not fix it: without a context manager
+    the TestClient builds a portal per request and tears it down when the call
+    returns, taking the loop that would run the dispatch with it.
     """
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        time.sleep(0.01)
-    return predicate()
+    while adapter._activity_tasks:
+        await asyncio.gather(*tuple(adapter._activity_tasks))
 
 
 def test_unauthenticated_request_is_rejected_when_not_in_playground_mode(app_id):
@@ -920,13 +920,16 @@ def test_route_accepts_a_properly_signed_activity(app_id, signing_key):
     adapter.register_routes(app)
 
     with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
-        response = TestClient(app).post(
-            MESSAGES_PATH,
-            json=_activity(),
-            headers={"Authorization": f"Bearer {_token(signing_key)}"},
-        )
+        # One portal for both the request and the drain, so the dispatch has
+        # a live loop to run on.
+        with TestClient(app) as client:
+            response = client.post(
+                MESSAGES_PATH,
+                json=_activity(),
+                headers={"Authorization": f"Bearer {_token(signing_key)}"},
+            )
+            client.portal.call(_drain, adapter)
     assert response.status_code == 200
-    assert _wait_until(lambda: len(seen) == 1)
     assert [ctx.text for ctx in seen] == ["hello"]
 
 

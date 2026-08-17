@@ -630,9 +630,9 @@ def _inbound_files(activity: dict[str, Any], client: TeamsClient) -> list[Inboun
             files.append(
                 InboundFile(
                     filename=attachment.get("name"),
-                    # Teams does not declare a size on this payload; the fetch
-                    # below bounds the download instead.
-                    size=int(content.get("fileSize") or 0),
+                    # Advisory only — the fetch below is what actually
+                    # bounds the download.
+                    size=_declared_size(content.get("fileSize")),
                     mime_type=content.get("fileType"),
                     fetch=_bounded_fetch(download_url),
                 )
@@ -661,6 +661,18 @@ def _inbound_files(activity: dict[str, Any], client: TeamsClient) -> list[Inboun
     return files
 
 
+def _declared_size(value: Any) -> int:
+    """The sender's claimed size, which the unsigned body may spell anything.
+
+    Only advisory: :func:`_bounded_fetch` enforces the real cap. Raising here
+    would abort the turn, and the dedupe claim stops a redelivery recovering it.
+    """
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _bounded_fetch(
     download_url: str,
     headers: Callable[[], Awaitable[dict[str, str]]] | None = None,
@@ -681,18 +693,18 @@ def _bounded_fetch(
         request_headers = await headers() if headers else {}
         # follow_redirects stays off (httpx's default, pinned here because it
         # is load-bearing): a redirect would land us at an unchecked host.
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
-            async with client.stream(
-                "GET", download_url, headers=request_headers
-            ) as response:
-                response.raise_for_status()
-                chunks: list[bytes] = []
-                total = 0
-                async for chunk in response.aiter_bytes():
-                    total += len(chunk)
-                    if total > config.MAX_ATTACHMENT_BYTES:
-                        raise ValueError("attachment exceeds the size limit")
-                    chunks.append(chunk)
+        async with (
+            httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client,
+            client.stream("GET", download_url, headers=request_headers) as response,
+        ):
+            response.raise_for_status()
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                total += len(chunk)
+                if total > config.MAX_ATTACHMENT_BYTES:
+                    raise ValueError("attachment exceeds the size limit")
+                chunks.append(chunk)
         return b"".join(chunks)
 
     return fetch
