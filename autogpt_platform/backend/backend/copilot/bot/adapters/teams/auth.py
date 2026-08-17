@@ -23,6 +23,7 @@ import asyncio
 import ipaddress
 import logging
 import os
+import socket
 import time
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -244,8 +245,11 @@ def is_fetchable_attachment_url(url: str) -> bool:
     Attachment URLs ride in the activity body, which the Connector token does
     not sign — the same reason ``serviceUrl`` is bound to the token. A fetch
     with no allowlist is a request generator pointed at our own network, so
-    require HTTPS and refuse anything that resolves to a private or
-    link-local address (cloud metadata included).
+    require HTTPS and refuse addresses inside our own network.
+
+    This is the cheap pre-filter only: it reads the URL, and the URL cannot
+    tell us where a name points. :func:`ensure_attachment_host_is_external`
+    is the actual boundary, applied at fetch time.
     """
     try:
         parsed = urlparse(url)
@@ -260,6 +264,38 @@ def is_fetchable_attachment_url(url: str) -> bool:
     if parsed.scheme != "https":
         return False
     return not _is_internal_host(host)
+
+
+async def ensure_attachment_host_is_external(url: str) -> None:
+    """Raise unless every address ``url``'s host resolves to is off our network.
+
+    The text check cannot catch the interesting cases: ``127.1`` and
+    ``2130706433`` are not valid literals to :mod:`ipaddress` but
+    ``getaddrinfo`` resolves both to loopback, and a plain DNS name can point
+    anywhere at all.
+
+    Resolution still races the connect that follows it, so a name that flips
+    between the two would slip through; closing that needs peer-address
+    validation inside the transport. What this removes is every bypass that
+    costs an attacker nothing.
+    """
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError("attachment URL has no host")
+    if (host in _LOOPBACK_HOSTS or host == _CONTAINER_HOST_ALIAS) and (
+        config.allow_unverified_requests()
+    ):
+        return  # Playground attachments are served from the developer's machine.
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(
+            host, parsed.port or 443, proto=socket.IPPROTO_TCP
+        )
+    except socket.gaierror as exc:
+        raise ValueError(f"attachment host {host!r} does not resolve") from exc
+    addresses = {info[4][0] for info in infos}
+    if not addresses or any(_is_internal_host(address) for address in addresses):
+        raise ValueError(f"attachment host {host!r} resolves inside our network")
 
 
 def _is_internal_host(host: str) -> bool:

@@ -1092,6 +1092,38 @@ def test_file_download_urls_that_point_inward_are_skipped(app_id, url):
         assert _inbound_files(activity, MagicMock()) == []
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host",
+    [
+        "127.1",  # shorthand: ipaddress rejects it, getaddrinfo resolves it
+        "2130706433",  # integer form of 127.0.0.1
+        "0177.0.0.1",  # octal form of 127.0.0.1
+        "localhost",  # a name, not a literal
+    ],
+)
+async def test_attachment_hosts_that_resolve_inward_are_refused(app_id, host):
+    """The URL text cannot say where a name points — only resolving can."""
+    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
+        with pytest.raises(ValueError):
+            await auth.ensure_attachment_host_is_external(f"https://{host}/x")
+
+
+@pytest.mark.asyncio
+async def test_an_unresolvable_attachment_host_is_refused(app_id):
+    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
+        with pytest.raises(ValueError):
+            await auth.ensure_attachment_host_is_external(
+                "https://no-such-host.invalid/x"
+            )
+
+
+@pytest.mark.asyncio
+async def test_the_playground_may_still_serve_attachments_from_loopback(app_id):
+    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=True):
+        await auth.ensure_attachment_host_is_external("http://localhost:56150/x")
+
+
 def test_a_normal_sharepoint_download_still_works(app_id):
     from backend.copilot.bot.adapters.teams.adapter import _inbound_files
 

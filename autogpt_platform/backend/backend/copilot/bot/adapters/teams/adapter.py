@@ -674,8 +674,14 @@ def _bounded_fetch(
     """
 
     async def fetch() -> bytes:
+        # Checked here rather than at parse time: this is as close to the
+        # connect as we can get without a custom transport, and the name may
+        # not have resolved the same way when the activity arrived.
+        await auth.ensure_attachment_host_is_external(download_url)
         request_headers = await headers() if headers else {}
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        # follow_redirects stays off (httpx's default, pinned here because it
+        # is load-bearing): a redirect would land us at an unchecked host.
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
             async with client.stream(
                 "GET", download_url, headers=request_headers
             ) as response:
