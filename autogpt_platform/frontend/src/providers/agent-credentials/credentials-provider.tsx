@@ -121,7 +121,7 @@ export default function CredentialsProvider({
   const [systemProviders, setSystemProviders] = useState<Set<string>>(
     new Set(),
   );
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, isUserLoading } = useAuth();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
   const queryClient = useQueryClient();
@@ -287,7 +287,12 @@ export default function CredentialsProvider({
 
   const loadCredentials = useCallback(() => {
     if (!isLoggedIn || providerNames.length === 0) {
-      if (isLoggedIn == false) setProviders({});
+      // Only publish the empty map once auth has actually settled. isLoggedIn
+      // is false while the auth store initializes, so publishing here made a
+      // logged-in user's context briefly non-null and empty — indistinguishable
+      // from "loaded, and this provider is not available to you". null stays
+      // the sole loading sentinel.
+      if (!isUserLoading && !isLoggedIn) setProviders({});
       return;
     }
 
@@ -342,6 +347,7 @@ export default function CredentialsProvider({
   }, [
     api,
     isLoggedIn,
+    isUserLoading,
     providerNames,
     systemProviders,
     createAPIKeyCredentials,
