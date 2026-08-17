@@ -10,7 +10,7 @@ Natural-language search for people, leads or companies using DataForB2B's B2B da
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block sends either a natural-language `query` or a continuation pair of `session_id` and `answers` to DataForB2B's reasoning-search endpoint; mixed or incomplete request modes are rejected. The API translates the query into structured filters and may return `status: needs_input` with `questions` and a `session_id` for a follow-up call. On success, copy `applied_filters` into People Search or Company Search's `filters_json` input and set `offset` to paginate beyond the first page; an `ok` response may still contain an empty `results` list. Client and server errors are caught and surfaced via the `error` output instead of raising an exception.
+The block sends either a natural-language `query` or a continuation pair of `session_id` and `answers` to DataForB2B's reasoning-search endpoint; mixed or incomplete request modes are rejected. The API translates the query into structured filters and may return `status: needs_input` with `questions` and a `session_id` for a follow-up call. On success, copy `applied_filters` into People Search or Company Search's `filters_json` input and set `offset` to paginate beyond the first page; a `complete` response may still contain an empty `results` list. Client and server errors are caught and surfaced via the `error` output instead of raising an exception.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,8 +30,8 @@ The block sends either a natural-language `query` or a continuation pair of `ses
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | result | Full reasoning-search response | Dict[str, Any] |
-| status | 'ok' or 'needs_input' | str |
-| results | Matching results when status is ok | List[Any] |
+| status | 'complete' or 'needs_input' | str |
+| results | Matching results when status is complete | List[Any] |
 | questions | Clarifying questions when status is needs_input | List[Any] |
 | session_id | Session id to continue the search | str |
 | applied_filters | The structured filters the search applied. Feed this into People Search or Company Search 'filters_json' with an offset to paginate beyond the first page. | Dict[str, Any] |

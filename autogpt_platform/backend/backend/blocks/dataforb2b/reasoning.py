@@ -60,9 +60,10 @@ class SmartSearchBlock(Block):
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Full reasoning-search response")
-        status: str = SchemaField(description="'ok' or 'needs_input'", default="")
+        status: str = SchemaField(description="'complete' or 'needs_input'", default="")
         results: list = SchemaField(
-            description="Matching results when status is ok", default_factory=list
+            description="Matching results when status is complete",
+            default_factory=list,
         )
         questions: list = SchemaField(
             description="Clarifying questions when status is needs_input",
@@ -105,9 +106,14 @@ class SmartSearchBlock(Block):
             test_output=[
                 (
                     "result",
-                    {"status": "ok", "total": 1, "count": 1, "results": [{"id": "1"}]},
+                    {
+                        "status": "complete",
+                        "total": 1,
+                        "count": 1,
+                        "results": [{"id": "1"}],
+                    },
                 ),
-                ("status", "ok"),
+                ("status", "complete"),
                 ("results", [{"id": "1"}]),
                 ("questions", []),
                 ("session_id", ""),
@@ -116,7 +122,7 @@ class SmartSearchBlock(Block):
             ],
             test_mock={
                 "reasoning_search": lambda payload, credentials: {
-                    "status": "ok",
+                    "status": "complete",
                     "total": 1,
                     "count": 1,
                     "results": [{"id": "1"}],
@@ -164,7 +170,7 @@ class SmartSearchBlock(Block):
 
         data = await self.reasoning_search(payload, credentials)
         yield "result", data
-        yield "status", data.get("status", "ok")
+        yield "status", data.get("status", "")
         yield "results", data.get("results", []) or []
         yield "questions", data.get("questions", []) or []
         yield "session_id", data.get("session_id", "") or ""

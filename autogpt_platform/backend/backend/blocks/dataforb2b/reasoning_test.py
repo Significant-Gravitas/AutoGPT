@@ -14,19 +14,19 @@ from backend.blocks.dataforb2b._config import (
 from backend.blocks.dataforb2b.reasoning import MAX_RESULTS, SmartSearchBlock
 
 
-async def _run_and_collect(input_data):
+async def _run_and_collect(input_data, response=None):
     block = SmartSearchBlock()
     outputs = {}
+    if response is None:
+        response = {
+            "status": "needs_input",
+            "session_id": "sess-1",
+            "questions": [{"id": "q1", "text": "Which region?"}],
+        }
     with patch.object(
         SmartSearchBlock,
         "reasoning_search",
-        new=AsyncMock(
-            return_value={
-                "status": "needs_input",
-                "session_id": "sess-1",
-                "questions": [{"id": "q1", "text": "Which region?"}],
-            }
-        ),
+        new=AsyncMock(return_value=response),
     ) as mock_search:
         async for name, value in block.run(input_data, credentials=TEST_CREDENTIALS):
             outputs[name] = value
@@ -151,3 +151,19 @@ async def test_max_results_clamped_to_lower_bound():
     )
     _, mock_search = await _run_and_collect(input_data)
     assert mock_search.await_args.args[0]["max_results"] == 1
+
+
+@pytest.mark.asyncio
+async def test_success_status_is_passed_through_verbatim():
+    """The live API returns status='complete' on success, not 'ok'. Verified
+    against api.dataforb2b.ai on 2026-08-17. Graph authors branch on this
+    value, so it must reach them unaltered rather than being normalized."""
+    input_data = SmartSearchBlock.Input(
+        credentials=TEST_CREDENTIALS_META_INPUT,
+        query="marketing directors",
+    )
+    outputs, _ = await _run_and_collect(
+        input_data,
+        response={"status": "complete", "total": 121, "results": [{"id": "1"}]},
+    )
+    assert outputs["status"] == "complete"
