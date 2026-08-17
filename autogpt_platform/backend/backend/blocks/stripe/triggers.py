@@ -24,6 +24,15 @@ from ._auth import (
 _PAYLOAD_DIR = Path(__file__).parent / "example_payloads"
 
 
+def load_example_payload(event_type: str) -> dict:
+    """Load a bundled example event payload, e.g. `customer.subscription.created`."""
+    return json.loads((_PAYLOAD_DIR / f"{event_type}.json").read_text(encoding="utf-8"))
+
+
+# Read once at import; `Block.__init__` runs on every block-registry cache miss.
+EXAMPLE_SUBSCRIPTION_CREATED = load_example_payload("customer.subscription.created")
+
+
 class StripeSubscriptionTriggerBlock(Block):
     """
     Triggers whenever a Stripe subscription is created, upgraded, or cancelled.
@@ -65,6 +74,14 @@ class StripeSubscriptionTriggerBlock(Block):
         status: str = SchemaField(
             description="Subscription status: active, trialing, past_due, canceled, etc."
         )
+        cancel_at_period_end: bool = SchemaField(
+            description="True if the subscription is scheduled to end when the "
+            "current billing period does, rather than having ended already"
+        )
+        canceled_at: int = SchemaField(
+            description="Unix timestamp of when the subscription was canceled, "
+            "or 0 if it has not been canceled"
+        )
         plan_name: str = SchemaField(
             description=(
                 "Nickname of the subscription's first item price. Prices without "
@@ -84,13 +101,9 @@ class StripeSubscriptionTriggerBlock(Block):
         )
 
     def __init__(self):
+        # Imported here (as in the other trigger blocks) to avoid the import
+        # cycle between the block package and the webhook managers.
         from backend.integrations.webhooks.stripe import StripeWebhookType
-
-        example_payload = json.loads(
-            (_PAYLOAD_DIR / "customer.subscription.created.json").read_text(
-                encoding="utf-8"
-            )
-        )
 
         super().__init__(
             id="bc05f7ef-ba6f-4cb7-a899-3913b745ed11",
@@ -112,15 +125,17 @@ class StripeSubscriptionTriggerBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "events": {"created": True, "updated": True, "deleted": False},
-                "payload": example_payload,
+                "payload": EXAMPLE_SUBSCRIPTION_CREATED,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                ("payload", example_payload),
+                ("payload", EXAMPLE_SUBSCRIPTION_CREATED),
                 ("event_type", "customer.subscription.created"),
                 ("subscription_id", "sub_1OxK2fLkdIwHu7ixABCDEFGH"),
                 ("customer_id", "cus_Pq1234ABCDEF"),
                 ("status", "active"),
+                ("cancel_at_period_end", False),
+                ("canceled_at", 0),
                 ("plan_name", "Pro Monthly"),
                 ("plan_interval", "month"),
                 ("amount_cents", 2000),
@@ -131,32 +146,38 @@ class StripeSubscriptionTriggerBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         payload = input_data.payload
-        yield "payload", payload
 
+        # Parse before yielding anything: a yield on "error" aborts the block
+        # with a BlockExecutionError, so emitting outputs first would leave the
+        # node both partially succeeded and failed.
         try:
             subscription = payload["data"]["object"]
 
             # Plan info lives on the first subscription item; older Stripe API
-            # versions only expose it as a top-level `plan`.
+            # versions only expose it as a top-level `plan`. The two shapes
+            # differ only in where the interval and amount live.
             if items := subscription.get("items", {}).get("data", []):
                 price = items[0].get("price", {})
-                plan_name = price.get("nickname") or price.get("id", "")
                 plan_interval = price.get("recurring", {}).get("interval", "")
                 amount_cents = price.get("unit_amount") or 0
             else:
-                plan = subscription.get("plan", {})
-                plan_name = plan.get("nickname") or plan.get("id", "")
-                plan_interval = plan.get("interval", "")
-                amount_cents = plan.get("amount") or 0
-
-            yield "event_type", payload.get("type", "")
-            yield "subscription_id", subscription.get("id", "")
-            yield "customer_id", subscription.get("customer", "")
-            yield "status", subscription.get("status", "")
-            yield "plan_name", plan_name
-            yield "plan_interval", plan_interval
-            yield "amount_cents", amount_cents
-            yield "currency", subscription.get("currency", "")
-            yield "livemode", payload.get("livemode", False)
+                price = subscription.get("plan", {})
+                plan_interval = price.get("interval", "")
+                amount_cents = price.get("amount") or 0
+            plan_name = price.get("nickname") or price.get("id", "")
         except (KeyError, TypeError) as e:
             yield "error", f"Failed to parse Stripe subscription payload: {e}"
+            return
+
+        yield "payload", payload
+        yield "event_type", payload.get("type", "")
+        yield "subscription_id", subscription.get("id", "")
+        yield "customer_id", subscription.get("customer", "")
+        yield "status", subscription.get("status", "")
+        yield "cancel_at_period_end", bool(subscription.get("cancel_at_period_end"))
+        yield "canceled_at", subscription.get("canceled_at") or 0
+        yield "plan_name", plan_name
+        yield "plan_interval", plan_interval
+        yield "amount_cents", amount_cents
+        yield "currency", subscription.get("currency", "")
+        yield "livemode", payload.get("livemode", False)

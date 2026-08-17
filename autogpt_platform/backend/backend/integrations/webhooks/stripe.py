@@ -10,7 +10,7 @@ from strenum import StrEnum
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.request import Requests
+from backend.util.request import Requests, Response
 
 from ._base import BaseWebhooksManager
 
@@ -23,6 +23,21 @@ STRIPE_TIMESTAMP_TOLERANCE = 300
 
 class StripeWebhookType(StrEnum):
     ACCOUNT = "account"
+
+
+def _error_message(response: Response) -> str:
+    """
+    Pull Stripe's error message out of a failed response.
+
+    Falls back to the status code: an error from a proxy in front of Stripe
+    (or a 5xx HTML page) isn't necessarily JSON, and a JSONDecodeError here
+    would mask the actual failure.
+    """
+    try:
+        message = response.json().get("error", {}).get("message")
+    except Exception:
+        message = None
+    return message or f"HTTP {response.status}"
 
 
 class StripeWebhooksManager(BaseWebhooksManager):
@@ -134,9 +149,8 @@ class StripeWebhooksManager(BaseWebhooksManager):
         )
 
         if not response.ok:
-            error = response.json().get("error", {})
             raise ValueError(
-                f"Stripe webhook registration failed: {error.get('message', response.status)}"
+                f"Stripe webhook registration failed: {_error_message(response)}"
             )
 
         data = response.json()
@@ -163,8 +177,7 @@ class StripeWebhooksManager(BaseWebhooksManager):
         )
 
         if response.status not in (200, 404):
-            error = response.json().get("error", {})
             logger.warning(
                 f"Failed to deregister Stripe webhook {endpoint_id}: "
-                f"{error.get('message', response.status)}"
+                f"{_error_message(response)}"
             )

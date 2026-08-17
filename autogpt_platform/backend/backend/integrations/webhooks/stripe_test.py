@@ -2,10 +2,11 @@ import hashlib
 import hmac
 import json
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, Request
+from pydantic import SecretStr
 
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
@@ -57,8 +58,6 @@ def sign(timestamp: int, body: bytes = PAYLOAD, secret: str = SIGNING_SECRET) ->
 
 
 def api_key_credentials() -> APIKeyCredentials:
-    from pydantic import SecretStr
-
     return APIKeyCredentials(
         id="creds_123",
         provider="stripe",
@@ -204,12 +203,57 @@ async def test_register_webhook_form_encodes_events_and_stores_signing_secret() 
 
 
 @pytest.mark.asyncio
+async def test_register_webhook_surfaces_stripe_error_message() -> None:
+    response = AsyncMock()
+    response.ok = False
+    response.status = 400
+    response.json = lambda: {"error": {"message": "You have reached the maximum"}}
+
+    with patch(
+        "backend.integrations.webhooks.stripe.Requests.post",
+        new=AsyncMock(return_value=response),
+    ):
+        with pytest.raises(ValueError, match="You have reached the maximum"):
+            await StripeWebhooksManager()._register_webhook(
+                credentials=api_key_credentials(),
+                webhook_type=StripeWebhookType.ACCOUNT,
+                resource="",
+                events=["customer.subscription.created"],
+                ingress_url="https://example.com/ingress",
+                secret="unused",
+            )
+
+
+@pytest.mark.asyncio
+async def test_register_webhook_error_falls_back_when_body_is_not_json() -> None:
+    """A 5xx from a proxy in front of Stripe isn't JSON; don't mask it."""
+    response = AsyncMock()
+    response.ok = False
+    response.status = 502
+    response.json = MagicMock(side_effect=ValueError("not JSON"))
+
+    with patch(
+        "backend.integrations.webhooks.stripe.Requests.post",
+        new=AsyncMock(return_value=response),
+    ):
+        with pytest.raises(ValueError, match="HTTP 502"):
+            await StripeWebhooksManager()._register_webhook(
+                credentials=api_key_credentials(),
+                webhook_type=StripeWebhookType.ACCOUNT,
+                resource="",
+                events=["customer.subscription.created"],
+                ingress_url="https://example.com/ingress",
+                secret="unused",
+            )
+
+
+@pytest.mark.asyncio
 async def test_register_webhook_requires_api_key_credentials() -> None:
     oauth_credentials = OAuth2Credentials(
         id="creds_123",
         provider="stripe",
         title="Stripe OAuth",
-        access_token="token",  # type: ignore[arg-type]
+        access_token=SecretStr("token"),
         scopes=[],
     )
     with pytest.raises(ValueError):

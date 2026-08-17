@@ -707,7 +707,12 @@ async def webhook_ingress_generic(
     except NotFoundError as e:
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    logger.debug(f"Webhook #{webhook_id}: {webhook}")
+    # `secret` and `config` are excluded: both hold signing secrets — the
+    # platform-generated one, and provider-issued ones like Stripe's whsec_,
+    # Airtable's mac_secret and Exa's exa_secret — that must not reach the logs.
+    logger.debug(
+        f"Webhook #{webhook_id}: {webhook.model_dump(exclude={'secret', 'config'})}"
+    )
 
     user_id = webhook.user_id
     try:

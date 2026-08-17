@@ -19,6 +19,16 @@ over the raw body, with a five-minute replay window — before the block fires.
 Plan details are read from the subscription's first item price, falling back to the
 top-level `plan` object on older Stripe API versions. The endpoint is deleted from
 your Stripe account when the last trigger using it goes away.
+
+Deliveries that fail verification never reach the block: a missing or malformed
+`Stripe-Signature` header, a signature that doesn't match, or a timestamp outside
+the five-minute window are all rejected with `403`, and an event with no `type` is
+rejected with `400`. If a delivery passes verification but its subscription object
+can't be parsed, the block fails with a parse error rather than emitting partial
+outputs.
+
+Stripe caps each account at 16 webhook endpoints, and every trigger registers its
+own — an account with many Stripe triggers can exhaust that limit.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,6 +47,8 @@ your Stripe account when the last trigger using it goes away.
 | subscription_id | Stripe subscription ID (sub_...) | str |
 | customer_id | Stripe customer ID (cus_...) | str |
 | status | Subscription status: active, trialing, past_due, canceled, etc. | str |
+| cancel_at_period_end | True if the subscription is scheduled to end when the current billing period does, rather than having ended already | bool |
+| canceled_at | Unix timestamp of when the subscription was canceled, or 0 if it has not been canceled | int |
 | plan_name | Nickname of the subscription's first item price. Prices without a nickname fall back to the raw price ID (price_...). | str |
 | plan_interval | Billing interval: month or year | str |
 | amount_cents | Plan unit amount in the smallest currency unit (e.g. cents for USD) | int |
@@ -45,13 +57,11 @@ your Stripe account when the last trigger using it goes away.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Post a message to a team Slack or Discord channel whenever someone subscribes or
-upgrades, wiring `customer_id`, `plan_name`, and `amount_cents` into the notification.
-Because the events come from Stripe rather than an internal database, only real
-paying customers are counted.
+**Revenue Notifications**: Post to a team Slack or Discord channel whenever someone subscribes or upgrades, wiring `customer_id`, `plan_name`, and `amount_cents` into the message. Because the events come from Stripe rather than an internal database, only real paying customers are counted.
 
-Other uses: kick off an onboarding email sequence on `customer.subscription.created`,
-or start a win-back workflow on `customer.subscription.deleted`.
+**Onboarding Sequences**: Kick off a welcome email series on `customer.subscription.created`, branching on `plan_name` so each tier gets the setup steps that apply to it.
+
+**Churn Recovery**: Start a win-back workflow on `customer.subscription.deleted`, using `cancel_at_period_end` to tell a scheduled end (still time to intervene) from an account that has already lapsed.
 <!-- END MANUAL -->
 
 ---
