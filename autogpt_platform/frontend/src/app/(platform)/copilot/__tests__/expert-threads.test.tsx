@@ -1,7 +1,7 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import {
   getGetExpertMockHandler,
-  getListExpertsMockHandler,
+  getListExpertIdentitiesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
@@ -22,6 +22,7 @@ import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
+import { useRecipientPicker } from "../components/EmptySession/useRecipientPicker";
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
 import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
@@ -353,7 +354,7 @@ describe("useChatSession — expert sessions", () => {
           messages: [],
         }),
       ),
-      getListExpertsMockHandler([mariaExpert]),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
     );
 
     render(
@@ -425,7 +426,7 @@ describe("ChatSidebar — expert groups", () => {
         ],
         total: 2,
       }),
-      getListExpertsMockHandler([mariaExpert]),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
     );
 
     render(
@@ -454,7 +455,7 @@ describe("ChatSidebar — expert groups", () => {
         ],
         total: 2,
       }),
-      getListExpertsMockHandler([]),
+      getListExpertIdentitiesMockHandler([]),
     );
 
     render(
@@ -488,7 +489,7 @@ describe("ChatSidebar — expert groups", () => {
         ],
         total: 3,
       }),
-      getListExpertsMockHandler([mariaExpert]),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
     );
 
     render(
@@ -529,7 +530,7 @@ describe("ChatSidebar — expert groups", () => {
         ],
         total: 8,
       }),
-      getListExpertsMockHandler([mariaExpert]),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
     );
 
     render(
@@ -565,7 +566,7 @@ describe("ChatSidebar — expert groups", () => {
         ],
         total: 2,
       }),
-      getListExpertsMockHandler([mariaExpert]),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
     );
 
     render(
@@ -591,7 +592,7 @@ describe("ChatSidebar — expert groups", () => {
     flagState.values = { "hire-experts": false };
     let expertsRequests = 0;
     server.use(
-      http.get("*/api/experts", () => {
+      http.get("*/api/experts/identities", () => {
         expertsRequests += 1;
         return HttpResponse.json([mariaExpert]);
       }),
@@ -634,6 +635,8 @@ describe("ChatMessagesContainer — expert identity", () => {
     name: "Maria",
     avatarUrl: mariaExpert.avatar_url,
     role: mariaExpert.role,
+    isArchived: false,
+    readOnlyReason: null,
   };
 
   it("shows the expert name and avatar in the thread header only", () => {
@@ -695,6 +698,37 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(await screen.findByTestId("schedule-row")).toBeDefined();
   });
 
+  it("does not read the fired expert's detail record for the schedules button", async () => {
+    let expertDetailRequests = 0;
+    server.use(
+      http.get("*/api/experts/expert-maria", () => {
+        expertDetailRequests += 1;
+        return HttpResponse.json(
+          { detail: "Expert not found" },
+          { status: 404 },
+        );
+      }),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{
+          ...mariaIdentity,
+          isArchived: true,
+          readOnlyReason: "fired",
+        }}
+      />,
+    );
+
+    expect(await screen.findByTestId("expert-thread-header")).toBeDefined();
+    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
+    expect(expertDetailRequests).toBe(0);
+  });
+
   it("renders no expert header or identity for plain sessions", () => {
     render(
       <ChatMessagesContainer
@@ -709,6 +743,17 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 });
+
+function RecipientPickerHarness() {
+  const [expertId] = useQueryState("expertId", parseAsString);
+  const { recipient } = useRecipientPicker();
+  return (
+    <div>
+      <div data-testid="picker-expert-id">{expertId ?? "none"}</div>
+      <div data-testid="picker-recipient">{recipient.name}</div>
+    </div>
+  );
+}
 
 describe("recipient picker", () => {
   it("does not look up or adopt the expert's latest thread when the recipient is picked after mount", async () => {
@@ -795,5 +840,61 @@ describe("recipient picker", () => {
     );
     await userEvent.click(await screen.findByText("Maria"));
     expect(onSelect).toHaveBeenCalledWith("expert-maria");
+  });
+
+  it("clears an unresolved expert recipient after the identity query errors", async () => {
+    server.use(
+      http.get("*/api/experts/identities", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+
+    const ErrorWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria",
+      hasMemory: true,
+    });
+    render(
+      <ErrorWrapper>
+        <RecipientPickerHarness />
+      </ErrorWrapper>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
+    );
+    expect(screen.getByTestId("picker-recipient").textContent).toBe(
+      "Autopilot",
+    );
+  });
+
+  it("clears an archived expert recipient after identities load", async () => {
+    server.use(
+      getListExpertIdentitiesMockHandler([
+        {
+          id: "expert-maria",
+          name: "Maria",
+          avatar_url: "https://example.com/maria.png",
+          role: "Marketing Strategist",
+          is_archived: true,
+        },
+      ]),
+    );
+
+    const ArchivedWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria",
+      hasMemory: true,
+    });
+    render(
+      <ArchivedWrapper>
+        <RecipientPickerHarness />
+      </ArchivedWrapper>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
+    );
+    expect(screen.getByTestId("picker-recipient").textContent).toBe(
+      "Autopilot",
+    );
   });
 });

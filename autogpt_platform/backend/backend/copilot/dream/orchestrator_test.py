@@ -174,6 +174,61 @@ async def test_empty_input_returns_skipped(mocker):
 
 
 @pytest.mark.asyncio
+async def test_expert_scope_is_threaded_to_lock_and_gather(mocker):
+    lock_calls: list[tuple[tuple, dict]] = []
+
+    @asynccontextmanager
+    async def scoped_lock(*args, **kwargs):
+        lock_calls.append((args, kwargs))
+        yield
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", scoped_lock)
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is True
+    assert lock_calls[0][1]["expert_id"] == "expert-1"
+    gather.assert_awaited_once_with("u", expert_id="expert-1")
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_reaches_marker_and_apply_on_nonempty_pass(mocker):
+    input_bundle = _build_input().model_copy(
+        update={"expert_id": "expert-1", "group_id": "expert_scope"}
+    )
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=input_bundle),
+    )
+    read_marker = mocker.patch.object(
+        orchestrator_mod,
+        "_read_last_completed_marker",
+        AsyncMock(return_value=None),
+    )
+    stamp_marker = mocker.patch.object(
+        orchestrator_mod,
+        "_stamp_last_completed_marker",
+        AsyncMock(),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is False
+    assert result.error is None
+    gather.assert_awaited_once_with("u", expert_id="expert-1")
+    read_marker.assert_awaited_once_with("u", "expert-1")
+    assert apply_mock.await_args.kwargs["expert_id"] == "expert-1"
+    stamp_marker.assert_awaited_once_with("u", input_bundle.window_end, "expert-1")
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("flag_on", [True, False])
 async def test_batch_path_gated_by_flag_not_key(mocker, flag_on):
     """The Anthropic batch path is gated by DREAM_PASS_BATCH_ENABLED — the
@@ -510,7 +565,13 @@ async def test_clamps_oversized_sanitizer_output(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        user_id,
+        pass_id,
+        ops,
+        *,
+        expert_id=None,
+        known_fact_uuids=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {
@@ -573,7 +634,13 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        user_id,
+        pass_id,
+        ops,
+        *,
+        expert_id=None,
+        known_fact_uuids=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {
@@ -685,7 +752,13 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        user_id,
+        pass_id,
+        ops,
+        *,
+        expert_id=None,
+        known_fact_uuids=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {

@@ -165,6 +165,32 @@ async def _validate_and_get_session(
     return session
 
 
+async def _validate_session_expert_writable_by_user(
+    session: ChatSessionInfo,
+    user_id: str,
+) -> None:
+    """Reject writes to an expert session *user_id* may no longer write to.
+
+    A plain (non-expert) session is always writable and returns early. For an
+    expert session the expert has to still be owned by *user_id* and still be
+    hired — fired, template, deleted, and other people's experts all fail, and
+    all fail as the same non-enumerable 404.
+    """
+    if session.expert_id is None:
+        return
+    if not await experts_db.owns_active_expert(user_id, session.expert_id):
+        raise HTTPException(status_code=404, detail="Expert not found")
+
+
+async def _validate_and_get_writable_session(
+    session_id: str,
+    user_id: str,
+) -> ChatSessionInfo:
+    session = await _validate_and_get_session(session_id, user_id)
+    await _validate_session_expert_writable_by_user(session, user_id)
+    return session
+
+
 # Minimum age before the orphan-reset paths (``get_session`` and
 # ``cancel_session_task``) will touch a ``chatStatus='running'`` session
 # that has no live Redis stream.  Lower bound has to clear the
@@ -446,7 +472,7 @@ async def list_sessions(
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    expert_id: str | None = Query(default=None, max_length=128),
+    expert_id: str | None = Query(default=None, min_length=1, max_length=128),
     pinned_first: bool = Query(
         default=True,
         description=(
@@ -1412,6 +1438,21 @@ async def stream_chat_post(
     """
     import time
 
+    stream_start_time = time.perf_counter()
+    # Wall-clock arrival time, propagated to the executor so the turn-start
+    # drain can order pending messages relative to this request (pending
+    # pushed BEFORE this instant were typed earlier; pending pushed AFTER
+    # are race-path follow-ups typed while /stream was still processing).
+    request_arrival_at = time.time()
+    log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
+
+    logger.info(
+        f"[TIMING] stream_chat_post STARTED, session={session_id}, "
+        f"user={user_id}, message_len={len(request.message)}",
+        extra={"json_fields": log_meta},
+    )
+    session = await _validate_and_get_writable_session(session_id, user_id)
+
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
     # graphiti/ingest.py's ensure_dream_system_scheduled registration.
@@ -1426,20 +1467,6 @@ async def stream_chat_post(
         name=f"morning-briefing-register-{user_id[:12]}",
     )
 
-    stream_start_time = time.perf_counter()
-    # Wall-clock arrival time, propagated to the executor so the turn-start
-    # drain can order pending messages relative to this request (pending
-    # pushed BEFORE this instant were typed earlier; pending pushed AFTER
-    # are race-path follow-ups typed while /stream was still processing).
-    request_arrival_at = time.time()
-    log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
-
-    logger.info(
-        f"[TIMING] stream_chat_post STARTED, session={session_id}, "
-        f"user={user_id}, message_len={len(request.message)}",
-        extra={"json_fields": log_meta},
-    )
-    session = await _validate_and_get_session(session_id, user_id)
     is_platform_route = session.metadata.llm_auth_provider == "platform"
     if is_platform_route:
         await enforce_payment_paywall(user_id)
@@ -1819,7 +1846,7 @@ async def queue_pending_message(
     user_id: str = Security(auth.get_user_id),
 ):
     """Queue a follow-up message while the session has an active turn."""
-    session = await _validate_and_get_session(session_id, user_id)
+    session = await _validate_and_get_writable_session(session_id, user_id)
     if session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
     try:
