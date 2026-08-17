@@ -5900,7 +5900,8 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Expert or expert template not found" },
+          "404": { "description": "Expert template not found" },
+          "409": { "description": "Active expert limit reached" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5908,8 +5909,7 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          },
-          "503": { "description": "Expert workspace unavailable" }
+          }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       }
@@ -5935,6 +5935,49 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/raise": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Create Raised Expert",
+        "operationId": "create_raised_expert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRaisedExpertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RaiseResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": {
+            "description": "First job listing not found or unavailable"
+          },
+          "409": { "description": "Active expert limit reached" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -16860,6 +16903,40 @@
         "required": ["name", "slug"],
         "title": "CreateOrgRequest"
       },
+      "CreateRaisedExpertRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "role": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Role"
+          },
+          "voice_preferences": {
+            "anyOf": [
+              { "type": "string", "maxLength": 4000 },
+              { "type": "null" }
+            ],
+            "title": "Voice Preferences"
+          },
+          "first_job_store_listing_version_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "First Job Store Listing Version Id"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "CreateRaisedExpertRequest"
+      },
       "CreateSessionRequest": {
         "properties": {
           "dry_run": {
@@ -22688,12 +22765,10 @@
             "type": "array",
             "title": "Presets"
           },
-          "total_count": { "type": "integer", "title": "Total Count" },
-          "page": { "type": "integer", "title": "Page" },
-          "page_size": { "type": "integer", "title": "Page Size" }
+          "total_count": { "type": "integer", "title": "Total Count" }
         },
         "type": "object",
-        "required": ["message", "presets", "total_count", "page", "page_size"],
+        "required": ["message", "presets", "total_count"],
         "title": "PresetListResponse",
         "description": "Response listing the user's presets."
       },
@@ -23059,6 +23134,33 @@
         "required": ["buffer_length", "max_buffer_length", "turn_in_flight"],
         "title": "QueuePendingMessageResponse",
         "description": "Response returned when a message is queued because the session already\nhas a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback."
+      },
+      "RaiseResult": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "first_job_installed": {
+            "type": "boolean",
+            "title": "First Job Installed"
+          },
+          "first_job_failure_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["unavailable", "installation_failed"]
+              },
+              { "type": "null" }
+            ],
+            "title": "First Job Failure Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert",
+          "first_job_installed",
+          "first_job_failure_reason"
+        ],
+        "title": "RaiseResult",
+        "description": "Result of raising a blank expert. ``first_job_installed`` is only\nTrue when a first job was requested and its install succeeded, so the\nclient can surface partial success instead of a silent no-op. The stable\nfailure reason distinguishes a listing withdrawn mid-flow from an install\nfailure."
       },
       "RateLimitResetResponse": {
         "properties": {
@@ -27737,7 +27839,7 @@
         "type": "object",
         "required": ["label", "text"],
         "title": "VoiceSample",
-        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire flow. The first sample is choice \"a\", the second choice \"b\"."
+        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire or raise flow. The first sample is choice \"a\", the second choice\n\"b\"."
       },
       "Webhook": {
         "properties": {

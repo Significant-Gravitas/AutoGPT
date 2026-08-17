@@ -12,9 +12,19 @@ export function EmptyTeamState() {
         Hire an expert from the marketplace and they will show up here, ready to
         work alongside Autopilot.
       </Text>
-      <Button as="NextLink" href="/marketplace" variant="primary" size="small">
-        Browse the marketplace
-      </Button>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button
+          as="NextLink"
+          href="/marketplace"
+          variant="primary"
+          size="small"
+        >
+          Browse the marketplace
+        </Button>
+        <Button as="NextLink" href="/raise" variant="secondary" size="small">
+          Raise your own
+        </Button>
+      </div>
     </div>
   );
 }

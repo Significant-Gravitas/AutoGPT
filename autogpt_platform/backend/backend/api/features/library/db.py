@@ -1,7 +1,7 @@
 import asyncio
 import itertools
 import logging
-from typing import Literal, Optional, cast
+from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
 import prisma.errors
@@ -19,7 +19,7 @@ from backend.api.features.library.exceptions import (
 from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
 )
-from backend.data.db import transaction
+from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
@@ -1219,29 +1219,93 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
     )
 
 
+async def is_store_listing_version_available_for_install(
+    store_listing_version_id: str,
+    *,
+    tx: prisma.Prisma | None = None,
+    lock_rows: bool = False,
+) -> bool:
+    """Validate one exact marketplace version for a library install.
+
+    Both the preflight and transactional revalidation use this query. The
+    shared row lock blocks withdrawal while permitting concurrent installs of
+    the same popular listing.
+    """
+    if lock_rows and tx is None:
+        raise ValueError("lock_rows requires a transaction client")
+
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    lock_clause = "FOR SHARE OF slv, sl" if lock_rows else ""
+    query = cast(
+        LiteralString,
+        """
+        SELECT slv.id
+        FROM {schema_prefix}"StoreListingVersion" AS slv
+        JOIN {schema_prefix}"StoreListing" AS sl
+          ON sl.id = slv."storeListingId"
+        WHERE slv.id = $1
+          AND slv."isDeleted" = false
+          AND slv."isAvailable" = true
+          AND slv."submissionStatus" = 'APPROVED'
+          AND sl."isDeleted" = false
+        {lock_clause}
+        """.format(
+            schema_prefix=schema_prefix, lock_clause=lock_clause
+        ),
+    )
+    client = tx if tx is not None else prisma.get_client()
+    rows = await client.query_raw(query, store_listing_version_id)
+    return bool(rows)
+
+
 async def add_store_agent_to_library(
-    store_listing_version_id: str, user_id: str
+    store_listing_version_id: str,
+    user_id: str,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user’s library.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
+    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=None)
+
+
+async def add_store_agent_to_library_in_transaction(
+    store_listing_version_id: str,
+    user_id: str,
+    tx: prisma.Prisma,
+) -> library_model.LibraryAgent:
+    """Add a marketplace agent using the caller's transaction."""
+    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=tx)
+
+
+async def _add_store_agent_to_library(
+    store_listing_version_id: str,
+    user_id: str,
+    *,
+    tx: prisma.Prisma | None,
+) -> library_model.LibraryAgent:
     logger.debug(
         "Adding agent from store listing version #%s to library for user #%s",
         store_listing_version_id,
         user_id,
     )
     store_listing_version = await resolve_store_version_for_library(
-        store_listing_version_id, admin=False
+        store_listing_version_id, admin=False, tx=tx
     )
-    existing = await restore_existing_library_agent(store_listing_version, user_id)
-    if existing is not None:
-        return existing
+    if tx is None:
+        # The transactional path upserts instead, so an existing entry is
+        # restored atomically with the caller's other writes.
+        existing = await restore_existing_library_agent(store_listing_version, user_id)
+        if existing is not None:
+            return existing
     graph_model = await resolve_graph_model_for_library(
         store_listing_version, user_id, admin=False
     )
-    return await add_graph_to_library(graph_model, user_id, store_listing_version)
+    return await add_graph_to_library(
+        graph_model, user_id, store_listing_version, tx=tx
+    )
 
 
 async def add_store_agent_to_library_as_admin(
