@@ -139,3 +139,15 @@ async def test_category_output_echoes_normalized_input_category():
     )
     outputs, _ = await _run_and_collect(input_data)
     assert outputs["category"] == "company"
+
+
+@pytest.mark.asyncio
+async def test_max_results_clamped_to_lower_bound():
+    """max_results of 0 (or negative) must clamp up to 1, not reach the API as 0."""
+    input_data = SmartSearchBlock.Input(
+        credentials=TEST_CREDENTIALS_META_INPUT,
+        query="engineers",
+        max_results=0,
+    )
+    _, mock_search = await _run_and_collect(input_data)
+    assert mock_search.await_args.args[0]["max_results"] == 1

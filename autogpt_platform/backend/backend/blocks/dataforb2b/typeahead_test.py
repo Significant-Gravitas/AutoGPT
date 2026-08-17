@@ -87,3 +87,31 @@ async def test_type_is_validated_enum():
                 "q": "google",
             }
         )
+
+
+@pytest.mark.asyncio
+async def test_results_without_value_are_excluded_from_values():
+    """'values' is the caller-facing list of resolved strings, so malformed
+    suggestions missing 'value' must be dropped rather than yielding None."""
+    block = SearchFilterTypeaheadBlock()
+    input_data = SearchFilterTypeaheadBlock.Input(
+        credentials=TEST_CREDENTIALS_META_INPUT,
+        filter_type=TypeaheadType.COMPANY,
+        q="google",
+        limit=5,
+    )
+    outputs = {}
+    with patch.object(
+        SearchFilterTypeaheadBlock,
+        "typeahead",
+        new=AsyncMock(
+            return_value={
+                "results": [{"value": "Google"}, {"label": "no value here"}]
+            }
+        ),
+    ):
+        async for name, value in block.run(input_data, credentials=TEST_CREDENTIALS):
+            outputs[name] = value
+
+    assert outputs["values"] == ["Google"]
+    assert len(outputs["results"]) == 2

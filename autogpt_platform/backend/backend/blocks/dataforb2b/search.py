@@ -79,54 +79,6 @@ BOOLEAN_COLUMNS = {
 }
 
 
-def _validate_operator(column, operator) -> None:
-    if not column:
-        return
-
-    normalized_operator = operator or FilterOperator.EQUALS
-    if column in BOOLEAN_COLUMNS:
-        allowed = BOOLEAN_OPERATORS
-    elif column in NUMERIC_COLUMNS:
-        allowed = SCALAR_OPERATORS
-    else:
-        allowed = TEXT_OPERATORS
-
-    if normalized_operator not in allowed:
-        raise ValueError(
-            f"Operator '{normalized_operator.value}' is not valid for column "
-            f"'{column.value}'. Allowed operators: "
-            f"{', '.join(sorted(op.value for op in allowed))}."
-        )
-
-
-def _build_filters(input_data) -> dict:
-    conditions: list[dict] = []
-    for i in range(1, NUM_SLOTS + 1):
-        column = getattr(input_data, f"filter_{i}_column")
-        operator = getattr(input_data, f"filter_{i}_operator")
-        value = getattr(input_data, f"filter_{i}_value")
-        if column and value is not None and str(value).strip():
-            _validate_operator(column, operator)
-        cond = build_slot_condition(column, operator, value)
-        if cond:
-            conditions.append(cond)
-
-    advanced = input_data.filters_json or None
-    filters = finalize_filters(conditions, input_data.match, advanced)
-    if not filters:
-        raise ValueError(
-            "Provide at least one filter slot (column + value) or filters_json."
-        )
-    return filters
-
-
-def _bounded_count_offset(input_data) -> tuple[int, int]:
-    """Clamp count/offset to sane, non-negative bounds before calling the API."""
-    count = max(1, min(int(input_data.count), MAX_COUNT))
-    offset = max(0, int(input_data.offset))
-    return count, offset
-
-
 class _CommonSearchFields:
     """Fields shared by both search blocks (besides the column dropdowns)."""
 
@@ -174,7 +126,7 @@ class _PeopleFilterFields(_CommonSearchFields):
     filter_1_operator: FilterOperator = SchemaField(
         title="Filter 1 Operator",
         description="Filter 1 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=False,
     )
     filter_1_value: str = SchemaField(
@@ -189,7 +141,7 @@ class _PeopleFilterFields(_CommonSearchFields):
     filter_2_operator: FilterOperator = SchemaField(
         title="Filter 2 Operator",
         description="Filter 2 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=False,
     )
     filter_2_value: str = SchemaField(
@@ -204,7 +156,7 @@ class _PeopleFilterFields(_CommonSearchFields):
     filter_3_operator: FilterOperator = SchemaField(
         title="Filter 3 Operator",
         description="Filter 3 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=True,
     )
     filter_3_value: str = SchemaField(
@@ -219,7 +171,7 @@ class _PeopleFilterFields(_CommonSearchFields):
     filter_4_operator: FilterOperator = SchemaField(
         title="Filter 4 Operator",
         description="Filter 4 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=True,
     )
     filter_4_value: str = SchemaField(
@@ -234,7 +186,7 @@ class _PeopleFilterFields(_CommonSearchFields):
     filter_5_operator: FilterOperator = SchemaField(
         title="Filter 5 Operator",
         description="Filter 5 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=True,
     )
     filter_5_value: str = SchemaField(
@@ -254,7 +206,7 @@ class _CompanyFilterFields(_CommonSearchFields):
     filter_1_operator: FilterOperator = SchemaField(
         title="Filter 1 Operator",
         description="Filter 1 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=False,
     )
     filter_1_value: str = SchemaField(
@@ -269,7 +221,7 @@ class _CompanyFilterFields(_CommonSearchFields):
     filter_2_operator: FilterOperator = SchemaField(
         title="Filter 2 Operator",
         description="Filter 2 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=False,
     )
     filter_2_value: str = SchemaField(
@@ -284,7 +236,7 @@ class _CompanyFilterFields(_CommonSearchFields):
     filter_3_operator: FilterOperator = SchemaField(
         title="Filter 3 Operator",
         description="Filter 3 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=True,
     )
     filter_3_value: str = SchemaField(
@@ -299,7 +251,7 @@ class _CompanyFilterFields(_CommonSearchFields):
     filter_4_operator: FilterOperator = SchemaField(
         title="Filter 4 Operator",
         description="Filter 4 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=True,
     )
     filter_4_value: str = SchemaField(
@@ -314,12 +266,63 @@ class _CompanyFilterFields(_CommonSearchFields):
     filter_5_operator: FilterOperator = SchemaField(
         title="Filter 5 Operator",
         description="Filter 5 operator",
-        default=FilterOperator.LIKE,
+        default=FilterOperator.EQUALS,
         advanced=True,
     )
     filter_5_value: str = SchemaField(
         title="Filter 5 Value", description="Filter 5 value", default="", advanced=True
     )
+
+
+def _validate_operator(
+    column: Optional[PeopleColumn | CompanyColumn],
+    operator: Optional[FilterOperator],
+) -> None:
+    if not column:
+        return
+
+    normalized_operator = operator or FilterOperator.EQUALS
+    if column in BOOLEAN_COLUMNS:
+        allowed = BOOLEAN_OPERATORS
+    elif column in NUMERIC_COLUMNS:
+        allowed = SCALAR_OPERATORS
+    else:
+        allowed = TEXT_OPERATORS
+
+    if normalized_operator not in allowed:
+        raise ValueError(
+            f"Operator '{normalized_operator.value}' is not valid for column "
+            f"'{column.value}'. Allowed operators: "
+            f"{', '.join(sorted(op.value for op in allowed))}."
+        )
+
+
+def _build_filters(input_data: _PeopleFilterFields | _CompanyFilterFields) -> dict:
+    conditions: list[dict] = []
+    for i in range(1, NUM_SLOTS + 1):
+        column = getattr(input_data, f"filter_{i}_column")
+        operator = getattr(input_data, f"filter_{i}_operator")
+        value = getattr(input_data, f"filter_{i}_value")
+        if column and value is not None and str(value).strip():
+            _validate_operator(column, operator)
+        cond = build_slot_condition(column, operator, value)
+        if cond:
+            conditions.append(cond)
+
+    advanced = input_data.filters_json or None
+    filters = finalize_filters(conditions, input_data.match, advanced)
+    if not filters:
+        raise ValueError(
+            "Provide at least one filter slot (column + value) or filters_json."
+        )
+    return filters
+
+
+def _bounded_count_offset(input_data: _CommonSearchFields) -> tuple[int, int]:
+    """Clamp count/offset to sane, non-negative bounds before calling the API."""
+    count = max(1, min(int(input_data.count), MAX_COUNT))
+    offset = max(0, int(input_data.offset))
+    return count, offset
 
 
 class PeopleSearchBlock(Block):

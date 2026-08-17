@@ -9,12 +9,11 @@ from backend.sdk import (
     SecretStr,
 )
 
-# DataForB2B is a metered, credit-consuming API (blocks that "enrich_live" or
-# search note this costs more credits upstream), but had no BLOCK_COSTS entry
-# so the platform billed nothing for these calls. 1 cr/call is a conservative
-# interim floor so no DataForB2B usage leaks past billing, matching the
-# agent_mail precedent. Revisit with real per-endpoint costs if/when
-# DataForB2B publishes usage-based pricing tiers.
+# DataForB2B is a metered, credit-consuming API and the "enrich_live" paths
+# cost more credits upstream than the cached ones. 1 cr/RUN is a conservative
+# interim floor that keeps every call billed, matching the agent_mail
+# precedent. Revisit with per-endpoint / enrich_live-aware pricing once real
+# DataForB2B usage costs are known.
 dataforb2b = (
     ProviderBuilder("dataforb2b")
     .with_description(

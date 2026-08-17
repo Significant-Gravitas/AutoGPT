@@ -1,5 +1,3 @@
-from pydantic import BaseModel, ConfigDict, Field
-
 from backend.blocks.dataforb2b._api import DataForB2BClient
 from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
@@ -18,17 +16,8 @@ from backend.sdk import (
     SchemaField,
 )
 
-
-class TypeaheadSuggestion(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    value: str
-
-
-class TypeaheadResponse(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    results: list[TypeaheadSuggestion] = Field(default_factory=list)
+# DataForB2B caps typeahead suggestions at 20 per call.
+MAX_LIMIT = 20
 
 
 class SearchFilterTypeaheadBlock(Block):
@@ -42,15 +31,17 @@ class SearchFilterTypeaheadBlock(Block):
         )
         q: str = SchemaField(description="Free-text query to resolve", advanced=False)
         limit: int = SchemaField(
-            description="Max suggestions (1-20)", default=20, advanced=False
+            description=f"Max suggestions (1-{MAX_LIMIT})",
+            default=MAX_LIMIT,
+            advanced=False,
         )
         credentials: DataForB2BCredentialsInput = dataforb2b.credentials_field(
             description="DataForB2B API key"
         )
 
     class Output(BlockSchemaOutput):
-        result: TypeaheadResponse = SchemaField(description="Full typeahead response")
-        results: list[TypeaheadSuggestion] = SchemaField(
+        result: dict = SchemaField(description="Full typeahead response")
+        results: list[dict] = SchemaField(
             description="List of suggestions", default_factory=list
         )
         values: list[str] = SchemaField(
@@ -101,7 +92,7 @@ class SearchFilterTypeaheadBlock(Block):
         if not query:
             raise ValueError("'q' (query) is required.")
 
-        limit = max(1, min(int(input_data.limit), 20))
+        limit = max(1, min(int(input_data.limit), MAX_LIMIT))
         data = await self.typeahead(
             input_data.filter_type.value, query, limit, credentials
         )

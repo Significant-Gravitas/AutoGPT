@@ -82,7 +82,7 @@ class ProfileEnrichmentBlock(Block):
                 ),
             ],
             test_mock={
-                "enrich_profile": lambda payload, credentials: {
+                "fetch_profile": lambda payload, credentials: {
                     "profile": {"name": "John Doe"},
                     "work_email": "john@acme.com",
                 }
@@ -90,7 +90,7 @@ class ProfileEnrichmentBlock(Block):
         )
 
     @staticmethod
-    async def enrich_profile(payload: dict, credentials: DataForB2BCredentials) -> dict:
+    async def fetch_profile(payload: dict, credentials: DataForB2BCredentials) -> dict:
         client = DataForB2BClient(credentials)
         return await client.enrich_profile(payload)
 
@@ -110,7 +110,7 @@ class ProfileEnrichmentBlock(Block):
         if not any_flag:
             payload["enrich_profile"] = True
 
-        result = await self.enrich_profile(payload, credentials)
+        result = await self.fetch_profile(payload, credentials)
         yield "result", result
 
 
@@ -150,7 +150,7 @@ class CompanyEnrichmentBlock(Block):
                 ("result", {"name": "Google", "domain": "google.com"}),
             ],
             test_mock={
-                "enrich_company": lambda company_identifier, credentials: {
+                "fetch_company": lambda company_identifier, credentials: {
                     "name": "Google",
                     "domain": "google.com",
                 }
@@ -158,7 +158,7 @@ class CompanyEnrichmentBlock(Block):
         )
 
     @staticmethod
-    async def enrich_company(
+    async def fetch_company(
         company_identifier: str, credentials: DataForB2BCredentials
     ) -> dict:
         client = DataForB2BClient(credentials)
@@ -170,5 +170,5 @@ class CompanyEnrichmentBlock(Block):
         company_identifier = input_data.company_identifier.strip()
         if not company_identifier:
             raise ValueError("'company_identifier' is required.")
-        result = await self.enrich_company(company_identifier, credentials)
+        result = await self.fetch_company(company_identifier, credentials)
         yield "result", result

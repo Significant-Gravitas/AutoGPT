@@ -1,5 +1,5 @@
-"""Tests for ProfileEnrichmentBlock: whitespace-only identifier validation
-and the any_flag fallback to enrich_profile."""
+"""Tests for the enrichment blocks: whitespace-only identifier validation,
+the any_flag fallback to enrich_profile, and error surfacing."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +9,10 @@ from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_META_INPUT,
 )
-from backend.blocks.dataforb2b.enrich import ProfileEnrichmentBlock
+from backend.blocks.dataforb2b.enrich import (
+    CompanyEnrichmentBlock,
+    ProfileEnrichmentBlock,
+)
 
 
 async def _run_and_capture_payload(input_data):
@@ -17,7 +20,7 @@ async def _run_and_capture_payload(input_data):
     block = ProfileEnrichmentBlock()
     with patch.object(
         ProfileEnrichmentBlock,
-        "enrich_profile",
+        "fetch_profile",
         new=AsyncMock(return_value={"profile": {"name": "John Doe"}}),
     ) as mock_enrich:
         async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
@@ -77,3 +80,58 @@ async def test_explicit_flag_is_respected_without_fallback():
     payload = await _run_and_capture_payload(input_data)
     assert payload["enrich_profile"] is False
     assert payload["enrich_work_email"] is True
+
+
+async def _run_company_and_capture_identifier(input_data):
+    """Run CompanyEnrichmentBlock with a mocked client, returning the identifier sent."""
+    block = CompanyEnrichmentBlock()
+    with patch.object(
+        CompanyEnrichmentBlock,
+        "fetch_company",
+        new=AsyncMock(return_value={"name": "Google"}),
+    ) as mock_enrich:
+        async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
+            pass
+        return mock_enrich.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_company_whitespace_only_identifier_raises_value_error():
+    """A whitespace-only company_identifier must be rejected, not sent as-is."""
+    block = CompanyEnrichmentBlock()
+    input_data = CompanyEnrichmentBlock.Input(
+        credentials=TEST_CREDENTIALS_META_INPUT,
+        company_identifier="   ",
+    )
+    with pytest.raises(ValueError, match="company_identifier"):
+        async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_company_identifier_is_stripped():
+    input_data = CompanyEnrichmentBlock.Input(
+        credentials=TEST_CREDENTIALS_META_INPUT,
+        company_identifier="  google.com  ",
+    )
+    identifier = await _run_company_and_capture_identifier(input_data)
+    assert identifier == "google.com"
+
+
+@pytest.mark.asyncio
+async def test_company_upstream_error_propagates_to_error_output():
+    """The docs promise client/server errors surface via the framework 'error'
+    output; that contract relies on run() letting the exception escape."""
+    block = CompanyEnrichmentBlock()
+    input_data = CompanyEnrichmentBlock.Input(
+        credentials=TEST_CREDENTIALS_META_INPUT,
+        company_identifier="google.com",
+    )
+    with patch.object(
+        CompanyEnrichmentBlock,
+        "fetch_company",
+        new=AsyncMock(side_effect=RuntimeError("upstream 500")),
+    ):
+        with pytest.raises(RuntimeError, match="upstream 500"):
+            async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
+                pass
