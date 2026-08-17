@@ -50,6 +50,7 @@ class ProviderName(str, Enum):
     SLANT3D = "slant3d"
     SMARTLEAD = "smartlead"
     SMTP = "smtp"
+    STRIPE = "stripe"
     TELEGRAM = "telegram"
     TWITTER = "twitter"
     TODOIST = "todoist"

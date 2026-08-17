@@ -20,6 +20,7 @@ import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import { stripKickoffMessages } from "../../expertKickoff";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -310,7 +311,7 @@ export function LoadMoreSentinel({
 }
 
 export function ChatMessagesContainer({
-  messages,
+  messages: allMessages,
   status,
   error,
   isLoading,
@@ -331,6 +332,12 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
 }: Props) {
+  // The expert-kickoff control prompt is filtered at the transcript renderer
+  // only so lifecycle, dedup and metadata-preserving retry logic still see it.
+  const messages = useMemo(
+    () => stripKickoffMessages(allMessages),
+    [allMessages],
+  );
   // The in-chat "progress in the sidebar" notice only applies to the old
   // sidebar surface — hide it entirely when the task bar is on.
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -530,7 +537,7 @@ export function ChatMessagesContainer({
             <span className="text-sm font-medium text-zinc-800">
               {expertIdentity.name}
             </span>
-            {!readOnly && (
+            {!readOnly && !expertIdentity.isArchived && (
               <ExpertSchedulesButton
                 expertId={expertIdentity.id}
                 expertName={expertIdentity.name}

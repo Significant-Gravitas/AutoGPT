@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.errors import UniqueViolationError
 
 from backend.copilot import turn_queue
 from backend.copilot.model import ChatMessage as PydanticChatMessage
@@ -75,6 +76,7 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
             session_id="s1",
             message="hello",
             message_id="msg-1",
+            message_metadata={"hidden": True, "kind": "expert_kickoff"},
             context={"url": "https://example.com"},
             file_ids=["f1", "f2"],
             mode="extended_thinking",
@@ -93,6 +95,8 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
     assert metadata["llm_auth_provider"] == "platform"
     assert metadata["permissions"] == {"tool_filter": "allow"}
     assert metadata["request_arrival_at"] == 123.45
+    assert metadata["hidden"] is True
+    assert metadata["kind"] == "expert_kickoff"
     # Session is flipped idle → queued.
     db.update_chat_session_status.assert_awaited_once_with(
         session_id="s1", expect_status="idle", status="queued", user_id="u1"
@@ -117,6 +121,34 @@ async def test_enqueue_turn_only_includes_default_transport_without_extra_params
     assert db.add_chat_message.call_args.kwargs["metadata"] == {
         "llm_auth_provider": "platform"
     }
+
+
+@pytest.mark.asyncio
+async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued() -> None:
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(
+        side_effect=UniqueViolationError(
+            {"user_facing_error": {"message": "ChatMessage_pkey"}}
+        )
+    )
+    db.update_chat_session_status = AsyncMock()
+    invalidate = AsyncMock()
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "_get_session_lock", return_value=_NoopAsyncCM()),
+        patch.object(turn_queue, "invalidate_session_cache", new=invalidate),
+    ):
+        result = await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message="kickoff",
+            message_id="same-id",
+        )
+
+    assert result is None
+    db.update_chat_session_status.assert_not_awaited()
+    invalidate.assert_not_awaited()
 
 
 # ── cancel_queued_turn ─────────────────────────────────────────────────

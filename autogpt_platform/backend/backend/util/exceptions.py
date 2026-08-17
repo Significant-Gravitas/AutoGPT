@@ -51,6 +51,24 @@ class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 
 
+class ExpertNotFoundError(NotFoundError):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} not found"
+
+
+class ExpertPrivateTenancyNotFoundError(MissingConfigError):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Private tenancy for expert {self.expert_id} not found"
+
+
 class GraphNotFoundError(ValueError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
@@ -225,6 +243,12 @@ class DuplicateChatMessageError(ValueError):
 
 class WebhookRegistrationError(Exception):
     """Registering a webhook with an external service failed."""
+
+
+class WebhookSetupUnavailableError(Exception):
+    """Webhook setup infrastructure (e.g. the Redis setup lock) is
+    temporarily unavailable. Retryable server-side condition — not a
+    configuration problem, so don't map it to a 4xx."""
 
 
 class ExpertRunPausedError(ValueError):
