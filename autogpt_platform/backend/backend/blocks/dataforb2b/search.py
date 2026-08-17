@@ -19,8 +19,6 @@ from backend.sdk import (
     SchemaField,
 )
 
-NUM_SLOTS = 5
-
 # Conservative safety ceiling for `count`. DataForB2B's documented API limits
 # are not verifiable from this repo, so this bounds memory/response size
 # without blocking legitimate use — callers needing more results should
@@ -79,198 +77,58 @@ BOOLEAN_COLUMNS = {
 }
 
 
-class _CommonSearchFields:
-    """Fields shared by both search blocks (besides the column dropdowns)."""
+class PeopleFilterCondition(BlockSchemaInput):
+    """One people-search filter: column + operator + value."""
 
-    filters_json: dict = SchemaField(
+    column: PeopleColumn = SchemaField(
+        title="Column",
+        description="Profile field to filter on",
+        default=PeopleColumn.current_title,
+        advanced=False,
+    )
+    operator: FilterOperator = SchemaField(
+        title="Operator",
+        description="How to compare. '=' is valid on every column; 'like' only on text",
+        default=FilterOperator.EQUALS,
+        advanced=False,
+    )
+    value: str = SchemaField(
+        title="Value",
         description=(
-            "Raw filter JSON {op, conditions:[{column,type,value,value2?}]}. "
-            "Paste 'applied_filters' from Smart Search and set 'offset' "
-            "to paginate beyond the first page. Used alone, or merged (AND) with "
-            "the filter slots above."
+            "Value to match. Search matches stored values exactly, so resolve it "
+            "with Search Filter Typeahead first rather than guessing"
         ),
-        default_factory=dict,
+        default="",
+        placeholder="e.g. Marketing Director",
         advanced=False,
-    )
-    match: str = SchemaField(
-        description="Combine slot conditions with 'and' or 'or'",
-        default="and",
-        advanced=True,
-    )
-    count: int = SchemaField(
-        description=f"Number of results to return (1-{MAX_COUNT})",
-        default=25,
-        advanced=False,
-    )
-    offset: int = SchemaField(
-        description="Pagination offset — 0 for page 1, then 25, 50, … to page through results",
-        default=0,
-        advanced=False,
-    )
-    enrich_live: bool = SchemaField(
-        description="Fetch fresh live data (uses more credits)",
-        default=False,
-        advanced=True,
     )
 
 
-class _PeopleFilterFields(_CommonSearchFields):
-    """Filter slots for people search — column is a PeopleColumn dropdown."""
+class CompanyFilterCondition(BlockSchemaInput):
+    """One company-search filter: column + operator + value."""
 
-    filter_1_column: Optional[PeopleColumn] = SchemaField(
-        title="Filter 1 Column",
-        description="Filter 1 column",
-        default=None,
+    column: CompanyColumn = SchemaField(
+        title="Column",
+        description="Company field to filter on",
+        default=CompanyColumn.industry,
         advanced=False,
     )
-    filter_1_operator: FilterOperator = SchemaField(
-        title="Filter 1 Operator",
-        description="Filter 1 operator",
-        default=FilterOperator.EQUALS,
-        advanced=False,
-    )
-    filter_1_value: str = SchemaField(
-        title="Filter 1 Value", description="Filter 1 value", default="", advanced=False
-    )
-    filter_2_column: Optional[PeopleColumn] = SchemaField(
-        title="Filter 2 Column",
-        description="Filter 2 column",
-        default=None,
-        advanced=False,
-    )
-    filter_2_operator: FilterOperator = SchemaField(
-        title="Filter 2 Operator",
-        description="Filter 2 operator",
+    operator: FilterOperator = SchemaField(
+        title="Operator",
+        description="How to compare. '=' is valid on every column; 'like' only on text",
         default=FilterOperator.EQUALS,
         advanced=False,
     )
-    filter_2_value: str = SchemaField(
-        title="Filter 2 Value", description="Filter 2 value", default="", advanced=False
-    )
-    filter_3_column: Optional[PeopleColumn] = SchemaField(
-        title="Filter 3 Column",
-        description="Filter 3 column",
-        default=None,
-        advanced=True,
-    )
-    filter_3_operator: FilterOperator = SchemaField(
-        title="Filter 3 Operator",
-        description="Filter 3 operator",
-        default=FilterOperator.EQUALS,
-        advanced=True,
-    )
-    filter_3_value: str = SchemaField(
-        title="Filter 3 Value", description="Filter 3 value", default="", advanced=True
-    )
-    filter_4_column: Optional[PeopleColumn] = SchemaField(
-        title="Filter 4 Column",
-        description="Filter 4 column",
-        default=None,
-        advanced=True,
-    )
-    filter_4_operator: FilterOperator = SchemaField(
-        title="Filter 4 Operator",
-        description="Filter 4 operator",
-        default=FilterOperator.EQUALS,
-        advanced=True,
-    )
-    filter_4_value: str = SchemaField(
-        title="Filter 4 Value", description="Filter 4 value", default="", advanced=True
-    )
-    filter_5_column: Optional[PeopleColumn] = SchemaField(
-        title="Filter 5 Column",
-        description="Filter 5 column",
-        default=None,
-        advanced=True,
-    )
-    filter_5_operator: FilterOperator = SchemaField(
-        title="Filter 5 Operator",
-        description="Filter 5 operator",
-        default=FilterOperator.EQUALS,
-        advanced=True,
-    )
-    filter_5_value: str = SchemaField(
-        title="Filter 5 Value", description="Filter 5 value", default="", advanced=True
-    )
-
-
-class _CompanyFilterFields(_CommonSearchFields):
-    """Filter slots for company search — column is a CompanyColumn dropdown."""
-
-    filter_1_column: Optional[CompanyColumn] = SchemaField(
-        title="Filter 1 Column",
-        description="Filter 1 column",
-        default=None,
+    value: str = SchemaField(
+        title="Value",
+        description=(
+            "Value to match. Search matches stored values exactly — 'software' finds "
+            "nothing, 'software development' does. Resolve it with Search Filter "
+            "Typeahead first"
+        ),
+        default="",
+        placeholder="e.g. software development",
         advanced=False,
-    )
-    filter_1_operator: FilterOperator = SchemaField(
-        title="Filter 1 Operator",
-        description="Filter 1 operator",
-        default=FilterOperator.EQUALS,
-        advanced=False,
-    )
-    filter_1_value: str = SchemaField(
-        title="Filter 1 Value", description="Filter 1 value", default="", advanced=False
-    )
-    filter_2_column: Optional[CompanyColumn] = SchemaField(
-        title="Filter 2 Column",
-        description="Filter 2 column",
-        default=None,
-        advanced=False,
-    )
-    filter_2_operator: FilterOperator = SchemaField(
-        title="Filter 2 Operator",
-        description="Filter 2 operator",
-        default=FilterOperator.EQUALS,
-        advanced=False,
-    )
-    filter_2_value: str = SchemaField(
-        title="Filter 2 Value", description="Filter 2 value", default="", advanced=False
-    )
-    filter_3_column: Optional[CompanyColumn] = SchemaField(
-        title="Filter 3 Column",
-        description="Filter 3 column",
-        default=None,
-        advanced=True,
-    )
-    filter_3_operator: FilterOperator = SchemaField(
-        title="Filter 3 Operator",
-        description="Filter 3 operator",
-        default=FilterOperator.EQUALS,
-        advanced=True,
-    )
-    filter_3_value: str = SchemaField(
-        title="Filter 3 Value", description="Filter 3 value", default="", advanced=True
-    )
-    filter_4_column: Optional[CompanyColumn] = SchemaField(
-        title="Filter 4 Column",
-        description="Filter 4 column",
-        default=None,
-        advanced=True,
-    )
-    filter_4_operator: FilterOperator = SchemaField(
-        title="Filter 4 Operator",
-        description="Filter 4 operator",
-        default=FilterOperator.EQUALS,
-        advanced=True,
-    )
-    filter_4_value: str = SchemaField(
-        title="Filter 4 Value", description="Filter 4 value", default="", advanced=True
-    )
-    filter_5_column: Optional[CompanyColumn] = SchemaField(
-        title="Filter 5 Column",
-        description="Filter 5 column",
-        default=None,
-        advanced=True,
-    )
-    filter_5_operator: FilterOperator = SchemaField(
-        title="Filter 5 Operator",
-        description="Filter 5 operator",
-        default=FilterOperator.EQUALS,
-        advanced=True,
-    )
-    filter_5_value: str = SchemaField(
-        title="Filter 5 Value", description="Filter 5 value", default="", advanced=True
     )
 
 
@@ -297,40 +155,76 @@ def _validate_operator(
         )
 
 
-def _build_filters(input_data: _PeopleFilterFields | _CompanyFilterFields) -> dict:
-    conditions: list[dict] = []
-    for i in range(1, NUM_SLOTS + 1):
-        column = getattr(input_data, f"filter_{i}_column")
-        operator = getattr(input_data, f"filter_{i}_operator")
-        value = getattr(input_data, f"filter_{i}_value")
-        if column and value is not None and str(value).strip():
-            _validate_operator(column, operator)
-        cond = build_slot_condition(column, operator, value)
-        if cond:
-            conditions.append(cond)
+def _build_filters(
+    conditions: list[PeopleFilterCondition] | list[CompanyFilterCondition],
+    match: str,
+    filters_json: dict,
+) -> dict:
+    built: list[dict] = []
+    for cond in conditions:
+        if cond.value is not None and str(cond.value).strip():
+            _validate_operator(cond.column, cond.operator)
+        slot = build_slot_condition(cond.column, cond.operator, cond.value)
+        if slot:
+            built.append(slot)
 
-    advanced = input_data.filters_json or None
-    filters = finalize_filters(conditions, input_data.match, advanced)
+    filters = finalize_filters(built, match, filters_json or None)
     if not filters:
         raise ValueError(
-            "Provide at least one filter slot (column + value) or filters_json."
+            "Provide at least one filter (column + value) or filters_json."
         )
     return filters
 
 
-def _bounded_count_offset(input_data: _CommonSearchFields) -> tuple[int, int]:
+def _bounded_count_offset(count: int, offset: int) -> tuple[int, int]:
     """Clamp count/offset to sane, non-negative bounds before calling the API."""
-    count = max(1, min(int(input_data.count), MAX_COUNT))
-    offset = max(0, int(input_data.offset))
-    return count, offset
+    return max(1, min(int(count), MAX_COUNT)), max(0, int(offset))
 
 
 class PeopleSearchBlock(Block):
     """Search LinkedIn people / B2B leads by structured filters with DataForB2B."""
 
-    class Input(BlockSchemaInput, _PeopleFilterFields):
+    class Input(BlockSchemaInput):
+        filters: list[PeopleFilterCondition] = SchemaField(
+            description=(
+                "Filters to apply. Add one per field you want to narrow on; they are "
+                "combined with 'match' (AND by default)."
+            ),
+            default_factory=lambda: [PeopleFilterCondition()],
+            advanced=False,
+        )
+        count: int = SchemaField(
+            description=f"Number of results to return (1-{MAX_COUNT})",
+            default=25,
+            advanced=False,
+        )
         credentials: DataForB2BCredentialsInput = dataforb2b.credentials_field(
             description="DataForB2B API key"
+        )
+        offset: int = SchemaField(
+            description="Pagination offset — 0 for page 1, then 25, 50, … to page through results",
+            default=0,
+            advanced=True,
+        )
+        match: str = SchemaField(
+            description="Combine the filters above with 'and' or 'or'",
+            default="and",
+            advanced=True,
+        )
+        filters_json: dict = SchemaField(
+            description=(
+                "Escape hatch for filter shapes the list above cannot express, such as "
+                "nested and/or groups. Paste 'applied_filters' from Smart Search here "
+                "with an 'offset' to paginate its results. Merged (AND) with the "
+                "filters above, or used alone."
+            ),
+            default_factory=dict,
+            advanced=True,
+        )
+        enrich_live: bool = SchemaField(
+            description="Fetch fresh live data (uses more credits)",
+            default=False,
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -359,9 +253,13 @@ class PeopleSearchBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "filter_1_column": PeopleColumn.current_title,
-                "filter_1_operator": FilterOperator.LIKE,
-                "filter_1_value": "software engineer",
+                "filters": [
+                    {
+                        "column": PeopleColumn.current_title,
+                        "operator": FilterOperator.LIKE,
+                        "value": "software engineer",
+                    }
+                ],
                 "count": 1,
             },
             test_output=[
@@ -386,9 +284,11 @@ class PeopleSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: DataForB2BCredentials, **kwargs
     ) -> BlockOutput:
-        count, offset = _bounded_count_offset(input_data)
+        count, offset = _bounded_count_offset(input_data.count, input_data.offset)
         payload = {
-            "filters": _build_filters(input_data),
+            "filters": _build_filters(
+                input_data.filters, input_data.match, input_data.filters_json
+            ),
             "count": count,
             "offset": offset,
             "enrich_live": bool(input_data.enrich_live),
@@ -402,9 +302,47 @@ class PeopleSearchBlock(Block):
 class CompanySearchBlock(Block):
     """Search LinkedIn companies by structured filters with DataForB2B."""
 
-    class Input(BlockSchemaInput, _CompanyFilterFields):
+    class Input(BlockSchemaInput):
+        filters: list[CompanyFilterCondition] = SchemaField(
+            description=(
+                "Filters to apply. Add one per field you want to narrow on; they are "
+                "combined with 'match' (AND by default)."
+            ),
+            default_factory=lambda: [CompanyFilterCondition()],
+            advanced=False,
+        )
+        count: int = SchemaField(
+            description=f"Number of results to return (1-{MAX_COUNT})",
+            default=25,
+            advanced=False,
+        )
         credentials: DataForB2BCredentialsInput = dataforb2b.credentials_field(
             description="DataForB2B API key"
+        )
+        offset: int = SchemaField(
+            description="Pagination offset — 0 for page 1, then 25, 50, … to page through results",
+            default=0,
+            advanced=True,
+        )
+        match: str = SchemaField(
+            description="Combine the filters above with 'and' or 'or'",
+            default="and",
+            advanced=True,
+        )
+        filters_json: dict = SchemaField(
+            description=(
+                "Escape hatch for filter shapes the list above cannot express, such as "
+                "nested and/or groups. Paste 'applied_filters' from Smart Search here "
+                "with an 'offset' to paginate its results. Merged (AND) with the "
+                "filters above, or used alone."
+            ),
+            default_factory=dict,
+            advanced=True,
+        )
+        enrich_live: bool = SchemaField(
+            description="Fetch fresh live data (uses more credits)",
+            default=False,
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -431,9 +369,13 @@ class CompanySearchBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "filter_1_column": CompanyColumn.industry,
-                "filter_1_operator": FilterOperator.LIKE,
-                "filter_1_value": "software",
+                "filters": [
+                    {
+                        "column": CompanyColumn.industry,
+                        "operator": FilterOperator.LIKE,
+                        "value": "software development",
+                    }
+                ],
                 "count": 1,
             },
             test_output=[
@@ -460,9 +402,11 @@ class CompanySearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: DataForB2BCredentials, **kwargs
     ) -> BlockOutput:
-        count, offset = _bounded_count_offset(input_data)
+        count, offset = _bounded_count_offset(input_data.count, input_data.offset)
         payload = {
-            "filters": _build_filters(input_data),
+            "filters": _build_filters(
+                input_data.filters, input_data.match, input_data.filters_json
+            ),
             "count": count,
             "offset": offset,
             "enrich_live": bool(input_data.enrich_live),
