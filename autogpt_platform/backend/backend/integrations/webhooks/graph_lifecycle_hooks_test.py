@@ -120,3 +120,23 @@ async def test_before_graph_activate_succeeds_when_credentials_resolve():
         await _before_graph_activate(graph, "user-1")
 
     assert node.input_default["credentials"]["id"] == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_ignores_credential_meta_without_id():
+    """A credentials value that is truthy but carries no `id` means "nothing
+    selected", not "resolve this". It must be skipped like an absent field
+    rather than indexed — indexing raised KeyError('id'), surfacing to the user
+    as a bare 500 on POST /api/graphs that named neither block nor field."""
+    node = _make_node(creds_field="codex_credentials", required=False)
+    node.input_default = {"codex_credentials": {"provider": "codex", "type": "oauth2"}}
+    graph = MagicMock(nodes=[node])
+
+    getter = AsyncMock(return_value=MagicMock())
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = getter
+        await _before_graph_activate(graph, "user-1")
+
+    getter.assert_not_awaited()

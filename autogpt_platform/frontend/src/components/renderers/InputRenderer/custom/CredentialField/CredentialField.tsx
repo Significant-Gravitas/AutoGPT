@@ -5,10 +5,12 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api";
+import { Text } from "@/components/atoms/Text/Text";
 import { FieldProps, getUiOptions } from "@rjsf/utils";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
+import { useCredentialAvailability } from "./useCredentialAvailability";
 
 export const CredentialsField = (props: FieldProps) => {
   const { formData, onChange, schema, registry, fieldPathId, required } = props;
@@ -67,9 +69,31 @@ export const CredentialsField = (props: FieldProps) => {
     [formData?.id, formData?.provider, formData?.title, formData?.type],
   );
 
-  // In builder canvas (nodeId exists): show star based on credentialsOptional toggle
-  // In run dialogs (no nodeId): show star based on schema's required array
-  const isRequired = nodeId ? !credentialsOptional : required;
+  // The schema's `required` array is authoritative in both surfaces. In the
+  // builder canvas the node-level toggle can additionally relax a required
+  // field to optional, but it must never mark a schema-optional field
+  // required — blocks declaring an optional credential (default=None) would
+  // otherwise render an unfillable star.
+  const schemaRequired = nodeId ? !credentialsOptional && required : required;
+
+  const availability = useCredentialAvailability(
+    schema as BlockIOCredentialsSubSchema,
+    hardcodedValues,
+  );
+  const isUnavailable = availability === "unavailable";
+
+  // CredentialsInput renders nothing when the provider is missing from the
+  // providers map, which used to leave a bare title with no control under it.
+  // An optional field then has nothing actionable in it at all, so drop the row.
+  if (isUnavailable && !schemaRequired) {
+    return null;
+  }
+
+  // A provider this user cannot connect is not actionable, so the required
+  // marker only misleads: it demands something the UI gives no way to supply.
+  // The schema still requires it and execution-time validation still enforces
+  // that — this only suppresses the star on a field that cannot be filled.
+  const isRequired = isUnavailable ? false : schemaRequired;
 
   return (
     <div className="flex flex-col gap-2">
@@ -80,6 +104,11 @@ export const CredentialsField = (props: FieldProps) => {
         schema={schema}
         required={isRequired}
       />
+      {availability === "unavailable" && (
+        <Text variant="small" className="text-zinc-500">
+          Not available on your account.
+        </Text>
+      )}
       <CredentialsInput
         schema={schema as BlockIOCredentialsSubSchema}
         selectedCredentials={selectedCredentials}
