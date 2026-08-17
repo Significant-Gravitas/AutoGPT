@@ -50,20 +50,6 @@ class TeamsClient:
             activity,
         )
 
-    async def reply_to_activity(
-        self,
-        service_url: str,
-        conversation_id: str,
-        activity_id: str,
-        activity: dict[str, Any],
-    ) -> str | None:
-        """Post an activity as a reply to a specific message."""
-        return await self._post_activity(
-            service_url,
-            f"v3/conversations/{conversation_id}/activities/{activity_id}",
-            activity,
-        )
-
     async def create_conversation(
         self, service_url: str, payload: dict[str, Any]
     ) -> str | None:

@@ -1030,6 +1030,77 @@ def test_pasted_image_is_ingested(app_id):
     assert files[0].filename == "pasted-image"
 
 
+def test_pasted_image_on_a_foreign_host_never_sees_the_bearer(app_id):
+    """The activity body is unsigned, so contentUrl is attacker-choosable.
+
+    Fetching it with the bot's Connector bearer would hand that token to
+    whatever host the sender names, within the token's whole validity window.
+    """
+    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
+
+    activity = _activity(
+        attachments=[
+            {
+                "contentType": "image/png",
+                "contentUrl": "https://attacker.example/collect",
+            }
+        ]
+    )
+    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
+        assert _inbound_files(activity, MagicMock()) == []
+
+
+def test_pasted_image_host_must_be_a_connector_host_not_merely_public(app_id):
+    # A public HTTPS host passes the looser attachment check; the bearer path
+    # has to be stricter than that.
+    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
+
+    activity = _activity(
+        attachments=[
+            {"contentType": "image/png", "contentUrl": "https://example.com/x.png"}
+        ]
+    )
+    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
+        assert _inbound_files(activity, MagicMock()) == []
+        assert auth.is_fetchable_attachment_url("https://example.com/x.png") is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://files.example.com/doc.txt",  # cleartext
+        "https://169.254.169.254/latest/meta-data/",  # cloud metadata
+        "https://127.0.0.1/secret",
+        "https://10.0.0.5/internal",
+        "https://[::1]/secret",
+        "file:///etc/passwd",
+    ],
+)
+def test_file_download_urls_that_point_inward_are_skipped(app_id, url):
+    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
+
+    activity = _activity(
+        attachments=[
+            {
+                "contentType": ("application/vnd.microsoft.teams.file.download.info"),
+                "name": "doc.txt",
+                "content": {"downloadUrl": url, "fileType": "txt"},
+            }
+        ]
+    )
+    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
+        assert _inbound_files(activity, MagicMock()) == []
+
+
+def test_a_normal_sharepoint_download_still_works(app_id):
+    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
+
+    activity = _activity(attachments=[_file_attachment("notes.txt")])
+    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
+        files = _inbound_files(activity, MagicMock())
+    assert [f.filename for f in files] == ["notes.txt"]
+
+
 def test_file_attachment_without_download_url_is_skipped(app_id):
     from backend.copilot.bot.adapters.teams.adapter import _inbound_files
 

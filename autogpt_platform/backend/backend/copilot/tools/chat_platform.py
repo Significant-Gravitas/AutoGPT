@@ -1,7 +1,7 @@
 """Tools for the copilot to post to a linked chat platform on the user's behalf.
 
 ``post_to_chat_platform`` lets AutoPilot send a standalone message or open a new
-thread in a channel of a chat platform (Discord, Slack, or Telegram) the user
+thread in a channel of a chat platform (Discord, Slack, Telegram or Microsoft Teams) the user
 has linked. The headline use case is *scheduled* output: "every Monday post an
 update in #standup" — AutoPilot schedules a follow-up turn (via
 ``schedule_followup``) whose message instructs it to post, and at fire time it

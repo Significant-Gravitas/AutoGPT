@@ -20,6 +20,7 @@ Two consequences drive the shape of this module:
 """
 
 import asyncio
+import ipaddress
 import logging
 import os
 import time
@@ -234,6 +235,51 @@ def is_allowed_service_url(service_url: str) -> bool:
     return host in config.ALLOWED_SERVICE_URL_HOSTS or any(
         host == suffix.lstrip(".") or host.endswith(suffix)
         for suffix in config.ALLOWED_SERVICE_URL_SUFFIXES
+    )
+
+
+def is_fetchable_attachment_url(url: str) -> bool:
+    """Whether we will issue a server-side GET for this attachment.
+
+    Attachment URLs ride in the activity body, which the Connector token does
+    not sign — the same reason ``serviceUrl`` is bound to the token. A fetch
+    with no allowlist is a request generator pointed at our own network, so
+    require HTTPS and refuse anything that resolves to a private or
+    link-local address (cloud metadata included).
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    if host in _LOOPBACK_HOSTS or host == _CONTAINER_HOST_ALIAS:
+        # Playground attachments are served off the developer's own machine.
+        return config.allow_unverified_requests()
+    if parsed.scheme != "https":
+        return False
+    return not _is_internal_host(host)
+
+
+def _is_internal_host(host: str) -> bool:
+    """True for a literal address inside a range we must never dial.
+
+    Only literals are decided here: a name that *resolves* into one of these
+    ranges still gets through, which is why the bearer-bearing path uses the
+    stricter Connector allowlist instead of this check.
+    """
+    try:
+        address = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
     )
 
 

@@ -51,12 +51,12 @@ logger = logging.getLogger(__name__)
 
 MESSAGES_PATH = "/api/copilot-webhooks/teams/messages"
 
-# Inbound rejections answer with fixed text: everything specific about why is
-# logged instead, so an unauthenticated caller learns nothing from probing.
 # Conversations we keep a learned serviceUrl for. Evicting one is cheap:
 # the next reply falls back to the default host until it is relearned.
 _MAX_REMEMBERED_SERVICE_URLS = 10_000
 
+# Inbound rejections answer with fixed text: everything specific about why is
+# logged instead, so an unauthenticated caller learns nothing from probing.
 _REJECTED = "rejected"
 _MALFORMED = "invalid activity payload"
 
@@ -622,6 +622,11 @@ def _inbound_files(activity: dict[str, Any], client: TeamsClient) -> list[Inboun
             download_url = content.get("downloadUrl")
             if not download_url:
                 continue
+            if not auth.is_fetchable_attachment_url(download_url):
+                # Unsigned body: without this the URL is a server-side request
+                # generator aimed at whatever the sender names.
+                logger.warning("Skipping Teams attachment with an unfetchable URL")
+                continue
             files.append(
                 InboundFile(
                     filename=attachment.get("name"),
@@ -635,6 +640,15 @@ def _inbound_files(activity: dict[str, Any], client: TeamsClient) -> list[Inboun
         elif content_type.startswith("image/"):
             content_url = attachment.get("contentUrl")
             if not content_url:
+                continue
+            # This fetch carries the bot's Connector bearer, so it answers to
+            # the same allowlist as every other token-bearing call rather than
+            # the looser attachment check — the body naming it is unsigned.
+            if not auth.is_allowed_service_url(content_url):
+                logger.warning(
+                    "Refusing to send the Connector bearer to a non-Connector "
+                    "attachment host"
+                )
                 continue
             files.append(
                 InboundFile(
