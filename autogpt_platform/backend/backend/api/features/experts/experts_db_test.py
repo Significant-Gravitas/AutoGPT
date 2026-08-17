@@ -3,6 +3,7 @@ import re
 import uuid
 from pathlib import Path
 from test import load_store_agents as store_assets
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -1053,48 +1054,86 @@ async def test_get_expert_only_reads_private_owner_scope():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_existing_non_private_hire_is_never_revived():
-    row = SimpleNamespace(
+    """The reservation must fail closed on a non-PRIVATE existing row —
+    no revive, no create."""
+    shared = SimpleNamespace(
         id="shared-expert",
         visibility=prisma.enums.ResourceVisibility.TEAM,
+        isArchived=True,
     )
-    expert_client = SimpleNamespace(update=AsyncMock())
-    with (
-        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
-        patch.object(
-            scheduling,
-            "reattach_expert_triggers",
-            new_callable=AsyncMock,
-        ) as reattach,
-    ):
-        with pytest.raises(experts_db.ExpertNotFoundError):
-            await experts_db._existing_hire_result(row)
+    tx = SimpleNamespace(
+        execute_raw=AsyncMock(),
+        expert=SimpleNamespace(
+            find_first=AsyncMock(return_value=shared),
+            update=AsyncMock(),
+            create=AsyncMock(),
+            count=AsyncMock(return_value=0),
+        ),
+    )
 
-    expert_client.update.assert_not_awaited()
-    reattach.assert_not_awaited()
+    @asynccontextmanager
+    async def fake_transaction(*args, **kwargs):
+        yield tx
+
+    with patch.object(experts_db, "transaction", fake_transaction):
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db._reserve_hired_expert("owner-1", "template-1", {})
+
+    tx.expert.update.assert_not_awaited()
+    tx.expert.create.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_existing_team_expert_fails_closed():
-    template = SimpleNamespace(id="template-1")
+    template = SimpleNamespace(
+        id="template-1",
+        name="Maria",
+        avatarUrl=None,
+        role="Marketing Specialist",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="You are Maria.",
+        voicePreferences=None,
+        boundaries=None,
+        toolProfile=None,
+        Workflows=[],
+    )
     shared = SimpleNamespace(
         id="shared-expert",
         visibility=prisma.enums.ResourceVisibility.TEAM,
+        isArchived=False,
     )
-    expert_client = SimpleNamespace(
-        find_first=AsyncMock(side_effect=[template, shared]),
-        create=AsyncMock(),
+    expert_client = SimpleNamespace(find_first=AsyncMock(return_value=template))
+    tx = SimpleNamespace(
+        execute_raw=AsyncMock(),
+        expert=SimpleNamespace(
+            find_first=AsyncMock(return_value=shared),
+            update=AsyncMock(),
+            create=AsyncMock(),
+            count=AsyncMock(return_value=0),
+        ),
     )
 
-    with patch.object(prisma.models.Expert, "prisma", return_value=expert_client):
+    @asynccontextmanager
+    async def fake_transaction(*args, **kwargs):
+        yield tx
+
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
+        patch.object(experts_db, "transaction", fake_transaction),
+    ):
         with pytest.raises(experts_db.ExpertNotFoundError) as exc_info:
             await experts_db.hire_expert("owner-1", "template-1", None)
 
     assert exc_info.value.expert_id == "shared-expert"
-    expert_client.create.assert_not_awaited()
+    tx.expert.create.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_raced_org_expert_fails_closed():
+    """Losing the create race to a row that is (now) non-PRIVATE must fail
+    closed on the retry instead of returning the shared row."""
     template = SimpleNamespace(
         id="template-1",
         name="Maria",
@@ -1112,29 +1151,48 @@ async def test_hire_raced_org_expert_fails_closed():
     raced = SimpleNamespace(
         id="shared-expert",
         visibility=prisma.enums.ResourceVisibility.ORG,
+        isArchived=False,
     )
-    expert_client = SimpleNamespace(
-        find_first=AsyncMock(side_effect=[template, None, raced]),
-        create=AsyncMock(side_effect=prisma.errors.UniqueViolationError({})),
+    expert_client = SimpleNamespace(find_first=AsyncMock(return_value=template))
+    tx = SimpleNamespace(
+        execute_raw=AsyncMock(),
+        expert=SimpleNamespace(
+            # First reservation: no existing row → create races and loses.
+            # Retry reservation: the winner's row is found — and is shared.
+            find_first=AsyncMock(side_effect=[None, raced]),
+            update=AsyncMock(),
+            create=AsyncMock(side_effect=prisma.errors.UniqueViolationError({})),
+            count=AsyncMock(return_value=0),
+        ),
     )
 
-    with patch.object(prisma.models.Expert, "prisma", return_value=expert_client):
+    @asynccontextmanager
+    async def fake_transaction(*args, **kwargs):
+        yield tx
+
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
+        patch.object(experts_db, "transaction", fake_transaction),
+    ):
         with pytest.raises(experts_db.ExpertNotFoundError) as exc_info:
             await experts_db.hire_expert("owner-1", "template-1", None)
 
     assert exc_info.value.expert_id == "shared-expert"
-    expert_client.create.assert_awaited_once()
+    tx.expert.create.assert_awaited_once()
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_rehire_missing_private_tenancy_does_not_unarchive():
+async def test_rehire_missing_private_tenancy_rolls_back_to_archived():
+    """The reservation unarchives in-transaction; a missing personal
+    workspace must roll the row back to archived and surface as retryable —
+    never return a revived expert without a workspace."""
     row = SimpleNamespace(
         id="expert-1",
         ownerUserId="owner-1",
-        isArchived=True,
+        isArchived=False,
         visibility=prisma.enums.ResourceVisibility.PRIVATE,
     )
-    expert_client = SimpleNamespace(update=AsyncMock())
+    expert_client = SimpleNamespace(update=AsyncMock(), find_unique=AsyncMock())
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(
@@ -1148,13 +1206,25 @@ async def test_rehire_missing_private_tenancy_does_not_unarchive():
         patch.object(
             scheduling, "reattach_expert_triggers", new_callable=AsyncMock
         ) as reattach,
+        patch.object(
+            scheduling, "pause_expert_schedules", new_callable=AsyncMock
+        ) as pause,
+        patch.object(
+            scheduling, "detach_expert_triggers", new_callable=AsyncMock
+        ) as detach,
     ):
         with pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError):
-            await experts_db._existing_hire_result(row)
+            await experts_db._resume_revived_hire(row)
 
-    expert_client.update.assert_not_awaited()
     resume.assert_not_awaited()
     reattach.assert_not_awaited()
+    pause.assert_awaited_once_with(
+        "owner-1", "expert-1", reason="Expert re-hire did not complete"
+    )
+    expert_client.update.assert_awaited_once_with(
+        where={"id": "expert-1"}, data={"isArchived": True}
+    )
+    detach.assert_awaited_once_with("owner-1", "expert-1")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1162,11 +1232,10 @@ async def test_rehire_reattach_failure_restores_archived_state():
     row = SimpleNamespace(
         id="expert-1",
         ownerUserId="owner-1",
-        isArchived=True,
+        isArchived=False,
         visibility=prisma.enums.ResourceVisibility.PRIVATE,
     )
-    revived = SimpleNamespace(**{**row.__dict__, "isArchived": False})
-    expert_client = SimpleNamespace(update=AsyncMock(side_effect=[revived, row]))
+    expert_client = SimpleNamespace(update=AsyncMock(), find_unique=AsyncMock())
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(
@@ -1192,17 +1261,13 @@ async def test_rehire_reattach_failure_restores_archived_state():
         ) as detach,
     ):
         with pytest.raises(experts_db.ExpertHireUnavailableError) as exc_info:
-            await experts_db._existing_hire_result(row)
+            await experts_db._resume_revived_hire(row)
 
     assert exc_info.value.expert_id == "expert-1"
     assert isinstance(exc_info.value.__cause__, RuntimeError)
-    assert expert_client.update.await_count == 2
-    assert expert_client.update.await_args_list[0].kwargs["data"] == {
-        "isArchived": False
-    }
-    assert expert_client.update.await_args_list[1].kwargs["data"] == {
-        "isArchived": True
-    }
+    expert_client.update.assert_awaited_once_with(
+        where={"id": "expert-1"}, data={"isArchived": True}
+    )
     pause.assert_awaited_once_with(
         "owner-1", "expert-1", reason="Expert re-hire did not complete"
     )
