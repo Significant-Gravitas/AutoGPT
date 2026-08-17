@@ -87,7 +87,6 @@ async def build_expert_identity_suffix(
         raise ExpertSessionUnavailableError(
             "This private expert session must be reopened in its personal workspace."
         )
-
     name = escape_prompt_xml_tags(expert.name)
     identity = escape_prompt_xml_tags(expert.identity)
     voice = fence_voice_preferences(escape_prompt_xml_tags(expert.voice_preferences))

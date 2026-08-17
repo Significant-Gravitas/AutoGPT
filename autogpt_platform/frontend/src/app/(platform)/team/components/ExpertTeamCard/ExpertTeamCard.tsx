@@ -19,6 +19,8 @@ import {
   getScheduleCountLabel,
   getWeeklySpend,
 } from "../../helpers";
+import { FireExpertDialog } from "../FireExpertDialog/FireExpertDialog";
+import { FireExpertMenu } from "../FireExpertMenu/FireExpertMenu";
 import { useExpertTeamCard } from "./useExpertTeamCard";
 
 interface Props {
@@ -35,10 +37,11 @@ export function ExpertTeamCard({
   onEditSoul,
 }: Props) {
   const workflowCount = expert.workflows.length;
-  const needsSetupCount = getNeedsSetupCount(expert);
+  const needsSetupCount = getNeedsSetupCount(expert, schedules);
   const scheduleLabel = getScheduleCountLabel(schedules);
   const weeklySpend = getWeeklySpend(expert);
-  const { handleResume, isResuming } = useExpertTeamCard(expert.id);
+  const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
+    useExpertTeamCard(expert.id);
   const isPaused = Boolean(expert.schedules_paused_at);
 
   function handleInstallClick() {
@@ -51,11 +54,19 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
+    <div className="relative flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-[border-color,box-shadow] duration-200 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
+      <div className="absolute right-3 top-3 z-10">
+        <FireExpertMenu
+          expertName={expert.name}
+          onFire={openFire}
+          testId="expert-card-actions"
+          triggerClassName="text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+        />
+      </div>
       <Link
         href={`/team/${expert.id}`}
         aria-label={`View ${expert.name}`}
-        className="flex flex-col gap-3"
+        className="flex flex-col gap-3 pr-8"
       >
         <div className="flex items-center gap-3">
           <Avatar className="h-12 w-12">
@@ -146,6 +157,12 @@ export function ExpertTeamCard({
           Install workflow
         </Button>
       </div>
+      <FireExpertDialog
+        expertId={expert.id}
+        expertName={expert.name}
+        open={isFireOpen}
+        onClose={closeFire}
+      />
     </div>
   );
 }

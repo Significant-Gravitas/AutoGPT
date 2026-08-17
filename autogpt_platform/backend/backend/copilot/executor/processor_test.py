@@ -389,7 +389,6 @@ class TestExecuteAsyncAclose:
                 "team_id": "forged-team",
             }
         )
-
         with (
             patch(
                 "backend.copilot.executor.processor.ChatConfig",

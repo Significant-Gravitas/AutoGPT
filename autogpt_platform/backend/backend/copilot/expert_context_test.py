@@ -206,7 +206,6 @@ class TestBuildExpertIdentitySuffix:
             await build_expert_identity_suffix(
                 "user-1", "exp-1", organization_id="personal-org", team_id=None
             )
-
         assert str(exc_info.value) == EXPERT_SESSION_TEMPORARY_MESSAGE
         assert mock_db.get_expert.await_count == 2
 
