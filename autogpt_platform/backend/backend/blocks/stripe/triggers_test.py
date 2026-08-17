@@ -20,9 +20,8 @@ from backend.blocks.stripe.triggers import (
 async def run_block(payload: dict) -> dict:
     """Run the block over ``payload`` and collect its outputs by name."""
     block = StripeSubscriptionTriggerBlock()
-    input_data = StripeSubscriptionTriggerBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]  # validated from its dict form
-        payload=payload,
+    input_data = StripeSubscriptionTriggerBlock.Input.model_validate(
+        {"credentials": TEST_CREDENTIALS_INPUT, "payload": payload}
     )
     return {name: value async for name, value in block.run(input_data)}
 
