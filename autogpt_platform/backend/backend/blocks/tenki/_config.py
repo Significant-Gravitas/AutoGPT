@@ -1,11 +1,12 @@
 from tenki import AsyncClient
 
-from backend.sdk import APIKeyCredentials, ProviderBuilder, SecretStr
+from backend.sdk import APIKeyCredentials, BlockCostType, ProviderBuilder, SecretStr
 
 tenki = (
     ProviderBuilder("tenki")
     .with_description("Ephemeral cloud sandboxes for secure code execution")
-    .with_supported_auth_types("api_key")
+    .with_api_key("TENKI_API_KEY", "Tenki API Key")
+    .with_base_cost(1, BlockCostType.SECOND, cost_divisor=10)
     .build()
 )
 
@@ -25,5 +26,5 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-def _client(credentials: APIKeyCredentials) -> AsyncClient:
+def create_client(credentials: APIKeyCredentials) -> AsyncClient:
     return AsyncClient(auth_token=credentials.api_key.get_secret_value())

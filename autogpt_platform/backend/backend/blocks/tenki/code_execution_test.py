@@ -6,6 +6,7 @@ import pytest
 from backend.blocks.tenki import _config, code_execution
 from backend.blocks.tenki._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, tenki
 from backend.blocks.tenki.code_execution import TenkiRunCodeBlock
+from backend.sdk import BlockCostType
 
 
 class FakeResult:
@@ -15,15 +16,12 @@ class FakeResult:
         exit_code: int = 0,
         stdout: str = "hello",
         stderr: str = "",
-        duration_ms: int = 125,
+        duration_ms: int | None = 125,
     ):
         self.exit_code = exit_code
         self.stdout_text = stdout
         self.stderr_text = stderr
         self.duration_ms = duration_ms
-        self.reason = None
-        self.signal = None
-        self.ok = exit_code == 0
 
 
 class FakeSandbox:
@@ -35,6 +33,8 @@ class FakeSandbox:
         self.wait_error: Exception | None = None
         self.shell_error: Exception | None = None
         self.close_error: BaseException | None = None
+        self.shell_command: str | None = None
+        self.shell_kwargs: dict = {}
         self.shell_started = asyncio.Event()
         self.shell_release: asyncio.Event | None = None
         self.close_started = asyncio.Event()
@@ -46,6 +46,8 @@ class FakeSandbox:
         self.state = "RUNNING"
 
     async def shell(self, command: str, **kwargs):
+        self.shell_command = command
+        self.shell_kwargs = kwargs
         self.shell_started.set()
         if self.shell_release:
             await self.shell_release.wait()
@@ -101,11 +103,19 @@ def test_tenki_provider_supports_api_keys():
     assert tenki.supported_auth_types == {"api_key"}
 
 
+def test_tenki_provider_bills_per_walltime():
+    assert len(tenki.base_costs) == 1
+    cost = tenki.base_costs[0]
+    assert cost.cost_amount == 1
+    assert cost.cost_type == BlockCostType.SECOND
+    assert cost.cost_divisor == 10
+
+
 def test_client_uses_api_key(monkeypatch):
     async_client = Mock()
     monkeypatch.setattr(_config, "AsyncClient", async_client)
 
-    client = _config._client(TEST_CREDENTIALS)
+    client = _config.create_client(TEST_CREDENTIALS)
 
     assert client is async_client.return_value
     async_client.assert_called_once_with(auth_token="mock-tenki-api-key")
@@ -114,30 +124,83 @@ def test_client_uses_api_key(monkeypatch):
 async def test_success_uses_ephemeral_lifecycle(monkeypatch):
     sandbox = FakeSandbox()
     client = FakeClient(sandbox)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
-
-    outputs = await _outputs(TenkiRunCodeBlock())
-
-    assert outputs[0:3] == [("stdout", "hello"), ("stderr", ""), ("exit_code", 0)]
-    assert client.create_kwargs["wait"] is False
-    assert client.create_kwargs["allow_inbound"] is False
-    assert client.create_kwargs["max_duration"] == 360
-    assert sandbox.close_calls == 1
-    assert client.closed
-
-
-async def test_command_failure_surfaces_diagnostics_and_closes(monkeypatch):
-    sandbox = FakeSandbox(FakeResult(exit_code=17, stderr="broken dependency"))
-    client = FakeClient(sandbox)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
+    monkeypatch.setattr(
+        code_execution, "time", Mock(monotonic=Mock(side_effect=[10.0, 11.5]))
+    )
 
     outputs = await _outputs(TenkiRunCodeBlock())
 
     assert outputs == [
-        ("error", "Tenki command exited with code 17: broken dependency")
+        ("stdout", "hello"),
+        ("stderr", ""),
+        ("exit_code", 0),
+        ("duration_seconds", 0.125),
+        ("startup_time_seconds", 1.5),
+        ("sandbox_id", "sandbox-123"),
+    ]
+    assert client.create_kwargs["wait"] is False
+    assert client.create_kwargs["allow_inbound"] is False
+    assert client.create_kwargs["max_duration"] == 360
+    assert sandbox.shell_command == "printf hello"
+    assert sandbox.shell_kwargs == {"cwd": None, "env": {}, "timeout": 120}
+    assert sandbox.close_calls == 1
+    assert client.closed
+
+
+async def test_shell_forwards_execution_options(monkeypatch):
+    sandbox = FakeSandbox()
+    client = FakeClient(sandbox)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
+
+    await _outputs(
+        TenkiRunCodeBlock(),
+        _input(
+            working_directory="/workspace",
+            environment={"MODE": "test"},
+            timeout_seconds=42,
+        ),
+    )
+
+    assert sandbox.shell_kwargs == {
+        "cwd": "/workspace",
+        "env": {"MODE": "test"},
+        "timeout": 42,
+    }
+
+
+async def test_command_failure_returns_outputs_and_closes(monkeypatch):
+    sandbox = FakeSandbox(
+        FakeResult(exit_code=17, stdout="partial output", stderr="broken dependency")
+    )
+    client = FakeClient(sandbox)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
+    monkeypatch.setattr(
+        code_execution, "time", Mock(monotonic=Mock(side_effect=[10.0, 11.0]))
+    )
+
+    outputs = await _outputs(TenkiRunCodeBlock())
+
+    assert outputs == [
+        ("stdout", "partial output"),
+        ("stderr", "broken dependency"),
+        ("exit_code", 17),
+        ("duration_seconds", 0.125),
+        ("startup_time_seconds", 1.0),
+        ("sandbox_id", "sandbox-123"),
     ]
     assert sandbox.close_calls == 1
     assert client.closed
+
+
+async def test_missing_command_duration_returns_zero(monkeypatch):
+    sandbox = FakeSandbox(FakeResult(duration_ms=None))
+    client = FakeClient(sandbox)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
+
+    outputs = await _outputs(TenkiRunCodeBlock())
+
+    assert ("duration_seconds", 0) in outputs
 
 
 @pytest.mark.parametrize(
@@ -148,7 +211,7 @@ async def test_readiness_failure_closes(monkeypatch, error):
     sandbox = FakeSandbox()
     sandbox.wait_error = error
     client = FakeClient(sandbox)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
 
     outputs = await _outputs(TenkiRunCodeBlock())
 
@@ -164,7 +227,7 @@ async def test_remote_command_exception_closes(monkeypatch, error):
     sandbox = FakeSandbox()
     sandbox.shell_error = error
     client = FakeClient(sandbox)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
 
     outputs = await _outputs(TenkiRunCodeBlock())
 
@@ -178,7 +241,7 @@ async def test_cleanup_failure_does_not_mask_result(monkeypatch):
     sandbox.close_error = RuntimeError("sandbox teardown transport failed")
     client = FakeClient(sandbox)
     client.close_error = RuntimeError("client teardown failed")
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
 
     outputs = await _outputs(TenkiRunCodeBlock())
 
@@ -192,7 +255,7 @@ async def test_cleanup_failure_does_not_mask_command_exception(monkeypatch):
     sandbox.shell_error = RuntimeError("transport failed")
     sandbox.close_error = RuntimeError("sandbox teardown transport failed")
     client = FakeClient(sandbox)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
 
     outputs = await _outputs(TenkiRunCodeBlock())
 
@@ -239,7 +302,7 @@ async def test_cancellation_closes(monkeypatch):
     sandbox = FakeSandbox()
     sandbox.shell_release = asyncio.Event()
     client = FakeClient(sandbox)
-    monkeypatch.setattr(code_execution, "_client", lambda credentials: client)
+    monkeypatch.setattr(code_execution, "create_client", lambda credentials: client)
     block = TenkiRunCodeBlock()
 
     task = asyncio.create_task(block.execute_in_sandbox(_input(), TEST_CREDENTIALS))

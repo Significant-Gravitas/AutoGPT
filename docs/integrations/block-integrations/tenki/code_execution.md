@@ -12,7 +12,9 @@ Run a shell command in a fresh Tenki cloud sandbox. The sandbox is always termin
 <!-- MANUAL: how_it_works -->
 The block creates a fresh sandbox with inbound access disabled, waits for it to become ready, and runs the command in `/home/tenki` unless another working directory is provided.
 
-Each sandbox has a hard lifetime limit equal to the startup timeout, command timeout, and a 60-second cleanup margin. The block also terminates the sandbox after success, command failure, timeout, or workflow cancellation, then returns command output and timing details. See the [Tenki documentation](https://www.tenki.cloud/docs) for API key and sandbox concepts.
+Each sandbox has a hard lifetime limit equal to the startup timeout, command timeout, and a 60-second cleanup margin. The block also terminates the sandbox after success, command failure, timeout, or workflow cancellation. A completed command emits all result outputs even when its exit code is non-zero; sandbox or SDK failures emit only the `error` output.
+
+Standard output and standard error are returned in full and are not treated as sensitive. Keep command output bounded, and do not pass environment values that the command may print. See the [Tenki documentation](https://www.tenki.cloud/docs) for API key and sandbox concepts.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -21,7 +23,7 @@ Each sandbox has a hard lifetime limit equal to the startup timeout, command tim
 |-------|-------------|------|----------|
 | command | Shell command to run in a fresh Tenki sandbox | str | Yes |
 | working_directory | Sandbox working directory; empty uses /home/tenki | str | No |
-| environment | Environment variables passed only to the command | Dict[str, str] | No |
+| environment | Environment variables passed only to the command; avoid values the command may print | Dict[str, str] | No |
 | timeout_seconds | Maximum command runtime in seconds | int | No |
 | startup_timeout_seconds | Maximum time to wait for the sandbox to become ready | int | No |
 

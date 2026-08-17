@@ -4,7 +4,7 @@ import time
 import uuid
 
 from pydantic import BaseModel
-from tenki import AsyncClient, AsyncSandbox, CommandResult
+from tenki import AsyncClient, AsyncSandbox
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -17,9 +17,11 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, tenki
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, create_client, tenki
 
 logger = logging.getLogger(__name__)
+SANDBOX_CLEANUP_MARGIN_SECONDS = 60
+SANDBOX_NAME_SUFFIX_LENGTH = 12
 
 
 class SandboxExecution(BaseModel):
@@ -29,8 +31,6 @@ class SandboxExecution(BaseModel):
     exit_code: int
     duration_seconds: float
     startup_time_seconds: float
-    ok: bool
-    failure: str = ""
 
 
 class TenkiRunCodeBlock(Block):
@@ -49,7 +49,10 @@ class TenkiRunCodeBlock(Block):
             advanced=True,
         )
         environment: dict[str, str] = SchemaField(
-            description="Environment variables passed only to the command",
+            description=(
+                "Environment variables passed only to the command; avoid values the "
+                "command may print"
+            ),
             default_factory=dict,
             advanced=True,
         )
@@ -113,7 +116,6 @@ class TenkiRunCodeBlock(Block):
                     exit_code=0,
                     duration_seconds=0.1,
                     startup_time_seconds=1.0,
-                    ok=True,
                 )
             },
         )
@@ -127,10 +129,6 @@ class TenkiRunCodeBlock(Block):
             yield "error", f"Tenki sandbox execution failed: {error}"
             return
 
-        if not result.ok:
-            yield "error", result.failure
-            return
-
         yield "stdout", result.stdout
         yield "stderr", result.stderr
         yield "exit_code", result.exit_code
@@ -141,16 +139,18 @@ class TenkiRunCodeBlock(Block):
     async def execute_in_sandbox(
         self, input_data: Input, credentials: APIKeyCredentials
     ) -> SandboxExecution:
-        client = _client(credentials)
+        client = create_client(credentials)
         sandbox: AsyncSandbox | None = None
         try:
             started_at = time.monotonic()
             sandbox = await client.create(
-                name=f"autogpt-{uuid.uuid4().hex[:12]}",
+                name=(f"autogpt-{uuid.uuid4().hex[:SANDBOX_NAME_SUFFIX_LENGTH]}"),
                 wait=False,
                 allow_inbound=False,
                 max_duration=(
-                    input_data.startup_timeout_seconds + input_data.timeout_seconds + 60
+                    input_data.startup_timeout_seconds
+                    + input_data.timeout_seconds
+                    + SANDBOX_CLEANUP_MARGIN_SECONDS
                 ),
                 metadata={"integration": "autogpt"},
                 tags=["autogpt", "ephemeral"],
@@ -170,8 +170,6 @@ class TenkiRunCodeBlock(Block):
                 exit_code=result.exit_code,
                 duration_seconds=(result.duration_ms or 0) / 1000,
                 startup_time_seconds=startup_seconds,
-                ok=result.ok,
-                failure=self._command_failure(result),
             )
         finally:
             await self._cleanup(client, sandbox)
@@ -205,16 +203,3 @@ class TenkiRunCodeBlock(Block):
         except asyncio.CancelledError:
             await cleanup_task
             raise
-
-    @staticmethod
-    def _command_failure(result: CommandResult) -> str:
-        if result.ok:
-            return ""
-        details = (
-            result.stderr_text.strip()
-            or result.stdout_text.strip()
-            or result.reason
-            or result.signal
-            or "no diagnostics returned"
-        )
-        return f"Tenki command exited with code {result.exit_code}: {details}"
