@@ -2,17 +2,11 @@
 
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useId } from "react";
+import { CustomVoiceOption } from "./components/CustomVoiceOption";
+import { SampleCard } from "./components/SampleCard";
 import type { VoicePickResult } from "./helpers";
 import { useVoicePicker } from "./useVoicePicker";
-
-const MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS = 2_000;
-const CUSTOM_VOICE_TEXTAREA_ROWS = 3;
-const SELECTABLE_CARD_CLASS_NAME =
-  "rounded-2xl border border-border bg-background p-5 transition-colors focus-within:ring-2 focus-within:ring-ring";
 
 type Props = {
   name?: string;
@@ -31,7 +25,6 @@ export function VoicePicker({
 }: Props) {
   const choiceGroupName = useId();
   const customTextareaId = useId();
-  const customCharacterCountId = `${customTextareaId}-character-count`;
   const {
     selected,
     customText,
@@ -70,41 +63,14 @@ export function VoicePicker({
           );
         })}
 
-        <div className={selectableCardClassName(selected === "custom")}>
-          <label
-            htmlFor={`${customTextareaId}-choice`}
-            className="mb-2 block cursor-pointer text-xs font-medium uppercase tracking-[0.12em] text-accent"
-          >
-            <input
-              id={`${customTextareaId}-choice`}
-              type="radio"
-              name={choiceGroupName}
-              value="custom"
-              checked={selected === "custom"}
-              onChange={focusCustom}
-              className="sr-only"
-            />
-            Paste your own
-          </label>
-          <textarea
-            id={customTextareaId}
-            value={customText}
-            onFocus={focusCustom}
-            onChange={(event) => changeCustom(event.target.value)}
-            rows={CUSTOM_VOICE_TEXTAREA_ROWS}
-            maxLength={MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS}
-            aria-describedby={customCharacterCountId}
-            placeholder="Paste a few sentences written the way you'd like this expert to sound."
-            className="w-full resize-none rounded-xl border border-input bg-background px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <p
-            id={customCharacterCountId}
-            className="mt-1.5 text-right text-xs text-muted-foreground"
-          >
-            {customText.length.toLocaleString()} /{" "}
-            {MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS.toLocaleString()} characters
-          </p>
-        </div>
+        <CustomVoiceOption
+          choiceGroupName={choiceGroupName}
+          textareaId={customTextareaId}
+          customText={customText}
+          isSelected={selected === "custom"}
+          onFocus={focusCustom}
+          onChange={changeCustom}
+        />
       </fieldset>
 
       <footer className="flex items-center justify-between gap-3">
@@ -122,64 +88,5 @@ export function VoicePicker({
         </Button>
       </footer>
     </div>
-  );
-}
-
-type SampleCardProps = {
-  sample: VoiceSample;
-  choice: "a" | "b";
-  choiceGroupName: string;
-  isSelected: boolean;
-  onSelect: () => void;
-};
-
-function selectableCardClassName(isSelected: boolean, interactive = false) {
-  return cn(
-    SELECTABLE_CARD_CLASS_NAME,
-    isSelected
-      ? "border-accent bg-accent/5 ring-2 ring-accent/20"
-      : interactive && "cursor-pointer hover:border-foreground/30",
-  );
-}
-
-function SampleCard({
-  sample,
-  choice,
-  choiceGroupName,
-  isSelected,
-  onSelect,
-}: SampleCardProps) {
-  return (
-    <label
-      className={cn(
-        "block w-full text-left",
-        selectableCardClassName(isSelected, true),
-      )}
-    >
-      <input
-        type="radio"
-        name={choiceGroupName}
-        value={choice}
-        checked={isSelected}
-        onChange={onSelect}
-        aria-label={sample.label}
-        className="sr-only"
-      />
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-xs font-medium uppercase tracking-[0.12em] text-accent">
-          {sample.label}
-        </span>
-        {isSelected ? (
-          <Icon
-            icon={CheckmarkCircle02Icon}
-            size={18}
-            className="shrink-0 text-accent"
-          />
-        ) : null}
-      </div>
-      <p className="whitespace-pre-line text-[15px] leading-relaxed text-muted-foreground">
-        {sample.text}
-      </p>
-    </label>
   );
 }

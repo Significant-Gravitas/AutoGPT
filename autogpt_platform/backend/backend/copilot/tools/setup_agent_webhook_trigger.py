@@ -24,6 +24,7 @@ from backend.data.graph import GraphModel, Node
 from backend.data.model import Credentials, CredentialsMetaInput
 from backend.util.exceptions import (
     InvalidInputError,
+    MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
 )
@@ -223,6 +224,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             )
         except (
             InvalidInputError,
+            MissingConfigError,
             NotFoundError,
             WebhookRegistrationError,
         ) as e:

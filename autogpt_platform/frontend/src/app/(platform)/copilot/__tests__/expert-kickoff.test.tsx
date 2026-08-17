@@ -460,4 +460,36 @@ describe("useExpertKickoff", () => {
     expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("pending");
     expect(screen.getByTestId("kickoff-starting").textContent).toBe("true");
   });
+
+  // `useCopilotPage` hands this hook `expertId: null` whenever the roster
+  // refuses the id in the URL (fired, bogus, or unreadable) while `kickoff=1`
+  // is still in the query string. Every path here has to stay inert on that
+  // pair rather than reach storage or the network with a null id.
+  it("stays inert when kickoff is armed without a resolvable expert", async () => {
+    let listCount = 0;
+    let createCount = 0;
+    server.use(
+      stubTransports(),
+      http.get("*/api/chat/sessions", () => {
+        listCount += 1;
+        return HttpResponse.json({ sessions: [], total: 0 });
+      }),
+      http.post("*/api/chat/sessions", () => {
+        createCount += 1;
+        return HttpResponse.json({ id: "should-not-happen" });
+      }),
+    );
+
+    renderKickoff("?kickoff=1");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("kickoff-starting").textContent).toBe("false"),
+    );
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(listCount).toBe(0);
+    expect(createCount).toBe(0);
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(screen.getByTestId("settled-count").textContent).toBe("0");
+    expect(window.localStorage.length).toBe(0);
+  });
 });

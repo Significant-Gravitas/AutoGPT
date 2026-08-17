@@ -7,7 +7,10 @@ import pytest
 from backend.data.execution import ExecutionStatus
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
-from backend.util.exceptions import GraphValidationError
+from backend.util.exceptions import (
+    ExpertPrivateTenancyNotFoundError,
+    GraphValidationError,
+)
 
 from ._test_data import (
     make_session,
@@ -878,6 +881,38 @@ async def test_run_agent_execution_credential_race_returns_setup_card(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_expert_workspace_unavailable_returns_stable_error(
+    setup_test_data,
+):
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+    tool = RunAgentTool()
+    agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
+    session = make_session(user_id=user.id, expert_id="expert-1")
+
+    with patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        new_callable=AsyncMock,
+        side_effect=ExpertPrivateTenancyNotFoundError("expert-1"),
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=agent_marketplace_id,
+            inputs={"test_input": "value"},
+            dry_run=False,
+            session=session,
+        )
+
+    result_data = orjson.loads(response.output)
+    assert result_data["error"] == "expert_workspace_unavailable"
+    assert result_data["message"] == (
+        "Your expert workspace is still being set up. Try again shortly."
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_execution_structural_error_returns_error_response(
     setup_test_data,
 ):
@@ -923,16 +958,16 @@ async def test_run_agent_execution_structural_error_returns_error_response(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_run_agent_attributes_execution_to_session_org(mocker):
-    """An agent launched from an org-scoped chat must attribute the execution
-    to the SESSION's org/team, not the user's default (personal) org.
+@pytest.mark.parametrize("expert_id", [None, "expert-1"])
+async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
+    """An agent launched from chat must carry the session's full scope.
     Regression: ``_run_agent`` previously always resolved
     ``get_user_default_team`` → runs/credits from an org chat were
     misattributed to the personal org."""
     from unittest.mock import MagicMock
 
     tool = RunAgentTool()
-    session = make_session(user_id="user-1")
+    session = make_session(user_id="user-1", expert_id=expert_id)
     session.organization_id = "org-from-session"
     session.team_id = "team-from-session"
 
@@ -982,6 +1017,7 @@ async def test_run_agent_attributes_execution_to_session_org(mocker):
     assert response is not None
     assert captured["organization_id"] == "org-from-session"
     assert captured["team_id"] == "team-from-session"
+    assert captured["expert_id"] == expert_id
     default_team.assert_not_called()
 
 
@@ -1155,6 +1191,8 @@ async def test_run_preset_not_found():
 async def test_run_preset_executes_with_merged_inputs():
     tool = RunAgentTool()
     session = make_session(user_id="preset-user")
+    session.organization_id = "personal-org"
+    session.team_id = "personal-team"
 
     preset = MagicMock()
     preset.id = "p1"
@@ -1162,6 +1200,7 @@ async def test_run_preset_executes_with_merged_inputs():
     preset.graph_version = 2
     preset.inputs = {"a": 1, "b": 2}
     preset.credentials = {}
+    preset.expert_id = None
 
     graph = MagicMock()
     graph.id = "g1"
@@ -1212,6 +1251,53 @@ async def test_run_preset_executes_with_merged_inputs():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_rejects_other_memory_scope():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user", expert_id="expert-a")
+    preset = MagicMock(expert_id="expert-b")
+    preset.id = "p1"
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=preset)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock()
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p1")
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_not_found"
+    mock_graph_db.get_graph.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_session_rejects_autopilot_preset():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user", expert_id="expert-a")
+    preset = MagicMock(id="p1", expert_id=None)
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=preset)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock()
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p1")
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_not_found"
+    mock_graph_db.get_graph.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_rejects_webhook_trigger():
     """A webhook-triggered preset can't be run on demand (it fires on its
     event); reject cleanly without attempting execution."""
@@ -1222,6 +1308,7 @@ async def test_run_preset_rejects_webhook_trigger():
     preset.id = "p-wh"
     preset.graph_id = "g-wh"
     preset.graph_version = 1
+    preset.expert_id = None
     preset.inputs = {"repo": "owner/repo"}
     preset.credentials = {}
 
@@ -1260,7 +1347,11 @@ async def test_maybe_save_preset_returns_none_when_flag_off():
     graph.name = "My Agent"
     graph.version = 1
     result = await tool._maybe_save_preset(
-        user_id="u1", graph=graph, graph_credentials={}, params=RunAgentInput()
+        user_id="u1",
+        graph=graph,
+        graph_credentials={},
+        params=RunAgentInput(),
+        expert_id=None,
     )
     assert result is None
 
@@ -1284,6 +1375,7 @@ async def test_maybe_save_preset_creates_with_default_name():
             graph=graph,
             graph_credentials={},
             params=RunAgentInput(save_as_preset=True, inputs={"x": 1}),
+            expert_id="expert-1",
         )
 
     assert result == "preset-new"
@@ -1291,6 +1383,7 @@ async def test_maybe_save_preset_creates_with_default_name():
     assert preset_arg.name == "My Agent"
     assert preset_arg.inputs == {"x": 1}
     assert preset_arg.graph_id == "g1"
+    assert mock_lib_db.create_preset.await_args.kwargs["expert_id"] == "expert-1"
 
 
 def _completed_run_mocks(

@@ -18,7 +18,7 @@ from typing import (
 )
 
 from prisma import Json
-from prisma.enums import AgentExecutionStatus, SharedVia
+from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
@@ -708,6 +708,26 @@ class GraphExecutionsPaginated(BaseModel):
     pagination: Pagination
 
 
+def _execution_visibility_filters(
+    user_id: str,
+    organization_id: str,
+    team_ids: list[str],
+) -> list[AgentGraphExecutionWhereInput]:
+    """Keep current PRIVATE expert runs owner-only.
+
+    Non-expert runs retain existing org/team visibility. Future shared expert
+    visibility must add an explicit access policy here before it is exposed.
+    """
+    shared_visibility = cast(
+        AgentGraphExecutionWhereInput,
+        visibility_filter(user_id, organization_id, team_ids),
+    )
+    expert_visibility: AgentGraphExecutionWhereInput = {
+        "OR": [{"expertId": None}, {"userId": user_id}]
+    }
+    return [shared_visibility, expert_visibility]
+
+
 async def get_graph_executions_paginated(
     user_id: str,
     graph_id: Optional[str] = None,
@@ -729,12 +749,9 @@ async def get_graph_executions_paginated(
     }
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where_filter["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where_filter["AND"] = _execution_visibility_filters(
+            user_id, organization_id, team_ids
+        )
     else:
         where_filter["userId"] = user_id
 
@@ -778,12 +795,7 @@ async def get_graph_execution_meta(
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where["AND"] = _execution_visibility_filters(user_id, organization_id, team_ids)
     else:
         where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(where=where)
@@ -826,12 +838,7 @@ async def get_graph_execution(
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where["AND"] = _execution_visibility_filters(user_id, organization_id, team_ids)
     else:
         where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(
@@ -898,10 +905,16 @@ async def create_graph_execution(
     # expert-attributed path.
     if expert_id:
         expert = await Expert.prisma().find_first(
-            where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+                "visibility": ResourceVisibility.PRIVATE,
+            }
         )
         if expert is None:
-            raise ValueError(f"Expert #{expert_id} does not belong to user #{user_id}")
+            raise ValueError(f"Expert #{expert_id} is unavailable")
 
     result = await AgentGraphExecution.prisma().create(
         data={
@@ -1112,8 +1125,16 @@ async def update_graph_execution_stats(
     status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
     cascade_running_children: bool = True,
+    update_tenancy: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphExecution | None:
     """Update a graph_exec's status and/or stats.
+
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+    Callers are internal executor/scheduler paths (directly or via the
+    DatabaseManager RPC) operating on a `graph_exec_id` they obtained from
+    an ownership-checked fetch.
 
     When `status` transitions the row into a terminal state and
     `cascade_running_children` is True (default), all of its child node
@@ -1127,12 +1148,18 @@ async def update_graph_execution_stats(
     reason to leave child rows untouched (e.g. resume flows or
     speculative writes that will be reconciled separately).
     """
-    if not status and not stats:
+    if not status and not stats and not update_tenancy:
         raise ValueError(
             f"Must provide either status or stats to update for execution {graph_exec_id}"
         )
 
     update_data: AgentGraphExecutionUpdateManyMutationInput = {}
+
+    if update_tenancy:
+        if not organization_id:
+            raise ValueError("organization_id is required when updating tenancy")
+        update_data["organizationId"] = organization_id
+        update_data["teamId"] = team_id
 
     if stats:
         stats_dict = stats.model_dump()

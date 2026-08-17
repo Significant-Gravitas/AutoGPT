@@ -111,10 +111,10 @@ export function isKickoffMessage(message: UIMessage): boolean {
 
 export function shouldClearKickoffParam(
   isExpertsEnabled: boolean,
-  hasLoadedExperts: boolean,
+  hasExpertsSettled: boolean,
   expertId: string | null,
 ): boolean {
-  return !isExpertsEnabled || (hasLoadedExperts && expertId === null);
+  return !isExpertsEnabled || (hasExpertsSettled && expertId === null);
 }
 
 export function stripKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
