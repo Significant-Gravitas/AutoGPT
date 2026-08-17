@@ -85,7 +85,12 @@ export const CredentialsField = (props: FieldProps) => {
   // CredentialsInput renders nothing when the provider is missing from the
   // providers map, which used to leave a bare title with no control under it.
   // An optional field then has nothing actionable in it at all, so drop the row.
-  if (isUnavailable && !schemaRequired) {
+  //
+  // Keyed off the schema's own `required`, not `schemaRequired` above: the
+  // node-level toggle also feeds that value, so turning "Optional" on for a
+  // required gated field would hide the row and the toggle along with it,
+  // leaving no way to turn it back off.
+  if (isUnavailable && !required) {
     return null;
   }
 
