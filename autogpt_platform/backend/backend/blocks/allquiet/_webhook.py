@@ -22,8 +22,8 @@ from fastapi import HTTPException, Request
 from pydantic import SecretStr, TypeAdapter, ValidationError
 from strenum import StrEnum
 
-from backend.data.integrations import WebhookWithRelations
-from backend.sdk import ManualWebhookManagerBase
+from backend.data.integrations import Webhook, WebhookWithRelations
+from backend.sdk import Credentials, ManualWebhookManagerBase
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ SIGNATURE_HEADER_PAIRS = (
 MAX_TIMESTAMP_SKEW = timedelta(minutes=5)
 
 _OPTIONAL_SECRET = TypeAdapter(Optional[SecretStr])
+_JSON_OBJECT = TypeAdapter(dict)
 
 
 class AllQuietWebhookType(StrEnum):
@@ -52,6 +53,33 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
     # Read at verification time rather than snapshotted at registration, so
     # rotating the secret on the block takes effect immediately.
     SIGNING_SECRET_INPUT = "signing_secret"  # pragma: allowlist secret
+
+    @classmethod
+    async def validate_payload(
+        cls,
+        webhook: Webhook,
+        request: Request,
+        credentials: Credentials | None = None,
+    ) -> tuple[dict, str]:
+        """Parse the delivery body.
+
+        All Quiet's outbound webhook body is whatever Handlebars template the
+        user configured, so the shape is not fixed — the trigger block reads the
+        well-known keys and passes the rest through. Only one event type exists;
+        callers filter on the payload's own status/intent instead.
+        """
+        try:
+            payload = _JSON_OBJECT.validate_python(await request.json())
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "All Quiet webhook body must be a JSON object. Check the "
+                    "body template on the outbound integration."
+                ),
+            ) from exc
+
+        return payload, AllQuietWebhookType.INCIDENT
 
     @classmethod
     async def verify_signature(

@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import hmac
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -12,7 +13,10 @@ from fastapi import HTTPException
 from pydantic import SecretStr
 from starlette.requests import Request
 
-from backend.blocks.allquiet._webhook import AllQuietWebhooksManager
+from backend.blocks.allquiet._webhook import (
+    AllQuietWebhooksManager,
+    AllQuietWebhookType,
+)
 
 SECRET = "s3cr3t-signing-key"
 BODY = b'{"id":"81cd20be","title":"RAM above 60%"}'
@@ -62,6 +66,49 @@ def _webhook(
 
 def _signed_webhook(secret: str = SECRET):
     return _webhook(node_inputs=[{"signing_secret": secret}])
+
+
+class TestManagerIsConcrete:
+    def test_can_be_instantiated(self):
+        # Regression: BaseWebhooksManager declares validate_payload abstract, so
+        # omitting it still imports and registers fine and only explodes at
+        # trigger-setup time with "Can't instantiate abstract class
+        # AllQuietWebhooksManager without an implementation for abstract method
+        # 'validate_payload'". The block test harness never instantiates the
+        # manager, so nothing else catches this.
+        AllQuietWebhooksManager()
+
+    def test_implements_every_abstract_method(self):
+        assert not getattr(AllQuietWebhooksManager, "__abstractmethods__", frozenset())
+
+
+class TestValidatePayload:
+    async def test_returns_the_body_and_the_incident_event_type(self):
+        body = {"id": "inc-1", "title": "RAM above 60%"}
+        request = _request({}, body=json.dumps(body).encode())
+
+        payload, event_type = await AllQuietWebhooksManager.validate_payload(
+            _webhook(), request
+        )
+
+        assert payload == body
+        assert event_type == AllQuietWebhookType.INCIDENT
+
+    async def test_rejects_a_body_that_is_not_json(self):
+        request = _request({}, body=b"not json at all")
+
+        with pytest.raises(HTTPException) as exc:
+            await AllQuietWebhooksManager.validate_payload(_webhook(), request)
+        assert exc.value.status_code == 400
+
+    async def test_rejects_a_json_body_that_is_not_an_object(self):
+        # A malformed Handlebars template can render a bare array or string.
+        request = _request({}, body=b'["not", "an", "object"]')
+
+        with pytest.raises(HTTPException) as exc:
+            await AllQuietWebhooksManager.validate_payload(_webhook(), request)
+        assert exc.value.status_code == 400
+        assert "JSON object" in exc.value.detail
 
 
 class TestUnsignedWebhooks:
