@@ -1,0 +1,125 @@
+"use client";
+
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { useEffect, useRef } from "react";
+import { VOICE_SAMPLES } from "../../helpers";
+import { useRaisePage } from "../../useRaisePage";
+import { AssistantBubble } from "../AssistantBubble/AssistantBubble";
+import { FirstJobStep } from "../FirstJobStep/FirstJobStep";
+import { NameStep } from "../NameStep/NameStep";
+import { SoulPreviewPanel } from "../SoulPreviewPanel/SoulPreviewPanel";
+
+export function RaiseFlow() {
+  const {
+    step,
+    messages,
+    name,
+    voiceLabel,
+    firstJob,
+    isSubmitting,
+    submitName,
+    pickVoice,
+    skipVoice,
+    pickFirstJob,
+    skipFirstJob,
+    goBack,
+    finish,
+  } = useRaisePage();
+  const stepPanelRef = useRef<HTMLDivElement>(null);
+  const previousStepRef = useRef(step);
+  const stepLabel =
+    step === "firstJob"
+      ? "First job"
+      : `${step[0].toUpperCase()}${step.slice(1)}`;
+
+  useEffect(() => {
+    if (previousStepRef.current !== step) {
+      stepPanelRef.current?.focus();
+      previousStepRef.current = step;
+    }
+  }, [step]);
+
+  return (
+    <main className="min-h-screen bg-muted/30 px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      <div className="mx-auto grid w-full max-w-[1000px] gap-6 lg:grid-cols-[1fr_minmax(300px,360px)]">
+        <div className="order-2 flex flex-col gap-4 lg:order-1">
+          <div
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            aria-label="Raise expert conversation"
+            className="flex flex-col gap-3"
+          >
+            {messages.map((message) =>
+              message.role === "assistant" ? (
+                <AssistantBubble key={message.id} text={message.text} />
+              ) : (
+                <div
+                  key={message.id}
+                  className="max-w-[80%] self-end rounded-3xl rounded-br-lg bg-accent px-5 py-3.5 text-[15px] leading-relaxed text-accent-foreground"
+                >
+                  {message.text}
+                </div>
+              ),
+            )}
+          </div>
+
+          <div
+            ref={stepPanelRef}
+            role="region"
+            aria-label={`${stepLabel} step`}
+            tabIndex={-1}
+            className="mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {step !== "name" ? (
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={isSubmitting}
+                className="mb-3 flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                <Icon icon={ArrowLeft02Icon} size={14} />
+                Back
+              </button>
+            ) : null}
+            {step === "name" ? <NameStep onSubmit={submitName} /> : null}
+            {step === "voice" ? (
+              <VoicePicker
+                name={name}
+                samples={VOICE_SAMPLES}
+                onPick={pickVoice}
+                onSkip={skipVoice}
+              />
+            ) : null}
+            {step === "firstJob" ? (
+              <FirstJobStep onPick={pickFirstJob} onSkip={skipFirstJob} />
+            ) : null}
+            {step === "review" ? (
+              <div className="flex justify-end">
+                <Button
+                  variant="primary"
+                  onClick={finish}
+                  loading={isSubmitting}
+                  className="rounded-full"
+                >
+                  {`Bring ${name} to life`}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="order-1 lg:order-2">
+          <SoulPreviewPanel
+            name={name}
+            voiceLabel={voiceLabel}
+            firstJobName={firstJob?.name ?? null}
+          />
+        </div>
+      </div>
+    </main>
+  );
+}

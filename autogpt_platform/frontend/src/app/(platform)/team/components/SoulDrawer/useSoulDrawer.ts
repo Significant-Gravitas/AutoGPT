@@ -1,11 +1,11 @@
 import {
   getGetExpertQueryKey,
-  getListExpertsQueryKey,
   useUpdateExpertSoul,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertSoulUpdate } from "@/app/api/__generated__/models/expertSoulUpdate";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useState } from "react";
 
@@ -39,7 +39,7 @@ export function useSoulDrawer({ expert, onClose }: Args) {
     try {
       await updateSoul({ expertId: expert.id, data: soul });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() }),
+        invalidateExpertRosterQueries(queryClient),
         queryClient.invalidateQueries({
           queryKey: getGetExpertQueryKey(expert.id),
         }),
