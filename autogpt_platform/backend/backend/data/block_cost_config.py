@@ -399,16 +399,14 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIStructuredResponseGeneratorBlock: LLM_COST,
     AITextSummarizerBlock: LLM_COST,
     AIListGeneratorBlock: LLM_COST,
-    # CodeGenerationBlock (Codex): block computes USD from
-    # response.usage.input_tokens/output_tokens using GPT-5.1-Codex rates
-    # ($1.25/$10 per 1M) and emits provider_cost + cost_usd. COST_USD 150
-    # cr/$ matches the TOKEN_COST margin — a 30K-token generation
-    # (~25K in + 5K out) ≈ $0.081 → 13 cr, vs the prior flat 5 cr.
+    # CodeGenerationBlock (Codex): block computes USD from response usage with
+    # the selected model's rate and emits provider_cost + cost_usd. COST_USD
+    # 150 cr/$ matches the TOKEN_COST margin.
     CodeGenerationBlock: [
         BlockCost(
             cost_type=BlockCostType.COST_USD,
             cost_filter={
-                "model": CodexModel.GPT5_3_CODEX,
+                "model": model,
                 "credentials": {
                     "id": openai_credentials.id,
                     "provider": openai_credentials.provider,
@@ -416,19 +414,8 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
             cost_amount=150,
-        ),
-        BlockCost(
-            cost_type=BlockCostType.COST_USD,
-            cost_filter={
-                "model": CodexModel.GPT5_1_CODEX,
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
-            cost_amount=150,
-        ),
+        )
+        for model in CodexModel
     ],
     # D-ID: $5.90/min of generated video. Median 10-sec clip ≈ $0.98 →
     # 148 cr at 1.5x. 100 cr flat is a conservative middle; long clips

@@ -30,7 +30,7 @@ from backend.data.redis_client import get_redis_async
 from backend.util import json
 from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
-from .config import ChatConfig
+from .config import ChatConfig, CopilotLlmAuthProvider
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -41,11 +41,20 @@ config = ChatConfig()
 # stamped column and model_router / the SDK service import the ONE
 # definition instead of re-declaring the Literal. ("fallback" is stamped,
 # never routed: it marks a CLI 529-overload fallback to a different model.)
-RoutingSource = Literal["ld", "catalog", "env", "fallback"]
+RoutingSource = Literal[
+    "ld",
+    "catalog",
+    "env",
+    "fallback",
+    "preferred",
+    "account_default",
+    "account_available",
+]
 
 
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
+_EXPERT_KICKOFF_SESSION_NAMESPACE = uuid.UUID("3fd5434f-225a-53e8-b248-1a749a925892")
 
 
 def _get_session_cache_key(session_id: str) -> str:
@@ -73,6 +82,8 @@ class ChatSessionMetadata(BaseModel):
     """
 
     dry_run: bool = False
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = None
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
@@ -115,7 +126,7 @@ class ChatMessage(BaseModel):
 
     # Which LLM served this assistant turn ("model" — visible to clients,
     # the model-badge UX) and which routing layer picked it
-    # ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+    # (platform and Codex routing sources, plus "fallback" when the CLI's
     # overload fallback served a different model than the routed one).
     # Product-intelligence mirrors these to segment quality judgments by
     # model. None on user/tool rows.
@@ -371,14 +382,17 @@ class ChatSession(ChatSessionInfo):
         user_id: str,
         *,
         dry_run: bool,
+        session_id: str | None = None,
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
         organization_id: str | None = None,
         team_id: str | None = None,
+        llm_auth_provider: CopilotLlmAuthProvider = "platform",
+        llm_credential_id: str | None = None,
         expert_id: str | None = None,
     ) -> Self:
         return cls(
-            session_id=str(uuid.uuid4()),
+            session_id=session_id or str(uuid.uuid4()),
             user_id=user_id,
             title=None,
             messages=[],
@@ -390,6 +404,8 @@ class ChatSession(ChatSessionInfo):
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1149,10 +1165,13 @@ async def create_chat_session(
     user_id: str,
     *,
     dry_run: bool,
+    session_id: str | None = None,
     builder_graph_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
@@ -1165,8 +1184,9 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
-        expert_id: Hired expert this session is scoped to. Ownership and
-            archived state must be validated by the caller.
+        expert_id: Requested hired-expert scope. The database validates active
+            ownership atomically with session persistence and falls back to a
+            plain session if the expert is no longer attributable.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1176,16 +1196,19 @@ async def create_chat_session(
     session = ChatSession.new(
         user_id,
         dry_run=dry_run,
+        session_id=session_id,
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
         organization_id=organization_id,
         team_id=team_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
         expert_id=expert_id,
     )
 
     # Create in database first - fail fast if this fails
     try:
-        await chat_db().create_chat_session(
+        persisted = await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
             organization_id=organization_id,
@@ -1193,6 +1216,7 @@ async def create_chat_session(
             metadata=session.metadata,
             expert_id=expert_id,
         )
+        session.expert_id = persisted.expert_id
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")
         raise DatabaseError(
@@ -1206,6 +1230,66 @@ async def create_chat_session(
         logger.warning(f"Failed to cache new session {session.session_id}: {e}")
 
     return session
+
+
+def expert_kickoff_session_id(
+    user_id: str,
+    expert_id: str,
+    organization_id: str | None = None,
+) -> str:
+    """Return the canonical first-session ID for one user's expert."""
+    return str(
+        uuid.uuid5(
+            _EXPERT_KICKOFF_SESSION_NAMESPACE,
+            f"{user_id}:{organization_id or 'personal'}:{expert_id}",
+        )
+    )
+
+
+async def get_or_create_expert_kickoff_session(
+    user_id: str,
+    expert_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+) -> ChatSession:
+    """Atomically create or adopt the canonical expert kickoff session."""
+    sessions, _ = await get_user_sessions(
+        user_id,
+        limit=1,
+        organization_id=organization_id,
+        expert_id=expert_id,
+        pinned_first=False,
+    )
+    if sessions:
+        existing = await get_chat_session(sessions[0].session_id, user_id)
+        if existing is not None:
+            return existing
+
+    session_id = expert_kickoff_session_id(user_id, expert_id, organization_id)
+    existing = await get_chat_session(session_id, user_id)
+    if existing is not None:
+        return existing
+
+    try:
+        return await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            session_id=session_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
+        )
+    except DatabaseError:
+        existing = await get_chat_session(session_id, user_id)
+        if existing is not None and existing.expert_id == expert_id:
+            return existing
+        raise
 
 
 async def get_or_create_builder_session(
@@ -1271,6 +1355,7 @@ async def get_user_sessions(
     organization_id: str | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
+    pinned_first: bool = True,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -1292,6 +1377,7 @@ async def get_user_sessions(
         organization_id=organization_id,
         title_contains=title_contains,
         expert_id=expert_id,
+        pinned_first=pinned_first,
     )
     total_count = await db.get_user_session_count(
         user_id, organization_id=organization_id, expert_id=expert_id

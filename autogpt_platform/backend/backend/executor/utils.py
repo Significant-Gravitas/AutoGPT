@@ -488,8 +488,12 @@ async def _validate_node_input_credentials(
         # the block schema declares a default for the field.
         required_fields = block.input_schema.get_required_fields()
         is_creds_optional = node.credentials_optional
+        credentials_fields_info = block.input_schema.get_credentials_fields_info()
 
         for field_name, credentials_meta_type in credentials_fields.items():
+            reference_only = credentials_fields_info[
+                field_name
+            ].credential_reference_only
             field_is_optional = is_creds_optional or field_name not in required_fields
             try:
                 # Check nodes_input_masks first, then input_default
@@ -512,6 +516,8 @@ async def _validate_node_input_credentials(
                 if field_value is None or (
                     isinstance(field_value, dict) and not field_value.get("id")
                 ):
+                    if reference_only:
+                        continue
                     has_missing_credentials = True
                     # If credential field is optional, skip instead of error
                     if field_is_optional:

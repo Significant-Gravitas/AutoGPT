@@ -19,6 +19,7 @@ from backend.api.features.library.exceptions import (
 )
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
+from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
@@ -478,6 +479,38 @@ async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str |
         where={"agentGraphId": graph_id, "userId": user_id, "isDeleted": False},
     )
     return agent.id if agent else None
+
+
+async def get_library_agent_refs_by_graph_ids(
+    user_id: str, graph_ids: list[str]
+) -> list[library_model.LibraryAgentRef]:
+    """Resolve display name + id for the given graphs in one query.
+
+    Batched counterpart to :func:`get_library_agent_id_by_graph_id`, for
+    callers (e.g. the morning briefing) that need to label a known handful
+    of runs and would otherwise page through the whole library.
+
+    ``@@unique([userId, agentGraphId, agentGraphVersion])`` allows several
+    rows per graph, so exactly one ref per graph is returned — the newest
+    version — instead of whichever row the DB happened to return last.
+    """
+    if not graph_ids:
+        return []
+    agents = await prisma.models.LibraryAgent.prisma().find_many(
+        where={
+            "userId": user_id,
+            "agentGraphId": {"in": graph_ids},
+            "isDeleted": False,
+        },
+        order=[{"agentGraphVersion": "asc"}],
+    )
+    newest_by_graph = {
+        agent.agentGraphId: library_model.LibraryAgentRef(
+            id=agent.id, graph_id=agent.agentGraphId, name=agent.name or ""
+        )
+        for agent in agents
+    }
+    return list(newest_by_graph.values())
 
 
 async def get_library_agent_by_graph_id(
@@ -1951,9 +1984,9 @@ async def create_preset(
         webhook_id: Internal-only; not part of the public request model. Only
             trusted callers (the setup-trigger flow, legacy migration) pass a
             webhook they provisioned for the caller.
-        expert_id: Expert attribution, resolved by the route layer (this
-            module cannot import experts_db without a cycle). Runs fired by
-            the preset inherit it.
+        expert_id: Requested expert attribution. Active ownership is validated
+            atomically with preset persistence. Runs fired by the preset
+            inherit the validated value.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -2007,12 +2040,34 @@ async def create_preset(
         create_input["organizationId"] = graph.organization_id
     if graph.team_id:
         create_input["teamId"] = graph.team_id
-    if expert_id:
-        create_input["expertId"] = expert_id
-    new_preset = await prisma.models.AgentPreset.prisma().create(
-        data=create_input,
-        include=AGENT_PRESET_INCLUDE,
-    )
+    requested_expert_id = expert_id
+    if requested_expert_id:
+        async with transaction() as tx:
+            expert_id = await resolve_attributable_expert(
+                tx,
+                user_id,
+                requested_expert_id,
+                lock_for_update=True,
+            )
+            if expert_id:
+                create_input["expertId"] = expert_id
+            new_preset = await prisma.models.AgentPreset.prisma(tx).create(
+                data=create_input,
+                include=AGENT_PRESET_INCLUDE,
+            )
+        if expert_id is None:
+            logger.warning(
+                "Ignoring inactive/unowned expert %s while creating preset "
+                "%s for user %s",
+                requested_expert_id,
+                preset.name,
+                user_id,
+            )
+    else:
+        new_preset = await prisma.models.AgentPreset.prisma().create(
+            data=create_input,
+            include=AGENT_PRESET_INCLUDE,
+        )
     return library_model.LibraryAgentPreset.from_db(new_preset)
 
 

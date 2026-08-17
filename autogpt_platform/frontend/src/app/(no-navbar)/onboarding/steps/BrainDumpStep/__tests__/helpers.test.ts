@@ -3,6 +3,7 @@ import {
   encouragementAt,
   formatElapsed,
   headline,
+  isInsufficientDump,
   isPermissionDenied,
   pickMimeType,
   recordingFeedbackAt,
@@ -128,5 +129,21 @@ describe("isPermissionDenied", () => {
     );
     expect(isPermissionDenied(new Error("NotAllowedError"))).toBe(false);
     expect(isPermissionDenied(null)).toBe(false);
+  });
+});
+
+describe("isInsufficientDump", () => {
+  it("recognises the quality gate's two rejection codes", () => {
+    expect(isInsufficientDump("no_usable_speech")).toBe(true);
+    expect(isInsufficientDump("insufficient_content")).toBe(true);
+  });
+
+  // Every other failure keeps the existing failure screen — including
+  // the HTTP status number a non-200 response reports as its code.
+  it("does not absorb ordinary failures", () => {
+    expect(isInsufficientDump("transcription_failed")).toBe(false);
+    expect(isInsufficientDump(undefined)).toBe(false);
+    expect(isInsufficientDump(null)).toBe(false);
+    expect(isInsufficientDump(500)).toBe(false);
   });
 });

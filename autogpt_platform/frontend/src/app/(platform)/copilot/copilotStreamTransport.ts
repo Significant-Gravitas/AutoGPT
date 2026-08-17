@@ -1,8 +1,10 @@
 import { environment } from "@/services/environment";
 import { DefaultChatTransport } from "ai";
 import type { ChatTransport, FileUIPart, UIMessage } from "ai";
+import { v4 as uuidv4 } from "uuid";
 
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
+import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
@@ -63,6 +65,7 @@ export function createCopilotTransport({
     api: baseUrl,
     prepareSendMessagesRequest: async ({ messages }) => {
       const last = messages[messages.length - 1];
+      const kickoffExpertId = getKickoffExpertIdFromMetadata(last.metadata);
       // Extract file_ids from FileUIPart entries on the message
       const fileIds = last.parts
         ?.filter((p): p is FileUIPart => p.type === "file")
@@ -72,11 +75,10 @@ export function createCopilotTransport({
           return match?.[1];
         })
         .filter(Boolean) as string[] | undefined;
-      // ``message_id`` becomes the persisted ``ChatMessage.id`` (PK) —
-      // Postgres' uniqueness constraint then makes the INSERT itself
-      // the atomic dedup primitive: a retransmit (SDK-internal retry,
-      // browser auto-retry, RMQ redelivery) lands on a duplicate PK
-      // and the backend short-circuits to subscribe-only.
+      // ``message_id`` is the client idempotency key. The backend scopes it
+      // to the authenticated user + session before using the result as the
+      // persisted PK, so retransmits collide atomically without letting one
+      // tenant preclaim another tenant's global ChatMessage id.
       //
       // Generated here (rather than in ``useSendMessage``) for two
       // reasons: (1) AI SDK's ``messageId`` arg on ``sendMessage`` is
@@ -96,7 +98,12 @@ export function createCopilotTransport({
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
           mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
-          message_id: crypto.randomUUID(),
+          // Supplying options forces uuid's
+          // getRandomValues path. Unlike crypto.randomUUID,
+          // getRandomValues is available on plain-HTTP LAN origins used
+          // by the local single-container appliance.
+          message_id: uuidv4({}),
+          expert_kickoff: kickoffExpertId !== null,
         },
         headers: await getCopilotAuthHeaders(),
       };

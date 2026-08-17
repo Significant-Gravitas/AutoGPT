@@ -59,6 +59,10 @@ export type CopilotMode = "extended_thinking" | "fast";
 /** Per-request model tier. 'standard' = current default; 'advanced' = highest-capability. */
 export type CopilotLlmModel = "standard" | "advanced";
 
+export type CopilotLlmAuthSelection =
+  | { authProvider: "platform"; credentialId: null }
+  | { authProvider: "codex"; credentialId: string };
+
 /** Context panel tab. */
 export type ContextPanelTab = "progress" | "files";
 
@@ -196,6 +200,10 @@ interface CopilotUIState {
   /** Model tier: 'standard' (default) or 'advanced' (highest-capability). */
   copilotLlmModel: CopilotLlmModel;
   setCopilotLlmModel: (model: CopilotLlmModel) => void;
+
+  /** Authentication route locked into the next session when it is created. */
+  copilotLlmAuth: CopilotLlmAuthSelection;
+  setCopilotLlmAuth: (selection: CopilotLlmAuthSelection) => void;
 
   /** Developer dry-run mode: sessions created with dry_run=true. */
   isDryRun: boolean;
@@ -524,6 +532,11 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ copilotLlmModel: model });
   },
 
+  copilotLlmAuth: { authProvider: "platform", credentialId: null },
+  setCopilotLlmAuth: (selection) => {
+    set({ copilotLlmAuth: selection });
+  },
+
   isDryRun: isClient && storage.get(Key.COPILOT_DRY_RUN) === "true",
   setIsDryRun: (enabled) => {
     if (enabled) {
@@ -566,6 +579,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       },
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
+      copilotLlmAuth: { authProvider: "platform", credentialId: null },
       isDryRun: false,
     });
     if (isClient) {

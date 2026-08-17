@@ -608,7 +608,9 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = "org-rpc"
+    mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-rpc"
+    mock_graph_exec.expert_id = None
     mock_graph_exec.id = "exec-id-rpc"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
@@ -701,6 +703,9 @@ async def test_validate_node_input_credentials_returns_nodes_to_skip(
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
     }
+    mock_block.input_schema.get_credentials_fields_info.return_value = {
+        "credentials": mocker.Mock(credential_reference_only=False)
+    }
     mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
 
@@ -744,6 +749,9 @@ async def test_validate_node_input_credentials_required_missing_creds_error(
     mock_credentials_field_type = mocker.MagicMock()
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
+    }
+    mock_block.input_schema.get_credentials_fields_info.return_value = {
+        "credentials": mocker.Mock(credential_reference_only=False)
     }
     mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
@@ -1996,7 +2004,9 @@ def _mock_add_graph_execution_create_path(
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = org_id
+    mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = team_id
+    mock_graph_exec.expert_id = None
     mock_graph_exec.id = "exec-id"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED

@@ -30,7 +30,7 @@ from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLLMModel
-from .expert_context import build_expert_context
+from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -355,7 +355,7 @@ def _sanitize_user_context_field(value: str) -> str:
     reads the original characters but the parser-visible XML structure stays
     intact.
     """
-    return value.replace("<", "&lt;").replace(">", "&gt;")
+    return escape_prompt_xml_tags(value)
 
 
 def format_user_context_prefix(formatted_understanding: str) -> str:

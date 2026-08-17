@@ -103,3 +103,19 @@ export function headline(name: string) {
     ? `What keeps stealing your week, ${trimmed}?`
     : "What keeps stealing your week?";
 }
+
+// The backend's quality gate rejects dumps with these codes when the
+// transcription succeeded but carried nothing to personalize from —
+// silence, filler, or an STT hallucination. Distinct from a transcription
+// failure: the take went through fine, it just didn't say enough.
+const INSUFFICIENT_DUMP_ERROR_CODES = [
+  "no_usable_speech",
+  "insufficient_content",
+] as const;
+
+export function isInsufficientDump(errorCode: unknown) {
+  return (
+    typeof errorCode === "string" &&
+    INSUFFICIENT_DUMP_ERROR_CODES.some((code) => code === errorCode)
+  );
+}

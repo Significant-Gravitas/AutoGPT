@@ -353,15 +353,29 @@ export default function CredentialsProvider({
     onFailToast,
   ]);
 
-  // Fetch provider names and system providers on mount
+  // Fetch provider names and system providers after authentication
   useEffect(() => {
+    if (!isLoggedIn) {
+      setProviderNames([]);
+      setSystemProviders(new Set());
+      return;
+    }
+
+    let isCurrent = true;
     Promise.all([api.listProviders(), api.listSystemProviders()])
       .then(([names, systemList]) => {
+        if (!isCurrent) return;
         setProviderNames(names);
         setSystemProviders(new Set(systemList));
       })
-      .catch(onFailToast("Load provider names"));
-  }, [api, onFailToast]);
+      .catch((error) => {
+        if (isCurrent) onFailToast("Load provider names")(error);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [api, isLoggedIn, onFailToast]);
 
   useEffect(() => {
     loadCredentials();

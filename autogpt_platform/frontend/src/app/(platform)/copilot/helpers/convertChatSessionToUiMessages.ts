@@ -23,6 +23,7 @@ interface SessionChatMessage {
   sequence: number | null;
   duration_ms: number | null;
   created_at: string | null;
+  metadata: unknown;
 }
 
 function coerceSessionChatMessages(
@@ -63,6 +64,7 @@ function coerceSessionChatMessages(
             : msg.created_at instanceof Date
               ? msg.created_at.toISOString()
               : null,
+        metadata: msg.metadata,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -487,6 +489,7 @@ export function convertChatSessionMessagesToUiMessages(
       id: msgId,
       role: uiRole,
       parts,
+      metadata: msg.metadata,
     });
 
     const patch: Partial<TurnStats> = {};

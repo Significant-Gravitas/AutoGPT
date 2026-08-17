@@ -49,6 +49,8 @@ export type OAuthPopupOptions = {
   acceptMessageTypes?: string[];
   /** Timeout in ms (default: 5 minutes) */
   timeout?: number;
+  /** Same-origin endpoint that cancels provider-side pending state on abort */
+  cancelUrl?: string | null;
 };
 
 type Cleanup = {
@@ -115,6 +117,7 @@ export function openOAuthPopup(
     localStorageKey = "oauth_popup_result",
     acceptMessageTypes = ["oauth_popup_result", "mcp_oauth_result"],
     timeout = DEFAULT_TIMEOUT_MS,
+    cancelUrl,
   } = options;
 
   const controller = new AbortController();
@@ -126,6 +129,7 @@ export function openOAuthPopup(
   // straight from a click handler.
   const popup =
     preOpenedWindow !== undefined ? preOpenedWindow : preOpenOAuthPopup();
+  let activeWindow = popup;
 
   let popupBlocked = false;
   let fallbackBlocked = false;
@@ -136,6 +140,7 @@ export function openOAuthPopup(
     // still complete via postMessage / BroadcastChannel / localStorage poll.
     popupBlocked = true;
     const fallback = window.open(loginUrl, "_blank");
+    activeWindow = fallback;
     // The fallback open can be blocked too — iOS Safari blocks every
     // window.open() after an async break, so when the caller pre-opened
     // (and lost) the window, this open has no gesture context either. No
@@ -143,9 +148,25 @@ export function openOAuthPopup(
     fallbackBlocked = !fallback || fallback.closed;
   }
 
-  // Close popup on abort
+  let cancelRequested = false;
+  function cancelServerAttempt() {
+    if (!cancelUrl || cancelRequested) return;
+    cancelRequested = true;
+    try {
+      const url = new URL(cancelUrl, window.location.origin);
+      if (url.origin !== window.location.origin) return;
+      void fetch(url.toString(), {
+        method: "POST",
+        credentials: "same-origin",
+        keepalive: true,
+      }).catch(() => {});
+    } catch {}
+  }
+
+  // Close popup and cancel provider-side pending state on abort
   controller.signal.addEventListener("abort", () => {
-    if (popup && !popup.closed) popup.close();
+    if (controller.signal.reason !== "completed") cancelServerAttempt();
+    if (activeWindow && !activeWindow.closed) activeWindow.close();
   });
 
   // Scope the localStorage key by stateToken so concurrent OAuth flows do
@@ -172,6 +193,7 @@ export function openOAuthPopup(
     if (fallbackBlocked) {
       handled = true;
       reject(new Error(OAUTH_ERROR_POPUP_BLOCKED_NO_TAB));
+      controller.abort("popup_blocked");
       return;
     }
 
@@ -269,13 +291,11 @@ export function openOAuthPopup(
     // The setTimeout lives in a plain JS closure, not React state — it
     // does NOT stack across re-renders, and the AbortController cleanup
     // tears it down if the caller aborts before grace expires.
-    // Skip the close-poll entirely when the popup was blocked.  The
-    // ``window.open("about:blank", ...)`` reference can be non-null but
-    // already-closed in that branch (we fell back to a separate new-tab
-    // ``window.open(loginUrl, "_blank")`` whose handle we deliberately
-    // don't keep — the new tab is the user's primary surface and
-    // pre-emptively rejecting on its ``closed`` state would short-circuit
-    // a successful sign-in arriving via BroadcastChannel/localStorage.
+    // Skip the close-poll entirely when the popup was blocked. The fallback
+    // WindowProxy is retained so an explicit abort can close it, but COOP can
+    // make that handle appear closed while the new tab is still usable.
+    // Polling it would therefore risk rejecting a successful sign-in before
+    // its BroadcastChannel/localStorage result arrives.
     if (popup && !popupBlocked) {
       // Grace window only applies to cross-origin flows.  Same-origin
       // OAuth resolves via ``window.opener.postMessage`` which the

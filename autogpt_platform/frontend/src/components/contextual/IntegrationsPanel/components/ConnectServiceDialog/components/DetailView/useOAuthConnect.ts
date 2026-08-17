@@ -71,7 +71,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       if (initiateResponse.status !== 200) {
         throw new Error("Unexpected OAuth initiate response");
       }
-      const { login_url, state_token } = initiateResponse.data;
+      const { login_url, state_token, cancel_url } = initiateResponse.data;
 
       // Unmounted while the login URL was being fetched — the cleanup
       // already closed the window; don't adopt it.
@@ -80,7 +80,9 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       const { promise, cleanup, popupBlocked, fallbackBlocked } =
         openOAuthPopup(login_url, {
           stateToken: state_token,
+          cancelUrl: cancel_url,
           preOpenedWindow,
+          timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
           // BroadcastChannel + localStorage listeners are the only delivery
           // path when the flow runs in a tab without window.opener (the iOS
           // fallback) — the callback page already writes to both.

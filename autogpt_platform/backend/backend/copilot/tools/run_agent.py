@@ -1132,6 +1132,10 @@ class RunAgentTool(BaseTool):
         # sees the credential setup card instead of a generic error.
         # Session-anchored tenancy, mirroring ``_run_agent``: fire-time
         # executions of this schedule attribute to the chat session's org.
+        # Likewise for expert attribution: a schedule created in an
+        # expert-scoped chat belongs to that expert, so it surfaces on her
+        # Team card / expert page, counts toward her weekly credit budget,
+        # and is cleaned up when she is archived.
         org_id, team_id = session.organization_id, session.team_id
         if org_id is None:
             from backend.api.features.orgs.db import get_user_default_team
@@ -1150,6 +1154,7 @@ class RunAgentTool(BaseTool):
                 user_timezone=user_timezone,
                 organization_id=org_id,
                 team_id=team_id,
+                expert_id=session.expert_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(

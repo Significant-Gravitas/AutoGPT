@@ -360,6 +360,8 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         organization_id=org_id,
         team_id=team_id,
         file_ids=request.file_ids or None,
+        llm_auth_provider=session.metadata.llm_auth_provider,
+        llm_credential_id=session.metadata.llm_credential_id,
     )
 
     logger.info(
