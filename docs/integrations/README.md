@@ -185,6 +185,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Reads back a key-value pair previously saved by PersistInformationBlock |
 | [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
+| [Stripe Subscription Trigger](block-integrations/stripe/triggers.md#stripe-subscription-trigger) | Triggers on Stripe subscription events (new, upgrade, cancel) |
 
 ## Text Processing
 
