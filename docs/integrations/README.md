@@ -484,6 +484,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [All Quiet Create Incident](block-integrations/allquiet/incidents.md#all-quiet-create-incident) | Creates an incident in All Quiet and pages the on-call responder |
+| [All Quiet Get Incident](block-integrations/allquiet/incident_search.md#all-quiet-get-incident) | Fetches a single All Quiet incident by ID |
+| [All Quiet Get On Call](block-integrations/allquiet/on_call.md#all-quiet-get-on-call) | Looks up who is on call in All Quiet, now or at a given time |
+| [All Quiet Incident Trigger](block-integrations/allquiet/triggers.md#all-quiet-incident-trigger) | Triggers a graph when All Quiet posts an incident to this webhook |
+| [All Quiet List Incidents](block-integrations/allquiet/incident_search.md#all-quiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
+| [All Quiet List Teams](block-integrations/allquiet/teams.md#all-quiet-list-teams) | Lists All Quiet teams and their IDs |
+| [All Quiet Update Incident](block-integrations/allquiet/incidents.md#all-quiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
