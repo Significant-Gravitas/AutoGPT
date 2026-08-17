@@ -5,8 +5,8 @@ Covers:
   <expert_workflows> in the first user message — never the other way round.
 - Plain sessions render a <team_context> block listing hired experts, and
   produce an empty suffix so the system prompt stays byte-identical.
-- Archived/missing expert, no hired experts, and lookup errors all degrade
-  silently to "" — chat must never hard-fail on expert lookup.
+- Archived/missing expert sessions fail closed, transient identity lookup errors
+  retry once, and optional team/workflow context still degrades silently to "".
 - inject_user_context() wires the message blocks in without touching the
   cacheable base prompt (byte-identical, verified via SHA-256 snapshot).
 """
@@ -21,7 +21,12 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertWorkflowRef,
 )
-from backend.copilot.expert_context import build_expert_identity_suffix
+from backend.copilot.expert_context import (
+    EXPERT_SESSION_MISSING_MESSAGE,
+    EXPERT_SESSION_TEMPORARY_MESSAGE,
+    ExpertSessionUnavailableError,
+    build_expert_identity_suffix,
+)
 
 _EC = "backend.copilot.expert_context"
 
@@ -105,22 +110,81 @@ class TestBuildExpertIdentitySuffix:
         assert result == ""
 
     @pytest.mark.asyncio
-    async def test_archived_expert_returns_empty(self):
-        mock_db = MagicMock()
-        mock_db.get_expert = AsyncMock(return_value=_expert(is_archived=True))
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
-            result = await build_expert_identity_suffix("user-1", "exp-1")
+    async def test_expert_session_without_user_fails_before_lookup(self):
+        db_factory = MagicMock()
+        with (
+            patch(f"{_EC}.experts_db", db_factory),
+            pytest.raises(
+                ExpertSessionUnavailableError,
+                match="authenticated user",
+            ),
+        ):
+            await build_expert_identity_suffix("", "exp-1")
 
-        assert result == ""
+        db_factory.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_lookup_error_returns_empty(self):
+    async def test_archived_expert_hidden_by_accessor_raises(self):
         mock_db = MagicMock()
-        mock_db.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        mock_db.get_expert = AsyncMock(return_value=None)
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            pytest.raises(
+                ExpertSessionUnavailableError,
+                match="start a new chat",
+            ),
+        ):
+            await build_expert_identity_suffix("user-1", "exp-1")
+
+    @pytest.mark.asyncio
+    async def test_archived_expert_returned_by_accessor_raises(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert(is_archived=True))
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            pytest.raises(
+                ExpertSessionUnavailableError,
+                match="start a new chat",
+            ),
+        ):
+            await build_expert_identity_suffix("user-1", "exp-1")
+
+    @pytest.mark.asyncio
+    async def test_transient_lookup_error_is_retried_once(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(side_effect=[RuntimeError("db down"), _expert()])
+        sleep_mock = AsyncMock()
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.asyncio.sleep", new=sleep_mock),
+        ):
             result = await build_expert_identity_suffix("user-1", "exp-1")
 
-        assert result == ""
+        assert "<expert_identity>" in result
+        assert mock_db.get_expert.await_count == 2
+        sleep_mock.assert_awaited_once_with(0.1)
+
+    @pytest.mark.asyncio
+    async def test_lookup_error_after_retry_raises_friendly_error(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.asyncio.sleep", new=AsyncMock()),
+            pytest.raises(
+                ExpertSessionUnavailableError,
+                match="temporarily unavailable.*try again",
+            ) as exc_info,
+        ):
+            await build_expert_identity_suffix("user-1", "exp-1")
+
+        assert str(exc_info.value) == EXPERT_SESSION_TEMPORARY_MESSAGE
+        assert mock_db.get_expert.await_count == 2
+
+    def test_missing_error_is_actionable_for_stream_clients(self):
+        assert EXPERT_SESSION_MISSING_MESSAGE == (
+            "This expert is no longer available. Please start a new chat."
+        )
 
     @pytest.mark.asyncio
     async def test_latest_soul_fields_and_protected_rules_are_rendered(self):
@@ -139,7 +203,8 @@ class TestBuildExpertIdentitySuffix:
         assert "I help teams find the clearest strategy." in result
         assert "Warm, concise, and direct." in result
         assert "Never invent customer evidence." in result
-        assert "Nothing recorded yet." in result
+        assert "<what_ive_learned>" not in result
+        assert "Nothing recorded yet." not in result
         assert "discloses that it is AI" in result
         assert "External actions require approval" in result
 

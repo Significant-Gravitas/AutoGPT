@@ -2453,6 +2453,22 @@ def test_list_sessions_filters_by_expert_id(
     assert mock_get.call_args.kwargs["expert_id"] == "expert-1"
 
 
+def test_list_sessions_rejects_empty_expert_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """GET /sessions?expert_id= must 422 at validation instead of reaching
+    the db layer, whose ValueError on "" would surface as a 4xx/5xx."""
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/sessions?expert_id=")
+
+    assert response.status_code == 422
+    mock_get.assert_not_awaited()
+
+
 def test_list_sessions_can_request_strict_recency(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

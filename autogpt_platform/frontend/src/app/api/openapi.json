@@ -3401,7 +3401,7 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "string", "maxLength": 128 },
+                { "type": "string", "minLength": 1, "maxLength": 128 },
                 { "type": "null" }
               ],
               "title": "Expert Id"
@@ -16174,6 +16174,11 @@
           "cap_retry_count": {
             "type": "integer",
             "title": "Cap Retry Count",
+            "default": 0
+          },
+          "expert_lookup_retry_count": {
+            "type": "integer",
+            "title": "Expert Lookup Retry Count",
             "default": 0
           },
           "user_timezone": {
