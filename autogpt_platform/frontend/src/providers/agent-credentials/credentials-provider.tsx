@@ -287,12 +287,22 @@ export default function CredentialsProvider({
 
   const loadCredentials = useCallback(() => {
     if (!isLoggedIn || providerNames.length === 0) {
-      // Only publish the empty map once auth has actually settled. isLoggedIn
-      // is false while the auth store initializes, so publishing here made a
-      // logged-in user's context briefly non-null and empty — indistinguishable
-      // from "loaded, and this provider is not available to you". null stays
-      // the sole loading sentinel.
-      if (!isUserLoading && !isLoggedIn) setProviders({});
+      // null is the sole "still loading" sentinel; an empty object means
+      // "loaded, and this user has no providers". Keeping those distinct
+      // matters because consumers render an unavailable state from the
+      // latter, and showing that to an entitled user is wrong.
+      //
+      // Logged out, once auth has settled: genuinely empty. isLoggedIn is
+      // false while the auth store initializes too, hence the isUserLoading
+      // guard — without it a logged-in user briefly gets the empty map.
+      if (!isUserLoading && !isLoggedIn) {
+        setProviders({});
+        return;
+      }
+      // Logged in but provider names haven't arrived yet. If a previous
+      // logout left the empty map published, clear it back to null so this
+      // reads as loading rather than "nothing is available to you".
+      if (isLoggedIn) setProviders(null);
       return;
     }
 
