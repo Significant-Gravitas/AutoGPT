@@ -6,6 +6,7 @@ Defines two exchanges and queues following the graph executor pattern:
 """
 
 import logging
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -485,6 +486,8 @@ async def schedule_chat_turn(
     user_id: str,
     message: str,
     message_id: str | None = None,
+    message_metadata: dict[str, Any] | None = None,
+    message_already_persisted: bool = False,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
@@ -504,7 +507,8 @@ async def schedule_chat_turn(
     Returns the new ``turn_id`` on a fresh dispatch, or ``None`` if the
     inbound message was a duplicate of one already saved (caller should
     subscribe to the existing in-flight turn's stream instead of opening
-    a new one).
+    a new one). ``message_already_persisted`` re-dispatches an orphaned
+    kickoff row only when this caller atomically admits the idle session.
 
     Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
     when the user is at the configured cap. Caller maps that to HTTP 429.
@@ -524,12 +528,15 @@ async def schedule_chat_turn(
     from backend.copilot.tracking import track_user_message
 
     async with acquire_turn_slot(user_id, session_id) as slot:
+        if message_already_persisted and not slot.admitted:
+            return None
         is_duplicate = False
-        if message:
+        if message and not message_already_persisted:
             chat_message = ChatMessage(
                 id=message_id,
                 role="user" if is_user_message else "assistant",
                 content=message,
+                metadata=message_metadata,
             )
             is_duplicate = (
                 await append_and_save_message(session_id, chat_message)

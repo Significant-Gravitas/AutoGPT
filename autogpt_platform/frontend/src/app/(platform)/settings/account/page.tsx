@@ -3,8 +3,10 @@
 import { useEffect } from "react";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { AccountCard } from "./components/AccountCard/AccountCard";
+import { NotificationsCard } from "./components/NotificationsCard/NotificationsCard";
 import { PreferencesHeader } from "./components/PreferencesHeader/PreferencesHeader";
 import { PreferencesSkeleton } from "./components/PreferencesSkeleton/PreferencesSkeleton";
 import { SaveBar } from "./components/SaveBar/SaveBar";
@@ -26,9 +28,12 @@ export default function SettingsPreferencesPage() {
     dirty,
     isSaving,
     setTimezone,
+    toggleNotification,
     discardChanges,
     savePreferences,
   } = usePreferencesPage();
+
+  const showNotifications = useGetFlag(Flag.SETTINGS_NOTIFICATIONS);
 
   if (isError) {
     return (
@@ -59,6 +64,14 @@ export default function SettingsPreferencesPage() {
         onChange={setTimezone}
         index={1}
       />
+
+      {showNotifications ? (
+        <NotificationsCard
+          values={formState.notifications}
+          onToggle={toggleNotification}
+          index={2}
+        />
+      ) : null}
 
       <SaveBar
         visible={dirty}

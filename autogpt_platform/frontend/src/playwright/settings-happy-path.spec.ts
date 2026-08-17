@@ -57,7 +57,7 @@ test("settings happy path: user can edit display name and keep it after refresh"
   const updatedDisplayName = `E2E Display ${Date.now()}`;
 
   await loginPage.loginAsSeededUser("smokeSettings");
-  await page.goto("/profile");
+  await profileFormPage.open();
   await expect(await profileFormPage.isLoaded()).toBe(true);
 
   await profileFormPage.setDisplayName(updatedDisplayName);
