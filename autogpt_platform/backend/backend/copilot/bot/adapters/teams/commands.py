@@ -23,7 +23,7 @@ _HELP_TEXT = (
     "- Add me to a team and run /setup to link it to an AutoGPT account.\n"
     "- @mention me in a channel to chat; I'll reply in a thread.\n"
     "- Message me directly to chat with your personal AutoGPT account.\n"
-    "- Run /unlink to manage your linked teams."
+    "- Run /unlink to manage your linked account and teams."
 )
 
 _KNOWN_COMMANDS = {"setup", "help", "unlink"}

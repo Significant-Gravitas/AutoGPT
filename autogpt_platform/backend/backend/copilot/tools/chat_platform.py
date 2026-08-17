@@ -185,12 +185,13 @@ class PostToChatPlatformTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Post to a linked chat platform (Discord, Slack, or Telegram). "
-            "target='dm' sends to the user's own DMs with the bot. "
-            "mode='thread' opens a thread (needs thread_name; "
+            "Post to a linked chat platform (Discord, Slack, Telegram or "
+            "Microsoft Teams). target='dm' sends to the user's own DMs with "
+            "the bot. mode='thread' opens a thread (needs thread_name; "
             "channels only). 'channel' is a name (#standup) or numeric ID — "
-            "on Telegram, a linked group's numeric chat ID. Pair with "
-            "schedule_followup for recurring posts; call "
+            "on Telegram, a linked group's numeric chat ID. Teams supports "
+            "target='dm' only; its channels cannot be posted to yet. Pair "
+            "with schedule_followup for recurring posts; call "
             "list_chat_platform_channels if a Discord/Slack channel won't "
             "resolve."
         )
@@ -381,8 +382,9 @@ class ListChatPlatformChannelsTool(BaseTool):
             "List server channels the bot can post to on Discord or Slack — "
             "use to resolve a channel name to an ID before "
             "post_to_chat_platform. Telegram can't list channels (use a "
-            "linked group's numeric chat ID). The user's own DMs never "
-            "appear here — use target='dm' instead."
+            "linked group's numeric chat ID) and neither can Teams (post to "
+            "target='dm'). The user's own DMs never appear here — use "
+            "target='dm' instead."
         )
 
     @property

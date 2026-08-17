@@ -20,7 +20,9 @@ import asyncio
 import base64
 import json
 import logging
-from typing import Any, Awaitable, Callable, Optional
+from collections import OrderedDict
+from collections.abc import Awaitable, Callable
+from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, Request, Response
@@ -49,6 +51,15 @@ logger = logging.getLogger(__name__)
 
 MESSAGES_PATH = "/api/copilot-webhooks/teams/messages"
 
+# Inbound rejections answer with fixed text: everything specific about why is
+# logged instead, so an unauthenticated caller learns nothing from probing.
+# Conversations we keep a learned serviceUrl for. Evicting one is cheap:
+# the next reply falls back to the default host until it is relearned.
+_MAX_REMEMBERED_SERVICE_URLS = 10_000
+
+_REJECTED = "rejected"
+_MALFORMED = "invalid activity payload"
+
 # Teams routes every tenant in the public cloud through this host. Real traffic
 # always carries its own ``serviceUrl``; this is only the seed for proactive
 # sends that have no inbound activity to learn it from.
@@ -74,8 +85,10 @@ class TeamsAdapter(WebhookAdapter):
         # baked into the conversation token the core handler round-trips (that
         # token is also a Redis key suffix — folding a mutable value into it
         # would silently orphan live sessions). Learned from inbound traffic
-        # instead, with the public-cloud host as the fallback.
-        self._service_urls: dict[str, str] = {}
+        # instead, with the public-cloud host as the fallback. Bounded: a
+        # long-lived process would otherwise hold one entry per conversation
+        # forever, and evicting only costs the default host on the next reply.
+        self._service_urls: OrderedDict[str, str] = OrderedDict()
         # Strong-ref set so the GC doesn't drop fire-and-forget activity tasks.
         self._activity_tasks: set[asyncio.Task[None]] = set()
 
@@ -142,13 +155,17 @@ class TeamsAdapter(WebhookAdapter):
                     request.headers.get("Authorization")
                 )
             except auth.TeamsAuthError as e:
+                # The reason stays in the log. The caller is unauthenticated
+                # here, and the validator's message can carry text from the JWT
+                # parser — the status code is all a legitimate sender needs.
                 logger.warning(f"Rejected Teams activity: {e}")
-                return PlainTextResponse(str(e), status_code=e.status_code)
+                return PlainTextResponse(_REJECTED, status_code=e.status_code)
 
         try:
             activity = _parse_activity(raw)
-        except ValueError as e:
-            return PlainTextResponse(str(e), status_code=400)
+        except ValueError:
+            logger.warning("Rejected malformed Teams activity", exc_info=True)
+            return PlainTextResponse(_MALFORMED, status_code=400)
 
         # The token authenticates the sender but does NOT sign the body, so it
         # must be bound to this payload before the serviceUrl inside it is
@@ -158,12 +175,12 @@ class TeamsAdapter(WebhookAdapter):
                 auth.verify_service_url(claims, activity.get("serviceUrl", ""))
             except auth.TeamsAuthError as e:
                 logger.warning(f"Rejected Teams activity: {e}")
-                return PlainTextResponse(str(e), status_code=e.status_code)
+                return PlainTextResponse(_REJECTED, status_code=e.status_code)
 
         self._remember_service_url(activity)
         task = asyncio.create_task(self._dispatch_activity(activity))
         self._activity_tasks.add(task)
-        task.add_done_callback(self._activity_tasks.discard)
+        task.add_done_callback(self._on_activity_task_done)
         return JSONResponse({}, status_code=200)
 
     async def _dispatch_activity(self, activity: dict[str, Any]) -> None:
@@ -249,6 +266,20 @@ class TeamsAdapter(WebhookAdapter):
         """The Connector client, for handlers that need their own reads."""
         return self._client
 
+    def _on_activity_task_done(self, task: "asyncio.Task[None]") -> None:
+        """Dispatch runs after the 200 ACK, so a failure has nowhere to surface.
+
+        Without retrieving the exception here it is only ever reported as an
+        unretrieved-task warning at collection time, detached from the activity
+        that caused it.
+        """
+        self._activity_tasks.discard(task)
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            logger.error("Teams activity dispatch failed", exc_info=error)
+
     def _remember_service_url(self, activity: dict[str, Any]) -> None:
         conversation_id = (activity.get("conversation") or {}).get("id")
         service_url = activity.get("serviceUrl")
@@ -259,10 +290,16 @@ class TeamsAdapter(WebhookAdapter):
             # sibling reply chains resolve to the learned regional host rather
             # than the geo-routed default.
             url = auth.rewrite_loopback_for_container(service_url)
-            self._service_urls[conversation_id] = url
+            self._remember(conversation_id, url)
             base = _base_conversation_id(conversation_id)
             if base != conversation_id:
-                self._service_urls[base] = url
+                self._remember(base, url)
+
+    def _remember(self, conversation_id: str, url: str) -> None:
+        self._service_urls[conversation_id] = url
+        self._service_urls.move_to_end(conversation_id)
+        while len(self._service_urls) > _MAX_REMEMBERED_SERVICE_URLS:
+            self._service_urls.popitem(last=False)
 
     def _service_url_for(self, conversation_id: str) -> str:
         url = self._service_urls.get(conversation_id)

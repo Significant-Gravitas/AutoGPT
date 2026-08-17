@@ -75,6 +75,10 @@ class TeamsClient:
         body = await self._request("POST", service_url, "v3/conversations", payload)
         return (body or {}).get("id")
 
+    async def aclose(self) -> None:
+        """Release the pooled connections."""
+        await self._http.aclose()
+
     async def get_team_details(
         self, service_url: str, team_id: str
     ) -> dict[str, Any] | None:

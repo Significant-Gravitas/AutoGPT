@@ -24,6 +24,9 @@ _STASH = "\x00{}\x00"
 
 def to_teams_markdown(text: str) -> str:
     """Downgrade canonical CommonMark to Teams' rendered subset."""
+    # NUL is the stash delimiter below, so input carrying one could otherwise
+    # steer a restore into the wrong position.
+    text = text.replace("\x00", "")
     stashed: list[str] = []
 
     def _stash(match: re.Match[str]) -> str:

@@ -838,8 +838,60 @@ def test_container_host_alias_is_dialable_only_in_playground_mode():
         assert auth.is_allowed_service_url(url) is False
 
 
-@pytest.mark.asyncio
-async def test_unauthenticated_request_is_rejected_when_not_in_playground_mode(app_id):
+def test_rejection_bodies_do_not_echo_the_reason(app_id):
+    """The caller is unauthenticated, so the body says nothing specific.
+
+    The validator wraps the JWT parser's own exception text, which would
+    otherwise be handed straight back to whoever is probing the endpoint.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    adapter = TeamsAdapter(MagicMock())
+    adapter.register_routes(app)
+    client = TestClient(app)
+
+    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
+        with patch.object(
+            adapter._validator,
+            "validate",
+            AsyncMock(
+                side_effect=auth.TeamsAuthError(
+                    "malformed token: Invalid header string: codec can't decode 0x9e"
+                )
+            ),
+        ):
+            rejected = client.post(MESSAGES_PATH, json=_activity())
+        malformed = client.post(
+            MESSAGES_PATH,
+            content=b"not json",
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert rejected.status_code == 401
+    assert "codec" not in rejected.text
+    assert "malformed token" not in rejected.text
+    # A parse failure must not hand back the payload or the parser's message.
+    assert malformed.status_code in (400, 401)
+    assert "not json" not in malformed.text
+
+
+def _wait_until(predicate, timeout: float = 2.0) -> bool:
+    """Give the adapter's fire-and-forget dispatch time to land.
+
+    ``_handle_messages_request`` answers 200 and dispatches in a background
+    task, so asserting on the handler's side effects immediately is a race.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+def test_unauthenticated_request_is_rejected_when_not_in_playground_mode(app_id):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -851,8 +903,7 @@ async def test_unauthenticated_request_is_rejected_when_not_in_playground_mode(a
     assert response.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_route_accepts_a_properly_signed_activity(app_id, signing_key):
+def test_route_accepts_a_properly_signed_activity(app_id, signing_key):
     """End-to-end through the real HTTP route: signed token -> dispatch."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -871,6 +922,7 @@ async def test_route_accepts_a_properly_signed_activity(app_id, signing_key):
             headers={"Authorization": f"Bearer {_token(signing_key)}"},
         )
     assert response.status_code == 200
+    assert _wait_until(lambda: len(seen) == 1)
     assert [ctx.text for ctx in seen] == ["hello"]
 
 
