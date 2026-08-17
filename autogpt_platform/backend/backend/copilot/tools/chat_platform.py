@@ -159,6 +159,15 @@ def _error_message(code: str | None, platform_name: str = "") -> str:
     return message
 
 
+def _default_target(platform_name: str) -> str:
+    """Teams only delivers to a linked personal chat, so that is its default.
+
+    Leaving the generic "channel" default in place would send every Teams call
+    that omits ``target`` on a doomed round-trip to the bridge.
+    """
+    return "dm" if platform_name == "teams" else "channel"
+
+
 def _platform_param() -> dict[str, Any]:
     return {
         "type": "string",
@@ -253,11 +262,17 @@ class PostToChatPlatformTool(BaseTool):
                 error="unsupported_platform",
                 session_id=session_id,
             )
-        target: str = kwargs.get("target") or "channel"
+        target: str = kwargs.get("target") or _default_target(platform_name)
         if target not in ("channel", "dm"):
             return ErrorResponse(
                 message="`target` must be 'channel' or 'dm'.",
                 error="invalid_target",
+                session_id=session_id,
+            )
+        if platform_name == "teams" and target != "dm":
+            return ErrorResponse(
+                message=_TEAMS_TARGETING_HINT,
+                error="unsupported_target",
                 session_id=session_id,
             )
         channel: str | None = kwargs.get("channel")
@@ -321,7 +336,7 @@ class PostToChatPlatformTool(BaseTool):
                 error="unsupported_platform",
                 session_id=session_id,
             )
-        target: str = kwargs.get("target") or "channel"
+        target: str = kwargs.get("target") or _default_target(platform_name)
         channel: str = kwargs.get("channel") or ""
         content: str = kwargs["content"]
         mode: str = kwargs.get("mode") or "message"
