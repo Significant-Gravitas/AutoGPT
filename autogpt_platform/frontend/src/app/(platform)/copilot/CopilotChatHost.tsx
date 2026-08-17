@@ -47,6 +47,7 @@ export function CopilotChatHost({
     sessionDryRun,
     sessionChatStatus,
     expertIdentity,
+    isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting,
   } = useCopilotPage();
@@ -90,6 +91,7 @@ export function CopilotChatHost({
           onDroppedFilesConsumed={onDroppedFilesConsumed}
           turnStats={turnStats}
           expertIdentity={expertIdentity}
+          isResolvingExpertIdentity={isResolvingExpertIdentity}
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
         />
