@@ -489,6 +489,27 @@ async def test_raise_expert_reports_failed_first_job(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_reports_vanished_graph_as_unavailable(
+    server: SpinTestServer,
+):
+    """A graph that disappears during install is 'unavailable', not a failure."""
+    owner = await _create_seed_user()
+    slv_id = await _seed_store_listing(server)
+    with patch.object(
+        experts_db.library_db,
+        "add_store_agent_to_library_in_transaction",
+        new_callable=AsyncMock,
+        side_effect=NotFoundError("Graph #x v1 not found or accessible"),
+    ):
+        raised = await experts_db.create_raised_expert(
+            owner.id, "Otto", None, None, slv_id
+        )
+    assert raised.expert.workflows == []
+    assert raised.first_job_installed is False
+    assert raised.first_job_failure_reason == "unavailable"
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_handles_braces_in_name(server: SpinTestServer):
     owner = await _create_seed_user()
     raised = await experts_db.create_raised_expert(owner.id, "a{b", None, None, None)

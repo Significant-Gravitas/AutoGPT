@@ -26,6 +26,7 @@ from backend.data.expert_attribution import (
 )
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.user import get_user_by_id
+from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -440,7 +441,10 @@ async def create_raised_expert(
                 user_id, expert.id, first_job_store_listing_version_id
             )
             first_job_installed = True
-        except FirstJobUnavailableError:
+        except (FirstJobUnavailableError, NotFoundError):
+            # NotFoundError covers the listing version or its graph disappearing
+            # between the locked availability check and graph resolution, which
+            # is the same "no longer available" outcome for the client.
             failure_reason = "unavailable"
             logger.warning(
                 f"First job {first_job_store_listing_version_id} became "

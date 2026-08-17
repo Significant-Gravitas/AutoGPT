@@ -5914,6 +5914,32 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/experts/identities": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Identities",
+        "description": "List the lightweight active and archived identity projection for chat.",
+        "operationId": "list_expert_identities",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/ExpertIdentity" },
+                  "type": "array",
+                  "title": "Response List Expert Identities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts/raise": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -5952,32 +5978,6 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/experts/identities": {
-      "get": {
-        "tags": ["v2", "experts", "experts", "private"],
-        "summary": "List Expert Identities",
-        "description": "List the lightweight active and archived identity projection for chat.",
-        "operationId": "list_expert_identities",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": { "$ref": "#/components/schemas/ExpertIdentity" },
-                  "type": "array",
-                  "title": "Response List Expert Identities"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
