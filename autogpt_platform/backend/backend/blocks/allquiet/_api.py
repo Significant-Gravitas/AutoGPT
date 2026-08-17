@@ -78,7 +78,16 @@ class AllQuietClient:
         body_text = _raise_for_status(response)
         if not body_text:
             return None
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as exc:
+            # A 2xx with a non-JSON body means the endpoint or a proxy in front
+            # of it returned something unexpected; surface it as a readable
+            # client error rather than an unhandled decode crash.
+            raise RuntimeError(
+                f"All Quiet returned a {response.status} with a body that is not "
+                f"JSON: {body_text[:200]}"
+            ) from exc
 
     async def create_incident(
         self,
@@ -173,6 +182,11 @@ class AllQuietClient:
 
         The patch endpoint returns a list payload rather than the updated
         incident, so callers re-read the incident to observe the new state.
+
+        The intent is applied before that re-read, so a failed re-read reports
+        an error even though the write landed — and a naive retry would apply
+        the intent twice, leaving a duplicate Commented/Escalated entry on the
+        timeline. Retry only after confirming the incident's current state.
         """
         operations: dict[str, Any] = {
             "appendIntent": {
@@ -315,9 +329,13 @@ def _error_detail(body: str) -> str:
     except ValidationError:
         pass
     else:
-        return "; ".join(
+        joined = "; ".join(
             f"{field}: {' '.join(messages)}" for field, messages in field_errors.items()
         )
+        # An empty `errors` object validates but says nothing; fall through to
+        # `title` rather than returning a blank detail.
+        if joined:
+            return joined
 
     try:
         listed_errors = _LISTED_ERRORS.validate_python(raw_errors)

@@ -488,7 +488,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [All Quiet Incident Trigger](block-integrations/allquiet/triggers.md#all-quiet-incident-trigger) | Triggers a graph when All Quiet posts an incident to this webhook |
 | [All Quiet List Incidents](block-integrations/allquiet/incident_search.md#all-quiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
 | [All Quiet List Teams](block-integrations/allquiet/teams.md#all-quiet-list-teams) | Lists All Quiet teams and their IDs |
-| [All Quiet Update Incident](block-integrations/allquiet/incidents.md#all-quiet-update-incident) | Acknowledges, resolves, escalates or comments on an All Quiet incident |
+| [All Quiet Update Incident](block-integrations/allquiet/incidents.md#all-quiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |

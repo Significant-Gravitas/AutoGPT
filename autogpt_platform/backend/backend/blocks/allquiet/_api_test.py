@@ -43,6 +43,8 @@ class _FakeResponse:
         return 200 <= self.status < 300
 
     def json(self) -> Any:
+        if self._payload is None and self._body:
+            raise ValueError("not JSON")
         return self._payload
 
     def text(self) -> str:
@@ -413,3 +415,20 @@ class TestUnmodeledEnumValues:
 
         assert incident.status == IncidentStatus.RESOLVED
         assert incident.severity is None
+
+
+class TestNonJsonSuccessBody:
+    async def test_a_2xx_with_a_non_json_body_raises_a_readable_error(self):
+        # Guards against an unhandled JSONDecodeError crashing the block when a
+        # proxy or the endpoint returns HTML on a 200.
+        client, _ = _client_with(_FakeResponse(status=200, body="<html>oops</html>"))
+
+        with pytest.raises(RuntimeError, match="not JSON"):
+            await client.list_teams()
+
+
+class TestEmptyErrorsObject:
+    def test_falls_back_to_title_when_errors_is_empty(self):
+        body = '{"title":"Something went wrong","errors":{}}'
+
+        assert "Something went wrong" in _error_message(400, body)

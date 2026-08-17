@@ -1,4 +1,4 @@
-# Allquiet On Call
+# All Quiet On Call
 <!-- MANUAL: file_description -->
 A block for reading All Quiet's on-call rotation: who is responsible right now, or who was (or will be) at any other point in time.
 <!-- END MANUAL -->
@@ -32,6 +32,7 @@ Reads All Quiet's computed rotation rather than a static schedule, so overrides,
 | users | The on-call users, deduplicated across teams | List[AllQuietUser] |
 | user_ids | IDs of the on-call users | List[str] |
 | emails | Email addresses of the on-call users | List[str] |
+| users_without_email | On-call users carrying no email address. These are counted in users/has_coverage but absent from emails, so a graph that notifies by email alone would silently skip them | List[AllQuietUser] |
 | has_coverage | False when nobody is on call for the requested teams/time, so a graph can branch to a fallback instead of silently paging no one | bool |
 
 ### Possible use case

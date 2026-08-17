@@ -1,5 +1,6 @@
 """Tests that the trigger block reads both All Quiet webhook payload shapes."""
 
+import html
 import json
 import re
 
@@ -103,12 +104,16 @@ class TestRecommendedTemplateIsValid:
             ],
         )
 
-        # Regression: the loop previously emitted a trailing comma, so anyone
-        # pasting the recommended template got a body All Quiet rejects.
+        # Values arrive HTML-escaped (the template uses the JSON-safe `{{ }}`
+        # form); the block unescapes them on the way in.
         parsed = json.loads(rendered)
         assert parsed["attributes"] == [
             {"name": "Environment", "value": "prod"},
-            {"name": "Alert", "value": "RAM > 60%"},
+            {"name": "Alert", "value": "RAM &gt; 60%"},
+        ]
+        assert [html.unescape(a["value"]) for a in parsed["attributes"]] == [
+            "prod",
+            "RAM > 60%",
         ]
 
     def test_renders_valid_json_for_one_attribute(self):
@@ -131,7 +136,7 @@ def _render(template: str, *, attributes: list[dict]) -> str:
     Only `{{#each}}` / `{{#unless @last}}` / `{{field}}` are needed, so this
     avoids adding a Handlebars dependency just to assert the template is valid.
     """
-    each = re.search(r"\{\{#each attributes\}\}(.*?)\{\{/each\}\}", template, re.S)
+    each = re.search(r"\{\{#each attributes\}\}(.*?)\{\{/each\}\}", template, re.DOTALL)
     assert each, "template no longer contains the attributes loop"
 
     body = each.group(1)
@@ -140,8 +145,11 @@ def _render(template: str, *, attributes: list[dict]) -> str:
         item = body
         separator = "" if index == len(attributes) - 1 else ","
         item = re.sub(r"\{\{#unless @last\}\},\{\{/unless\}\}", separator, item)
-        item = item.replace("{{{this.name}}}", attribute["name"])
-        item = item.replace("{{{this.value}}}", attribute["value"])
+        # Handlebars HTML-escapes {{ }} values; mirror that here.
+        item = item.replace("{{this.name}}", html.escape(attribute["name"], quote=True))
+        item = item.replace(
+            "{{this.value}}", html.escape(attribute["value"], quote=True)
+        )
         rendered_items.append(item.strip())
 
     out = template[: each.start()] + "".join(rendered_items) + template[each.end() :]
@@ -199,13 +207,20 @@ class TestHtmlEscaping:
         assert out["attributes"] == {"A & B": "v"}
 
 
-class TestRecommendedTemplateDoesNotEscape:
-    def test_uses_triple_stash_for_every_placeholder(self):
-        # Double-stash would re-introduce the escaping this block now undoes.
-        double_stash = re.findall(
-            r"(?<!\{)\{\{(?!\{)(?![#/])[^}]+\}\}", RECOMMENDED_BODY_TEMPLATE
+class TestRecommendedTemplateEscapes:
+    def test_uses_no_triple_stash(self):
+        # Triple-stash emits raw values, so an alert title containing a double
+        # quote would terminate the JSON string early and break the body. The
+        # escaping form keeps it valid; the block unescapes on the way in.
+        assert "{{{" not in RECOMMENDED_BODY_TEMPLATE
+
+    def test_a_value_containing_a_quote_still_renders_valid_json(self):
+        rendered = _render(
+            RECOMMENDED_BODY_TEMPLATE,
+            attributes=[{"name": "Alert", "value": 'unterminated "group"'}],
         )
 
-        assert (
-            not double_stash
-        ), f"non-escaping triple-stash required, found: {double_stash}"
+        # Valid JSON, and the escaped value round-trips through the block.
+        parsed = json.loads(rendered)
+        assert parsed["attributes"][0]["value"] == "unterminated &quot;group&quot;"
+        assert html.unescape(parsed["attributes"][0]["value"]) == 'unterminated "group"'

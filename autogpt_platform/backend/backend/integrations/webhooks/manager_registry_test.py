@@ -14,13 +14,11 @@ These tests close that gap by exercising, for every registered provider, the
 same call the runtime makes.
 """
 
-from typing import Type
-
 import pytest
 
-import backend.integrations.webhooks as webhooks
 from backend.blocks import get_blocks
 from backend.blocks._base import Block
+from backend.integrations import webhooks
 from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
 from backend.integrations.webhooks._base import BaseWebhooksManager
 
@@ -46,12 +44,23 @@ def _load_sdk_providers():
     get_blocks()
 
 
-def _webhook_blocks() -> list[Type[Block]]:
+def _webhook_blocks() -> list[type[Block]]:
     return [
         block_cls
         for block_cls in get_blocks().values()
         if block_cls().webhook_config is not None
     ]
+
+
+def _registered_providers() -> list:
+    """Snapshot the provider keys for parametrization.
+
+    Snapshotted because `get_webhook_manager` calls `load_webhook_managers`
+    again, and the SDK's patched loader re-inserts its managers into the same
+    cached dict — iterating it live would mutate it mid-iteration.
+    """
+    get_blocks()
+    return list(load_webhook_managers())
 
 
 def test_registry_is_not_empty():
@@ -74,18 +83,11 @@ def test_every_registered_manager_implements_all_abstract_methods():
     )
 
 
-def test_every_registered_manager_can_be_instantiated():
-    # Snapshot the keys first: `get_webhook_manager` calls `load_webhook_managers`
-    # again, and the SDK's patched loader re-inserts its managers into the same
-    # cached dict, which would mutate it mid-iteration.
-    failures: dict[str, str] = {}
-    for provider in list(load_webhook_managers()):
-        try:
-            get_webhook_manager(provider)
-        except Exception as exc:
-            failures[str(provider)] = f"{type(exc).__name__}: {exc}"
-
-    assert not failures, f"Webhook managers that fail to instantiate: {failures}"
+@pytest.mark.parametrize("provider", _registered_providers(), ids=str)
+def test_every_registered_manager_can_be_instantiated(provider):
+    # Parametrized rather than looped so a failure names the offending provider
+    # and keeps its original traceback, instead of being flattened into a dict.
+    get_webhook_manager(provider)
 
 
 def test_every_registered_manager_subclasses_the_base():
@@ -100,12 +102,12 @@ def test_every_registered_manager_subclasses_the_base():
     ), f"Webhook managers not deriving from BaseWebhooksManager: {wrong_base}"
 
 
-def _block_name(block_cls: Type[Block]) -> str:
+def _block_name(block_cls: type[Block]) -> str:
     return block_cls().name
 
 
 @pytest.mark.parametrize("block_cls", _webhook_blocks(), ids=_block_name)
-def test_webhook_block_has_a_usable_manager(block_cls: Type[Block]):
+def test_webhook_block_has_a_usable_manager(block_cls: type[Block]):
     """A block advertising a webhook must have a manager that actually works.
 
     This is the end-to-end shape of the bug: the block registers, the provider

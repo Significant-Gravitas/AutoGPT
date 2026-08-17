@@ -28,24 +28,26 @@ from ._webhook import AllQuietWebhookType
 #      "headers": {"Content-Type": "application/json"},
 #      "body": {"json": <this template>}}
 #
-# All Quiet renders it with Handlebars. Triple-stash ({{{ }}}) throughout,
-# because Handlebars HTML-escapes {{ }} by default and turns a value like
-# `RAM > 60%` into `RAM &gt; 60%` on the wire. All Quiet's stock template uses
-# the escaping form, which is why the block also unescapes on the way in.
+# All Quiet renders it with Handlebars. Deliberately the ESCAPING `{{ }}` form,
+# not triple-stash: these placeholders sit inside JSON string literals, and a
+# value containing a double quote (common in alert titles) would terminate the
+# string early and render the whole body invalid JSON. `{{ }}` escapes `"` to
+# `&quot;`, which is JSON-safe, and the block unescapes on the way in — so the
+# escaping is round-tripped rather than leaked to the graph.
 #
 # All Quiet additionally exposes `attributesByName` (a map) if you'd rather pull
-# named attributes directly than iterate: {{{attributesByName.Environment.value}}},
-# or {{{attributesByName.[My Attribute].value}}} when the name has spaces.
+# named attributes directly than iterate: {{attributesByName.Environment.value}},
+# or {{attributesByName.[My Attribute].value}} when the name has spaces.
 RECOMMENDED_BODY_TEMPLATE = """{
-  "id": "{{{id}}}",
-  "title": "{{{title}}}",
-  "eventId": "{{{events.[0].id}}}",
-  "status": "{{{events.[0].status}}}",
-  "severity": "{{{events.[0].severity}}}",
-  "intent": "{{{events.[0].modification.intent}}}",
+  "id": "{{id}}",
+  "title": "{{title}}",
+  "eventId": "{{events.[0].id}}",
+  "status": "{{events.[0].status}}",
+  "severity": "{{events.[0].severity}}",
+  "intent": "{{events.[0].modification.intent}}",
   "attributes": [
     {{#each attributes}}
-      { "name": "{{{this.name}}}", "value": "{{{this.value}}}" }{{#unless @last}},{{/unless}}
+      { "name": "{{this.name}}", "value": "{{this.value}}" }{{#unless @last}},{{/unless}}
     {{/each}}
   ]
 }"""

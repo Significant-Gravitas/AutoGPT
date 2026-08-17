@@ -1,4 +1,4 @@
-# Allquiet Teams
+# All Quiet Teams
 <!-- MANUAL: file_description -->
 A block for listing All Quiet teams. Mainly used to resolve the team IDs that the incident and on-call blocks accept as inputs.
 <!-- END MANUAL -->

@@ -100,9 +100,11 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
                 msg=f"{timestamp}:".encode("utf-8") + body,
                 digestmod=hashlib.sha256,
             ).digest()
-        ).decode("utf-8")
+        )
 
-        if not hmac.compare_digest(expected, signature):
+        # Compare as bytes: hmac.compare_digest raises TypeError on a str
+        # containing non-ASCII, which would escape as a 500 instead of a 403.
+        if not hmac.compare_digest(expected, signature.encode("utf-8", "ignore")):
             raise HTTPException(status_code=403, detail="Invalid webhook signature")
 
         cls._reject_stale_timestamp(timestamp)
@@ -160,14 +162,22 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
 
         found: list[str] = []
         for source in sources:
+            raw = source.get(cls.SIGNING_SECRET_INPUT)
             # Stored values arrive as plain strings or SecretStr depending on
             # the serialization path; coerce both to a plain string.
             try:
-                secret = _OPTIONAL_SECRET.validate_python(
-                    source.get(cls.SIGNING_SECRET_INPUT)
-                )
-            except ValidationError:
-                continue
+                secret = _OPTIONAL_SECRET.validate_python(raw)
+            except ValidationError as exc:
+                # A secret is configured but unreadable. Treating that as "no
+                # secret" would silently downgrade to accepting any delivery,
+                # so fail closed instead.
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "A signing secret is configured on this webhook but "
+                        "could not be read, so the delivery cannot be verified."
+                    ),
+                ) from exc
             if secret and secret.get_secret_value().strip():
                 found.append(secret.get_secret_value())
 

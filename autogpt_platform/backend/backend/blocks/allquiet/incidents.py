@@ -150,7 +150,7 @@ class AllQuietCreateIncidentBlock(Block):
 
 
 class AllQuietUpdateIncidentBlock(Block):
-    """Acknowledge, resolve, escalate or comment on an existing incident."""
+    """Investigate, resolve, escalate or comment on an existing incident."""
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = allquiet.credentials_field(
@@ -202,7 +202,7 @@ class AllQuietUpdateIncidentBlock(Block):
     def __init__(self):
         super().__init__(
             id="0d7c4a91-5e28-4b6f-8a03-1c9e6f2b4d75",
-            description="Acknowledges, resolves, escalates or comments on an All Quiet incident",
+            description="Investigates, resolves, escalates or comments on an All Quiet incident",
             categories={BlockCategory.DEVELOPER_TOOLS, BlockCategory.ISSUE_TRACKING},
             input_schema=AllQuietUpdateIncidentBlock.Input,
             output_schema=AllQuietUpdateIncidentBlock.Output,

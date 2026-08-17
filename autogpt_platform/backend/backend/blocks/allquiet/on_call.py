@@ -58,6 +58,13 @@ class AllQuietGetOnCallBlock(Block):
         emails: list[str] = SchemaField(
             description="Email addresses of the on-call users"
         )
+        users_without_email: list[AllQuietUser] = SchemaField(
+            description=(
+                "On-call users carrying no email address. These are counted in "
+                "users/has_coverage but absent from emails, so a graph that "
+                "notifies by email alone would silently skip them"
+            )
+        )
         has_coverage: bool = SchemaField(
             description=(
                 "False when nobody is on call for the requested teams/time, so a "
@@ -81,6 +88,7 @@ class AllQuietGetOnCallBlock(Block):
                 ("users", [TEST_SHIFT.user]),
                 ("user_ids", [TEST_SHIFT.user.id if TEST_SHIFT.user else ""]),
                 ("emails", ["ada@example.com"]),
+                ("users_without_email", []),
                 ("has_coverage", True),
             ],
             test_mock={"get_on_call": lambda *args, **kwargs: [TEST_SHIFT]},
@@ -116,4 +124,7 @@ class AllQuietGetOnCallBlock(Block):
         yield "users", users
         yield "user_ids", list(users_by_id)
         yield "emails", [user.email for user in users if user.email]
+        # Surfaced separately so an email-only notification step can tell
+        # "nobody on call" apart from "on call but unreachable by email".
+        yield "users_without_email", [user for user in users if not user.email]
         yield "has_coverage", bool(users)

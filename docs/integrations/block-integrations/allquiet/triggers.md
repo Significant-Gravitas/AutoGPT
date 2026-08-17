@@ -1,4 +1,4 @@
-# Allquiet Triggers
+# All Quiet Triggers
 <!-- MANUAL: file_description -->
 A webhook trigger that starts a graph when All Quiet posts an incident to it, so agents can react to incidents rather than only create them.
 <!-- END MANUAL -->

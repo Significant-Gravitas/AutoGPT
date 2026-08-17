@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.blocks.allquiet._api import AllQuietClient
 from backend.blocks.allquiet._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.allquiet._testdata import (
     TEST_INCIDENT,
@@ -21,11 +22,16 @@ from backend.blocks.allquiet._testdata import (
 from backend.blocks.allquiet._types import (
     AllQuietEntity,
     AllQuietUser,
+    IncidentIntent,
+    IncidentSeverity,
     OnCallAvailability,
     OnCallShift,
 )
 from backend.blocks.allquiet.incident_search import AllQuietGetIncidentBlock
-from backend.blocks.allquiet.incidents import AllQuietCreateIncidentBlock
+from backend.blocks.allquiet.incidents import (
+    AllQuietCreateIncidentBlock,
+    AllQuietUpdateIncidentBlock,
+)
 from backend.blocks.allquiet.on_call import AllQuietGetOnCallBlock
 
 
@@ -211,3 +217,54 @@ class TestBlockErrorPaths:
             AllQuietGetOnCallBlock,
         ):
             assert "error" in block_cls().output_schema.model_fields
+
+
+class TestUpdateIncidentReadBack:
+    """`update_incident` applies an intent then re-reads; both halves must run.
+
+    The block test mocks `update_incident` wholesale, so removing the re-read
+    would keep that green. These mock the two client calls separately.
+    """
+
+    async def test_applies_the_intent_then_re_reads_the_incident(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        append = AsyncMock()
+        get = AsyncMock(return_value=TEST_INCIDENT)
+        monkeypatch.setattr(AllQuietClient, "append_intent", append)
+        monkeypatch.setattr(AllQuietClient, "get_incident", get)
+
+        block = AllQuietUpdateIncidentBlock()
+        out = await _run(
+            block,
+            incident_id=TEST_INCIDENT.id,
+            intent=IncidentIntent.RESOLVED,
+            message="fixed",
+        )
+
+        assert append.await_count == 1, "the intent must actually be applied"
+        assert append.await_args.args[0] == TEST_INCIDENT.id
+        assert append.await_args.kwargs["intent"] == IncidentIntent.RESOLVED.value
+        assert append.await_args.kwargs["message"] == "fixed"
+
+        assert get.await_count == 1, "the incident must be re-read afterwards"
+        assert out["incident"] == TEST_INCIDENT
+        assert out["allowed_intents"] == TEST_INCIDENT.allowed_intents
+
+    async def test_passes_an_optional_severity_change_through(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        append = AsyncMock()
+        monkeypatch.setattr(AllQuietClient, "append_intent", append)
+        monkeypatch.setattr(
+            AllQuietClient, "get_incident", AsyncMock(return_value=TEST_INCIDENT)
+        )
+
+        await _run(
+            AllQuietUpdateIncidentBlock(),
+            incident_id=TEST_INCIDENT.id,
+            intent=IncidentIntent.COMMENTED,
+            severity=IncidentSeverity.CRITICAL,
+        )
+
+        assert append.await_args.kwargs["severity"] == IncidentSeverity.CRITICAL

@@ -17,6 +17,7 @@ from backend.blocks.allquiet._webhook import (
     AllQuietWebhooksManager,
     AllQuietWebhookType,
 )
+from backend.blocks.allquiet.triggers import AllQuietIncidentTriggerBlock
 
 SECRET = "s3cr3t-signing-key"
 BODY = b'{"id":"81cd20be","title":"RAM above 60%"}'
@@ -246,15 +247,11 @@ class TestSigningSecretFieldCoupling:
     """
 
     def test_names_a_real_field_on_the_trigger_block(self):
-        from backend.blocks.allquiet.triggers import AllQuietIncidentTriggerBlock
-
         fields = AllQuietIncidentTriggerBlock().input_schema.model_fields
 
         assert AllQuietWebhooksManager.SIGNING_SECRET_INPUT in fields
 
     def test_that_field_is_marked_secret(self):
-        from backend.blocks.allquiet.triggers import AllQuietIncidentTriggerBlock
-
         schema = AllQuietIncidentTriggerBlock().input_schema.model_json_schema()
         field = schema["properties"][AllQuietWebhooksManager.SIGNING_SECRET_INPUT]
 
@@ -352,3 +349,31 @@ class TestFutureSkew:
         )
 
         await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
+
+
+class TestSignatureHeaderRobustness:
+    async def test_a_non_ascii_signature_is_rejected_not_a_500(self):
+        # hmac.compare_digest raises TypeError on a str with non-ASCII, which
+        # would escape the handler as a 500 rather than a 403.
+        timestamp = _now()
+        request = _request(
+            {"x-aq-signature": "ünicode-signature", "x-aq-timestamp": timestamp}
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
+        assert exc.value.status_code == 403
+
+    async def test_an_unreadable_stored_secret_fails_closed(self):
+        # "Configured but unreadable" must not be mistaken for "unsigned",
+        # which would accept every delivery.
+        timestamp = _now()
+        request = _request(
+            {"x-aq-signature": _sign(BODY, timestamp), "x-aq-timestamp": timestamp}
+        )
+        webhook = _webhook(node_inputs=[{"signing_secret": {"not": "a secret"}}])
+
+        with pytest.raises(HTTPException) as exc:
+            await AllQuietWebhooksManager.verify_signature(webhook, request)
+        assert exc.value.status_code == 403
+        assert "could not be read" in exc.value.detail

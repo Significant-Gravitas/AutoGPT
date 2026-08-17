@@ -1,4 +1,4 @@
-# Allquiet Incident Search
+# All Quiet Incident Search
 <!-- MANUAL: file_description -->
 Blocks that read All Quiet incidents — fetching a single incident by ID, or searching the incident list by status, severity, team, text or time range.
 <!-- END MANUAL -->
