@@ -24,7 +24,7 @@ import {
 import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
-import { useExpertMap } from "./useExpertMap";
+import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
@@ -68,19 +68,29 @@ export function useCopilotPage() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const expertId = isExpertsEnabled ? expertIdParam : null;
   const [kickoffParam, setKickoffParam] = useQueryState(
     "kickoff",
     parseAsString,
   );
-  const { expertsById, isLoadingExperts, hasLoadedExperts } = useExpertMap();
+  const {
+    expertsById,
+    isLoadingExperts,
+    hasExpertsSettled,
+    hasExpertsErrored,
+  } = useExpertMap();
   const validExpertIdParam =
     expertIdParam && isValidUUID(expertIdParam) ? expertIdParam : null;
-  const expertId =
-    isExpertsEnabled &&
-    hasLoadedExperts &&
-    validExpertIdParam &&
-    expertsById.has(validExpertIdParam)
-      ? validExpertIdParam
+  // Day one only fires for an expert we can still address. `onKickoff` writes
+  // its opening turn through `sendNewMessage`, bypassing the `onSend` archive
+  // guard, so a bogus id, an unreadable roster or a fired expert has to fall
+  // through to the read-only thread rather than reach the kickoff path.
+  const kickoffExpert = validExpertIdParam
+    ? expertsById.get(validExpertIdParam)
+    : undefined;
+  const kickoffExpertId =
+    isExpertsEnabled && hasExpertsSettled && kickoffExpert?.isArchived === false
+      ? kickoffExpert.id
       : null;
   const isKickoffResolving =
     isExpertsEnabled &&
@@ -90,13 +100,19 @@ export function useCopilotPage() {
 
   useEffect(() => {
     if (kickoffParam !== "1") return;
-    if (!shouldClearKickoffParam(isExpertsEnabled, hasLoadedExperts, expertId))
+    if (
+      !shouldClearKickoffParam(
+        isExpertsEnabled,
+        hasExpertsSettled,
+        kickoffExpertId,
+      )
+    )
       return;
     void setKickoffParam(null, { history: "replace" });
   }, [
-    expertId,
-    hasLoadedExperts,
+    hasExpertsSettled,
     isExpertsEnabled,
+    kickoffExpertId,
     kickoffParam,
     setKickoffParam,
   ]);
@@ -129,10 +145,19 @@ export function useCopilotPage() {
   // NEXT session will address, and it is absent whenever a thread is reached
   // from global search, a bookmark or a shared link.
   const activeExpertId = sessionId ? sessionExpertId : expertId;
-  const expertIdentity =
-    isExpertsEnabled && activeExpertId
-      ? (expertsById.get(activeExpertId) ?? null)
-      : null;
+  const expertIdentity = useMemo(
+    () =>
+      resolveExpertIdentity(activeExpertId, expertsById, {
+        settled: hasExpertsSettled,
+        errored: hasExpertsErrored,
+      }),
+    [activeExpertId, expertsById, hasExpertsErrored, hasExpertsSettled],
+  );
+  const isResolvingExpertIdentity = Boolean(
+    isExpertsEnabled && activeExpertId && !hasExpertsSettled,
+  );
+  const isExpertSendLocked =
+    isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
   const {
     messages: currentMessages,
@@ -258,6 +283,7 @@ export function useCopilotPage() {
     const hasAttachments =
       (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
     if (!trimmed && !hasAttachments) return;
+    if (isExpertSendLocked) return;
 
     // Sending anything retires the greeting for good: flag it done on
     // the server (kept in the DB, just never shown again) and cache the
@@ -318,11 +344,15 @@ export function useCopilotPage() {
     await sendNewMessage(message, files, workspaceFiles, metadata);
   }
 
-  useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
+  useWorkflowImportAutoSubmit({
+    onSend,
+    setPendingFileParts,
+    isSendLocked: isExpertSendLocked,
+  });
 
   const { isKickoffStarting } = useExpertKickoff({
     userId: user?.id ?? null,
-    expertId,
+    expertId: kickoffExpertId,
     kickoff: isExpertsEnabled && kickoffParam === "1",
     sessionId,
     sessionExpertId,
@@ -384,6 +414,7 @@ export function useCopilotPage() {
     sessionDryRun,
     sessionChatStatus,
     expertIdentity,
+    isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting: isKickoffResolving || isKickoffStarting,
   };

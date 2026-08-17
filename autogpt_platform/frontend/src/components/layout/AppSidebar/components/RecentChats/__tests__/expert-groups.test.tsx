@@ -1,5 +1,5 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -91,7 +91,7 @@ describe("RecentChats — expert groups", () => {
     const sessions = makeSessions(2);
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertsMockHandler([]),
+      getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
 
@@ -109,7 +109,7 @@ describe("RecentChats — expert groups", () => {
     const sessions = makeSessions(14);
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertsMockHandler([]),
+      getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
 
@@ -134,7 +134,7 @@ describe("RecentChats — expert groups", () => {
     const sessions = [...makeSessions(8), ...makeSessions(7, mariaExpert.id)];
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertsMockHandler([mariaExpert]),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
     );
     renderRecentChats();
 
@@ -160,7 +160,7 @@ describe("RecentChats — expert groups", () => {
     const sessions = makeSessions(2, "expert-ghost");
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertsMockHandler([]),
+      getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
 
@@ -177,7 +177,7 @@ describe("RecentChats — expert groups", () => {
         sessions,
         total: sessions.length + 10,
       }),
-      getListExpertsMockHandler([]),
+      getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
 
@@ -195,7 +195,7 @@ describe("RecentChats — expert groups", () => {
         listCalls++;
         return HttpResponse.json({ sessions, total: sessions.length });
       }),
-      getListExpertsMockHandler([mariaExpert]),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
     );
     renderRecentChats();
 

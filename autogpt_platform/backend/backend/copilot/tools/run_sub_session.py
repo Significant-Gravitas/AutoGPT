@@ -151,6 +151,15 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
+            if owned.expert_id != session.expert_id:
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} is not "
+                        "in the current memory scope. Leave empty to start a "
+                        "fresh sub for this assistant."
+                    ),
+                    session_id=session.session_id,
+                )
             if (
                 owned.metadata.llm_auth_provider != session.metadata.llm_auth_provider
                 or owned.metadata.llm_credential_id
@@ -169,6 +178,7 @@ class RunSubSessionTool(BaseTool):
                 team_id=session.team_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
+                expert_id=session.expert_id,
             )
             inner_session_id = new_session.session_id
 

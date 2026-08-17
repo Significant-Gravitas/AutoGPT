@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import prisma.errors
@@ -8,6 +9,7 @@ from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertIdentity,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
@@ -16,6 +18,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.data.db import prisma as db_client
+from backend.data.db import query_raw_with_schema
 from backend.data.expert_attribution import (
     resolve_attributable_expert as resolve_attributable_expert_row,
 )
@@ -121,6 +124,35 @@ async def list_templates() -> list[Expert]:
     return [_to_model(row) for row in rows]
 
 
+# Ceiling on in-flight Redis reads inside ``_weekly_spends``. The roster is
+# user-controlled and unbounded, so an uncapped ``gather`` would ask the shared
+# Redis pool for one connection per hired expert on every team-page load.
+_WEEKLY_SPEND_READ_CONCURRENCY = 10
+
+
+async def _weekly_spends(expert_ids: list[str]) -> dict[str, int]:
+    """Weekly spend per expert, one Redis read each, run concurrently.
+
+    A read that fails degrades that expert to 0 rather than failing the whole
+    roster: the team page still renders, just without that spend figure.
+    """
+    semaphore = asyncio.Semaphore(_WEEKLY_SPEND_READ_CONCURRENCY)
+
+    async def read(expert_id: str) -> tuple[str, int]:
+        async with semaphore:
+            try:
+                return expert_id, await get_weekly_spend(expert_id)
+            except Exception:
+                logger.warning(
+                    "Failed to read weekly spend for expert #%s",
+                    expert_id,
+                    exc_info=True,
+                )
+                return expert_id, 0
+
+    return dict(await asyncio.gather(*(read(expert_id) for expert_id in expert_ids)))
+
+
 async def list_experts(user_id: str) -> list[Expert]:
     rows = await prisma.models.Expert.prisma().find_many(
         where={
@@ -131,14 +163,62 @@ async def list_experts(user_id: str) -> list[Expert]:
         include=_WORKFLOW_INCLUDE,
     )
     latest_runs = await _latest_runs([row.id for row in rows])
+    weekly_spends = await _weekly_spends([row.id for row in rows])
     return [
-        _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+        _to_model(row, latest_runs.get(row.id), weekly_spends.get(row.id, 0))
         for row in rows
     ]
 
 
+async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
+    """Return the lifetime roster without hydrating team-page details.
+
+    Raw SQL rather than a Prisma projection: ``find_many`` has no partial
+    ``select`` in prisma-client-py, so the ORM path would hydrate every Expert
+    column (including the Soul text this endpoint exists to avoid) on every
+    copilot mount. Only ``{schema_prefix}`` is interpolated — a server-side
+    constant from settings, never request data — and ``user_id`` is bound as
+    ``$1``. ``experts_db_test.py`` asserts the selected columns so a
+    ``schema.prisma`` rename fails in CI instead of at runtime.
+    """
+    return await query_raw_with_schema(
+        """
+        SELECT "id", "name", "avatarUrl" AS "avatar_url", "role",
+               "isArchived" AS "is_archived"
+        FROM {schema_prefix}"Expert"
+        WHERE "ownerUserId" = $1 AND "isTemplate" = false
+        """,
+        user_id,
+        model=ExpertIdentity,
+    )
+
+
+async def owns_active_expert(user_id: str, expert_id: str) -> bool:
+    """True iff *user_id* owns *expert_id* and that expert is still hireable.
+
+    The ownership half is the point: callers use this to authorise writes, so
+    a fired (archived), template, or someone else's expert must all answer
+    False here rather than being distinguished by the caller.
+    """
+    return (
+        await prisma.models.Expert.prisma().count(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        > 0
+    )
+
+
 async def get_expert(
-    user_id: str, expert_id: str, *, include_workflows: bool = True
+    user_id: str,
+    expert_id: str,
+    *,
+    include_workflows: bool = True,
+    include_archived: bool = False,
 ) -> Expert | None:
     """Fetch a hired expert owned by *user_id*.
 
@@ -146,14 +226,22 @@ async def get_expert(
     + StoreListingVersion joins when the caller only needs the expert's own
     columns. The returned model then always carries an empty ``workflows``
     list — never use that flag to decide whether workflows are installed.
+
+    Archived experts are hidden by default so product surfaces treat them as
+    gone. Set ``include_archived=True`` when the caller must distinguish
+    "archived" (reversible — re-hire revives) from "deleted": the scheduler's
+    scope gate uses this to skip firings without destroying schedules that
+    an un-archive should bring back.
     """
+    where: prisma.types.ExpertWhereInput = {
+        "id": expert_id,
+        "ownerUserId": user_id,
+        "isTemplate": False,
+    }
+    if not include_archived:
+        where["isArchived"] = False
     row = await prisma.models.Expert.prisma().find_first(
-        where={
-            "id": expert_id,
-            "ownerUserId": user_id,
-            "isTemplate": False,
-            "isArchived": False,
-        },
+        where=where,
         include=_WORKFLOW_INCLUDE if include_workflows else None,
     )
     if row is None:
