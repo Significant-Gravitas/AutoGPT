@@ -1,10 +1,3 @@
-from backend.blocks._base import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
-)
 from backend.blocks.dataforb2b._api import DataForB2BClient
 from backend.blocks.dataforb2b._config import (
     TEST_CREDENTIALS,
@@ -13,7 +6,14 @@ from backend.blocks.dataforb2b._config import (
     DataForB2BCredentialsInput,
     dataforb2b,
 )
-from backend.data.model import SchemaField
+from backend.sdk import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+    SchemaField,
+)
 
 ENRICH_FLAGS = (
     "enrich_profile",
