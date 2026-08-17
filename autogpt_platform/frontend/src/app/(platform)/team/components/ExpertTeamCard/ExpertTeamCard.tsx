@@ -37,7 +37,7 @@ export function ExpertTeamCard({
   onEditSoul,
 }: Props) {
   const workflowCount = expert.workflows.length;
-  const needsSetupCount = getNeedsSetupCount(expert);
+  const needsSetupCount = getNeedsSetupCount(expert, schedules);
   const scheduleLabel = getScheduleCountLabel(schedules);
   const weeklySpend = getWeeklySpend(expert);
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
@@ -54,7 +54,7 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="relative flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
+    <div className="relative flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-[border-color,box-shadow] duration-200 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
       <div className="absolute right-3 top-3 z-10">
         <FireExpertMenu
           expertName={expert.name}
