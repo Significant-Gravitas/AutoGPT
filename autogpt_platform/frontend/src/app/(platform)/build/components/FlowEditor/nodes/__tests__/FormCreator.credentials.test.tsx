@@ -119,24 +119,47 @@ describe("FormCreator credential emission", () => {
     expect(stored).not.toHaveProperty("codex_credentials");
   });
 
+  // Seeded as an initial value so the credential travels through FormCreator's
+  // handleChange — the same path that strips id-less objects. Writing straight
+  // to the store after render would bypass the code under test entirely.
   it("keeps a credential field once it carries an id", async () => {
-    renderNode({});
+    useNodeStore.setState({
+      nodes: [
+        {
+          ...makeNode(autopilotSchema),
+          data: {
+            ...makeNode(autopilotSchema).data,
+            hardcodedValues: {
+              codex_credentials: {
+                id: "codex-oauth-1",
+                provider: "codex",
+                type: "oauth2",
+                title: "ChatGPT for Codex",
+              },
+            },
+          },
+        } as unknown as CustomNode,
+      ],
+      nodeAdvancedStates: {},
+    });
+    useEdgeStore.setState({ edges: [] });
+    useHistoryStore.setState({ past: [], future: [] });
+
+    render(
+      <CredentialsProvidersContext.Provider value={makeProviders("codex")}>
+        <FormCreator
+          jsonSchema={autopilotSchema}
+          nodeId="autopilot-node"
+          uiType={BlockUIType.STANDARD}
+          showHandles={false}
+        />
+      </CredentialsProvidersContext.Provider>,
+    );
 
     await waitFor(() => {
       expect(
         useNodeStore.getState().getHardCodedValues("autopilot-node"),
       ).toBeDefined();
-    });
-
-    useNodeStore.getState().updateNodeData("autopilot-node", {
-      hardcodedValues: {
-        codex_credentials: {
-          id: "codex-oauth-1",
-          provider: "codex",
-          type: "oauth2",
-          title: "ChatGPT for Codex",
-        },
-      },
     });
 
     const stored = useNodeStore
@@ -171,6 +194,27 @@ const mcpToolSchema = {
     },
   },
   required: ["server_url"],
+} as unknown as RJSFSchema;
+
+const requiredCodexSchema = {
+  type: "object",
+  properties: {
+    prompt: { advanced: false, title: "Prompt", type: "string" },
+    credentials: {
+      advanced: false,
+      credentials_provider: ["codex"],
+      credentials_types: ["oauth2"],
+      properties: {
+        id: { title: "Id", type: "string" },
+        provider: { const: "codex", title: "Provider", type: "string" },
+        type: { const: "oauth2", title: "Type", type: "string" },
+      },
+      required: ["id", "provider", "type"],
+      title: "Credentials",
+      type: "object",
+    },
+  },
+  required: ["prompt", "credentials"],
 } as unknown as RJSFSchema;
 
 describe("unavailable provider", () => {
@@ -301,6 +345,44 @@ describe("unavailable provider", () => {
     const title = await screen.findByText("Github credential");
 
     expect(title.parentElement?.textContent).toContain("*");
+  });
+});
+
+describe("unavailable required field", () => {
+  // Regression for the toggle trap: the hide condition must key off the schema's
+  // own `required`, not the toggle-adjusted value. Otherwise turning "Optional"
+  // on for a required gated field hides the row AND its toggle, with no way back.
+  it("keeps a required-but-unavailable row visible when marked optional", async () => {
+    useNodeStore.setState({
+      nodes: [
+        {
+          ...makeNode(requiredCodexSchema),
+          id: "toggle-node",
+          data: {
+            ...makeNode(requiredCodexSchema).data,
+            metadata: { credentials_optional: true },
+          },
+        } as unknown as CustomNode,
+      ],
+      nodeAdvancedStates: {},
+    });
+    useEdgeStore.setState({ edges: [] });
+    useHistoryStore.setState({ past: [], future: [] });
+
+    render(
+      <CredentialsProvidersContext.Provider value={makeProviders("openai")}>
+        <FormCreator
+          jsonSchema={requiredCodexSchema}
+          nodeId="toggle-node"
+          uiType={BlockUIType.STANDARD}
+          showHandles={false}
+        />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    // The row survives so the toggle stays reachable, but carries no star.
+    const title = await screen.findByText("OpenAI credential");
+    expect(title.parentElement?.textContent).not.toContain("*");
   });
 });
 
