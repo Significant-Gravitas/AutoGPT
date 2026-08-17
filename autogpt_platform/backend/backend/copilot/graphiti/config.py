@@ -158,6 +158,15 @@ class GraphitiConfig(BaseSettings):
         default=8.0,
         description="Seconds before warm context fetch is abandoned (needs headroom for FalkorDB cold connections)",
     )
+    context_refresh_timeout: float = Field(
+        default=3.0,
+        description=(
+            "Seconds before a follow-up-turn warm-context REFRESH is abandoned "
+            "(SECRT-2378). Tighter than context_timeout because the refresh is a "
+            "serial await on the pre-stream hot path — this caps its worst-case "
+            "time-to-first-token cost on a cold graph."
+        ),
+    )
 
     # Client cache
     client_cache_maxsize: int = Field(default=500)
