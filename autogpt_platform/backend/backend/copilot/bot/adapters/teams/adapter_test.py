@@ -1120,6 +1120,77 @@ async def test_the_playground_may_still_serve_attachments_from_loopback(app_id):
         await auth.ensure_attachment_host_is_external("http://localhost:56150/x")
 
 
+@pytest.mark.asyncio
+async def test_the_attachment_fetch_stops_at_the_size_cap(app_id):
+    """The only DoS bound on downloads — Teams declares no size for a file."""
+    from backend.copilot.bot.adapters.teams.adapter import _bounded_fetch
+
+    oversized = config.MAX_ATTACHMENT_BYTES + 1
+
+    async def chunks():
+        yield b"x" * oversized
+
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.aiter_bytes = chunks
+    stream = MagicMock()
+    stream.__aenter__ = AsyncMock(return_value=response)
+    stream.__aexit__ = AsyncMock(return_value=False)
+    client = MagicMock()
+    client.stream = MagicMock(return_value=stream)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+
+    fetch = _bounded_fetch("https://files.example/big.bin")
+    with (
+        patch(
+            "backend.copilot.bot.adapters.teams.auth."
+            "ensure_attachment_host_is_external",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.bot.adapters.teams.adapter.httpx.AsyncClient",
+            return_value=client,
+        ),
+        pytest.raises(ValueError, match="size limit"),
+    ):
+        await fetch()
+
+
+@pytest.mark.asyncio
+async def test_the_attachment_fetch_never_follows_redirects(app_id):
+    # A redirect would land the fetch on a host the SSRF check never saw.
+    from backend.copilot.bot.adapters.teams.adapter import _bounded_fetch
+
+    async def chunks():
+        yield b"ok"
+
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.aiter_bytes = chunks
+    stream = MagicMock()
+    stream.__aenter__ = AsyncMock(return_value=response)
+    stream.__aexit__ = AsyncMock(return_value=False)
+    client = MagicMock()
+    client.stream = MagicMock(return_value=stream)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    made = MagicMock(return_value=client)
+
+    fetch = _bounded_fetch("https://files.example/ok.txt")
+    with (
+        patch(
+            "backend.copilot.bot.adapters.teams.auth."
+            "ensure_attachment_host_is_external",
+            new=AsyncMock(),
+        ),
+        patch("backend.copilot.bot.adapters.teams.adapter.httpx.AsyncClient", made),
+    ):
+        assert await fetch() == b"ok"
+
+    assert made.call_args.kwargs["follow_redirects"] is False
+
+
 def test_a_normal_sharepoint_download_still_works(app_id):
     activity = _activity(attachments=[_file_attachment("notes.txt")])
     with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):

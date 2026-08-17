@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 _HELP_TEXT = (
     "**AutoGPT for Teams**\n"
-    "- Add me to a team and run /setup to link it to an AutoGPT account.\n"
+    "- Add me to a team, then @mention me to run a command: a bare /setup\n"
+    "  in a channel never reaches me, but `@AutoGPT /setup` links the team.\n"
     "- @mention me in a channel to chat; I'll reply in a thread.\n"
     "- Message me directly to chat with your personal AutoGPT account.\n"
     "- Run /unlink to manage your linked account and teams."

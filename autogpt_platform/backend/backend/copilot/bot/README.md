@@ -109,6 +109,18 @@ Teams differs from the other platforms in ways worth knowing before debugging:
 - **Group chats are not supported.** A `groupChat` carries no team identity to
   bill against, so those activities are accepted and ignored (with a log line
   saying so). Only `personal` chats and `channel` messages are handled.
+- **Delivery is at-most-once.** The route ACKs 200 and dispatches in a
+  background task, and the activity id is claimed in Redis before processing.
+  A dispatch failure or a replica recycle mid-turn therefore loses that turn,
+  and the Connector's own redelivery is deduped away by the claim. This trades
+  the Connector's retry for never double-answering a user; releasing the claim
+  on failure is the change to make if the balance should tip the other way.
+- **The learned `serviceUrl` map is per process.** The adapter rides the
+  N-replica API, so another replica handling the same conversation falls back
+  to the default public-cloud host. Fine while replies are reactive (the host
+  comes off the inbound activity) and DMs use the default; a proactive channel
+  send from a cold replica would 404 for a tenant Microsoft routes elsewhere,
+  so persist the mapping in Redis before enabling that.
 - **Mention matching is prefix-insensitive.** Teams spells a participant id
   `28:<app-id>` in some places and bare in others; `_bot_identities` accepts
   either, and also matches the activity's own `recipient.id`.
